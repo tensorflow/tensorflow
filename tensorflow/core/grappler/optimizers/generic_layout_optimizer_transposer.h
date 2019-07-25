@@ -593,8 +593,12 @@ std::vector<int> GetDataFaninPorts(const utils::MutableNodeView& node);
 
 std::vector<int> GetDataFanoutPorts(const utils::MutableNodeView& node);
 
-bool GetValueAttrIfConstPermTransposeNode(const utils::MutableNodeView& node,
-                                          Tensor* tensor);
+// Returns a value of constant input to the `node` at `index`, iff `predicate`
+// evaluated to true. Returns true if `tensor` was populated with data.
+bool GetValueAttrFromConstInputNode(
+    const utils::MutableNodeView& node,
+    const std::function<bool(const NodeDef&)>& predicate, int index,
+    Tensor* tensor);
 
 bool IsDataFormatOp(const utils::MutableNodeView& node);
 

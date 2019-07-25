@@ -300,8 +300,8 @@ Status Importer::RemoveBackedges(const Graph& graph) {
   graph_ = absl::make_unique<Graph>(graph.flib_def());
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
-  TF_RETURN_IF_ERROR(
-      ::tensorflow::ConvertGraphDefToGraph(opts, graph_def, graph_.get()));
+  TF_RETURN_IF_ERROR(::tensorflow::ConvertGraphDefToGraph(
+      opts, std::move(graph_def), graph_.get()));
 
   // Remove all the backedges. So the nodes can be added to the shape refiner.
   TF_RETURN_IF_ERROR(back_edge_helper_.Remove(graph_.get()));
@@ -979,9 +979,12 @@ Status Importer::ConvertNode(const Node& node) {
     node_type_name = (*tf_name_to_mlir_name_)[node_type_name];
   }
 
-  const char* kTfControlFlowFormPrefix = "_tf.";
-  std::string op_name = kTfControlFlowFormPrefix + node_type_name;
+  auto get_full_op_name = [&](const std::string& op_name) {
+    const char* kTfControlFlowFormPrefix = "_tf.";
+    return kTfControlFlowFormPrefix + op_name;
+  };
 
+  std::string op_name = get_full_op_name(node_type_name);
   if (back_edge_node_output_.contains(&node)) {
     op_name = op_name + ".sink";
   }
@@ -1081,6 +1084,14 @@ Status Importer::ConvertNode(const Node& node) {
       "name", builder_->getStringAttr(std::string(node.name()))));
   result.attributes.push_back(builder_->getNamedAttr(
       "device", builder_->getStringAttr(std::string(node_def.device()))));
+
+  // Map If and StatelessIf op in TensorFlow to the common If op in MLIR and add
+  // the differentiating attribute.
+  if (node.IsIfNode()) {
+    result.name = mlir::OperationName(get_full_op_name("If"), context_);
+    mlir::BoolAttr val = builder_->getBoolAttr(node_type_name == "StatelessIf");
+    result.attributes.push_back(builder_->getNamedAttr("is_stateless", val));
+  }
 
   node_values_[node.id()] = builder_->createOperation(result);
   return Status::OK();
@@ -1383,8 +1394,8 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
   if (add_default_attributes) {
     TF_RETURN_IF_ERROR(AddDefaultsToNodeDef(&preprocessed_graphdef));
   }
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(options, preprocessed_graphdef, &graph));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+      options, std::move(preprocessed_graphdef), &graph));
 
   return ConvertGraphToMlir(graph, debug_info, graph.flib_def(), specs,
                             context);

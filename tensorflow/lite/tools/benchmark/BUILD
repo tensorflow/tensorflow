@@ -87,6 +87,7 @@ cc_library(
     copts = common_copts,
     deps = [
         ":benchmark_model_lib",
+        ":benchmark_utils",
         ":logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
@@ -117,11 +118,35 @@ cc_library(
     copts = common_copts,
     deps = [
         ":benchmark_params",
+        ":benchmark_utils",
         ":logging",
         "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
+    ],
+)
+
+cc_library(
+    name = "benchmark_utils",
+    srcs = [
+        "benchmark_utils.cc",
+    ],
+    hdrs = ["benchmark_utils.h"],
+    copts = common_copts,
+    deps = ["//tensorflow/lite/profiling:time"],
+)
+
+cc_test(
+    name = "benchmark_utils_test",
+    srcs = [
+        "benchmark_utils_test.cc",
+    ],
+    copts = common_copts,
+    deps = [
+        ":benchmark_utils",
+        "//tensorflow/lite/profiling:time",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

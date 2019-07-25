@@ -1254,22 +1254,6 @@ class CustomCallSignatureTests(test.TestCase):
         ValueError, 'cannot build your model if it has positional'):
       model.build(input_shape=[first_input_shape, second_input_shape])
 
-  def test_inputs_in_signature(self):
-
-    class HasInputsAndOtherPositional(keras.Model):
-
-      def call(self, inputs, some_other_arg, training=False):
-        return inputs
-
-      def compute_output_shape(self, input_shape):
-        return input_shape
-
-    model = HasInputsAndOtherPositional()
-    with self.assertRaisesRegexp(
-        TypeError, 'everything else as a keyword argument'):
-      x1, x2 = keras.Input((1, 1)), keras.Input((1, 1))
-      model(x1, x2)
-
   def test_kwargs_in_signature(self):
 
     class HasKwargs(keras.Model):
@@ -1283,34 +1267,6 @@ class CustomCallSignatureTests(test.TestCase):
     if not context.executing_eagerly():
       self.assertEqual(len(model.inputs), 1)
 
-  def test_args_in_signature(self):
-
-    class HasArgs(keras.Model):
-
-      def call(self, x, *args, **kwargs):
-        return [x] + list(args)
-
-      def compute_output_shape(self, input_shape):
-        return input_shape
-
-    model = HasArgs()
-    x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
-    model(x1, x2, x3, a=3)
-    self.assertEqual(len(model.inputs), 3)
-
-  def test_args_and_keywords_in_signature(self):
-
-    class HasArgs(keras.Model):
-
-      def call(self, x, training=True, *args, **kwargs):  # pylint:disable=keyword-arg-before-vararg
-        return x
-
-    model = HasArgs()
-    x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
-    with self.assertRaisesRegexp(
-        TypeError, 'may not accept both positional arguments and '):
-      model(x1, x2, x3, a=3)
-
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
   def test_training_no_default(self):
@@ -1323,17 +1279,33 @@ class CustomCallSignatureTests(test.TestCase):
     model(arg, True)
     self.assertEqual(len(model.inputs), 1)
 
-  def test_training_no_default_with_positional(self):
+  def test_positional_arg_in_call(self):
 
-    class TrainingNoDefaultWithPositional(keras.Model):
+    class ModelWithPositionalArgs(keras.Model):
 
-      def call(self, x, training, positional):
-        return x
+      def call(self, x, x2, x3=None):
+        return x + x2
 
-    model = TrainingNoDefaultWithPositional()
-    x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
-    with self.assertRaisesRegexp(TypeError, 'after a non-input'):
-      model(x1, x2, x3)
+    x = np.ones((10, 1))
+    y = np.ones((10, 1))
+    m = ModelWithPositionalArgs()
+    m.compile('sgd', 'mse')
+    with self.assertRaisesRegexp(ValueError, r'Models passed to `fit`'):
+      m.fit(x, y, batch_size=2)
+    with self.assertRaisesRegexp(ValueError, r'Models passed to `evaluate`'):
+      m.evaluate(x, y, batch_size=2)
+    with self.assertRaisesRegexp(ValueError, r'Models passed to `predict`'):
+      m.predict(x, batch_size=2)
+    with self.assertRaisesRegexp(ValueError,
+                                 r'Models passed to `train_on_batch`'):
+      m.train_on_batch(x, y)
+    with self.assertRaisesRegexp(ValueError,
+                                 r'Models passed to `test_on_batch`'):
+      m.test_on_batch(x, y)
+    with self.assertRaisesRegexp(ValueError,
+                                 r'Models passed to `predict_on_batch`'):
+      m.predict_on_batch(x)
+
 
 if __name__ == '__main__':
   test.main()

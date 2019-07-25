@@ -12,23 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_KERNELS_CPU_BACKEND_SUPPORT_H_
-#define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_SUPPORT_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
+
+#include "tensorflow/lite/profiling/time.h"
 
 namespace tflite {
+namespace benchmark {
+namespace util {
 
-namespace cpu_backend_support {
+void SleepForSeconds(double sleep_seconds) {
+  if (sleep_seconds <= 0.0) {
+    return;
+  }
+  // If requested, sleep between runs for an arbitrary amount of time.
+  // This can be helpful to determine the effect of mobile processor
+  // scaling and thermal throttling.
+  tflite::profiling::time::SleepForMicros(
+      static_cast<uint64_t>(sleep_seconds * 1e6));
+}
 
-CpuBackendContext* GetFromContext(TfLiteContext* context);
-
-void IncrementUsageCounter(TfLiteContext* context);
-
-void DecrementUsageCounter(TfLiteContext* context);
-
-}  // namespace cpu_backend_support
+}  // namespace util
+}  // namespace benchmark
 }  // namespace tflite
-
-#endif  // TENSORFLOW_LITE_KERNELS_CPU_BACKEND_SUPPORT_H_

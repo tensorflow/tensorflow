@@ -159,6 +159,7 @@ def _ragged_segment_aggregate(unsorted_segment_op,
                               data,
                               segment_ids,
                               num_segments,
+                              separator='',
                               name=None):
   """Aggregates along segments of a RaggedTensor using `unsorted_segment_op`.
 
@@ -181,6 +182,8 @@ def _ragged_segment_aggregate(unsorted_segment_op,
       `int32`.  `segment_ids.shape` must be a prefix of `data.shape`.
       `segment_ids` is not required to be sorted.
     num_segments: An `int32` or `int64` scalar.
+    separator: An optional string. Defaults to "". The separator to
+      use when joining. Only used for string types.
     name: A name prefix for the returned tensor (optional).
 
   Returns:
@@ -192,7 +195,12 @@ def _ragged_segment_aggregate(unsorted_segment_op,
   """
   if not (ragged_tensor.is_ragged(data) or
           ragged_tensor.is_ragged(segment_ids)):
-    return unsorted_segment_op(data, segment_ids, num_segments, name)
+    if data.dtype == dtypes.string:
+      # It uses unsorted_segment_join.
+      return unsorted_segment_op(data, segment_ids, num_segments, separator,
+                                 name)
+    else:
+      return unsorted_segment_op(data, segment_ids, num_segments, name)
 
   with ops.name_scope(name, 'RaggedSegment',
                       [data, segment_ids, num_segments]) as name:
@@ -213,7 +221,8 @@ def _ragged_segment_aggregate(unsorted_segment_op,
           message='segment_ids.shape must be a prefix of data.shape')
       with ops.control_dependencies([check_splits]):
         return _ragged_segment_aggregate(unsorted_segment_op, data.values,
-                                         segment_ids.values, num_segments, name)
+                                         segment_ids.values, num_segments,
+                                         separator)
 
     # Find the length of each row in data.  (shape=[data_nrows])
     data_row_lengths = data.row_splits[1:] - data.row_splits[:-1]
@@ -407,12 +416,13 @@ _RAGGED_REDUCE_ANY_EXAMPLE = """
 """
 
 
-def _ragged_reduce_aggregate(reduce_op,
-                             unsorted_segment_op,
-                             rt_input,
-                             axis,
-                             keepdims,
-                             name=None):
+def ragged_reduce_aggregate(reduce_op,
+                            unsorted_segment_op,
+                            rt_input,
+                            axis,
+                            keepdims,
+                            separator='',
+                            name=None):
   """Aggregates across axes of a RaggedTensor using the given `Tensor` ops.
 
   Reduces `rt_input` along the dimensions given in `axis`.  The rank of the
@@ -437,6 +447,8 @@ def _ragged_reduce_aggregate(reduce_op,
       given set of axes), or a `Tensor` with a constant value.  Must be in the
       range `[0, rt_input.rank)`.
     keepdims: If true, retains reduced dimensions with length 1.
+    separator: An optional string. Defaults to ''. The separator to use when
+      joining. Used only when input type is string.
     name: A name prefix for the returned tensor (optional).
 
   Returns:
@@ -484,10 +496,12 @@ def _ragged_reduce_aggregate(reduce_op,
         # does not work for reduce_mean.)  However, reducing multiple axes at
         # once will probably require a nontrivial c++ op.
         axis = sorted(axis)
-        inner_reduced = _ragged_reduce_aggregate(reduce_op, unsorted_segment_op,
-                                                 rt_input, axis[-1], keepdims)
-        return _ragged_reduce_aggregate(reduce_op, unsorted_segment_op,
-                                        inner_reduced, axis[:-1], keepdims)
+        inner_reduced = ragged_reduce_aggregate(reduce_op, unsorted_segment_op,
+                                                rt_input, axis[-1], keepdims,
+                                                separator)
+        return ragged_reduce_aggregate(reduce_op, unsorted_segment_op,
+                                       inner_reduced, axis[:-1], keepdims,
+                                       separator)
 
     rt_input = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         rt_input, name='rt_input')
@@ -500,48 +514,49 @@ def _ragged_reduce_aggregate(reduce_op,
       num_segments = math_ops.maximum(math_ops.reduce_max(row_lengths), 0)
       segment_ids = range(row_lengths).values
       return _ragged_segment_aggregate(unsorted_segment_op, rt_input.values,
-                                       segment_ids, num_segments)
+                                       segment_ids, num_segments, separator)
     elif axis == 1:
       # out[i_0, i_1, i_2, ..., i_N] = sum_{j} rt_input[i_0, j, i_2, ..., i_N]
       num_segments = array_ops.shape(rt_input.row_splits)[0] - 1
       segment_ids = segment_id_ops.row_splits_to_segment_ids(
           rt_input.row_splits)
       return _ragged_segment_aggregate(unsorted_segment_op, rt_input.values,
-                                       segment_ids, num_segments)
+                                       segment_ids, num_segments, separator)
     else:
       # out[i_0, ..., i_[axis-1], i_axis+1], ..., i_N] =
       #     sum_{j} rt_input [i_0, ..., i_[axis-1], j, i_axis+1], ..., i_N]
       return rt_input.with_values(
-          _ragged_reduce_aggregate(reduce_op, unsorted_segment_op,
-                                   rt_input.values, axis - 1, keepdims))
+          ragged_reduce_aggregate(reduce_op, unsorted_segment_op,
+                                  rt_input.values, axis - 1, keepdims,
+                                  separator))
 
 
 def reduce_sum(input_tensor, axis=None, keepdims=None, name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
-  return _ragged_reduce_aggregate(math_ops.reduce_sum,
-                                  math_ops.unsorted_segment_sum, input_tensor,
-                                  axis, keepdims, name or 'RaggedReduceSum')
+  return ragged_reduce_aggregate(math_ops.reduce_sum,
+                                 math_ops.unsorted_segment_sum, input_tensor,
+                                 axis, keepdims, name or 'RaggedReduceSum')
 
 
 def reduce_prod(input_tensor, axis=None, keepdims=None, name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
-  return _ragged_reduce_aggregate(math_ops.reduce_prod,
-                                  math_ops.unsorted_segment_prod, input_tensor,
-                                  axis, keepdims, name or 'RaggedReduceProd')
+  return ragged_reduce_aggregate(math_ops.reduce_prod,
+                                 math_ops.unsorted_segment_prod, input_tensor,
+                                 axis, keepdims, name or 'RaggedReduceProd')
 
 
 def reduce_min(input_tensor, axis=None, keepdims=None, name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
-  return _ragged_reduce_aggregate(math_ops.reduce_min,
-                                  math_ops.unsorted_segment_min, input_tensor,
-                                  axis, keepdims, name or 'RaggedReduceMin')
+  return ragged_reduce_aggregate(math_ops.reduce_min,
+                                 math_ops.unsorted_segment_min, input_tensor,
+                                 axis, keepdims, name or 'RaggedReduceMin')
 
 
 def reduce_max(input_tensor, axis=None, keepdims=None, name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
-  return _ragged_reduce_aggregate(math_ops.reduce_max,
-                                  math_ops.unsorted_segment_max, input_tensor,
-                                  axis, keepdims, name or 'RaggedReduceMax')
+  return ragged_reduce_aggregate(math_ops.reduce_max,
+                                 math_ops.unsorted_segment_max, input_tensor,
+                                 axis, keepdims, name or 'RaggedReduceMax')
 
 
 def reduce_mean(input_tensor, axis=None, keepdims=None, name=None):

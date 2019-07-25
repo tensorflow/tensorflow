@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/python/device.h"
-#include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -93,17 +92,9 @@ class PyLocalClient {
     return &h2d_transfer_pool_;
   }
 
-  PythonRefManager& py_ref_manager() { return py_ref_manager_; }
-
  protected:
   std::string platform_name_;
   LocalClient* client_;
-
-  // py_ref_manager_ must come after devices_ in the class destruction order
-  // (i.e., appear first in the class.)
-  // Destruction of devices waits for them to quiesce; callbacks on device
-  // streams may refer to py_ref_manager_ and we must wait for them to complete.
-  PythonRefManager py_ref_manager_;
 
   std::vector<std::unique_ptr<Device>> devices_;
   se::DeviceMemoryAllocator* allocator_;
@@ -147,10 +138,6 @@ class PyLocalBuffer {
 
   const Shape& on_host_shape() const { return on_host_shape_; }
   int device_ordinal() const { return device_ordinal_; }
-
-  // TODO(makro): Make `client` private once `PythonRefManager` is refactored
-  // out of `PyLocalClient`.
-  PyLocalClient* client() const { return client_.get(); }
 
   // Returns the buffer's value as a tuple DAG of Python arrays. If the value
   // has previously been prefetched to the host, then returns the prefetched

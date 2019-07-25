@@ -147,10 +147,13 @@ class GrpcEagerClientCache : public EagerClientCache {
             void* tag;
             bool ok;
             while (completion_queue_.Next(&tag, &ok)) {
+              VLOG(4) << "GrpcEagerClientThread got next tag";
               GrpcClientCQTag* callback_tag =
                   static_cast<GrpcClientCQTag*>(tag);
               callback_tag->OnCompleted(ok);
+              VLOG(4) << "GrpcEagerClientThread blocking for next tag";
             }
+            VLOG(4) << "GrpcEagerClientThread exiting";
           }));
     }
 

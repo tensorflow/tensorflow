@@ -837,7 +837,7 @@ Status MaxPoolGradV2Transposer::TransposeNode(TransposeContext* context,
 inline bool IsValidConstPermTransposeNode(const utils::MutableNodeView& node,
                                           absl::Span<const int> permutation) {
   Tensor tensor;
-  if (!GetValueAttrIfConstPermTransposeNode(node, &tensor)) {
+  if (!GetValueAttrFromConstInputNode(node, IsTranspose, 1, &tensor)) {
     return false;
   }
   if (tensor.NumElements() != permutation.size()) {
@@ -1799,17 +1799,19 @@ std::vector<int> GetDataFanoutPorts(const utils::MutableNodeView& node) {
   return {0};
 }
 
-bool GetValueAttrIfConstPermTransposeNode(const utils::MutableNodeView& node,
-                                          Tensor* tensor) {
-  if (!IsTranspose(*node.node())) {
+bool GetValueAttrFromConstInputNode(
+    const utils::MutableNodeView& node,
+    const std::function<bool(const NodeDef&)>& predicate, int index,
+    Tensor* tensor) {
+  if (!predicate(*node.node())) {
     return false;
   }
-  const auto& regular_fanin_1 = node.GetRegularFanin(1);
-  auto* regular_fanin_1_node = regular_fanin_1.node_view();
-  if (!IsConstant(*regular_fanin_1_node->node())) {
+  const auto& regular_fanin = node.GetRegularFanin(index);
+  auto* regular_fanin_node = regular_fanin.node_view();
+  if (!IsConstant(*regular_fanin_node->node())) {
     return false;
   }
-  const auto* value_attr = regular_fanin_1_node->GetAttr(kAttrValue);
+  const auto* value_attr = regular_fanin_node->GetAttr(kAttrValue);
   if (value_attr == nullptr || value_attr->tensor().dtype() != DT_INT32) {
     return false;
   }

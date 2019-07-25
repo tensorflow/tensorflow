@@ -1583,6 +1583,13 @@ def _convert_numpy_inputs(inputs):
 
 def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
   """Convert inputs to pass into a function with an explicit signature."""
+
+  def format_error_message(inputs, input_signature):
+    return ("  inputs: (\n" + "    " +
+            ",\n    ".join([str(i) for i in inputs]) + ")\n" +
+            "  input_signature: (\n" + "    " +
+            ",\n    ".join([str(i) for i in input_signature]) + ")")
+
   try:
     # TODO(b/124370185): Use all elements as inputs to throw an error if there
     # are ignored arguments. Calling with arguments that are not part of the
@@ -1593,8 +1600,8 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
         expand_composites=True)
   except ValueError:
     raise ValueError("Structure of Python function inputs does not match "
-                     "input_signature. Inputs (%s), input_signature(%s)." %
-                     (str(inputs), str(input_signature)))
+                     "input_signature:\n%s" %
+                     format_error_message(inputs, input_signature))
 
   need_packing = False
   for index, (value, spec) in enumerate(zip(flatten_inputs,
@@ -1606,16 +1613,15 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
         need_packing = True
       except ValueError:
         raise ValueError("When input_signature is provided, all inputs to "
-                         "the Python function must be convertible to tensors."
-                         "Inputs (%s), input_signature(%s)." %
-                         (str(inputs), str(input_signature)))
+                         "the Python function must be convertible to "
+                         "tensors:\n%s" %
+                         format_error_message(inputs, input_signature))
 
   if any(not spec.is_compatible_with(other) for spec, other in zip(
       flat_input_signature,
       flatten_inputs)):
-    raise ValueError("Python inputs incompatible with input_signature: "
-                     "inputs (%s), input_signature (%s)" %
-                     (str(inputs), str(input_signature)))
+    raise ValueError("Python inputs incompatible with input_signature:\n%s" %
+                     format_error_message(inputs, input_signature))
 
   if need_packing:
     inputs = nest.pack_sequence_as(

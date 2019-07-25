@@ -44,7 +44,7 @@ class DatasetTestBase(test.TestCase):
       dataset_ops.Dataset = dataset_ops.DatasetV1
 
   def assert_op_cancelled(self, op):
-    with self.assertRaisesRegexp(errors.CancelledError, "was cancelled"):
+    with self.assertRaises(errors.CancelledError):
       self.evaluate(op)
 
   def assertValuesEqual(self, expected, actual):

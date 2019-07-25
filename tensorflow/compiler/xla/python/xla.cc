@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/python/local_client.h"
+#include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/xrt.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -315,14 +316,14 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("TransferToInfeed",
            [](PyLocalClient* client, const LiteralSlice& literal,
               int device_ordinal) {
-             client->py_ref_manager().CollectGarbage();
+             GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
              return client->TransferToInfeed(literal, device_ordinal);
            })
       .def("TransferFromOutfeed",
            [](PyLocalClient* client, const Shape& shape,
               int device_ordinal) -> StatusOr<py::object> {
-             client->py_ref_manager().CollectGarbage();
+             GlobalPyRefManager()->CollectGarbage();
              std::shared_ptr<Literal> literal_shared;
              {
                py::gil_scoped_release gil_release;
@@ -339,11 +340,11 @@ PYBIND11_MODULE(xla_extension, m) {
           [](const pybind11::object& argument,
              std::shared_ptr<PyLocalClient> client,
              int device_ordinal) -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
-            client->py_ref_manager().CollectGarbage();
+            GlobalPyRefManager()->CollectGarbage();
             TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
                                 GetPythonBufferTree(argument));
             std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
-                client->py_ref_manager().ManageReferences(
+                GlobalPyRefManager()->ManageReferences(
                     absl::MakeSpan(tree.arrays));
             tree.arrays.clear();
 
@@ -360,7 +361,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static("make_tuple", &PyLocalBuffer::MakeTuple)
       .def("copy_to_device",
            [](PyLocalBuffer* buffer, int dst_device_ordinal) {
-             buffer->client()->py_ref_manager().CollectGarbage();
+             GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
              return buffer->CopyToDevice(dst_device_ordinal);
            })
@@ -368,14 +369,14 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("destructure", &PyLocalBuffer::DestructureTuple)
       .def("block_host_until_ready",
            [](PyLocalBuffer* buffer) {
-             buffer->client()->py_ref_manager().CollectGarbage();
+             GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
              return buffer->BlockHostUntilReady();
            })
       .def("copy_to_host_async", &PyLocalBuffer::CopyToHostAsync)
       .def("to_py",
            [](PyLocalBuffer* buffer) -> StatusOr<py::object> {
-             buffer->client()->py_ref_manager().CollectGarbage();
+             GlobalPyRefManager()->CollectGarbage();
              std::shared_ptr<Literal> literal;
              {
                py::gil_scoped_release gil_release;

@@ -32,12 +32,12 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.training.saver import export_meta_graph
 
 
-# TODO(nupurgarg): Handle StatelessIf op.
-_CONTROL_FLOW_OPS = set(["If", "While"])
+_CONDITIONAL_OPS = set(["If", "StatelessIf"])
+_CONTROL_FLOW_OPS = _CONDITIONAL_OPS.union(set(["While"]))
 
 
 def disable_lower_using_switch_merge(graph_def):
-  """Set '_lower_using_switch_merge' attributes to False in If and While ops.
+  """Set '_lower_using_switch_merge' attributes to False.
 
   Sets the attribute to False in the NodeDefs in the main graph and the NodeDefs
   in each function's graph.
@@ -202,9 +202,10 @@ def _get_control_flow_function_data(node_defs, tensor_data):
 
   Creates a map from function name to a list of types and a list of shapes that
   correspond with the function arguments. The data is primarily determined from
-  the corresponding "If" or "While" op. If the argument is a resource variable,
-  then the type is determined from the type of the data contained within the
-  Tensor. The shape data is only determined in the case of the "While" op.
+  the corresponding "If", "StatelessIf", or "While" op. If the argument is a
+  resource variable, then the type is determined from the type of the data
+  contained within the Tensor. The shape data is only determined in the case of
+  the "While" op.
 
   `is_also_output_type` is used to identify the "While" bodies that require the
   output types to be updated at the same time the input types are updated.
@@ -238,7 +239,7 @@ def _get_control_flow_function_data(node_defs, tensor_data):
     }
 
   for node in node_defs:
-    if node.op == "If":
+    if node.op in _CONDITIONAL_OPS:
       arg_types = [dtype for dtype in node.attr["Tin"].list.type]
 
       for idx in range(len(arg_types)):
@@ -297,7 +298,7 @@ def _populate_identity_op(output_node, input_node):
 
 
 def _populate_if_op(output_node, input_node, function_data):
-  """Updates the type attributes and the function names of the If op.
+  """Updates the type attributes and the function names of If or StatelessIf.
 
   Args:
     output_node: TensorFlow NodeDef.
@@ -422,7 +423,7 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
     converted_input_indices.add(tensor_data[node_name]["index"])
 
   for node in node_defs:
-    if node.op == "If":
+    if node.op in _CONDITIONAL_OPS:
       # Get dtype and data for resource Placeholders.
       then_func = node.attr["then_branch"].func.name
       arg_types = function_data[then_func]["types"]
@@ -499,7 +500,7 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
     elif input_node.op == "ReadVariableOp":
       _populate_identity_op(output_node, input_node)
     # Update the function names and argument types for the conditional ops.
-    elif input_node.op == "If":
+    elif input_node.op in _CONDITIONAL_OPS:
       _populate_if_op(output_node, input_node, function_data)
     elif input_node.op == "While":
       _populate_while_op(output_node, input_node, function_data)
@@ -550,7 +551,7 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
         if input_node.op == "ReadVariableOp":
           _populate_identity_op(output_node, input_node)
         # Update the function names and argument types for the conditional ops.
-        elif input_node.op == "If":
+        elif input_node.op in _CONDITIONAL_OPS:
           _populate_if_op(output_node, input_node, function_data)
         elif input_node.op == "While":
           _populate_while_op(output_node, input_node, function_data)

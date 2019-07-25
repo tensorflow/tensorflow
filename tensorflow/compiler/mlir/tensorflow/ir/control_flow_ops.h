@@ -65,7 +65,7 @@ class TFControlType : public Type::TypeBase<TFControlType, Type> {
 // tensor needs its own _tf.Enter to be made available inside the while loop.
 //
 // More details can be found in Tensorflow Controlflow white paper:
-// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+// https://storage.googleapis.com/download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
 //
 // This is defined in Tensorflow as:
 //
@@ -100,7 +100,7 @@ class EnterOp
 // of the operand type along with the index of the first match encountered.
 //
 // More details can be found in Tensorflow Controlflow white paper:
-// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+// https://storage.googleapis.com/download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
 //
 // This is defined in TensorFlow as:
 //
@@ -130,7 +130,7 @@ class MergeOp : public Op<MergeOp, OpTrait::VariadicOperands,
 // of a while loop. Each loop variable needs its own NextIteration op.
 //
 // More details can be found in Tensorflow Controlflow white paper:
-// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+// https://storage.googleapis.com/download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
 //
 // NextIteration op is broken into _tf.NextIteration.sink and
 // _tf.NextIteration.source because NextIteration is a back-edge in Tensorflow
@@ -182,7 +182,7 @@ class NextIterationSinkOp
 // Tensorflow while loops.
 //
 // More details can be found in Tensorflow Controlflow white paper:
-// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+// https://storage.googleapis.com/download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
 //
 // This is defined in Tensorflow as:
 //
@@ -212,7 +212,7 @@ class LoopCondOp
 // condition, and returns two values matching the type of the data predicate.
 //
 // More details can be found in Tensorflow Controlflow white paper:
-// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+// https://storage.googleapis.com/download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
 //
 // This is defined in TensorFlow as:
 //
@@ -246,7 +246,7 @@ class SwitchOp : public Op<SwitchOp, OpTrait::AtLeastNOperands<2>::Impl,
 // outside of loop. Each returned tensor needs its own _tf.Exit.
 //
 // More details can be found in Tensorflow Controlflow white paper:
-// http://download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
+// https://storage.googleapis.com/download.tensorflow.org/paper/white_paper_tf_control_flow_implementation_2017_11_1.pdf
 //
 // This is defined in Tensorflow as:
 //

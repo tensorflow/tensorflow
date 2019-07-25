@@ -22,7 +22,7 @@ Status GraphDefBuilderToGraph(const GraphDefBuilder& builder, Graph* graph) {
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(builder.ToGraphDef(&graph_def));
   GraphConstructorOptions opts;
-  return ConvertGraphDefToGraph(opts, graph_def, graph);
+  return ConvertGraphDefToGraph(opts, std::move(graph_def), graph);
 }
 
 }  // namespace tensorflow

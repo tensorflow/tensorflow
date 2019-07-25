@@ -107,8 +107,7 @@ def while_loop(cond,
     # Add loop counter needed for computing gradients.
     loop_vars = [loop_counter, maximum_iterations_loop_var] + loop_vars
 
-    shape_invariants = (
-        [tensor_shape.scalar(), tensor_shape.scalar()] + shape_invariants)
+    shape_invariants = [tensor_shape.TensorShape([])] * 2 + shape_invariants
     signature = (
         [tensor_spec.TensorSpec.from_tensor(loop_counter),
          tensor_spec.TensorSpec.from_tensor(maximum_iterations_loop_var)] +

@@ -7,7 +7,7 @@ def _mlir_autoconf_impl(repository_ctx):
     """Implementation of the mlir_configure repository rule."""
     repository_ctx.download_and_extract(
         [
-            "http://mirror.tensorflow.org/github.com/tensorflow/mlir/archive/{}.zip".format(_MLIR_REV),
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/tensorflow/mlir/archive/{}.zip".format(_MLIR_REV),
             "https://github.com/tensorflow/mlir/archive/{}.zip".format(_MLIR_REV),
         ],
         sha256 = _MLIR_SHA256,

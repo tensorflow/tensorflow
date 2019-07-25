@@ -19,21 +19,8 @@ limitations under the License.
 #include <sstream>
 
 #include "tensorflow/lite/profiling/time.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
-
-namespace {
-void SleepForSeconds(double sleep_seconds) {
-  if (sleep_seconds <= 0.0) {
-    return;
-  }
-  // If requested, sleep between runs for an arbitrary amount of time.
-  // This can be helpful to determine the effect of mobile processor
-  // scaling and thermal throttling.
-  return tflite::profiling::time::SleepForMicros(
-      static_cast<uint64_t>(sleep_seconds * 1e6));
-}
-
-}  // namespace
 
 namespace tflite {
 namespace benchmark {
@@ -143,7 +130,7 @@ Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
     listeners_.OnSingleRunEnd();
 
     run_stats.UpdateStat(end_us - start_us);
-    SleepForSeconds(params_.Get<float>("run_delay"));
+    util::SleepForSeconds(params_.Get<float>("run_delay"));
     now_us = profiling::time::NowMicros();
   }
 

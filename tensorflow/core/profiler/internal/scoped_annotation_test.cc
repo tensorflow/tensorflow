@@ -75,20 +75,6 @@ void BM_ScopedAnnotationEnabled(int iters, int annotation_size) {
 
 BENCHMARK(BM_ScopedAnnotationEnabled)->Arg(8)->Arg(32)->Arg(128);
 
-void BM_ScopedAnnotationEnabled_TwoParts(int iters, int annotation_size) {
-  testing::StopTiming();
-  std::string annotation = GenerateRandomString(annotation_size);
-  tracing::ScopedAnnotation::Enable(true);
-  testing::StartTiming();
-  for (int i = 0; i < iters; i++) {
-    tracing::ScopedAnnotation trace(annotation, annotation);
-  }
-  testing::StopTiming();
-  tracing::ScopedAnnotation::Enable(false);
-}
-
-BENCHMARK(BM_ScopedAnnotationEnabled_TwoParts)->Arg(8)->Arg(32)->Arg(128);
-
 void BM_ScopedAnnotationEnabled_Nested(int iters, int annotation_size) {
   testing::StopTiming();
   std::string annotation = GenerateRandomString(annotation_size);
@@ -137,21 +123,6 @@ void BM_ScopedAnnotationEnabled_Adhoc_Lambda(int iters, int annotation_size) {
 }
 
 BENCHMARK(BM_ScopedAnnotationEnabled_Adhoc_Lambda)->Arg(8)->Arg(32)->Arg(128);
-
-void BM_ScopedAnnotationEnabled_TwoPartsLambda(int iters, int annotation_size) {
-  testing::StopTiming();
-  std::string annotation = GenerateRandomString(annotation_size);
-  tracing::ScopedAnnotation::Enable(true);
-  testing::StartTiming();
-  for (int i = 0; i < iters; i++) {
-    tracing::ScopedAnnotation trace(
-        [&]() { return absl::StrCat(annotation, ":", annotation); });
-  }
-  testing::StopTiming();
-  tracing::ScopedAnnotation::Enable(false);
-}
-
-BENCHMARK(BM_ScopedAnnotationEnabled_TwoPartsLambda)->Arg(8)->Arg(32)->Arg(128);
 
 }  // namespace
 }  // namespace tensorflow

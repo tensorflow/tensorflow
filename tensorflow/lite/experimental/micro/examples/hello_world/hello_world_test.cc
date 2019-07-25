@@ -90,24 +90,24 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Obtain the output value from the tensor
   float value = output->data.f[0];
-  // Check that the output value is within 0.000001 of the expected value
-  TF_LITE_MICRO_EXPECT_NEAR(0.0486171, value, 0.000001);
+  // Check that the output value is within 0.05 of the expected value
+  TF_LITE_MICRO_EXPECT_NEAR(0., value, 0.05);
 
   // Run inference on several more values and confirm the expected outputs
   input->data.f[0] = 1.;
   interpreter.Invoke();
   value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(0.8071436, value, 0.000001);
+  TF_LITE_MICRO_EXPECT_NEAR(0.841, value, 0.05);
 
   input->data.f[0] = 3.;
   interpreter.Invoke();
   value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(0.0964818, value, 0.000001);
+  TF_LITE_MICRO_EXPECT_NEAR(0.141, value, 0.05);
 
   input->data.f[0] = 5.;
   interpreter.Invoke();
   value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(-0.9352637, value, 0.000001);
+  TF_LITE_MICRO_EXPECT_NEAR(-0.959, value, 0.05);
 }
 
 TF_LITE_MICRO_TESTS_END
