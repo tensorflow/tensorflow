@@ -2616,6 +2616,14 @@ class NNAPIDelegateKernel {
     return kTfLiteOk;
   }
 
+  TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+    if (!nn_compilation_) {
+      // Compilation failed earlier, return error.
+      return kTfLiteError;
+    }
+    return kTfLiteOk;
+  }
+
   TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node) {
     ANeuralNetworksExecution* execution = nullptr;
     RETURN_TFLITE_ERROR_IF_NN_ERROR(
@@ -3365,9 +3373,9 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
       },
 
       .prepare = [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
-        // Since the underlying resize happened ahead of delegation
-        // worked. This does nothing.
-        return kTfLiteOk;
+        NNAPIDelegateKernel* state =
+            reinterpret_cast<NNAPIDelegateKernel*>(node->user_data);
+        return state->Prepare(context, node);
       },
 
       .invoke = [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
