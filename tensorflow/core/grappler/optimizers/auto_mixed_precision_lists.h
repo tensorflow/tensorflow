@@ -20,11 +20,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/env_var.h"
 
-#if GOOGLE_CUDA
-// Needed for CUDA_VERSION macro.
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif  // GOOGLE_CUDA
-
 namespace tensorflow {
 namespace grappler {
 
@@ -52,7 +47,7 @@ class AutoMixedPrecisionLists {
  public:
   // Returns the set of ops that are considered numerically-safe (for execution
   // in fp16) and performance-critical. These ops are always converted to fp16.
-  static gtl::FlatSet<string> WhiteList() {
+  static gtl::FlatSet<string> WhiteList(int cuda_version) {
     string to_add, to_remove;
     TF_CHECK_OK(ReadStringFromEnvVar(
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_WHITELIST_ADD", "", &to_add));
@@ -61,9 +56,6 @@ class AutoMixedPrecisionLists {
         &to_remove));
 
     auto list = gtl::FlatSet<string> {
-#if CUDA_VERSION >= 9010  // Fp16 BatchMatMul is slow before CUDA 9.1.
-      "BatchMatMul", "BatchMatMulV2",
-#endif
           "BlockLSTM", "BlockLSTMGrad", "Conv2D", "Conv2DBackpropFilter",
           "Conv2DBackpropInput",
           // TODO(benbarsdell): Enable these when Tensor Core kernels are
@@ -83,6 +75,11 @@ class AutoMixedPrecisionLists {
           // "DepthwiseConv2dNativeBackpropInput",
           "MatMul",
     };
+    if (cuda_version >= 9010) {
+      // Fp16 BatchMatMul is slow before CUDA 9.1.
+      list.insert("BatchMatMul");
+      list.insert("BatchMatMulV2");
+    }
     UpdateList(&list, to_add, to_remove);
     return list;
   }

@@ -898,6 +898,22 @@ bool CanForceFP16(const NodeDef& node) {
          !IsStateful(node) && !HasInputOrOutputRefs(node);
 }
 
+int GetCudaVersion(const Cluster& cluster) {
+  auto devices = cluster.GetDevices();
+  for (const auto& device : devices) {
+    const DeviceProperties& device_properties = device.second;
+    if (device_properties.type() == "GPU") {
+      const auto& device_env = device_properties.environment();
+      auto it = device_env.find("cuda");
+      if (it != device_env.end()) {
+        string cuda_version_str = it->second;
+        return std::stoi(cuda_version_str);
+      }
+    }
+  }
+  return 0;
+}
+
 class AutoMixedPrecisionImpl {
  public:
   AutoMixedPrecisionImpl(Cluster* cluster,
@@ -907,7 +923,8 @@ class AutoMixedPrecisionImpl {
         nodes_to_preserve_(nodes_to_preserve),
         graph_(graph),
         id_(id),
-        graph_view_(graph) {}
+        graph_view_(graph),
+        cuda_version_(GetCudaVersion(*cluster)) {}
 
   Status Optimize();
 
@@ -958,6 +975,7 @@ class AutoMixedPrecisionImpl {
   GraphDef* graph_;
   string id_;
   MutableGraphView graph_view_;
+  int cuda_version_;
   NodeTypeAttrMap node_type_map_;
   GraphTypeTopologyView graph_type_view_;
   bool force_all_fp16_;
@@ -1012,7 +1030,7 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
                          strings::StrCat("paintbuckets", suffix, ".txt"));
     f.open(fname.c_str(), std::fstream::out);
     f << "WhiteList:\n";
-    for (auto x : AutoMixedPrecisionLists::WhiteList()) {
+    for (auto x : AutoMixedPrecisionLists::WhiteList(cuda_version_)) {
       f << x << "\n";
     }
     f << "\nBlackList:\n";
@@ -1148,7 +1166,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
   optimization_level = absl::AsciiStrToUpper(optimization_level);
   force_all_fp16_ = optimization_level == "UNSAFE_FORCE_ALL";
 
-  fp16_whitelist_ = AutoMixedPrecisionLists::WhiteList();
+  fp16_whitelist_ = AutoMixedPrecisionLists::WhiteList(cuda_version_);
   fp16_blacklist_ = AutoMixedPrecisionLists::BlackList();
   fp16_graylist_ = AutoMixedPrecisionLists::GrayList();
   fp16_clearlist_ = AutoMixedPrecisionLists::ClearList();
