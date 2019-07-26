@@ -104,6 +104,10 @@ static const char* kMklQuantizedOpLabelPattern = "label='QuantizedMklOp'";
 
 // Prefix that we add to Tensorflow op name to construct Mkl op name.
 static const char* const kMklOpPrefix = "_Mkl";
+// TODO(intel-tf): PR review feedback (penpornk) 
+// Can we add eager_mode (or is_eager) as an op attribute instead?
+// This way we don't need to rename the op just to pass eager_mode
+// through template parameter.
 static const char* const kMklEagerOpPrefix = "_MklEager";
 
 // Get the name of Mkl op from original TensorFlow op

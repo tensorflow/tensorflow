@@ -33,7 +33,9 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   } MklEagerOp;
 
  private:
-  std::vector<MklEagerOp> mkl_eager_ops;
+  // TODO(intel-tf): refactor with unordered_map;
+  // especially when adding more ops/rewrite rules in future.
+  std::vector<MklEagerOp> mkl_eager_ops_;
 
   // The entry point to execute the op rewrite.
   Status Run(EagerOperation* orig_op,
@@ -60,17 +62,15 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   bool ShouldRewriteOp(EagerOperation* op, int* op_idx);
 };
 
-const EagerOpRewriteRegistry::Phase kMklEagerOpRewritePhase =
-    EagerOpRewriteRegistry::PRE_EXECUTION;
-REGISTER_REWRITE(kMklEagerOpRewritePhase, MklEagerOpRewrite);
+REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
 
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
     : EagerOpRewrite(name, file, line) {
-  mkl_eager_ops.push_back({"Conv2D", RewriteConv2D, CreateMklConv2DOp});
-  mkl_eager_ops.push_back(
+  mkl_eager_ops_.push_back({"Conv2D", RewriteConv2D, CreateMklConv2DOp});
+  mkl_eager_ops_.push_back(
       {"Conv2DBackpropInput", RewriteConv2D, CreateMklConv2DOp});
-  mkl_eager_ops.push_back(
+  mkl_eager_ops_.push_back(
       {"Conv2DBackpropFilter", RewriteConv2D, CreateMklConv2DOp});
 }
 
@@ -106,13 +106,10 @@ Status MklEagerOpRewrite::SetupNewOp(
   const NodeDef& orig_ndef = orig_op->MutableAttrs()->BuildNodeDef();
 
   AttrSlice attr_list(orig_ndef);
-  auto iter = attr_list.begin();
-  while (iter != attr_list.end()) {
-    name = iter->first;
-    auto attr = iter->second;
-    (*new_mkl_op)->MutableAttrs()->Set(name, attr);
-    iter++;
+  for (const auto& attr : attr_list) {
+    (*new_mkl_op)->MutableAttrs()->Set(attr.first, attr.second);
   }
+
   (*new_mkl_op)
       ->MutableAttrs()
       ->Set("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
@@ -152,24 +149,22 @@ bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op, int* op_idx) {
     return false;
   }
 
-  bool result = false;
   *op_idx = -1;
   // Find and call the op's rewrite rule that determines whether we need to
   // rewrite this op or not.
-  for (auto it = mkl_eager_ops.begin(); it != mkl_eager_ops.end(); ++it) {
+  for (auto it = mkl_eager_ops_.begin(); it != mkl_eager_ops_.end(); ++it) {
     if (it->op_name.compare(op->Name()) == 0 && it->RewriteRule(op)) {
-      *op_idx = it - mkl_eager_ops.begin();
-      result = true;
-      break;
+      *op_idx = it - mkl_eager_ops_.begin();
+      return true;
     }
   }
-  return result;
+  return false;
 }
 
 Status MklEagerOpRewrite::RewriteToMklOp(
     EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_op,
     const int op_idx) {
-  mkl_eager_ops[op_idx].CreateMklOp(orig_op, mkl_op);
+  mkl_eager_ops_[op_idx].CreateMklOp(orig_op, mkl_op);
   return Status::OK();
 }
 
@@ -178,7 +173,7 @@ bool MklEagerOpRewrite::RewriteConv2D(EagerOperation* op) {
   string padding;
   TF_CHECK_OK(GetNodeAttr(ndef, "padding", &padding));
   // Right now MKL Conv2D does not support explicit padding.
-  return padding == "EXPLICIT" ? false : true;
+  return (padding != "EXPLICIT");
 }
 
 }  // namespace tensorflow
