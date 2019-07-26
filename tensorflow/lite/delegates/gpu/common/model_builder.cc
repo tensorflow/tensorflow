@@ -2245,9 +2245,11 @@ TfLiteIntArray* GetOpsToReplaceFromGraphWithDequantize(TfLiteContext* context) {
     std::vector<int> inputs_from_dequant;
     std::vector<int> orig_inputs;
 
+    const int node_id = execution_plan->data[i];
     TfLiteNode* node = nullptr;
     TfLiteRegistration* registration = nullptr;
-    auto status = GetNodeAndRegistration(context, i, &node, &registration);
+    auto status =
+        GetNodeAndRegistration(context, node_id, &node, &registration);
     if (!status.ok()) {
       context->ReportError(context, status.error_message().c_str());
       return nullptr;
@@ -2258,9 +2260,9 @@ TfLiteIntArray* GetOpsToReplaceFromGraphWithDequantize(TfLiteContext* context) {
       // Record the output->input mapping for the op.
       node_map[node->outputs->data[0]] = node->inputs->data[0];
       // For now, add the node to the list of ops to replace.
-      ops_to_replace.push_back(i);
+      ops_to_replace.push_back(node_id);
       // Record the dequant node id, indexed by output id.
-      dequant_nodes[node->outputs->data[0]] = i;
+      dequant_nodes[node->outputs->data[0]] = node_id;
       continue;
     }
     TfLiteIntArray* inputs = node->inputs;
@@ -2337,9 +2339,11 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
 
   // Dispatch to another function if graph has Dequantize nodes.
   for (int i = 0; i < execution_plan->size; ++i) {
+    const int node_id = execution_plan->data[i];
     TfLiteNode* node = nullptr;
     TfLiteRegistration* registration = nullptr;
-    auto status = GetNodeAndRegistration(context, i, &node, &registration);
+    auto status =
+        GetNodeAndRegistration(context, node_id, &node, &registration);
     if (!status.ok()) {
       context->ReportError(context, status.error_message().c_str());
       return nullptr;
@@ -2356,9 +2360,11 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
   subgraph->size = 0;
   std::set<std::string> errors;
   for (int i = 0; i < execution_plan->size; ++i) {
+    const int node_id = execution_plan->data[i];
     TfLiteNode* node = nullptr;
     TfLiteRegistration* registration = nullptr;
-    auto status = GetNodeAndRegistration(context, i, &node, &registration);
+    auto status =
+        GetNodeAndRegistration(context, node_id, &node, &registration);
     if (!status.ok()) {
       context->ReportError(context, status.error_message().c_str());
       return nullptr;
@@ -2369,7 +2375,7 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
         // registration->builtin_code != kTfLiteBuiltinSub &&
         IsAllFloatTensors(context, node->inputs) &&
         IsAllFloatTensors(context, node->outputs)) {
-      if (errors.empty()) subgraph->data[subgraph->size++] = i;
+      if (errors.empty()) subgraph->data[subgraph->size++] = node_id;
     } else {
       errors.insert(GetOpNameByRegistration(registration) + ": " +
                     status.error_message());
