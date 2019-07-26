@@ -710,8 +710,45 @@ cc_library(
 )
 
 xla_test(
-    name = "exhaustive_unary_test",
+    name = "exhaustive_unary_test_f32_or_smaller",
     srcs = ["exhaustive_unary_test.cc"],
+    copts = ["-DUNARY_TEST_TARGET_F32_OR_SMALLER"],
+    real_hardware_only = True,  # Very slow on the interpreter.
+    shard_count = 48,
+    tags = [
+        "optonly",
+        # This is a big test that we skip for capacity reasons in OSS testing.
+        "no_oss",
+    ],
+    deps = [
+        ":exhaustive_op_test_utils",
+    ],
+)
+
+xla_test(
+    name = "exhaustive_unary_test_f64",
+    srcs = ["exhaustive_unary_test.cc"],
+    backends = [
+        "gpu",
+        "cpu",
+    ],
+    copts = ["-DUNARY_TEST_TARGET_F64"],
+    real_hardware_only = True,  # Very slow on the interpreter.
+    shard_count = 48,
+    tags = [
+        "optonly",
+        # This is a big test that we skip for capacity reasons in OSS testing.
+        "no_oss",
+    ],
+    deps = [
+        ":exhaustive_op_test_utils",
+    ],
+)
+
+xla_test(
+    name = "exhaustive_unary_test_complex",
+    srcs = ["exhaustive_unary_test.cc"],
+    copts = ["-DUNARY_TEST_TARGET_COMPLEX"],
     real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
