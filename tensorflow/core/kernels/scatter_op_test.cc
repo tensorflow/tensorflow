@@ -203,17 +203,16 @@ TEST_F(ScatterSubOpTest, StressIndexTest) {
   MakeOp(DT_INT32_REF, DT_INT32);
   // Feed and run
   const int kRows = 1;
-  std::vector<int32> values;
-  values.reserve(kRows);
+  std::vector<int32> values(kRows, 0);
   for (int i = 0; i < kRows; i++) {
-    values.push_back(0);
+    values.at(i) = 0;
   }
   const int kNumUpdates = 1000000;
-  std::vector<int32> indices;
-  std::vector<int32> updates;
+  std::vector<int32> indices(kNumUpdates, 0);
+  std::vector<int32> updates(kNumUpdates, 0);
   for (int i = 0; i < kNumUpdates; i++) {
-    indices.push_back(0);
-    updates.push_back(1);
+    indices.at(i) = 0;
+    updates.at(i) = 1;
   }
 
   AddInputFromArray<int32>(TensorShape({kRows}), values);
@@ -394,7 +393,6 @@ BENCHMARK(BM_ScatterUpdateInt64)
     ->Arg(100000);
 
 BENCHMARK(BM_ScatterAddInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
-
 BENCHMARK(BM_ScatterAddInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
 
 BENCHMARK(BM_ScatterMulInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
@@ -408,6 +406,5 @@ BENCHMARK(BM_ScatterMinInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
 
 BENCHMARK(BM_ScatterMaxInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
 BENCHMARK(BM_ScatterMaxInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
-
 }  // namespace
 }  // namespace tensorflow
