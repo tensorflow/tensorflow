@@ -3221,7 +3221,7 @@ bool ConstantFolding::PartialConcatConstFolding(GraphDef* optimized_graph,
     // child node.
     node->set_input(interval.first, added_node->name());
   }
-  if (!constant_input_runs.empty() && !inputs_to_delete.empty()) {
+  if (!inputs_to_delete.empty()) {
     // Fix up the inputs to the original node.
     protobuf::RepeatedPtrField<string> tmp;
     tmp.Swap(node->mutable_input());
