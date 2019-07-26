@@ -540,7 +540,7 @@ py_test(
     size = "medium",
     srcs = ["rejection_resample_test.py"],
     python_version = "PY2",
-    shard_count = 2,
+    shard_count = 5,
     srcs_version = "PY2AND3",
     tags = [
         "noasan",
@@ -660,6 +660,7 @@ py_test(
     name = "snapshot_test",
     srcs = ["snapshot_test.py"],
     python_version = "PY2",
+    shard_count = 10,
     srcs_version = "PY2AND3",
     deps = [
         ":reader_dataset_ops_test_base",

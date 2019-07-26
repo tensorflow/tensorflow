@@ -79,12 +79,11 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
     return captured_state->iterator->GetNext(IteratorContext(std::move(params)),
                                              out_tensors, end_of_sequence);
-  } else {
-    return errors::FailedPrecondition(
-        "GetNext() failed because the iterator has not been initialized. "
-        "Ensure that you have run the initializer operation for this "
-        "iterator before getting the next element.");
   }
+  return errors::FailedPrecondition(
+      "GetNext() failed because the iterator has not been initialized. Ensure "
+      "that you have run the initializer operation for this iterator before "
+      "getting the next element.");
 }
 
 Status IteratorResource::Save(SerializationContext* ctx,
@@ -96,85 +95,40 @@ Status IteratorResource::Save(SerializationContext* ctx,
   }
   if (captured_state->iterator) {
     return captured_state->iterator->Save(ctx, writer);
-  } else {
-    return errors::FailedPrecondition(
-        "Save() failed because the iterator has not been initialized. "
-        "Ensure that you have run the initializer operation for this "
-        "iterator before saving it.");
   }
+  return errors::FailedPrecondition(
+      "Save() failed because the iterator has not been initialized. Ensure "
+      "that you have run the initializer operation for this iterator before "
+      "saving it.");
 }
 
 Status IteratorResource::Restore(OpKernelContext* ctx,
                                  IteratorStateReader* reader) {
-  string serialized_graph_def;
-  TF_RETURN_IF_ERROR(
-      reader->ReadScalar(DatasetBase::kDatasetGraphKey, &serialized_graph_def));
-  GraphDef graph_def;
-  if (!graph_def.ParseFromString(serialized_graph_def)) {
-    return errors::Internal("Error parsing dataset GraphDef.");
+  std::shared_ptr<State> captured_state;
+  {
+    tf_shared_lock l(mu_);
+    captured_state = iterator_state_;
   }
-  string output_node;
-  TF_RETURN_IF_ERROR(reader->ReadScalar(DatasetBase::kDatasetGraphOutputNodeKey,
-                                        &output_node));
-  DatasetBase* dataset = nullptr;
-  Graph graph(OpRegistry::Global());
-  TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
-  std::vector<Tensor> outputs;
-  GraphRunner graph_runner(ctx->env());
-
-  // Build a new FLR that knows about the functions in the graph, and use
-  // it for all operations on the restored iterator.
-  // NOTE(mrry): We clone the existing FLR and use it in the GraphRunner
-  // because some of the OpKernels in the graph might call functions that are
-  // only defined in the loaded GraphDef.
-  FunctionLibraryRuntime* flr;
-  std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
-  TF_RETURN_IF_ERROR(
-      ctx->function_library()->Clone(&flib_def, &pflr, &flr, true));
-
-  // Some function names may be duplicated (for example, if the serialized
-  // graph has an optimized function that retains its original name). We
-  // override functions in flib_def in the event of conflict. It is
-  // safe to assume that any node in the serialized graph is referring to the
-  // serialized function when there is a conflict.
-  TF_RETURN_IF_ERROR(AddToFunctionLibrary(flib_def.get(), graph_def.library()));
-  auto new_state = absl::make_unique<State>(
-      std::move(flib_def), std::move(pflr), flr, /*iterator=*/nullptr);
-
-  TF_RETURN_IF_ERROR(
-      graph_runner.Run(&graph, new_state->flr, {}, {output_node}, &outputs));
-  TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &dataset));
-
-  IteratorContext::Params params(ctx);
-  params.flr = new_state->flr;
-  params.function_handle_cache = new_state->function_handle_cache.get();
-  params.resource_mgr = &new_state->resource_mgr;
-  DeviceBase* device = new_state->flr->device();
-  params.allocator_getter = [device](AllocatorAttributes attrs) {
-    return device->GetAllocator(attrs);
-  };
-  params.thread_factory = unbounded_thread_pool_.get_thread_factory();
-  params.thread_pool = &unbounded_thread_pool_;
-  params.cancellation_manager = &new_state->cancellation_manager;
-  std::function<void()> deregister_fn;
-  TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
-                                                 params.cancellation_manager,
-                                                 &deregister_fn));
-  auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
-  IteratorContext iter_ctx(std::move(params));
-
-  TF_RETURN_IF_ERROR(
-      dataset->MakeIterator(&iter_ctx, "Iterator", &new_state->iterator));
-  TF_RETURN_IF_ERROR(
-      VerifyTypesMatch(output_dtypes_, new_state->iterator->output_dtypes()));
-  TF_RETURN_IF_ERROR(VerifyShapesCompatible(
-      output_shapes_, new_state->iterator->output_shapes()));
-  TF_RETURN_IF_ERROR(new_state->iterator->Restore(&iter_ctx, reader));
-
-  mutex_lock l(mu_);
-  iterator_state_ = std::move(new_state);
-  return Status::OK();
+  if (captured_state->iterator) {
+    IteratorContext::Params params(ctx);
+    params.flr = captured_state->flr;
+    params.function_handle_cache = captured_state->function_handle_cache.get();
+    params.resource_mgr = &captured_state->resource_mgr;
+    params.thread_factory = unbounded_thread_pool_.get_thread_factory();
+    params.thread_pool = &unbounded_thread_pool_;
+    params.cancellation_manager = &captured_state->cancellation_manager;
+    std::function<void()> deregister_fn;
+    TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
+                                                   params.cancellation_manager,
+                                                   &deregister_fn));
+    auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
+    return captured_state->iterator->Restore(IteratorContext(std::move(params)),
+                                             reader);
+  }
+  return errors::FailedPrecondition(
+      "Restore() failed because the iterator has not been initialized. Ensure "
+      "that you have run the initializer operation for this iterator before "
+      "restoring it.");
 }
 
 Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,

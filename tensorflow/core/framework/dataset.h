@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -549,6 +550,10 @@ class IteratorBase {
     return RestoreInternal(ctx, reader);
   }
 
+  Status Restore(IteratorContext&& ctx, IteratorStateReader* reader) {
+    return Restore(&ctx, reader);
+  }
+
  protected:
   // Returns a node that models this iterator.
   virtual std::shared_ptr<model::Node> CreateNode(
@@ -717,6 +722,10 @@ class DatasetBase : public core::RefCounted {
   virtual Status Save(SerializationContext* ctx,
                       IteratorStateWriter* writer) const;
 
+  // Indicates whether the dataset depends on external state, which is for
+  // instance used to decide whether dataset iterator can be saved.
+  virtual bool IsStateful() const { return false; }
+
  protected:
   friend Status AsGraphDef(
       OpKernelContext* ctx, const DatasetBase* dataset,
@@ -789,7 +798,10 @@ class DatasetBaseIterator : public IteratorBase {
                  bool* end_of_sequence) final;
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
-    TF_RETURN_IF_ERROR(params_.dataset->Save(ctx, writer));
+    if (params_.dataset->IsStateful()) {
+      return errors::FailedPrecondition(
+          "Saving iterator that depends on external state is not supported.");
+    }
     return IteratorBase::Save(ctx, writer);
   }
 

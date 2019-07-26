@@ -146,6 +146,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
              (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
     }
 
+    bool IsStateful() const override {
+      return captured_func_->IsStateful() || input_->IsStateful();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
