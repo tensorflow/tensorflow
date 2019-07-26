@@ -2282,11 +2282,11 @@ class TensorFlowOpLayer(Layer):
 
   Attributes:
     node_def: String, the serialized NodeDef of the Op this layer will wrap.
+    name: String, the name of the Layer.
     constants: Dict of NumPy arrays, the values of any Tensors needed for this
       Operation that do not originate from a Keras `Input` Layer. Since all
       placeholders must come from Keras `Input` Layers, these Tensors must be
       treated as constant in the Functional API.
-    name: String, the name of the Layer.
     trainable: Bool, whether this Layer is trainable. Currently Variables are
       not supported, and so this parameter has no effect.
     dtype: The default dtype of this Layer. Inherited from `Layer` and has no
@@ -2295,8 +2295,8 @@ class TensorFlowOpLayer(Layer):
 
   def __init__(self,
                node_def,
+               name,
                constants=None,
-               name=None,
                trainable=True,
                dtype=None):
     super(TensorFlowOpLayer, self).__init__(
@@ -2362,6 +2362,8 @@ class TensorFlowOpLayer(Layer):
   def get_config(self):
     config = super(TensorFlowOpLayer, self).get_config()
     config.update({
+        # `__init__` prefixes the name. Revert to the constructor argument.
+        'name': config['name'][len(_TF_OP_LAYER_NAME_PREFIX):],
         'node_def': self.node_def.SerializeToString().decode('utf-8'),
         'constants': {
             i: backend.get_value(c) for i, c in self.constants.items()

@@ -65,10 +65,7 @@ def _insert_ancillary_layers(model, ancillary_layers, metrics_names, new_nodes):
   ancillary_layers = [
       layer for layer in ancillary_layers if not isinstance(layer, AddMetric)
   ] + metric_layers
-  nodes = set(
-      nest.flatten([layer._inbound_nodes for layer in ancillary_layers]))
-  relevant_nodes = list(nodes.intersection(new_nodes))
-  model._insert_layers(ancillary_layers, relevant_nodes=relevant_nodes)
+  model._insert_layers(ancillary_layers, relevant_nodes=list(new_nodes))
 
 
 def _make_new_nodes(nodes_by_depth, layer_fn, layer_map, tensor_map):

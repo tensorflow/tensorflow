@@ -310,12 +310,11 @@ class Network(base_layer.Layer):
       self._input_coordinates.append((layer, node_index, tensor_index))
 
     # Keep track of the network's nodes and layers.
-    nodes, nodes_by_depth, layers, layers_by_depth = _map_graph_network(
+    nodes, nodes_by_depth, layers, _ = _map_graph_network(
         self.inputs, self.outputs)
     self._network_nodes = nodes
     self._nodes_by_depth = nodes_by_depth
     self._layers = layers
-    self._layers_by_depth = layers_by_depth
     self._layer_call_argspecs = {}
     for layer in self._layers:
       self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
@@ -869,11 +868,7 @@ class Network(base_layer.Layer):
     }
     node_conversion_map = {}
     for layer in self.layers:
-      if issubclass(layer.__class__, Network) and layer._is_graph_network:
-        # Networks start with a pre-existing node linking their input to output.
-        kept_nodes = 1
-      else:
-        kept_nodes = 0
+      kept_nodes = 1 if _should_skip_first_node(layer) else 0
       for original_node_index, node in enumerate(layer._inbound_nodes):
         node_key = _make_node_key(layer.name, original_node_index)
         if node_key in self._network_nodes:
@@ -977,9 +972,8 @@ class Network(base_layer.Layer):
     Raises:
         ValueError: In case of improperly formatted config dict.
     """
-    # Layer instances created during
-    # the graph reconstruction process
-    created_layers = {}
+    # Layer instances created during the graph reconstruction process.
+    created_layers = collections.OrderedDict()
 
     # Dictionary mapping layer instances to
     # node data that specifies a layer call.
@@ -1110,7 +1104,12 @@ class Network(base_layer.Layer):
         layer for layer in created_layers.values() if layer not in model.layers
     ]
     if ancillary_layers:
-      model._insert_layers(ancillary_layers)
+      relevant_nodes = nest.flatten([
+          layer.inbound_nodes[1:]
+          if _should_skip_first_node(layer) else layer.inbound_nodes
+          for layer in created_layers.values()
+      ])
+      model._insert_layers(ancillary_layers, relevant_nodes)
     return model
 
   def save(self,
@@ -1563,26 +1562,23 @@ class Network(base_layer.Layer):
 
       node = unprocessed_nodes.pop(0)
       depth = _get_min_depth(node)
-      if depth is None:
+      if depth is None:  # Defer until inbound nodes are processed.
         unprocessed_nodes.append(node)
-      else:
-        node_key = _make_node_key(
-            node.outbound_layer.name,
-            node.outbound_layer._inbound_nodes.index(node))
+        continue
+      node_key = _make_node_key(node.outbound_layer.name,
+                                node.outbound_layer._inbound_nodes.index(node))
+      if node_key not in self._network_nodes:
         node_to_depth[node] = depth
         self._network_nodes.add(node_key)
         self._nodes_by_depth[depth].append(node)
 
-    # Insert layers into `_layer_by_depth` and other layer attrs.
+    # Insert layers and update other layer attrs.
+    layer_set = set(self._layers)
     for layer in layers:
-      depth = min([
-          node_to_depth[node]
-          for node in layer.inbound_nodes
-          if node in network_nodes
-      ])
-      self._layers_by_depth[depth].append(layer)
-      self._layers.append(layer)
-      self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
+      if layer not in layer_set:
+        self._layers.append(layer)
+        self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
+        layer_set.add(layer)
 
   def _assert_weights_created(self):
     """Asserts that all the weights for the network have been created.
@@ -1615,20 +1611,22 @@ class Network(base_layer.Layer):
     return '_tf_keras_network'
 
   def _graph_network_add_loss(self, symbolic_loss):
-    new_layers = _diff_layers(self.inputs, [symbolic_loss], self._layers)
+    new_nodes, new_layers = _map_subgraph_network(self.inputs, [symbolic_loss])
     # Losses must be keyed on inputs no matter what in order to be supported in
     # DistributionStrategy.
     add_loss_layer = base_layer.AddLoss(unconditional=False)
     add_loss_layer(symbolic_loss)
+    new_nodes.extend(add_loss_layer.inbound_nodes)
     new_layers.append(add_loss_layer)
-    self._insert_layers(new_layers)
+    self._insert_layers(new_layers, new_nodes)
 
   def _graph_network_add_metric(self, value, aggregation, name):
-    new_layers = _diff_layers(self.inputs, [value], self._layers)
+    new_nodes, new_layers = _map_subgraph_network(self.inputs, [value])
     add_metric_layer = base_layer.AddMetric(aggregation, name)
     add_metric_layer(value)
+    new_nodes.extend(add_metric_layer.inbound_nodes)
     new_layers.append(add_metric_layer)
-    self._insert_layers(new_layers)
+    self._insert_layers(new_layers, new_nodes)
 
 
 def _is_hdf5_filepath(filepath):
@@ -1775,7 +1773,7 @@ def _map_graph_network(inputs, outputs):
   depth_keys = list(layers_by_depth.keys())
   depth_keys.sort(reverse=True)
 
-  # Set self.layers and self._layers_by_depth.
+  # Set self.layers ordered by depth.
   layers = []
   for depth in depth_keys:
     layers_for_depth = layers_by_depth[depth]
@@ -1823,18 +1821,23 @@ def _map_graph_network(inputs, outputs):
   return network_nodes, nodes_by_depth, layers, layers_by_depth
 
 
-def _diff_layers(inputs, outputs, layers):
-  """Returns the layers in the network topology minus those in `layers`.
+def _map_subgraph_network(inputs, outputs):
+  """Returns the nodes and layers in the topology from `inputs` to `outputs`.
 
   Args:
     inputs: List of input tensors.
     outputs: List of output tensors.
-    layers: List of layers.
 
   Returns:
-    List of layers in the network topology not in `layers`.
+    A tuple of List{Node] and List[Layer].
   """
   base_layer_utils.create_keras_history(outputs)
-  # List of all layers in the topology betweeen inputs and outputs.
-  all_layers = _map_graph_network(inputs, outputs)[2]
-  return [layer for layer in all_layers if layer not in layers]
+  # Keep only nodes and layers in the topology betweeen inputs and outputs.
+  _, nodes_by_depth, layers, _ = _map_graph_network(inputs, outputs)
+  return nest.flatten([nodes for nodes in nodes_by_depth.values()]), layers
+
+
+def _should_skip_first_node(layer):
+  """Returns True if the first layer node should not be saved or loaded."""
+  # Networks start with a pre-existing node linking their input to output.
+  return issubclass(layer.__class__, Network) and layer._is_graph_network
