@@ -370,7 +370,9 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
           *end_of_sequence = true;
           return Status::OK();
         }
-        if (lockfile_created_ && !iteration_completed_) return Status::OK();
+        if (lockfile_created_) {
+          return Status::OK();
+        }
 
         // Perform rudimentary locking to help catch concurrent writes to the
         // same cache files.
