@@ -757,7 +757,48 @@ class ExhaustiveF64UnaryTest : public ExhaustiveRealUnaryTestBase,
 
 XLA_TEST_P(ExhaustiveF64UnaryTest, Log) { Run(Log, std::log); }
 
-// TODO(bixia): add other unary ops for double
+XLA_TEST_P(ExhaustiveF64UnaryTest, Log1p) { Run(Log1p, std::log1p); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Exp) { Run(Exp, std::exp); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Expm1) { Run(Expm1, std::expm1); }
+
+// TODO(b/138385863): Turn on the test for GPU after fixing the bug.
+XLA_TEST_P(ExhaustiveF64UnaryTest, DISABLED_ON_GPU(PowOneHalf)) {
+  Run([](XlaOp x) { return Pow(x, ScalarLike(x, 0.5)); },
+      +[](double x) { return std::pow(x, 0.5); });
+}
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Rsqrt) {
+  Run(
+      Rsqrt, +[](double x) { return 1 / std::sqrt(x); });
+}
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Sqrt) { Run(Sqrt, std::sqrt); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Acosh) { Run(Acosh, std::acosh); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Asinh) { Run(Asinh, std::asinh); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Atanh) { Run(Atanh, std::atanh); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Acos) { Run(Acos, std::acos); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Asin) { Run(Asin, std::asin); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Cosh) { Run(Cosh, std::cosh); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Sinh) { Run(Sinh, std::sinh); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Tanh) { Run(Tanh, std::tanh); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Cos) { Run(Cos, std::cos); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Sin) { Run(Sin, std::sin); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Tan) { Run(Tan, std::tan); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Round) { Run(Round, std::round); }
 
 #if defined(UNARY_TEST_TARGET_F64)
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
