@@ -1115,6 +1115,7 @@ cc_library(
         ":hlo_dataflow_analysis",
         ":hlo_proto",
         ":logical_buffer",
+        ":memory_space_assignment",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
