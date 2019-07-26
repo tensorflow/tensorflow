@@ -198,6 +198,8 @@ tf_cc_test(
 tf_kernel_library(
     name = "collective_ops",
     srcs = if_nccl([
+        "collective_nccl.h",
+        "collective_nccl.cc",
         "collective_nccl_reducer.h",
         "collective_nccl_reducer.cc",
     ]),
