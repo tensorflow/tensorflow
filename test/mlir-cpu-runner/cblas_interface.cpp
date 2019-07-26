@@ -46,8 +46,8 @@ extern "C" void linalg_dot_impl(ViewType<float, 1> *X, ViewType<float, 1> *Y,
 
 extern "C" void linalg_matmul_impl(ViewType<float, 2> *A, ViewType<float, 2> *B,
                                    ViewType<float, 2> *C) {
-  assert(A->strides[1] == B->strides[1]);
-  assert(A->strides[1] == C->strides[1]);
+  assert(A->strides[1] == 1);
+  assert(A->strides[1] == 1);
   assert(A->strides[1] == 1);
   assert(A->sizes[0] >= A->strides[1]);
   assert(B->sizes[0] >= B->strides[1]);
