@@ -281,8 +281,7 @@ ParseResult ParseIslandOp(OpAsmParser *parser, OperationState *result) {
   if (parser->parseOperandList(op_infos, OpAsmParser::Delimiter::OptionalParen))
     return failure();
   if (!op_infos.empty()) {
-    SmallVector<Type, 2> types;
-    types.push_back(control_type);
+    SmallVector<Type, 2> types(op_infos.size(), control_type);
     parser->resolveOperands(op_infos, types, loc, result->operands);
   }
 
