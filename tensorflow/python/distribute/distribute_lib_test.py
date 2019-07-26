@@ -147,7 +147,7 @@ def _run_in_and_out_of_scope(unbound_test_method):
     _assert_in_default_state(test_case)
     # When run under a different strategy the test method should fail.
     another_strategy = _TestStrategy()
-    msg = "Mixing different .*Strategy objects"
+    msg = "Mixing different .*Strategy objects|Variable creator scope nesting error"
     with test_case.assertRaisesRegexp(RuntimeError, msg):
       with another_strategy.scope():
         unbound_test_method(test_case, dist)

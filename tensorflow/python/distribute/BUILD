@@ -171,10 +171,6 @@ py_test(
     srcs = ["distribute_lib_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_rocm",
-        "no_cuda",
-    ],
     deps = [
         ":combinations",
         ":distribute_lib",
