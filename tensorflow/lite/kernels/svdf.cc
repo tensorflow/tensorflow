@@ -113,6 +113,7 @@ constexpr int kOutputTensor = 0;
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* op_data = new OpData();
   op_data->float_weights_time_initialized = false;
+  // Note: only needs 4 scratch tensors when is_hybrid_op, only 1 otherwise.
   context->AddTensors(context, /*tensors_to_add=*/4,
                       &op_data->scratch_tensor_index);
   return op_data;
@@ -416,8 +417,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           weights_feature->type);
+      context->ReportError(context, "Type %s not currently supported.",
+                           TfLiteTypeGetName(weights_feature->type));
       return kTfLiteError;
   }
 }
