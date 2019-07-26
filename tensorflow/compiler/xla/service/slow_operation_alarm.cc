@@ -44,7 +44,7 @@ void AlarmLoop() {
       auto next = std::next(it);
       auto* alarm = *it;
       // Fire the alarm if applicable.
-      if (alarm->deadline() >= now) {
+      if (alarm->deadline() <= now) {
         outstanding_alarms->erase(it);
         int64 count =
             alarm->counter() == nullptr ? 0 : alarm->counter()->fetch_add(1);
