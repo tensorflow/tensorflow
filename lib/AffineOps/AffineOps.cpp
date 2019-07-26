@@ -108,6 +108,13 @@ bool mlir::isValidSymbol(Value *value) {
   return isTopLevelSymbol(value);
 }
 
+// Returns true if 'value' is a valid index to an affine operation (e.g.
+// affine.load, affine.store, affine.dma_start, affine.dma_wait).
+// Returns false otherwise.
+static bool isValidAffineIndexOperand(Value *value) {
+  return isValidDim(value) || isValidSymbol(value);
+}
+
 /// Utility function to verify that a set of operands are valid dimension and
 /// symbol identifiers. The operands should be layed out such that the dimension
 /// operands are before the symbol operands. This function returns failure if
@@ -880,6 +887,25 @@ LogicalResult AffineDmaStartOp::verify() {
       getNumOperands() != numInputsAllMaps + 3 + 1 + 2) {
     return emitOpError("incorrect number of operands");
   }
+
+  for (auto *idx : getSrcIndices()) {
+    if (!idx->getType().isIndex())
+      return emitOpError("src index to dma_start must have 'index' type");
+    if (!isValidAffineIndexOperand(idx))
+      return emitOpError("src index must be a dimension or symbol identifier");
+  }
+  for (auto *idx : getDstIndices()) {
+    if (!idx->getType().isIndex())
+      return emitOpError("dst index to dma_start must have 'index' type");
+    if (!isValidAffineIndexOperand(idx))
+      return emitOpError("dst index must be a dimension or symbol identifier");
+  }
+  for (auto *idx : getTagIndices()) {
+    if (!idx->getType().isIndex())
+      return emitOpError("tag index to dma_start must have 'index' type");
+    if (!isValidAffineIndexOperand(idx))
+      return emitOpError("tag index must be a dimension or symbol identifier");
+  }
   return success();
 }
 
@@ -951,6 +977,12 @@ ParseResult AffineDmaWaitOp::parse(OpAsmParser *parser,
 LogicalResult AffineDmaWaitOp::verify() {
   if (!getOperand(0)->getType().isa<MemRefType>())
     return emitOpError("expected DMA tag to be of memref type");
+  for (auto *idx : getTagIndices()) {
+    if (!idx->getType().isIndex())
+      return emitOpError("index to dma_wait must have 'index' type");
+    if (!isValidAffineIndexOperand(idx))
+      return emitOpError("index must be a dimension or symbol identifier");
+  }
   return success();
 }
 
@@ -1549,7 +1581,6 @@ void AffineIfOp::setIntegerSet(IntegerSet newSet) {
 
 void AffineLoadOp::build(Builder *builder, OperationState *result,
                          AffineMap map, ArrayRef<Value *> operands) {
-  // TODO(b/133776335) Check that map operands are loop IVs or symbols.
   result->addOperands(operands);
   if (map)
     result->addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
@@ -1616,10 +1647,12 @@ LogicalResult AffineLoadOp::verify() {
           "expects the number of subscripts to be equal to memref rank");
   }
 
-  for (auto *idx : getIndices())
+  for (auto *idx : getIndices()) {
     if (!idx->getType().isIndex())
       return emitOpError("index to load must have 'index' type");
-  // TODO(b/133776335) Verify that map operands are loop IVs or symbols.
+    if (!isValidAffineIndexOperand(idx))
+      return emitOpError("index must be a dimension or symbol identifier");
+  }
   return success();
 }
 
@@ -1637,7 +1670,6 @@ void AffineLoadOp::getCanonicalizationPatterns(
 void AffineStoreOp::build(Builder *builder, OperationState *result,
                           Value *valueToStore, AffineMap map,
                           ArrayRef<Value *> operands) {
-  // TODO(b/133776335) Check that map operands are loop IVs or symbols.
   result->addOperands(valueToStore);
   result->addOperands(operands);
   if (map)
@@ -1708,10 +1740,12 @@ LogicalResult AffineStoreOp::verify() {
           "expects the number of subscripts to be equal to memref rank");
   }
 
-  for (auto *idx : getIndices())
+  for (auto *idx : getIndices()) {
     if (!idx->getType().isIndex())
-      return emitOpError("index to load must have 'index' type");
-  // TODO(b/133776335) Verify that map operands are loop IVs or symbols.
+      return emitOpError("index to store must have 'index' type");
+    if (!isValidAffineIndexOperand(idx))
+      return emitOpError("index must be a dimension or symbol identifier");
+  }
   return success();
 }
 
