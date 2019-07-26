@@ -587,9 +587,8 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, int amdgpu_version,
     const HloModuleConfig& hlo_module_config) {
-  return std::move(GetTargetMachine(target_triple,
-                                    absl::StrCat("gfx", amdgpu_version),
-                                    hlo_module_config, "-code-object-v3"));
+  return GetTargetMachine(target_triple, absl::StrCat("gfx", amdgpu_version),
+                          hlo_module_config, "-code-object-v3");
 }
 
 }  // namespace
