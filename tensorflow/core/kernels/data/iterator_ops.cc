@@ -70,6 +70,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     params.function_handle_cache = captured_state->function_handle_cache.get();
     params.resource_mgr = &captured_state->resource_mgr;
     params.thread_factory = unbounded_thread_pool_.get_thread_factory();
+    params.thread_pool = &unbounded_thread_pool_;
     params.cancellation_manager = &captured_state->cancellation_manager;
     std::function<void()> deregister_fn;
     TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
@@ -154,6 +155,7 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
     return device->GetAllocator(attrs);
   };
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
+  params.thread_pool = &unbounded_thread_pool_;
   params.cancellation_manager = &new_state->cancellation_manager;
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
@@ -191,6 +193,7 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   params.function_handle_cache = new_state->function_handle_cache.get();
   params.resource_mgr = &new_state->resource_mgr;
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
+  params.thread_pool = &unbounded_thread_pool_;
   params.cancellation_manager = &new_state->cancellation_manager;
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
