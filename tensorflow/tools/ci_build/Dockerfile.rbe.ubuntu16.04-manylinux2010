@@ -49,6 +49,11 @@ RUN /install/install_deb_packages.sh
 RUN /install/install_clang.sh
 RUN /install/install_bazel.sh
 
+# Install golang.
+RUN /install/install_golang.sh
+env GOROOT=/usr/local/go
+env PATH=$GOROOT/bin:$PATH
+
 # Install python 3.6.
 RUN add-apt-repository ppa:jonathonf/python-3.6 && \
     apt-get update && apt-get install -y \
