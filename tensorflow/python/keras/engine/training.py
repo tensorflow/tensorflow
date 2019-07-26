@@ -976,6 +976,8 @@ class Model(network.Network):
     Raises:
       ValueError: In case of invalid user-provided arguments.
     """
+    self._assert_compile_was_called()
+    self._check_call_args('train_on_batch')
     if self._run_distributed:
       outputs = training_v2_utils.train_on_batch(
           self, x, y=y, sample_weight=sample_weight,
@@ -986,8 +988,6 @@ class Model(network.Network):
         outputs = outputs[0]
       return outputs
 
-    self._assert_compile_was_called()
-    self._check_call_args('train_on_batch')
     # If at this point we are in the replica context, then it is okay to execute
     # the Eager code path.  The expected way to get here is to call `fit` that
     # calls `train_on_batch` on each replica.
@@ -1069,6 +1069,8 @@ class Model(network.Network):
     Raises:
         ValueError: In case of invalid user-provided arguments.
     """
+    self._assert_compile_was_called()
+    self._check_call_args('test_on_batch')
     if self._run_distributed:
       outputs = training_v2_utils.test_on_batch(
           self, x, y=y, sample_weight=sample_weight,
@@ -1079,8 +1081,6 @@ class Model(network.Network):
         outputs = outputs[0]
       return outputs
 
-    self._assert_compile_was_called()
-    self._check_call_args('test_on_batch')
     if (self._distribution_strategy and
         distribution_strategy_context.in_cross_replica_context()):
       raise NotImplementedError('`test_on_batch` is not supported for models '
