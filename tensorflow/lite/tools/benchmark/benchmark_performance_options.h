@@ -49,7 +49,7 @@ class BenchmarkPerformanceOptions {
 
   bool ParsePerfOptions();
   virtual std::vector<std::string> GetValidPerfOptions() const;
-  bool HasOption(const string& option) const;
+  bool HasOption(const std::string& option) const;
   virtual void ResetPerformanceOptions();
 
   virtual void BenchmarkCPUOptions();

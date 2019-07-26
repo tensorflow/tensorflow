@@ -99,6 +99,7 @@ $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
+tensorflow/lite/experimental/resource_variable/resource_variable.cc \
 tensorflow/lite/experimental/ruy/allocator.cc \
 tensorflow/lite/experimental/ruy/block_map.cc \
 tensorflow/lite/experimental/ruy/blocking_counter.cc \
