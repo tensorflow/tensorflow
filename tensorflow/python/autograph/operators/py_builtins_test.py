@@ -144,24 +144,15 @@ class PyBuiltinsTest(test.TestCase):
     self.assertListEqual(list(py_builtins.enumerate_([3,2,1], 5)), [(5, 3), (6, 2), (7, 1)])
     self.assertListEqual(list(py_builtins.enumerate_([-8], -3)), [(-3, -8)])
 
-  @test_util.run_all_in_graph_and_eager_modes
   def test_enumerate_dataset(self):
-    components = (["a", "b"], [1, 2], [37.0, 38])
+    dataset = dataset_ops.DatasetV2.from_tensor_slices(["a", "c"])
     start = constant_op.constant(20, dtype=dtypes.int64)
-
-    dataset = py_builtins.enumerate_(dataset_ops.Dataset.from_tensor_slices(
-        components), start)
-
-    self.assertEqual(dtypes.int64,
-                     dataset_ops.get_legacy_output_types(dataset)[0])
-    dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
-    self.assertEqual((), dataset_output_shapes[0])
-    self.assertEqual([tensor_shape.TensorShape([])] * 3,
-                     [shape for shape in dataset_output_shapes[1]])
-
-    self.assertDatasetProduces(dataset, [(20, (b"a", 1, 37.0)),
-                                         (21, (b"b", 2, 38.0))])
-
+    dataset = py_builtins.enumerate_(dataset, start)
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    
+    with self.cached_session() as sess:
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (20, b'a'))
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (21, b'c'))
 
   def test_eval_in_original_context(self):
 
