@@ -84,6 +84,8 @@ class EagerExecutor {
   // independently.
   void EnableAsync();
 
+  bool Async() const;
+
   // Schedules `node` for execution. If an error occurs (e.g. EagerExecutor
   // has already been shut down), the `node` is not added to this executor
   // and its Abort() method is called.

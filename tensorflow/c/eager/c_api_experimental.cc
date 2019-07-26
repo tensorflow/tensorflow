@@ -572,3 +572,26 @@ void TFE_OpSetCancellationManager(TFE_Op* op,
   op->operation.SetCancellationManager(
       &cancellation_manager->cancellation_manager);
 }
+
+TFE_Executor* TFE_NewExecutor(bool async) {
+  auto* executor = new TFE_Executor;
+  if (async) {
+    executor->executor.EnableAsync();
+  }
+  return executor;
+}
+
+void TFE_DeleteExecutor(TFE_Executor* executor) { delete executor; }
+
+void TFE_ExecutorWaitForAllPendingNodes(TFE_Executor* executor,
+                                        TF_Status* status) {
+  status->status = executor->executor.WaitForAllPendingNodes();
+}
+
+void TFE_ContextSetExecutorForThread(TFE_Context* ctx, TFE_Executor* executor) {
+  ctx->context->SetExecutorForThread(&executor->executor);
+}
+
+void TFE_ContextClearExecutorForThread(TFE_Context* ctx) {
+  ctx->context->ClearExecutorForThread();
+}

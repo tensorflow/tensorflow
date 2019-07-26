@@ -81,6 +81,11 @@ void EagerExecutor::EnableAsync() {
   }
 }
 
+bool EagerExecutor::Async() const {
+  tf_shared_lock l(node_queue_mutex_);
+  return thread_ != nullptr;
+}
+
 const char* EagerExecutor::StateStringLocked() {
   switch (state_) {
     case ExecutorState::kActive:

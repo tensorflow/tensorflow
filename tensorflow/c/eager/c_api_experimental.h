@@ -352,6 +352,34 @@ TF_CAPI_EXPORT extern void TFE_OpSetCancellationManager(
     TFE_Op* op, TFE_CancellationManager* cancellation_manager,
     TF_Status* status);
 
+// -----------------------------------------------------------------------------
+// Eager Executor APIs.
+typedef struct TFE_Executor TFE_Executor;
+
+// Creates a new eager Executor. Nodes in one executor are guaranteed to be
+// executed in sequence. Assigning nodes to different executors allows executing
+// nodes in parallel.
+TF_CAPI_EXPORT extern TFE_Executor* TFE_NewExecutor(bool async);
+
+// Deletes the eager Executor without waiting for enqueued nodes. Please call
+// TFE_ExecutorWaitForAllPendingNodes before calling this API if you want to
+// make sure all nodes are finished.
+TF_CAPI_EXPORT extern void TFE_DeleteExecutor(TFE_Executor*);
+
+// Blocks until all nodes in this Executor are finished.
+TF_CAPI_EXPORT extern void TFE_ExecutorWaitForAllPendingNodes(
+    TFE_Executor*, TF_Status* status);
+
+// Sets a custom Executor for current thread. All nodes created by this thread
+// will be added to this Executor. It will override current executor.
+TF_CAPI_EXPORT extern void TFE_ContextSetExecutorForThread(TFE_Context*,
+                                                           TFE_Executor*);
+
+// Clears the custom Executor for current thread. All ops created by this thread
+// will be added to the default Executor in EagerContext. Nothing will happen if
+// no custom Executor is set for current thread.
+TF_CAPI_EXPORT extern void TFE_ContextClearExecutorForThread(TFE_Context*);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

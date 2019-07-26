@@ -33,8 +33,8 @@ namespace eager {
 // To copy a tensor with a host, please use copy_to_device_node instead.
 class RemoteCopyNode : public EagerNode {
  public:
-  RemoteCopyNode(EagerContext* ctx, TensorHandle* src, TensorHandle* dst,
-                 Device* recv_device, uint64 recv_op_id);
+  RemoteCopyNode(EagerContext* ctx, EagerExecutor* executor, TensorHandle* src,
+                 TensorHandle* dst, Device* recv_device, uint64 recv_op_id);
 
   ~RemoteCopyNode() override {}
 
@@ -49,6 +49,7 @@ class RemoteCopyNode : public EagerNode {
   TensorHandle* const src_;
   TensorHandle* const dst_;
   EagerContext* const ctx_;
+  EagerExecutor* const executor_;
   Device* const send_device_;
   Device* const recv_device_;
   const string wire_id_;

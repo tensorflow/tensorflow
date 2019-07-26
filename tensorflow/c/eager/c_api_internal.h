@@ -285,4 +285,8 @@ struct TFE_CancellationManager {
   tensorflow::CancellationManager cancellation_manager;
 };
 
+struct TFE_Executor {
+  tensorflow::EagerExecutor executor;
+};
+
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_
