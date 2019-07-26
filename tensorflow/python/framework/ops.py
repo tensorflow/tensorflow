@@ -2839,6 +2839,10 @@ class Graph(object):
     self._add_control_dependencies = False
     # Cache for OpDef protobufs retrieved via the C API.
     self._op_def_cache = {}
+    # Cache for constant results of `broadcast_gradient_args()`. The keys are
+    # tuples of fully-defined shapes: (x_shape_tuple, y_shape_tuple), and the
+    # values are tuples of reduction indices: (rx, ry).
+    self._bcast_grad_args_cache = {}
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
