@@ -2245,7 +2245,7 @@ TfLiteIntArray* GetOpsToReplaceFromGraphWithDequantize(TfLiteContext* context) {
     std::vector<int> inputs_from_dequant;
     std::vector<int> orig_inputs;
 
-    int node_id = execution_plan->data[i];
+    const int node_id = execution_plan->data[i];
     TfLiteNode* node = nullptr;
     TfLiteRegistration* registration = nullptr;
     auto status = GetNodeAndRegistration(context, node_id, &node, &registration);
@@ -2338,7 +2338,7 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
 
   // Dispatch to another function if graph has Dequantize nodes.
   for (int i = 0; i < execution_plan->size; ++i) {
-    int node_id = execution_plan->data[i];
+    const int node_id = execution_plan->data[i];
     TfLiteNode* node = nullptr;
     TfLiteRegistration* registration = nullptr;
     auto status = GetNodeAndRegistration(context, node_id, &node, &registration);
@@ -2358,7 +2358,7 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
   subgraph->size = 0;
   std::set<std::string> errors;
   for (int i = 0; i < execution_plan->size; ++i) {
-    int node_id = execution_plan->data[i];
+    const int node_id = execution_plan->data[i];
     TfLiteNode* node = nullptr;
     TfLiteRegistration* registration = nullptr;
     auto status = GetNodeAndRegistration(context, node_id, &node, &registration);
