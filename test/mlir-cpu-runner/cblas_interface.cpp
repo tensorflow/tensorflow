@@ -57,7 +57,7 @@ extern "C" void linalg_matmul_impl(ViewType<float, 2> *A, ViewType<float, 2> *B,
   assert(A->sizes[1] == B->sizes[0]);
   cblas_sgemm(CBLAS_ORDER::CblasRowMajor, CBLAS_TRANSPOSE::CblasNoTrans,
               CBLAS_TRANSPOSE::CblasNoTrans, C->sizes[0], C->sizes[1],
-              A->sizes[1], 0.0f, A->data + A->offset, A->strides[0],
+              A->sizes[1], 1.0f, A->data + A->offset, A->strides[0],
               B->data + B->offset, B->strides[0], 1.0f, C->data + C->offset,
               C->strides[0]);
 }

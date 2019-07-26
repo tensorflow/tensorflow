@@ -50,7 +50,7 @@ extern "C" void cblas_sgemm(const enum CBLAS_ORDER Order,
         auto *pB = B + k * ldb;
         res += pA[k] * pB[n];
       }
-      pC[n] = (1.0f + alpha) * c + beta * res;
+      pC[n] = alpha * c + beta * res;
     }
   }
 }
