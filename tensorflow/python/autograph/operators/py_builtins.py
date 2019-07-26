@@ -140,7 +140,7 @@ def _tf_tensor_len(s):
     return s.shape.dims[0].value
 
   # Static shape of unknown dimensions: use dynamic shape but statically
-  # chech that it's a scalar.
+  # check that it's a scalar.
   shape = array_ops.shape(s)
 
   assert shape.shape, 'shape tensor of zero size? {}'.format(shape)
