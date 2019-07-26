@@ -1511,8 +1511,14 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
   @combinations.generate(
       combinations.times(all_strategy_combinations_minus_default(),
                          combinations.combine(run_distributed=[True, False])))
-  def test_distribution_strategy_with_symbolic_add_loss(self, distribution,
-                                                        run_distributed):
+  def test_distribution_strategy_with_symbolic_add_loss(
+      self, mode, distribution, run_distributed):
+
+    # TODO(b/123533246): Enable the test for TPU once bug is fixed
+    if (isinstance(distribution,
+                   (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)) and
+        mode == 'graph' and not run_distributed):
+      self.skipTest('TPU Strategy in graph mode fails with this test.')
 
     def _make_model_with_add_loss():
       inputs = keras.Input((10,))
@@ -1840,6 +1846,11 @@ class TestDistributionStrategyWithMultipleAddLossAndMetricCalls(
               l1=[0.01],
               l2=[0.1])))
   def test_fit_and_evaluate(self, distribution, model_fn, l1, l2):
+    # TODO(b/138445028): Enable the test for TPU once bug is fixed.
+    if (isinstance(distribution,
+                   (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1))):
+      self.skipTest('Flaky with TPUStrategy')
+
     # Make fake MNIST-like image data.
     dataset = dataset_ops.DatasetV2.from_tensor_slices(
         (np.random.uniform(size=(64, 28, 28, 1)).astype(np.float32),
