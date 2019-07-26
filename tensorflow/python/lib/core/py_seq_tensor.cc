@@ -516,7 +516,7 @@ DEFINE_HELPER(ConvertBool, bool, DT_BOOL, ConvertOneBool);
   } while (0)
 
 Status PySeqToTensor(PyObject* obj, DataType dtype, Tensor* ret) {
-  DataType infer_dtype;
+  DataType infer_dtype = DT_INVALID;
   TensorShape shape;
   TF_RETURN_IF_ERROR(InferShapeAndType(obj, &shape, &infer_dtype));
   DataType requested_dtype = DT_INVALID;

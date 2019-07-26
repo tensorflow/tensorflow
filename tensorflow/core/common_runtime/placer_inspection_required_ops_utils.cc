@@ -250,7 +250,7 @@ Status AddOutputIdentities(Node* node, Graph* graph,
     int src_output = edge->src_output();
     string identity_name =
         Uniquify(absl::StrCat(node->name(), "_", dst->name()), node_names);
-    Node* identity_node;
+    Node* identity_node = nullptr;
     TF_RETURN_IF_ERROR(add_identity(src_output, identity_name, &identity_node));
     VLOG(6) << "Adding identity into " << node->name() << ":" << src_output
             << " -> " << dst->name() << ":" << dst_input << " \n"

@@ -681,7 +681,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
       constant_index ? constant_init_node : constant_ctrl_input;
   NodeDef* operand_1 =
       constant_index ? constant_ctrl_input : constant_init_node;
-  bool constant_switch_value;
+  bool constant_switch_value = false;
   TF_RETURN_IF_ERROR(EvaluateBoolOpForConstantOperands(
       *switch_ctrl_node, *operand_0, *operand_1, cpu_device, resource_mgr,
       &constant_switch_value));

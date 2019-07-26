@@ -596,7 +596,7 @@ class GcsWritableFile : public WritableFile {
   /// uploaded size in bytes.
   Status RequestUploadSessionStatus(const string& session_uri, bool* completed,
                                     uint64* uploaded) {
-    uint64 file_size;
+    uint64 file_size = 0;
     TF_RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
 
     std::unique_ptr<HttpRequest> request;
@@ -1627,7 +1627,7 @@ Status GcsFileSystem::RenameObject(const string& src, const string& target) {
   ClearFileCaches(target);
   Json::Value root;
   TF_RETURN_IF_ERROR(ParseJson(output_buffer, &root));
-  bool done;
+  bool done = false;
   TF_RETURN_IF_ERROR(GetBoolValue(root, "done", &done));
   if (!done) {
     // If GCS didn't complete rewrite in one call, this means that a large file
