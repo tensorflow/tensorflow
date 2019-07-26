@@ -96,7 +96,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         sha256 = "a936d6b277a33d2a027a024ea8e65df62bd2e162c7ca52c48486ed9d5dc27160",
         strip_prefix = "mklml_lnx_2019.0.5.20190502",
         urls = [
-            "http://mirror.tensorflow.org/github.com/intel/mkl-dnn/releases/download/v0.20-rc/mklml_lnx_2019.0.5.20190502.tgz",
+            "http://https://storage.googleapis.com/mirror.tensorflow.org/github.com/intel/mkl-dnn/releases/download/v0.20-rc/mklml_lnx_2019.0.5.20190502.tgz",
             "https://github.com/intel/mkl-dnn/releases/download/v0.20-rc/mklml_lnx_2019.0.5.20190502.tgz",
         ],
     )
