@@ -2357,13 +2357,11 @@ void EmitTiledElementalCodeWithBoundsCheck(
 void IrEmitterUnnested::EmitTileElementForCopy(
     HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
     const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
-    llvm::Value* x_loc, int64 /*x_iter_num*/) {
-  llvm_ir::TiledParameterInfo* tiled_param_info =
-      kernel_info->GetTiledParameterInfo();
+    llvm::Value* x_loc, int64 /*x_iter_num*/,
+    absl::Span<llvm::Value* const> param_shmem_buffers) {
   // TODO(jlebar): Add AA metadata to this load.
   llvm::Instruction* load_from_shmem_buffer =
-      Load(GEP(tiled_param_info->GetBufferForParameter(0),
-               {b_.getInt64(0), x_loc, y_loc}),
+      Load(GEP(param_shmem_buffers[0], {b_.getInt64(0), x_loc, y_loc}),
            "output_element");
   llvm_ir::IrArray output_array = GetIrArray(*hlo, *hlo);
   Shape output_reduced_shape = ShapeUtil::MakeShapeWithDescendingLayout(
@@ -2387,17 +2385,15 @@ void IrEmitterUnnested::EmitTileElementForCopy(
 void IrEmitterUnnested::EmitTileElementForFusion(
     HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
     const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
-    llvm::Value* x_loc, int64 /*x_iter_num*/) {
-  llvm_ir::TiledParameterInfo* tiled_param_info =
-      kernel_info->GetTiledParameterInfo();
+    llvm::Value* x_loc, int64 /*x_iter_num*/,
+    absl::Span<llvm::Value* const> param_shmem_buffers) {
   std::vector<IrArray> output_arrays = ConstructIrArrayForOutputs(*hlo);
   GpuElementalIrEmitter elem_emitter(hlo_module_config_, module_, &b_,
                                      GetNestedComputer());
   FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(hlo),
-                               &elem_emitter);
-  tiled_param_info->set_y(y_loc);
-  tiled_param_info->set_x(x_loc);
-  fused_emitter.SetTiledParameterInfo(tiled_param_info);
+                               &elem_emitter, x_loc, y_loc,
+                               param_shmem_buffers);
+
   TF_CHECK_OK(hlo->fused_expression_root()->Accept(&fused_emitter));
   IrArray::Index untiled_index =
       kernel_info->GetKernelMappingScheme()->GetUnnormalizedIndex(
@@ -2801,11 +2797,6 @@ void IrEmitterUnnested::EmitTileElementForReduction(
   HloInstruction* reduce_or_tuple = unnested_hlo->opcode() == HloOpcode::kFusion
                                         ? unnested_hlo->fused_expression_root()
                                         : unnested_hlo;
-  llvm_ir::TiledParameterInfo* tiled_param_info =
-      kernel_info->GetTiledParameterInfo();
-  tiled_param_info->set_y(y_loc);
-  tiled_param_info->set_x(x_loc);
-
   // Record the untransposed output linear address for the reduction.
   auto reduction_info = dynamic_cast<const ReductionCodegenInfo*>(kernel_info);
   int partial_result_index = reduction_info->IsRowReduction() ? 0 : x_iter_num;
@@ -2832,7 +2823,6 @@ void IrEmitterUnnested::EmitTileElementForReduction(
   // Construct the ElementGenerator for each reduction and extra output in the
   // the group of output instructions.
   if (unnested_hlo->opcode() == HloOpcode::kFusion) {
-    fused_emitter.SetTiledParameterInfo(tiled_param_info);
     TF_CHECK_OK(unnested_hlo->fused_expression_root()->Accept(&fused_emitter));
 
     for (int i = 0, e = output_instructions.size(); i != e; ++i) {
@@ -3050,9 +3040,6 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
                 absl::Span<llvm::Value* const> output_tile_bounds) {
               std::vector<llvm::Value*> param_shmem_buffers(
                   unnested_hlo->operand_count(), nullptr);
-              llvm_ir::TiledParameterInfo tiled_param_info(param_shmem_buffers,
-                                                           y, x);
-              kernel_info->SetTiledParamInfo(&tiled_param_info);
               kernel_generator.GetTileElementGenerator()(
                   y, x, output_tile_origin, "output", output_tile_bounds[1],
                   output_tile_bounds[2], &ksl);
@@ -3131,11 +3118,11 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
           llvm::Value* x_loc, int64 x_iter_num) {
         if (hlo->opcode() == HloOpcode::kCopy) {
           EmitTileElementForCopy(hlo, index, &kernel_info, y_loc, x_loc,
-                                 x_iter_num);
+                                 x_iter_num, param_shmem_buffers);
         } else {
           CHECK_EQ(hlo->opcode(), HloOpcode::kFusion);
           EmitTileElementForFusion(hlo, index, &kernel_info, y_loc, x_loc,
-                                   x_iter_num);
+                                   x_iter_num, param_shmem_buffers);
         }
       };
 
@@ -3143,9 +3130,6 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
       [&](llvm::Value* y, llvm::Value* x, const IrArray::Index& index,
           const string& loop_name, llvm::Value* tile_height,
           llvm::Value* tile_width, KernelSupportLibrary* ksl) {
-        llvm_ir::TiledParameterInfo tiled_param_info(param_shmem_buffers, y, x);
-        kernel_info.SetTiledParamInfo(&tiled_param_info);
-
         // If shared memory transpose is needed, wait for all threads to reach
         // this point, lest we copy a value from tile to output before the other
         // thread copies it from input to tile. This is `__syncthreads` in CUDA.
