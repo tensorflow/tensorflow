@@ -204,7 +204,23 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           num_parallel_calls_(std::make_shared<model::SharedState>(
               params.dataset->num_parallel_calls_, mu_, cond_var_)),
           sloppy_(sloppy),
-          current_elements_(params.dataset->cycle_length_) {}
+          current_elements_(params.dataset->cycle_length_) {
+      // The size of the threadpool is the smaller of:
+      //
+      // 1) The number of schedulable CPUs multiplied by a constant factor
+      //    factor to account for the fact that some threads may perform I/O.
+      //
+      // 2) The maximum number of iterators instantiated at any given point
+      //    in time (`cycle_length` for the current cycle elements and
+      //    `kPrefetchFactor * cycle_length` for future cycle elements).
+      const int num_threads =
+          std::min(static_cast<int>(kCPUFactor * port::NumSchedulableCPUs()),
+                   static_cast<int>((kPrefetchFactor + 1) *
+                                    params.dataset->cycle_length_));
+      thread_pool_ = absl::make_unique<thread::ThreadPool>(
+          Env::Default(), ThreadOptions(), kDataParallelInterleaveWorkerPool,
+          num_threads, /*low_latency_hint=*/false);
+    }
 
     ~ParallelInterleaveIterator() override {
       mutex_lock l(*mu_);
@@ -226,24 +242,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
-      // The size of the threadpool `num_threads` is the smaller of:
-      //
-      // 1) The number of schedulable CPUs multiplied by a constant factor
-      //    factor to account for the fact that some threads may perform I/O.
-      //
-      // 2) The maximum number of iterators instantiated at any given point
-      //    in time (`cycle_length` for the current cycle elements and
-      //    `kPrefetchFactor * cycle_length` for future cycle elements).
-      //
-      // Note that if `ctx->thread_pool()` is non-null, then instead of creating
-      // a dedicated thread pool of size `num_threads`, computation will be
-      // scheduled into the shared threadpool whose size is independent of
-      // `num_threads`.
-      const int num_threads = std::min(
-          static_cast<int>(kCPUFactor * port::NumSchedulableCPUs()),
-          static_cast<int>((kPrefetchFactor + 1) * dataset()->cycle_length_));
-      thread_pool_ =
-          ctx->CreateThreadPool(kDataParallelInterleaveWorkerPool, num_threads);
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = dataset()->cycle_length_;
       }
