@@ -337,11 +337,12 @@ def MultiResultOpKind1: I64EnumAttrCase<"kind1", 1>;
 def MultiResultOpKind2: I64EnumAttrCase<"kind2", 2>;
 def MultiResultOpKind3: I64EnumAttrCase<"kind3", 3>;
 def MultiResultOpKind4: I64EnumAttrCase<"kind4", 4>;
+def MultiResultOpKind5: I64EnumAttrCase<"kind5", 5>;
 
 def MultiResultOpEnum: I64EnumAttr<
   "Multi-result op kinds", "", [
     MultiResultOpKind1, MultiResultOpKind2, MultiResultOpKind3,
-    MultiResultOpKind4
+    MultiResultOpKind4, MultiResultOpKind5
   ]>;
 
 def ThreeResultOp : TEST_Op<"three_result"> {
@@ -402,6 +403,15 @@ def : Pattern<(ThreeResultOp MultiResultOpKind4),
               [(TwoResultOp:$res1__0 MultiResultOpKind4),
                (OneResultOp MultiResultOpKind4),
                (TwoResultOp:$res2__1 MultiResultOpKind4)]>;
+
+// Test referencing a single value in the value pack
+def HasNoUse: Constraint<
+    CPred<"$0->use_begin() == $0->use_end()">, "has no use">;
+// This rule only matches TwoResultOp if its second result has no use.
+def : Pattern<(TwoResultOp:$res MultiResultOpKind5),
+              [(AnotherOneResultOp MultiResultOpKind5),
+               (OneResultOp MultiResultOpKind5)],
+              [(HasNoUse $res__1)]>;
 
 //===----------------------------------------------------------------------===//
 // Test Directives

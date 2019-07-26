@@ -157,3 +157,14 @@ func @useMultiResultOpResultsSeparately() -> (i32, f32, f32) {
   %0:3 = "test.three_result"() {kind = 4} : () -> (i32, f32, f32)
   return %0#0, %0#1, %0#2 : i32, f32, f32
 }
+
+// CHECK-LABEL: @constraintOnSourceOpResult
+func @constraintOnSourceOpResult() -> (i32, f32, i32) {
+  // CHECK: %0:2 = "test.two_result"()
+  // CHECK: %1 = "test.another_one_result"()
+  // CHECK: %2 = "test.one_result"()
+  // CHECK: return %0#0, %0#1, %1
+  %0:2 = "test.two_result"() {kind = 5} : () -> (i32, f32)
+  %1:2 = "test.two_result"() {kind = 5} : () -> (i32, f32)
+  return %0#0, %0#1, %1#0 : i32, f32, i32
+}

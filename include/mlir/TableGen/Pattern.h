@@ -208,7 +208,11 @@ public:
   llvm::StringMap<Argument> &getSourcePatternBoundArgs();
 
   // Returns a reference to all the bound ops in the source pattern.
-  llvm::StringSet<> &getSourcePatternBoundOps();
+  // The returned map contains pointers to the operators inside the
+  // `RecordOperatorMap` passed-in when constructing this pattern; callers
+  // should guarantee the lifetime of the returned map does not exceed that
+  // of the `RecordOperatorMap`.
+  llvm::StringMap<const Operator *> &getSourcePatternBoundOps();
 
   // Returns the op that the root node of the source pattern matches.
   const Operator &getSourceRootOp();
@@ -238,13 +242,15 @@ private:
   const llvm::Record &def;
 
   // All operators.
+  // TODO(antiagainst): we need a proper context manager, like MLIRContext,
+  // for managing the lifetime of shared entities.
   RecordOperatorMap *recordOpMap;
 
   // All bound op arguments.
   llvm::StringMap<Argument> boundArguments;
 
   // All bound ops.
-  llvm::StringSet<> boundOps;
+  llvm::StringMap<const Operator *> boundOps;
 };
 
 } // end namespace tblgen

@@ -187,7 +187,8 @@ tblgen::Pattern::getSourcePatternBoundArgs() {
   return boundArguments;
 }
 
-llvm::StringSet<> &tblgen::Pattern::getSourcePatternBoundOps() {
+llvm::StringMap<const tblgen::Operator *> &
+tblgen::Pattern::getSourcePatternBoundOps() {
   return boundOps;
 }
 
@@ -263,7 +264,7 @@ void tblgen::Pattern::collectBoundArguments(DagNode tree) {
   // results generated from this op. It should be remembered as bound results.
   auto treeName = tree.getOpName();
   if (!treeName.empty())
-    boundOps.insert(treeName);
+    boundOps.try_emplace(treeName, &op);
 
   // TODO(jpienaar): Expand to multiple matches.
   for (int i = 0; i != numTreeArgs; ++i) {

@@ -30,11 +30,10 @@ def OpD : NS_Op<"op_d", []> {
 }
 
 def hasOneUse: Constraint<CPred<"$0->hasOneUse()">, "has one use">;
-def getResult0 : NativeCodeCall<"$_self->getResult(0)">;
 
 def : Pattern<(OpA:$res_a $operand, $attr),
               [(OpC:$res_c (OpB:$res_b $operand)),
-               (OpD $res_b, $res_c, getResult0:$res_a, $attr)],
+               (OpD $res_b, $res_c, $res_a, $attr)],
               [(hasOneUse $res_a)]>;
 
 // CHECK-LABEL: GeneratedConvert0
@@ -55,7 +54,7 @@ def : Pattern<(OpA:$res_a $operand, $attr),
 // CHECK:   s.operand = op0->getOperand(0);
 // CHECK:   attr = op0->getAttrOfType<IntegerAttr>("attr");
 // CHECK:   s.attr = attr;
-// CHECK:   if (!((s.res_a->hasOneUse()))) return matchFailure();
+// CHECK:   if (!((s.res_a->getResult(0)->hasOneUse()))) return matchFailure();
 
 // Test bound results in result pattern
 // ---

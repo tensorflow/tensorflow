@@ -87,8 +87,8 @@ static StringRef getValuePackName(StringRef symbol, unsigned *index = nullptr) {
 // This extracts one value from the pack if `symbol` contains an index,
 // otherwise it extracts all values sequentially and returns them as a
 // comma-separated list.
-static std::string formtValuePack(const char *fmt, StringRef symbol,
-                                  unsigned count, unsigned offset) {
+static std::string formatValuePack(const char *fmt, StringRef symbol,
+                                   unsigned count, unsigned offset) {
   auto getNthValue = [fmt, offset](StringRef results,
                                    unsigned index) -> std::string {
     return formatv(fmt, results, index + offset);
@@ -142,28 +142,31 @@ namespace {
 class PatternSymbolResolver {
 public:
   PatternSymbolResolver(const StringMap<Argument> &srcArgs,
-                        const StringSet<> &srcOperations);
+                        const StringMap<const Operator *> &srcOperations);
 
   // Marks the given `symbol` as bound to a value pack with `numValues` and
   // returns true on success. Returns false if the `symbol` is already bound.
   bool add(StringRef symbol, int numValues);
 
-  // Queries the substitution for the given `symbol`.
+  // Queries the substitution for the given `symbol`. Returns empty string if
+  // symbol not found. If the symbol represents a value pack, returns all the
+  // values separated via comma.
   std::string query(StringRef symbol) const;
 
 private:
   // Symbols bound to arguments in source pattern.
   const StringMap<Argument> &sourceArguments;
   // Symbols bound to ops (for their results) in source pattern.
-  const StringSet<> &sourceOps;
+  const StringMap<const Operator *> &sourceOps;
   // Symbols bound to ops (for their results) in result patterns.
   // Key: symbol; value: number of values inside the pack
   StringMap<int> resultOps;
 };
 } // end anonymous namespace
 
-PatternSymbolResolver::PatternSymbolResolver(const StringMap<Argument> &srcArgs,
-                                             const StringSet<> &srcOperations)
+PatternSymbolResolver::PatternSymbolResolver(
+    const StringMap<Argument> &srcArgs,
+    const StringMap<const Operator *> &srcOperations)
     : sourceArguments(srcArgs), sourceOps(srcOperations) {}
 
 bool PatternSymbolResolver::add(StringRef symbol, int numValues) {
@@ -176,8 +179,8 @@ std::string PatternSymbolResolver::query(StringRef symbol) const {
     StringRef name = getValuePackName(symbol);
     auto it = resultOps.find(name);
     if (it != resultOps.end())
-      return formtValuePack("{0}.getOperation()->getResult({1})", symbol,
-                            it->second, 0);
+      return formatValuePack("{0}.getOperation()->getResult({1})", symbol,
+                             it->second, /*offset=*/0);
   }
   {
     auto it = sourceArguments.find(symbol);
@@ -185,9 +188,12 @@ std::string PatternSymbolResolver::query(StringRef symbol) const {
       return getBoundSymbol(symbol).str();
   }
   {
-    auto it = sourceOps.find(symbol);
+    StringRef name = getValuePackName(symbol);
+    auto it = sourceOps.find(name);
     if (it != sourceOps.end())
-      return getBoundSymbol(symbol).str();
+      return formatValuePack("{0}->getResult({1})",
+                             getBoundSymbol(symbol).str(),
+                             it->second->getNumResults(), /*offset=*/0);
   }
   return {};
 }
@@ -490,9 +496,7 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
     auto cmd = "if (!({0})) return matchFailure();\n";
 
     if (isa<TypeConstraint>(constraint)) {
-      auto self = formatv("(*{0}->result_type_begin())",
-                          resolveSymbol(entities.front()));
-      // TODO(jpienaar): Verify op only has one result.
+      auto self = formatv("({0}->getType())", resolveSymbol(entities.front()));
       os.indent(4) << formatv(cmd,
                               tgfmt(condition, &matchCtx.withSelf(self.str())));
     } else if (isa<AttrConstraint>(constraint)) {
@@ -650,8 +654,8 @@ std::string PatternEmitter::handleRewritePattern(DagNode resultTree,
   // We need to get all the values out of this local variable if we've created a
   // multi-result op.
   const auto &numResults = pattern.getDialectOp(resultTree).getNumResults();
-  return formtValuePack("{0}.getOperation()->getResult({1})", results,
-                        numResults, 0);
+  return formatValuePack("{0}.getOperation()->getResult({1})", results,
+                         numResults, /*offset=*/0);
 }
 
 std::string PatternEmitter::handleReplaceWithValue(DagNode tree) {
@@ -799,8 +803,8 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
 
     // We need to specify the types for all results.
     auto resultTypes =
-        formtValuePack("op->getResult({1})->getType()", valuePackName,
-                       resultOp.getNumResults(), resultIndex);
+        formatValuePack("op->getResult({1})->getType()", valuePackName,
+                        resultOp.getNumResults(), resultIndex);
 
     os.indent(4) << formatv("auto {0} = rewriter.create<{1}>(loc, {2}",
                             valuePackName, resultOp.getQualCppClassName(),
