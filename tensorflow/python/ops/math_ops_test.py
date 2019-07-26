@@ -728,12 +728,5 @@ class ReciprocalNoNanTest(test_util.TensorFlowTestCase):
       self.assertAllClose(y, x)
       self.assertEqual(y.dtype.base_dtype, x.dtype.base_dtype)
 
-  def testExceptionHandling(self):
-    for dtype in [dtypes.int8, dtypes.int16, dtypes.int32]:
-      x = constant_op.constant([1, 2, 0, 4], dtype=dtype)
-      with self.assertRaises(TypeError):
-        y = math_ops.reciprocal_no_nan(x)
-
-
 if __name__ == "__main__":
   googletest.main()
