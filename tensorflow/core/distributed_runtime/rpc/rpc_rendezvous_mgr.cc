@@ -255,7 +255,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
              recv_args, std::move(done));
 
   // Record "call" in active_ so that it can be aborted cleanly.
-  RegisterCall(call);
+  RegisterCall(call, recv_args);
 
   // RendezvousMgr already aborted, shouldn't send RPC call any more
   if (!call->status().ok()) {
