@@ -198,6 +198,8 @@ using dim = ValueBuilder<DimOp>;
 using muli = ValueBuilder<MulIOp>;
 using ret = OperationBuilder<ReturnOp>;
 using select = ValueBuilder<SelectOp>;
+using std_load = ValueBuilder<LoadOp>;
+using std_store = OperationBuilder<StoreOp>;
 using subi = ValueBuilder<SubIOp>;
 using vector_type_cast = ValueBuilder<VectorTypeCastOp>;
 
