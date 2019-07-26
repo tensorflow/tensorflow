@@ -728,14 +728,11 @@ class ReciprocalNoNanTest(test_util.TensorFlowTestCase):
       self.assertAllClose(y, x)
       self.assertEqual(y.dtype.base_dtype, x.dtype.base_dtype)
 
-  @test_util.run_in_graph_and_eager_modes
   def testExceptionHandling(self):
     for dtype in [dtypes.int8, dtypes.int16, dtypes.int32]:
       x = constant_op.constant([1, 2, 0, 4], dtype=dtype)
-      try:
+      with self.assertRaises(TypeError):
         y = math_ops.reciprocal_no_nan(x)
-      except TypeError as te:
-        assert "incorrect data type" in str(te)
 
 
 if __name__ == "__main__":

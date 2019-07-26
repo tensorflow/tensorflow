@@ -4028,12 +4028,8 @@ def reciprocal_no_nan(x, name=None):
     TypeError: x must be of a valid dtype.
 
   """
-  allowed_dtypes = [dtypes.float16, dtypes.float32, dtypes.float64,
-                    dtypes.complex64, dtypes.complex128]
+
   with ops.name_scope(name, "reciprocal_no_nan", [x]) as scope:
     x = ops.convert_to_tensor(x, name="x")
-    if x.dtype.base_dtype not in allowed_dtypes:
-      raise TypeError("x has incorrect data type: {} \n "
-                      "Expected: {}".format(x.dtype.name, allowed_dtypes))
     one = constant_op.constant(1, dtype=x.dtype.base_dtype, name="one")
     return gen_math_ops.div_no_nan(one, x, name=scope)
