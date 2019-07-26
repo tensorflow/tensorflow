@@ -597,6 +597,16 @@ class StreamingRPCDispatcher {
     }
   }
 
+  // Request to cancel the current streaming call. Non-blocking.
+  void CancelCall() {
+    mutex_lock l(mu_);
+    if (state_ == nullptr) {
+      return;
+    }
+    context_->TryCancel();
+    state_ = nullptr;
+  }
+
  private:
   void CreateStreamingState() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     // ClientContext cannot be reused across calls.

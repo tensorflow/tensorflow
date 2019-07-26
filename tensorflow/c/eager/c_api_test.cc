@@ -330,7 +330,7 @@ TEST(CAPI, RemoteExecuteSilentCopiesAsync) {
   TestRemoteExecuteSilentCopies(true);
 }
 
-void TestRemoteExecuteDeleteTensorAfterContext(bool async) {
+void TestRemoteExecuteDeleteContextWithOutstandingRPC(bool async) {
   tensorflow::ServerDef server_def = GetServerDef(2);
 
   // This server def has the task index set to 0.
@@ -356,33 +356,49 @@ void TestRemoteExecuteDeleteTensorAfterContext(bool async) {
   TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle();
+  // Use large matrices so that RPCs don't return before we get a chance
+  // to call TFE_DeleteContext.
+  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle100x100();
+  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle100x100();
   const char remote_device_name[] =
       "/job:localhost/replica:0/task:1/device:CPU:0";
   auto* h0_task1 =
       TFE_TensorHandleCopyToDevice(h0_task0, ctx, remote_device_name, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  auto* h1_task1 =
+      TFE_TensorHandleCopyToDevice(h1_task0, ctx, remote_device_name, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TFE_Op* matmul = MatMulOp(ctx, h0_task1, h1_task1);
+  TFE_OpSetDevice(matmul, remote_device_name, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TFE_TensorHandle* retvals[1];
+  int num_retvals = 1;
+  TFE_Execute(matmul, &retvals[0], &num_retvals, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
 
   TFE_DeleteTensorHandle(h0_task0);
-
-  TFE_ContextAsyncWait(ctx, status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_DeleteContext(ctx);
-
-  // Delete tensors after context is deleted.
+  TFE_DeleteTensorHandle(h1_task0);
   TFE_DeleteTensorHandle(h0_task1);
+  TFE_DeleteTensorHandle(h1_task1);
+  TFE_DeleteTensorHandle(retvals[0]);
 
-  TF_DeleteStatus(status);
+  TFE_DeleteOp(matmul);
+
+  TFE_DeleteContext(ctx);
 
   // TODO(b/136478427): Figure out how to correctly shut the server down.
   worker_server.release();
 }
 
-TEST(CAPI, RemoteExecuteDeleteTensorAfterContext) {
-  TestRemoteExecuteDeleteTensorAfterContext(false);
+TEST(CAPI, RemoteExecuteDeleteContextWithOutstandingRPC) {
+  TestRemoteExecuteDeleteContextWithOutstandingRPC(false);
 }
-TEST(CAPI, RemoteExecuteDeleteTensorAfterContextAsync) {
-  TestRemoteExecuteDeleteTensorAfterContext(true);
+
+TEST(CAPI, RemoteExecuteDeleteContextWithOutstandingRPCAsync) {
+  TestRemoteExecuteDeleteContextWithOutstandingRPC(true);
 }
 
 void CheckTFE_TensorHandleHasFloats(TFE_TensorHandle* handle,

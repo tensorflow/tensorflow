@@ -310,7 +310,19 @@ class EagerContext : public core::RefCounted {
   // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
   // instead (which in-turn use WorkerService.RecvTensor RPCs).
   bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
+
 #endif  // IS_MOBILE_PLATFORM
+
+  // Closes remote eager contexts, waits for all RPCs to finish, and
+  // destroys the EagerClientCache. No RPCs can be made through this context
+  // after this method has been called.
+  // This method exists to aid a clean shutdown. It causes all RPCs to finish
+  // and remote TensorHandles to release their references to this context.
+  // To avoid deadlocks, this method must not be called on the thread
+  // processing RPCs because it makes RPCs and waits for their completion.
+  //
+  // On mobile, it just cleans the caches.
+  void WaitForAndCloseRemoteContexts();
 
   bool PinSmallOpsToCPU() { return pin_small_ops_to_cpu_; }
 

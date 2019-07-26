@@ -76,7 +76,14 @@ struct TFE_Context {
             async, device_mgr, device_mgr_owned, rendezvous,
             custom_kernel_creator)) {}
 
-  ~TFE_Context() { context->Unref(); }
+  ~TFE_Context() {
+    // TODO(iga): Add a separate API method to shutdown TFE_Context so that we
+    // don't send RPCs and block in destructor.
+    context->WaitForAndCloseRemoteContexts();
+    // context->RefCountIsOne() should be true here.
+    // TODO(iga): Remove EagerContext refcounting.
+    context->Unref();
+  }
 
   tensorflow::EagerContext* context;
 };

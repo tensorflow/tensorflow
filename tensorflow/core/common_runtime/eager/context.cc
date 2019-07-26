@@ -232,8 +232,48 @@ void EagerContext::CloseRemoteContexts() {
   }
 
   counter.Wait();
+
+  remote_contexts_.clear();
 }
+
 #endif  // !IS_MOBILE_PLATFORM
+
+void EagerContext::WaitForAndCloseRemoteContexts() {
+  ClearCaches();
+
+#if !defined(IS_MOBILE_PLATFORM)
+  {
+    mutex_lock l(keep_alive_thread_shutdown_mu_);
+    shutting_down_ = true;
+    keep_alive_thread_cv_.notify_all();
+  }
+  keep_alive_thread_.reset();
+
+  mutex_lock l(remote_state_mu_);
+  if (!remote_contexts_.empty() && is_master_) {
+    CloseRemoteContexts();
+  }
+
+  default_executor_.ShutDown().IgnoreError();
+  std::unordered_map<std::thread::id, EagerExecutor*> executors_copy;
+  {
+    mutex_lock l(executor_map_mu_);
+    executors_copy = thread_local_executor_;
+  }
+  for (const auto& it : executors_copy) {
+    it.second->ShutDown().IgnoreError();
+  }
+
+  // This shuts down the completion queue and joins the thread polling it.
+  // The thread exits only after the completion queue has been drained of all
+  // the events. These events' completion should invoke all remaining RPC
+  // callbacks.
+  // This also deletes all EagerClient instances. There should not be any
+  // references to EagerClients left after all RPCs and async ops have been
+  // finished.
+  remote_eager_workers_ = nullptr;
+#endif  // !IS_MOBILE_PLATFORM
+}
 
 EagerContext::~EagerContext() {
   ClearCaches();

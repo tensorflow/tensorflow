@@ -59,8 +59,12 @@ class GrpcEagerClient : public EagerClient {
         &stub_, cq_, "/tensorflow.eager.EagerService/CloseContext", *request,
         response, std::move(done), nullptr, nullptr);
 
-    if (enqueue_dispatchers_.find(request->context_id()) !=
-        enqueue_dispatchers_.end()) {
+    VLOG(1) << "Sending RPC to close remote eager context "
+            << request->DebugString();
+
+    const auto& it = enqueue_dispatchers_.find(request->context_id());
+    if (it != enqueue_dispatchers_.end()) {
+      it->second.CancelCall();
       enqueue_dispatchers_.erase(request->context_id());
     } else {
       LOG(ERROR) << "Remote EagerContext with id " << request->context_id()

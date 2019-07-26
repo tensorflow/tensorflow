@@ -89,6 +89,9 @@ TF_CAPI_EXPORT extern void TFE_DeleteContextOptions(TFE_ContextOptions*);
 
 // "Context" under which operations/functions are executed. It encapsulates
 // things like the available devices, resource manager etc.
+// TFE_Context must outlive all tensor handles created using it. In other
+// words, TFE_DeleteContext() must be called after all tensor handles have
+// been deleted (with TFE_DeleteTensorHandle).
 //
 // TODO(ashankar): Merge with TF_Session?
 typedef struct TFE_Context TFE_Context;
