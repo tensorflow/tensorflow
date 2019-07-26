@@ -548,12 +548,23 @@ class MklPoolingOpBase : public OpKernel {
     if (pool_params->data_format == TensorFormat::FORMAT_NCHW) {
       output_tf_shape = MklDnnDimsToTFShape(output_dims_mkl_order);
     } else {
-      memory::dims output_dims_NHWC_order;
-      output_dims_NHWC_order = {pool_params->tensor_in_batch,
-                                static_cast<int>(pool_params->out_height),
-                                static_cast<int>(pool_params->out_width),
-                                pool_params->out_depth};
-      output_tf_shape = MklDnnDimsToTFShape(output_dims_NHWC_order);
+      // determine Pooling2D (NHWC) or Pooling3D (NDHWC)
+      if (this->ksize_.size() == 4) {
+        memory::dims output_dims_NHWC_order;
+        output_dims_NHWC_order = {pool_params->tensor_in_batch,
+                                  static_cast<int>(pool_params->out_height),
+                                  static_cast<int>(pool_params->out_width),
+                                  pool_params->out_depth};
+        output_tf_shape = MklDnnDimsToTFShape(output_dims_NHWC_order);
+      } else {
+        memory::dims output_dims_NDHWC_order;
+        output_dims_NDHWC_order = {pool_params->tensor_in_batch,
+                                   static_cast<int>(pool_params->out_planes),
+                                   static_cast<int>(pool_params->out_height),
+                                   static_cast<int>(pool_params->out_width),
+                                   pool_params->out_depth};
+        output_tf_shape = MklDnnDimsToTFShape(output_dims_NDHWC_order);
+      }
     }
     AllocateOutputSetMklShape(context, kOutputIndex, output_tensor,
                               output_tf_shape, output_mkl_shape);
@@ -654,9 +665,8 @@ class MklPoolingForwardOpBase : public MklPoolingOpBase<T> {
                   errors::InvalidArgument("Input must be 4 or 5-dimensional"));
     } else {
       OP_REQUIRES(
-          context,
-          input_mkl_shape.GetDimension() == 4 ||
-              input_mkl_shape.GetDimension() == 5,
+          context, input_mkl_shape.GetDimension() == 4 ||
+                       input_mkl_shape.GetDimension() == 5,
           errors::InvalidArgument("Input shape must be 4 or 5-dimensional"));
     }
   }

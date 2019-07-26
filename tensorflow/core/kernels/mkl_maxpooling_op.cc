@@ -75,6 +75,8 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
 
       // Declare output tensor
       Tensor* output_tensor = nullptr;
+      // Declare output workspace tensor
+      Tensor* output_ws_tensor = nullptr;
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
@@ -83,6 +85,17 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
         const int kOutputIndex = 0;
         this->AllocateEmptyOutputTensor(context, kOutputIndex, &pool_params,
                                         output_dims_mkl_order, &output_tensor);
+        bool int8_forward_inference =
+            std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
+
+        if (!int8_forward_inference) {
+          // Allocate an empty workspace tensor if not Quantized MaxPooling
+          const int kOutputWorkspaceIndex = 1;
+          // output_ws_tensor is not really used, so using output_dims_mkl_order
+          this->AllocateEmptyOutputTensor(context, kOutputWorkspaceIndex,
+                                          &pool_params, output_dims_mkl_order,
+                                          &output_ws_tensor);
+        }
         return;
       }
 
@@ -181,9 +194,9 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
         pooling_fwd->Execute(src_data, dst_data, ws_data);
       }
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(context, errors::Aborted("Compute received an exception:",
                                               error_msg));
     }
@@ -325,9 +338,9 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       // execute pooling
       pooling_bwd->Execute(diff_dst_data, diff_src_data, ws_data);
     } catch (mkldnn::error& e) {
-      string error_msg = "Status:" + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ". in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status:" + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ". in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(context, errors::Aborted("Compute received an exception:",
                                               error_msg));
     }
