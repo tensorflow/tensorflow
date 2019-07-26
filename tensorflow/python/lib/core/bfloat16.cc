@@ -280,6 +280,7 @@ PyObject* PyBfloat16_RichCompare(PyObject* a, PyObject* b, int op) {
       result = x >= y;
       break;
     default:
+      result = false;
       LOG(FATAL) << "Invalid op type " << op;
   }
   return PyBool_FromLong(result);

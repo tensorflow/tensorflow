@@ -141,6 +141,7 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
   } else if (preceding_op->type == OperatorType::kDepthwiseConv) {
     output_depth = weights_shape.dims(weights_shape.dimensions_count() - 1);
   } else {
+    output_depth = 0;
     LOG(FATAL) << "Should not get here";
   }
 

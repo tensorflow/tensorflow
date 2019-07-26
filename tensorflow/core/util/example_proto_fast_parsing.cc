@@ -1518,6 +1518,7 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
           break;
         }
         default:
+          num_elements = 0;
           LOG(FATAL) << "Should not happen. " << DataTypeString(example_dtype);
       }
 
