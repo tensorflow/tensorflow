@@ -189,7 +189,6 @@ struct AssignSYCL<scatter_op::UpdateOp::MAX> {
 }  // namespace scatter_op
 
 namespace functor {
-#define kMaxLocks 1024
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
 struct ScatterFunctor {
   Index operator()(OpKernelContext* c, const Device& d,
@@ -205,13 +204,14 @@ struct ScatterFunctorBase {
                    typename TTypes<T>::ConstMatrix updates,
                    typename TTypes<Index>::ConstFlat indices) {
     // indices and params sizes were validated in DoCompute().
+    const Index kMaxLocks = 1024;
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
     // Duplicate entries need to be handled correctly. Multiple updates to the
     // same index has to be serialized. To reduce the number of locks and the
     // memory usage, we divide the whole index space into kMaxLocks regions with
     // each lock serializing access to a region.
-    const Index num_locks = std::min(limit, static_cast<Index>(kMaxLocks));
+    const Index num_locks = std::min(limit, kMaxLocks);
     const Index entries_per_lock = (limit + kMaxLocks - 1) / kMaxLocks;
     mutex accessed[num_locks];
     std::atomic<Index> bad_index(-1);
