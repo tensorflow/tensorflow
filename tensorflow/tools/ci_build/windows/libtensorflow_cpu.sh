@@ -61,6 +61,7 @@ mkdir -p ${DIR}/lib
 cp bazel-bin/tensorflow/tensorflow.dll ${DIR}/lib/tensorflow.dll
 cp bazel-genfiles/tensorflow/tensorflow.lib ${DIR}/lib/tensorflow.lib
 cp tensorflow/c/c_api.h ${DIR}/include/tensorflow/c
+cp tensorflow/c/tf_attrtype.h ${DIR}/include/tensorflow/c
 cp tensorflow/c/eager/c_api.h ${DIR}/include/tensorflow/c/eager
 cp bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE ${DIR}/include/tensorflow/c
 cd ${DIR}
@@ -69,5 +70,6 @@ zip libtensorflow-cpu-windows-$(uname -m).zip \
   lib/tensorflow.lib \
   include/tensorflow/c/eager/c_api.h \
   include/tensorflow/c/c_api.h \
+  include/tensorflow/c/tf_attrtype.h \
   include/tensorflow/c/LICENSE
 rm -rf lib include
