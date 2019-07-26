@@ -2097,6 +2097,33 @@ def TFL_SpaceToBatchNdOp: TFL_Op<"space_to_batch_nd", [
   );
 }
 
+def TFL_SpaceToDepthOp: TFL_Op<"space_to_depth", [
+    NoSideEffect,
+    TFL_SameOperandsAndResultsScale,
+    PredOpTrait<"input and output must have same element type",
+      TCresVTEtIsSameAsOp<0, 0>>
+  ]> {
+  let summary = "SpaceToDepth operator";
+
+  let description = [{
+    Rearranges blocks of spatial data, into depth. More specifically,
+    this op outputs a copy of the input tensor where values from the `height`
+    and `width` dimensions are moved to the `depth` dimension.
+    `block_size` indicates the input block size.
+   }];
+
+  let arguments = (ins
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8, TFL_QUI8]>:$input,
+    I32Attr:$block_size
+  );
+
+  let results = (outs
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8, TFL_QUI8]>:$output
+  );
+
+  let hasOptions = 1;
+}
+
 def TFL_SplitOp : TFL_Op<"split", [NoSideEffect]> {
   let summary = "Splits a tensor into `num_split` tensors along one dimension.";
 
