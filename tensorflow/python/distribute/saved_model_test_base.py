@@ -155,8 +155,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
                                                  distribution, run_distributed):
     """Save a model without DS, and restore it with DS."""
 
-    saved_dir = os.path.join(self.get_temp_dir(), self._root_dir,
-                             'test_save_no_dist_restore_dist')
+    saved_dir = os.path.join(self.get_temp_dir(), '0')
 
     model, output_name = model_and_input.get_model(
         run_distributed=run_distributed)
@@ -184,8 +183,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
                                                  run_distributed):
     """Save a model with DS, and restore it without DS."""
 
-    saved_dir = os.path.join(self.get_temp_dir(), self._root_dir,
-                             'test_save_no_dist_restore_dist')
+    saved_dir = os.path.join(self.get_temp_dir(), '1')
 
     with distribution.scope():
       model, output_name = model_and_input.get_model(
@@ -218,8 +216,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
                                               save_in_scope, run_distributed):
     """Save a model with DS, and restore it with potentially different DS."""
 
-    saved_dir = os.path.join(self.get_temp_dir(), self._root_dir,
-                             'test_save_dist_restore_dist')
+    saved_dir = os.path.join(self.get_temp_dir(), '2')
 
     with distribution_for_saving.scope():
       model, output_name = model_and_input.get_model(
