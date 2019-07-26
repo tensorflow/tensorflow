@@ -23,6 +23,7 @@
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
@@ -103,8 +104,9 @@ static void getBackwardSliceImpl(Operation *op,
     return;
   }
 
-  for (auto *operand : op->getOperands()) {
-    if (isa<BlockArgument>(operand)) {
+  for (auto en : llvm::enumerate(op->getOperands())) {
+    auto *operand = en.value();
+    if (auto *blockArg = dyn_cast<BlockArgument>(operand)) {
       if (auto affIv = getForInductionVarOwner(operand)) {
         auto *affOp = affIv.getOperation();
         if (backwardSlice->count(affOp) == 0)
@@ -113,7 +115,9 @@ static void getBackwardSliceImpl(Operation *op,
         auto *loopOp = loopIv.getOperation();
         if (backwardSlice->count(loopOp) == 0)
           getBackwardSliceImpl(loopOp, backwardSlice, filter);
-      } else {
+      } else if (blockArg->getOwner() !=
+                 &op->getParentOfType<FuncOp>().getBody().front()) {
+        op->emitError("Unsupported CF for operand ") << en.index();
         llvm_unreachable("Unsupported control flow");
       }
       continue;

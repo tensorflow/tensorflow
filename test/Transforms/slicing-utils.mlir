@@ -264,7 +264,18 @@ func @slicing_test_3() {
     %d = "slicing-test-op"(%c, %i2): (index, index) -> index
   }
   return
-}// This test dumps 2 sets of outputs: first the test outputs themselves followed
+}
+
+// FWD-LABEL: slicing_test_function_argument
+// BWD-LABEL: slicing_test_function_argument
+// FWDBWD-LABEL: slicing_test_function_argument
+func @slicing_test_function_argument(%arg0: index) -> index {
+  // BWD: matched: {{.*}} (index, index) -> index backward static slice:
+  %0 = "slicing-test-op"(%arg0, %arg0): (index, index) -> index
+  return %0 : index
+}
+
+// This test dumps 2 sets of outputs: first the test outputs themselves followed
 // by the module. These labels isolate the test outputs from the module dump.
 // FWD-LABEL: slicing_test
 // BWD-LABEL: slicing_test
@@ -275,3 +286,6 @@ func @slicing_test_3() {
 // FWD-LABEL: slicing_test_3
 // BWD-LABEL: slicing_test_3
 // FWDBWD-LABEL: slicing_test_3
+// FWD-LABEL: slicing_test_function_argument
+// BWD-LABEL: slicing_test_function_argument
+// FWDBWD-LABEL: slicing_test_function_argument
