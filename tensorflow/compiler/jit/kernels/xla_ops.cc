@@ -442,9 +442,9 @@ XlaCompileOp::XlaCompileOp(OpKernelConstruction* ctx)
 void XlaCompileOp::Compute(OpKernelContext* ctx) {
   VLOG(3) << "XlaCompileOp " << def().name()
           << (must_compile_ ? "(must-compile)" : "");
-  xla::LocalClient* client;
-  const XlaCompiler::CompilationResult* kernel;
-  xla::LocalExecutable* executable;
+  xla::LocalClient* client = nullptr;
+  const XlaCompiler::CompilationResult* kernel = nullptr;
+  xla::LocalExecutable* executable = nullptr;
   std::map<int, OptionalTensor> variables;
 
   bool cannot_compile_cluster;
