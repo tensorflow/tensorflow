@@ -25,9 +25,9 @@ import inspect
 
 import six
 
-from tensorflow.data import Dataset
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.autograph.utils import tensors
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -244,7 +244,7 @@ def _py_range(start_or_stop, stop, step):
 
 
 def enumerate_(s, start=0):
-  if isinstance(s, Dataset):
+  if isinstance(s, dataset_ops.DatasetV2):
     return _tf_dataset_enumerate(s, start)
   return _py_enumerate(s, start)
 
