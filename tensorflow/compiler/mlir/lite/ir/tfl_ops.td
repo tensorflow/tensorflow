@@ -364,6 +364,8 @@ an output element, this operation computes \\(y = |x|\\).
   let arguments = (ins AnyTensor:$x);
 
   let results = (outs AnyTensor:$y);
+
+  let hasFolder = 1;
 }
 
 def TFL_AddOp : TFL_Op<"add", [Broadcastable, NoSideEffect, Commutative]> {
@@ -557,6 +559,8 @@ def TFL_CosOp: TFL_Op<"cos", [NoSideEffect, SameOperandsAndResultType]> {
   let arguments = (ins TFL_FpTensor:$x);
 
   let results = (outs TFL_FpTensor:$y);
+
+  let hasFolder = 1;
 }
 
 def TFL_DepthwiseConv2DOp :
@@ -1127,6 +1131,8 @@ def TFL_LogOp: TFL_Op<"log", [NoSideEffect, SameOperandsAndResultType]> {
   let arguments = (ins AnyTensor:$x);
 
   let results = (outs AnyTensor:$y);
+
+  let hasFolder = 1;
 }
 
 // TODO(b/130643170): Adds some constraint for the input/output element types.
@@ -1675,6 +1681,8 @@ def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect, SameOperandsAndResultType]> {
   let arguments = (ins AnyTensor:$x);
 
   let results = (outs AnyTensor:$y);
+
+  let hasFolder = 1;
 }
 
 def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect, TFL_NoQuantizableResult]> {
@@ -1790,6 +1798,8 @@ def TFL_SinOp: TFL_Op<"sin", [NoSideEffect, SameOperandsAndResultType]> {
   let arguments = (ins TFL_FpTensor:$x);
 
   let results = (outs TFL_FpTensor:$y);
+
+  let hasFolder = 1;
 }
 
 // TODO(b/130643170): Adds some constraint for the input/output element types.
@@ -1828,6 +1838,8 @@ def TFL_SqrtOp: TFL_Op<"sqrt", [NoSideEffect, SameOperandsAndResultType]> {
   let arguments = (ins AnyTensor:$x);
 
   let results = (outs AnyTensor:$y);
+
+  let hasFolder = 1;
 }
 
 def TFL_SquareOp: TFL_Op<"square", [NoSideEffect, SameOperandsAndResultType]> {
@@ -1842,6 +1854,8 @@ def TFL_SquareOp: TFL_Op<"square", [NoSideEffect, SameOperandsAndResultType]> {
   let results = (outs AnyTensor:$y);
 
   let hasOptions = 0b1;
+
+  let hasFolder = 1;
 }
 
 def TFL_SubOp : TFL_Op<"sub", [Broadcastable, NoSideEffect]> {
