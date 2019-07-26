@@ -505,6 +505,11 @@ Status WindowsFileSystem::RenameFile(const string& src, const string& target) {
   return result;
 }
 
+string WindowsFileSystem::TranslateName(const string& name) const {
+  // Prepend the special prefix to workaround Windows MAX_PATH limit.
+  return strings::StrCat("\\\\?\\", name);
+}
+
 Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
                                            std::vector<string>* results) {
   // NOTE(mrry): The existing implementation of FileSystem::GetMatchingPaths()
