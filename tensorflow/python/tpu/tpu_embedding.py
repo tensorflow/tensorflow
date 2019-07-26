@@ -46,14 +46,16 @@ INFERENCE = elc.TPUEmbeddingConfiguration.INFERENCE
 class TableConfig(
     collections.namedtuple(
         'TableConfig',
-        ['vocabulary_size', 'dimension', 'initializer', 'combiner'])):
+        ['vocabulary_size', 'dimension', 'initializer', 'combiner',
+         'hot_id_replication'])):
   """Embedding table configuration."""
 
   def __new__(cls,
               vocabulary_size,
               dimension,
               initializer=None,
-              combiner='mean'):
+              combiner='mean',
+              hot_id_replication=False):
     """Embedding table configuration.
 
     Args:
@@ -69,6 +71,8 @@ class TableConfig(
         accuracy, in particular with bag-of-words columns. For more information,
         see `tf.nn.embedding_lookup_sparse`. None is only valid for dense rather
         than sparse tensors.
+      hot_id_replication: If true, enables hot id replication, which can make
+        embedding lookups faster if there are some hot rows in the table.
 
     Returns:
       `TableConfig`.
@@ -95,7 +99,8 @@ class TableConfig(
       raise ValueError('Invalid combiner {}'.format(combiner))
 
     return super(TableConfig, cls).__new__(cls, vocabulary_size, dimension,
-                                           initializer, combiner)
+                                           initializer, combiner,
+                                           hot_id_replication)
 
 
 class FeatureConfig(
@@ -670,18 +675,22 @@ class TPUEmbedding(object):
 
       table_descriptor.num_features = self._table_to_num_features_dict[table]
 
-      table_descriptor.optimization_parameters.learning_rate.constant = (
+      parameters = table_descriptor.optimization_parameters
+      parameters.learning_rate.constant = (
           self._optimization_parameters.learning_rate)
-      table_descriptor.optimization_parameters.gradient_accumulation_status = (
+      parameters.gradient_accumulation_status = (
           optimization_parameters_pb2.GradientAccumulationStatus.ENABLED
           if self._optimization_parameters.use_gradient_accumulation else
           optimization_parameters_pb2.GradientAccumulationStatus.DISABLED)
       if self._optimization_parameters.clip_weight_min is not None:
-        table_descriptor.optimization_parameters.clipping_limits.lower.value = (
+        parameters.clipping_limits.lower.value = (
             self._optimization_parameters.clip_weight_min)
       if self._optimization_parameters.clip_weight_max is not None:
-        table_descriptor.optimization_parameters.clipping_limits.upper.value = (
+        parameters.clipping_limits.upper.value = (
             self._optimization_parameters.clip_weight_max)
+      if table_config.hot_id_replication:
+        parameters.hot_id_replication_configuration.status = (
+            optimization_parameters_pb2.HotIdReplicationConfiguration.ENABLED)
       self._optimizer_handler.set_optimization_parameters(table_descriptor)
 
     config_proto.mode = self._mode
