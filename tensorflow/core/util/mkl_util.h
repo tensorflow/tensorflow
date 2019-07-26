@@ -698,7 +698,7 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
 
 // Get the MKL shape from the second string tensor
 inline void GetMklShape(OpKernelContext* ctext, int n, MklDnnShape* mklshape,
-                        bool eager_mode = false) {
+                        bool eager_mode) {
   if (!eager_mode) {
     mklshape->DeSerializeMklDnnShape(
         ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
@@ -711,6 +711,10 @@ inline void GetMklShape(OpKernelContext* ctext, int n, MklDnnShape* mklshape,
   } else {
     mklshape->SetMklTensor(false);
   }
+}
+
+inline void GetMklShape(OpKernelContext* ctext, int n, MklDnnShape* mklshape) {
+  GetMklShape(ctext, n, mklshape, false);
 }
 
 // Gets the actual input

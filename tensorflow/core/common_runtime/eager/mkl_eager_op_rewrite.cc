@@ -120,9 +120,9 @@ Status MklEagerOpRewrite::SetupNewOp(
   if (orig_op->Device() != nullptr) {
     (*new_mkl_op)->SetDevice(orig_op->Device());
   } else {
-    const char* device_name =
-        DeviceNameUtils::ParsedNameToString(orig_op->GetDeviceName()).c_str();
-    (*new_mkl_op)->SetDeviceName(device_name);
+    string device_name =
+        DeviceNameUtils::ParsedNameToString(orig_op->GetDeviceName());
+    (*new_mkl_op)->SetDeviceName(device_name.c_str());
   }
   return Status::OK();
 }
@@ -140,15 +140,15 @@ bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op, int* op_idx) {
   if (DisableMKL()) {
     return false;
   }
-  DataType T;
-  if (op->Attrs().Get("T", &T) != Status::OK()) {
+  DataType data_type;
+  if (op->Attrs().Get("T", &data_type) != Status::OK()) {
     return false;
   }
   // Check if we have registered MKL kernel for this op.
   if (!mkl_op_registry::IsMklNameChangeOp(
-          mkl_op_registry::GetMklEagerOpName(op->Name()), T) &&
+          mkl_op_registry::GetMklEagerOpName(op->Name()), data_type) &&
       !mkl_op_registry::IsMklNameChangeOp(
-          mkl_op_registry::GetMklOpName(op->Name()), T)) {
+          mkl_op_registry::GetMklOpName(op->Name()), data_type)) {
     return false;
   }
 
