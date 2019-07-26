@@ -7,6 +7,6 @@ container_digests = {
     "cuda10.0-cudnn7-centos7": "sha256:a453b7147a60928a8345689eae48916a746b3578b5e831bfa151f0529d469c88",
     "cuda10.0-cudnn7-centos6": "sha256:a1909ba09c703340ee0074ce63dd94fe8fea48035a25264677907a609e2375e0",
     "cuda10.1-cudnn7-centos6": "sha256:454b899657e87893ee5e68dc0f87df59b6a0a7418ae09cafcc3dd65ac71feca9",
-    "cuda10.0-cudnn7-ubuntu16.04-manylinux2010": "sha256:76cdd3956ce714bedca4b0c5b34c08e77fda7e888b8814da973d95f45628761c",
+    "cuda10.0-cudnn7-ubuntu16.04-manylinux2010": "sha256:97051e93c8d571ab3f15cb6594d23f112d9270726bb655aa072b8f246212190a",
     "rocm-ubuntu16.04": "sha256:2df35a0b7f7513b4ca820a12792e98ecafafabd1076300ef26f89386277c10cc",
 }
