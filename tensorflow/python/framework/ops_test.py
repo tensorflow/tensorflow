@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 import gc
+import numpy as np
 import os
 import threading
 import weakref
@@ -302,6 +303,26 @@ class IndexedSlicesSpecTest(test_util.TensorFlowTestCase,
       self.assertIs(st_reconstructed.dense_shape, None)
     else:
       self.assertAllEqual(x.dense_shape, st_reconstructed.dense_shape)
+
+  @test_util.run_v1_only("IndexedSlicesValue is deprecated in v2")
+  def testFromNumpyComponents(self):
+    indices = np.array([3, 8])
+    values = np.array([1.0, 9.0])
+    dense_shape = np.array([100])
+
+    spec1 = indexed_slices.IndexedSlicesSpec(dense_shape_dtype=dtypes.int32)
+    st1 = spec1._from_components((values, indices, dense_shape))
+    self.assertIsInstance(st1, indexed_slices.IndexedSlicesValue)
+    self.assertAllEqual(st1.indices, indices)
+    self.assertAllEqual(st1.values, values)
+    self.assertAllEqual(st1.dense_shape, dense_shape)
+
+    spec2 = indexed_slices.IndexedSlicesSpec()
+    st2 = spec2._from_components((values, indices))
+    self.assertIsInstance(st2, indexed_slices.IndexedSlicesValue)
+    self.assertAllEqual(st2.indices, indices)
+    self.assertAllEqual(st2.values, values)
+    self.assertIs(st2.dense_shape, None)
 
 
 class NodeDefConstructorTest(test_util.TensorFlowTestCase):
