@@ -62,7 +62,7 @@ void TestConvFloat(std::initializer_list<int> input_dims_data,
   TfLiteConvParams builtin_data = {
       .padding = kTfLitePaddingValid,
       .stride_width = 2,
-      .stride_height = 2,
+      .stride_height = 0,
       .dilation_width_factor = 1,
       .dilation_height_factor = 1,
       .activation = kTfLiteActNone,
