@@ -2,16 +2,17 @@
 #   Contains ops for evaluation metrics and summary statistics.
 #   APIs here are meant to evolve over time.
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    default_visibility = [
+        "//engedu/ml/tf_from_scratch:__pkg__",
+        "//tensorflow:internal",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = [
-    "//engedu/ml/tf_from_scratch:__pkg__",
-    "//tensorflow:internal",
-])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "metrics_py",
@@ -25,6 +26,10 @@ py_library(
         "python/ops/set_ops.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",

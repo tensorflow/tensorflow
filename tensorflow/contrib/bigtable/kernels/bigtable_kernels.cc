@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/bigtable/kernels/bigtable_lib.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
@@ -139,19 +140,19 @@ class BigtableTableOp : public OpKernel {
       ResourceMgr* mgr = ctx->resource_manager();
       OP_REQUIRES_OK(ctx, cinfo_.Init(mgr, def()));
 
-      BigtableClientResource* client_resource;
+      core::RefCountPtr<BigtableClientResource> client_resource;
       OP_REQUIRES_OK(
           ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &client_resource));
-      core::ScopedUnref unref_client(client_resource);
 
       BigtableTableResource* resource;
-      OP_REQUIRES_OK(
-          ctx, mgr->LookupOrCreate<BigtableTableResource>(
-                   cinfo_.container(), cinfo_.name(), &resource,
-                   [this, client_resource](BigtableTableResource** ret) {
-                     *ret = new BigtableTableResource(client_resource, table_);
-                     return Status::OK();
-                   }));
+      OP_REQUIRES_OK(ctx,
+                     mgr->LookupOrCreate<BigtableTableResource>(
+                         cinfo_.container(), cinfo_.name(), &resource,
+                         [this, &client_resource](BigtableTableResource** ret) {
+                           *ret = new BigtableTableResource(
+                               client_resource.get(), table_);
+                           return Status::OK();
+                         }));
       initialized_ = true;
     }
     OP_REQUIRES_OK(ctx, MakeResourceHandleToOutput(
@@ -236,10 +237,9 @@ class ToBigtableOp : public AsyncOpKernel {
                         errors::InvalidArgument("timestamp must be >= -1"),
                         done);
 
-      BigtableTableResource* resource;
+      core::RefCountPtr<BigtableTableResource> resource;
       OP_REQUIRES_OK_ASYNC(
           ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &resource), done);
-      core::ScopedUnref resource_cleanup(resource);
 
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());

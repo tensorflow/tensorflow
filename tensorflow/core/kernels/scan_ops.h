@@ -40,6 +40,41 @@ struct Scan {
   }
 };
 
+template <typename T>
+struct LogSumExp {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a,
+                                                     const T& b) const {
+    Eigen::internal::scalar_sum_op<T> sum_op;
+    Eigen::internal::scalar_exp_op<T> exp_op;
+    Eigen::internal::scalar_log_op<T> log_op;
+    Eigen::internal::scalar_max_op<T> max_op;
+    Eigen::internal::scalar_min_op<T> min_op;
+    Eigen::internal::scalar_log1p_op<T> log1p_op;
+    Eigen::internal::scalar_difference_op<T> diff_op;
+
+    auto mi = min_op(a, b);
+    auto ma = max_op(a, b);
+
+    return sum_op(log1p_op(exp_op(diff_op(mi, ma))), ma);
+  }
+};
+
+template <typename T>
+struct LogSumExpReducer {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void reduce(const T t, T* accum) const {
+    LogSumExp<T> logsumexp;
+    *accum = logsumexp(*accum, t);
+  }
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T initialize() const {
+    return Eigen::NumTraits<T>::lowest();
+  }
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T finalize(const T accum) const {
+    return accum;
+  }
+};
+
 }  // namespace functor
 }  // namespace tensorflow
 

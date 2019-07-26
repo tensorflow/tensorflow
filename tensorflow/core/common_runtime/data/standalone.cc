@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -40,24 +42,31 @@ Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx)
     : iterator_(iterator), ctx_(ctx) {}
 
 Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
-                          const string& fetch_node,
                           std::unique_ptr<Dataset>* result) {
   Graph graph(OpRegistry::Global());
   TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
 
-  // Instantiate enough of the TensorFlow runtime to run `graph` on a single CPU
-  // device.
-  std::unique_ptr<DeviceMgr> device_mgr = MakeUnique<DeviceMgr>(
-      DeviceFactory::NewDevice("CPU", params.session_options, ""));
+  // Instantiate enough of the TF runtime to run `graph` on a single CPU device.
+  auto device_mgr = absl::make_unique<DeviceMgr>(DeviceFactory::NewDevice(
+      "CPU", params.session_options, "/job:localhost/replica:0/task:0"));
   Device* device = device_mgr->ListDevices()[0];
   // Clone the `FunctionLibraryDefinition` to extend its lifetime extends beyond
   // the lifetime of `graph`.
-  std::unique_ptr<FunctionLibraryDefinition> flib_def =
-      MakeUnique<FunctionLibraryDefinition>(graph.flib_def());
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr =
-      MakeUnique<ProcessFunctionLibraryRuntime>(
-          device_mgr.get(), Env::Default(), TF_GRAPH_DEF_VERSION,
-          flib_def.get(), OptimizerOptions{}, nullptr /* parent */);
+  auto flib_def =
+      absl::make_unique<FunctionLibraryDefinition>(graph.flib_def());
+  auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+      device_mgr.get(), Env::Default(), TF_GRAPH_DEF_VERSION, flib_def.get(),
+      OptimizerOptions{}, nullptr /* parent */);
+
+  string fetch_node = "";
+  for (auto node : graph_def.node()) {
+    if (node.op() == "_Retval") {
+      fetch_node = node.input(0);
+    }
+  }
+  if (fetch_node.empty()) {
+    return errors::NotFound("Failed to find a _Retval op in the given dataset");
+  }
 
   // Run graph up to `output_node` and extract the `DatasetBase` stored in the
   // DT_VARIANT output tensor.
@@ -96,7 +105,10 @@ Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
     OpKernelContext op_ctx(&op_params, 0);
     IteratorContext::Params params(&op_ctx);
     params.function_handle_cache = function_handle_cache_.get();
-    ctx = MakeUnique<IteratorContext>(std::move(params));
+    params.resource_mgr = &resource_mgr_;
+    params.cancellation_manager = &cancellation_manager_;
+
+    ctx = absl::make_unique<IteratorContext>(std::move(params));
   }
 
   // Create the iterator from the dataset.
@@ -118,7 +130,7 @@ Dataset::Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
       pool_(pool) {
   runner_ = [this](std::function<void()> c) { pool_->Schedule(std::move(c)); };
   function_handle_cache_ =
-      MakeUnique<FunctionHandleCache>(pflr_->GetFLR("/device:CPU:0"));
+      absl::make_unique<FunctionHandleCache>(pflr_->GetFLR("/device:CPU:0"));
 }
 
 Dataset::~Dataset() { dataset_->Unref(); }

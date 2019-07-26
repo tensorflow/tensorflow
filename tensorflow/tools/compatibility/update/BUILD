@@ -1,6 +1,7 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//visibility:private"])
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_binary(
     name = "generate_v2_renames_map",

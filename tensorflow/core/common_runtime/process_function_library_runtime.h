@@ -40,6 +40,15 @@ class ProcessFunctionLibraryRuntime {
       DistributedFunctionLibraryRuntime* parent = nullptr,
       const CustomKernelCreator* custom_kernel_creator = nullptr);
 
+  ~ProcessFunctionLibraryRuntime() {
+    // Deleting the FunctionLibraryRuntime map will delete the function handles
+    // registered in it, which may call ReleaseHandle in this class again to
+    // release their sub-function. These circular calls may casue segfault
+    // since the flr_map_ may has already been deleted. Explicitly releasing
+    // flr_map_ here and checking flr_map_ in ReleaseHandle to avoid this.
+    flr_map_.reset();
+  }
+
   // Sends `tensors_to_send` from `source_device` to `target_device` using
   // `rendezvous`. `key_prefix` is used as a prefix for the keys sent to the
   // Rendezvous. `device_context` should be the DeviceContext of the device
@@ -138,6 +147,12 @@ class ProcessFunctionLibraryRuntime {
            FunctionLibraryRuntime::DoneCallback done) const;
 
   const DeviceMgr* device_mgr() { return device_mgr_; }
+
+  const DeviceSet* device_set() { return &device_set_; }
+
+  const FunctionLibraryDefinition* GetFunctionLibraryDefinition() const {
+    return lib_def_;
+  }
 
  private:
   friend class FunctionLibraryRuntimeImpl;
@@ -261,10 +276,25 @@ class ProcessFunctionLibraryRuntime {
                         const std::vector<Node*>& arg_nodes,
                         const std::vector<Node*>& ret_nodes) const;
 
+  struct CleanUpItem {
+    string device;
+    uint64 step_id;
+    FunctionLibraryRuntime::Handle local_handle;
+  };
+
+  void RunInternal(const FunctionLibraryRuntime::Options& opts,
+                   FunctionLibraryRuntime::Handle handle,
+                   gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                   std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
+                   FunctionLibraryRuntime::DoneCallback done) const;
+
   void RunMultiDevice(const FunctionLibraryRuntime::Options& opts,
                       FunctionLibraryRuntime::Handle handle,
                       gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                      std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
                       FunctionLibraryRuntime::DoneCallback done) const;
+  void CleanUp(std::vector<std::unique_ptr<CleanUpItem>>* items,
+               FunctionLibraryRuntime::DoneCallback done) const;
 
   // Data structure holding information for a single instantiated remote
   // (to be executed on `target_device`) function.
@@ -325,7 +355,9 @@ class ProcessFunctionLibraryRuntime {
                      std::unique_ptr<MultiDeviceFunctionData>>
       mdevice_data_ GUARDED_BY(mu_);
 
-  std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>> flr_map_;
+  std::unique_ptr<
+      std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>>>
+      flr_map_;
   int next_handle_ GUARDED_BY(mu_);
   DistributedFunctionLibraryRuntime* const parent_;
 };

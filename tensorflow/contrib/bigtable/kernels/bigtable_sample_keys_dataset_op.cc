@@ -25,11 +25,10 @@ class BigtableSampleKeysDatasetOp : public DatasetOpKernel {
   using DatasetOpKernel::DatasetOpKernel;
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    BigtableTableResource* resource;
+    core::RefCountPtr<BigtableTableResource> resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
-    core::ScopedUnref scoped_unref(resource);
-    *output = new Dataset(ctx, resource);
+    *output = new Dataset(ctx, resource.get());
   }
 
  private:

@@ -296,13 +296,7 @@ void FuseMulOrDivParamsIntoFollowingAffine(Model* model, Operator* following_op,
   model->EraseArray(binary_op->outputs[0]);
 
   following_op->inputs[0] = binary_op->inputs[index_of_variable_input];
-  const auto& old_constant_param_name =
-      binary_op->inputs[index_of_constant_input];
-  CHECK(IsConstantParameterArray(*model, old_constant_param_name));
-  if (CountOpsWithInput(*model, old_constant_param_name) == 1) {
-    model->EraseArray(old_constant_param_name);
-  }
-  model->operators.erase(binary_it);
+  DeleteOpAndArrays(model, binary_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

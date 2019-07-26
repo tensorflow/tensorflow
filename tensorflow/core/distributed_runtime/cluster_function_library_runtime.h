@@ -16,7 +16,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
 
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
-#include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/function.h"
 
 namespace tensorflow {
@@ -46,12 +45,16 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override;
 
+  void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
+               FunctionLibraryRuntime::DoneCallback done) override;
+
   DeviceMgr* remote_device_mgr() const override { return remote_device_mgr_; }
 
  private:
   static Status ConstructFunctionGraph(
       const OpDef& sig, AttrSlice attrs,
-      const FunctionLibraryRuntime::InstantiateOptions& options, GraphDef* g,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      const FunctionLibraryDefinition& flib_def, GraphDef* g,
       std::vector<string>* send_keys, std::vector<string>* recv_keys);
   friend class ClusterFunctionLibraryRuntimeTest;
 

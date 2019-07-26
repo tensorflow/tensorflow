@@ -46,6 +46,14 @@ class GraphOptimizer {
     // If not null then only nodes for which cf_consider_fn returns true will be
     // considered for CF.
     NodePredicate cf_consider_fn = nullptr;
+
+    // If true, multi-device functions will be inlined if
+    // opts_.do_function_inlining() is true.
+    bool inline_multi_device_functions = false;
+
+    // If true, functions in implementation selection group will be inlined if
+    // opts_.do_function_inlining() is true.
+    bool inline_impl_selection_group_functions = false;
   };
 
   explicit GraphOptimizer(const OptimizerOptions& opts);
@@ -66,7 +74,9 @@ class GraphOptimizer {
       const std::unordered_map<string, std::vector<PartialTensorShape>>*
           shape_map,
       const NodePredicate& cse_consider_fn = nullptr,
-      const NodePredicate& cf_consider_fn = nullptr);
+      const NodePredicate& cf_consider_fn = nullptr,
+      bool inline_multi_device_functions = false,
+      bool inline_impl_selection_group_functions = false);
 
   const OptimizerOptions& options() { return opts_; }
 

@@ -16,11 +16,35 @@ limitations under the License.
 #ifndef TENSORFLOW_C_KERNELS_H_
 #define TENSORFLOW_C_KERNELS_H_
 
-#include "tensorflow/c/c_api.h"
+#include <stdint.h>
+
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+
+// Macro to control visibility of exported symbols in the shared library (.so,
+// .dylib, .dll).
+// This duplicates the TF_EXPORT macro definition in
+// tensorflow/core/platform/macros.h in order to keep this .h file independent
+// of any other includes.
+#ifdef SWIG
+#define TF_CAPI_EXPORT
+#else
+#if defined(_WIN32)
+#ifdef TF_COMPILE_LIBRARY
+#define TF_CAPI_EXPORT __declspec(dllexport)
+#else
+#define TF_CAPI_EXPORT __declspec(dllimport)
+#endif  // TF_COMPILE_LIBRARY
+#else
+#define TF_CAPI_EXPORT __attribute__((visibility("default")))
+#endif  // _WIN32
+#endif  // SWIG
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct TF_Tensor TF_Tensor;
 
 // --------------------------------------------------------------------------
 // C API for TensorFlow Kernels.
@@ -72,6 +96,16 @@ TF_CAPI_EXPORT extern TF_KernelBuilder* TF_NewKernelBuilder(
     void* (*create_func)(TF_OpKernelConstruction*),
     void (*compute_func)(void*, TF_OpKernelContext*),
     void (*delete_func)(void*));
+
+// Specifies that this kernel's attribute only supports the given type.
+TF_CAPI_EXPORT extern void TF_KernelBuilder_TypeConstraint(
+    TF_KernelBuilder* kernel_builder, const char* attr_name,
+    const TF_DataType type, TF_Status* status);
+
+// Specify that this kernel requires/provides an input/output arg
+// in host memory (instead of the default, device memory).
+TF_CAPI_EXPORT extern void TF_KernelBuilder_HostMemory(
+    TF_KernelBuilder* kernel_builder, const char* arg_name);
 
 // Register the given kernel builder with the TensorFlow runtime. If
 // registration fails, the given status will be populated.
@@ -135,6 +169,15 @@ TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
 // TF_DataType, *status is populated with an error.
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrType(
     TF_OpKernelConstruction* ctx, const char* attr_name, TF_DataType* val,
+    TF_Status* status);
+
+// Interprets the named kernel construction attribute as int32_t and
+// places it into *val. *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// int32, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt32(
+    TF_OpKernelConstruction* ctx, const char* attr_name, int32_t* val,
     TF_Status* status);
 
 #ifdef __cplusplus

@@ -641,9 +641,9 @@ class WALSModel(object):
         extras = size % num_shards
         assignments = math_ops.maximum(ids // (ids_per_shard + 1),
                                        (ids - extras) // ids_per_shard)
-        new_ids = array_ops.where(assignments < extras,
-                                  ids % (ids_per_shard + 1),
-                                  (ids - extras) % ids_per_shard)
+        new_ids = array_ops.where_v2(assignments < extras,
+                                     ids % (ids_per_shard + 1),
+                                     (ids - extras) % ids_per_shard)
         return assignments, new_ids
 
     return func

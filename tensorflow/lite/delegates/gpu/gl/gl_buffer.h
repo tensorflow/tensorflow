@@ -141,6 +141,32 @@ Status AppendFromBuffer(const GlBuffer& buffer, std::vector<T>* data) {
       absl::MakeSpan(data->data() + data->size() - num_elements, num_elements));
 }
 
+// Persistent buffer provides CPU pointer to the buffer that is valid all the
+// time. A user should properly synchronize the access to the buffer on CPU and
+// GPU sides.
+class GlPersistentBuffer : public GlBuffer {
+ public:
+  GlPersistentBuffer(GLenum target, GLuint id, size_t bytes_size, size_t offset,
+                     bool has_ownership, void* data);
+  GlPersistentBuffer();
+
+  // Move-only
+  GlPersistentBuffer(GlPersistentBuffer&& buffer);
+  GlPersistentBuffer& operator=(GlPersistentBuffer&& buffer);
+  GlPersistentBuffer(const GlPersistentBuffer&) = delete;
+  GlPersistentBuffer& operator=(const GlPersistentBuffer&) = delete;
+
+  ~GlPersistentBuffer();
+
+  void* data() { return data_; }
+
+ private:
+  void* data_;
+};
+
+// Creates read-write persistent buffer with valid CPU pointer
+Status CreatePersistentBuffer(size_t size, GlPersistentBuffer* gl_buffer);
+
 ////////////////////////////////////////////////////////////////////////////////
 // Implementation details are below.
 

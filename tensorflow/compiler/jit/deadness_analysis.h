@@ -82,6 +82,8 @@ class DeadnessAnalysis {
   virtual void Print() const = 0;
   virtual ~DeadnessAnalysis();
 
+  string DebugString(DeadnessPredicate predicate) const;
+
   // Run the deadness analysis over `graph` and returns an error or a populated
   // instance of DeadnessAnalysis in `result`.
   static Status Run(const Graph& graph,

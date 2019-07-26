@@ -32,14 +32,16 @@ upper_tabs:
       - heading: "Convert a model"
       - title: "TensorFlow Lite converter"
         path: /lite/convert/
+      - title: "Python API"
+        path: /lite/convert/python_api
       - title: "Command line examples"
         path: /lite/convert/cmdline_examples
       - title: "Command line reference"
         path: /lite/convert/cmdline_reference
-      - title: "Python API"
-        path: /lite/convert/python_api
       - title: "Convert quantized models"
         path: /lite/convert/quantization
+      - title: "Convert RNN models"
+        path: /lite/convert/rnn
 
       - heading: "Convert a TensorFlow 2.0 model"
       - title: "TensorFlow Lite converter and 2.0"
@@ -74,6 +76,8 @@ upper_tabs:
         path: /lite/performance/post_training_quantization
       - title: "Post-training quantization example"
         path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb
+      - title: "Post-training integer quantization example"
+        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_integer_quant.ipynb
         status: external
       - title: "Delegates"
         path: /lite/performance/delegates
@@ -81,6 +85,8 @@ upper_tabs:
         path: /lite/performance/gpu
       - title: "Advanced GPU"
         path: /lite/performance/gpu_advanced
+      - title: "Quantization specification"
+        path: /lite/performance/quantization_spec
 
       - heading: "Build TensorFlow Lite"
       - title: "Build for iOS"
@@ -126,11 +132,17 @@ upper_tabs:
       - title: "Smart reply"
         path: /lite/models/smart_reply/overview
 
-    - name: "API"
+    - name: "Python API"
       skip_translation: true
       contents:
-      - title: "API"
+      - title: "Python API"
         path: /api_docs/python/tf/lite
+    - name: "C++ API"
+      skip_translation: true
+      contents:
+      - title: "C++ API"
+        path: /lite/api_docs/cc/
+      - include: /lite/api_docs/cc/_doxygen.yaml
 
 - include: /api_docs/_upper_tabs_api.yaml
 - include: /resources/_upper_tabs_resources.yaml

@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
+from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python import keras
 from tensorflow.python.client import session
@@ -48,7 +49,20 @@ from tensorflow.python.saved_model import saved_model
 from tensorflow.python.training.training_util import write_graph
 
 
-class FromConstructor(test_util.TensorFlowTestCase):
+class TestModels(test_util.TensorFlowTestCase):
+
+  def assertValidDebugInfo(self, debug_info):
+    """Verify the DebugInfo is valid."""
+    file_names = set()
+    for file_path in debug_info.files:
+      file_names.add(os.path.basename(file_path))
+    # To make the test independent on how the nodes are created, we only assert
+    # the name of this test file.
+    self.assertIn('lite_test.py', file_names)
+    self.assertNotIn('lite_v2_test.py', file_names)
+
+
+class FromConstructor(TestModels):
 
   # Tests invalid constructors using a dummy value for the GraphDef.
   def testInvalidConstructor(self):
@@ -88,7 +102,7 @@ class FromConstructor(test_util.TensorFlowTestCase):
 
 
 @test_util.run_v1_only('Incompatible with 2.0.')
-class FromSessionTest(test_util.TensorFlowTestCase):
+class FromSessionTest(TestModels, parameterized.TestCase):
 
   def testFloat(self):
     in_tensor = array_ops.placeholder(
@@ -159,8 +173,9 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Convert model and ensure model is not None.
-    converter = lite.TFLiteConverter.from_session(
-        sess, [in_tensor_1, in_tensor_2], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess,
+                                                  [in_tensor_1, in_tensor_2],
+                                                  [out_tensor])
     converter.inference_type = lite_constants.QUANTIZED_UINT8
     converter.quantized_input_stats = {
         'inputA': (0., 1.),
@@ -204,8 +219,9 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Convert model and ensure model is not None.
-    converter = lite.TFLiteConverter.from_session(
-        sess, [in_tensor_1, in_tensor_2], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess,
+                                                  [in_tensor_1, in_tensor_2],
+                                                  [out_tensor])
     converter.inference_type = lite_constants.QUANTIZED_UINT8
     converter.quantized_input_stats = {'inputA': (0., 1.)}  # mean, std_dev
     with self.assertRaises(ValueError) as error:
@@ -600,7 +616,9 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # when targeting an integer only backend, quantization is mandatory.
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
-    quantized_converter.target_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
     quantized_converter.representative_dataset = calibration_gen
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
@@ -614,6 +632,137 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
     self.assertEqual(np.float32, output_details[0]['dtype'])
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
+  @parameterized.named_parameters(
+      # Quantize to Float16 even if rep data provided.
+      ('UseRepresentativeData', True, False, True, False, False),
+      # Quantize to Float16 if no rep data provided.
+      ('NoRepresentativeData', False, False, True, False, False),
+      # Post training quantization if both rep data and int8 included.
+      ('UseRepresentativeDataIncludeInt8', True, True, False, False, True),
+      # Error if no rep data and int8 included.
+      ('NoRepresentativeDataIncludeInt8', False, True, False, True, False))
+  def testQuantizeFloat16(self, use_rep_data, include_int8,
+                          is_float16_quantized, is_error,
+                          is_post_training_quantized):
+    inp, output, calibration_gen = self._getCalibrationQuantizeModel()
+    sess = session.Session()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+    interpreter = Interpreter(model_content=float_tflite)
+    interpreter.allocate_tensors()
+    self.assertEqual(interpreter.get_tensor_details()[0]['name'], 'Conv2D_bias')
+    self.assertEqual(interpreter.get_tensor_details()[0]['dtype'],
+                     lite.constants.FLOAT)
+    # Convert model to quantized version
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.target_spec.supported_types = [lite.constants.FLOAT16]
+    if include_int8:
+      quantized_converter.target_spec.supported_types.append(
+          lite.constants.INT8)
+    if use_rep_data:
+      quantized_converter.representative_dataset = calibration_gen
+
+    if is_error:
+      with self.assertRaises(ValueError) as error:
+        quantized_converter.convert()
+      self.assertEqual(
+          'representative_dataset is required when specifying '
+          'TFLITE_BUILTINS_INT8 or INT8 supported types.', str(error.exception))
+
+    else:
+      quantized_tflite = quantized_converter.convert()
+      self.assertTrue(quantized_tflite)
+      interpreter = Interpreter(model_content=quantized_tflite)
+      interpreter.allocate_tensors()
+      self.assertEqual(interpreter.get_tensor_details()[0]['name'],
+                       'Conv2D_bias')
+
+      if is_float16_quantized:
+        # Verify that bias constant is float16 type.
+        self.assertEqual(interpreter.get_tensor_details()[0]['dtype'],
+                         lite.constants.FLOAT16)
+      elif is_post_training_quantized:
+        # Verify that bias constants is int32 type.
+        self.assertEqual(interpreter.get_tensor_details()[0]['dtype'],
+                         lite.constants.INT32)
+      else:
+        raise ValueError('Invalid test options.')
+
+  def testInvalidQuantizeFloat16(self):
+    inp, output, _ = self._getCalibrationQuantizeModel()
+    sess = session.Session()
+
+    # Specify float16 quantization
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.target_spec.supported_types = [lite.constants.FLOAT16]
+    # Specifiy only int8 builtin ops
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
+    with self.assertRaises(ValueError) as error:
+      quantized_converter.convert()
+    self.assertEqual(
+        'TFLITE_BUILTINS_INT8 requires smallest supported type to be INT8.',
+        str(error.exception))
+
+  def testInvalidPostTrainingQuantize(self):
+    np.random.seed(0)
+    # We need the tensor to have more than 1024 elements for quantize_weights
+    # to kick in. Thus, the [33, 33] shape.
+    in_tensor_1 = array_ops.placeholder(
+        shape=[33, 33], dtype=dtypes.float32, name='inputA')
+    in_tensor_2 = constant_op.constant(
+        np.random.uniform(low=-10., high=10., size=(33, 33)),
+        shape=[33, 33],
+        dtype=dtypes.float32,
+        name='inputB')
+    out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
+    sess = session.Session()
+
+    # Attempt to convert to quantized weights model.
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [in_tensor_1], [out_tensor])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    # Restricting to int8 type only
+    quantized_converter.target_spec.supported_types = [lite.constants.INT8]
+    # A representative dataset is required for full fixed point quantization.
+    with self.assertRaises(ValueError) as error:
+      quantized_converter.convert()
+    self.assertEqual(
+        'representative_dataset is required when specifying '
+        'TFLITE_BUILTINS_INT8 or INT8 supported types.', str(error.exception))
+
+  def testPostTrainingCalibrateAndQuantizeFloatNotAllowed(self):
+    inp, output, calibration_gen = self._getCalibrationQuantizeModel()
+    sess = session.Session()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    # Convert quantized model.
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    quantized_converter.target_spec.supported_types = [lite.constants.INT8]
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+    # Ensure that restricting supported types to int8 forces
+    # all fixed point ops/tensors in converter.
+    self.assertTrue(quantized_converter._is_int8_target_required())
 
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
@@ -816,6 +965,65 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
+  def testResizingIntermediateDynamicTensor(self):
+    # This is a regression test for the case where shape of dynamic output
+    # tensors changes between invocations.
+    # See also https://github.com/tensorflow/tensorflow/issues/26549
+    input_tensor = array_ops.placeholder(shape=[1, 1], dtype=dtypes.float32)
+    input2_tensor = array_ops.placeholder(shape=[1], dtype=dtypes.float32)
+
+    # The bug is triggered only when dynamic tensor is intermediate. Putting
+    # some other ops around it.
+    neg = math_ops.negative(input2_tensor)
+    padding = array_ops.placeholder(shape=[2, 2], dtype=dtypes.int32)
+    output_tensor = array_ops.pad(input_tensor, padding) + neg
+
+    sess = session.Session()
+    converter = lite.TFLiteConverter.from_session(
+        sess, [input_tensor, padding, input2_tensor], [output_tensor])
+    tflite_model = converter.convert()
+
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    interpreter.set_tensor(input_details[1]['index'],
+                           np.array([[1, 1], [1, 1]], dtype=np.int32))
+    interpreter.invoke()
+
+    # Without the fix, invocation will fail when changing the shape of
+    # intermediate dynamic tensors.
+    interpreter.set_tensor(input_details[1]['index'],
+                           np.array([[2, 2], [2, 2]], dtype=np.int32))
+    interpreter.invoke()
+
+  def testGraphDebugInfo(self):
+    """Test a session has debug info captured."""
+
+    @def_function.function
+    def plus_placeholder(x, placeholder):
+      return x + placeholder
+
+    with ops.Graph().as_default():
+      placeholder = array_ops.placeholder(
+          dtype=dtypes.float32, shape=[1], name='input')
+      variable_node = variables.Variable(1.0, name='variable_node')
+      defun_node = plus_placeholder(variable_node, placeholder)
+      output_node = math_ops.multiply(defun_node, 2.0, name='output_node')
+
+      # Initialize variables in the model.
+      sess = session.Session()
+      sess.run(variables.variables_initializer([variable_node]))
+
+    converter = lite.TFLiteConverter.from_session(sess, [placeholder],
+                                                  [output_node])
+    converter.convert()
+    self.assertValidDebugInfo(converter._debug_info)
+
+    # Check the add node in the inlined function is included.
+    func = sess.graph.as_graph_def().library.function[0].signature.name
+    self.assertIn((func + 'add'), converter._debug_info.traces)
+
 
 @test_util.run_v1_only('Incompatible with 2.0.')
 class FromFrozenGraphFile(test_util.TensorFlowTestCase):
@@ -978,6 +1186,25 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
+  def testGraphDebugInfo(self):
+    """Test a frozen graph doesn't have debug info captured."""
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    _ = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Write graph to file.
+    graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
+    write_graph(sess.graph_def, '', graph_def_file, False)
+    sess.close()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
+                                                     ['Placeholder'], ['add'])
+    converter.convert()
+    # GraphDebugInfo should be none for frozen graph.
+    self.assertTrue(not converter._debug_info)
+
 
 class FromFrozenGraphObjectDetection(test_util.TensorFlowTestCase):
 
@@ -1005,9 +1232,10 @@ class FromFrozenGraphObjectDetection(test_util.TensorFlowTestCase):
     # Tests the object detection model that cannot be loaded in TensorFlow.
     self._initObjectDetectionArgs()
 
-    converter = lite.TFLiteConverter.from_frozen_graph(
-        self._graph_def_file, self._input_arrays, self._output_arrays,
-        self._input_shapes)
+    converter = lite.TFLiteConverter.from_frozen_graph(self._graph_def_file,
+                                                       self._input_arrays,
+                                                       self._output_arrays,
+                                                       self._input_shapes)
     converter.allow_custom_ops = True
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
@@ -1046,8 +1274,9 @@ class FromFrozenGraphObjectDetection(test_util.TensorFlowTestCase):
 
     # Missing `input_shapes`.
     with self.assertRaises(ValueError) as error:
-      lite.TFLiteConverter.from_frozen_graph(
-          self._graph_def_file, self._input_arrays, self._output_arrays)
+      lite.TFLiteConverter.from_frozen_graph(self._graph_def_file,
+                                             self._input_arrays,
+                                             self._output_arrays)
     self.assertEqual('input_shapes must be defined for this model.',
                      str(error.exception))
 
@@ -1068,7 +1297,7 @@ class FromFrozenGraphObjectDetection(test_util.TensorFlowTestCase):
 
 
 @test_util.run_v1_only('Incompatible with 2.0.')
-class FromSavedModelTest(test_util.TensorFlowTestCase):
+class FromSavedModelTest(TestModels):
 
   def _createSavedModel(self, shape):
     """Create a simple SavedModel."""
@@ -1188,15 +1417,17 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
         input_arrays=['inputA'],
         input_shapes={'inputA': [1, 16, 16, 3]})
 
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+    # Since we only partially specify the input, this is not allowed.
+    with self.assertRaises(ConverterError):
+      _ = converter.convert()
 
     # Check case where input shape is None.
     converter = lite.TFLiteConverter.from_saved_model(
         saved_model_dir, input_arrays=['inputA'], input_shapes={'inputA': None})
 
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
+    # Since we only partially specify the input, this is not allowed.
+    with self.assertRaises(ConverterError):
+      _ = converter.convert()
 
   def testSimpleModelTocoConverter(self):
     """Test a SavedModel with deprecated TocoConverter."""
@@ -1210,6 +1441,13 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
     # Ensure the model is able to load.
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
+
+  def testGraphDebugInfo(self):
+    """Test a SavedModel has debug info captured."""
+    saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
+    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.convert()
+    self.assertValidDebugInfo(converter._debug_info)
 
 
 class MyAddLayer(keras.layers.Layer):
@@ -1228,7 +1466,7 @@ class MyAddLayer(keras.layers.Layer):
 
 
 @test_util.run_v1_only('Incompatible with 2.0.')
-class FromKerasFile(test_util.TensorFlowTestCase, parameterized.TestCase):
+class FromKerasFile(TestModels, parameterized.TestCase):
 
   def setUp(self):
     super(FromKerasFile, self).setUp()
@@ -1590,9 +1828,19 @@ class FromKerasFile(test_util.TensorFlowTestCase, parameterized.TestCase):
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
+  @parameterized.named_parameters(('_graph', context.graph_mode),
+                                  ('_eager', context.eager_mode))
+  def testGraphDebugInfo(self, test_context):
+    """Test a Sequential tf.keras model has debug info captured."""
+    with test_context():
+      self._getSequentialModel()
+      converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
+      converter.convert()
+      self.assertValidDebugInfo(converter._debug_info)
+
 
 @test_util.run_v1_only('Incompatible with 2.0.')
-class GrapplerTest(test_util.TensorFlowTestCase):
+class GrapplerTest(TestModels):
 
   def testConstantFolding(self):
     # Constant folding handles the tf.broadcast_to operation which was not

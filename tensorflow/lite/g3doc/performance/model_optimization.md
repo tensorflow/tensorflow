@@ -1,35 +1,14 @@
 # Model optimization
 
-The *Tensorflow Model Optimization Toolkit* minimizes the complexity
-of optimizing inference. Inference efficiency
-is a critical issue when deploying machine learning
-models to mobile devices because of the model size, latency, and power consumption.
+Tensorflow Lite and the
+[Tensorflow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization)
+provide tools to minimize the complexity of optimizing inference.
 
-Computational demand for *training*
-grows with the number of models trained on different architectures, whereas the
-computational demand for *inference* grows in proportion to the number of
-users.
-
-## Use cases
-
-Model optimization is useful for:
-
-* Deploying models to edge devices with restrictions on processing, memory, or power-consumption.
-  For example, mobile and Internet of Things (IoT) devices.
-* Reduce the payload size for over-the-air model updates.
-* Execution on hardware constrained by fixed-point operations.
-* Optimize models for special purpose hardware accelerators.
-
-
-## Optimization methods
-
-Model optimization uses multiple techniques:
-
-* Reduce parameter count with pruning and structured pruning.
-* Reduce representational precision with quantization.
-* Update the original model topology to a more efficient one with reduced parameters or faster execution. For example, tensor decomposition methods and distillation.
-
-We support quantization, and are working to add support for other techniques.
+Inference efficiency is particularly important for edge devices, such as mobile
+and Internet of Things (IoT). Such devices have many restrictions on processing,
+memory, power-consumption, and storage for models. Furthermore, model
+optimization unlocks the processing power of fixed-point hardware and next
+generation hardware accelerators.
 
 ## Model quantization
 
@@ -43,8 +22,12 @@ computation. Quantization provides several benefits:
 
 TensorFlow Lite provides several levels of support for quantization.
 
-* [Post-training quantization](post_training_quantization.md) quantizes weights and activations post training and is very easy to use.
-* [Quantization-aware training](https://github.com/tensorflow/tensorflow/tree/r1.13/tensorflow/contrib/quantize){:.external} allows for training networks that can be quantized with minimal accuracy drop and is only available for a subset of convolutional neural network architectures.
+*   Tensorflow Lite [post-training quantization](post_training_quantization.md)
+    quantizes weights and activations post training easily.
+*   [Quantization-aware training](https://github.com/tensorflow/tensorflow/tree/r1.13/tensorflow/contrib/quantize){:.external}
+    allows for training of networks that can be quantized with minimal accuracy
+    drop; this is only available for a subset of convolutional neural network
+    architectures.
 
 ### Latency and accuracy results
 
@@ -78,12 +61,18 @@ Pixel&nbsp;2 devices using a single big core. As the toolkit improves, so will t
   </figcaption>
 </figure>
 
-## Choice of quantization tool
+## Choice of tool
 
-As a starting point, check if the models in [hosted models](../guide/hosted_models.md) can work for
-your application. If not, we recommend that users start with the [post-training quantization tool](post_training_quantization.md)
-since this is broadly applicable and does not require training data. For cases where the accuracy
-and latency targets are not met, or hardware accelerator support is important, [quantization-aware
-training](https://github.com/tensorflow/tensorflow/tree/r1.13/tensorflow/contrib/quantize){:.external} is the better option.
+As a starting point, check if the models in
+[hosted models](../guide/hosted_models.md) can work for your application. If
+not, we recommend that users start with the
+[post-training quantization tool](post_training_quantization.md) since this is
+broadly applicable and does not require training data.
+
+For cases where the accuracy and latency targets are not met, or hardware
+accelerator support is important,
+[quantization-aware training](https://github.com/tensorflow/tensorflow/tree/r1.13/tensorflow/contrib/quantize){:.external}
+is the better option. See additional optimization techniques under the
+[Tensorflow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization).
 
 Note: Quantization-aware training supports a subset of convolutional neural network architectures.

@@ -275,7 +275,7 @@ std::unordered_set<string> Scope::Impl::GetColocationConstraints(
   if (GetNodeAttr(attrs, kColocationAttrName, &node_constraints).ok()) {
     for (const string& entry : node_constraints) {
       StringPiece s(entry);
-      if (str_util::ConsumePrefix(&s, kColocationGroupPrefix)) {
+      if (absl::ConsumePrefix(&s, kColocationGroupPrefix)) {
         current_constraints.emplace(s);
       }
     }
@@ -318,7 +318,7 @@ Status Scope::ToGraph(Graph* g, GraphConstructorOptions opts) const {
   if (ok()) {
     GraphDef graph_def;
     graph()->ToGraphDef(&graph_def);
-    UpdateStatus(ConvertGraphDefToGraph(opts, graph_def, g));
+    UpdateStatus(ConvertGraphDefToGraph(opts, std::move(graph_def), g));
   }
   return *impl()->status_;
 }

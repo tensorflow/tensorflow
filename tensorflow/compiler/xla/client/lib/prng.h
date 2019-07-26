@@ -66,12 +66,14 @@ RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state, const Shape& shape,
 // Uses the given bit generator to generate random bits and then converts the
 // random bits to random numbers of uniform distribution in the given range.
 // Returns the random numbers and the state of the random number generator.
-// This function is for shape with float element type.
-RngOutput UniformF32Distribution(XlaOp key, XlaOp initial_state,
-                                 BitGeneratorTy bit_generator, XlaOp minval,
-                                 XlaOp maxval, const xla::Shape& shape);
+// This function is for shape with floating point element types.
+RngOutput UniformFloatingPointDistribution(XlaOp key, XlaOp initial_state,
+                                           BitGeneratorTy bit_generator,
+                                           XlaOp minval, XlaOp maxval,
+                                           const xla::Shape& shape);
 
-// Similar to UniformF32Distribution but for shape with integer element types.
+// Similar to UniformFloatingPointDistribution but for shape with integer
+// element types.
 RngOutput UniformIntDistribution(XlaOp key, XlaOp initial_state,
                                  BitGeneratorTy bit_generator, XlaOp minval,
                                  XlaOp maxval, const xla::Shape& shape);
@@ -79,9 +81,9 @@ RngOutput UniformIntDistribution(XlaOp key, XlaOp initial_state,
 // Uses the given bit generator to generate random bits and then converts the
 // random bits to random numbers of normal distribution.
 // Returns the random numbers and the state of the random number generator.
-RngOutput NormalF32Distribution(XlaOp key, XlaOp initial_state,
-                                BitGeneratorTy bit_generator,
-                                const xla::Shape& shape);
+RngOutput NormalFloatingPointDistribution(XlaOp key, XlaOp initial_state,
+                                          BitGeneratorTy bit_generator,
+                                          const xla::Shape& shape);
 
 // Concatenates scalars into a vector.
 xla::XlaOp ConcatScalars(xla::XlaBuilder* builder,

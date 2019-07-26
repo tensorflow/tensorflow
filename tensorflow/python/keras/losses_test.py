@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.platform import test
@@ -110,6 +111,28 @@ class KerasLossesTest(test.TestCase):
         keras.backend.eval(output_from_softmax), atol=1e-5)
 
   @test_util.run_in_graph_and_eager_modes
+  def test_categorical_crossentropy_loss_with_unknown_rank_tensor(self):
+    t = keras.backend.placeholder()
+    p = keras.backend.placeholder()
+    o = keras.losses.categorical_crossentropy(t, p)
+
+    t_val = ops.convert_to_tensor([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]])
+    p_val = ops.convert_to_tensor([[.9, .05, .05], [.05, .89, .06],
+                                   [.05, .01, .94]])
+    f = keras.backend.function([t, p], o)
+
+    result = f([t_val, p_val])
+    self.assertArrayNear(result, [.105, .116, .062], 1e-3)
+
+    # from logits
+    p_val = ops.convert_to_tensor([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    o = keras.losses.categorical_crossentropy(t, p, from_logits=True)
+    f = keras.backend.function([t, p], o)
+
+    result = f([t_val, p_val])
+    self.assertArrayNear(result, [.002, 0, .17], 1e-3)
+
+  @test_util.run_in_graph_and_eager_modes
   def test_sparse_categorical_crossentropy_loss(self):
     target = keras.backend.variable(np.random.randint(0, 1, (5, 1)))
     logits = keras.backend.variable(np.random.random((5, 1)))
@@ -121,6 +144,28 @@ class KerasLossesTest(test.TestCase):
     np.testing.assert_allclose(
         keras.backend.eval(output_from_logit),
         keras.backend.eval(output_from_softmax), atol=1e-5)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_categorical_crossentropy_loss_with_unknown_rank_tensor(self):
+    t = keras.backend.placeholder()
+    p = keras.backend.placeholder()
+    o = keras.losses.sparse_categorical_crossentropy(t, p)
+
+    t_val = ops.convert_to_tensor([0, 1, 2])
+    p_val = ops.convert_to_tensor([[.9, .05, .05], [.05, .89, .06],
+                                   [.05, .01, .94]])
+    f = keras.backend.function([t, p], o)
+
+    result = f([t_val, p_val])
+    self.assertArrayNear(result, [.105, .116, .062], 1e-3)
+
+    # from logits
+    p_val = ops.convert_to_tensor([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    o = keras.losses.sparse_categorical_crossentropy(t, p, from_logits=True)
+    f = keras.backend.function([t, p], o)
+
+    result = f([t_val, p_val])
+    self.assertArrayNear(result, [.002, 0, .17], 1e-3)
 
   @test_util.run_in_graph_and_eager_modes
   def test_binary_crossentropy_loss(self):
@@ -278,8 +323,8 @@ class MeanSquaredErrorTest(test.TestCase):
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3, 1))
     sample_weight = constant_op.constant([3, 6, 5, 0], shape=(2, 2))
-    with self.assertRaisesRegexp(
-        ValueError, r'Shapes \(2, 2\) and \(2, 3\) are incompatible'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'weights can not be broadcast to values'):
       mse_obj(y_true, y_pred, sample_weight=sample_weight)
 
   def test_no_reduction(self):
@@ -371,8 +416,8 @@ class MeanAbsoluteErrorTest(test.TestCase):
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3, 1))
     sample_weight = constant_op.constant([3, 6, 5, 0], shape=(2, 2))
-    with self.assertRaisesRegexp(
-        ValueError, r'Shapes \(2, 2\) and \(2, 3\) are incompatible'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'weights can not be broadcast to values'):
       mae_obj(y_true, y_pred, sample_weight=sample_weight)
 
   def test_no_reduction(self):
@@ -405,6 +450,14 @@ class MeanAbsolutePercentageErrorTest(test.TestCase):
         reduction=losses_utils.ReductionV2.SUM, name='mape_1')
     self.assertEqual(mape_obj.name, 'mape_1')
     self.assertEqual(mape_obj.reduction, losses_utils.ReductionV2.SUM)
+
+  def test_all_correct_unweighted(self):
+    mape_obj = keras.losses.MeanAbsolutePercentageError()
+    y_true = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = mape_obj(y_true, y_true)
+    self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
   def test_unweighted(self):
     mape_obj = keras.losses.MeanAbsolutePercentageError()
@@ -452,6 +505,17 @@ class MeanAbsolutePercentageErrorTest(test.TestCase):
                                   dtype=dtypes.float32)
     loss = mape_obj(y_true, y_pred, sample_weight=0)
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
+
+  def test_no_reduction(self):
+    mape_obj = keras.losses.MeanAbsolutePercentageError(
+        reduction=losses_utils.ReductionV2.NONE)
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = mape_obj(y_true, y_pred, sample_weight=2.3)
+    loss = self.evaluate(loss)
+    self.assertArrayNear(loss, [621.8518, 352.6666], 1e-3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -862,6 +926,12 @@ class CategoricalCrossentropyTest(test.TestCase):
 
 @test_util.run_all_in_graph_and_eager_modes
 class SparseCategoricalCrossentropyTest(test.TestCase):
+
+  def test_config(self):
+    cce_obj = keras.losses.SparseCategoricalCrossentropy(
+        reduction=losses_utils.ReductionV2.SUM, name='scc')
+    self.assertEqual(cce_obj.name, 'scc')
+    self.assertEqual(cce_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_all_correct_unweighted(self):
     y_true = constant_op.constant([[0], [1], [2]], dtype=dtypes.int64)

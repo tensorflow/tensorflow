@@ -334,8 +334,8 @@ TEST(TensorSliceWriteTest, SizeErrors) {
     const std::vector<int8> data(300000000, -1);
     Status s = writer.Add("test1", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-    EXPECT_TRUE(str_util::StrContains(
-        s.error_message(), "Tensor slice is too large to serialize"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "Tensor slice is too large to serialize"));
   }
 
   // Add a large string tensor slice, which will fail.
@@ -345,8 +345,8 @@ TEST(TensorSliceWriteTest, SizeErrors) {
     const std::vector<string> data(256 * 1024, std::string(8192, 'f'));
     Status s = writer.Add("test2", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-    EXPECT_TRUE(str_util::StrContains(
-        s.error_message(), "Tensor slice is too large to serialize"));
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "Tensor slice is too large to serialize"));
   }
 }
 

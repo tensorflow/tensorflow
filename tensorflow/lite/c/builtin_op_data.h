@@ -134,6 +134,12 @@ typedef struct {
 
   // Parameters for FullyConnected version 2 or above.
   TfLiteFullyConnectedWeightsFormat weights_format;
+
+  // Parameters for FullyConnected version 5 or above.
+  // If set to true, then the number of dimensions in the input and the output
+  // tensors are the same. Furthermore, all but the last dimension of the input
+  // and output shapes will be equal.
+  bool keep_num_dims;
 } TfLiteFullyConnectedParams;
 
 typedef enum {
@@ -384,6 +390,16 @@ typedef struct {
 typedef struct {
   EmptyStructPlaceholder placeholder;
 } TfLiteMatrixSetDiagParams;
+
+typedef struct {
+  int then_subgraph_index;
+  int else_subgraph_index;
+} TfLiteIfParams;
+
+typedef struct {
+  int cond_subgraph_index;
+  int body_subgraph_index;
+} TfLiteWhileParams;
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -71,11 +71,7 @@ def smart_constant_value(pred):
   Raises:
     TypeError: If `pred` is not a Tensor or bool.
   """
-  if pred in {0, 1}:  # Accept 1/0 as valid boolean values
-    pred_value = bool(pred)
-  elif isinstance(pred, bool):
-    pred_value = pred
-  elif isinstance(pred, ops.Tensor):
+  if isinstance(pred, ops.Tensor):
     pred_value = tensor_util.constant_value(pred)
     # TODO(skyewm): consider folding this into tensor_util.constant_value.
     # pylint: disable=protected-access
@@ -83,10 +79,14 @@ def smart_constant_value(pred):
       pred_value = c_api.TF_TryEvaluateConstant_wrapper(pred.graph._c_graph,
                                                         pred._as_tf_output())
     # pylint: enable=protected-access
-
+  elif pred in {0, 1}:  # Accept 1/0 as valid boolean values
+    pred_value = bool(pred)
+  elif isinstance(pred, bool):
+    pred_value = pred
   else:
     raise TypeError("`pred` must be a Tensor, or a Python bool, or 1 or 0. "
-                    "Found instead: %s" % pred)
+                    "Found instead: %s" % type(pred))
+
   return pred_value
 
 

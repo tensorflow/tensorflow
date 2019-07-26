@@ -103,7 +103,7 @@ def train():
   with tf.name_scope('dropout'):
     keep_prob = tf.placeholder(tf.float32)
     tf.summary.scalar('dropout_keep_probability', keep_prob)
-    dropped = tf.nn.dropout(hidden1, keep_prob)
+    dropped = tf.nn.dropout(hidden1, rate=(1 - keep_prob))
 
   # Do not apply softmax activation yet, see below.
   y = nn_layer(dropped, 500, 10, 'layer2', act=tf.identity)

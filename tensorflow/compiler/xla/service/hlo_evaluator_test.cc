@@ -129,6 +129,62 @@ class HloEvaluatorTest : public HloTestBase {
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
   }
 
+  std::unique_ptr<HloComputation> MaxComputationScalarF32() {
+    HloComputation::Builder max_computation("max");
+    Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+    auto param_lhs = max_computation.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+    auto param_rhs = max_computation.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+    max_computation.AddInstruction(HloInstruction::CreateBinary(
+        scalar_shape, HloOpcode::kMaximum, param_lhs, param_rhs));
+    return max_computation.Build();
+  }
+
+  void ReduceWindowMaxIotaTest(int window_size, int padding, int stride,
+                               int window_dilation, int base_dilation,
+                               const Literal& expected) {
+    HloComputation::Builder b(TestName());
+
+    // arg:
+    // f32[4,4] {
+    //  {  0,  1,  2,  3 },
+    //  {  4,  5,  6,  7 },
+    //  {  8,  9, 10, 11 },
+    //  { 12, 13, 14, 15 }
+    // }
+    auto arg_array = absl::make_unique<Array2D<float>>(4, 4);
+    arg_array->FillIota(0);
+    auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
+
+    HloInstruction* arg_instruction = b.AddInstruction(
+        HloInstruction::CreateConstant(std::move(arg_literal)));
+    auto init_value = b.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.f)));
+    auto max_func = m_->AddEmbeddedComputation(MaxComputationScalarF32());
+
+    Window window;
+    WindowDimension dim;
+    dim.set_size(window_size);
+    dim.set_stride(stride);
+    dim.set_padding_low(padding);
+    dim.set_padding_high(padding);
+    dim.set_window_dilation(window_dilation);
+    dim.set_base_dilation(base_dilation);
+    *window.add_dimensions() = dim;
+    *window.add_dimensions() = dim;
+
+    int dim0 = expected.shape().dimensions(0);
+    int dim1 = expected.shape().dimensions(1);
+    Shape shape = ShapeUtil::MakeShape(F32, {dim0, dim1});
+    b.AddInstruction(HloInstruction::CreateReduceWindow(
+        shape, arg_instruction, init_value, window, max_func));
+
+    m_->AddEntryComputation(b.Build());
+    TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  }
+
  protected:
   explicit HloEvaluatorTest(bool use_bfloat16) : use_bfloat16_(use_bfloat16) {
     InitializeFftData();
@@ -2585,16 +2641,7 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowMax) {
 
   auto init_value = b.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.f)));
-
-  HloComputation::Builder max_computation("max");
-  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
-  auto param_lhs = max_computation.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
-  auto param_rhs = max_computation.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
-  max_computation.AddInstruction(HloInstruction::CreateBinary(
-      scalar_shape, HloOpcode::kMaximum, param_lhs, param_rhs));
-  auto max_func = m_->AddEmbeddedComputation(max_computation.Build());
+  auto max_func = m_->AddEmbeddedComputation(MaxComputationScalarF32());
 
   Window window;
   WindowDimension dim;
@@ -2619,56 +2666,79 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowMax) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
-TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxWindowDilation) {
-  HloComputation::Builder b(TestName());
+TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaWindowDilation) {
+  auto expected = LiteralUtil::CreateR2<float>({{10, 11}, {14, 15}});
+  ReduceWindowMaxIotaTest(
+      /*window_size=*/2,
+      /*padding=*/0,
+      /*stride=*/1,
+      /*window_dilation=*/2,
+      /*base_dilation=*/1,
+      /*expected=*/expected);
+}
 
-  // arg:
-  // f32[3,3] {
-  //  { 1, 2, 3 },
-  //  { 5, 6, 7 },
-  //  { 9, 10, 11 },
-  // }
-  auto arg_array = absl::make_unique<Array2D<float>>(3, 3);
-  arg_array->FillUnique(1.0f);
-  auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
+TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaStrideWindowDilation) {
+  auto expected = LiteralUtil::CreateR2<float>({{10}});
+  ReduceWindowMaxIotaTest(
+      /*window_size=*/2,
+      /*padding=*/0,
+      /*stride=*/2,
+      /*window_dilation=*/2,
+      /*base_dilation=*/1,
+      /*expected=*/expected);
+}
 
-  HloInstruction* arg_instruction =
-      b.AddInstruction(HloInstruction::CreateConstant(std::move(arg_literal)));
+TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaBaseDilation) {
+  auto expected = LiteralUtil::CreateR2<float>({{0, 1, 1, 2, 2, 3},
+                                                {4, 5, 5, 6, 6, 7},
+                                                {4, 5, 5, 6, 6, 7},
+                                                {8, 9, 9, 10, 10, 11},
+                                                {8, 9, 9, 10, 10, 11},
+                                                {12, 13, 13, 14, 14, 15}});
+  ReduceWindowMaxIotaTest(
+      /*window_size=*/2,
+      /*padding=*/0,
+      /*stride=*/1,
+      /*window_dilation=*/1,
+      /*base_dilation=*/2,
+      /*expected=*/expected);
+}
 
-  auto init_value = b.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.f)));
+TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaStrideBaseDilation) {
+  auto expected =
+      LiteralUtil::CreateR2<float>({{0, 1, 2}, {4, 5, 6}, {8, 9, 10}});
+  ReduceWindowMaxIotaTest(
+      /*window_size=*/2,
+      /*padding=*/0,
+      /*stride=*/2,
+      /*window_dilation=*/1,
+      /*base_dilation=*/2,
+      /*expected=*/expected);
+}
 
-  HloComputation::Builder max_computation("max");
-  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
-  auto param_lhs = max_computation.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
-  auto param_rhs = max_computation.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
-  max_computation.AddInstruction(HloInstruction::CreateBinary(
-      scalar_shape, HloOpcode::kMaximum, param_lhs, param_rhs));
-  auto max_func = m_->AddEmbeddedComputation(max_computation.Build());
+TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaStrideBothDilation) {
+  auto expected =
+      LiteralUtil::CreateR2<float>({{5, 6, 7}, {9, 10, 11}, {13, 14, 15}});
+  ReduceWindowMaxIotaTest(
+      /*window_size=*/2,
+      /*padding=*/0,
+      /*stride=*/2,
+      /*window_dilation=*/2,
+      /*base_dilation=*/2,
+      /*expected=*/expected);
+}
 
-  Window window;
-  WindowDimension dim;
-  dim.set_size(2);
-  dim.set_stride(1);
-  dim.set_padding_low(0);
-  dim.set_padding_high(0);
-  dim.set_window_dilation(2);
-  dim.set_base_dilation(1);
-  *window.add_dimensions() = dim;
-  *window.add_dimensions() = dim;
-
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 1});
-  b.AddInstruction(HloInstruction::CreateReduceWindow(
-      shape, arg_instruction, init_value, window, max_func));
-
-  m_->AddEntryComputation(b.Build());
-
-  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
-
-  auto expected = LiteralUtil::CreateR2<float>({{11}});
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+TEST_P(HloEvaluatorBf16Test, ReduceWindowMaxIotaPaddingStrideBaseDilation) {
+  // The base is dilated first, and then padding is applied, hence this result.
+  auto expected =
+      LiteralUtil::CreateR2<float>({{0, 2, 3}, {8, 10, 11}, {12, 14, 15}});
+  ReduceWindowMaxIotaTest(
+      /*window_size=*/3,
+      /*padding=*/1,
+      /*stride=*/3,
+      /*window_dilation=*/1,
+      /*base_dilation=*/2,
+      /*expected=*/expected);
 }
 
 TEST_P(HloEvaluatorBf16Test, ReduceWindowAdd) {

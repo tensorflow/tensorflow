@@ -28,7 +28,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-Worker::Worker(WorkerEnv* env) : env_(env), recent_request_ids_(100000) {}
+Worker::Worker(WorkerEnv* env) : env_(env), recent_request_ids_(100000) {
+  // Enable log history collection in StatusGroup so that recent warning and
+  // error log messages will be attached to the root error status to be
+  // forwarded to the master.
+  StatusGroup::ConfigureLogHistory();
+}
 
 void Worker::GetStatusAsync(const GetStatusRequest* request,
                             GetStatusResponse* response, StatusCallback done) {
@@ -191,8 +196,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
   ProfilerSession* profiler_session = nullptr;
   if (collector && request->exec_opts().record_timeline()) {
     // If timeline was requested, assume we want hardware level tracing.
-    profiler_session =
-        ProfilerSession::Create(/*ProfilerContext*/ nullptr).release();
+    profiler_session = ProfilerSession::Create().release();
   }
   CancellationManager* cm = new CancellationManager;
   opts->SetCancelCallback([this, cm, step_id]() {

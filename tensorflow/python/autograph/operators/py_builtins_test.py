@@ -137,6 +137,67 @@ class PyBuiltinsTest(test.TestCase):
       r = py_builtins.range_(5, constant_op.constant(2))
       self.assertAllEqual(self.evaluate(r), [])
 
+  def test_eval_in_original_context(self):
+
+    def caller_1(lvl_delta):
+      l = 1  # pylint:disable=unused-variable
+      return py_builtins.eval_in_original_context(eval, ('l',), lvl_delta)
+
+    def caller_2(lvl_delta):
+      l = 2  # pylint:disable=unused-variable
+      return caller_1(lvl_delta)
+
+    def caller_3(lvl_delta):
+      l = 3  # pylint:disable=unused-variable
+      return caller_2(lvl_delta)
+
+    self.assertEqual(caller_3(0), 1)
+    self.assertEqual(caller_3(1), 2)
+    self.assertEqual(caller_3(2), 3)
+
+  def test_super_with_one_arg_in_original_context(self):
+    test_case_self = self
+
+    class TestBase(object):
+
+      def plus_twenty(self, x):
+        return x + 20
+
+    class TestSubclass(TestBase):
+
+      def plus_twenty(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def one_arg(self):
+        test_base_unbound = py_builtins.super_in_original_context(
+            super, (TestSubclass,), 0)
+        test_base = test_base_unbound.__get__(self, TestSubclass)
+        return test_base.plus_twenty(1)
+
+    tc = TestSubclass()
+    self.assertEqual(tc.one_arg(), 21)
+
+  def test_super_with_two_args_in_original_context(self):
+    test_case_self = self
+
+    class TestBase(object):
+
+      def plus_twenty(self, x):
+        return x + 20
+
+    class TestSubclass(TestBase):
+
+      def plus_twenty(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def two_args(self):
+        test_base = py_builtins.super_in_original_context(
+            super, (TestSubclass, self), 0)
+        return test_base.plus_twenty(1)
+
+    tc = TestSubclass()
+    self.assertEqual(tc.two_args(), 21)
+
 
 if __name__ == '__main__':
   test.main()

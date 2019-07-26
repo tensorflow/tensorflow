@@ -21,6 +21,7 @@ from __future__ import print_function
 import functools
 import operator
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -43,7 +44,7 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.util import compat
 
 
-class VariablesTestCase(test.TestCase):
+class VariablesTestCase(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testDistributeStrategy(self):
@@ -108,6 +109,17 @@ class VariablesTestCase(test.TestCase):
       self.assertAllClose(self.evaluate(rnd), self.evaluate(dep))
       self.assertAllClose(
           self.evaluate(rnd) + self.evaluate(dep) + 2.0, self.evaluate(depdep))
+
+  @test_util.run_deprecated_v1
+  def testCyclicInitializer(self):
+    with self.cached_session():
+      cyclic = control_flow_ops.while_loop(
+          cond=lambda i: i < 10,
+          body=lambda i: i + 1,
+          loop_vars=(constant_op.constant(0),))
+      initial_value = variables._try_guard_against_uninitialized_dependencies(
+          "test", cyclic)
+      self.assertIs(initial_value, cyclic)
 
   def testIterable(self):
     with self.assertRaisesRegexp(TypeError, "not iterable"):
@@ -599,6 +611,22 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual(v.name, "foo/bar:0")
     with ops.get_default_graph().as_default():
       create_variable()
+
+  @parameterized.parameters(variables.VariableV1, variables.Variable)
+  def testTrainableVariable(self, cls):
+    v1 = cls(1.0)
+    self.assertEqual(True, v1.trainable)
+
+    v2 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ)
+    self.assertEqual(False, v2.trainable)
+
+    v3 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ,
+             trainable=True)
+    self.assertEqual(True, v3.trainable)
+
+    v4 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ,
+             trainable=False)
+    self.assertEqual(False, v4.trainable)
 
 
 class IsInitializedTest(test.TestCase):

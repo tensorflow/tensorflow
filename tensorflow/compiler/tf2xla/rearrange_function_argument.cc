@@ -531,7 +531,7 @@ Status RearrangeFunctionArguments(
       bool node_rewritten;
       TF_RETURN_IF_ERROR(MaybeRewriteWhileNode(get_function_body_fn, g, n, fld,
                                                &node_rewritten));
-    } else if (n->type_string() == "If") {
+    } else if (n->IsIfNode()) {
       bool node_rewritten;
       TF_RETURN_IF_ERROR(
           MaybeRewriteIfNode(get_function_body_fn, g, n, fld, &node_rewritten));

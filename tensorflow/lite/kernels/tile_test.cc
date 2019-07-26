@@ -23,24 +23,16 @@ namespace tflite {
 namespace {
 
 using ::testing::ElementsAreArray;
-class TileOpModel : public SingleOpModel {
+class TileOpBaseModel : public SingleOpModel {
  public:
-  TileOpModel(std::initializer_list<int> input_shape, TensorType input_type,
-              TensorType multiply_type) {
-    input_ = AddInput(input_type);
-    multipliers_ = AddInput(TensorType_INT32);
-    output_ = AddOutput(input_type);
-    SetBuiltinOp(BuiltinOperator_TILE, BuiltinOptions_TileOptions, 0);
-    BuildInterpreter({input_shape, {static_cast<int>(input_shape.size())}});
-  }
-
   template <typename T>
   void SetInput(std::initializer_list<T> data) {
     PopulateTensor<T>(input_, data);
   }
 
-  void SetMultipliers(std::initializer_list<int32_t> data) {
-    PopulateTensor<int32_t>(multipliers_, data);
+  template <typename T>
+  void SetMultipliers(std::initializer_list<T> data) {
+    PopulateTensor<T>(multipliers_, data);
   }
 
   template <typename T>
@@ -57,30 +49,83 @@ class TileOpModel : public SingleOpModel {
 };
 
 template <typename T>
-void Check(std::initializer_list<int> input_shape,
-           std::initializer_list<T> input_data,
-           std::initializer_list<int> multipliers_data,
-           std::initializer_list<int> exp_output_shape,
-           std::initializer_list<T> exp_output_data, TensorType input_type,
-           TensorType multiply_type) {
-  TileOpModel m(input_shape, input_type, multiply_type);
-  m.SetInput(input_data);
-  m.SetMultipliers(multipliers_data);
-  m.Invoke();
+class TileOpConstModel : public TileOpBaseModel {
+ public:
+  TileOpConstModel(std::initializer_list<int> input_shape,
+                   TensorType input_type, TensorType multiply_type,
+                   std::initializer_list<T> multipliers_data) {
+    input_ = AddInput(input_type);
+    multipliers_ = AddConstInput(multiply_type, multipliers_data,
+                                 {static_cast<int>(multipliers_data.size())});
+    output_ = AddOutput(input_type);
+    SetBuiltinOp(BuiltinOperator_TILE, BuiltinOptions_TileOptions, 0);
+    BuildInterpreter({input_shape, {static_cast<int>(input_shape.size())}});
+  }
+};
 
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray(exp_output_shape));
-  EXPECT_THAT(m.GetOutput<T>(), ElementsAreArray(exp_output_data));
+class TileOpDynamicModel : public TileOpBaseModel {
+ public:
+  TileOpDynamicModel(std::initializer_list<int> input_shape,
+                     TensorType input_type, TensorType multiply_type) {
+    input_ = AddInput(input_type);
+    multipliers_ = AddInput(multiply_type);
+    output_ = AddOutput(input_type);
+    SetBuiltinOp(BuiltinOperator_TILE, BuiltinOptions_TileOptions, 0);
+    BuildInterpreter({input_shape, {static_cast<int>(input_shape.size())}});
+  }
+};
+
+enum class TestType {
+  kConst = 0,
+  kDynamic = 1,
+};
+
+template <typename InputType, typename MultipliersType = int32_t>
+void Check(std::initializer_list<int> input_shape,
+           std::initializer_list<InputType> input_data,
+           std::initializer_list<MultipliersType> multipliers_data,
+           std::initializer_list<int> exp_output_shape,
+           std::initializer_list<InputType> exp_output_data,
+           TensorType input_type, TensorType multiply_type,
+           TestType test_type) {
+  switch (test_type) {
+    case TestType::kConst: {
+      TileOpConstModel<MultipliersType> m(input_shape, input_type,
+                                          multiply_type, multipliers_data);
+      m.SetInput(input_data);
+      m.Invoke();
+
+      EXPECT_THAT(m.GetOutputShape(), ElementsAreArray(exp_output_shape));
+      EXPECT_THAT(m.template GetOutput<InputType>(),
+                  ElementsAreArray(exp_output_data));
+      return;
+    }
+    case TestType::kDynamic: {
+      TileOpDynamicModel m(input_shape, input_type, multiply_type);
+      m.SetInput(input_data);
+      m.SetMultipliers(multipliers_data);
+      m.Invoke();
+
+      EXPECT_THAT(m.GetOutputShape(), ElementsAreArray(exp_output_shape));
+      EXPECT_THAT(m.template GetOutput<InputType>(),
+                  ElementsAreArray(exp_output_data));
+      return;
+    }
+  }
 }
 
-TEST(TileTest, Float32Vector) {
-  Check<float>(/*input_shape=*/{3}, /*input_data=*/{1.0, 2.0, 3.0},
+class TileTest : public ::testing::TestWithParam<TestType> {};
+
+TEST_P(TileTest, Float32Vector) {
+  Check<float>(/*input_shape=*/{3},
+               /*input_data=*/{1.0, 2.0, 3.0},
                /*multipliers_data=*/{2}, /*exp_output_shape=*/{6},
                /*exp_output_data=*/{1.0, 2.0, 3.0, 1.0, 2.0, 3.0},
                /*input_type=*/TensorType_FLOAT32,
-               /*multiply_type=*/TensorType_INT32);
+               /*multiply_type=*/TensorType_INT32, GetParam());
 }
 
-TEST(TileTest, Float32Matrix) {
+TEST_P(TileTest, Float32Matrix) {
   Check<float>(
       /*input_shape=*/{2, 3},
       /*input_data=*/{11.f, 12.f, 13.f, 21.f, 22.f, 23.f},
@@ -88,10 +133,10 @@ TEST(TileTest, Float32Matrix) {
       /*exp_output_data=*/
       {11.f, 12.f, 13.f, 21.f, 22.f, 23.f, 11.f, 12.f, 13.f, 21.f, 22.f, 23.f},
       /*input_type=*/TensorType_FLOAT32,
-      /*multiply_type=*/TensorType_INT32);
+      /*multiply_type=*/TensorType_INT32, GetParam());
 }
 
-TEST(TileTest, Float32HighDimension) {
+TEST_P(TileTest, Float32HighDimension) {
   Check<float>(
       /*input_shape=*/{1, 2, 3},
       /*input_data=*/{11.f, 12.f, 13.f, 21.f, 22.f, 23.f},
@@ -102,30 +147,30 @@ TEST(TileTest, Float32HighDimension) {
                            11.f, 12.f, 13.f, 21.f, 22.f, 23.f, 11.f, 12.f,
                            13.f, 21.f, 22.f, 23.f},
       /*input_type=*/TensorType_FLOAT32,
-      /*multiply_type=*/TensorType_INT32);
+      /*multiply_type=*/TensorType_INT32, GetParam());
 }
 
-TEST(TileTest, Uint8Matrix) {
+TEST_P(TileTest, Uint8Matrix) {
   Check<uint8_t>(
       /*input_shape=*/{2, 3},
       /*input_data=*/{11, 12, 13, 21, 22, 23},
       /*multipliers_data=*/{2, 1}, /*exp_output_shape=*/{4, 3},
       /*exp_output_data=*/{11, 12, 13, 21, 22, 23, 11, 12, 13, 21, 22, 23},
       /*input_type=*/TensorType_UINT8,
-      /*multiply_type=*/TensorType_INT32);
+      /*multiply_type=*/TensorType_INT32, GetParam());
 }
 
-TEST(TileTest, Int32Matrix) {
+TEST_P(TileTest, Int32Matrix) {
   Check<int32_t>(
       /*input_shape=*/{2, 3},
       /*input_data=*/{11, 12, 13, 21, 22, 23},
       /*multipliers_data=*/{2, 1}, /*exp_output_shape=*/{4, 3},
       /*exp_output_data=*/{11, 12, 13, 21, 22, 23, 11, 12, 13, 21, 22, 23},
       /*input_type=*/TensorType_INT32,
-      /*multiply_type=*/TensorType_INT32);
+      /*multiply_type=*/TensorType_INT32, GetParam());
 }
 
-TEST(TileTest, BooleanMatrix) {
+TEST_P(TileTest, BooleanMatrix) {
   Check<bool>(
       /*input_shape=*/{2, 3},
       /*input_data=*/{true, false, false, true, true, false},
@@ -134,33 +179,31 @@ TEST(TileTest, BooleanMatrix) {
       {true, false, false, true, true, false, true, false, false, true, true,
        false},
       /*input_type=*/TensorType_BOOL,
-      /*multiply_type=*/TensorType_INT32);
+      /*multiply_type=*/TensorType_INT32, GetParam());
 }
 
-TEST(TileTest, Int64Matrix) {
+TEST_P(TileTest, Int64Matrix) {
   Check<int64_t>(
       /*input_shape=*/{2, 3},
       /*input_data=*/{11, 12, 13, 21, 22, 23},
       /*multipliers_data=*/{2, 1}, /*exp_output_shape=*/{4, 3},
       /*exp_output_data=*/{11, 12, 13, 21, 22, 23, 11, 12, 13, 21, 22, 23},
       /*input_type=*/TensorType_INT64,
-      /*multiply_type=*/TensorType_INT32);
+      /*multiply_type=*/TensorType_INT32, GetParam());
 }
 
-TEST(TileTest, Int64Matrix64Multipliers) {
-  Check<int64_t>(
+TEST_P(TileTest, Int64Matrix64Multipliers) {
+  Check<int64_t, int64_t>(
       /*input_shape=*/{2, 3},
       /*input_data=*/{11, 12, 13, 21, 22, 23},
       /*multipliers_data=*/{2, 1}, /*exp_output_shape=*/{4, 3},
       /*exp_output_data=*/{11, 12, 13, 21, 22, 23, 11, 12, 13, 21, 22, 23},
       /*input_type=*/TensorType_INT64,
-      /*multiply_type=*/TensorType_INT64);
+      /*multiply_type=*/TensorType_INT64, GetParam());
 }
+
+INSTANTIATE_TEST_SUITE_P(TileTest, TileTest,
+                         ::testing::Values(TestType::kConst,
+                                           TestType::kDynamic));
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

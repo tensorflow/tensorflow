@@ -173,10 +173,10 @@ def _test_sequential_model_type(f, test_or_class, *args, **kwargs):
     f(test_or_class, *args, **kwargs)
 
 
-def run_all_keras_modes(
-    test_or_class=None,
-    config=None,
-    always_skip_v1=False):
+def run_all_keras_modes(test_or_class=None,
+                        config=None,
+                        always_skip_v1=False,
+                        always_skip_eager=False):
   """Execute the decorated test with all keras execution modes.
 
   This decorator is intended to be applied either to individual test methods in
@@ -205,7 +205,8 @@ def run_all_keras_modes(
       loss = 'mse'
       metrics = ['mae']
       model.compile(optimizer, loss, metrics=metrics,
-                    run_eagerly=testing_utils.should_run_eagerly())
+                    run_eagerly=testing_utils.should_run_eagerly(),
+                    run_distributed=testing_utils.should_run_distributed())
 
       inputs = np.zeros((10, 3))
       targets = np.zeros((10, 4))
@@ -231,6 +232,8 @@ def run_all_keras_modes(
       session when executing graphs.
     always_skip_v1: If True, does not try running the legacy graph mode even
       when Tensorflow v2 behavior is not enabled.
+    always_skip_eager: If True, does not execute the decorated test
+      with eager execution modes.
 
   Returns:
     Returns a decorator that will run the decorated test method multiple times.
@@ -239,8 +242,11 @@ def run_all_keras_modes(
     ImportError: If abseil parameterized is not installed or not included as
       a target dependency.
   """
-  params = [('_v2_eager', 'v2_eager'),
-            ('_v2_function', 'v2_function')]
+
+  params = [('_v2_function', 'v2_function'),
+            ('_v2_distributed', 'v2_distributed')]
+  if not always_skip_eager:
+    params.append(('_v2_eager', 'v2_eager'))
   if not (always_skip_v1 or tf2.enabled()):
     params.append(('_v1_graph', 'v1_graph'))
 
@@ -258,6 +264,8 @@ def run_all_keras_modes(
         _v2_graph_functions_test(f, self, *args, **kwargs)
       elif run_mode == 'v2_eager':
         _v2_eager_test(f, self, *args, **kwargs)
+      elif run_mode == 'v2_distributed':
+        _v2_distributed_test(f, self, *args, **kwargs)
       else:
         return ValueError('Unknown run mode %s' % run_mode)
 
@@ -268,20 +276,30 @@ def run_all_keras_modes(
 
 def _v1_graph_test(f, test_or_class, config, *args, **kwargs):
   with context.graph_mode(), testing_utils.run_eagerly_scope(False):
-    with test_or_class.test_session(use_gpu=True, config=config):
-      f(test_or_class, *args, **kwargs)
+    with testing_utils.run_distributed_scope(False):
+      with test_or_class.test_session(use_gpu=True, config=config):
+        f(test_or_class, *args, **kwargs)
 
 
 def _v2_graph_functions_test(f, test_or_class, *args, **kwargs):
   with context.eager_mode():
     with testing_utils.run_eagerly_scope(False):
-      f(test_or_class, *args, **kwargs)
+      with testing_utils.run_distributed_scope(False):
+        f(test_or_class, *args, **kwargs)
 
 
 def _v2_eager_test(f, test_or_class, *args, **kwargs):
   with context.eager_mode():
     with testing_utils.run_eagerly_scope(True):
-      f(test_or_class, *args, **kwargs)
+      with testing_utils.run_distributed_scope(False):
+        f(test_or_class, *args, **kwargs)
+
+
+def _v2_distributed_test(f, test_or_class, *args, **kwargs):
+  with context.eager_mode():
+    with testing_utils.run_eagerly_scope(False):
+      with testing_utils.run_distributed_scope(True):
+        f(test_or_class, *args, **kwargs)
 
 
 def _test_or_class_decorator(test_or_class, single_method_decorator):

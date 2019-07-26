@@ -37,14 +37,16 @@ class KafkaDatasetOp : public DatasetOpKernel {
     }
 
     std::string servers = "";
-    OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<std::string>(ctx, "servers", &servers));
+    OP_REQUIRES_OK(
+        ctx, data::ParseScalarArgument<std::string>(ctx, "servers", &servers));
     std::string group = "";
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "group", &group));
+    OP_REQUIRES_OK(
+        ctx, data::ParseScalarArgument<std::string>(ctx, "group", &group));
     bool eof = false;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, "eof", &eof));
+    OP_REQUIRES_OK(ctx, data::ParseScalarArgument<bool>(ctx, "eof", &eof));
     int64 timeout = -1;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "timeout", &timeout));
+    OP_REQUIRES_OK(ctx,
+                   data::ParseScalarArgument<int64>(ctx, "timeout", &timeout));
     OP_REQUIRES(ctx, (timeout > 0),
                 errors::InvalidArgument(
                     "Timeout value should be large than 0, got ", timeout));

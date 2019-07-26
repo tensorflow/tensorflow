@@ -97,7 +97,7 @@ class OpCompatibilityTest : public OpsTestBase {
       ADD_FAILURE() << SummarizeOpDef(old_op_def) << " vs. "
                     << SummarizeOpDef(new_op_def);
     } else {
-      EXPECT_TRUE(str_util::StrContains(status.error_message(), error))
+      EXPECT_TRUE(absl::StrContains(status.error_message(), error))
           << status << " does not contain " << error;
     }
   }
@@ -118,8 +118,7 @@ class OpCompatibilityTest : public OpsTestBase {
     if (status.ok()) {
       ADD_FAILURE() << SummarizeNodeDef(*node_def());
     } else {
-      EXPECT_TRUE(
-          str_util::StrContains(status.error_message(), validation_error))
+      EXPECT_TRUE(absl::StrContains(status.error_message(), validation_error))
           << status << " does not contain " << validation_error;
     }
 
@@ -180,7 +179,7 @@ class OpCompatibilityTest : public OpsTestBase {
                     << SummarizeOpDef(*new_op_def);
     } else {
       EXPECT_TRUE(
-          str_util::StrContains(status.error_message(), compatibility_error))
+          absl::StrContains(status.error_message(), compatibility_error))
           << status << " does not contain " << compatibility_error;
     }
   }

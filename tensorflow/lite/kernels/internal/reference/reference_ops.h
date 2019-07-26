@@ -26,6 +26,7 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
@@ -34,7 +35,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
+#include "tensorflow/lite/kernels/internal/reference/prelu.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
+#include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
 #include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -312,9 +315,8 @@ inline void LeakyRelu(const tflite::LeakyReluParams& params,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
-    // Note that this implementation matches that of TensorFlow, and corresponds
-    // to the traditional LeakyRelu equation only for alpha <= 1.
-    output_data[i] = std::max(val, val * params.alpha);
+    // Note that alpha might be > 1 or < 0, so we don't use std::max here.
+    output_data[i] = val > 0 ? val : val * params.alpha;
   }
 }
 
@@ -1130,6 +1132,114 @@ inline void Div(const ArithmeticParams& params,
     output_data[i] = ActivationFunctionWithMinMax(
         input1_data[i] / input2_data[i], output_activation_min,
         output_activation_max);
+  }
+}
+
+// Element-wise div that can often be used for inner loop of broadcast Div as
+// well as the non-broadcast Div.
+inline void DivElementwise(int size, const ArithmeticParams& params,
+                           const uint8* input1_data, const uint8* input2_data,
+                           uint8* output_data) {
+  TFLITE_DCHECK_GT(params.input1_offset, -256);
+  TFLITE_DCHECK_LT(params.input1_offset, 256);
+  TFLITE_DCHECK_GT(params.input2_offset, -256);
+  TFLITE_DCHECK_LT(params.input2_offset, 256);
+  TFLITE_DCHECK_GT(params.output_offset, -256);
+  TFLITE_DCHECK_LT(params.output_offset, 256);
+
+  for (int i = 0; i < size; ++i) {
+    const int32 input1_val = params.input1_offset + input1_data[i];
+    const int32 input2_val = params.input2_offset + input2_data[i];
+    TFLITE_DCHECK_NE(input2_val, 0);
+    int recip_shift;
+    const int32 input2_inv =
+        (input2_val > 0) ? GetReciprocal(input2_val, 31, &recip_shift)
+                         : -GetReciprocal(-input2_val, 31, &recip_shift);
+    const int headroom = CountLeadingSignBits(input1_val);
+    const int32 unscaled_quotient = MultiplyByQuantizedMultiplierGreaterThanOne(
+        input1_val, input2_inv, headroom);
+    const int total_shift = params.output_shift - recip_shift - headroom;
+    const int32 unclamped_result =
+        params.output_offset +
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            unscaled_quotient, params.output_multiplier, total_shift);
+    const int32 clamped_output =
+        std::min(params.quantized_activation_max,
+                 std::max(params.quantized_activation_min, unclamped_result));
+    output_data[i] = static_cast<uint8>(clamped_output);
+  }
+}
+
+inline void Div(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape, const uint8* input1_data,
+                const RuntimeShape& input2_shape, const uint8* input2_data,
+                const RuntimeShape& output_shape, uint8* output_data) {
+  TFLITE_DCHECK_LE(params.quantized_activation_min,
+                   params.quantized_activation_max);
+  gemmlowp::ScopedProfilingLabel label("Div/8bit");
+  const int flat_size =
+      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+
+  DivElementwise(flat_size, params, input1_data, input2_data, output_data);
+}
+
+inline void BroadcastDiv4DSlow(const ArithmeticParams& params,
+                               const RuntimeShape& unextended_input1_shape,
+                               const uint8* input1_data,
+                               const RuntimeShape& unextended_input2_shape,
+                               const uint8* input2_data,
+                               const RuntimeShape& unextended_output_shape,
+                               uint8* output_data) {
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
+                                      unextended_input2_shape, &desc1, &desc2);
+
+  TFLITE_DCHECK_GT(params.input1_offset, -256);
+  TFLITE_DCHECK_LT(params.input1_offset, 256);
+  TFLITE_DCHECK_GT(params.input2_offset, -256);
+  TFLITE_DCHECK_LT(params.input2_offset, 256);
+  TFLITE_DCHECK_GT(params.output_offset, -256);
+  TFLITE_DCHECK_LT(params.output_offset, 256);
+
+  for (int b = 0; b < output_shape.Dims(0); ++b) {
+    for (int y = 0; y < output_shape.Dims(1); ++y) {
+      for (int x = 0; x < output_shape.Dims(2); ++x) {
+        for (int c = 0; c < output_shape.Dims(3); ++c) {
+          const int32 input1_val =
+              params.input1_offset +
+              input1_data[SubscriptToIndex(desc1, b, y, x, c)];
+          const int32 input2_val =
+              params.input2_offset +
+              input2_data[SubscriptToIndex(desc2, b, y, x, c)];
+          TFLITE_DCHECK_NE(input2_val, 0);
+          int recip_shift;
+          const int32 input2_inv =
+              (input2_val > 0) ? GetReciprocal(input2_val, 31, &recip_shift)
+                               : -GetReciprocal(-input2_val, 31, &recip_shift);
+          const int headroom = CountLeadingSignBits(input1_val);
+          const int32 unscaled_quotient =
+              MultiplyByQuantizedMultiplierGreaterThanOne(input1_val,
+                                                          input2_inv, headroom);
+          const int total_shift = params.output_shift - recip_shift - headroom;
+          const int32 unclamped_result =
+              params.output_offset +
+              MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  unscaled_quotient, params.output_multiplier, total_shift);
+          const int32 clamped_output = std::min(
+              params.quantized_activation_max,
+              std::max(params.quantized_activation_min, unclamped_result));
+          output_data[Offset(output_shape, b, y, x, c)] =
+              static_cast<uint8>(clamped_output);
+        }
+      }
+    }
   }
 }
 
@@ -2320,47 +2430,6 @@ inline void Logistic(const LogisticParams&, const RuntimeShape& input_shape,
 }
 
 inline void Logistic(const LogisticParams& params,
-                     const RuntimeShape& input_shape, const uint8* input_data,
-                     const RuntimeShape& output_shape, uint8* output_data) {
-  const int32 input_zero_point = params.input_zero_point;
-  const int32 input_range_radius = params.input_range_radius;
-  const int32 input_multiplier = params.input_multiplier;
-  const int input_left_shift = params.input_left_shift;
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    const uint8 input_val_u8 = input_data[i];
-    const int32 input_val_centered =
-        static_cast<int32>(input_val_u8) - input_zero_point;
-    uint8 output_val;
-    if (input_val_centered <= -input_range_radius) {
-      output_val = 0;
-    } else if (input_val_centered >= input_range_radius) {
-      output_val = 255;
-    } else {
-      const int32 input_val_rescaled =
-          MultiplyByQuantizedMultiplierGreaterThanOne(
-              input_val_centered, input_multiplier, input_left_shift);
-      using FixedPoint4 = gemmlowp::FixedPoint<int32, 4>;
-      using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
-      const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
-      const FixedPoint0 output_val_f0 = gemmlowp::logistic(input_val_f4);
-      // Convert from Q0.31 to Q23.8.
-      using gemmlowp::RoundingDivideByPOT;
-      int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 23);
-      if (output_val_s32 == 256) {
-        output_val_s32 = 255;
-      }
-      // Reinterpret as U0.8.
-      TFLITE_DCHECK_GE(output_val_s32, 0);
-      TFLITE_DCHECK_LE(output_val_s32, 255);
-      output_val = static_cast<uint8>(output_val_s32);
-    }
-    output_data[i] = output_val;
-  }
-}
-
-inline void Logistic(const LogisticParams& params,
                      const RuntimeShape& input_shape, const int16* input_data,
                      const RuntimeShape& output_shape, int16* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -2399,48 +2468,6 @@ inline void Tanh(const TanhParams&, const RuntimeShape& input_shape,
   Tanh(input_shape, input_data, output_shape, output_data);
 }
 
-inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
-                 const uint8* input_data, const RuntimeShape& output_shape,
-                 uint8* output_data) {
-  const int32 input_zero_point = params.input_zero_point;
-  const int32 input_range_radius = params.input_range_radius;
-  const int32 input_multiplier = params.input_multiplier;
-  const int input_left_shift = params.input_left_shift;
-  const int32 output_zero_point = 128;
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    const uint8 input_val_u8 = input_data[i];
-    const int32 input_val_centered =
-        static_cast<int32>(input_val_u8) - input_zero_point;
-    uint8 output_val;
-    if (input_val_centered <= -input_range_radius) {
-      output_val = 0;
-    } else if (input_val_centered >= input_range_radius) {
-      output_val = 255;
-    } else {
-      const int32 input_val_rescaled =
-          MultiplyByQuantizedMultiplierGreaterThanOne(
-              input_val_centered, input_multiplier, input_left_shift);
-      using FixedPoint4 = gemmlowp::FixedPoint<int32, 4>;
-      using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
-      const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
-      const FixedPoint0 output_val_f0 = gemmlowp::tanh(input_val_f4);
-      // Convert from Q0.31 to Q24.7.
-      using gemmlowp::RoundingDivideByPOT;
-      int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 24);
-      output_val_s32 += output_zero_point;
-      if (output_val_s32 == 256) {
-        output_val_s32 = 255;
-      }
-      // Reinterpret as Q0.7, encoded in uint8.
-      TFLITE_DCHECK_GE(output_val_s32, 0);
-      TFLITE_DCHECK_LE(output_val_s32, 255);
-      output_val = static_cast<uint8>(output_val_s32);
-    }
-    output_data[i] = output_val;
-  }
-}
 
 inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
                  const int16* input_data, const RuntimeShape& output_shape,
@@ -2488,6 +2515,15 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
     int32 val = input_data[i];
     float result = static_cast<float>(scale * (val - zero_point));
     output_data[i] = result;
+  }
+}
+
+inline void Dequantize(const RuntimeShape& input_shape,
+                       const Eigen::half* input_data,
+                       const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; i++) {
+    output_data[i] = Eigen::half_impl::half_to_float(input_data[i]);
   }
 }
 
@@ -3038,59 +3074,6 @@ inline void PadImageStyle(const tflite::PadParams& op_params,
 }
 
 template <typename T>
-inline void StridedSlice(const tflite::StridedSliceParams& op_params,
-                         const RuntimeShape& unextended_input_shape,
-                         const T* input_data,
-                         const RuntimeShape& unextended_output_shape,
-                         T* output_data) {
-  // Note that the output_shape is not used herein.
-  tflite::StridedSliceParams params_copy = op_params;
-
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  // Reverse and pad to 4 dimensions because that is what the runtime code
-  // requires (ie. all shapes must be 4D and are given backwards).
-  strided_slice::StridedSlicePadIndices(&params_copy, 4);
-
-  const int start_b = strided_slice::StartForAxis(params_copy, input_shape, 0);
-  const int stop_b =
-      strided_slice::StopForAxis(params_copy, input_shape, 0, start_b);
-  const int start_h = strided_slice::StartForAxis(params_copy, input_shape, 1);
-  const int stop_h =
-      strided_slice::StopForAxis(params_copy, input_shape, 1, start_h);
-  const int start_w = strided_slice::StartForAxis(params_copy, input_shape, 2);
-  const int stop_w =
-      strided_slice::StopForAxis(params_copy, input_shape, 2, start_w);
-  const int start_d = strided_slice::StartForAxis(params_copy, input_shape, 3);
-  const int stop_d =
-      strided_slice::StopForAxis(params_copy, input_shape, 3, start_d);
-
-  T* out_ptr = output_data;
-  for (int in_b = start_b;
-       !strided_slice::LoopCondition(in_b, stop_b, params_copy.strides[0]);
-       in_b += params_copy.strides[0]) {
-    for (int in_h = start_h;
-         !strided_slice::LoopCondition(in_h, stop_h, params_copy.strides[1]);
-         in_h += params_copy.strides[1]) {
-      for (int in_w = start_w;
-           !strided_slice::LoopCondition(in_w, stop_w, params_copy.strides[2]);
-           in_w += params_copy.strides[2]) {
-        for (int in_d = start_d; !strided_slice::LoopCondition(
-                 in_d, stop_d, params_copy.strides[3]);
-             in_d += params_copy.strides[3]) {
-          *out_ptr++ = input_data[Offset(input_shape, in_b, in_h, in_w, in_d)];
-        }
-      }
-    }
-  }
-}
-
-template <typename T>
 inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape,
                   const RuntimeShape& output_shape,
@@ -3445,8 +3428,14 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
                                const int num_axis_dimensions, bool keep_dims,
                                int* temp_index, int* resolved_axis, U* temp_sum,
                                bool compute_sum) {
-  gemmlowp::ScopedProfilingLabel label(compute_sum ? "Sum/Uint8"
-                                                   : "Mean/Uint8");
+  const bool uint8_case = std::is_same<T, int8_t>::value;
+  if (uint8_case) {
+    gemmlowp::ScopedProfilingLabel label(compute_sum ? "Sum/Uint8"
+                                                     : "Mean/Uint8");
+  } else {
+    gemmlowp::ScopedProfilingLabel label(compute_sum ? "Sum/Int8"
+                                                     : "Mean/Int8");
+  }
   // Reset output data.
   size_t num_outputs = 1;
   for (int idx = 0; idx < output_num_dims; ++idx) {
@@ -4415,53 +4404,6 @@ inline void ResizeNearestNeighbor(
   }
 }
 
-inline void BroadcastPrelu4DSlow(const PreluParams& params,
-                                 const RuntimeShape& input_shape,
-                                 const uint8* input_data,
-                                 const RuntimeShape& alpha_shape,
-                                 const uint8* alpha_data,
-                                 const RuntimeShape& output_shape,
-                                 uint8* output_data) {
-  TFLITE_DCHECK_LE(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(alpha_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 4);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input_shape, alpha_shape, &desc1, &desc2);
-
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          int output_index = Offset(extended_output_shape, b, y, x, c);
-          int input_index = SubscriptToIndex(desc1, b, y, x, c);
-          const int32 input_value =
-              params.input_offset + input_data[input_index];
-          if (input_value >= 0) {
-            output_data[output_index] = input_data[input_index];
-          } else {
-            auto alpha_index = SubscriptToIndex(desc2, b, y, x, c);
-            const int32 alpha_value =
-                params.alpha_offset + alpha_data[alpha_index];
-            const int32 unclamped_output =
-                params.output_offset +
-                MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                    input_value * alpha_value, params.output_multiplier,
-                    params.output_shift);
-            const int32 quantized_min = std::numeric_limits<uint8_t>::min();
-            const int32 quantized_max = std::numeric_limits<uint8_t>::max();
-            const int32 clamped_output = std::min(
-                quantized_max, std::max(quantized_min, unclamped_output));
-            output_data[output_index] = static_cast<uint8>(clamped_output);
-          }
-        }
-      }
-    }
-  }
-}
-
 template <typename T>
 void Fill(const RuntimeShape& value_shape, const T* value_data,
           const RuntimeShape& output_shape, T* output_data) {
@@ -4575,6 +4517,144 @@ void ReverseSequence(const TS* seq_lengths, const int seq_dim,
         }
       }
     }
+  }
+}
+
+template <typename T>
+inline void HardSwish(const RuntimeShape& input_shape, const T* input_data,
+                      const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ReferenceHardSwish/Float");
+  auto matching_size = MatchingFlatSize(input_shape, output_shape);
+  const T* in_end = input_data + matching_size;
+  for (; input_data < in_end; input_data++, output_data++) {
+    const float in = *input_data;
+    *output_data =
+        in * std::min(static_cast<T>(6), std::max(static_cast<T>(0), in + 3)) /
+        6;
+  }
+}
+
+inline int16_t SaturatingLeftShift(int16_t value, int amount) {
+  int32_t result = static_cast<int32_t>(value) * (1 << amount);
+  result = std::min<int32_t>(result, std::numeric_limits<int16_t>::max());
+  result = std::max<int32_t>(result, std::numeric_limits<int16_t>::min());
+  return result;
+}
+
+// Similar to ARM instruction SQDMULH.
+// Similar to gemmlowp::SaturatingRoundingDoublingHighMul except
+// rounding to zero instead of to nearest (SQRDMULH).
+inline std::int16_t SaturatingDoublingHighMul(std::int16_t a, std::int16_t b) {
+  bool overflow = a == b && a == std::numeric_limits<std::int16_t>::min();
+  std::int32_t a_32(a);
+  std::int32_t b_32(b);
+  std::int32_t ab_32 = a_32 * b_32;
+  std::int16_t ab_x2_high16 = static_cast<std::int16_t>((ab_32) / (1 << 15));
+  return overflow ? std::numeric_limits<std::int16_t>::max() : ab_x2_high16;
+}
+
+template <typename T>
+inline void HardSwish(const HardSwishParams& params,
+                      const RuntimeShape& input_shape, const T* input_data,
+                      const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ReferenceHardSwish/Quantized");
+
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+
+  for (int i = 0; i < flat_size; i++) {
+    const int16_t input_value = input_data[i] - params.input_zero_point;
+    // Left-shift as much as we can without overflow/saturation to put
+    // significant bits in the high bits of our 16-bit fixedpoint values, so
+    // that fixed-point approximate computations below are as accurate as
+    // possible.
+    const int16_t input_value_on_hires_input_scale = input_value << 7;
+    // Compute the input value on essentially the output scale, just not
+    // right-shifted yet. This is the value that we'll use in the (x >= +3)
+    // case, and that in the general case we'll multiply against the "relu-ish"
+    // fixed-point multiplier in [0, 1].
+    const int16_t input_value_on_preshift_output_scale =
+        gemmlowp::SaturatingRoundingDoublingHighMul(
+            input_value_on_hires_input_scale,
+            params.output_multiplier_fixedpoint_int16);
+    // Now compute the "relu-ish multiplier". In the (-3 <= x <= +3) case, that
+    // is just an affine rescaling of x from [-3, 3] to [0, 1]. In the general
+    // case, it is just that plus saturation at the boundaries of [-3, 3].
+    // First, we rescale from [-3, 3] to [-1, 1], saturating.
+    // That is done by rescaling the input value with a fixed-point multiplier
+    // (reluish_multiplier_fixedpoint) and bit-shift such that we represent
+    // that input value on the scale where the real value 3.0f is represented
+    // by the quantized value 32768.  (+32768 is actually not representable as
+    // int16, so this saturates at +32767, and that is seen empirically to be
+    // a negligible contribution to numerical error/bias).
+    //
+    // This code is careful to correctly implement any magnitude of multiplier,
+    // involving either a right shift or a left shift, with correct saturation
+    // behavior in the left-shift case. This forces this code to be more
+    // complicated, but is necessary for real applications: a partially
+    // trained quantized MobileNet v3-small model that motivated this code
+    // exhibits some large [min, max] range boundaries, of the order of
+    // magnitude of 10 or 100 depending on layers.
+    //
+    // The next few lines are basically just an ordinary
+    // MultiplyByQuantizedMultiplier, except that we are more careful here
+    // about the fine details of saturation when left-shifting, because here
+    // overflow in left-shift is a common case, not an anomaly as
+    // MultiplyByQuantizedMultiplier assumes.
+    int16_t reluish_value = input_value_on_hires_input_scale;
+    // Shift left, saturating, as much as we can while ensuring that this
+    // saturation will not contribute to the result. That is, left shift amount
+    // reduced by 1.
+    if (params.reluish_multiplier_exponent > 0) {
+      reluish_value = SaturatingLeftShift(
+          reluish_value, params.reluish_multiplier_exponent - 1);
+    }
+    // Apply the fixed-point multiplier, dividing the value by a divisor
+    // ranging in [1, 2].
+    reluish_value = gemmlowp::SaturatingRoundingDoublingHighMul(
+        reluish_value, params.reluish_multiplier_fixedpoint_int16);
+    // Apply the last bit of left-shift. Thus, in the left-shifting case, if
+    // any saturation affects the result, it is happening here --- any
+    // saturation having occurred above is overwritten here, not affecting the
+    // result.
+    if (params.reluish_multiplier_exponent > 0) {
+      reluish_value = SaturatingLeftShift(reluish_value, 1);
+    }
+    // Shift right, in the right-shifting case.
+    if (params.reluish_multiplier_exponent < 0) {
+      reluish_value = gemmlowp::RoundingDivideByPOT(
+          reluish_value, -params.reluish_multiplier_exponent);
+    }
+    // At this point we have rescaled the value into a 16bit fixedpoint
+    // reluish_value in [-1, 1].
+    // We now convert that to a 16bit fixedpoint value in [0, 1].
+    reluish_value = (reluish_value + (1 << 15)) >> 1;
+    // Use of SaturatingDoublingHighMul here is important to cancel the biases
+    // from the above SaturatingRoundingDoublingHighMul.
+    //
+    // On a partially trained MobileNet-v3-small,
+    //
+    //                                       | bias on    |  ImageNet
+    //                                       | quantized  |  Top-1
+    // Operation used here                   | values     |  accuracy (50k)
+    // --------------------------------------+------------+-----------
+    // SaturatingDoublingHighMul             | -0.0024    |  58.920
+    // SaturatingRoundingDoublingHighMul     | -0.0067    |  58.064
+    //
+    // In activations_test, this is covered by this testcase:
+    //     QuantizedActivationsOpTest.HardSwishBias
+    //
+    const int16_t preshift_output_value = SaturatingDoublingHighMul(
+        reluish_value, input_value_on_preshift_output_scale);
+    // We were so far operating on the pre-shift output scale. Now we finally
+    // apply that output shift, arriving at the final output scale.
+    int16_t output_value = gemmlowp::RoundingDivideByPOT(
+        preshift_output_value, -params.output_multiplier_exponent);
+    output_value += params.output_zero_point;
+    output_value =
+        std::min<int16_t>(output_value, std::numeric_limits<T>::max());
+    output_value =
+        std::max<int16_t>(output_value, std::numeric_limits<T>::min());
+    output_data[i] = output_value;
   }
 }
 

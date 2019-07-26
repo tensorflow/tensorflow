@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
@@ -50,6 +49,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
@@ -66,12 +68,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
+#include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
 #include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
@@ -82,9 +86,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/mem_wasted_on_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
+#include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
@@ -108,13 +115,10 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
+#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
 
 namespace xla {
 namespace gpu {
-
-/* static */ const char* NVPTXCompiler::kTargetTriple = "nvptx64-nvidia-cuda";
-/* static */ const char* NVPTXCompiler::kDataLayout =
-    "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
 
 namespace {
 
@@ -157,25 +161,87 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
       "uses routines from libdevice.",
       hlo_module_config);
 
-  // GetCudaRotCandidates always inclues ".", but but if everything fails, we
+  // GetCudaRootCandidates always inclues ".", but but if everything fails, we
   // return it anyway.  Better than returning the empty string.
   return ".";
 }
 
-// Runs optimization passes on the given HLO module.
+absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
+                                        const HloInstruction* operand,
+                                        const ShapeIndex& user_index) {
+  // Share the bias buffer with the parent instruction.
+  if (IsCublasGemm(*user)) {
+    if (user->operand_count() == 3 && user->operand(2) == operand) {
+      return true;
+    }
+  }
+  // The operand of cholesky can be shared with the first output.
+  if (user->opcode() == HloOpcode::kCustomCall &&
+      user->custom_call_target() == kCusolverCholeskyCallTarget) {
+    return user_index.size() == 1 && user_index[0] == 0;
+  }
+  return absl::nullopt;
+}
+
+// Prints a warning if the ptx->sass JIT in the driver has known bugs.
 //
-// It takes a compiler pointer, as passes may compile and execute HLOs on the
-// fly for cuDNN verification or other purposes.
-Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
-                         se::DeviceMemoryAllocator* device_allocator,
-                         Compiler* compiler) {
+// Using such a driver only a problem if we fail to use ptxas to compile our ptx
+// and have to use the driver instead, so you should only call this function if
+// we're going to use the driver JIT.
+//
+// Only prints a warning the first time it's called.
+void WarnIfBadDriverJITVersion() {
+  static std::once_flag run_once;
+  std::call_once(run_once, [] {
+    auto version_or_status = se::cuda::Diagnostician::FindKernelDriverVersion();
+    if (!version_or_status.ok()) {
+      LOG(WARNING) << "Couldn't read CUDA driver version.";
+      return;
+    }
+    se::cuda::DriverVersion version = version_or_status.ValueOrDie();
+
+    // The following versions of the driver JIT miscompile some address
+    // calculations with large offsets (e.g. "load ptr + large_constant"),
+    // b/70245379:
+    //
+    //  - 384.x before 384.108
+    //  - 387.x before 387.40
+    //  - 390.x before 390.10.
+    //
+    // In addition, only >= 396.20 contains ptxas >= 9.2.88, which contains the
+    // fix for the "large multioutput fusions" miscompile, b/111107644.
+    if (version < std::make_tuple(396, 20, 0)) {
+      LOG(WARNING)
+          << "*** WARNING *** Invoking the PTX->SASS JIT from driver version "
+          << se::cuda::DriverVersionToString(version)
+          << ", which is older than 396.20.0. These versions are known to "
+             "miscompile XLA code, leading to incorrect results or "
+             "invalid-address errors.\nXLA only uses the driver JIT if it "
+             "cannot find ptxas; you don't need to update your driver if "
+             "you can point XLA to ptxas 9.2.88 or newer.";
+    }
+  });
+}
+
+}  // namespace
+
+// Runs optimization passes on the given HLO module.
+Status impl::OptimizeHloModule(HloModule* hlo_module,
+                               se::StreamExecutor* stream_exec,
+                               se::DeviceMemoryAllocator* device_allocator) {
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
+
+    // Expand random number generation.
+    pipeline.AddPass<RngExpander>();
+
     // Remove zero-sized HLO from the input so that other passes don't have to
     // handle it.
     pipeline.AddPass<ZeroSizedHloElimination>();
+
+    pipeline.AddPass<GpuScatterExpander>();
 
     pipeline.AddPass<DynamicIndexSplitter>();
     pipeline.AddPass<GpuHloSupportChecker>();
@@ -229,7 +295,10 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       pass.AddPass<TupleSimplifier>();
       pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<WhileLoopSimplifier>();
-      pass.AddPass<SliceSinker>();
+
+      // TODO(b/134075051): Re-enable after b/134075051 is fixed.
+      // pass.AddPass<SliceSinker>();
+
       pass.AddPass<HloDCE>();
       pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
@@ -239,8 +308,9 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     pipeline.AddPass<TransposeFolding>(
         [](const HloInstruction& dot,
            const TransposeFolding::OperandIndices& candidate_operands) {
-          return ImplementedAsGemm(dot) ? candidate_operands
-                                        : TransposeFolding::OperandIndices{};
+          return IsMatrixMultiplication(dot)
+                     ? candidate_operands
+                     : TransposeFolding::OperandIndices{};
         },
         TransposeFolding::NeverFoldTranspose);
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
@@ -265,7 +335,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     HloPassPipeline pipeline("conv_canonicalization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
-    pipeline.AddPass<CusolverRewriter>(stream_exec, device_allocator);
+    pipeline.AddPass<CusolverRewriter>();
     pipeline.AddPass<CudnnConvRewriter>();
     pipeline.AddPass<CudnnFusedConvRewriter>();
     pipeline.AddPass<CudnnConvPaddingLegalization>();
@@ -311,6 +381,9 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     options.set_is_layout_sensitive(true);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
+    // Rewrite GEMMs into custom calls.
+    pipeline.AddPass<GemmRewriter>();
+
     // Choose the fastest algorithm for each conv.
     //
     // We pick the algorithm before fusion so we can generate better HLO. After
@@ -336,8 +409,10 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // the gte(customcall, 0) would probably already be into a fusion node.  We
     // can't simplify across HloComputation boundaries, so in this case we
     // wouldn't be able to simplify away the new_tuple bits.
-    pipeline.AddPass<CudnnConvAlgorithmPicker>(stream_exec, device_allocator,
-                                               compiler);
+    pipeline.AddPass<CudnnConvAlgorithmPicker>(stream_exec, device_allocator);
+
+    // Find the fastest algorithm for GEMMs.
+    pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
 
     // Clean up new_tuple described above.
     pipeline.AddPass<TupleSimplifier>();
@@ -390,7 +465,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
-Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
+Status impl::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output
@@ -412,56 +487,17 @@ Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FlattenCallGraph>();
-  pipeline.AddPass<GpuCopyInsertion>();
+  // The following pass LOGs memory waste. Add it when VLOGing is enabled only.
+  if (VLOG_IS_ON(2)) {
+    pipeline.AddPass<MemWastedOnPassthroughParams>();
+  }
+  pipeline.AddPass<GpuCopyInsertion>(&CanShareBufferHint);
   pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
 }
 
-// Prints a warning if the ptx->sass JIT in the driver has known bugs.
-//
-// Using such a driver only a problem if we fail to use ptxas to compile our ptx
-// and have to use the driver instead, so you should only call this function if
-// we're going to use the driver JIT.
-//
-// Only prints a warning the first time it's called.
-void WarnIfBadDriverJITVersion() {
-  static std::once_flag run_once;
-  std::call_once(run_once, [] {
-    auto version_or_status = se::cuda::Diagnostician::FindKernelDriverVersion();
-    if (!version_or_status.ok()) {
-      LOG(WARNING) << "Couldn't read CUDA driver version.";
-      return;
-    }
-    se::cuda::DriverVersion version = version_or_status.ValueOrDie();
-
-    // The following versions of the driver JIT miscompile some address
-    // calculations with large offsets (e.g. "load ptr + large_constant"),
-    // b/70245379:
-    //
-    //  - 384.x before 384.108
-    //  - 387.x before 387.40
-    //  - 390.x before 390.10.
-    //
-    // In addition, only >= 396.20 contains ptxas >= 9.2.88, which contains the
-    // fix for the "large multioutput fusions" miscompile, b/111107644.
-    if (version < std::make_tuple(396, 20, 0)) {
-      LOG(WARNING)
-          << "*** WARNING *** Invoking the PTX->SASS JIT from driver version "
-          << se::cuda::DriverVersionToString(version)
-          << ", which is older than 396.20.0. These versions are known to "
-             "miscompile XLA code, leading to incorrect results or "
-             "invalid-address errors.\nXLA only uses the driver JIT if it "
-             "cannot find ptxas; you don't need to update your driver if "
-             "you can point XLA to ptxas 9.2.88 or newer.";
-    }
-  });
-}
-
-
-}  // namespace
-
 NVPTXCompiler::NVPTXCompiler()
-    : pointer_size_(llvm::DataLayout(kDataLayout)
+    : pointer_size_(llvm::DataLayout(nvptx::kDataLayout)
                         .getPointerSize(0 /* default address space */)) {}
 
 StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
@@ -473,9 +509,9 @@ StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
       [&] { return absl::StrCat("HLO Transforms:", module->name()); },
       tensorflow::profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(
-      OptimizeHloModule(module.get(), stream_exec, device_allocator, this));
+      impl::OptimizeHloModule(module.get(), stream_exec, device_allocator));
 
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
+  TF_RETURN_IF_ERROR(impl::PrepareHloModuleForIrEmitting(module.get()));
 
   return std::move(module);
 }
@@ -484,6 +520,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend");
+  auto slow_compile_alarm = SlowCompilationAlarm();
 
   TF_RET_CHECK(stream_exec != nullptr);
 
@@ -500,8 +537,8 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
 
   llvm::Module llvm_module(module->name().c_str(), llvm_context);
   // Set the target triple and the data layout.
-  llvm_module.setTargetTriple(kTargetTriple);
-  llvm_module.setDataLayout(kDataLayout);
+  llvm_module.setTargetTriple(nvptx::kTargetTriple);
+  llvm_module.setDataLayout(nvptx::kDataLayout);
 
   // Determine the HLO schedule, which is an ordering of HLO instructions.  This
   // is used by buffer assignment to enable buffer reuse, and the same ordering
@@ -520,8 +557,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
           BufferSizeBytesFunction(),
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
-          /*allow_input_output_aliasing=*/false,
-          /*allocate_buffers_for_constants=*/true));
+          /*allocate_buffers_for_constants=*/true,
+          /*colorer=*/BufferAssigner::DefaultColorer(),
+          /*must_not_live_out=*/{}, &CanShareBufferHint));
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
   IrEmitterContext ir_emitter_context(
@@ -636,7 +674,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   }
 
   auto* gpu_executable = new GpuExecutable(
-      ptx, cubin, {cc_major, cc_minor}, std::move(thunk_schedule),
+      ptx, cubin, std::make_pair(cc_major, cc_minor), std::move(thunk_schedule),
       std::move(module), std::move(buffer_assignment),
       std::move(profile_printer), std::move(profile_index_map));
   if (embed_ir_in_executable) {
@@ -677,8 +715,9 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
     if (inserted) {
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
-        StatusOr<std::vector<uint8>> maybe_cubin = CompilePtx(
-            stream_exec, *cache_ptx, PtxCompilationOptions(hlo_module_config));
+        StatusOr<std::vector<uint8>> maybe_cubin = se::cuda::CompilePtx(
+            stream_exec->device_ordinal(), cache_ptx->c_str(),
+            PtxOptsFromConfig(hlo_module_config));
         if (maybe_cubin.ok()) {
           cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
           VLOG(2) << "Compiled PTX size:" << ptx.size()
@@ -737,11 +776,3 @@ se::Platform::Id NVPTXCompiler::PlatformId() const {
 
 }  // namespace gpu
 }  // namespace xla
-
-static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(
-      stream_executor::cuda::kCudaPlatformId,
-      []() { return absl::make_unique<xla::gpu::NVPTXCompiler>(); });
-  return true;
-}
-static bool module_initialized = InitModule();

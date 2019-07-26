@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_EIGEN_H_
 #define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_EIGEN_H_
 
+#ifndef TFLITE_WITH_RUY
+
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 
@@ -34,5 +36,7 @@ struct GemmImplUsingEigen {
 }  // namespace detail
 }  // namespace cpu_backend_gemm
 }  // namespace tflite
+
+#endif  // not TFLITE_WITH_RUY
 
 #endif  // TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_EIGEN_H_

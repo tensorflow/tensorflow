@@ -59,8 +59,8 @@ constexpr std::array<const char*, 23> kPassThroughOps = {
     "PaddedBatchDatasetV2",
     "CacheDataset",
     "FilterDataset",
-    "FilterByLastComponentDataset",
     "Identity",
+    "MapAndBatchDataset",
     "MapDataset",
     "ModelDataset",
     "OptimizeDataset",
@@ -77,10 +77,11 @@ constexpr std::array<const char*, 23> kPassThroughOps = {
 };
 
 // TODO(frankchn): Process functions within kFuncDatasetOps as well.
-constexpr std::array<const char*, 4> kFuncDatasetOps = {
+constexpr std::array<const char*, 5> kFuncDatasetOps = {
     "ExperimentalParallelInterleaveDataset",
     "FlatMapDataset",
     "InterleaveDataset",
+    "ParallelInterleaveDataset",
     "ParallelInterleaveDatasetV2"
 };
 
@@ -209,7 +210,7 @@ bool ReaderOpInFunction(const NodeDef& node,
     NodeDef node_in_func = func->node_def(i);
     if (IsDatasetNodeOfType(node_in_func, kReaderDatasetOps) &&
         node_in_func.input_size() > 0 &&
-        str_util::StartsWith(node_in_func.input(0), "args_0")) {
+        absl::StartsWith(node_in_func.input(0), "args_0")) {
       return true;
     }
     if (IsDatasetNodeOfType(func->node_def(i), kFuncDatasetOps) &&

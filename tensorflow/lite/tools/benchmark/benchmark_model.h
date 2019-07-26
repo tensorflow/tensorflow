@@ -129,8 +129,9 @@ class BenchmarkLoggingListener : public BenchmarkListener {
 template <typename T>
 Flag CreateFlag(const char* name, BenchmarkParams* params,
                 const std::string& usage) {
-  return Flag(name, [params, name](const T& val) { params->Set<T>(name, val); },
-              params->Get<T>(name), usage);
+  return Flag(
+      name, [params, name](const T& val) { params->Set<T>(name, val); },
+      params->Get<T>(name), usage);
 }
 
 // Benchmarks a model.
@@ -150,14 +151,22 @@ class BenchmarkModel {
     listeners_.AddListener(listener);
   }
 
+  BenchmarkParams* mutable_params() { return &params_; }
+
+  // Unparsable flags will remain in 'argv' in the original order and 'argc'
+  // will be updated accordingly.
+  bool ParseFlags(int* argc, char** argv);
+
  protected:
   virtual void LogParams();
   virtual bool ValidateParams();
-  bool ParseFlags(int argc, char** argv);
+
+  bool ParseFlags(int argc, char** argv) { return ParseFlags(&argc, argv); }
   virtual std::vector<Flag> GetFlags();
+
   virtual uint64_t ComputeInputBytes() = 0;
   virtual tensorflow::Stat<int64_t> Run(int min_num_times, float min_secs,
-                                        RunType run_type);
+                                        float max_secs, RunType run_type);
   // Prepares input data for benchmark. This can be used to initialize input
   // data that has non-trivial cost.
   virtual void PrepareInputData();

@@ -31,11 +31,10 @@ T IntegralDivideRoundUp(T n, N divisor) {
 }
 
 template <>
-inline ::tflite::gpu::uint3 IntegralDivideRoundUp(
-    ::tflite::gpu::uint3 n, ::tflite::gpu::uint3 divisor) {
-  return ::tflite::gpu::uint3(IntegralDivideRoundUp(n.x, divisor.x),
-                              IntegralDivideRoundUp(n.y, divisor.y),
-                              IntegralDivideRoundUp(n.z, divisor.z));
+inline uint3 IntegralDivideRoundUp(uint3 n, uint3 divisor) {
+  return uint3(IntegralDivideRoundUp(n.x, divisor.x),
+               IntegralDivideRoundUp(n.y, divisor.y),
+               IntegralDivideRoundUp(n.z, divisor.z));
 }
 
 // @param number or its components must be greater than zero

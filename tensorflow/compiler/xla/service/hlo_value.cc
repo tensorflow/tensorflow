@@ -91,7 +91,8 @@ string HloValue::ToShortString() const {
                          ? defining_index().ToString()
                          : "";
   return StrCat(id(), " ", is_phi_ ? "PHI " : "",
-                defining_instruction()->name(), index_str);
+                defining_instruction()->name(), index_str, " @",
+                (has_color() ? color().value() : -1));
 }
 
 string HloValue::ToString(int indent) const {
@@ -254,6 +255,14 @@ bool HloValueSet::AddValue(const HloValue* value) {
 std::ostream& operator<<(std::ostream& out, const HloValueSet& value_set) {
   out << value_set.ToString();
   return out;
+}
+
+bool InstructionValueSet::IsAmbiguous() const {
+  bool ambiguous = false;
+  for (auto& iter : *this) {
+    ambiguous |= iter.second.values().size() > 1;
+  }
+  return ambiguous;
 }
 
 bool InstructionValueSet::AssignUnionOf(

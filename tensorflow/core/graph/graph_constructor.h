@@ -45,6 +45,8 @@ struct GraphConstructorOptions {
 };
 extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                      const GraphDef& gdef, Graph* g);
+extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
+                                     GraphDef&& gdef, Graph* g);
 
 // Same as ConvertGraphDefToGraph, but takes just nodes.  Used by function
 // instantiation.

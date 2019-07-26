@@ -58,9 +58,7 @@ class PlatformUtil {
   static StatusOr<se::Platform*> GetPlatformExceptFor(
       const string& platform_name);
 
-  // Returns a vector of StreamExecutors for the given platform. The vector is
-  // indexed by device ordinal (device numbering used by StreamExecutor). If an
-  // element is nullptr, then the device is present by not supported by XLA.
+  // Returns a vector of StreamExecutors for the given platform.
   // If populated, only the devices in allowed_devices will have
   // their StreamExecutors initialized, otherwise all StreamExecutors will be
   // initialized and returned.

@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -32,7 +33,8 @@ ShaderCodegen::ShaderCodegen(const CompilationOptions& options,
 Status ShaderCodegen::Build(CompiledNodeAttributes attr,
                             ShaderCode* shader_code) const {
   ParameterAccessor parameters(options_.inline_parameters);
-  ObjectAccessor objects(gpu_type_ == GpuType::MALI, &parameters);
+  ObjectAccessor objects(gpu_type_ == GpuType::MALI, options_.sampler_textures,
+                         &parameters);
 
   auto add_object = [&](const std::string& name, Object&& object) {
     if (!objects.AddObject(name, std::forward<Object>(object))) {
@@ -41,8 +43,8 @@ Status ShaderCodegen::Build(CompiledNodeAttributes attr,
     return OkStatus();
   };
 
-  auto add_parameter = [&](UniformParameter&& param) {
-    if (!parameters.AddParameter(std::forward<UniformParameter>(param))) {
+  auto add_parameter = [&](Variable&& param) {
+    if (!parameters.AddParameter(std::forward<Variable>(param))) {
       return InternalError("There is a parameter with the same name");
     }
     return OkStatus();

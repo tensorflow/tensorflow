@@ -50,13 +50,16 @@ def GetTestConfigs():
 class Conv3DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):
+    # double datatype is currently not supported for convolution ops
+    # on the ROCm platform
+    optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
     if use_gpu:
       if not test_util.GpuSupportsHalfMatMulAndConv():
-        return [dtypes.float64, dtypes.float32]
+        return optional_float64 + [dtypes.float32]
       else:
         # It is important that float32 comes before float16 here,
         # as we will be using its gradients as reference for fp16 gradients.
-        return [dtypes.float64, dtypes.float32, dtypes.float16]
+        return optional_float64 + [dtypes.float32, dtypes.float16]
     else:
       return [dtypes.float64, dtypes.float32, dtypes.float16]
 
@@ -220,7 +223,7 @@ class Conv3DTest(test.TestCase):
         expected=expected_output)
 
   def testConv3D1x1x1Filter2x1x1Dilation(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       self._VerifyDilatedConvValues(
           tensor_in_sizes=[1, 3, 6, 1, 1],
           filter_in_sizes=[1, 1, 1, 1, 1],
@@ -245,7 +248,7 @@ class Conv3DTest(test.TestCase):
         expected=expected_output)
 
   def testConv3D2x2x2Filter1x2x1Dilation(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       self._VerifyDilatedConvValues(
           tensor_in_sizes=[1, 4, 6, 3, 1],
           filter_in_sizes=[2, 2, 2, 1, 1],
@@ -312,6 +315,33 @@ class Conv3DTest(test.TestCase):
         stride=2,
         padding="SAME",
         expected=expected_output)
+
+  def _TestConv3DEmptyTensorOutputShape(self):
+    """Verifies the output shape of the Conv3D op when output tensor is empty.
+
+    Args: none
+    """
+    input_shape = [0, 112, 112, 112, 32]
+    filter_shape = [3, 3, 3, 32, 64]
+
+    output_shape = [0, 112, 112, 112, 64]
+    input_data = 1
+    filter_data = 1
+    for data_type in self._DtypesToTest(False):
+      input_tensor = constant_op.constant(
+          input_data, shape=input_shape, dtype=data_type, name="input")
+      filter_tensor = constant_op.constant(
+          filter_data, shape=filter_shape, dtype=data_type, name="filter")
+      conv = nn_ops.conv3d(
+          input_tensor,
+          filter_tensor,
+          strides=[1, 1, 1, 1, 1],
+          dilations=[1, 1, 1, 1, 1],
+          padding="SAME",
+          data_format="NDHWC",
+          name="conv")
+      values = self.evaluate(conv)
+      self.assertEqual(values.shape, tensor_shape.TensorShape(output_shape))
 
   def testKernelSmallerThanStride(self):
     expected_output = [

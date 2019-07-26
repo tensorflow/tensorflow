@@ -62,7 +62,7 @@ string FormatMemory(int64 bytes) {
 }
 
 string FormatShapes(const std::vector<int64>& shape) {
-  return str_util::Join(shape, "x");
+  return absl::StrJoin(shape, "x");
 }
 
 string StringReplace(const string& str, const string& oldsub,
@@ -93,7 +93,7 @@ tensorflow::Status ReturnError(const std::vector<string>& pieces, int idx) {
 
 bool CaseEqual(StringPiece s1, StringPiece s2) {
   if (s1.size() != s2.size()) return false;
-  return str_util::Lowercase(s1) == str_util::Lowercase(s2);
+  return absl::AsciiStrToLower(s1) == absl::AsciiStrToLower(s2);
 }
 
 bool StringToBool(StringPiece str, bool* value) {
@@ -422,8 +422,8 @@ string QueryDoc(const string& cmd, const Options& opts) {
       helps.push_back("Unknown select: " + s);
     }
   }
-  return strings::StrCat("\nDoc:\n", cmd_help, "\n",
-                         str_util::Join(helps, "\n"), "\n\n");
+  return strings::StrCat("\nDoc:\n", cmd_help, "\n", absl::StrJoin(helps, "\n"),
+                         "\n\n");
 }
 
 }  // namespace tfprof

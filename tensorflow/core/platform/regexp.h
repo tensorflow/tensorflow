@@ -20,20 +20,10 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-    defined(GOOGLE_RE2)
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
 #include "tensorflow/core/platform/google/build_config/re2.h"
-namespace tensorflow {
-typedef absl::string_view RegexpStringPiece;
-}  // namespace tensorflow
-
 #else
-
 #include "re2/re2.h"
-namespace tensorflow {
-typedef re2::StringPiece RegexpStringPiece;
-}  // namespace tensorflow
-
 #endif
 
 #endif  // TENSORFLOW_PLATFORM_REGEXP_H_

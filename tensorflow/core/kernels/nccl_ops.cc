@@ -248,7 +248,7 @@ class NcclBroadcastRecvKernel : public NcclAsyncOpBase {
         compute_stream->parent(), compute_stream, gpu_info->event_mgr,
         gpu_info->gpu_id, /*input=*/nullptr, output, /*global_rank=*/-1,
         std::move(actual_done));
-    NcclManager::instance()->AddBroadcastSend(
+    NcclManager::instance()->AddBroadcastRecv(
         std::move(participant), {GetCollectiveKey(c),
                                  /*num_local_devices=*/num_devices(),
                                  /*num_global_devices=*/num_devices(),

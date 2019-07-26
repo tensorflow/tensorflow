@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -97,6 +98,7 @@ class Executor {
     TensorStore* tensor_store = nullptr;
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
+    thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;
@@ -130,6 +132,8 @@ class Executor {
 // different context would provide different implementations.
 struct LocalExecutorParams {
   Device* device;
+
+  const SessionMetadata* session_metadata = nullptr;
 
   // The library runtime support.
   FunctionLibraryRuntime* function_library = nullptr;
@@ -195,6 +199,11 @@ class ExecutorBarrier {
       if (status_group_.ok() && !s.ok()) {
         error_rendez = rendez_;
         error_rendez->Ref();
+      }
+
+      if (!s.ok() && !StatusGroup::IsDerived(s) &&
+          !status_group_.HasLogMessages()) {
+        status_group_.AttachLogMessages();
       }
 
       status_group_.Update(s);

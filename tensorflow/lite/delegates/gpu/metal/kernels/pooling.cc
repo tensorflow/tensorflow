@@ -148,7 +148,6 @@ std::string GetAveragePoolingCode(const HW& kernel_size) {
   using namespace metal;
   constant int window_w = $0;
   constant int window_h = $1;
-  constant float multiplier = $2;
   struct uniforms {
     int4 src_size;
     int4 dst_size;
@@ -167,6 +166,7 @@ std::string GetAveragePoolingCode(const HW& kernel_size) {
     }
 
     float4 sum = float4(0.0f);
+    float window_size = 0.0f;
     for (int a = 0; a < window_h; ++a) {
       for (int b = 0; b < window_w; ++b) {
         const int2 coords = int2(gid.xy) * params.stride - params.offset + int2(b, a);
@@ -175,19 +175,20 @@ std::string GetAveragePoolingCode(const HW& kernel_size) {
         const int buffer_index = (gid.z * params.src_size.y + coords.y) *
           params.src_size.x + coords.x;
         const float4 src_color = outside ? float4(0.0f) : float4(src_buffer[buffer_index]);
+        window_size += outside ? 0.0f : 1.0f;
         sum += src_color;
       }
     }
     const int linear_index = (gid.z * params.dst_size.y + int(gid.y)) * params.dst_size.x +
       int(gid.x);
-    FLT4 value = FLT4(sum * multiplier);
+    // If window_size==0, window covered nothing. This situation is a sign of
+    // incorrectly constructed operation. NaNs are expected as output.
+    FLT4 value = FLT4(sum / window_size);
     $$2
     output_buffer[linear_index] = value;
   }
 )";
-  float multiplier = 1.0f / static_cast<float>(kernel_size.w * kernel_size.h);
-  return absl::Substitute(shader_source, kernel_size.w, kernel_size.h,
-                          multiplier);
+  return absl::Substitute(shader_source, kernel_size.w, kernel_size.h);
 }
 
 ComputeTaskDescriptorPtr PoolingInternal(int id, ValueId input_id,

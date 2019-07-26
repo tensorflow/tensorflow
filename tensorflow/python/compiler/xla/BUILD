@@ -1,8 +1,9 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//visibility:public"])
-
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "compiler_py",
@@ -40,6 +41,7 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = True,
     xla_enabled = True,
 )
 
@@ -84,7 +86,9 @@ cuda_py_test(
     ],
     tags = [
         "no_mac",
+        "no_rocm",  # XLA support is not enabled on the ROCm platform
         "no_windows",
     ],
+    xla_enable_strict_auto_jit = True,
     xla_enabled = True,
 )

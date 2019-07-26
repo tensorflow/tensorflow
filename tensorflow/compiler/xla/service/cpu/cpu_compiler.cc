@@ -50,16 +50,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batch_dot_simplification.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/conditional_to_select.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
+#include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
@@ -97,8 +96,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
+#include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
@@ -255,6 +256,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
 
+  // Expand random number generation.
+  pipeline.AddPass<RngExpander>();
+
   // Remove zero-sized HLO from the input so that other passes don't have to
   // handle it.
   pipeline.AddPass<ZeroSizedHloElimination>();
@@ -297,6 +301,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                           /*allow_mixed_precision=*/false);
 
+    pass.AddPass<ScatterExpander>();
     pass.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
@@ -316,7 +321,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddPass<TupleSimplifier>();
     pass.AddPass<WhileLoopConstantSinking>();
     pass.AddPass<WhileLoopSimplifier>();
-    pass.AddPass<SliceSinker>();
+
+    // TODO(b/134075051): Re-enable after b/134075051 is fixed.
+    // pass.AddPass<SliceSinker>();
+
     pass.AddPass<HloDCE>();
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
@@ -339,8 +347,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
 
   pipeline.AddPass<CpuInstructionFusion>();
-
-  pipeline.AddPass<ScatterExpander>();
 
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
@@ -400,7 +406,7 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // interfering with the rewrites.
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FlattenCallGraph>();
-  pipeline.AddPass<CpuCopyInsertion>();
+  pipeline.AddPass<CopyInsertion>();
   pipeline.AddPass<HloDCE>();
   return pipeline.Run(module).status();
 }
@@ -601,6 +607,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   VLOG(1) << "Compiling: " << module->name();
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
+  auto slow_compile_alarm = SlowCompilationAlarm();
 
   TF_RET_CHECK(stream_exec != nullptr);
   std::call_once(llvm_command_line_options_initialized,
@@ -650,7 +657,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // and reduced memory usage (as compared to using DependencyHloOrdering).
   TF_ASSIGN_OR_RETURN(HloSchedule schedule,
                       ScheduleModule(module.get(), BufferSizeBytesFunction(),
-                                     DFSMemoryScheduler));
+                                     ComputationSchedulerToModuleScheduler(
+                                         DFSMemoryScheduler)));
 
   // Run buffer allocation on the HLO graph.
   TF_ASSIGN_OR_RETURN(
@@ -658,7 +666,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       BufferAssigner::Run(module.get(),
                           absl::make_unique<SequentialHloOrdering>(schedule),
                           BufferSizeBytesFunction(), memory_alignment,
-                          /*allow_input_output_aliasing=*/false,
                           /*allocate_buffers_for_constants=*/true));
   DumpHloModuleIfEnabled(*module, *assignment, "after_optimizations");
 
@@ -851,7 +858,6 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         BufferAssigner::Run(module,
                             absl::make_unique<SequentialHloOrdering>(schedule),
                             BufferSizeBytesFunction(), memory_alignment,
-                            /*allow_input_output_aliasing=*/false,
                             /*allocate_buffers_for_constants=*/true));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.

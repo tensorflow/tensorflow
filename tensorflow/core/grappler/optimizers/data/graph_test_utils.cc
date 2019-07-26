@@ -32,7 +32,7 @@ NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
       {{"predicate", FunctionDefHelper::FunctionRef(string(function_name))},
        {"Targuments", {}},
        {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-       {"output_types", gtl::ArraySlice<TensorShape>{}}});
+       {"output_types", gtl::ArraySlice<DataType>{}}});
 }
 
 NodeDef MakeMapAndBatchNode(StringPiece name, StringPiece input_node_name,
@@ -41,13 +41,13 @@ NodeDef MakeMapAndBatchNode(StringPiece name, StringPiece input_node_name,
                             StringPiece drop_remainder_node_name,
                             StringPiece function_name) {
   return test::function::NDef(
-      name, "ExperimentalMapAndBatchDataset",
+      name, "MapAndBatchDataset",
       {string(input_node_name), string(batch_size_node_name),
        string(num_parallel_calls_node_name), string(drop_remainder_node_name)},
       {{"f", FunctionDefHelper::FunctionRef(string(function_name))},
        {"Targuments", {}},
        {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-       {"output_types", gtl::ArraySlice<TensorShape>{}}});
+       {"output_types", gtl::ArraySlice<DataType>{}}});
 }
 
 NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name,
@@ -74,7 +74,7 @@ NodeDef MakeParallelInterleaveNode(StringPiece name,
           {"f", FunctionDefHelper::FunctionRef(string(function_name))},
           {"Targuments", {}},
           {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-          {"output_types", gtl::ArraySlice<TensorShape>{}},
+          {"output_types", gtl::ArraySlice<DataType>{}},
           {"sloppy", sloppy},
       });
 }

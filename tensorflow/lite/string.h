@@ -20,9 +20,7 @@ limitations under the License.
 
 namespace tflite {
 
-#ifndef HAS_GLOBAL_STRING
 using std::string;
-#endif
 
 }  // namespace tflite
 

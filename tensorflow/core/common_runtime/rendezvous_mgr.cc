@@ -78,9 +78,11 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
   // This copy must involve a non-CPU device. Hence, "in" must support DMA
   // (e.g., string tensors do not work on GPU).  Variant copy DMA
   // checks happen inside CopyTensor::ViaDMA.
-  if (!DataTypeCanUseMemcpy(in.dtype()) && in.dtype() != DT_VARIANT) {
-    done(errors::InvalidArgument("Non-DMA-safe ", DataTypeString(in.dtype()),
-                                 " tensor may not be copied from/to a GPU."));
+  if (!DataTypeCanUseMemcpy(in.dtype()) && in.dtype() != DT_VARIANT &&
+      in.dtype() != DT_RESOURCE) {
+    done(errors::InvalidArgument(
+        "Non-DMA-safe ", DataTypeString(in.dtype()),
+        " tensor may not be copied from/to a device. Key: ", parsed.FullKey()));
     return;
   }
 

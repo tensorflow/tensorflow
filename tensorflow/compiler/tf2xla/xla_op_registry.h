@@ -56,10 +56,10 @@ constexpr std::array<DataType, 16> kCpuAllTypes = {
      DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64,
      DT_COMPLEX128, DT_BOOL, DT_BFLOAT16}};
 
-constexpr std::array<DataType, 15> kGpuAllTypes = {
+constexpr std::array<DataType, 16> kGpuAllTypes = {
     {DT_UINT8, DT_QUINT8, DT_UINT32, DT_UINT64, DT_INT8, DT_QINT8, DT_INT32,
-     DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL,
-     DT_BFLOAT16}};
+     DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64,
+     DT_COMPLEX128, DT_BOOL, DT_BFLOAT16}};
 
 // Class that manages registrations of operators and devices for the XLA JIT.
 // Not thread-safe.
@@ -116,9 +116,12 @@ class XlaOpRegistry {
     // If we should cluster operations returning DT_VARIANT.
     bool cluster_variant_ops = false;
 
-    // Whether ops known to be slow or to have correctness issues should be
+    // Whether ops known to be slow should be auto-clustered.
+    bool cluster_slow_ops = false;
+
+    // Whether ops known to have numerical accuracy issues should be
     // auto-clustered.
-    bool cluster_slow_and_inaccurate_ops = false;
+    bool cluster_inaccurate_ops = false;
   };
 
   // Registers an XLA backend. `compilation_device_name` is the name of the

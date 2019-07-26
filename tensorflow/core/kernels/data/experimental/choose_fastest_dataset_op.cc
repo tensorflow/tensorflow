@@ -357,7 +357,8 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };  // class ChooseFastestDatasetOp
 
-// Register the kernel implementation for ChooseFastestDataset.
+REGISTER_KERNEL_BUILDER(Name("ChooseFastestDataset").Device(DEVICE_CPU),
+                        ChooseFastestDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalChooseFastestDataset").Device(DEVICE_CPU),
     ChooseFastestDatasetOp);

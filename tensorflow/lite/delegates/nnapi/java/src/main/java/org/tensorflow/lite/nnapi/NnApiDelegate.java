@@ -16,7 +16,6 @@ limitations under the License.
 package org.tensorflow.lite.nnapi;
 
 import org.tensorflow.lite.Delegate;
-import org.tensorflow.lite.Tensor;
 
 /** {@link Delegate} for NNAPI inference. */
 public class NnApiDelegate implements Delegate, AutoCloseable {

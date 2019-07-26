@@ -3,9 +3,10 @@ load(
     "if_static",
 )
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "interpreter_transfer_manager",
@@ -66,8 +67,8 @@ cc_library(
     srcs = ["platform_id.cc"],
     hdrs = ["platform_id.h"],
     deps = ["//tensorflow/core:stream_executor_headers_lib"] + if_static(
-        ["@protobuf_archive//:protobuf"],
-        ["@protobuf_archive//:protobuf_headers"],
+        ["@com_google_protobuf//:protobuf"],
+        ["@com_google_protobuf//:protobuf_headers"],
     ),
 )
 

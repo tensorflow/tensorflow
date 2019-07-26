@@ -46,7 +46,7 @@ Status TestCluster::MakeTestCluster(const string& binary_path,
   }
 
   const string tf_jobs = strings::StrCat("--tf_jobs=localhost|",
-                                         str_util::Join(ret->targets_, ";"));
+                                         absl::StrJoin(ret->targets_, ";"));
 
   int num_cpus = 1;
   int num_gpus = 0;

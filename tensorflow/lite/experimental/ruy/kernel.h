@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/internal_matrix.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
+#include "tensorflow/lite/experimental/ruy/platform.h"
+#include "tensorflow/lite/experimental/ruy/side_pair.h"
 #include "tensorflow/lite/experimental/ruy/size_util.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
 #include "tensorflow/lite/experimental/ruy/tune.h"
@@ -59,7 +61,7 @@ void RunKernelTyped(Tuning tuning, const PackedMatrix<LhsScalar>& lhs,
   RUY_DCHECK_LE(start_col, end_col);
   RUY_DCHECK_LT(end_col, dst->layout.cols + RhsLayout::kCols);
   RUY_DCHECK_EQ((end_col - start_col) % RhsLayout::kCols, 0);
-#if RUY_OPT_SET & RUY_OPT_FAT_KERNEL
+#if RUY_OPT_ENABLED(RUY_OPT_FAT_KERNEL)
   kernel.Run(lhs, rhs, spec, start_row, start_col, end_row, end_col, dst);
 #else
   for (int col = start_col; col < end_col; col += RhsLayout::kCols) {
@@ -75,14 +77,15 @@ void RunKernelTyped(Tuning tuning, const PackedMatrix<LhsScalar>& lhs,
 // Main entry point for kernels.
 template <Path ThePath, typename LhsScalar, typename RhsScalar,
           typename DstScalar, typename Spec>
-void RunKernel(Tuning tuning, const PMatrix& lhs, const PMatrix& rhs,
-               void* spec, int start_row, int start_col, int end_row,
-               int end_col, DMatrix* dst) {
+void RunKernel(Tuning tuning, const SidePair<PMatrix>& src, void* spec,
+               const SidePair<int>& start, const SidePair<int>& end,
+               DMatrix* dst) {
   Matrix<DstScalar> mdst = ToMatrix<DstScalar>(*dst);
   RunKernelTyped<ThePath, LhsScalar, RhsScalar, DstScalar, Spec>(
-      tuning, ToPackedMatrix<LhsScalar>(lhs), ToPackedMatrix<RhsScalar>(rhs),
-      *static_cast<const Spec*>(spec), start_row, start_col, end_row, end_col,
-      &mdst);
+      tuning, ToPackedMatrix<LhsScalar>(src[Side::kLhs]),
+      ToPackedMatrix<RhsScalar>(src[Side::kRhs]),
+      *static_cast<const Spec*>(spec), start[Side::kLhs], start[Side::kRhs],
+      end[Side::kLhs], end[Side::kRhs], &mdst);
 }
 
 // Copied from TF Lite code.
@@ -143,8 +146,8 @@ template <typename LhsScalar, typename RhsScalar, typename DstScalar,
           typename Spec>
 struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
   using AccumScalar = typename Spec::AccumScalar;
-  using LhsLayout = FixedKernelLayout<Order::kColMajor, 1, 1>;
-  using RhsLayout = FixedKernelLayout<Order::kColMajor, 1, 1>;
+  using LhsLayout = typename Spec::StandardCppKernelLhsLayout;
+  using RhsLayout = typename Spec::StandardCppKernelRhsLayout;
   explicit Kernel(Tuning) {}
   void Run(const PackedMatrix<LhsScalar>& lhs,
            const PackedMatrix<RhsScalar>& rhs, const Spec& spec, int start_row,
@@ -193,8 +196,7 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
         accum += dst->zero_point;
         accum = std::min<AccumScalar>(accum, spec.clamp_max);
         accum = std::max<AccumScalar>(accum, spec.clamp_min);
-        relaxed_atomic_store(ElementPtr(dst, i, j),
-                             static_cast<DstScalar>(accum));
+        *ElementPtr(dst, i, j) = static_cast<DstScalar>(accum);
       }
     }
   }
@@ -212,12 +214,15 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
 RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kNeon)
 RUY_INHERIT_KERNEL(Path::kNeon, Path::kNeonDotprod)
 
-#if (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
+// KernelParams are shared across 32-bit and 64-bit NEON code.
+#if (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32)) && \
+    (RUY_OPT_ENABLED(RUY_OPT_ASM))
 
 #define RUY_ASM_FLAG_HAS_BIAS 0x1
 #define RUY_ASM_FLAG_HAS_LHS_SUMS 0x2
 #define RUY_ASM_FLAG_HAS_RHS_SUMS 0x4
 #define RUY_ASM_FLAG_HAS_PERCHANNEL 0x8
+#define RUY_ASM_FLAG_NEEDS_LEFT_SHIFT 0x10
 
 #define RUY_ASM_TYPE_ID_UINT8 1
 #define RUY_ASM_TYPE_ID_INT8 2
@@ -329,10 +334,14 @@ void MakeKernelParams8bit(const PackedMatrix<std::int8_t>& lhs,
   params->depth = depth;
   params->prod_zp_depth = lhs.zero_point * rhs.zero_point * depth;
   if (spec.multiplier_fixedpoint_perchannel) {
+    params->flags |= RUY_ASM_FLAG_NEEDS_LEFT_SHIFT;
     params->flags |= RUY_ASM_FLAG_HAS_PERCHANNEL;
     params->multiplier_fixedpoint = spec.multiplier_fixedpoint_perchannel;
     params->multiplier_exponent = spec.multiplier_exponent_perchannel;
   } else {
+    if (spec.multiplier_exponent > 0) {
+      params->flags |= RUY_ASM_FLAG_NEEDS_LEFT_SHIFT;
+    }
     params->multiplier_fixedpoint = params->multiplier_fixedpoint_buf;
     params->multiplier_exponent = params->multiplier_exponent_buf;
     for (int i = 0; i < LhsCols; i++) {
@@ -358,6 +367,7 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params);
 void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params);
 void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params);
 
+#if RUY_PLATFORM(NEON_64)
 template <typename DstScalar>
 struct Kernel<Path::kNeon, std::int8_t, std::int8_t, DstScalar,
               BasicSpec<std::int32_t, DstScalar>> {
@@ -403,6 +413,7 @@ struct Kernel<Path::kNeonDotprod, std::int8_t, std::int8_t, DstScalar,
     }
   }
 };
+#endif
 
 template <int LhsCols, int RhsCols>
 struct KernelParamsFloat {
@@ -473,8 +484,11 @@ inline void MakeKernelParamsFloat(const PackedMatrix<float>& lhs,
 
 void KernelFloatNeonOutOfOrder(const KernelParamsFloat<8, 8>& params);
 void KernelFloatNeonInOrder(const KernelParamsFloat<8, 8>& params);
+void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params);
 void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params);
 
+#if RUY_PLATFORM(NEON_64)
+// A Float kernel for ARM64 Neon.
 template <>
 struct Kernel<Path::kNeon, float, float, float, BasicSpec<float, float>> {
   Tuning tuning = Tuning::kAuto;
@@ -494,16 +508,41 @@ struct Kernel<Path::kNeon, float, float, float, BasicSpec<float, float>> {
     }
   }
 };
+#endif
+
+#if RUY_PLATFORM(NEON_32)
+// A Float kernel for ARM32 Neon.
+template <>
+struct Kernel<Path::kNeon, float, float, float, BasicSpec<float, float>> {
+  Tuning tuning = Tuning::kAuto;
+  using LhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 8>;
+  using RhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 4>;
+  explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
+  void Run(const PackedMatrix<float>& lhs, const PackedMatrix<float>& rhs,
+           const BasicSpec<float, float>& spec, int start_row, int start_col,
+           int end_row, int end_col, Matrix<float>* dst) const {
+    KernelParamsFloat<8, 4> params;
+
+    MakeKernelParamsFloat(lhs, rhs, spec, start_row, start_col, end_row,
+                          end_col, dst, &params);
+
+    KernelFloat32NeonOutOfOrder(params);
+  }
+};
+#endif
 
 // While the dotprod NEON extension does not concern floating-point arithmetic,
 // its presence allows us to distinguish, in the in-order tuning case, between
 // A53 and A55r1. TODO: should this be folded into tuning?
 template <>
-struct Kernel<Path::kNeonDotprod, float, float, float, BasicSpec<float, float>>
-    : Kernel<Path::kNeon, float, float, float, BasicSpec<float, float>> {
+struct Kernel<Path::kNeonDotprod, float, float, float,
+              BasicSpec<float, float>> {
+  Tuning tuning = Tuning::kAuto;
+  using LhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 8>;
+  using RhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 8>;
   using Base =
       Kernel<Path::kNeon, float, float, float, BasicSpec<float, float>>;
-  explicit Kernel(Tuning tuning_) : Base(tuning_) {}
+  explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
   void Run(const PackedMatrix<float>& lhs, const PackedMatrix<float>& rhs,
            const BasicSpec<float, float>& spec, int start_row, int start_col,
            int end_row, int end_col, Matrix<float>* dst) const {
@@ -518,8 +557,8 @@ struct Kernel<Path::kNeonDotprod, float, float, float, BasicSpec<float, float>>
   }
 };
 
-#endif  // (defined __aarch64__) && (RUY_OPT_SET & RUY_OPT_ASM)
-
+#endif  // (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32)) &&
+        // (RUY_OPT_ENABLED(RUY_OPT_ASM)
 }  // namespace ruy
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_KERNEL_H_

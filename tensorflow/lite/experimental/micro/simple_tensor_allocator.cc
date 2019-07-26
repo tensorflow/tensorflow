@@ -78,7 +78,8 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
     const tflite::Tensor& flatbuffer_tensor, int create_before,
     int destroy_after,
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
-    ErrorReporter* error_reporter, TfLiteTensor* result) {
+    ErrorReporter* error_reporter, TfLiteTensor* result,
+    uint8_t* preallocated_buffer) {
   TF_LITE_ENSURE_STATUS(ConvertTensorType(flatbuffer_tensor.type(),
                                           &result->type, error_reporter));
   result->is_variable = flatbuffer_tensor.is_variable();
@@ -108,8 +109,12 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
     TF_LITE_ENSURE_STATUS(BytesRequired(flatbuffer_tensor, data_size,
                                         &result->bytes, &type_size,
                                         error_reporter));
-    result->data.raw =
-        reinterpret_cast<char*>(AllocateMemory(result->bytes, type_size));
+    if (preallocated_buffer != nullptr) {
+      result->data.raw = reinterpret_cast<char*>(preallocated_buffer);
+    } else {
+      result->data.raw =
+          reinterpret_cast<char*>(AllocateMemory(result->bytes, type_size));
+    }
     if (result->data.raw == nullptr) {
       const char* tensor_name = flatbuffer_tensor.name()->c_str();
       if (tensor_name == nullptr) {
@@ -129,10 +134,13 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
   for (int n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
     result->dims->data[n] = flatbuffer_tensor.shape()->Get(n);
   }
-  if (flatbuffer_tensor.quantization()) {
-    result->params.scale = flatbuffer_tensor.quantization()->scale()->Get(0);
-    result->params.zero_point =
-        flatbuffer_tensor.quantization()->zero_point()->Get(0);
+  const auto* src_quantization = flatbuffer_tensor.quantization();
+  if (src_quantization && src_quantization->scale() &&
+      (src_quantization->scale()->size() > 0) &&
+      src_quantization->zero_point() &&
+      (src_quantization->zero_point()->size() > 0)) {
+    result->params.scale = src_quantization->scale()->Get(0);
+    result->params.zero_point = src_quantization->zero_point()->Get(0);
   }
   result->allocation = nullptr;
   if (flatbuffer_tensor.name()) {

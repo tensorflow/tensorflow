@@ -2,11 +2,31 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-package(
-    default_visibility = ["//visibility:public"],
+load(
+    "//tensorflow:tensorflow.bzl",
+    "cc_library_with_android_deps",
+    "tf_cc_binary",
+    "tf_cc_test",
+    "tf_copts",
+    "tf_gen_op_wrappers_cc",
+    "transitive_hdrs",
 )
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+filegroup(
+    name = "srcs_no_runtime",
+    srcs = [
+        "framework/gradients.h",
+        "framework/ops.h",
+        "framework/scope.h",
+        "framework/scope_internal.h",
+        "//tensorflow/cc/saved_model:loader.h",
+    ],
+)
 
 filegroup(
     name = "srcs",
@@ -19,16 +39,6 @@ filegroup(
         "ops/while_loop.h",
         "//tensorflow/cc/saved_model:loader.h",
     ],
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "cc_library_with_android_deps",
-    "tf_cc_binary",
-    "tf_cc_test",
-    "tf_copts",
-    "tf_gen_op_wrappers_cc",
-    "transitive_hdrs",
 )
 
 cc_library(
@@ -237,10 +247,13 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_experimental",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -483,6 +496,7 @@ tf_gen_op_wrappers_cc(
 tf_gen_op_wrappers_cc(
     name = "array_ops",
     api_def_srcs = ["//tensorflow/core/api_def:base_api_def"],
+    extra_gen_deps = ["//tensorflow/c/kernels:bitcast_op_lib"],
     op_lib_names = [
         "array_ops",
     ],
@@ -617,7 +631,6 @@ tf_gen_op_wrappers_cc(
         "tpu_replication_ops",
     ],
     pkg = "//tensorflow/core",
-    visibility = ["//tensorflow:internal"],
 )
 
 cc_library(
@@ -638,6 +651,7 @@ cc_library(
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -657,6 +671,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 

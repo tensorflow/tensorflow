@@ -69,6 +69,11 @@ class CopyTensor {
                          CopyFunction copy_function);
 };
 
+void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,
+                      Allocator* out_allocator, StringPiece edge_name,
+                      Device* src, Tensor* output,
+                      DeviceContext* send_dev_context, StatusCallback done);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_COPY_TENSOR_H_

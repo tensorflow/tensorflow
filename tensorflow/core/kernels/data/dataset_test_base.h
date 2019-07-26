@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_DATASET_TEST_BASE_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_DATASET_TEST_BASE_H_
 
+#include <memory>
 #include <vector>
 
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
@@ -26,15 +28,54 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
+#include "tensorflow/core/kernels/data/range_dataset_op.h"
+#include "tensorflow/core/kernels/data/take_dataset_op.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
+
+enum class CompressionType { ZLIB = 0, GZIP = 1, RAW = 2, UNCOMPRESSED = 3 };
+
+// Returns a string representation for the given compression type.
+string ToString(CompressionType compression_type);
+
+// Gets the specified zlib compression options according to the compression
+// type. Note that `CompressionType::UNCOMPRESSED` is not supported because
+// `ZlibCompressionOptions` does not have an option.
+io::ZlibCompressionOptions GetZlibCompressionOptions(
+    CompressionType compression_type);
+
+// Used to specify parameters when writing data into files with compression.
+// `input_buffer_size` and `output_buffer_size` specify the input and output
+// buffer size when ZLIB and GZIP compression is used.
+struct CompressionParams {
+  CompressionType compression_type = CompressionType::UNCOMPRESSED;
+  int32 input_buffer_size = 0;
+  int32 output_buffer_size = 0;
+};
+
+// Writes the input data into the file without compression.
+Status WriteDataToFile(const string& filename, const char* data);
+
+// Writes the input data into the file with the specified compression.
+Status WriteDataToFile(const string& filename, const char* data,
+                       const CompressionParams& params);
+
+// Writes the input data into the TFRecord file with the specified compression.
+Status WriteDataToTFRecordFile(const string& filename,
+                               const std::vector<absl::string_view>& records,
+                               const CompressionParams& params);
 
 // Helpful functions to test Dataset op kernels.
 class DatasetOpsTestBase : public ::testing::Test {
@@ -92,8 +133,10 @@ class DatasetOpsTestBase : public ::testing::Test {
     DataTypeVector dtypes({tensorflow::DataTypeToEnum<T>::value});
     std::vector<PartialTensorShape> shapes({{}});
     NodeDef node_def = test::function::NDef(
-        node_name, "RangeDataset", {"start", "stop", "step"},
-        {{"output_types", dtypes}, {"output_shapes", shapes}});
+        node_name, name_utils::OpName(RangeDatasetOp::kDatasetType),
+        {RangeDatasetOp::kStart, RangeDatasetOp::kStop, RangeDatasetOp::kStep},
+        {{RangeDatasetOp::kOutputTypes, dtypes},
+         {RangeDatasetOp::kOutputShapes, shapes}});
 
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, range_op_kernel));
     return Status::OK();
@@ -135,6 +178,19 @@ class DatasetOpsTestBase : public ::testing::Test {
                                   std::vector<Tensor>* const components,
                                   DatasetBase** tensor_slice_dataset);
 
+  // Creates a `RangeDataset` dataset as a variant tensor.
+  Status MakeRangeDataset(const Tensor& start, const Tensor& stop,
+                          const Tensor& step,
+                          const DataTypeVector& output_types,
+                          const std::vector<PartialTensorShape>& output_shapes,
+                          Tensor* range_dataset);
+
+  // Creates a `TakeDataset` dataset as a variant tensor.
+  Status MakeTakeDataset(const Tensor& input_dataset, int64 count,
+                         const DataTypeVector& output_types,
+                         const std::vector<PartialTensorShape>& output_shapes,
+                         Tensor* take_dataset);
+
   // Fetches the dataset from the operation context.
   Status GetDatasetFromContext(OpKernelContext* context, int output_index,
                                DatasetBase** const dataset);
@@ -151,6 +207,12 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   // Runs an operation producing outputs.
   Status RunOpKernel(OpKernel* op_kernel, OpKernelContext* context);
+
+  // Executes a function producing outputs.
+  Status RunFunction(const FunctionDef& fdef, test::function::Attrs attrs,
+                     const std::vector<Tensor>& args,
+                     const GraphConstructorOptions& graph_options,
+                     std::vector<Tensor*> rets);
 
   // Checks that the size of `inputs` matches the requirement of the op kernel.
   Status CheckOpKernelInput(const OpKernel& kernel,
@@ -200,11 +262,12 @@ class DatasetOpsTestBase : public ::testing::Test {
   std::vector<AllocatorAttributes> allocator_attrs_;
   std::unique_ptr<ScopedStepContainer> step_container_;
 
+  // Device manager is used by function handle cache and needs to outlive it.
+  std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   FunctionLibraryRuntime* flr_;  // Owned by `pflr_`.
   std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   std::function<void(std::function<void()>)> runner_;
-  std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
   std::unique_ptr<ResourceMgr> resource_mgr_;
   std::unique_ptr<OpKernelContext::Params> params_;
@@ -213,6 +276,7 @@ class DatasetOpsTestBase : public ::testing::Test {
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   std::vector<std::unique_ptr<Tensor>> tensors_;  // Owns tensors.
   mutex lock_for_refs_;  // Used as the Mutex for inputs added as refs.
+  std::unique_ptr<CancellationManager> cancellation_manager_;
 };
 
 }  // namespace data

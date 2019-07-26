@@ -207,6 +207,7 @@ class SingleThreadedExecutorImpl : public Executor {
     params.log_memory = false;              // TODO(mrry): Too severe?
     params.record_tensor_accesses = false;  // TODO(mrry): Too severe?
     params.rendezvous = args.rendezvous;
+    params.create_rendezvous = &(params_.rendezvous_factory);
     params.session_state = args.session_state;
     params.tensor_store = args.tensor_store;
     params.cancellation_manager = args.cancellation_manager;

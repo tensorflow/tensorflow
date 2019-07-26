@@ -1,7 +1,8 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 package_group(
@@ -10,8 +11,6 @@ package_group(
         "//tensorflow/compiler/xla:friends",
     ],
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
     name = "llvm_gpu_backend",

@@ -1244,11 +1244,7 @@ class GlorotUniform(VarianceScaling):
                    "of passing it to the constructor", "dtype")
   def __init__(self, seed=None, dtype=dtypes.float32):
     super(GlorotUniform, self).__init__(
-        scale=1.0,
-        mode="fan_avg",
-        distribution="uniform",
-        seed=seed,
-        dtype=dtype)
+        scale=1.0, mode="fan_avg", distribution="uniform", seed=seed)
 
   def get_config(self):
     return {"seed": self.seed, "dtype": self.dtype.name}
@@ -1281,11 +1277,7 @@ class GlorotNormal(VarianceScaling):
                    "of passing it to the constructor", "dtype")
   def __init__(self, seed=None, dtype=dtypes.float32):
     super(GlorotNormal, self).__init__(
-        scale=1.0,
-        mode="fan_avg",
-        distribution="truncated_normal",
-        seed=seed,
-        dtype=dtype)
+        scale=1.0, mode="fan_avg", distribution="truncated_normal", seed=seed)
 
   def get_config(self):
     return {"seed": self.seed, "dtype": self.dtype.name}

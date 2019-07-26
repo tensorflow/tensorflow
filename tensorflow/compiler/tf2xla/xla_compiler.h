@@ -446,7 +446,7 @@ class XlaCompiler {
                         const std::vector<XlaCompiler::Argument>& args,
                         bool use_tuple_arg, xla::XlaBuilder* builder,
                         XlaContext* context,
-                        const std::map<int, int>& arg_cores,
+                        const std::map<int, xla::OpSharding>& arg_shardings,
                         std::vector<XlaExpression>* arg_expressions,
                         std::vector<int>* input_to_args,
                         std::vector<xla::Shape>* input_shapes,

@@ -49,7 +49,7 @@ namespace internal {
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 // Returns `true` iff we can use custom contraction kernels. This is a runtime
 // check, that uses environment variables.
-bool UseCustomContractionKernels();
+EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE bool UseCustomContractionKernels();
 
 // Pack a 2D block of a Tensor expression into contiguous block of memory with
 // col-major storage order. We do not have access to the underlying Tensor
@@ -173,14 +173,14 @@ struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
 
 template <typename IndexType, typename OutputMapper, bool ConjugateLhs = false,
           bool ConjugateRhs = false>
-struct mkldnn_gemm_s8s8s32_kernel {
+struct mkldnn_gemm_s8u8s32_kernel {
   static_assert(!ConjugateLhs, "MKL-DNN kernel doesn't support ConjugateLhs");
   static_assert(!ConjugateRhs, "MKL-DNN kernel doesn't support ConjugateRhs");
 
   static constexpr int kComputeStrideFromBlockDimensions = -1;
 
   using LhsScalar = Eigen::QInt8;
-  using RhsScalar = Eigen::QInt8;
+  using RhsScalar = Eigen::QUInt8;
   using ResScalar = Eigen::QInt32;
 
   EIGEN_DONT_INLINE
@@ -215,13 +215,12 @@ struct mkldnn_gemm_s8s8s32_kernel {
     const char offsetc = 'F';
     const int32_t co = 0;
 
-    const int8_t* A = reinterpret_cast<const int8_t*>(blockA);
-    const int8_t* B = reinterpret_cast<const int8_t*>(blockB);
-    int32_t* C =
-        reinterpret_cast<int32_t*>(const_cast<ResScalar*>(output.data()));
+    const auto* A = reinterpret_cast<const int8_t*>(blockA);
+    const auto* B = reinterpret_cast<const uint8_t*>(blockB);
+    auto* C = reinterpret_cast<int32_t*>(const_cast<ResScalar*>(output.data()));
 
     mkldnn_status_t st =
-        mkldnn_gemm_s8s8s32(&transposeA, &transposeB, &offsetc,  //
+        mkldnn_gemm_s8u8s32(&transposeA, &transposeB, &offsetc,  //
                             &m, &n, &k,                          //
                             &alpha,                              //
                             A, &ldA, &ao,                        //
@@ -296,6 +295,44 @@ class TensorContractionBlocking<float, float, float, StorageIndex,
     StorageIndex target_bk =
         Eigen::divup(k / target_k_slices, packet_size) * packet_size;
     kc_ = (std::min)(k, target_bk);
+  }
+
+  EIGEN_ALWAYS_INLINE StorageIndex kc() const { return kc_; }
+  EIGEN_ALWAYS_INLINE StorageIndex mc() const { return mc_; }
+  EIGEN_ALWAYS_INLINE StorageIndex nc() const { return nc_; }
+
+ private:
+  StorageIndex kc_;
+  StorageIndex mc_;
+  StorageIndex nc_;
+};
+
+template <typename StorageIndex, int sharding_type>
+class TensorContractionBlocking<Eigen::QInt32, Eigen::QInt8, Eigen::QUInt8,
+                                StorageIndex, sharding_type> {
+  // TODO(ezhulenev): Define proper gebp_traits in Eigen for quantized types?
+
+  // Default Eigen block heuristics for `QInt8xQUInt8 -> QInt32` are wrong.
+  // Mostly because gebp_traits are not correctly defined. But we know that we
+  // are going to use s8u8s32_gemm from MKL-DNN, so we use float heuristics, and
+  // adjust them to work well with MKL-DNN.
+  using LhsScalar = Eigen::QInt8;
+  using RhsScalar = Eigen::QUInt8;
+  using ResScalar = Eigen::QInt32;
+
+  // Multiply default choice of block size along M, N and K dimensions.
+  static constexpr float kScaleM = 1.5;
+  static constexpr float kScaleN = 1.5;
+  static constexpr float kScaleK = 1.5;
+
+ public:
+  TensorContractionBlocking(StorageIndex k, StorageIndex m, StorageIndex n,
+                            StorageIndex num_threads = 1)
+      : kc_(k), mc_(m), nc_(n) {
+    // Each dimension is a multiple of 32 (fits into _m256i).
+    mc_ = (std::min)(m, static_cast<StorageIndex>(192));
+    nc_ = (std::min)(n, static_cast<StorageIndex>(288));
+    kc_ = (std::min)(k, static_cast<StorageIndex>(320));
   }
 
   EIGEN_ALWAYS_INLINE StorageIndex kc() const { return kc_; }
@@ -448,10 +485,10 @@ struct GemmKernelProvider<float, float, float, StorageIndex, OutputMapper> {
 };
 
 template <typename StorageIndex, typename OutputMapper>
-struct GemmKernelProvider<Eigen::QInt32, Eigen::QInt8, Eigen::QInt8,
+struct GemmKernelProvider<Eigen::QInt32, Eigen::QInt8, Eigen::QUInt8,
                           StorageIndex, OutputMapper> {
   enum { Defined = 1 };
-  using GemmKernel = mkldnn_gemm_s8s8s32_kernel<StorageIndex, OutputMapper>;
+  using GemmKernel = mkldnn_gemm_s8u8s32_kernel<StorageIndex, OutputMapper>;
 };
 
 // NOTE: 'std::enable_if' doesn't work for template specializations. See
@@ -822,7 +859,7 @@ struct GemmKernelProvider<Eigen::QInt32, Eigen::QInt8, Eigen::QInt8,
 
 REGISTER_TENSOR_CONTRACTION_KERNEL_WITH_FALLBACK(float, float, float);
 REGISTER_TENSOR_CONTRACTION_KERNEL_NO_FALLBACK(Eigen::QInt32, Eigen::QInt8,
-                                               Eigen::QInt8);
+                                               Eigen::QUInt8);
 
 #undef REGISTER_TENSOR_CONTRACTION_KERNEL
 

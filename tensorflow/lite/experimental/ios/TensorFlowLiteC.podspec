@@ -1,5 +1,3 @@
-# Run `pod lib lint TensorFlowLiteC.podspec` to ensure this is a valid spec.
-
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteC'
   s.version          = '0.2.0'
@@ -10,9 +8,11 @@ Pod::Spec.new do |s|
   s.summary          = 'TensorFlow Lite'
   s.description      = <<-DESC
 
-  TensorFlow Lite is TensorFlow's lightweight solution for mobile developers. It
-  enables low-latency inference of on-device machine learning models with a
-  small binary size and fast performance supporting hardware acceleration.
+  An internal-only pod containing the TensorFlow Lite C library that the public
+  `TensorFlowLiteSwift` and `TensorFlowLiteObjC` pods depend on. This pod is not
+  intended to be used directly. Swift developers should use the
+  `TensorFlowLiteSwift` pod and Objective-C developers should use the
+  `TensorFlowLiteObjC` pod.
                        DESC
 
   s.ios.deployment_target = '9.0'

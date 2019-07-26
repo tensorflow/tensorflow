@@ -55,7 +55,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
 
   TF_LITE_ENSURE(context, op_context.output->type == kTfLiteUInt8 ||
-                              op_context.output->type == kTfLiteInt8);
+                              op_context.output->type == kTfLiteInt8 ||
+                              op_context.output->type == kTfLiteInt16);
 
   // TODO(b/128934713): Add support for fixed-point per-channel quantization.
   // Currently this only support affine per-layer quantization.
@@ -69,9 +70,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // For requantize use case.
   const bool is_requantize = (op_context.input->type == kTfLiteUInt8 ||
-                              op_context.input->type == kTfLiteInt8) &&
+                              op_context.input->type == kTfLiteInt8 ||
+                              op_context.input->type == kTfLiteInt16) &&
                              (op_context.output->type == kTfLiteUInt8 ||
-                              op_context.output->type == kTfLiteInt8);
+                              op_context.output->type == kTfLiteInt8 ||
+                              op_context.output->type == kTfLiteInt16);
   if (is_requantize) {
     const double effective_output_scale =
         static_cast<double>(op_context.input->params.scale) /
@@ -104,6 +107,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         optimized_ops::AffineQuantize(
             op_params, GetTensorShape(input), GetTensorData<float>(input),
             GetTensorShape(output), GetTensorData<uint8_t>(output));
+      } else if (output->type == kTfLiteInt16) {
+        optimized_ops::AffineQuantize(
+            op_params, GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<int16_t>(output));
       } else {
         context->ReportError(
             context,
@@ -117,12 +124,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       const int32_t size =
           MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
       if (output->type == kTfLiteInt8) {
-        reference_ops::Requantize<int8_t, int8_t>(
+        optimized_ops::Requantize<int8_t, int8_t>(
             GetTensorData<int8_t>(input), size, data->output_multiplier,
             data->output_shift, input->params.zero_point,
             output->params.zero_point, GetTensorData<int8_t>(output));
       } else if (output->type == kTfLiteUInt8) {
-        reference_ops::Requantize<int8_t, uint8_t>(
+        optimized_ops::Requantize<int8_t, uint8_t>(
             GetTensorData<int8_t>(input), size, data->output_multiplier,
             data->output_shift, input->params.zero_point,
             output->params.zero_point, GetTensorData<uint8_t>(output));
@@ -139,12 +146,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       const int32_t size =
           MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
       if (output->type == kTfLiteInt8) {
-        reference_ops::Requantize<uint8_t, int8_t>(
+        optimized_ops::Requantize<uint8_t, int8_t>(
             GetTensorData<uint8_t>(input), size, data->output_multiplier,
             data->output_shift, input->params.zero_point,
             output->params.zero_point, GetTensorData<int8_t>(output));
       } else if (output->type == kTfLiteUInt8) {
-        reference_ops::Requantize<uint8_t, uint8_t>(
+        optimized_ops::Requantize<uint8_t, uint8_t>(
             GetTensorData<uint8_t>(input), size, data->output_multiplier,
             data->output_shift, input->params.zero_point,
             output->params.zero_point, GetTensorData<uint8_t>(output));

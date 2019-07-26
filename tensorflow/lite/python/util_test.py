@@ -22,9 +22,12 @@ from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.client import session
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -52,8 +55,8 @@ class UtilTest(test_util.TensorFlowTestCase):
         _types_pb2.COMPLEX64)
     self.assertEqual(
         util.convert_dtype_to_tflite_type(dtypes.half), _types_pb2.FLOAT16)
-    with self.assertRaises(ValueError):
-      util.convert_dtype_to_tflite_type(dtypes.bool)
+    self.assertEqual(
+        util.convert_dtype_to_tflite_type(dtypes.bool), _types_pb2.BOOL)
 
   def testTensorName(self):
     in_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.float32)
@@ -65,6 +68,22 @@ class UtilTest(test_util.TensorFlowTestCase):
     for i in range(len(expect_names)):
       got_name = util.get_tensor_name(out_tensors[i])
       self.assertEqual(got_name, expect_names[i])
+
+  @test_util.enable_control_flow_v2
+  def testRemoveLowerUsingSwitchMerge(self):
+    i = array_ops.placeholder(shape=(), dtype=dtypes.int32)
+    c = lambda i: math_ops.less(i, 10)
+    b = lambda i: math_ops.add(i, 1)
+    control_flow_ops.while_loop(c, b, [i])
+    sess = session.Session()
+    new_graph_def = convert_to_constants.disable_lower_using_switch_merge(
+        sess.graph_def)
+    lower_using_switch_merge_is_removed = False
+    for node in new_graph_def.node:
+      if node.op == "While":
+        if not node.attr["_lower_using_switch_merge"].b:
+          lower_using_switch_merge_is_removed = True
+    self.assertEqual(lower_using_switch_merge_is_removed, True)
 
 
 @test_util.run_v1_only("Incompatible with 2.0.")

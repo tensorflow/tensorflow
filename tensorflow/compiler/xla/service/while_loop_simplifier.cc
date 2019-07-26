@@ -46,7 +46,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // Don't try this transformation if the while loop isn't removable, since if
   // it succeeds ultimately we're going to have to replace the old while loop
   // with a new one.
-  if (!while_op->parent()->IsRemovable(while_op)) {
+  if (!while_op->parent()->IsSafelyRemovable(while_op)) {
     VLOG(2) << "Can't remove dead parameters from non-removable while op.";
     return false;
   }
@@ -455,7 +455,7 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
 static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   // Cowardly refuse to remove loops that are not removable.  In practice, this
   // means that we can't remove loops that have control predecessors/successors.
-  if (!while_op->parent()->IsRemovable(while_op)) {
+  if (!while_op->parent()->IsSafelyRemovable(while_op)) {
     VLOG(2) << "Not attempting to remove while loop that is not removable: "
             << while_op->ToShortString();
     return false;

@@ -1829,9 +1829,7 @@ bool LiteralBase::IsR1Iota() const {
         return Get<complex64>({idx}) == complex64(idx, 0.0f);
       case C128:
         return Get<complex128>({idx}) == complex128(idx, 0.0f);
-      case PRED:
-        return Get<bool>({idx}) == idx;
-      // token, opaque, tuple, etc. are all not iota.
+      // pred, token, opaque, tuple, etc. are all not iota.
       default:
         return false;
     }
@@ -2215,18 +2213,6 @@ MutableBorrowingLiteral& MutableBorrowingLiteral::operator=(
   CopyPieceSubtree(*shape_, &literal.root_piece(), root_piece_);
 
   return *this;
-}
-
-MutableBorrowingLiteral::MutableBorrowingLiteral(
-    const MutableLiteralBase& literal)
-    : MutableLiteralBase() {
-  shape_ = absl::make_unique<Shape>(literal.shape());
-  CHECK(LayoutUtil::HasLayout(*shape_));
-
-  root_piece_ = new Piece();
-  root_piece_->set_subshape(shape_.get());
-
-  CopyPieceSubtree(*shape_, &literal.root_piece(), root_piece_);
 }
 
 MutableBorrowingLiteral::MutableBorrowingLiteral(MutableLiteralBase* literal)

@@ -56,6 +56,19 @@ converter = tf.lite.TFLiteConverter.from_saved_model(export_dir)
 tflite_model = converter.convert()
 ```
 
+This API does not have the option of specifying the input shape of any input
+arrays. If your model requires specifying the input shape, use the
+[`from_concrete_functions`](#concrete_function) classmethod instead. The code
+looks similar to the following:
+
+```python
+model = tf.saved_model.load(export_dir)
+concrete_func = model.signatures[
+  tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+concrete_func.inputs[0].set_shape([1, 256, 256, 3])
+converter = TFLiteConverter.from_concrete_functions([concrete_func])
+```
+
 ### Converting a Keras model <a name="keras"></a>
 
 The following example shows how to convert a
@@ -140,6 +153,9 @@ input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
 interpreter.set_tensor(input_details[0]['index'], input_data)
 
 interpreter.invoke()
+
+# The function `get_tensor()` returns a copy of the tensor data.
+# Use `tensor()` in order to get a pointer to the tensor.
 tflite_results = interpreter.get_tensor(output_details[0]['index'])
 
 # Test the TensorFlow model on random input data.

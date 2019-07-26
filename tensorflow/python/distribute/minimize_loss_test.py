@@ -47,10 +47,12 @@ VAR_MAP_V1 = {
 }
 
 VAR_MAP_V2 = {
-    "SGD": ("dense/bias", "learning_rate", "decay", "iter", "dense/kernel",
-            "momentum"),
-    "Adagrad": ("iter", "dense/bias", "dense/kernel", "learning_rate", "decay",
-                "dense/kernel/accumulator", "dense/bias/accumulator")
+    "SGD": ("dense/bias", "SGD/learning_rate", "SGD/decay", "SGD/iter",
+            "dense/kernel", "SGD/momentum"),
+    "Adagrad":
+        ("Adagrad/iter", "dense/bias", "dense/kernel", "Adagrad/learning_rate",
+         "Adagrad/decay", "Adagrad/dense/kernel/accumulator",
+         "Adagrad/dense/bias/accumulator")
 }
 
 
@@ -81,8 +83,9 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
               use_callable_loss=[True, False]))
   def testTrainNetwork(self, distribution, optimizer_fn, use_callable_loss):
     with distribution.scope():
+      optimizer = optimizer_fn()
       model_fn, dataset_fn, layer = minimize_loss_example(
-          optimizer_fn, use_bias=True, use_callable_loss=use_callable_loss)
+          optimizer, use_bias=True, use_callable_loss=use_callable_loss)
 
       def step_fn(ctx, inputs):
         del ctx  # Unused
@@ -123,8 +126,9 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
   def testTrainNetworkByCallForEachReplica(self, distribution, optimizer_fn,
                                            use_callable_loss):
     with distribution.scope():
+      optimizer = optimizer_fn()
       model_fn, dataset_fn, layer = minimize_loss_example(
-          optimizer_fn, use_bias=True, use_callable_loss=use_callable_loss)
+          optimizer, use_bias=True, use_callable_loss=use_callable_loss)
 
       iterator = self._get_iterator(distribution, dataset_fn)
 
@@ -171,11 +175,9 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
     # `distribution.scope`.
     with variable_scope.variable_creator_scope(
         appending_creator), distribution.scope():
+      optimizer = optimizer_fn()
       model_fn, dataset_fn, _ = minimize_loss_example(
-          optimizer_fn,
-          use_bias=True,
-          use_callable_loss=True,
-          create_optimizer_inside_model_fn=True)
+          optimizer, use_bias=True, use_callable_loss=True)
 
       def step_fn(ctx, inputs):
         del ctx  # Unused
@@ -195,8 +197,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       self.evaluate(variables_lib.global_variables_initializer())
       run_step()
 
-      def get_expected_variables(optimizer_fn, num_parameter_devices):
-        optimizer = optimizer_fn()
+      def get_expected_variables(num_parameter_devices):
         name = optimizer._name
 
         if isinstance(optimizer, optimizer_v2.OptimizerV2):
@@ -213,8 +214,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         return set([v + ":0" for v in variables])
 
       self.assertEqual(
-          get_expected_variables(optimizer_fn,
-                                 len(distribution.extended.parameter_devices)),
+          get_expected_variables(len(distribution.extended.parameter_devices)),
           set(created_variables))
 
   @combinations.generate(

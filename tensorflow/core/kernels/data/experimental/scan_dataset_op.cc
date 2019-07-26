@@ -16,6 +16,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -289,8 +290,12 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
   bool preserve_cardinality_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("ScanDataset").Device(DEVICE_CPU), ScanDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalScanDataset").Device(DEVICE_CPU),
                         ScanDatasetOp);
+
+REGISTER_INPUT_COLOCATION_EXEMPTION("ScanDataset");
+REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalScanDataset");
 
 }  // namespace
 }  // namespace data

@@ -132,7 +132,7 @@ class Geometric(distribution.Distribution):
     return array_ops.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   def _sample_n(self, n, seed=None):
     # Uniform variates must be sampled from the open-interval `(0, 1)` rather

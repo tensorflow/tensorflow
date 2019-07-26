@@ -8,10 +8,9 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 package_group(
@@ -691,9 +690,28 @@ xla_test(
     ],
 )
 
+cc_library(
+    name = "exhaustive_op_test_utils",
+    testonly = True,
+    srcs = ["exhaustive_op_test_utils.cc"],
+    hdrs = [
+        "exhaustive_op_test_utils.h",
+    ],
+    deps = [
+        ":client_library_test_base",
+        ":literal_test_util",
+        ":test_macros_header",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:bit_cast",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:math",
+    ],
+)
+
 xla_test(
-    name = "exhaustive_op_test",
-    srcs = ["exhaustive_op_test.cc"],
+    name = "exhaustive_unary_test",
+    srcs = ["exhaustive_unary_test.cc"],
     real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
@@ -702,15 +720,7 @@ xla_test(
         "no_oss",
     ],
     deps = [
-        ":client_library_test_base",
-        ":literal_test_util",
-        ":test_macros_header",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/compiler/xla/client/lib:math",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/base",
+        ":exhaustive_op_test_utils",
     ],
 )
 
@@ -1549,7 +1559,9 @@ xla_test(
 
 xla_test(
     name = "prng_test",
+    timeout = "long",
     srcs = ["prng_test.cc"],
+    shard_count = 6,
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:literal",
@@ -1708,16 +1720,16 @@ xla_test(
 )
 
 xla_test(
-    name = "multi_device_all_reduce_test",
-    srcs = ["multi_device_all_reduce_test.cc"],
+    name = "collective_ops_test",
+    srcs = ["collective_ops_test.cc"],
     backends = ["gpu"],
     tags = [
         # This test is tagged "manual" because it requires multiple GPUs, and
         # Forge only supports single-GPU tests.  Guitar skips "manual" tests
         # unless they're also tagged "guitar".
-        "noguitar",  # TODO(b/131524578): Re-enable this.
+        "guitar",
         "manual",
-        "multi_gpu",
+        # "multi_gpu",  # b/133794781
         "no_oss",
         "notap",
     ],
@@ -1943,6 +1955,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler",
+        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/stream_executor",

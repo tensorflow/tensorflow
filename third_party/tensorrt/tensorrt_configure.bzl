@@ -22,6 +22,15 @@ _TF_NEED_TENSORRT = "TF_NEED_TENSORRT"
 
 _TF_TENSORRT_LIBS = ["nvinfer", "nvinfer_plugin"]
 _TF_TENSORRT_HEADERS = ["NvInfer.h", "NvUtils.h", "NvInferPlugin.h"]
+_TF_TENSORRT_HEADERS_V6 = [
+    "NvInfer.h",
+    "NvUtils.h",
+    "NvInferPlugin.h",
+    "NvInferVersion.h",
+    "NvInferRTSafe.h",
+    "NvInferRTExt.h",
+    "NvInferPluginUtils.h",
+]
 
 _DEFINE_TENSORRT_SONAME_MAJOR = "#define NV_TENSORRT_SONAME_MAJOR"
 _DEFINE_TENSORRT_SONAME_MINOR = "#define NV_TENSORRT_SONAME_MINOR"
@@ -32,18 +41,10 @@ def _at_least_version(actual_version, required_version):
     required = [int(v) for v in required_version.split(".")]
     return actual >= required
 
-def _update_tensorrt_headers(tensorrt_version):
-    if not _at_least_version(tensorrt_version, "6"):
-        return
-    _TF_TENSORRT_HEADERS = [
-        "NvInferVersion.h",
-        "NvInfer.h",
-        "NvUtils.h",
-        "NvInferPlugin.h",
-        "NvInferRTSafe.h",
-        "NvInferRTExt.h",
-        "NvInferPluginUtils.h",
-    ]
+def _get_tensorrt_headers(tensorrt_version):
+    if _at_least_version(tensorrt_version, "6"):
+        return _TF_TENSORRT_HEADERS_V6
+    return _TF_TENSORRT_HEADERS
 
 def _tpl(repository_ctx, tpl, substitutions):
     repository_ctx.template(
@@ -59,6 +60,9 @@ def _create_dummy_repository(repository_ctx):
         "%{copy_rules}": "",
         "\":tensorrt_include\"": "",
         "\":tensorrt_lib\"": "",
+    })
+    _tpl(repository_ctx, "tensorrt/include/tensorrt_config.h", {
+        "%{tensorrt_version}": "",
     })
 
 def enable_tensorrt(repository_ctx):
@@ -76,7 +80,24 @@ def _tensorrt_configure_impl(repository_ctx):
             Label(remote_config_repo + ":build_defs.bzl"),
             {},
         )
+        repository_ctx.template(
+            "tensorrt/include/tensorrt_config.h",
+            Label(remote_config_repo + ":tensorrt/include/tensorrt_config.h"),
+            {},
+        )
+        repository_ctx.template(
+            "LICENSE",
+            Label(remote_config_repo + ":LICENSE"),
+            {},
+        )
         return
+
+    # Copy license file in non-remote build.
+    repository_ctx.template(
+        "LICENSE",
+        Label("//third_party/tensorrt:LICENSE"),
+        {},
+    )
 
     if not enable_tensorrt(repository_ctx):
         _create_dummy_repository(repository_ctx)
@@ -87,10 +108,9 @@ def _tensorrt_configure_impl(repository_ctx):
     cpu_value = get_cpu_value(repository_ctx)
 
     # Copy the library and header files.
-    _update_tensorrt_headers(trt_version)
     libraries = [lib_name(lib, cpu_value, trt_version) for lib in _TF_TENSORRT_LIBS]
     library_dir = config["tensorrt_library_dir"] + "/"
-    headers = _TF_TENSORRT_HEADERS
+    headers = _get_tensorrt_headers(trt_version)
     include_dir = config["tensorrt_include_dir"] + "/"
     copy_rules = [
         make_copy_files_rule(
@@ -113,6 +133,12 @@ def _tensorrt_configure_impl(repository_ctx):
     # Set up BUILD file.
     _tpl(repository_ctx, "BUILD", {
         "%{copy_rules}": "\n".join(copy_rules),
+    })
+
+    # Set up tensorrt_config.h, which is used by
+    # tensorflow/stream_executor/dso_loader.cc.
+    _tpl(repository_ctx, "tensorrt/include/tensorrt_config.h", {
+        "%{tensorrt_version}": trt_version,
     })
 
 tensorrt_configure = repository_rule(

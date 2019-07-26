@@ -28,7 +28,8 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 namespace cpu {
-std::unique_ptr<ProfilerInterface> CreateHostTracer(const ProfilerContext*);
+
+std::unique_ptr<ProfilerInterface> CreateHostTracer();
 
 namespace {
 
@@ -80,7 +81,7 @@ inline ::testing::PolymorphicMatcher<NodeStatsMatcher> EqualsNodeStats(
 TEST(HostTracerTest, CollectsTraceMeEvents) {
   uint32 thread_id = Env::Default()->GetCurrentThreadId();
 
-  auto tracer = CreateHostTracer(nullptr);
+  auto tracer = CreateHostTracer();
 
   TF_ASSERT_OK(tracer->Start());
   { TraceMe traceme("hello"); }

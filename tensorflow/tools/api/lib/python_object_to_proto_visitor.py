@@ -41,6 +41,9 @@ _CORNER_CASES = {
     'estimator.NanLossDuringTrainingError': {
         'message': {}
     },
+    'train.LooperThread': {
+        'join': {}
+    }
 }
 
 # Python 2 vs. 3 differences

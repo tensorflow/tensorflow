@@ -22,7 +22,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('config.threading.intra_op_parallelism_threads')
+@tf_export('config.threading.get_intra_op_parallelism_threads')
 def get_intra_op_parallelism_threads():
   """Get number of threads used within an individual op for parallelism.
 
@@ -50,7 +50,7 @@ def set_intra_op_parallelism_threads(num_threads):
   context.context().intra_op_parallelism_threads = num_threads
 
 
-@tf_export('config.threading.inter_op_parallelism_threads')
+@tf_export('config.threading.get_inter_op_parallelism_threads')
 def get_inter_op_parallelism_threads():
   """Get number of threads used for parallelism between independent operations.
 
@@ -442,7 +442,7 @@ def set_memory_growth(device, enable):
   For example:
 
   ```python
-  physical_devices = config.experimental.list_physical_devices('GPU')
+  physical_devices = tf.config.experimental.list_physical_devices('GPU')
   assert len(physical_devices) > 0, "Not enough GPU hardware devices available"
   tf.config.experimental.set_memory_growth(physical_devices[0], True)
   ```
@@ -466,11 +466,15 @@ def get_virtual_device_configuration(device):
   ```python
   physical_devices = tf.config.experimental.list_physical_devices('CPU')
   assert len(physical_devices) == 1, "No CPUs found"
+  configs = tf.config.experimental.get_virtual_device_configuration(
+      physical_devices[0])
+  assert configs is None
   tf.config.experimental.set_virtual_device_configuration(
-    physical_devices[0],
-    [tf.config.experimental.VirtualDeviceConfiguration(),
-     tf.config.experimental.VirtualDeviceConfiguration()])
-  configs = tf.config.experimental.get_virtual_device_configuration('CPU')
+      physical_devices[0],
+      [tf.config.experimental.VirtualDeviceConfiguration(),
+       tf.config.experimental.VirtualDeviceConfiguration()])
+  configs = tf.config.experimental.get_virtual_device_configuration(
+      physical_devices[0])
   assert len(configs) == 2
   ```
 
@@ -478,7 +482,9 @@ def get_virtual_device_configuration(device):
     device: PhysicalDevice to query
 
   Returns:
-    List of VirtualDeviceConfiguration objects
+    List of `tf.config.experimental.VirtualDeviceConfiguration` objects or
+    `None` if no virtual device configuration has been set for this physical
+    device.
   """
   return context.context().get_virtual_device_configuration(device)
 

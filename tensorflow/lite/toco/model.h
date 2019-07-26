@@ -75,6 +75,7 @@ enum class OperatorType : uint8 {
   kRelu1,
   kRelu6,
   kPRelu,
+  kHardSwish,
   kSoftmax,
   kLogSoftmax,
   kSub,
@@ -171,7 +172,9 @@ enum class OperatorType : uint8 {
   kElu,
   kReverseSequence,
   kMatrixDiag,
-  kMatrixSetDiag
+  kMatrixSetDiag,
+  kMatrixDiagV2,
+  kMatrixSetDiagV2
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -691,9 +694,20 @@ struct MulOperator : Operator {
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// TensorFlow equivalent: Relu
+// TensorFlow equivalent: abs
 struct AbsOperator : Operator {
   AbsOperator() : Operator(OperatorType::kAbs) {}
+};
+
+// Element-wise HardSwish operator:
+//   x -> x * relu6(x+3)/6
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: hard_swish
+struct HardSwishOperator : Operator {
+  HardSwishOperator() : Operator(OperatorType::kHardSwish) {}
 };
 
 // Elu
@@ -1129,6 +1143,7 @@ struct StridedSliceOperator : Operator {
 //
 // Inputs:
 //   inputs[0]: required: the input array
+//   inputs[1]: optional: the output tensor shape
 //
 // TensorFlow equivalent: Reshape --- except that we only support a special case
 // here, where the output shape is a matrix (2D) shape.
@@ -2096,6 +2111,14 @@ struct MatrixDiagOperator : Operator {
   MatrixDiagOperator() : Operator(OperatorType::kMatrixDiag) {}
 };
 
+// Matrix Diag Operator V2:
+// Construct a batched diagonal tensor with given batched diagonal values.
+// Not fully supported, constains 4 extra inputs compared to MatrixDiag, support
+// default parameters settings which performs the same as MatrixDiag
+struct MatrixDiagV2Operator : Operator {
+  MatrixDiagV2Operator() : Operator(OperatorType::kMatrixDiagV2) {}
+};
+
 // Matrix Set Diag Operator:
 // Construct a batched diagonal tensor with given input and diagonal values.
 // Input is a rank (k+1) tensor of values.
@@ -2104,6 +2127,14 @@ struct MatrixDiagOperator : Operator {
 //         tensor.
 struct MatrixSetDiagOperator : Operator {
   MatrixSetDiagOperator() : Operator(OperatorType::kMatrixSetDiag) {}
+};
+
+// Matrix Set Diag Operator V2:
+// Construct a batched diagonal tensor with given input and diagonal values.
+// Not fully supported, constains 1 extra inputs compared to MatrixSetDiag,
+// support default parameters settings which performs the same as MatrixSetDiag
+struct MatrixSetDiagV2Operator : Operator {
+  MatrixSetDiagV2Operator() : Operator(OperatorType::kMatrixSetDiagV2) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
@@ -2334,6 +2365,14 @@ class Model {
 
   int64 ArithmeticOpsCount() const { return ops_count; }
 
+  void AddInvalidInputArray(string invalid_input_array) {
+    invalid_input_arrays_.insert(invalid_input_array);
+  }
+
+  const std::unordered_set<string>& GetInvalidInputArrays() const {
+    return invalid_input_arrays_;
+  }
+
   // Optional arrays are used for optional tensors,
   // these tensors do not have data, but with reserved names as op inputs.
   std::set<string> optional_arrays;
@@ -2360,6 +2399,9 @@ class Model {
   // The Operator's refer to these Array's by their name strings, not by their
   // addresses. See Operator::inputs, Operator::outputs.
   std::unordered_map<string, std::unique_ptr<Array>> arrays;
+
+  // Invalid input arrays.
+  std::unordered_set<string> invalid_input_arrays_;
 };
 
 // OperatorSignature contains the information required to making versioning

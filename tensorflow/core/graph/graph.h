@@ -176,6 +176,7 @@ class Node {
   bool IsMetadata() const { return class_ == NC_METADATA; }
   bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
   bool IsPartitionedCall() const { return class_ == NC_PARTITIONED_CALL; }
+  bool IsIfNode() const { return class_ == NC_IF; }
   // Is this node a function input
   bool IsArg() const { return class_ == NC_ARG; }
   // Is this node a function output
@@ -262,6 +263,7 @@ class Node {
     NC_COLLECTIVE,
     NC_FAKE_PARAM,
     NC_PARTITIONED_CALL,
+    NC_IF,
     NC_ARG,
     NC_RETVAL,
     NC_OTHER  // Not a special kind of node
@@ -480,7 +482,7 @@ class Graph {
   // Adds a new node to this graph, and returns it. Infers the Op and
   // input/output types for the node. *this owns the returned instance.
   // Returns nullptr and sets *status on error.
-  Node* AddNode(const NodeDef& node_def, Status* status);
+  Node* AddNode(NodeDef node_def, Status* status);
 
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the

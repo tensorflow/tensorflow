@@ -2,18 +2,25 @@
 
 # TODO(b/123403203) actually make TFLite use ruy.
 
-licenses(["notice"])  # Apache 2.0
+load(":ruy_visibility.bzl", "ruy_visibility")
+load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
+load(":ruy_test.bzl", "ruy_benchmark", "ruy_benchmark_opt_sets", "ruy_test")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
     default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
-load(":ruy_visibility.bzl", "ruy_visibility")
+cc_library(
+    name = "platform",
+    hdrs = ["platform.h"],
+)
 
 cc_library(
     name = "check_macros",
     hdrs = ["check_macros.h"],
-    deps = ["//tensorflow/lite/kernels/internal:types"],
+    deps = ["//tensorflow/lite/kernels/internal:compatibility"],
 )
 
 cc_library(
@@ -27,9 +34,19 @@ cc_library(
 )
 
 cc_library(
-    name = "spec",
-    hdrs = ["spec.h"],
-    visibility = ruy_visibility(),
+    name = "wait",
+    srcs = ["wait.cc"],
+    hdrs = ["wait.h"],
+    deps = [":time"],
+)
+
+cc_test(
+    name = "wait_test",
+    srcs = ["wait_test.cc"],
+    deps = [
+        ":wait",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 cc_library(
@@ -48,6 +65,7 @@ cc_library(
     ],
     deps = [
         ":opt_set",
+        ":platform",
         ":time",
     ],
 )
@@ -93,6 +111,12 @@ cc_test(
 )
 
 cc_library(
+    name = "side_pair",
+    hdrs = ["side_pair.h"],
+    deps = [":check_macros"],
+)
+
+cc_library(
     name = "block_map",
     srcs = [
         "block_map.cc",
@@ -103,6 +127,7 @@ cc_library(
     deps = [
         ":check_macros",
         ":opt_set",
+        ":side_pair",
         ":size_util",
         "@gemmlowp//:profiler",
     ],
@@ -118,7 +143,7 @@ cc_library(
     ],
     deps = [
         ":check_macros",
-        ":time",
+        ":wait",
     ],
 )
 
@@ -134,7 +159,7 @@ cc_library(
     deps = [
         ":blocking_counter",
         ":check_macros",
-        ":time",
+        ":wait",
     ],
 )
 
@@ -146,13 +171,17 @@ cc_library(
     hdrs = [
         "detect_dotprod.h",
     ],
+    visibility = ruy_visibility(),
 )
 
 cc_library(
     name = "path",
     hdrs = ["path.h"],
     visibility = ruy_visibility(),
-    deps = [":size_util"],
+    deps = [
+        ":platform",
+        ":size_util",
+    ],
 )
 
 cc_library(
@@ -166,7 +195,7 @@ cc_library(
     deps = [
         ":block_map",
         ":check_macros",
-        ":common",
+        ":side_pair",
         ":time",
     ],
 )
@@ -199,6 +228,13 @@ cc_library(
 )
 
 cc_library(
+    name = "spec",
+    hdrs = ["spec.h"],
+    visibility = ruy_visibility(),
+    deps = [":matrix"],
+)
+
+cc_library(
     name = "internal_matrix",
     hdrs = ["internal_matrix.h"],
     deps = [
@@ -211,14 +247,23 @@ cc_library(
 
 cc_library(
     name = "common",
-    hdrs = ["common.h"],
-    deps = [":check_macros"],
+    hdrs = [
+        "common.h",
+    ],
+    deps = [
+        ":check_macros",
+        ":matrix",
+        ":opt_set",
+        ":path",
+        ":platform",
+    ],
 )
 
 cc_library(
     name = "kernel",
     srcs = [
-        "kernel.cc",
+        "kernel_arm32.cc",
+        "kernel_arm64.cc",
     ],
     hdrs = [
         "kernel.h",
@@ -228,6 +273,8 @@ cc_library(
         ":internal_matrix",
         ":opt_set",
         ":path",
+        ":platform",
+        ":side_pair",
         ":size_util",
         ":spec",
         ":tune",
@@ -239,7 +286,7 @@ cc_library(
 cc_library(
     name = "pack",
     srcs = [
-        "pack.cc",
+        "pack_arm.cc",
     ],
     hdrs = [
         "pack.h",
@@ -249,9 +296,21 @@ cc_library(
         ":internal_matrix",
         ":opt_set",
         ":path",
+        ":platform",
         ":spec",
         ":tune",
         "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
+    name = "trmul_params",
+    hdrs = ["trmul_params.h"],
+    deps = [
+        ":context",
+        ":internal_matrix",
+        ":side_pair",
+        ":tune",
     ],
 )
 
@@ -262,59 +321,47 @@ cc_library(
     deps = [
         ":allocator",
         ":block_map",
+        ":check_macros",
         ":common",
         ":context",
         ":internal_matrix",
         ":opt_set",
+        ":side_pair",
         ":spec",
         ":thread_pool",
         ":trace",
+        ":trmul_params",
         ":tune",
         "@gemmlowp//:profiler",
     ],
 )
 
+# The main library.
 cc_library(
-    name = "dispatch",
-    hdrs = ["dispatch.h"],
-    deps = [
-        ":kernel",
-        ":pack",
-        ":spec",
-        ":trmul",
-        "@gemmlowp//:profiler",
+    name = "ruy",
+    srcs = [
+        "dispatch.h",
+        "prepack.h",
     ],
-)
-
-cc_library(
-    name = "prepack",
-    hdrs = ["prepack.h"],
-    deps = [
-        ":dispatch",
-    ],
-)
-
-# Ruy's advanced API.
-cc_library(
-    name = "ruy_advanced",
     hdrs = [
+        "ruy.h",
         "ruy_advanced.h",
     ],
     visibility = ruy_visibility(),
     deps = [
-        ":prepack",
-    ],
-)
-
-# Ruy's main API.
-cc_library(
-    name = "ruy",
-    hdrs = [
-        "ruy.h",
-    ],
-    visibility = ruy_visibility(),
-    deps = [
-        ":dispatch",
+        ":check_macros",
+        ":common",
+        ":context",
+        ":kernel",
+        ":matrix",
+        ":pack",
+        ":path",
+        ":side_pair",
+        ":size_util",
+        ":spec",
+        ":trmul",
+        ":tune",
+        "@gemmlowp//:profiler",
     ],
 )
 
@@ -332,7 +379,7 @@ cc_binary(
     name = "example_advanced",
     srcs = ["example_advanced.cc"],
     deps = [
-        ":ruy_advanced",
+        ":ruy",
     ],
 )
 
@@ -344,8 +391,6 @@ cc_library(
     hdrs = ["pmu.h"],
     deps = [":check_macros"],
 )
-
-load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
 
 # Testing framework.
 cc_library(
@@ -361,13 +406,11 @@ cc_library(
     deps = [
         ":pmu",
         ":ruy",
-        ":ruy_advanced",
         ":time",
         "@com_google_googletest//:gtest",
+        ":platform",
     ] + ruy_test_ext_deps(),
 )
-
-load(":ruy_test.bzl", "ruy_benchmark", "ruy_benchmark_opt_sets", "ruy_test")
 
 ruy_benchmark(
     name = "benchmark",
@@ -441,7 +484,5 @@ ruy_benchmark_opt_sets(
         "7ff",
     ],
 )
-
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 tflite_portable_test_suite()

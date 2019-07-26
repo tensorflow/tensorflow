@@ -18,7 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import gc
+import numpy as np
 import os
 import threading
 import weakref
@@ -28,7 +30,9 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -36,12 +40,15 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -133,7 +140,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
       a = array_ops.placeholder(dtype=dtypes.float32, shape=[])
       b = array_ops.ones([])
       c = a + b
-      self.assertEqual(tensor_shape.scalar(), c.shape)
+      self.assertEqual(tensor_shape.TensorShape([]), c.shape)
 
   @test_util.run_deprecated_v1
   def testShapeFunctionError(self):
@@ -141,9 +148,8 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
       a = array_ops.ones([1, 2, 3])
       b = array_ops.ones([4, 5, 6])
       with self.assertRaisesRegexp(
-          ValueError,
-          r"Dimensions must be equal, but are 2 and 5 for 'add' \(op: 'Add'\) "
-          r"with input shapes: \[1,2,3\], \[4,5,6\]."):
+          ValueError, r"Dimensions must be equal, but are 2 and 5 for 'add' "
+          r"\(op: 'Add(V2)?'\) with input shapes: \[1,2,3\], \[4,5,6\]."):
         _ = a + b
 
 
@@ -187,6 +193,136 @@ class IndexedSlicesTest(test_util.TensorFlowTestCase):
       x = math_ops.scalar_mul(-2, ops.IndexedSlices(values, indices))
       self.assertAllEqual(x.values.eval(), [[-4, -6], [-10, -14]])
       self.assertAllEqual(x.indices.eval(), [0, 2])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class IndexedSlicesSpecTest(test_util.TensorFlowTestCase,
+                            parameterized.TestCase):
+
+  def assertAllTensorsEqual(self, list1, list2):
+    self.assertLen(list1, len(list2))
+    for (t1, t2) in zip(list1, list2):
+      self.assertAllEqual(t1, t2)
+
+  def testConstruction(self):
+    spec1 = indexed_slices.IndexedSlicesSpec()
+    self.assertEqual(spec1._shape.rank, None)
+    self.assertEqual(spec1._values_dtype, dtypes.float32)
+    self.assertEqual(spec1._indices_dtype, dtypes.int64)
+    self.assertEqual(spec1._dense_shape_dtype, None)
+    self.assertEqual(spec1._indices_shape.as_list(), [None])
+
+    spec2 = indexed_slices.IndexedSlicesSpec([None, None], dtypes.string,
+                                             dtypes.int32, dtypes.int64, [10])
+    self.assertEqual(spec2._shape.as_list(), [None, None])
+    self.assertEqual(spec2._values_dtype, dtypes.string)
+    self.assertEqual(spec2._indices_dtype, dtypes.int32)
+    self.assertEqual(spec2._dense_shape_dtype, dtypes.int64)
+    self.assertEqual(spec2._indices_shape.as_list(), [10])
+
+  def testValueType(self):
+    spec1 = indexed_slices.IndexedSlicesSpec()
+    self.assertEqual(spec1.value_type, ops.IndexedSlices)
+
+  @parameterized.parameters([
+      (indexed_slices.IndexedSlicesSpec(),
+       (tensor_shape.TensorShape(None), dtypes.float32, dtypes.int64, None,
+        tensor_shape.TensorShape([None]))),
+      (indexed_slices.IndexedSlicesSpec(shape=[5, None, None]),
+       (tensor_shape.TensorShape([5, None, None]), dtypes.float32,
+        dtypes.int64, None, tensor_shape.TensorShape([None]))),
+      (indexed_slices.IndexedSlicesSpec(
+          dtype=dtypes.int32, dense_shape_dtype=dtypes.int64),
+       (tensor_shape.TensorShape(None), dtypes.int32, dtypes.int64,
+        dtypes.int64, tensor_shape.TensorShape([None]))),
+      (indexed_slices.IndexedSlicesSpec(indices_shape=[100]),
+       (tensor_shape.TensorShape(None), dtypes.float32, dtypes.int64, None,
+        tensor_shape.TensorShape([100]))),
+  ])  # pyformat: disable
+  def testSerialize(self, spec, expected):
+    serialization = spec._serialize()
+    # TensorShape has an unconventional definition of equality, so we can't use
+    # assertEqual directly here.  But repr() is deterministic and lossless for
+    # the expected values, so we can use that instead.
+    self.assertEqual(repr(serialization), repr(expected))
+
+  @parameterized.parameters([
+      (indexed_slices.IndexedSlicesSpec(dtype=dtypes.string), (
+          tensor_spec.TensorSpec(None, dtypes.string),
+          tensor_spec.TensorSpec([None], dtypes.int64),
+      )),
+      (indexed_slices.IndexedSlicesSpec(
+          dtype=dtypes.string, dense_shape_dtype=dtypes.int32), (
+              tensor_spec.TensorSpec(None, dtypes.string),
+              tensor_spec.TensorSpec([None], dtypes.int64),
+              tensor_spec.TensorSpec([None], dtypes.int32),
+          )),
+      (indexed_slices.IndexedSlicesSpec(
+          shape=[5, 10, 15], dense_shape_dtype=dtypes.int32), (
+              tensor_spec.TensorSpec([None, 10, 15], dtypes.float32),
+              tensor_spec.TensorSpec([None], dtypes.int64),
+              tensor_spec.TensorSpec([3], dtypes.int32),
+          )),
+      (indexed_slices.IndexedSlicesSpec(
+          shape=[5, 10, 15], dense_shape_dtype=dtypes.int32,
+          indices_shape=[20]), (
+              tensor_spec.TensorSpec([20, 10, 15], dtypes.float32),
+              tensor_spec.TensorSpec([20], dtypes.int64),
+              tensor_spec.TensorSpec([3], dtypes.int32),
+          )),
+  ])
+  def testComponentSpecs(self, spec, expected):
+    self.assertEqual(spec._component_specs, expected)
+
+  @parameterized.parameters([
+      {
+          "spec": indexed_slices.IndexedSlicesSpec(),
+          "values": [3.0, 5.0],
+          "indices": [5, 10]
+      },
+      {
+          "spec":
+              indexed_slices.IndexedSlicesSpec(dense_shape_dtype=dtypes.int32),
+          "values": [3.0, 5.0],
+          "indices": [5, 10],
+          "dense_shape": [100]
+      },
+  ])
+  def testToFromComponents(self, spec, indices, values, dense_shape=None):
+    x = ops.IndexedSlices(indices, values, dense_shape)
+    actual_components = spec._to_components(x)
+    if dense_shape is None:
+      self.assertAllTensorsEqual(actual_components, [indices, values])
+    else:
+      self.assertAllTensorsEqual(actual_components,
+                                 [indices, values, dense_shape])
+    st_reconstructed = spec._from_components(actual_components)
+    self.assertAllEqual(x.indices, st_reconstructed.indices)
+    self.assertAllEqual(x.values, st_reconstructed.values)
+    if dense_shape is None:
+      self.assertIs(st_reconstructed.dense_shape, None)
+    else:
+      self.assertAllEqual(x.dense_shape, st_reconstructed.dense_shape)
+
+  @test_util.run_v1_only("IndexedSlicesValue is deprecated in v2")
+  def testFromNumpyComponents(self):
+    indices = np.array([3, 8])
+    values = np.array([1.0, 9.0])
+    dense_shape = np.array([100])
+
+    spec1 = indexed_slices.IndexedSlicesSpec(dense_shape_dtype=dtypes.int32)
+    st1 = spec1._from_components((values, indices, dense_shape))
+    self.assertIsInstance(st1, indexed_slices.IndexedSlicesValue)
+    self.assertAllEqual(st1.indices, indices)
+    self.assertAllEqual(st1.values, values)
+    self.assertAllEqual(st1.dense_shape, dense_shape)
+
+    spec2 = indexed_slices.IndexedSlicesSpec()
+    st2 = spec2._from_components((values, indices))
+    self.assertIsInstance(st2, indexed_slices.IndexedSlicesValue)
+    self.assertAllEqual(st2.indices, indices)
+    self.assertAllEqual(st2.values, values)
+    self.assertIs(st2.dense_shape, None)
 
 
 class NodeDefConstructorTest(test_util.TensorFlowTestCase):
@@ -660,7 +796,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(x.op.op_def.input_arg), 0)
     self.assertEqual(len(x.op.op_def.output_arg), 1)
 
-    self.assertEqual(z.op.op_def.name, "Add")
+    self.assertRegexpMatches(z.op.op_def.name, "Add(V2)?")
     self.assertEqual(len(z.op.op_def.input_arg), 2)
     self.assertEqual(len(z.op.op_def.output_arg), 1)
 
@@ -781,7 +917,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(op.name, "myop")
     self.assertEqual(op.type, "Identity")
     self.assertEqual(len(op.outputs), 1)
-    self.assertEqual(op.outputs[0].shape, tensor_shape.matrix(2, 3))
+    self.assertEqual(op.outputs[0].shape, tensor_shape.TensorShape([2, 3]))
 
   def testUniqueName(self):
     g = ops.Graph()
@@ -2048,6 +2184,21 @@ class OpScopeTest(test_util.TensorFlowTestCase):
       with ops.name_scope(None, "default2") as scope2:
         self.assertEqual(scope2, "default/default2/")
 
+  @test_util.run_in_graph_and_eager_modes
+  def testNameScopeV2IsReEntrant(self):
+    foo = ops.name_scope_v2("foo")
+    bar = ops.name_scope_v2("bar")
+    with foo as scope_name:
+      self.assertEqual("foo/", scope_name)
+      with foo as scope_name:
+        self.assertEqual("foo/foo/", scope_name)
+      with bar as scope_name:
+        self.assertEqual("foo/bar/", scope_name)
+        with foo as scope_name:
+          self.assertEqual("foo/bar/foo/", scope_name)
+    with bar as scope_name:
+      self.assertEqual("bar/", scope_name)
+
   @test_util.run_deprecated_v1
   def testNoScopeName(self):
     g0 = ops.Graph()
@@ -2411,16 +2562,25 @@ class InitScopeTest(test_util.TensorFlowTestCase):
 
   def testExecutingEagerlyOutsideFunctions(self):
 
-    @eager_function.defun
+    @def_function.function
     def f():
       return ops.executing_eagerly_outside_functions()
+
+    with context.graph_mode():
+      self.assertFalse(ops.executing_eagerly_outside_functions())
+      with session.Session():
+        # Need self.evaluate for these as the return type of functions is
+        # tensors.
+        self.assertFalse(self.evaluate(f()))
 
     with context.eager_mode():
       self.assertTrue(ops.executing_eagerly_outside_functions())
       self.assertTrue(f())
-      g = ops.Graph()
-      with g.as_default():
+
+      with ops.Graph().as_default():
         self.assertFalse(ops.executing_eagerly_outside_functions())
+        with session.Session():
+          self.assertFalse(self.evaluate(f()))
 
 
 class GraphTest(test_util.TensorFlowTestCase):
@@ -2903,6 +3063,18 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
       b = variables.Variable([3.0], name="b")
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
 
+  def testColocateWithVariableInFunction(self):
+    v = variables.Variable(1.)
+
+    @def_function.function
+    def f():
+      with ops.colocate_with(v):
+        return array_ops.ones([], name="output")
+
+    f()
+    graph_def = f.get_concrete_function().graph.as_graph_def()
+    wrap_function.function_from_graph_def(graph_def, [], ["output"])
+
 
 class DeprecatedTest(test_util.TensorFlowTestCase):
 
@@ -3066,18 +3238,9 @@ class _TupleTensor(composite_tensor.CompositeTensor):
     super(_TupleTensor, self).__init__()
     self._components = tuple(ops.convert_to_tensor(c) for c in components)
 
-  def _to_components(self):
-    return self._components
-
-  @classmethod
-  def _from_components(cls, components, metadata):
-    return cls(*components)
-
-  def _shape_invariant_to_components(self, shape=None):
-    raise NotImplementedError("CompositeTensor._shape_invariant_to_components")
-
-  def _is_graph_tensor(self):
-    return any(hasattr(t, "graph") for t in self._components)
+  @property
+  def _type_spec(self):
+    return _TupleTensorSpec(type_spec.from_value(c) for c in self._components)
 
   def __getitem__(self, key):
     return self._components[key]
@@ -3087,6 +3250,24 @@ class _TupleTensor(composite_tensor.CompositeTensor):
 
   def __iter__(self):
     return iter(self._components)
+
+
+class _TupleTensorSpec(type_spec.TypeSpec):
+
+  def __init__(self, specs):
+    self._specs = specs
+
+  value_type = property(lambda self: _TupleTensor)
+  _component_specs = property(lambda self: self._specs)
+
+  def _to_components(self, value):
+    return value._components
+
+  def _from_components(self, components):
+    return _TupleTensor(*components)
+
+  def _serialize(self):
+    return (self._specs,)
 
 
 class _MyTuple(object):

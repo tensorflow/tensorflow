@@ -148,8 +148,14 @@ void AddXrtSubmodule(py::module* module) {
            })
       .def("delete", &XrtBuffer::Delete)
       .def("destructure", &XrtBuffer::DestructureTuple)
+      .def("device", &XrtBuffer::xrt_device_ordinal)
+      .def("shape", &XrtBuffer::shape)
       .def("is_deleted",
-           [](const XrtBuffer& buffer) { return !buffer.handle().valid(); });
+           [](const XrtBuffer& buffer) { return !buffer.handle().valid(); })
+      .def("block_host_until_ready", [](const XrtBuffer& buffer) {
+        return errors::Unimplemented(
+            "block_host_until_ready not implemented in XRT backend.");
+      });
 
   py::class_<XrtExecutable, std::shared_ptr<XrtExecutable>>(m, "XrtExecutable")
       .def_static("Compile",

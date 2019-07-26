@@ -825,9 +825,11 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   CUdeviceptr result = 0;
   CUresult res = cuMemAlloc(&result, bytes);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to allocate "
-               << port::HumanReadableNumBytes::ToString(bytes) << " (" << bytes
-               << " bytes) from device: " << ToString(res);
+    // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator
+    // implements a retry if the first allocation fails).
+    LOG(INFO) << "failed to allocate "
+              << port::HumanReadableNumBytes::ToString(bytes) << " (" << bytes
+              << " bytes) from device: " << ToString(res);
     return nullptr;
   }
   void* ptr = reinterpret_cast<void*>(result);

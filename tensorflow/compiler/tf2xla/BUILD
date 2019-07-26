@@ -1,6 +1,15 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_cuda_cc_test")
+load(
+    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
+load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
+
+package(
+    default_visibility = [":internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "internal",
@@ -23,16 +32,6 @@ package_group(
     ],
 )
 
-package(
-    default_visibility = [":internal"],
-)
-
-load(
-    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
-
 cc_library(
     name = "tf2xla_supported_ops_lib",
     srcs = ["tf2xla_supported_ops.cc"],
@@ -40,7 +39,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":xla_compiler",
-        "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -65,6 +63,19 @@ xla_proto_library(
     deps = [
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+# A proto library that is minimal in size and dependencies for platforms like Android.
+tf_portable_proto_library(
+    name = "portable_tf2xla_proto",
+    config_string = "allow_all:true",
+    header_outs = ["//tensorflow/compiler/tf2xla/tf2xla.proto.h"],
+    portable_deps = ["//tensorflow/core:android_proto_lib"],
+    proto_deps = [
+        ":tf2xla_proto",
+        "//tensorflow/core:protos_all_cc",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 xla_py_proto_library(
@@ -95,7 +106,6 @@ cc_library(
         ":tf2xla_proto",
         ":tf2xla_util",
         ":xla_compiler",
-        "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",
@@ -151,10 +161,12 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service/cpu:buffer_info_util",
         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/stream_executor:platform",
     ],
 )
 
@@ -195,6 +207,7 @@ cc_library(
         ":side_effect_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:flags",
+        "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/jit:xla_cluster_util",
         "//tensorflow/compiler/tf2xla:rearrange_function_argument",
         "//tensorflow/compiler/tf2xla/lib:util",
@@ -252,6 +265,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -363,13 +377,20 @@ tf_cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor:multi_platform_manager",
+        "//tensorflow/stream_executor:platform",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -541,6 +562,7 @@ cc_library(
     srcs = [
         "functionalize_control_flow_pass_registration.cc",
     ],
+    visibility = [":friends"],
     deps = [
         ":functionalize_control_flow",
     ],
@@ -706,5 +728,45 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
         "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
+    name = "resource_util",
+    srcs = ["resource_util.cc"],
+    hdrs = ["resource_util.h"],
+    visibility = [":friends"],
+    deps = [
+        ":resource_operation_table",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "resource_util_test",
+    size = "small",
+    srcs = ["resource_util_test.cc"],
+    deps = [
+        ":resource_util",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
     ],
 )

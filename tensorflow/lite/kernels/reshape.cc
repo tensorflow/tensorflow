@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string.h>
+
+#include <memory>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -30,6 +33,9 @@ constexpr int kOutputTensor = 0;
 
 TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node,
                           TfLiteIntArray* output_shape) {
+  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)>
+      scoped_output_shape(output_shape, TfLiteIntArrayFree);
+
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
@@ -56,7 +62,7 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node,
   }
 
   TF_LITE_ENSURE_EQ(context, num_input_elements, num_output_elements);
-  return context->ResizeTensor(context, output, output_shape);
+  return context->ResizeTensor(context, output, scoped_output_shape.release());
 }
 
 TfLiteIntArray* GetOutputShapeFromTensor(TfLiteContext* context,

@@ -99,34 +99,42 @@ CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
 }
 
 Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const ExecuteParams& params) {
+  auto& stream = *params.stream;
+  auto& buffer_allocations = *params.buffer_allocations;
+
   dnn::BatchDescriptor operand_desc;
   dnn::BatchDescriptor scale_offset_desc;
   std::tie(operand_desc, scale_offset_desc) =
       MakeDescriptors(hlo_instruction()->shape(), feature_index_);
 
+  se::DeviceMemory<float> null_device_ptr(nullptr);
   se::DeviceMemory<float> output(buffer_allocations.GetDeviceAddress(output_));
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  stream->ThenBatchNormalizationForward(
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+  stream.ThenBatchNormalizationForward(
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(operand_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(variance_)),
-      operand_desc,                //
-      scale_offset_desc,           //
-      epsilon_,                    //
-      &output,                     //
-      /*batch_mean=*/nullptr,      //
-      /*batch_var=*/nullptr,       //
-      /*saved_mean=*/nullptr,      //
-      /*saved_inv_var=*/nullptr,   //
-      /*is_training=*/false,       //
-      /*var_to_inv_var=*/nullptr,  //
-      /*inv_var_to_var=*/nullptr);
+      /*side_input=*/null_device_ptr,
+      operand_desc,                         //
+      scale_offset_desc,                    //
+      epsilon_,                             //
+      se::dnn::ActivationMode::kNone,       //
+      &output,                              //
+      /*batch_mean=*/nullptr,               //
+      /*batch_var=*/nullptr,                //
+      /*saved_mean=*/nullptr,               //
+      /*saved_inv_var=*/nullptr,            //
+      /*is_training=*/false,                //
+      /*var_to_inv_var=*/nullptr,           //
+      /*inv_var_to_var=*/nullptr,           //
+      /*reserve_space_allocator=*/nullptr,  //
+      /*workspace_allocator=*/nullptr);
 
-  if (!stream->ok()) {
+  if (!stream.ok()) {
     return InternalError("BatchNormalizationForward call failed.");
   }
   return Status::OK();
@@ -161,8 +169,10 @@ CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
 }
 
 Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const ExecuteParams& params) {
+  auto& stream = *params.stream;
+  auto& buffer_allocations = *params.buffer_allocations;
+
   dnn::BatchDescriptor operand_desc;
   dnn::BatchDescriptor scale_offset_desc;
   // The BatchNormTraining HLO outputs a tuple of three elements: output data,
@@ -179,16 +189,19 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
       buffer_allocations.GetDeviceAddress(output_inv_stddev_));
 
   se::DeviceMemory<float> null_device_ptr(nullptr);
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  stream->ThenBatchNormalizationForward(
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+  stream.ThenBatchNormalizationForward(
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(operand_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
       /*estimated_mean=*/null_device_ptr,
       /*estimated_variance=*/null_device_ptr,
+      /*side_input=*/null_device_ptr,
       operand_desc,                          //
       scale_offset_desc,                     //
       epsilon_,                              //
+      se::dnn::ActivationMode::kNone,        //
       &output_data,                          //
       /*batch_mean=*/&null_device_ptr,       //
       /*batch_var=*/&null_device_ptr,        //
@@ -196,16 +209,20 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
       /*saved_inv_var=*/&output_inv_stddev,  //
       /*is_training=*/true,                  //
       /*var_to_inv_var=*/nullptr,            //
-      /*inv_var_to_var=*/nullptr);
+      /*inv_var_to_var=*/nullptr,            //
+      /*reserve_space_allocator=*/nullptr,   //
+      /*workspace_allocator=*/nullptr);
 
-  // Write the tuple.
-  void* ptrs[] = {output_data.opaque(), output_mean.opaque(),
-                  output_inv_stddev.opaque()};
+  // Write the output tuple.
+  const int kNumOutputs = 3;
+  auto ptrs = absl::make_unique<void*[]>(kNumOutputs);
+  ptrs[0] = output_data.opaque();
+  ptrs[1] = output_mean.opaque();
+  ptrs[2] = output_inv_stddev.opaque();
   se::DeviceMemory<void*> tuple_addr(
       buffer_allocations.GetDeviceAddress(output_tuple_));
-  stream->ThenMemcpyH2D<void*>(ptrs, &tuple_addr);
-
-  if (!stream->ok()) {
+  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, &stream);
+  if (!stream.ok()) {
     return InternalError("BatchNormalizationTraining call failed.");
   }
   return Status::OK();
@@ -245,8 +262,10 @@ CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
 }
 
 Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const ExecuteParams& params) {
+  auto& stream = *params.stream;
+  auto& buffer_allocations = *params.buffer_allocations;
+
   dnn::BatchDescriptor operand_desc;
   dnn::BatchDescriptor scale_offset_desc;
 
@@ -263,8 +282,9 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
   se::DeviceMemory<float> output_grad_offset(
       buffer_allocations.GetDeviceAddress(output_grad_offset_));
 
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  stream->ThenBatchNormalizationBackward(
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+  stream.ThenBatchNormalizationBackward(
       se::DeviceMemory<float>(
           buffer_allocations.GetDeviceAddress(grad_output_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(operand_)),
@@ -272,16 +292,19 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(inv_stddev_)),
       operand_desc, scale_offset_desc, epsilon_, &output_grad_data,
-      &output_grad_scale, &output_grad_offset);
+      &output_grad_scale, &output_grad_offset, nullptr, nullptr);
 
   // Write the output tuple.
-  void* ptrs[] = {output_grad_data.opaque(), output_grad_scale.opaque(),
-                  output_grad_offset.opaque()};
+  const int kNumOutputs = 3;
+  auto ptrs = absl::make_unique<void*[]>(kNumOutputs);
+  ptrs[0] = output_grad_data.opaque();
+  ptrs[1] = output_grad_scale.opaque();
+  ptrs[2] = output_grad_offset.opaque();
   se::DeviceMemory<void*> tuple_addr(
       buffer_allocations.GetDeviceAddress(output_tuple_));
-  stream->ThenMemcpyH2D<void*>(ptrs, &tuple_addr);
+  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, &stream);
 
-  if (!stream->ok()) {
+  if (!stream.ok()) {
     return InternalError("BatchNormalizationBackward call failed.");
   }
   return Status::OK();

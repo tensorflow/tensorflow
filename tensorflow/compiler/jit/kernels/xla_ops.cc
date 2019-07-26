@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 // OP_REQUIRES_OK_RETURN is the same as OP_REQUIRES_OK except that
@@ -61,7 +62,7 @@ XlaPlatformInfo PlatformInfoFromContext(OpKernelConstruction* ctx) {
   DeviceType device_type = ctx->device_type();
   se::Platform::Id platform_id = nullptr;
   const XlaDevice::Metadata* xla_device_metadata = nullptr;
-  std::unique_ptr<XlaAllocator> xla_allocator;
+  std::unique_ptr<se::TfAllocatorAdapter> xla_allocator;
   se::DeviceMemoryAllocator* device_allocator = nullptr;
 
   if (ctx->device_type() == DeviceType(DEVICE_CPU)) {
@@ -93,7 +94,7 @@ XlaPlatformInfo PlatformInfoFromContext(OpKernelConstruction* ctx) {
         se::MultiPlatformManager::PlatformWithId(platform_id);
     OP_REQUIRES_OK_RETURN(ctx, XlaPlatformInfo(), maybe_platform.status());
 
-    xla_allocator = absl::make_unique<XlaAllocator>(
+    xla_allocator = absl::make_unique<se::TfAllocatorAdapter>(
         maybe_platform.ValueOrDie(), ctx->device()->GetAllocator({}));
   }
 
@@ -525,9 +526,19 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   // We're missing the must-be-constant inputs, tell `PopulateInputs`
   // about this.  We don't actually need these inputs because they've
   // already been baked into the compiled kernel.
-  launch_context.PopulateInputs(
-      ctx, closure.compilation_result(), closure.resource_var_snapshots(),
-      /*missing_ctx_input_prefix=*/closure.num_constant_args());
+  {
+    tensorflow::profiler::TraceMe hlo_module_activity(
+        [&] {
+          return absl::StrCat(
+              "Populate Inputs (",
+              closure.compilation_result()->xla_input_shapes.size(), ")");
+        },
+        tensorflow::profiler::TraceMeLevel::kInfo);
+
+    launch_context.PopulateInputs(
+        ctx, closure.compilation_result(), closure.resource_var_snapshots(),
+        /*missing_ctx_input_prefix=*/closure.num_constant_args());
+  }
 
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
@@ -545,6 +556,12 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
 
   auto elapsed = env->NowMicros() - start_time;
   VLOG(2) << "Elapsed time in computation: " << elapsed << "us";
+
+  tensorflow::profiler::TraceMe hlo_module_activity(
+      [&] {
+        return absl::StrCat("Populate Outputs (", ctx->num_outputs(), ")");
+      },
+      tensorflow::profiler::TraceMeLevel::kInfo);
 
   OP_REQUIRES_OK(
       ctx,

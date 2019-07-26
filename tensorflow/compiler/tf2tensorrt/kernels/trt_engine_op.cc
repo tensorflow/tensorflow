@@ -21,11 +21,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/op.h"
@@ -38,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -50,6 +49,7 @@ static Logger logger;
 using absl::StrAppend;
 using absl::StrCat;
 using ::nvinfer1::IRuntime;
+using ::stream_executor::port::StatusOr;
 
 // A helper class to call done() when destructed for asynchronous execution.
 // Helps simultaneous execution of native and TRT engines.
@@ -81,6 +81,10 @@ class TRTEngineOp : public AsyncOpKernel {
                     AsyncOpKernel::DoneCallback done) override;
 
  private:
+  using CacheType =
+      LRUCache<std::vector<TensorShape>, std::unique_ptr<EngineContext>,
+               VectorTensorShapeHasher>;
+
   // Execute calibration
   void ExecuteCalibration(OpKernelContext* ctx, AsyncHelper* helper);
 
@@ -96,15 +100,22 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Allocate necessary resources for calibration
   Status AllocateCalibrationResources(OpKernelContext* ctx,
-                                      SerializableResourceBase** cr);
+                                      TRTEngineCacheResource* cache_res);
+
+  Status GetEngineCacheResource(OpKernelContext* ctx,
+                                TRTEngineCacheResource** cache_res);
 
   // Get engine for the input shape
-  EngineContext* GetEngine(const std::vector<TensorShape>& input_shapes,
-                           OpKernelContext* ctx);
+  StatusOr<EngineContext*> GetEngine(
+      const std::vector<TensorShape>& input_shapes, OpKernelContext* ctx);
+
+  // Verify that the input shapes are consistent and can be handled by this op.
+  Status VerifyInputShapes(const std::vector<TensorShape>& shapes);
 
   // Return engine batch in cached_engne_batch_sizes_ which is closest to input
   // batch.
-  bool GetCompatibleCachedEngine(
+  Status GetEngineInputShapes(
+      const CacheType& cache,
       const std::vector<TensorShape>& actual_input_shapes,
       std::vector<TensorShape>* engine_input_shapes);
 
@@ -132,9 +143,6 @@ class TRTEngineOp : public AsyncOpKernel {
   // Whether to calibrate INT8 engine.
   bool calibration_mode_;
 
-  // Batches of the cached engines
-  std::vector<int> cached_engine_batches_;
-
   // Maximum number of cached engines
   int max_cached_engines_;
 
@@ -161,6 +169,7 @@ void* GetTensorAddress(const Tensor* tensor_ptr) {
     TYPECASE(DT_FLOAT, tensor_ptr, dest_ptr);
     TYPECASE(DT_HALF, tensor_ptr, dest_ptr);
     TYPECASE(DT_INT8, tensor_ptr, dest_ptr);
+    TYPECASE(DT_INT32, tensor_ptr, dest_ptr);
     default: {
       LOG(ERROR) << "Unsupported Data type " << DataTypeString(tensor_type);
       return nullptr;
@@ -196,12 +205,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                  context->GetAttr("workspace_size_bytes", &workspace_size_));
   OP_REQUIRES_OK(context, context->GetAttr("static_engine", &static_engine_));
   if (!static_engine_) {
-    if (!segment_graph_.ParseFromString(serialized_segment_)) {
-      LOG(ERROR) << "Parsing segment graph failed!";
-      context->SetStatus(
-          errors::InvalidArgument("Failed to parse segment graphdef!"));
-      return;
-    }
+    OP_REQUIRES(context, segment_graph_.ParseFromString(serialized_segment_),
+                errors::InvalidArgument("Failed to parse segment graphdef!"));
     VLOG(1) << "Size of serialized GraphDef: "
             << serialized_segment_.capacity();
     string tmp;
@@ -231,16 +236,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   native_func_ = kInvalidHandle;
   OP_REQUIRES_OK(context, context->GetAttr("max_cached_engines_count",
                                            &max_cached_engines_));
-  OP_REQUIRES_OK(context, context->GetAttr("cached_engine_batches",
-                                           &cached_engine_batches_));
-  std::sort(cached_engine_batches_.begin(), cached_engine_batches_.end());
-  if (VLOG_IS_ON(1)) {
-    string s("Engine Batches= ");
-    for (auto i : cached_engine_batches_) {
-      StrAppend(&s, i, " ");
-    }
-    VLOG(1) << s;
-  }
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
@@ -281,17 +276,13 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   VLOG(1) << "Executing TRT calibration: " << name();
   helper->Ref();
   core::ScopedUnref sc(helper);
-  TRTCalibrationResource* calib_res = nullptr;
-  OP_REQUIRES_OK_ASYNC(
-      ctx,
-      ctx->resource_manager()->LookupOrCreate(
-          "TF-TRT-Calibration", name(),
-          reinterpret_cast<SerializableResourceBase**>(&calib_res),
-          {[ctx, this](SerializableResourceBase** cr) -> Status {
-            return this->AllocateCalibrationResources(ctx, cr);
-          }}),
-      *helper);
-  core::ScopedUnref calib_sc(calib_res);
+
+  TRTEngineCacheResource* cache_res = nullptr;
+  OP_REQUIRES_OK_ASYNC(ctx, GetEngineCacheResource(ctx, &cache_res), *helper);
+  core::ScopedUnref unref_cache_res(cache_res);
+
+  CalibrationContext* calib_ctx = cache_res->calib_ctx_.get();
+
   int num_inputs = ctx->num_inputs();
   // TODO(laigd): need to check that input shape matches.
   // Pass input data to calibrator
@@ -299,14 +290,13 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   for (int i = 0; i < num_inputs; i++) {
     const Tensor& t = ctx->input(i);
     void* data_address = GetTensorAddress(&t);
-    if (data_address == nullptr) {
-      ctx->SetStatus(errors::InvalidArgument(
-          "Unsupported data type encountered in input ", i));
-      return;
-    }
+    OP_REQUIRES_ASYNC(ctx, data_address,
+                      errors::InvalidArgument(
+                          "Unsupported data type encountered in input ", i),
+                      *helper);
     // Check the allocated buffer is sufficient for input
     const auto device_tensor =
-        calib_res->device_tensors_.at(i).AccessTensor(ctx);
+        calib_ctx->device_tensors_.at(i).AccessTensor(ctx);
     CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
     input_data.emplace(StrCat(kInputPHName, i), data_address);
   }
@@ -325,41 +315,81 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   // until setDone() is called later by the calibration thread in
   // AllocateCalibrationResources(). In that case, this setBatch() will always
   // be able to detect the error and return false.
-  OP_REQUIRES_ASYNC(ctx, calib_res->calibrator_->setBatch(input_data, *stream),
+  OP_REQUIRES_ASYNC(ctx, calib_ctx->calibrator_->setBatch(input_data, *stream),
                     errors::Internal("Failed to feed calibration data"),
                     *helper);
   VLOG(2) << "Passed calibration data";
   ExecuteNativeSegment(ctx, helper);
 }
 
-bool TRTEngineOp::GetCompatibleCachedEngine(
-    const std::vector<TensorShape>& actual_input_shapes,
+Status TRTEngineOp::VerifyInputShapes(const std::vector<TensorShape>& shapes) {
+  if (shapes.empty()) {
+    return errors::InvalidArgument("Input shapes are empty, for ", name());
+  }
+  if (shapes[0].dims() < 1) {
+    return errors::InvalidArgument("Input shapes contain scalar, for ", name(),
+                                   ": ",
+                                   TensorShapeUtils::ShapeListString(shapes));
+  }
+
+  const int batch_size = shapes[0].dim_size(0);
+  for (const TensorShape& shape : shapes) {
+    if (shape.dims() < 1 || batch_size != shape.dim_size(0)) {
+      return errors::InvalidArgument(
+          "Input shapes are inconsistent on the batch dimension, for ", name(),
+          ": ", TensorShapeUtils::ShapeListString(shapes));
+    }
+  }
+  return Status::OK();
+}
+
+Status TRTEngineOp::GetEngineInputShapes(
+    const CacheType& cache, const std::vector<TensorShape>& actual_input_shapes,
     std::vector<TensorShape>* engine_input_shapes) {
-  const int batch_size = actual_input_shapes[0].dim_size(0);
-  int smallest_batch_size = -1;
-  // Output shape will always be the same as the input but we will overwrite the
-  // batch size.
+  auto match_shape = [](const TensorShape& actual_shape,
+                        const TensorShape& cached_shape) {
+    // Match the rank.
+    if (actual_shape.dims() != cached_shape.dims()) return false;
+    // Match the batch size.
+    if (actual_shape.dim_size(0) > cached_shape.dim_size(0)) return false;
+    // Match remaining dimensions.
+    for (int i = 1; i < actual_shape.dims(); ++i) {
+      if (actual_shape.dim_size(i) != cached_shape.dim_size(i)) return false;
+    }
+    return true;
+  };
+  auto match_shapes = [&](const std::vector<TensorShape>& actual_shapes,
+                          const std::vector<TensorShape>& cached_shapes) {
+    for (int i = 0; i < actual_shapes.size(); ++i) {
+      if (!match_shape(actual_shapes[i], cached_shapes[i])) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // VerifyInputShapes() already ensured that all input shapes have same
+  // batch size, and are not scalars.
   *engine_input_shapes = actual_input_shapes;
-  for (const int cached_batch_size : cached_engine_batches_) {
-    // Check if compatible: batch <= cached batch.
-    //
-    // TODO(laigd): here it only compare the first dim a.k.a the batch size,
-    // we'll need to to support non-batch dimensions as well. This will be done
-    // as part of the offline conversion implementation.
-    if (batch_size <= cached_batch_size) {
-      // First case: first compatible engine found
-      // Second case: smaller batch size engine found
-      if ((smallest_batch_size == -1) ||
-          (cached_batch_size < smallest_batch_size)) {
-        smallest_batch_size = cached_batch_size;
-        // Overwrite batch size for output
-        for (int i = 0; i < engine_input_shapes->size(); i++) {
-          (*engine_input_shapes)[i].set_dim(0, smallest_batch_size);
-        }
+  int64 min_matched_batch_size = kint64max;
+  for (const auto& pair : cache) {
+    const std::vector<TensorShape>& cached_input_shapes = pair.first;
+    // This should not happen, but just for safety.
+    if (actual_input_shapes.size() != cached_input_shapes.size()) {
+      return errors::InvalidArgument(
+          "Input shape list size mismatch for ", name(),
+          ", cached size: ", cached_input_shapes.size(),
+          " vs. actual size: ", actual_input_shapes.size());
+    }
+    if (match_shapes(actual_input_shapes, cached_input_shapes)) {
+      const int cached_batch_size = cached_input_shapes[0].dim_size(0);
+      if (min_matched_batch_size > cached_batch_size) {
+        min_matched_batch_size = cached_batch_size;
+        *engine_input_shapes = cached_input_shapes;
       }
     }
   }
-  return (smallest_batch_size != -1);
+  return Status::OK();
 }
 
 void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
@@ -376,7 +406,10 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   for (int i = 0; i < ctx->num_inputs(); ++i) {
     input_shapes.push_back(ctx->input(i).shape());
   }
-  EngineContext* engine_context = GetEngine(input_shapes, ctx);
+  OP_REQUIRES_OK_ASYNC(ctx, VerifyInputShapes(input_shapes), *helper);
+  StatusOr<EngineContext*> status = GetEngine(input_shapes, ctx);
+  OP_REQUIRES_OK_ASYNC(ctx, status.status(), *helper);
+  EngineContext* engine_context = status.ValueOrDie();
   if (!engine_context->cuda_engine) {
     VLOG(1) << "Engine retrieval for input shapes: "
             << TensorShapeUtils::ShapeListString(input_shapes)
@@ -520,13 +553,8 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   return !kRetry;
 }
 
-EngineContext* TRTEngineOp::GetEngine(
-    const std::vector<TensorShape>& input_shapes, OpKernelContext* ctx) {
-  static EngineContext empty_context;
-  mutex_lock lock(engine_mutex_);
-  // TODO(tmorris): using first input to get batch size - is this reliable?
-  const int batch_size = input_shapes[0].dim_size(0);
-
+Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
+                                           TRTEngineCacheResource** cache_res) {
   // Canonicalize the op name by removing the scopes if any. This is mainly
   // because in TFv2, the function graph can be instantiated in various ways and
   // it'll insert scope names to the name of the TRTEngineOps, which will result
@@ -540,21 +568,27 @@ EngineContext* TRTEngineOp::GetEngine(
   }
 
   // Get engine cache.
-  TRTEngineCacheResource* cache_res = nullptr;
-  auto status = ctx->resource_manager()->LookupOrCreate(
-      "TF-TRT-Engine-Cache", string(resource_name), &cache_res,
+  return ctx->resource_manager()->LookupOrCreate(
+      std::string(kCacheContainerName), std::string(resource_name), cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
+        if (calibration_mode_) {
+          TF_RETURN_IF_ERROR(AllocateCalibrationResources(ctx, *cr));
+        }
         return Status::OK();
       }});
-  if (!status.ok()) {
-    LOG(WARNING) << "Not able to find or create engine cache for " << name()
-                 << ". The native segment will be used instead. "
-                 << "Reason: " << status;
-    return &empty_context;
-  }
+}
 
+StatusOr<EngineContext*> TRTEngineOp::GetEngine(
+    const std::vector<TensorShape>& input_shapes, OpKernelContext* ctx) {
+  static EngineContext empty_context;
+  TRTEngineCacheResource* cache_res = nullptr;
+  TF_RETURN_IF_ERROR(GetEngineCacheResource(ctx, &cache_res));
   core::ScopedUnref sc(cache_res);
+
+  mutex_lock lock(engine_mutex_);
+  // TODO(tmorris): using first input to get batch size - is this reliable?
+  const int batch_size = input_shapes[0].dim_size(0);
   auto& cache = cache_res->cache_;
   auto allocator = cache_res->allocator_.get();
   if (allocator == nullptr) {
@@ -577,8 +611,7 @@ EngineContext* TRTEngineOp::GetEngine(
     infer->setGpuAllocator(allocator);
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
         infer->deserializeCudaEngine(serialized_segment_.c_str(),
-                                     serialized_segment_.size(),
-                                     PluginFactoryTensorRT::GetInstance()));
+                                     serialized_segment_.size(), nullptr));
     auto raw_static_engine = static_engine.get();
     const auto max_batch_size = raw_static_engine->getMaxBatchSize();
     // Static engine will have max_batch_size for batch size so that all inputs
@@ -611,21 +644,11 @@ EngineContext* TRTEngineOp::GetEngine(
   // See if there is a compatible engine cached. The batch size should be <= the
   // cached batch size.
   std::vector<TensorShape> engine_input_shapes;
-  const bool matched_successfully =
-      GetCompatibleCachedEngine(input_shapes, &engine_input_shapes);
+  TF_RETURN_IF_ERROR(
+      GetEngineInputShapes(cache, input_shapes, &engine_input_shapes));
+
   // If matched, use that engine. Otherwise, we will look in cache for that
   // exact shape and possibly create a new engine if it is not in cache.
-  if (!matched_successfully) {
-    engine_input_shapes = input_shapes;
-    if (!cached_engine_batches_.empty()) {
-      // If user has explicitly defined cached_engine_batches, we should
-      // warn them that their input was non-compatible (batch size too high)
-      LOG(WARNING) << "No compatible cached engine was found for batch size: "
-                   << batch_size << ". A new engine will be created.";
-      cached_engine_batches_.push_back(batch_size);
-    }
-  }
-
   if (!cache.count(engine_input_shapes)) {
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
@@ -663,23 +686,17 @@ EngineContext* TRTEngineOp::GetEngine(
   return cache.at(engine_input_shapes).get();
 }
 
+// TODO(hinsu): Move this allocation to CalibrationContext constructor, if
+// possible.
 Status TRTEngineOp::AllocateCalibrationResources(
-    OpKernelContext* ctx, SerializableResourceBase** cr) {
-  auto cres = new TRTCalibrationResource();
-  *cr = cres;
-  // Get the allocator.
-  auto alloc = ctx->device()->GetAllocator(AllocatorAttributes());
-  if (!alloc) {
-    LOG(WARNING) << "Can't get device allocator will not be able to "
-                    "allocate memory from TensorFlow memory pool";
-    cres->allocator_.reset(new TRTCudaAllocator);
-  } else {
-    cres->allocator_.reset(new TRTDeviceAllocator(alloc));
-  }
+    OpKernelContext* ctx, TRTEngineCacheResource* cache_res) {
+  cache_res->calib_ctx_ = absl::make_unique<CalibrationContext>();
+  auto* cres = cache_res->calib_ctx_.get();
+
   // Get the input shapes.
   const int batch_size = ctx->input(0).dim_size(0);
   const int num_inputs = ctx->num_inputs();
-  std::vector<PartialTensorShape> shapes;
+  std::vector<TensorShape> shapes;
   cres->device_tensors_.resize(num_inputs);
   VLOG(1) << " Constructing calibrator";
   for (int i = 0; i < num_inputs; i++) {
@@ -701,8 +718,6 @@ Status TRTEngineOp::AllocateCalibrationResources(
   }
   cres->calibrator_.reset(
       new TRTInt8Calibrator(cres->device_buffers_, batch_size, name()));
-  const string label(name());
-  auto segment_graph = &segment_graph_;
   const int platform_gpu_id =
       ctx->device()->tensorflow_gpu_device_info()->gpu_id;
   if (platform_gpu_id < 0) {
@@ -710,37 +725,58 @@ Status TRTEngineOp::AllocateCalibrationResources(
     return errors::InvalidArgument(
         "Context->device doesn't contain device info!");
   }
-  const int64 workspace_size_bytes = workspace_size_;
-  cres->thr_.reset(new std::thread([cres, label, segment_graph, shapes,
-                                    platform_gpu_id, workspace_size_bytes]() {
-    LOG(INFO) << "Starting calibration thread on device " << platform_gpu_id
-              << ", Calibration Resource @ " << cres;
-    auto err = cudaSetDevice(platform_gpu_id);
-    if (err != cudaSuccess) {
-      // TODO(aaroey): should return error here.
-      LOG(ERROR) << "Couldn't set cuda device to " << platform_gpu_id
-                 << " in calibration thread";
-    }
-    // ConvertGraphDefToEngine() will try to build the engine. This thread
-    // will loop inside buildCudaEngine() consuming the calibration data
-    // that is set by the TF op, and drive the builder until calibrator returns
-    // false. Engine is discarded after calibration table is generated
-    //
-    // TODO(aaroey): maybe setting the max batch size using the python
-    // calibration wrapper class.
-    auto s = convert::ConvertGraphDefToEngine(
-        *segment_graph, TrtPrecisionMode::INT8,
-        cres->calibrator_->getBatchSize(), workspace_size_bytes, shapes,
-        &cres->logger_, cres->allocator_.get(), cres->calibrator_.get(),
-        &cres->engine_,
-        /*use_calibration=*/true,
-        /*convert_successfully=*/nullptr);
-    if (!s.ok()) {
-      LOG(ERROR) << "Calibration failed: " << s;
-      cres->calibrator_->setDone();  // Ignore further pushes
-    }
-    VLOG(1) << "Calibration loop terminated " << label;
-  }));
+
+  cache_res->Ref();
+  cres->thr_.reset(
+      new std::thread([this, cres, shapes, platform_gpu_id, cache_res]() {
+        core::ScopedUnref sc(cache_res);
+
+        LOG(INFO) << "Starting calibration thread on device " << platform_gpu_id
+                  << ", Calibration Resource @ " << cres;
+        auto err = cudaSetDevice(platform_gpu_id);
+        if (err != cudaSuccess) {
+          // TODO(aaroey): should return error here.
+          LOG(ERROR) << "Couldn't set cuda device to " << platform_gpu_id
+                     << " in calibration thread";
+        }
+        std::vector<PartialTensorShape> partial_shapes(shapes.begin(),
+                                                       shapes.end());
+        // ConvertGraphDefToEngine() will try to build the engine. This thread
+        // will loop inside buildCudaEngine() consuming the calibration data
+        // that is set by the TF op, and drive the builder until calibrator
+        // returns false. Engine is discarded after calibration table is
+        // generated
+        //
+        // TODO(aaroey): maybe setting the max batch size using the python
+        // calibration wrapper class.
+        auto s = convert::ConvertGraphDefToEngine(
+            this->segment_graph_, TrtPrecisionMode::INT8,
+            cres->calibrator_->getBatchSize(), this->workspace_size_,
+            partial_shapes, &cache_res->GetLogger(),
+            cache_res->allocator_.get(), cres->calibrator_.get(),
+            &cres->engine_,
+            /*use_calibration=*/true,
+            /*convert_successfully=*/nullptr);
+        if (!s.ok()) {
+          LOG(ERROR) << "Calibration failed: " << s;
+          cres->calibrator_->setDone();  // Ignore further pushes
+        }
+
+        // Transfer the ownership of the engine to the engine cache, so we can
+        // dump it out during conversion for TF 2.0.
+        if (cache_res) {
+          mutex_lock lock(this->engine_mutex_);
+          cres->SetCalibrationTable();
+          this->calibrator_ = std::move(cres->calibrator_);
+          TrtUniquePtrType<nvinfer1::IExecutionContext> exec_context(
+              cres->engine_->createExecutionContext());
+          cache_res->cache_.emplace(
+              shapes, absl::make_unique<EngineContext>(
+                          std::move(cres->engine_), std::move(exec_context)));
+        }
+
+        VLOG(1) << "Calibration loop terminated " << this->name();
+      }));
   VLOG(1) << "initialized calibrator resource";
   return Status::OK();
 }

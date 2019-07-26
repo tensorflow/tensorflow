@@ -221,6 +221,7 @@ REGISTER_OP("FilterDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+// This op is no longer supported.
 REGISTER_OP("FilterByLastComponentDataset")
     .Input("input_dataset: variant")
     .Output("output: variant")
@@ -522,6 +523,13 @@ REGISTER_OP("DeleteIterator")
     .Input("deleter: variant")
     .SetShapeFn(shape_inference::NoOutputs);
 
+REGISTER_OP("DeleteMultiDeviceIterator")
+    .Input("multi_device_iterator: resource")
+    .Input("iterators: N * resource")
+    .Input("deleter: variant")
+    .Attr("N: int >= 0")
+    .SetShapeFn(shape_inference::NoOutputs);
+
 REGISTER_OP("MakeIterator")
     .Input("dataset: variant")
     .Input("iterator: resource")
@@ -679,6 +687,7 @@ REGISTER_OP("IteratorGetNextAsOptional")
 REGISTER_OP("ModelDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")
+    .Attr("algorithm: int = 0")
     .Attr("cpu_budget: int = 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
@@ -747,6 +756,18 @@ REGISTER_OP("UnwrapDatasetVariant")
     .Input("input_handle: variant")
     .Output("output_handle: variant")
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("AnonymousMultiDeviceIterator")
+    .Output("handle: resource")
+    .Output("deleter: variant")
+    .Attr("devices: list(string) >= 1")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      c->set_output(1, c->Scalar());
+      return Status::OK();
+    });
 
 REGISTER_OP("MultiDeviceIterator")
     .Output("handle: resource")

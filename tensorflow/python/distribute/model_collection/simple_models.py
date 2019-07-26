@@ -30,9 +30,10 @@ _BATCH_SIZE = 10
 
 
 def _get_data_for_simple_models():
-  x_train = constant_op.constant(np.random.rand(1, 3), dtype=dtypes.float32)
-  y_train = constant_op.constant(np.random.rand(1, 5), dtype=dtypes.float32)
-  x_predict = constant_op.constant(np.random.rand(1, 3), dtype=dtypes.float32)
+  x_train = constant_op.constant(np.random.rand(1000, 3), dtype=dtypes.float32)
+  y_train = constant_op.constant(np.random.rand(1000, 5), dtype=dtypes.float32)
+  x_predict = constant_op.constant(
+      np.random.rand(1000, 3), dtype=dtypes.float32)
 
   return x_train, y_train, x_predict
 
@@ -48,7 +49,13 @@ class SimpleFunctionalModel(model_collection_base.ModelAndInput):
 
     model = keras.Model(inputs=x, outputs=y)
     optimizer = gradient_descent.SGD(learning_rate=0.001)
-    model.compile(loss='mse', metrics=['mae'], optimizer=optimizer)
+    run_distributed = kwargs.pop('run_distributed', None)
+    assert run_distributed is not None
+    model.compile(
+        loss='mse',
+        metrics=['mae'],
+        optimizer=optimizer,
+        run_distributed=run_distributed)
 
     return model, output_name
 
@@ -70,7 +77,13 @@ class SimpleSequentialModel(model_collection_base.ModelAndInput):
         5, dtype=dtypes.float32, name=output_name, input_dim=3)
     model.add(y)
     optimizer = gradient_descent.SGD(learning_rate=0.001)
-    model.compile(loss='mse', metrics=['mae'], optimizer=optimizer)
+    run_distributed = kwargs.pop('run_distributed', None)
+    assert run_distributed is not None
+    model.compile(
+        loss='mse',
+        metrics=['mae'],
+        optimizer=optimizer,
+        run_distributed=run_distributed)
 
     return model, output_name
 
@@ -99,8 +112,14 @@ class SimpleSubclassModel(model_collection_base.ModelAndInput):
   def get_model(self, **kwargs):
     model = _SimpleModel()
     optimizer = gradient_descent.SGD(learning_rate=0.001)
+    run_distributed = kwargs.pop('run_distributed', None)
+    assert run_distributed is not None
     model.compile(
-        loss='mse', metrics=['mae'], cloning=False, optimizer=optimizer)
+        loss='mse',
+        metrics=['mae'],
+        cloning=False,
+        optimizer=optimizer,
+        run_distributed=run_distributed)
 
     return model, model.output_name
 

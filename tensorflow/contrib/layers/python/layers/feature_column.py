@@ -620,7 +620,7 @@ def sparse_column_with_hash_bucket(column_name,
     dtype: The type of features. Only string and integer types are supported.
     hash_keys: The hash keys to use. It is a list of lists of two uint64s. If
       None, simple and fast hashing algorithm is used. Otherwise, multiple
-      strong hash ids would be produced with each two unit64s in this argument.
+      strong hash ids would be produced with each two uint64s in this argument.
 
   Returns:
     A _SparseColumn with hashed bucket configuration

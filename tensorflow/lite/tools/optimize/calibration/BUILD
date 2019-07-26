@@ -1,11 +1,12 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "calibrator_lib",
@@ -47,6 +48,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )

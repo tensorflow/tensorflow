@@ -1,13 +1,14 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_all")
 
-package(default_visibility = [
-    "//tensorflow/core/grappler/optimizers/data:__subpackages__",
-    "//tensorflow/core/kernels/data:__pkg__",
-    "//tensorflow/core/kernels/data/experimental:__pkg__",
-])
+package(
+    default_visibility = [
+        "//tensorflow/core/grappler/optimizers/data:__subpackages__",
+        "//tensorflow/core/kernels/data:__pkg__",
+        "//tensorflow/core/kernels/data/experimental:__pkg__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "data",
@@ -16,6 +17,7 @@ cc_library(
         ":filter_fusion",
         ":filter_with_random_uniform_fusion",
         ":hoist_random_uniform",
+        ":inject_prefetch",
         ":latency_all_edges",
         ":make_sloppy",
         ":map_and_batch_fusion",
@@ -288,6 +290,26 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "inject_prefetch",
+    srcs = ["inject_prefetch.cc"],
+    hdrs = ["inject_prefetch.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+cc_library(
     name = "latency_all_edges",
     srcs = ["latency_all_edges.cc"],
     hdrs = [
@@ -397,6 +419,9 @@ cc_library(
         ":fusion_utils",
         ":optimizer_base",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
@@ -477,6 +502,8 @@ cc_library(
         ":graph_utils",
         ":optimizer_base",
         "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
@@ -515,6 +542,7 @@ cc_library(
         ":vectorization_utils",
         "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
@@ -654,6 +682,7 @@ cc_library(
     srcs = ["rebatch.cc"],
     hdrs = ["rebatch.h"],
     deps = [
+        ":function_utils",
         ":graph_utils",
         ":optimizer_base",
         "@com_google_absl//absl/container:flat_hash_map",

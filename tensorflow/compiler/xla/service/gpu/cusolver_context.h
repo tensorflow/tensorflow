@@ -32,6 +32,8 @@ namespace gpu {
 
 class CusolverContext {
  public:
+  // stream may be nullptr, in which case the context can only be used for
+  // buffer size queries.
   static StatusOr<CusolverContext> Create(se::Stream* stream);
   CusolverContext() = default;
   ~CusolverContext();
@@ -63,17 +65,9 @@ class CusolverContext {
                se::DeviceMemory<std::complex<double>> workspace);
 
   // Returns the size of the `workspace` required by Potrf, in number of
-  // elements of size T.
-  StatusOr<int64> PotrfBufferSize(se::blas::UpperLower uplo, int n,
-                                  se::DeviceMemory<float> dev_A, int lda);
-  StatusOr<int64> PotrfBufferSize(se::blas::UpperLower uplo, int n,
-                                  se::DeviceMemory<double> dev_A, int lda);
-  StatusOr<int64> PotrfBufferSize(se::blas::UpperLower uplo, int n,
-                                  se::DeviceMemory<std::complex<float>> dev_A,
-                                  int lda);
-  StatusOr<int64> PotrfBufferSize(se::blas::UpperLower uplo, int n,
-                                  se::DeviceMemory<std::complex<double>> dev_A,
-                                  int lda);
+  // elements of `type`.
+  StatusOr<int64> PotrfBufferSize(PrimitiveType type, se::blas::UpperLower uplo,
+                                  int n, int lda);
 
  private:
   CusolverContext(se::Stream* stream, cusolverDnHandle_t handle);

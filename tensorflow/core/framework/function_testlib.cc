@@ -259,6 +259,22 @@ FunctionDef XAddX() {
       });
 }
 
+FunctionDef XAddY() {
+  return FDH::Define(
+      // Name
+      "XAddY",
+      // Args
+      {"x: T", "y: T"},
+      // Return values
+      {"z: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"z"}, "Add", {"x", "y"}, {{"T", "$T"}}},
+      });
+}
+
 FunctionDef XTimesTwoInt32() {
   const Tensor kTwo = test::AsScalar<int64>(2);
   return FDH::Define(
@@ -551,14 +567,50 @@ FunctionDef RandomUniformLess() {
          {"shrink_axis_mask", 0}}}});
 }
 
+FunctionDef MakeRangeDataset() {
+  return FDH::Define(
+      // Name
+      "MakeRangeDataset",
+      // Args
+      {"start: int64", "stop: int64", "step: int64"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
+      // Nodes
+      {{{"y"},
+        "RangeDataset",
+        {"start", "stop", "step"},
+        {{"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"}}}});
+}
+
+FunctionDef MakeTakeDataset() {
+  return FDH::Define(
+      // Name
+      "TakeDataset",
+      // Args
+      {"input_dataset: variant", "count: int64"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
+      // Nodes
+      {{{"y"},
+        "TakeDataset",
+        {"input_dataset", "count"},
+        {{"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"}}}});
+}
+
 FunctionDef MakeTensorSliceDataset() {
   return FDH::Define(
       // Name
       "MakeTensorSliceDataset",
       // Args
-      {"x:Toutput_types"},
+      {"x: Toutput_types"},
       // Return values
-      {"y:variant"},
+      {"y: variant"},
       // Attr def
       {"Toutput_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
       // Nodes

@@ -53,7 +53,7 @@ class ChooseFastestBranchBenchmark(benchmark_base.DatasetBenchmarkBase):
 
     return self.make_benchmark_datasets(dataset, branch_0, branch_1, 100)
 
-  def benchmarkChooseFastest(self):
+  def benchmark_choose_fastest(self):
     map_batch, batch_map, choose_fastest = self.make_simple_benchmark_datasets()
 
     def benchmark(dataset, name):
@@ -63,7 +63,7 @@ class ChooseFastestBranchBenchmark(benchmark_base.DatasetBenchmarkBase):
     benchmark(batch_map, "batch_map_dataset")
     benchmark(choose_fastest, "choose_fastest_dataset")
 
-  def benchmarkChooseFastestFirstNIterations(self):
+  def benchmark_choose_fastest_first_n_iterations(self):
 
     map_batch, batch_map, choose_fastest = self.make_simple_benchmark_datasets()
 
@@ -75,7 +75,7 @@ class ChooseFastestBranchBenchmark(benchmark_base.DatasetBenchmarkBase):
     benchmark(batch_map, "batch_map_dataset")
     benchmark(choose_fastest, "choose_fastest_dataset")
 
-  def benchmarkWithInputSkew(self):
+  def benchmark_with_input_skew(self):
 
     def make_dataset(time_us, num_elements):
       return dataset_ops.Dataset.range(num_elements).apply(sleep.sleep(time_us))

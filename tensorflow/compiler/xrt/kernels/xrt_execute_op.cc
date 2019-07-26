@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/compiler/xrt/xrt_device.h"
+#include "tensorflow/compiler/xrt/xrt_memory_manager.h"
 #include "tensorflow/compiler/xrt/xrt_state.h"
 #include "tensorflow/compiler/xrt/xrt_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -72,28 +73,31 @@ uint32 GetXLARandomSeed() {
 }
 
 xla::StatusOr<InputBuffers> GetInputBuffers(
-    ResourceMgr* rm, const std::vector<InputCoords>& input_coords,
-    bool release_inputs) {
+    XRTMemoryManager::WorkingSet* working_set, xla::Backend* backend,
+    const std::vector<InputCoords>& input_coords, bool release_inputs) {
   InputBuffers input_buffers;
   input_buffers.input_tuples.reserve(input_coords.size());
   input_buffers.input_allocations.reserve(input_coords.size());
   input_buffers.input_pointers.reserve(input_coords.size());
   for (size_t i = 0; i < input_coords.size(); ++i) {
-    XRTTupleAllocation* tuple;
     TF_RETURN_IF_ERROR(
-        XRTTupleAllocation::Lookup(rm, input_coords[i].handle, &tuple));
+        working_set->LookupAndPin(backend, input_coords[i].handle));
+    auto tuple = working_set->PinnedTuples().back();
     input_buffers.input_tuples.emplace_back(tuple);
     if (release_inputs) {
       // We are holding a reference to the tuple, so we can safely delete it
       // from the resource manager here.
-      TF_RETURN_IF_ERROR(XRTTupleAllocation::DeleteFromResourceManager(
-          rm, input_coords[i].handle));
+      TF_RETURN_IF_ERROR(
+          working_set->MemoryManager()->Release(input_coords[i].handle));
       VLOG(2) << "Released allocation handle " << input_coords[i].handle;
     }
     if (input_coords[i].index.empty()) {
-      input_buffers.input_allocations.emplace_back(tuple->ToShapedBuffer());
+      TF_ASSIGN_OR_RETURN(xla::ShapedBuffer shaped_buffer,
+                          tuple->ToShapedBuffer());
+      input_buffers.input_allocations.emplace_back(std::move(shaped_buffer));
     } else {
-      xla::ShapedBuffer shaped_buffer = tuple->ToShapedBuffer();
+      TF_ASSIGN_OR_RETURN(xla::ShapedBuffer shaped_buffer,
+                          tuple->ToShapedBuffer());
       TF_ASSIGN_OR_RETURN(xla::ShapedBuffer sub_shaped_buffer,
                           shaped_buffer.SubShapedBuffer(input_coords[i].index));
       input_buffers.input_allocations.emplace_back(
@@ -107,28 +111,25 @@ xla::StatusOr<InputBuffers> GetInputBuffers(
 }
 
 xla::StatusOr<InputBuffers> GetChainedOpInputs(
-    const xrt::XRTChainedExecuteOp& op, int current_index,
-    absl::Span<const RefPtr<XRTTupleAllocation>> ops_outputs) {
+    const xrt::XRTChainedExecuteOp& op,
+    absl::Span<const RefPtr<XRTTupleAllocation>> op_inputs) {
   InputBuffers input_buffers;
   input_buffers.input_tuples.reserve(op.inputs_size());
   input_buffers.input_allocations.reserve(op.inputs_size());
   input_buffers.input_pointers.reserve(op.inputs_size());
-  for (auto& input : op.inputs()) {
-    if (input.op_index() >= current_index) {
-      return errors::InvalidArgument(
-          "Input index ", input.op_index(),
-          " is above the current position: ", current_index);
-    }
-    input_buffers.input_tuples.emplace_back(ops_outputs[input.op_index()]);
+  for (int i = 0; i < op.inputs_size(); ++i) {
+    auto& input = op.inputs(i);
+    input_buffers.input_tuples.emplace_back(op_inputs[i]);
     // Thanks to the greatness of proto3, there is no way to query for
     // explicitly set fields, so the default for output_index (zero) means no
     // sub-index. As consequence, the real index is output_index - 1.
     if (input.output_index() == 0) {
-      input_buffers.input_allocations.emplace_back(
-          input_buffers.input_tuples.back()->ToShapedBuffer());
+      TF_ASSIGN_OR_RETURN(xla::ShapedBuffer shaped_buffer,
+                          input_buffers.input_tuples.back()->ToShapedBuffer());
+      input_buffers.input_allocations.emplace_back(std::move(shaped_buffer));
     } else {
-      xla::ShapedBuffer shaped_buffer =
-          input_buffers.input_tuples.back()->ToShapedBuffer();
+      TF_ASSIGN_OR_RETURN(xla::ShapedBuffer shaped_buffer,
+                          input_buffers.input_tuples.back()->ToShapedBuffer());
       TF_ASSIGN_OR_RETURN(
           xla::ShapedBuffer sub_shaped_buffer,
           shaped_buffer.SubShapedBuffer({input.output_index() - 1}));
@@ -142,7 +143,7 @@ xla::StatusOr<InputBuffers> GetChainedOpInputs(
   return std::move(input_buffers);
 }
 
-xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
+xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
     OpKernelContext* context, XRTGenericDeviceAccessor::ScopedRef* device_ref,
     xla::LocalExecutable* executable, const InputBuffers& input_buffers,
     se::Stream* stream, int rng_seed) {
@@ -190,15 +191,35 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
 }
 
 xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
-    OpKernelContext* context, ResourceMgr* rm,
+    OpKernelContext* context, XRTMemoryManager* memory_manager,
+    XRTGenericDeviceAccessor::ScopedRef* device_ref,
+    xla::LocalExecutable* executable, const InputBuffers& input_buffers,
+    se::Stream* stream, int rng_seed) {
+  auto runfn = [&]() {
+    return RunExecutable(context, device_ref, executable, input_buffers, stream,
+                         rng_seed);
+  };
+
+  // We pass zero as requested_free_size as there is no simple way to get the
+  // peak heap size. Upon zero, the Run() API will try to free chunks of device
+  // memory, until either the runfn can run, or we run out of freeable memory.
+  return memory_manager->Run<RefPtr<XRTTupleAllocation>>(
+      runfn, device_ref->backend(), device_ref->device_ordinal(),
+      /*requested_free_size=*/0);
+}
+
+xla::StatusOr<RefPtr<XRTTupleAllocation>> ExecuteComputation(
+    OpKernelContext* context, const RefPtr<XRTMemoryManager>& memory_manager,
     XRTGenericDeviceAccessor::ScopedRef* device_ref,
     xla::LocalExecutable* executable,
     const std::vector<InputCoords>& input_coords, bool release_inputs,
     se::Stream* stream, int rng_seed) {
+  XRTMemoryManager::WorkingSet working_set(memory_manager);
   TF_ASSIGN_OR_RETURN(InputBuffers input_buffers,
-                      GetInputBuffers(rm, input_coords, release_inputs));
-  return ExecuteComputation(context, device_ref, executable, input_buffers,
-                            stream, rng_seed);
+                      GetInputBuffers(&working_set, device_ref->backend(),
+                                      input_coords, release_inputs));
+  return ExecuteComputation(context, memory_manager.get(), device_ref,
+                            executable, input_buffers, stream, rng_seed);
 }
 
 // XRTExecuteOp
@@ -265,8 +286,9 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   se::Stream* stream = context->op_device_context()
                            ? context->op_device_context()->stream()
                            : nullptr;
+  RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
   TF_ASSIGN_OR_RETURN(std::vector<InputCoords> input_coords,
-                      GetComputationInputs(context, rm, "input_handles"));
+                      GetComputationInputs(context, "input_handles"));
 
   std::unique_ptr<XRTCompilationCacheEntryRef> entry;
   TF_RETURN_IF_ERROR(cache->Lookup(compilation_handle, &entry));
@@ -279,10 +301,11 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
 
   TF_ASSIGN_OR_RETURN(
       RefPtr<XRTTupleAllocation> output_tuple,
-      ExecuteComputation(context, rm, &device_ref, executable, input_coords,
-                         release_inputs, stream, rng_seed));
+      ExecuteComputation(context, memory_manager, &device_ref, executable,
+                         input_coords, release_inputs, stream, rng_seed));
 
-  return CreateExecuteOutput(context, rm, std::move(output_tuple),
+  return CreateExecuteOutput(context, memory_manager.get(),
+                             std::move(output_tuple),
                              config_proto.return_exploded_tuple());
 }
 
@@ -346,22 +369,23 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
   se::Stream* stream = context->op_device_context()
                            ? context->op_device_context()->stream()
                            : nullptr;
-  auto execute_op =
-      [&](const xrt::XRTChainedExecuteOp& op, int current_index,
-          absl::Span<const RefPtr<XRTTupleAllocation>> ops_outputs)
+  RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
+  auto execute_op = [&](const xrt::XRTChainedExecuteOp& op,
+                        absl::Span<const RefPtr<XRTTupleAllocation>> op_inputs)
       -> xla::StatusOr<RefPtr<XRTTupleAllocation>> {
     TF_ASSIGN_OR_RETURN(InputBuffers input_buffers,
-                        GetChainedOpInputs(op, current_index, ops_outputs));
+                        GetChainedOpInputs(op, op_inputs));
 
     std::unique_ptr<XRTCompilationCacheEntryRef> entry;
     TF_RETURN_IF_ERROR(cache->Lookup(op.computation_handle(), &entry));
     xla::LocalExecutable* executable = entry->get().get_executable();
 
-    return ExecuteComputation(context, &device_ref, executable, input_buffers,
-                              stream, rng_seed);
+    return ExecuteComputation(context, memory_manager.get(), &device_ref,
+                              executable, input_buffers, stream, rng_seed);
   };
 
-  return ExecuteChained(context, rm, plan, config, execute_op);
+  return ExecuteChained(context, memory_manager, device_ref.backend(),
+                        device_ref.device_ordinal(), plan, config, execute_op);
 }
 
 XRTExecuteChainedOp::~XRTExecuteChainedOp() = default;

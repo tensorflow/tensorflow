@@ -29,7 +29,7 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
                               int64 step_id)
       : dev_mgr_(dev_mgr),
         dev_resolver_(dev_resolver),
-        buf_rendezvous_(step_id),
+        buf_rendezvous_(step_id, dev_mgr),
         step_id_(step_id) {}
 
   virtual ~CollectiveRemoteAccessLocal() {}
@@ -52,21 +52,25 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
                   const DeviceLocality& client_locality,
                   const StatusCallback& done) override;
 
-  void GetDeviceLocalitiesAsync(const CollInstanceParams& ci_params,
-                                std::vector<DeviceLocality>* localities,
-                                const StatusCallback& done) override {
-    dev_resolver_->GetDeviceLocalitiesAsync(ci_params, localities, done);
+  void GetAllDeviceAttributesAsync(const std::vector<string>& devices,
+                                   const std::vector<string>& tasks,
+                                   std::vector<DeviceAttributes>* attributes,
+                                   const StatusCallback& done) override {
+    dev_resolver_->GetAllDeviceAttributesAsync(devices, tasks, attributes,
+                                               done);
   }
 
-  void GetLocalityAsync(const string& device, const string& task,
-                        DeviceLocality* locality,
-                        const StatusCallback& done) override {
-    dev_resolver_->GetLocalityAsync(device, task, locality, done);
+  void GetDeviceAttributesAsync(const string& device, const string& task,
+                                DeviceAttributes* attributes,
+                                const StatusCallback& done) override {
+    dev_resolver_->GetDeviceAttributesAsync(device, task, attributes, done);
   }
 
   void ClearTask(const string& task) override {
     dev_resolver_->ClearTask(task);
   }
+
+  void ClearCache() override { dev_resolver_->ClearCache(); }
 
   BufRendezvous* buf_rendezvous() override { return &buf_rendezvous_; }
 

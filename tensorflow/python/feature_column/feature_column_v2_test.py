@@ -89,6 +89,30 @@ class BaseFeatureColumnForTests(fc.FeatureColumn):
     raise ValueError('Should not use this method.')
 
 
+class SortableFeatureColumnTest(test.TestCase):
+
+  def test_sort_columns_by_string_representation(self):
+    # These should be sorted lexicographically based on their string
+    # representations. For FeatureColumns, this looks like
+    # '<__main__.FeatureColumn object at ...>'.
+
+    a = fc.numeric_column('first')  # '<__main__.NumericColumn ...>'
+    b = fc.numeric_column('second')  # '<__main__.NumericColumn ...>'
+    c = fc_old._numeric_column('third')  # '<__main__._NumericColumn ...>'
+
+    sorted_sequence = ['0', a, b, c, 'd']
+    reversed_sequence = sorted_sequence[::-1]
+    self.assertAllEqual(sorted(reversed_sequence), sorted_sequence)
+
+    # pylint: disable=g-generic-assert
+    self.assertTrue(a < b)  # V2 < V2 feature columns.
+    self.assertTrue(a < c)  # V2 < V1 feature columns.
+    self.assertFalse(c < a)  # V1 < V2 feature columns.
+    self.assertTrue('0' < a)  # string < V2 feature column.
+    self.assertTrue(a < 'd')  # V2 feature column < string.
+    # pylint: enable=g-generic-assert
+
+
 class LazyColumnTest(test.TestCase):
 
   def test_transformations_called_once(self):
@@ -265,11 +289,13 @@ class NumericColumnTest(test.TestCase):
     self.assertEqual(((3., 2.),), a.default_value)
 
   def test_shape_and_default_value_compatibility(self):
-    fc.numeric_column('aaa', shape=[2], default_value=[1, 2.])
+    a = fc.numeric_column('aaa', shape=[2], default_value=[1, 2.])
+    self.assertEqual((1, 2.), a.default_value)
     with self.assertRaisesRegexp(ValueError, 'The shape of default_value'):
       fc.numeric_column('aaa', shape=[2], default_value=[1, 2, 3.])
-    fc.numeric_column(
-        'aaa', shape=[3, 2], default_value=[[2, 3], [1, 2], [2, 3.]])
+      a = fc.numeric_column(
+          'aaa', shape=[3, 2], default_value=[[2, 3], [1, 2], [2, 3.]])
+      self.assertEqual(((2, 3), (1, 2), (2, 3.)), a.default_value)
     with self.assertRaisesRegexp(ValueError, 'The shape of default_value'):
       fc.numeric_column(
           'aaa', shape=[3, 1], default_value=[[2, 3], [1, 2], [2, 3.]])
@@ -462,10 +488,10 @@ class NumericColumnTest(test.TestCase):
         'normalizer_fn': '_increment_two'
     }, config)
 
-    self.assertEqual(
-        price,
-        fc.NumericColumn._from_config(
-            config, custom_objects={'_increment_two': _increment_two}))
+    new_col = fc.NumericColumn._from_config(
+        config, custom_objects={'_increment_two': _increment_two})
+    self.assertEqual(price, new_col)
+    self.assertEqual(new_col.shape, (1,))
 
 
 class BucketizedColumnTest(test.TestCase):
@@ -858,8 +884,11 @@ class HashedCategoricalColumnTest(test.TestCase):
       fc.categorical_column_with_hash_bucket('aaa', 0)
 
   def test_dtype_should_be_string_or_integer(self):
-    fc.categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.string)
-    fc.categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.int32)
+    a = fc.categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.string)
+    b = fc.categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.int32)
+    self.assertEqual(dtypes.string, a.dtype)
+    self.assertEqual(dtypes.int32, b.dtype)
+
     with self.assertRaisesRegexp(ValueError, 'dtype must be string or integer'):
       fc.categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.float32)
 
@@ -8345,108 +8374,6 @@ class WeightedCategoricalColumnTest(test.TestCase):
         config, columns_by_name={categorical_column.name: categorical_column})
     self.assertEqual(column, new_column)
     self.assertIs(categorical_column, new_column.categorical_column)
-
-
-class FeatureColumnForSerializationTest(BaseFeatureColumnForTests):
-
-  @property
-  def _is_v2_column(self):
-    return True
-
-  @property
-  def name(self):
-    return 'BadParentsFeatureColumn'
-
-  def transform_feature(self, transformation_cache, state_manager):
-    return 'Output'
-
-  @property
-  def parse_example_spec(self):
-    pass
-
-
-class SerializationTest(test.TestCase):
-  """Tests for serialization, deserialization helpers."""
-
-  def test_serialize_non_feature_column(self):
-
-    class NotAFeatureColumn(object):
-      pass
-
-    with self.assertRaisesRegexp(ValueError, 'is not a FeatureColumn'):
-      fc.serialize_feature_column(NotAFeatureColumn())
-
-  def test_deserialize_invalid_config(self):
-    with self.assertRaisesRegexp(ValueError, 'Improper config format: {}'):
-      fc.deserialize_feature_column({})
-
-  def test_deserialize_config_missing_key(self):
-    config_missing_key = {
-        'config': {
-            # Dtype is missing and should cause a failure.
-            # 'dtype': 'int32',
-            'default_value': None,
-            'key': 'a',
-            'normalizer_fn': None,
-            'shape': (2,)
-        },
-        'class_name': 'NumericColumn'
-    }
-    with self.assertRaisesRegexp(ValueError, 'Invalid config:'):
-      fc.deserialize_feature_column(config_missing_key)
-
-  def test_deserialize_invalid_class(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'Unknown feature_column_v2: NotExistingFeatureColumnClass'):
-      fc.deserialize_feature_column({
-          'class_name': 'NotExistingFeatureColumnClass',
-          'config': {}
-      })
-
-  def test_deserialization_deduping(self):
-    price = fc.numeric_column('price')
-    bucketized_price = fc.bucketized_column(price, boundaries=[0, 1])
-
-    configs = fc.serialize_feature_columns([price, bucketized_price])
-
-    deserialized_feature_columns = fc.deserialize_feature_columns(configs)
-    self.assertEqual(2, len(deserialized_feature_columns))
-    new_price = deserialized_feature_columns[0]
-    new_bucketized_price = deserialized_feature_columns[1]
-
-    # Ensure these are not the original objects:
-    self.assertIsNot(price, new_price)
-    self.assertIsNot(bucketized_price, new_bucketized_price)
-    # But they are equivalent:
-    self.assertEquals(price, new_price)
-    self.assertEquals(bucketized_price, new_bucketized_price)
-
-    # Check that deduping worked:
-    self.assertIs(new_bucketized_price.source_column, new_price)
-
-  def deserialization_custom_objects(self):
-    # Note that custom_objects is also tested extensively above per class, this
-    # test ensures that the public wrappers also handle it correctly.
-    def _custom_fn(input_tensor):
-      return input_tensor + 42.
-
-    price = fc.numeric_column('price', normalizer_fn=_custom_fn)
-
-    configs = fc.serialize_feature_columns([price])
-
-    deserialized_feature_columns = fc.deserialize_feature_columns(configs)
-
-    self.assertEqual(1, len(deserialized_feature_columns))
-    new_price = deserialized_feature_columns[0]
-
-    # Ensure these are not the original objects:
-    self.assertIsNot(price, new_price)
-    # But they are equivalent:
-    self.assertEquals(price, new_price)
-
-    # Check that normalizer_fn points to the correct function.
-    self.assertIs(new_price.normalizer_fn, _custom_fn)
-
 
 if __name__ == '__main__':
   test.main()

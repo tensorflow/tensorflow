@@ -63,7 +63,7 @@ class NcclManagerTest : public ::testing::Test {
     int num_completed = 0;
   };
 
-  static void SetUpTestCase() {
+  static void SetUpTestSuite() {
     setenv("NCCL_DEBUG", "INFO", 1 /* replace */);
     setenv("NCCL_LAUNCH_MODE", "PARALLEL", 1 /* replace */);
     devices_ = new std::vector<std::unique_ptr<BaseGPUDevice>>(GetGPUDevices());
@@ -74,7 +74,7 @@ class NcclManagerTest : public ::testing::Test {
 
   static int32 NumGPUs() { return static_cast<int32>(devices_->size()); }
 
-  static void TearDownTestCase() { delete devices_; }
+  static void TearDownTestSuite() { delete devices_; }
 
   TestCase* MakeReductionTestCase(int num_nodes, int num_ranks_per_node,
                                   ncclRedOp_t reduction_op, TensorShape shape,
@@ -172,6 +172,47 @@ class NcclManagerTest : public ::testing::Test {
         auto in_gpu_mem = AsDeviceMemory(in_gpu.flat<Scalar>().data());
         stream->ThenMemcpy(&in_gpu_mem, in_cpu.flat<Scalar>().data(),
                            in_cpu.TotalBytes());
+      }
+    }
+
+    return test_case;
+  }
+
+  // Make a broadcast test which broadcasts a tensor with shape `shape` from
+  // `src_node`, `src_rank` to all other ranks.
+  // If `in_place` is true, input and output are the same for the source,
+  // otherwise they are tensors backed by different buffers.
+  TestCase* MakeBroadcastTestCase(int num_nodes, int num_ranks_per_node,
+                                  TensorShape shape, int src_node, int src_rank,
+                                  bool in_place) {
+    TestCase* test_case = new TestCase();
+    test_case->expected = Tensor(data_type_, shape);
+    test::FillFn<Scalar>(&test_case->expected,
+                         [](int) { return static_cast<Scalar>(1); });
+
+    for (int node = 0; node < num_nodes; ++node) {
+      for (int local_rank = 0; local_rank < num_ranks_per_node; ++local_rank) {
+        auto* device = GetDevice(local_rank);
+        if (node == src_node && local_rank == src_rank) {
+          test_case->ins.emplace_back(GpuAllocator(device), data_type_, shape);
+          if (in_place) {
+            test_case->outs.emplace_back(test_case->ins.back());
+          } else {
+            test_case->outs.emplace_back(GpuAllocator(device), data_type_,
+                                         shape);
+          }
+          Tensor in_cpu(data_type_, shape);
+          test::FillFn<Scalar>(&in_cpu,
+                               [](int) { return static_cast<Scalar>(1); });
+          const Tensor& in_gpu = test_case->ins.back();
+          auto in_gpu_mem = AsDeviceMemory(in_gpu.flat<Scalar>().data());
+          auto* stream = device->tensorflow_gpu_device_info()->stream;
+          stream->ThenMemcpy(&in_gpu_mem, in_cpu.flat<Scalar>().data(),
+                             in_cpu.TotalBytes());
+        } else {
+          test_case->ins.emplace_back(Tensor());
+          test_case->outs.emplace_back(GpuAllocator(device), data_type_, shape);
+        }
       }
     }
 
@@ -447,6 +488,46 @@ TYPED_TEST(NcclManagerTest, BasicAllGather) {
     }
 
     LOG(INFO) << "Verifying results";
+    this->VerifyResults(test_case.get());
+  }
+}
+
+// Test basic broadcast.
+TYPED_TEST(NcclManagerTest, BasicBroadcast) {
+  const int num_ranks = 4;
+  const int src_rank = 2;
+  for (int in_place_idx = 0; in_place_idx <= 1; ++in_place_idx) {
+    bool in_place = in_place_idx == 1;
+    std::unique_ptr<typename TestFixture::TestCase> test_case(
+        this->MakeBroadcastTestCase(/*num_nodes=*/1, num_ranks,
+                                    TensorShape({5, 6}), /*src_node=*/0,
+                                    src_rank, in_place));
+    for (int rank = 0; rank < num_ranks; ++rank) {
+      auto* device = this->GetDevice(rank);
+      auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
+      auto* stream = device->tensorflow_gpu_device_info()->stream;
+      auto* input = rank == src_rank ? &test_case->ins[rank] : nullptr;
+      auto* output = test_case->outs[rank].NumElements() == 0
+                         ? nullptr
+                         : &test_case->outs[rank];
+      auto participant = absl::make_unique<NcclManager::Participant>(
+          device->executor(), stream, event_mgr, device->gpu_id(), input,
+          output, rank, this->CreateDoneCallback(test_case.get()));
+      if (rank == src_rank) {
+        NcclManager::instance()->AddBroadcastSend(
+            std::move(participant),
+            {"broadcast", /*num_local_devices=*/num_ranks,
+             /*num_global_devices=*/num_ranks,
+             /*communicator_key=*/""});
+      } else {
+        NcclManager::instance()->AddBroadcastRecv(
+            std::move(participant),
+            {"broadcast", /*num_local_devices=*/num_ranks,
+             /*num_global_devices=*/num_ranks,
+             /*communicator_key=*/""});
+      }
+    }
+
     this->VerifyResults(test_case.get());
   }
 }

@@ -25,8 +25,10 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -250,6 +252,32 @@ def _build_node_map(nodes):
   return node_map
 
 
+def _example_noninlined_funcdef_shape(op):
+  return [op.inputs[0].shape]
+
+
+@function.Defun(
+    shape_func=_example_noninlined_funcdef_shape,
+    func_name='example_noninlined_funcdef_grad',
+    noinline=True)
+def _example_noninlined_funcdef_grad(features, grad):
+  """Gradient of Swish function defined below."""
+  sigmoid_features = math_ops.sigmoid(features)
+  activation_grad = (
+      sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
+  return grad * activation_grad
+
+
+@function.Defun(
+    grad_func=_example_noninlined_funcdef_grad,
+    shape_func=_example_noninlined_funcdef_shape,
+    func_name='example_noninlined_funcdef',
+    noinline=True)
+def _example_noninlined_funcdef(features):
+  """Computes the Swish activation function: `x * sigmoid(x)`."""
+  return features * math_ops.sigmoid(features)
+
+
 class AutoMixedPrecisionTest(test.TestCase):
   """Tests the Grappler auto mixed precision optimizer."""
   IGNORE_PERF_VAR = 'TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_IGNORE_PERFORMANCE'
@@ -338,50 +366,57 @@ class AutoMixedPrecisionTest(test.TestCase):
       self.assertAllClose(output_val_ref, output_val, atol=2e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_conv_bn(self):
     """Test graph with convolution followed by batch norm."""
-    if test.is_gpu_available(cuda_only=True):
-      random_seed.set_random_seed(0)
-      x = _input([2, 8, 8, 1])
-      x = _conv_bn(x)
-      output = _conv_bn(x)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      if test.is_gpu_available(cuda_only=True):
+        random_seed.set_random_seed(0)
+        x = _input([2, 8, 8, 1])
+        x = _conv_bn(x)
+        output = _conv_bn(x)
 
-      output_val_ref, output_val, cost_graph = self._run(output)
-      node_map = _build_node_map(cost_graph.node)
-      num_to_fp16, num_to_fp32 = _count_casts(cost_graph.node)
+        output_val_ref, output_val, cost_graph = self._run(output)
+        node_map = _build_node_map(cost_graph.node)
+        num_to_fp16, num_to_fp32 = _count_casts(cost_graph.node)
 
-      self._assert_output_fp16(node_map, 'Conv2D')
-      self._assert_output_fp16(node_map, 'FusedBatchNorm')
-      self._assert_output_fp16(node_map, 'Conv2D_1')
-      self.assertEqual(num_to_fp16, 3)  # Before Conv2D:0, Conv2D:1, Conv2D_1:1
-      self.assertEqual(num_to_fp32, 1)  # After FusedBatchNorm:0
-      self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
+        self._assert_output_fp16(node_map, 'Conv2D')
+        self._assert_output_fp16(node_map, 'FusedBatchNormV3')
+        self._assert_output_fp16(node_map, 'Conv2D_1')
+        self.assertEqual(num_to_fp16,
+                         3)  # Before Conv2D:0, Conv2D:1, Conv2D_1:1
+        self.assertEqual(num_to_fp32, 1)  # After FusedBatchNormV3:0
+        self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_conv_bn_dropout(self):
     """Test dropout precision of convolution batch norm graph."""
-    if test.is_gpu_available(cuda_only=True):
-      random_seed.set_random_seed(0)
-      x = _input([2, 8, 8, 1])
-      y = _conv_bn(x)
-      y = nn.dropout(y, rate=0.5)
-      y = _conv_bn(y)
-      y = array_ops.identity(y)
-      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
-      g = optimizer.compute_gradients(y, [x])
-      output = (y, g)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      if test.is_gpu_available(cuda_only=True):
+        random_seed.set_random_seed(0)
+        x = _input([2, 8, 8, 1])
+        y = _conv_bn(x)
+        y = nn.dropout(y, rate=0.5)
+        y = _conv_bn(y)
+        y = array_ops.identity(y)
+        optimizer = gradient_descent.GradientDescentOptimizer(
+            learning_rate=0.01)
+        g = optimizer.compute_gradients(y, [x])
+        output = (y, g)
 
-      output_val_ref, output_val, cost_graph = self._run(output)
-      node_map = _build_node_map(cost_graph.node)
-      self._assert_output_fp16(node_map, 'Conv2D')
-      self._assert_output_fp16(node_map, 'FusedBatchNorm')
-      self._assert_output_fp16(node_map, 'dropout/mul')
-      self._assert_output_fp16(node_map, 'Conv2D_1')
+        output_val_ref, output_val, cost_graph = self._run(output)
+        node_map = _build_node_map(cost_graph.node)
+        self._assert_output_fp16(node_map, 'Conv2D')
+        self._assert_output_fp16(node_map, 'FusedBatchNormV3')
+        self._assert_output_fp16(node_map, 'dropout/mul')
+        self._assert_output_fp16(node_map, 'Conv2D_1')
 
-      output_val_ref, output_val, cost_graph = self._run(output)
-      self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
+        output_val_ref, output_val, cost_graph = self._run(output)
+        self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_conv_pool(self):
     """Test graph with convolution followed by pooling."""
     if test.is_gpu_available(cuda_only=True):
@@ -402,6 +437,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_simple_loop(self):
     """Test graph with while loop."""
     if test.is_gpu_available(cuda_only=True):
@@ -420,6 +456,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_loop_with_vars_intertwined(self):
     """Test graph with intertwined while loops."""
     if test.is_gpu_available(cuda_only=True):
@@ -441,6 +478,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_multi_paths(self):
     """Test graph with multiple paths."""
     if test.is_gpu_available(cuda_only=True):
@@ -468,6 +506,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_multi_paths_2(self):
     """Test graph with multiple paths."""
     if test.is_gpu_available(cuda_only=True):
@@ -490,6 +529,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_recurrent_lstm(self):
     """Test graph with recurrent lstm."""
     if test.is_gpu_available(cuda_only=True):
@@ -515,36 +555,66 @@ class AutoMixedPrecisionTest(test.TestCase):
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_1(self):
     self._run_simple_loop_test('W', 'C', 'C')
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_2(self):
     self._run_simple_loop_test('C', 'C', 'W')
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_3(self):
     self._run_simple_loop_test('W', 'G', 'W')
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_4(self):
     self._run_simple_loop_test('W', 'gbg', 'W')
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_5(self):
     self._run_simple_loop_test('b', 'gWC', 'c')
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_6(self):
     self._run_simple_loop_test('b', 'CWCG', 'C')
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_7(self):
     self._run_simple_loop_test('C', 'GWCG', 'C')
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_8(self):
     self._run_simple_loop_test('C', 'CgbgWC', 'g')
+
+  @test_util.run_deprecated_v1
+  def test_noninlined_funcdef(self):
+    """Test graph with non-inlined function subgraph.
+
+    This requires the grappler pass to handle an OpDef that only appears in the
+    graph's function registry instead of the global op registry.
+    """
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(0)
+      x = _input([8, 8])
+      y = _matmul_act(x)
+      y = _example_noninlined_funcdef(y)
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+      g = optimizer.compute_gradients(y, [x])
+      output = (g, y)
+
+      output_val_ref, output_val, cost_graph = self._run(output)
+      node_map = _build_node_map(cost_graph.node)
+
+      self._assert_output_fp16(node_map, 'MatMul')
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
 
 if __name__ == '__main__':

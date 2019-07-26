@@ -13,10 +13,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "DatasetStructure"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "DistributeOptions"
     mtype: "<type \'type\'>"
   }
@@ -29,10 +25,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "NestedStructure"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "OptimizationOptions"
     mtype: "<type \'type\'>"
   }
@@ -41,23 +33,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "OptionalStructure"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "RaggedTensorStructure"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "RandomDataset"
     mtype: "<type \'type\'>"
   }
   member {
     name: "Reducer"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SparseTensorStructure"
     mtype: "<type \'type\'>"
   }
   member {
@@ -73,19 +53,7 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "Structure"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "TFRecordWriter"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "TensorArrayStructure"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "TensorStructure"
     mtype: "<type \'type\'>"
   }
   member {

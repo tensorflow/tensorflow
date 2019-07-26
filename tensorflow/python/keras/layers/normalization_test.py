@@ -25,6 +25,8 @@ from tensorflow.python import keras
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import wrap_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -32,6 +34,7 @@ from tensorflow.python.keras.layers import normalization
 from tensorflow.python.keras.layers import normalization_v2
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
@@ -97,9 +100,11 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         norm = keras.layers.BatchNormalization(
             axis=1, input_shape=(3, 4, 4), momentum=0.8)
         model.add(norm)
-        model.compile(loss='mse',
-                      optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                      run_eagerly=testing_utils.should_run_eagerly())
+        model.compile(
+            loss='mse',
+            optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+            run_eagerly=testing_utils.should_run_eagerly(),
+            run_distributed=testing_utils.should_run_distributed())
 
         # centered on 5.0, variance 10.0
         x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 3, 4, 4))
@@ -117,9 +122,11 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     norm = keras.layers.BatchNormalization(
         axis=-1, input_shape=(4, 4, 3), momentum=0.8)
     model.add(norm)
-    model.compile(loss='mse',
-                  optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     # centered on 5.0, variance 10.0
     x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 4, 4, 3))
@@ -164,8 +171,11 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     bn = normalization_v2.BatchNormalization()
     outputs = bn(inputs)
     model = keras.Model(inputs, outputs)
-    model.compile('rmsprop', 'mse',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'rmsprop',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(np.random.random((100, 3)), np.random.random((100, 3)))
 
     test_data = np.random.random((10, 3))
@@ -173,8 +183,11 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     test_loss = model.evaluate(test_data, test_targets)
 
     bn.trainable = False
-    model.compile('rmsprop', 'mse',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'rmsprop',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     train_loss = model.train_on_batch(test_data, test_targets)
     self.assertAlmostEqual(test_loss, train_loss)
 
@@ -212,6 +225,29 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     train_loss = train_step(test_data, test_targets)
     if context.executing_eagerly():
       self.assertAlmostEqual(test_loss.numpy(), train_loss.numpy())
+
+  def test_eager_batchnorm_in_custom_model_call_with_tf_function(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.bn = keras.layers.BatchNormalization()
+
+      @def_function.function()
+      def call(self, x, training):
+        return self.bn(x, training=training)
+
+    with context.eager_mode():
+      model = MyModel()
+
+      for _ in range(10):
+        x = constant_op.constant(0.5, shape=[1, 1])
+        model(x, training=True)
+
+      # Make sure the moving mean and variance have been updated
+      self.assertAllClose(model.bn.moving_mean.numpy(), [0.047], atol=3e-3)
+      self.assertAllClose(model.bn.moving_variance.numpy(), [0.9], atol=3e-2)
 
 
 class BatchNormalizationV1Test(test.TestCase):
@@ -303,6 +339,20 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, '4D input tensors'):
       norm(inp)
 
+  def test_updates_in_wrap_function(self):
+    with context.eager_mode():
+      layer = keras.layers.BatchNormalization()
+
+      def my_func():
+        x = array_ops.ones((10, 1))
+        return layer(x, training=True)
+
+      wrapped_fn = wrap_function.wrap_function(my_func, [])
+      wrapped_fn()
+
+      # Updates should be tracked in a `wrap_function`.
+      self.assertLen(layer.updates, 2)
+
 
 def _run_batchnorm_correctness_test(layer, dtype='float32', fused=False):
   model = keras.models.Sequential()
@@ -312,9 +362,11 @@ def _run_batchnorm_correctness_test(layer, dtype='float32', fused=False):
   if dtype == 'float16':
     # Keras models require float32 losses.
     model.add(keras.layers.Lambda(lambda x: keras.backend.cast(x, 'float32')))
-  model.compile(loss='mse',
-                optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                run_eagerly=testing_utils.should_run_eagerly())
+  model.compile(
+      loss='mse',
+      optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+      run_eagerly=testing_utils.should_run_eagerly(),
+      run_distributed=testing_utils.should_run_distributed())
 
   # centered on 5.0, variance 10.0
   x = (np.random.normal(loc=5.0, scale=10.0, size=(1000, 2, 2, 2))
@@ -448,7 +500,8 @@ def _run_layernorm_correctness_test(layer, dtype='float32'):
   model.add(norm)
   model.compile(loss='mse',
                 optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                run_eagerly=testing_utils.should_run_eagerly())
+                run_eagerly=testing_utils.should_run_eagerly(),
+                run_distributed=testing_utils.should_run_distributed())
 
   # centered on 5.0, variance 10.0
   x = (np.random.normal(loc=5.0, scale=10.0, size=(1000, 2, 2, 2))
@@ -516,9 +569,11 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
     model = keras.models.Sequential()
     norm = keras.layers.LayerNormalization(input_shape=(4, 4, 3))
     model.add(norm)
-    model.compile(loss='mse',
-                  optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     # centered on 5.0, variance 10.0
     x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 4, 4, 3))

@@ -106,9 +106,10 @@ def get_reachable_from_inputs(inputs, targets=None):
   Returns:
     A set of tensors reachable from the inputs (includes the inputs themselves).
   """
-  inputs = nest.flatten(inputs)
+  inputs = nest.flatten(inputs, expand_composites=True)
   reachable = set(inputs)
-  if targets:
+  if targets and not isinstance(targets, set):
+    targets = nest.flatten(targets)
     targets = set(targets)
   queue = inputs[:]
 
