@@ -60,8 +60,12 @@ mkdir -p ${DIR}/include/tensorflow/c/eager
 mkdir -p ${DIR}/lib
 cp bazel-bin/tensorflow/tensorflow.dll ${DIR}/lib/tensorflow.dll
 cp bazel-genfiles/tensorflow/tensorflow.lib ${DIR}/lib/tensorflow.lib
-cp tensorflow/c/c_api.h ${DIR}/include/tensorflow/c
-cp tensorflow/c/tf_attrtype.h ${DIR}/include/tensorflow/c
+cp tensorflow/c/c_api.h \
+  tensorflow/c/tf_attrtype.h \
+  tensorflow/c/tf_datatype.h \
+  tensorflow/c/tf_status.h \
+  tensorflow/c/tf_tensor.h \
+  ${DIR}/include/tensorflow/c
 cp tensorflow/c/eager/c_api.h ${DIR}/include/tensorflow/c/eager
 cp bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE ${DIR}/include/tensorflow/c
 cd ${DIR}
@@ -71,5 +75,8 @@ zip libtensorflow-gpu-windows-$(uname -m).zip \
   include/tensorflow/c/eager/c_api.h \
   include/tensorflow/c/c_api.h \
   include/tensorflow/c/tf_attrtype.h \
+  include/tensorflow/c/tf_datatype.h \
+  include/tensorflow/c/tf_status.h \
+  include/tensorflow/c/tf_tensor.h \
   include/tensorflow/c/LICENSE
 rm -rf lib include
