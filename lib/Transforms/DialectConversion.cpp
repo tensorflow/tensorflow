@@ -320,7 +320,7 @@ struct ConversionPatternRewriterImpl {
   /// contains the information necessary to undo this action.
   struct BlockAction {
     static BlockAction getSplit(Block *block, Block *originalBlock) {
-      BlockAction action{BlockActionKind::Split, block};
+      BlockAction action{BlockActionKind::Split, block, {}};
       action.originalBlock = originalBlock;
       return action;
     }
@@ -328,7 +328,7 @@ struct ConversionPatternRewriterImpl {
       return {BlockActionKind::Move, block, {originalPos}};
     }
     static BlockAction getTypeConversion(Block *block) {
-      return BlockAction{BlockActionKind::TypeConversion, block};
+      return BlockAction{BlockActionKind::TypeConversion, block, {}};
     }
 
     // The action kind.
