@@ -28,7 +28,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -140,8 +139,10 @@ class PyBuiltinsTest(test.TestCase):
       self.assertAllEqual(self.evaluate(r), [])
 
   def test_enumerate(self):
-    self.assertListEqual(list(py_builtins.enumerate_([3,2,1])), [(0, 3), (1, 2), (2, 1)])
-    self.assertListEqual(list(py_builtins.enumerate_([3,2,1], 5)), [(5, 3), (6, 2), (7, 1)])
+    self.assertListEqual(list(py_builtins.enumerate_([3, 2, 1])), 
+                          [(0, 3), (1, 2), (2, 1)])
+    self.assertListEqual(list(py_builtins.enumerate_([3, 2, 1], 5)), 
+                          [(5, 3), (6, 2), (7, 1)])
     self.assertListEqual(list(py_builtins.enumerate_([-8], -3)), [(-3, -8)])
 
   def test_enumerate_dataset(self):
