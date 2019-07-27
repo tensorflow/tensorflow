@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 import numpy as np
+import scipy.sparse
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -109,6 +110,15 @@ class ConvertToTensorOrSparseTensorTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(sparse_tensor_value.values, convertee.values)
         self.assertAllEqual(
             sparse_tensor_value.dense_shape, convertee.dense_shape)
+
+  def test_convert_dense_numpy(self):
+    with self.cached_session():
+      dense_matrix = -2. * np.eye(4, k=0)
+
+      sparse_tf = sparse_tensor.from_dense(dense_matrix)
+      sparse_np = scipy.sparse.coo_matrix(dense_matrix)
+
+      self.assertAllEqual(sparse_tf.values.numpy(), sparse_np.data)
 
 
 @test_util.run_all_in_graph_and_eager_modes

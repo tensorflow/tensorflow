@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import numpy as np
+import scipy.sparse
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
@@ -417,3 +418,28 @@ def is_sparse(x):
     `True` iff `x` is a `tf.SparseTensor` or `tf.compat.v1.SparseTensorValue`.
   """
   return isinstance(x, (SparseTensor, SparseTensorValue))
+
+def from_dense(x):
+    """Convert a dense `np.array` to a `tf.SparseTensor`
+
+  Args:
+    x: A `np.ndarray`
+
+  Returns:
+    A `SparseTensor`
+
+  Raises:
+    RuntimeError: If input type is not `np.ndarray`
+
+  """
+    if isinstance(x, np.ndarray):
+        coo_matrix = scipy.sparse.coo_matrix(x)
+        sparse_matrix_tf = SparseTensor(
+            indices=np.array([coo_matrix.row, coo_matrix.col]).T,
+            values=coo_matrix.data,
+            dense_shape=coo_matrix.shape,
+        )
+    else:
+        raise RuntimeError("numpy.ndarray requested, got %s instead" % type(x))
+
+    return sparse_matrix_tf
