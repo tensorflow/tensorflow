@@ -2024,8 +2024,8 @@ xla_test(
 )
 
 xla_test(
-    name = "fusion_test",
-    srcs = ["fusion_test.cc"],
+    name = "cpu_gpu_fusion_test",
+    srcs = ["cpu_gpu_fusion_test.cc"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array2d",
