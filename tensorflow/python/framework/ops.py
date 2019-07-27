@@ -525,7 +525,7 @@ class Tensor(_TensorLike):
       self._disallow_when_autograph_disabled(
           "using a `tf.Tensor` as a Python `bool`")
     elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
-      self._disallow_when_autograph_disabled(
+      self._disallow_when_autograph_enabled(
           "using a `tf.Tensor` as a Python `bool`")
     else:
       # Default: V1-style Graph execution.
@@ -533,7 +533,7 @@ class Tensor(_TensorLike):
 
   def _disallow_iteration(self):
     if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
-      self._disallow_when_autograph_enabled("iterating over `tf.Tensor`")
+      self._disallow_when_autograph_disabled("iterating over `tf.Tensor`")
     elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
       self._disallow_when_autograph_enabled("iterating over `tf.Tensor`")
     else:
