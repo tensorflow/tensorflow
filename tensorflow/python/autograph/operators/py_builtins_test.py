@@ -139,10 +139,10 @@ class PyBuiltinsTest(test.TestCase):
       self.assertAllEqual(self.evaluate(r), [])
 
   def test_enumerate(self):
-    self.assertListEqual(list(py_builtins.enumerate_([3, 2, 1])), 
-                          [(0, 3), (1, 2), (2, 1)])
-    self.assertListEqual(list(py_builtins.enumerate_([3, 2, 1], 5)), 
-                          [(5, 3), (6, 2), (7, 1)])
+    self.assertListEqual(list(py_builtins.enumerate_([3, 2, 1])),
+                         [(0, 3), (1, 2), (2, 1)])
+    self.assertListEqual(list(py_builtins.enumerate_([3, 2, 1], 5)),
+                         [(5, 3), (6, 2), (7, 1)])
     self.assertListEqual(list(py_builtins.enumerate_([-8], -3)), [(-3, -8)])
 
   def test_enumerate_dataset(self):
@@ -150,7 +150,7 @@ class PyBuiltinsTest(test.TestCase):
     start = constant_op.constant(20, dtype=dtypes.int64)
     dataset = py_builtins.enumerate_(dataset, start)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
-    
+
     with self.cached_session() as sess:
       self.assertAllEqual(self.evaluate(iterator.get_next()), (20, b'a'))
       self.assertAllEqual(self.evaluate(iterator.get_next()), (21, b'c'))
