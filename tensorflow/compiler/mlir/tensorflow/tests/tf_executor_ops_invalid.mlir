@@ -47,6 +47,17 @@ func @graph_with_invalid_op(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 
 // -----
 
+// Check that tf_executor.graph can't be nested directly in a tf_executor.graph.
+func @nested_graph() {
+  tf_executor.graph {
+    tf_executor.graph {}
+// expected-error@-1 {{'tf_executor.graph' op unallowed directly inside another tf_executor.graph}}
+  }
+  return
+}
+
+// -----
+
 // Check that a tf_executor.fetch is terminating a tf_executor.graph (custom parser)
 func @graph_with_invalid_terminator(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   tf_executor.graph {

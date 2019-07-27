@@ -123,6 +123,9 @@ LogicalResult Verify(GraphOp graph) {
   for (Operation &op : graph.GetBody()) {
     if (op.getDialect() != executorDialect)
       return op.emitOpError() << "unallowed inside a tf_executor.graph region";
+    if (isa<GraphOp>(op))
+      return op.emitOpError()
+             << "unallowed directly inside another tf_executor.graph";
   }
 
   Operation &fetch = graph.GetBody().back();
