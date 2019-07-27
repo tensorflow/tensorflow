@@ -573,9 +573,9 @@ void TFE_OpSetCancellationManager(TFE_Op* op,
       &cancellation_manager->cancellation_manager);
 }
 
-TFE_Executor* TFE_NewExecutor(bool async) {
+TFE_Executor* TFE_NewExecutor(bool is_async) {
   auto* executor = new TFE_Executor;
-  if (async) {
+  if (is_async) {
     executor->executor.EnableAsync();
   }
   return executor;
