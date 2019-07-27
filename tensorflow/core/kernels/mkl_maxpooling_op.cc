@@ -88,8 +88,10 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
         bool int8_forward_inference =
             std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
 
+        // Allocate an empty workspace tensor if not Quantized MaxPooling
+        // Because Quantized MaxPooling does not have backward pass
+        // Therefore no workspace, which is used to help backward pass in MKL
         if (!int8_forward_inference) {
-          // Allocate an empty workspace tensor if not Quantized MaxPooling
           const int kOutputWorkspaceIndex = 1;
           // output_ws_tensor is not really used, so using output_dims_mkl_order
           this->AllocateEmptyOutputTensor(context, kOutputWorkspaceIndex,
