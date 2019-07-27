@@ -743,6 +743,19 @@ OpFoldResult SquareOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// RankOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
+  if (auto elements_attr = operands[0].dyn_cast_or_null<ElementsAttr>()) {
+    auto rank = static_cast<int32_t>(elements_attr.getType().getRank());
+    return DenseElementsAttr::get(getType().cast<ShapedType>(), {rank});
+  }
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 

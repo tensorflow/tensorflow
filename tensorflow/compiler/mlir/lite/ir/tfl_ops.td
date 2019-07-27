@@ -1589,6 +1589,8 @@ def TFL_RankOp: TFL_Op<"rank", [NoSideEffect]> {
   let arguments = (ins AnyTensor:$input);
 
   let results = (outs TFL_IntTensor:$output);
+
+  let hasFolder = 1;
 }
 
 def TFL_ReluOp: TFL_Op<"relu", [NoSideEffect, SameOperandsAndResultType]> {
