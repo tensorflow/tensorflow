@@ -29,6 +29,7 @@ load(
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_static",
     "tf_cuda_tests_tags",
 )
 load(
@@ -3295,9 +3296,16 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
-        "//tensorflow/stream_executor/cuda:cublas_lib",
-        "//tensorflow/stream_executor/cuda:cusolver_lib",
-    ],
+    ] + if_static(
+        [
+            "@local_config_cuda//cuda:cusolver",
+            "@local_config_cuda//cuda:cublas",
+        ],
+        [
+            "//tensorflow/stream_executor/cuda:cusolver_stub",
+            "//tensorflow/stream_executor/cuda:cublas_stub",
+        ],
+    ),
 )
 
 tf_kernel_library(
@@ -3307,8 +3315,10 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/cuda:cusparse_lib",
-    ],
+    ] + if_static(
+        ["@local_config_cuda//cuda:cusparse"],
+        ["//tensorflow/stream_executor/cuda:cusparse_stub"],
+    ),
 )
 
 LINALG_DEPS = [

@@ -356,20 +356,11 @@ config_setting(
     },
 )
 
-# Flag to indicate open source build, .bazelrc always has it set to be true
 config_setting(
-    name = "oss",
-    define_values = {
-        "open_source_build": "true",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "build_oss_using_cuda_clang",
+    name = "using_cuda_clang_with_dynamic_build",
     define_values = {
         "using_cuda_clang": "true",
-        "open_source_build": "true",
+        "framework_shared_object": "true",
     },
 )
 
@@ -390,10 +381,10 @@ config_setting(
 )
 
 config_setting(
-    name = "build_oss_using_cuda_nvcc",
+    name = "using_cuda_nvcc_with_dynamic_build",
     define_values = {
         "using_cuda_nvcc": "true",
-        "open_source_build": "true",
+        "framework_shared_object": "true",
     },
 )
 
