@@ -314,3 +314,13 @@ func @rank() -> tensor<1xi32> {
   %0 = "tfl.rank"(%cst) : (tensor<2x1xi32>) -> tensor<1xi32>
   return %0 : tensor<1xi32>
 }
+
+// CHECK-LABEL: @reshape
+func @reshape() -> tensor<1x2xi32> {
+  %cst = constant dense<[1, 2]> : tensor<2xi32>
+
+  // CHECK: [[cst:%.*]] = constant dense<{{\[\[}}1, 2]]> : tensor<1x2xi32>
+  // CHECK: return [[cst]]
+  %0 = "tfl.reshape"(%cst) : (tensor<2xi32>) -> tensor<1x2xi32>
+  return %0 : tensor<1x2xi32>
+}

@@ -491,6 +491,13 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
   // Remove identity reshape.
   if (getType() == getOperand()->getType()) return getOperand();
 
+  // Constant folding
+  assert(operands.size() == 1);
+  if (auto dense_elements = operands[0].dyn_cast_or_null<DenseElementsAttr>()) {
+    auto result_shape_type = getType().cast<ShapedType>();
+    return dense_elements.reshape(result_shape_type);
+  }
+
   return nullptr;
 }
 
