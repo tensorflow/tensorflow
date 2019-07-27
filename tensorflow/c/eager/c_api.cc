@@ -678,10 +678,11 @@ TF_AttrType TFE_OpNameGetAttrType(TFE_Context* ctx,
                                   TF_Status* status) {
   TF_AttrType ret;
   TFE_Op* op = TFE_NewOp(ctx, op_or_function_name, status);
-  if (!status->status.ok()) {
-    return TF_ATTR_INT;  // Same dummy return as TFE_OpGetAttrType.
+  if (status->status.ok()) {
+    ret = TFE_OpGetAttrType(op, attr_name, is_list, status);
+  } else {
+    ret = TF_ATTR_INT;  // Same dummy return as TFE_OpGetAttrType.
   }
-  ret = TFE_OpGetAttrType(op, attr_name, is_list, status);
   TFE_DeleteOp(op);
   return ret;
 }
