@@ -777,8 +777,8 @@ genrule(
     mkdir $@
     for f in $(SRCS); do
       d="$${f%/*}"
-      d="$${d#bazel-out*genfiles/}"
-      d="$${d#*external/eigen_archive/}"
+      d="$${d#bazel-out/*/genfiles/}"
+      d="$${d#bazel-out/*/bin/}"
 
       if [[ $${d} == *local_config_* ]]; then
         continue
@@ -790,6 +790,9 @@ genrule(
         if [[ $${TF_SYSTEM_LIBS:-} == *$${extname}* ]]; then
           continue
         fi
+
+        d="$${d#*external/farmhash_archive/src}"
+        d="$${d#*external/$${extname}/}"
       fi
 
       mkdir -p "$@/$${d}"
