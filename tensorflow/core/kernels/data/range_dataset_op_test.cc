@@ -22,6 +22,7 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "range_dataset";
+constexpr char kIteratorPrefix[] = "Iterator";
 
 class RangeDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -93,7 +94,7 @@ class ParameterizedRangeDatasetOpTest
     : public RangeDatasetOpTest,
       public ::testing::WithParamInterface<TestCase> {};
 
-TEST_P(ParameterizedRangeDatasetOpTest, GetNext) {
+TEST_P(ParameterizedRangeDatasetOpTest, APIs) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -116,26 +117,37 @@ TEST_P(ParameterizedRangeDatasetOpTest, GetNext) {
                              range_dataset_context.get(), &range_dataset));
   core::ScopedUnref scoped_unref(range_dataset);
 
+  EXPECT_OK(EvaluateDatasetNodeName(*range_dataset, kNodeName));
+  EXPECT_OK(EvaluateDatasetTypeString(
+      *range_dataset, name_utils::OpName(RangeDatasetOp::kDatasetType)));
+  EXPECT_OK(EvaluateDatasetOutputDtypes(*range_dataset,
+                                        test_case.expected_output_dtypes));
+  EXPECT_OK(EvaluateDatasetOutputShapes(*range_dataset,
+                                        test_case.expected_output_shapes));
+  EXPECT_OK(EvaluateDatasetCardinality(*range_dataset,
+                                       test_case.expected_cardinality));
+  EXPECT_OK(EvaluateDatasetSave(*range_dataset));
+
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(
       CreateIteratorContext(range_dataset_context.get(), &iterator_context));
   std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(range_dataset->MakeIterator(iterator_context.get(), "Iterator",
-                                           &iterator));
+  TF_ASSERT_OK(range_dataset->MakeIterator(iterator_context.get(),
+                                           kIteratorPrefix, &iterator));
 
-  bool end_of_sequence = false;
-  auto expected_outputs_it = test_case.expected_outputs.begin();
-  std::vector<Tensor> out_tensors;
-  while (!end_of_sequence) {
-    TF_EXPECT_OK(iterator->GetNext(iterator_context.get(), &out_tensors,
-                                   &end_of_sequence));
-    if (!end_of_sequence) {
-      EXPECT_NE(expected_outputs_it, test_case.expected_outputs.end());
-      TF_EXPECT_OK(ExpectEqual(out_tensors.back(), *expected_outputs_it));
-      expected_outputs_it++;
-    }
-  }
-  EXPECT_EQ(expected_outputs_it, test_case.expected_outputs.end());
+  EXPECT_OK(EvaluateIteratorOutputDtypes(*iterator,
+                                         test_case.expected_output_dtypes));
+  EXPECT_OK(EvaluateIteratorOutputShapes(*iterator,
+                                         test_case.expected_output_shapes));
+  EXPECT_OK(EvaluateIteratorPrefix(
+      *iterator, name_utils::IteratorPrefix(RangeDatasetOp::kDatasetType,
+                                            kIteratorPrefix)));
+  EXPECT_OK(EvaluateIteratorGetNext(iterator.get(), iterator_context.get(),
+                                    test_case.expected_outputs, true));
+
+  EXPECT_OK(EvaluateIteratorSerialization(
+      *range_dataset, iterator_context.get(), kIteratorPrefix,
+      test_case.expected_outputs, test_case.breakpoints));
 }
 
 TEST_F(RangeDatasetOpTest, ZeroStep) {
@@ -161,339 +173,6 @@ TEST_F(RangeDatasetOpTest, ZeroStep) {
                           range_dataset_context.get(), &range_dataset)
                 .code(),
             tensorflow::error::INVALID_ARGUMENT);
-}
-
-TEST_F(RangeDatasetOpTest, DatasetNodeName) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TestCase test_case = PositiveStepTestCase();
-  Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
-  Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
-  Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
-
-  std::unique_ptr<OpKernel> range_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateRangeDatasetOpKernel<int64>(kNodeName, &range_dataset_kernel));
-  std::unique_ptr<OpKernelContext> range_dataset_context;
-  TF_ASSERT_OK(CreateRangeDatasetContext(range_dataset_kernel.get(), &inputs,
-                                         &range_dataset_context));
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateDataset(range_dataset_kernel.get(),
-                             range_dataset_context.get(), &range_dataset));
-  core::ScopedUnref scoped_unref(range_dataset);
-
-  EXPECT_EQ(range_dataset->node_name(), kNodeName);
-}
-
-TEST_F(RangeDatasetOpTest, DatasetTypeString) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TestCase test_case = PositiveStepTestCase();
-  Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
-  Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
-  Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
-
-  std::unique_ptr<OpKernel> range_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateRangeDatasetOpKernel<int64>(kNodeName, &range_dataset_kernel));
-  std::unique_ptr<OpKernelContext> range_dataset_context;
-  TF_ASSERT_OK(CreateRangeDatasetContext(range_dataset_kernel.get(), &inputs,
-                                         &range_dataset_context));
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateDataset(range_dataset_kernel.get(),
-                             range_dataset_context.get(), &range_dataset));
-  core::ScopedUnref scoped_unref(range_dataset);
-
-  EXPECT_EQ(range_dataset->type_string(),
-            name_utils::OpName(RangeDatasetOp::kDatasetType));
-}
-
-TEST_F(RangeDatasetOpTest, DatasetOutputDtypes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TestCase test_case = PositiveStepTestCase();
-  Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
-  Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
-  Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
-
-  std::unique_ptr<OpKernel> range_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateRangeDatasetOpKernel<int64>(kNodeName, &range_dataset_kernel));
-  std::unique_ptr<OpKernelContext> range_dataset_context;
-  TF_ASSERT_OK(CreateRangeDatasetContext(range_dataset_kernel.get(), &inputs,
-                                         &range_dataset_context));
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateDataset(range_dataset_kernel.get(),
-                             range_dataset_context.get(), &range_dataset));
-  core::ScopedUnref scoped_unref(range_dataset);
-
-  TF_EXPECT_OK(VerifyTypesMatch(range_dataset->output_dtypes(),
-                                test_case.expected_output_dtypes));
-}
-
-TEST_F(RangeDatasetOpTest, DatasetOutputShapes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TestCase test_case = PositiveStepTestCase();
-  Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
-  Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
-  Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
-
-  std::unique_ptr<OpKernel> range_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateRangeDatasetOpKernel<int64>(kNodeName, &range_dataset_kernel));
-  std::unique_ptr<OpKernelContext> range_dataset_context;
-  TF_ASSERT_OK(CreateRangeDatasetContext(range_dataset_kernel.get(), &inputs,
-                                         &range_dataset_context));
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateDataset(range_dataset_kernel.get(),
-                             range_dataset_context.get(), &range_dataset));
-  core::ScopedUnref scoped_unref(range_dataset);
-
-  TF_EXPECT_OK(VerifyShapesCompatible(range_dataset->output_shapes(),
-                                      test_case.expected_output_shapes));
-}
-
-TEST_P(ParameterizedRangeDatasetOpTest, Cardinality) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TestCase test_case = GetParam();
-  Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
-  Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
-  Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
-
-  std::unique_ptr<OpKernel> range_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateRangeDatasetOpKernel<int64>(kNodeName, &range_dataset_kernel));
-  std::unique_ptr<OpKernelContext> range_dataset_context;
-  TF_ASSERT_OK(CreateRangeDatasetContext(range_dataset_kernel.get(), &inputs,
-                                         &range_dataset_context));
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateDataset(range_dataset_kernel.get(),
-                             range_dataset_context.get(), &range_dataset));
-  core::ScopedUnref scoped_unref(range_dataset);
-
-  EXPECT_EQ(range_dataset->Cardinality(), test_case.expected_cardinality);
-}
-
-TEST_F(RangeDatasetOpTest, DatasetSave) {
-  int64 thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TestCase test_case = PositiveStepTestCase();
-  Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
-  Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
-  Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
-
-  std::unique_ptr<OpKernel> range_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateRangeDatasetOpKernel<int64>(kNodeName, &range_dataset_kernel));
-  std::unique_ptr<OpKernelContext> range_dataset_context;
-  TF_ASSERT_OK(CreateRangeDatasetContext(range_dataset_kernel.get(), &inputs,
-                                         &range_dataset_context));
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateDataset(range_dataset_kernel.get(),
-                             range_dataset_context.get(), &range_dataset));
-  core::ScopedUnref scoped_unref(range_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(range_dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
-TEST_F(RangeDatasetOpTest, IteratorOutputDtypes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TestCase test_case = PositiveStepTestCase();
-  Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
-  Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
-  Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
-
-  std::unique_ptr<OpKernel> range_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateRangeDatasetOpKernel<int64>(kNodeName, &range_dataset_kernel));
-  std::unique_ptr<OpKernelContext> range_dataset_context;
-  TF_ASSERT_OK(CreateRangeDatasetContext(range_dataset_kernel.get(), &inputs,
-                                         &range_dataset_context));
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateDataset(range_dataset_kernel.get(),
-                             range_dataset_context.get(), &range_dataset));
-  core::ScopedUnref scoped_unref(range_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(
-      CreateIteratorContext(range_dataset_context.get(), &iterator_context));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(range_dataset->MakeIterator(iterator_context.get(), "Iterator",
-                                           &iterator));
-
-  TF_EXPECT_OK(VerifyTypesMatch(iterator->output_dtypes(),
-                                test_case.expected_output_dtypes));
-}
-
-TEST_F(RangeDatasetOpTest, IteratorOutputShapes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TestCase test_case = PositiveStepTestCase();
-  Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
-  Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
-  Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
-
-  std::unique_ptr<OpKernel> range_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateRangeDatasetOpKernel<int64>(kNodeName, &range_dataset_kernel));
-  std::unique_ptr<OpKernelContext> range_dataset_context;
-  TF_ASSERT_OK(CreateRangeDatasetContext(range_dataset_kernel.get(), &inputs,
-                                         &range_dataset_context));
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateDataset(range_dataset_kernel.get(),
-                             range_dataset_context.get(), &range_dataset));
-  core::ScopedUnref scoped_unref(range_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(
-      CreateIteratorContext(range_dataset_context.get(), &iterator_context));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(range_dataset->MakeIterator(iterator_context.get(), "Iterator",
-                                           &iterator));
-
-  TF_EXPECT_OK(VerifyShapesCompatible(iterator->output_shapes(),
-                                      test_case.expected_output_shapes));
-}
-
-TEST_F(RangeDatasetOpTest, IteratorOutputPrefix) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TestCase test_case = PositiveStepTestCase();
-  Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
-  Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
-  Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
-
-  std::unique_ptr<OpKernel> range_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateRangeDatasetOpKernel<int64>(kNodeName, &range_dataset_kernel));
-  std::unique_ptr<OpKernelContext> range_dataset_context;
-  TF_ASSERT_OK(CreateRangeDatasetContext(range_dataset_kernel.get(), &inputs,
-                                         &range_dataset_context));
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateDataset(range_dataset_kernel.get(),
-                             range_dataset_context.get(), &range_dataset));
-  core::ScopedUnref scoped_unref(range_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(
-      CreateIteratorContext(range_dataset_context.get(), &iterator_context));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(range_dataset->MakeIterator(iterator_context.get(), "Iterator",
-                                           &iterator));
-
-  EXPECT_EQ(iterator->prefix(), name_utils::IteratorPrefix(
-                                    RangeDatasetOp::kDatasetType, "Iterator"));
-}
-
-TEST_P(ParameterizedRangeDatasetOpTest, Roundtrip) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TestCase test_case = GetParam();
-  Tensor start = CreateTensor<int64>(TensorShape({}), {test_case.start});
-  Tensor stop = CreateTensor<int64>(TensorShape({}), {test_case.stop});
-  Tensor step = CreateTensor<int64>(TensorShape({}), {test_case.step});
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&start), TensorValue(&stop), TensorValue(&step)});
-
-  std::unique_ptr<OpKernel> range_dataset_kernel;
-  TF_ASSERT_OK(
-      CreateRangeDatasetOpKernel<int64>(kNodeName, &range_dataset_kernel));
-  std::unique_ptr<OpKernelContext> range_dataset_context;
-  TF_ASSERT_OK(CreateRangeDatasetContext(range_dataset_kernel.get(), &inputs,
-                                         &range_dataset_context));
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateDataset(range_dataset_kernel.get(),
-                             range_dataset_context.get(), &range_dataset));
-  core::ScopedUnref scoped_unref(range_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(
-      CreateIteratorContext(range_dataset_context.get(), &iterator_context));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(range_dataset->MakeIterator(iterator_context.get(), "Iterator",
-                                           &iterator));
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  bool end_of_sequence = false;
-  std::vector<Tensor> out_tensors;
-  int cur_iteration = 0;
-  auto expected_outputs_it = test_case.expected_outputs.begin();
-  const std::vector<int>& breakpoints = test_case.breakpoints;
-  for (int breakpoint : breakpoints) {
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
-    TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
-    TF_EXPECT_OK(writer.Flush());
-    VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(RestoreIterator(iterator_context.get(), &reader, "Iterator",
-                                 *range_dataset, &iterator));
-
-    while (cur_iteration <= breakpoint) {
-      TF_EXPECT_OK(iterator->GetNext(iterator_context.get(), &out_tensors,
-                                     &end_of_sequence));
-      if (!end_of_sequence) {
-        EXPECT_NE(expected_outputs_it, test_case.expected_outputs.end());
-        TF_EXPECT_OK(ExpectEqual(out_tensors.back(), *expected_outputs_it));
-        expected_outputs_it++;
-      }
-      cur_iteration++;
-    }
-
-    if (breakpoint >= test_case.expected_cardinality) {
-      EXPECT_TRUE(end_of_sequence);
-      EXPECT_EQ(expected_outputs_it, test_case.expected_outputs.end());
-    } else {
-      EXPECT_FALSE(end_of_sequence);
-    }
-  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
