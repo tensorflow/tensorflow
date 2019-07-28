@@ -42,6 +42,7 @@ struct TestCase {
   int64 start;
   int64 stop;
   int64 step;
+  bool expected_stateful;
   std::vector<Tensor> expected_outputs;
   DataTypeVector expected_output_dtypes;
   std::vector<PartialTensorShape> expected_output_shapes;
@@ -50,44 +51,47 @@ struct TestCase {
 };
 
 TestCase PositiveStepTestCase() {
-  return {/*start*/ 0,
-          /*stop*/ 10,
-          /*step*/ 3,
-          /*expected_outputs*/
+  return {/*start=*/0,
+          /*stop=*/10,
+          /*step=*/3,
+          /*expected_stateful=*/false,
+          /*expected_outputs=*/
           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {6}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {9})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ 4,
-          /*breakpoints*/ {0, 1, 4}};
+          /*expected_output_dtypes=*/{DT_INT64},
+          /*expected_output_shapes=*/{PartialTensorShape({})},
+          /*expected_cardinality=*/4,
+          /*breakpoints=*/{0, 1, 4}};
 }
 
 TestCase NegativeStepTestCase() {
-  return {/*start*/ 10,
-          /*stop*/ 0,
-          /*step*/ -3,
-          /*expected_outputs*/
+  return {/*start=*/10,
+          /*stop=*/0,
+          /*step=*/-3,
+          /*expected_stateful=*/false,
+          /*expected_outputs=*/
           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {10}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {7}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
            DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ 4,
-          /*breakpoints*/ {0, 1, 4}};
+          /*expected_output_dtypes=*/{DT_INT64},
+          /*expected_output_shapes=*/{PartialTensorShape({})},
+          /*expected_cardinality=*/4,
+          /*breakpoints=*/{0, 1, 4}};
 }
 
 TestCase ZeroStepTestCase() {
   return {/*start*/ 0,
           /*stop*/ 10,
           /*step*/ 0,
-          /*expected_outputs*/ {},
-          /*expected_output_dtypes*/ {},
-          /*expected_output_shapes*/ {},
-          /*expected_cardinality*/ 0,
-          /*breakpoints*/ {}};
+          /*expected_stateful=*/false,
+          /*expected_outputs=*/{},
+          /*expected_output_dtypes=*/{},
+          /*expected_output_shapes=*/{},
+          /*expected_cardinality=*/0,
+          /*breakpoints=*/{}};
 }
 
 class ParameterizedRangeDatasetOpTest
@@ -117,16 +121,18 @@ TEST_P(ParameterizedRangeDatasetOpTest, APIs) {
                              range_dataset_context.get(), &range_dataset));
   core::ScopedUnref scoped_unref(range_dataset);
 
-  EXPECT_OK(EvaluateDatasetNodeName(*range_dataset, kNodeName));
-  EXPECT_OK(EvaluateDatasetTypeString(
+  TF_EXPECT_OK(EvaluateDatasetNodeName(*range_dataset, kNodeName));
+  TF_EXPECT_OK(EvaluateDatasetTypeString(
       *range_dataset, name_utils::OpName(RangeDatasetOp::kDatasetType)));
-  EXPECT_OK(EvaluateDatasetOutputDtypes(*range_dataset,
-                                        test_case.expected_output_dtypes));
-  EXPECT_OK(EvaluateDatasetOutputShapes(*range_dataset,
-                                        test_case.expected_output_shapes));
-  EXPECT_OK(EvaluateDatasetCardinality(*range_dataset,
-                                       test_case.expected_cardinality));
-  EXPECT_OK(EvaluateDatasetSave(*range_dataset));
+  TF_EXPECT_OK(EvaluateDatasetOutputDtypes(*range_dataset,
+                                           test_case.expected_output_dtypes));
+  TF_EXPECT_OK(EvaluateDatasetOutputShapes(*range_dataset,
+                                           test_case.expected_output_shapes));
+  TF_EXPECT_OK(EvaluateDatasetCardinality(*range_dataset,
+                                          test_case.expected_cardinality));
+  TF_EXPECT_OK(EvaluateDatasetSave(*range_dataset));
+  TF_EXPECT_OK(
+      EvaluateDatasetIsStateful(*range_dataset, test_case.expected_stateful));
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(
@@ -135,17 +141,17 @@ TEST_P(ParameterizedRangeDatasetOpTest, APIs) {
   TF_ASSERT_OK(range_dataset->MakeIterator(iterator_context.get(),
                                            kIteratorPrefix, &iterator));
 
-  EXPECT_OK(EvaluateIteratorOutputDtypes(*iterator,
-                                         test_case.expected_output_dtypes));
-  EXPECT_OK(EvaluateIteratorOutputShapes(*iterator,
-                                         test_case.expected_output_shapes));
-  EXPECT_OK(EvaluateIteratorPrefix(
+  TF_EXPECT_OK(EvaluateIteratorOutputDtypes(*iterator,
+                                            test_case.expected_output_dtypes));
+  TF_EXPECT_OK(EvaluateIteratorOutputShapes(*iterator,
+                                            test_case.expected_output_shapes));
+  TF_EXPECT_OK(EvaluateIteratorPrefix(
       *iterator, name_utils::IteratorPrefix(RangeDatasetOp::kDatasetType,
                                             kIteratorPrefix)));
-  EXPECT_OK(EvaluateIteratorGetNext(iterator.get(), iterator_context.get(),
-                                    test_case.expected_outputs, true));
+  TF_EXPECT_OK(EvaluateIteratorGetNext(iterator.get(), iterator_context.get(),
+                                       test_case.expected_outputs, true));
 
-  EXPECT_OK(EvaluateIteratorSerialization(
+  TF_EXPECT_OK(EvaluateIteratorSerialization(
       *range_dataset, iterator_context.get(), kIteratorPrefix,
       test_case.expected_outputs, test_case.breakpoints));
 }
