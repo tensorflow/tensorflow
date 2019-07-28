@@ -40,18 +40,31 @@ namespace {
 // events on eager tensors. This is set by TFE_Py_InitEagerTensor, if at all.
 PyObject* eager_tensor_profiler = nullptr;
 
-TFE_Context* GetContext(PyObject* ctx) {
-  TFE_Context* context =
-      reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(ctx, nullptr));
-  if (context == nullptr) {
+TFE_Context* GetContextHandle(PyObject* py_context) {
+  tensorflow::Safe_PyObjectPtr py_context_handle(
+      PyObject_GetAttrString(py_context, "_handle"));
+  if (py_context_handle == nullptr) {
+    // Current Python code makes sure this never happens. If it does, or
+    // becomes hard to maintain, we can call the ensure_initialized() method
+    // here.
+    PyErr_SetString(
+        PyExc_TypeError,
+        "Expected `context` argument in EagerTensor constructor to have a "
+        "`_handle` attribute but it did not. Was eager Context initialized?");
+    return nullptr;
+  }
+
+  auto* ctx = reinterpret_cast<TFE_Context*>(
+      PyCapsule_GetPointer(py_context_handle.get(), nullptr));
+  if (ctx == nullptr) {
     PyErr_SetString(PyExc_TypeError,
                     tensorflow::strings::StrCat(
                         "Expected context._handle to contain a PyCapsule "
                         "encoded pointer to TFE_Context. Got ",
-                        Py_TYPE(ctx)->tp_name)
+                        Py_TYPE(py_context_handle.get())->tp_name)
                         .c_str());
   }
-  return context;
+  return ctx;
 }
 
 // Convert a Python numpy.ndarray object to a TFE_TensorHandle.
@@ -105,7 +118,7 @@ PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
   return ret;
 }
 
-TFE_TensorHandle* CopyToDevice(TFE_TensorHandle* handle, PyObject* ctx,
+TFE_TensorHandle* CopyToDevice(TFE_TensorHandle* handle, PyObject* py_context,
                                PyObject* dev) {
   const char* device = "";
   if (dev != nullptr && dev != Py_None) {
@@ -122,13 +135,13 @@ TFE_TensorHandle* CopyToDevice(TFE_TensorHandle* handle, PyObject* ctx,
       return nullptr;
     }
   }
-  TFE_Context* context = GetContext(ctx);
-  if (context == nullptr) {  // PyErr already set by GetContext
+  TFE_Context* ctx = GetContextHandle(py_context);
+  if (ctx == nullptr) {  // PyErr already set by GetContextHandle
     return nullptr;
   }
   auto status = tensorflow::make_safe(TF_NewStatus());
   TFE_TensorHandle* new_handle =
-      TFE_TensorHandleCopyToDevice(handle, context, device, status.get());
+      TFE_TensorHandleCopyToDevice(handle, ctx, device, status.get());
   if (TF_GetCode(status.get()) != TF_OK) {
     PyErr_SetString(
         PyExc_RuntimeError,
@@ -433,32 +446,19 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   self->weakreflist = nullptr;
   self->context = nullptr;
   PyObject* value;
-  PyObject* context = nullptr;
   PyObject* device = nullptr;
   PyObject* dtype = Py_None;
   PyObject* other_value = nullptr;
-  const char* kwlist[] = {"value", "context",     "device",
-                          "dtype", "other_value", nullptr};
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOO|OO",
-                                   const_cast<char**>(kwlist), &value, &context,
-                                   &device, &dtype, &other_value)) {
+  const char* kwlist[] = {"value", "device", "dtype", "other_value", nullptr};
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO|OO",
+                                   const_cast<char**>(kwlist), &value, &device,
+                                   &dtype, &other_value)) {
     return -1;
   }
 
-  tensorflow::Safe_PyObjectPtr context_handle(
-      PyObject_GetAttrString(context, "_handle"));
-  if (context_handle == nullptr) {
-    // Current Python code makes sure this never happens. If it does, or
-    // becomes hard to maintain, we can call the ensure_initialized() method
-    // here.
-    PyErr_SetString(
-        PyExc_TypeError,
-        "Expected `context` argument in EagerTensor constructor to have a "
-        "`_handle` field but it did not. Was eager Context initialized?");
-    return -1;
-  }
-  self->context = context;
-  Py_INCREF(self->context);
+  PyObject* py_context = GetPyEagerContext();
+  if (py_context == nullptr) return -1;
+  self->context = py_context;
 
   if (other_value != nullptr) {
     if (!EagerTensor_CheckExact(other_value)) {
@@ -496,7 +496,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   PyErr_Clear();
   tensorflow::Safe_TFE_TensorHandlePtr handle =
       tensorflow::make_safe(tensorflow::ConvertToEagerTensor(
-          GetContext(context_handle.get()), value, desired_dtype));
+          GetContextHandle(py_context), value, desired_dtype));
   if (handle == nullptr) return -1;
 
   // Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
@@ -528,8 +528,8 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   if (TFE_TensorHandleDataType(handle.get()) != TF_INT32) {
     // Note that this is a shallow copy and will share the underlying buffer
     // if copying to the same device.
-    handle = tensorflow::make_safe(
-        CopyToDevice(handle.get(), context_handle.get(), device));
+    handle =
+        tensorflow::make_safe(CopyToDevice(handle.get(), py_context, device));
     if (handle == nullptr) return -1;
   }
   self->handle = handle.release();
@@ -667,15 +667,13 @@ static int EagerTensor_settensor_shape(EagerTensor* self, PyObject* value,
 // Function `_copy_to_device`.
 static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
                                             PyObject* kwds) {
-  const char* kwlist[] = {"context", "device", nullptr};
-  PyObject* ctx = nullptr;
-  PyObject* dev = nullptr;
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO", const_cast<char**>(kwlist),
-                                   &ctx, &dev) ||
-      !ctx || !dev) {
+  if (!_PyArg_NoKeywords("copy_to_device", kwds)) return nullptr;
+
+  PyObject* device_name = nullptr;
+  if (!PyArg_ParseTuple(args, "O:copy_to_device", &device_name)) {
     return nullptr;
   }
-  auto handle = CopyToDevice(self->handle, ctx, dev);
+  auto handle = CopyToDevice(self->handle, self->context, device_name);
   return EagerTensorFromHandle(handle);
 }
 
@@ -900,13 +898,13 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
     t->handle = handle;
     t->status = TF_NewStatus();
     t->weakreflist = nullptr;
-    PyObject* context = GetPyEagerContext();
-    if (context == nullptr) {
+    PyObject* py_context = GetPyEagerContext();
+    if (py_context == nullptr) {
       LOG(ERROR) << "Cannot create an eager tensor before eager context has "
                     "been set or after it has been deleted";
       return nullptr;
     }
-    t->context = context;
+    t->context = py_context;
 
     if (!MaybeInvokeCreatedOnEagerTensorProfiler(t)) {
       return nullptr;

@@ -3505,9 +3505,9 @@ namespace {
 PyObject* weak_eager_context = nullptr;
 }  // namespace
 
-PyObject* TFE_Py_SetEagerContext(PyObject* python_context) {
+PyObject* TFE_Py_SetEagerContext(PyObject* py_context) {
   Py_XDECREF(weak_eager_context);
-  weak_eager_context = PyWeakref_NewRef(python_context, nullptr);
+  weak_eager_context = PyWeakref_NewRef(py_context, nullptr);
   if (weak_eager_context == nullptr) {
     return nullptr;
   }
@@ -3516,14 +3516,14 @@ PyObject* TFE_Py_SetEagerContext(PyObject* python_context) {
 
 PyObject* GetPyEagerContext() {
   if (weak_eager_context == nullptr) {
-    PyErr_SetString(PyExc_ValueError, "Python eager context is not set");
+    PyErr_SetString(PyExc_RuntimeError, "Python eager context is not set");
     return nullptr;
   }
-  PyObject* context = PyWeakref_GET_OBJECT(weak_eager_context);
-  if (context == Py_None) {
-    LOG(ERROR) << "Eager context has been destroyed";
+  PyObject* py_context = PyWeakref_GET_OBJECT(weak_eager_context);
+  if (py_context == Py_None) {
+    PyErr_SetString(PyExc_RuntimeError, "Eager context has been destroyed");
     return nullptr;
   }
-  Py_INCREF(context);
-  return context;
+  Py_INCREF(py_context);
+  return py_context;
 }
