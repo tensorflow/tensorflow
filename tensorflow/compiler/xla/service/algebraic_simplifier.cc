@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -60,6 +61,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 
@@ -207,6 +209,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
 
   Status HandleLog(HloInstruction* log) override;
+
+  Status HandleMaximum(HloInstruction* maximum) override;
+
+  Status HandleMinimum(HloInstruction* minimum) override;
 
   Status HandleMultiply(HloInstruction* multiply) override;
 
@@ -1869,6 +1875,98 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         dot->precision_config()));
     return ReplaceWithNewInstruction(
         dot, HloInstruction::CreateTranspose(dot->shape(), new_dot, {1, 0}));
+  }
+
+  return Status::OK();
+}
+
+namespace {
+StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
+    HloInstruction* clamp_lower_bound_bcast, HloInstruction* to_clamp,
+    HloInstruction* clamp_upper_bound_bcast) {
+  HloInstruction* clamp_lower_bound;
+  CHECK(Match(clamp_lower_bound_bcast,
+              m::Broadcast(m::ConstantEffectiveScalar(&clamp_lower_bound))))
+      << clamp_lower_bound_bcast->ToString();
+
+  HloInstruction* clamp_upper_bound;
+  CHECK(Match(clamp_upper_bound_bcast,
+              m::Broadcast(m::ConstantEffectiveScalar(&clamp_upper_bound))))
+      << clamp_upper_bound_bcast->ToString();
+
+  const Literal& lower_bound =
+      Cast<HloConstantInstruction>(clamp_lower_bound)->literal();
+  const Literal& upper_bound =
+      Cast<HloConstantInstruction>(clamp_upper_bound)->literal();
+
+  std::unique_ptr<HloInstruction> lower_bound_instr =
+      HloInstruction::CreateConstant(lower_bound.Clone());
+  std::unique_ptr<HloInstruction> upper_bound_instr =
+      HloInstruction::CreateConstant(upper_bound.Clone());
+
+  std::unique_ptr<HloInstruction> cloned_instruction =
+      HloInstruction::CreateCompare(
+          ShapeUtil::ChangeElementType(lower_bound_instr->shape(), PRED),
+          lower_bound_instr.get(), upper_bound_instr.get(),
+          ComparisonDirection::kLt);
+
+  HloEvaluator evaluator;
+  TF_ASSIGN_OR_RETURN(auto result,
+                      evaluator.Evaluate(cloned_instruction.get()));
+  if (result.IsAll(true)) {
+    return HloInstruction::CreateTernary(to_clamp->shape(), HloOpcode::kClamp,
+                                         clamp_lower_bound_bcast, to_clamp,
+                                         clamp_upper_bound_bcast);
+  }
+  return std::unique_ptr<HloInstruction>();
+}
+}  // namespace
+
+Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
+  HloInstruction *lhs, *rhs;
+  CHECK(Match(maximum, m::Maximum(m::Op(&lhs), m::Op(&rhs))));
+
+  HloInstruction* clamp_upper_bound_bcast;
+  HloInstruction* clamp_lower_bound_bcast;
+  HloInstruction* to_clamp;
+  if (Match(maximum, m::MaximumAnyOrder(
+                         m::Broadcast(&clamp_lower_bound_bcast,
+                                      m::ConstantEffectiveScalar()),
+                         m::MinimumAnyOrder(
+                             m::Op(&to_clamp),
+                             m::Broadcast(&clamp_upper_bound_bcast,
+                                          m::ConstantEffectiveScalar()))))) {
+    TF_ASSIGN_OR_RETURN(auto clamp,
+                        MinMaxToClamp(clamp_lower_bound_bcast, to_clamp,
+                                      clamp_upper_bound_bcast));
+    if (clamp) {
+      return ReplaceWithNewInstruction(maximum, std::move(clamp));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum) {
+  HloInstruction *lhs, *rhs;
+  CHECK(Match(minimum, m::Minimum(m::Op(&lhs), m::Op(&rhs))));
+
+  HloInstruction* clamp_upper_bound_bcast;
+  HloInstruction* clamp_lower_bound_bcast;
+  HloInstruction* to_clamp;
+  if (Match(minimum, m::MinimumAnyOrder(
+                         m::Broadcast(&clamp_upper_bound_bcast,
+                                      m::ConstantEffectiveScalar()),
+                         m::MaximumAnyOrder(
+                             m::Op(&to_clamp),
+                             m::Broadcast(&clamp_lower_bound_bcast,
+                                          m::ConstantEffectiveScalar()))))) {
+    TF_ASSIGN_OR_RETURN(auto clamp,
+                        MinMaxToClamp(clamp_lower_bound_bcast, to_clamp,
+                                      clamp_upper_bound_bcast));
+    if (clamp) {
+      return ReplaceWithNewInstruction(minimum, std::move(clamp));
+    }
   }
 
   return Status::OK();

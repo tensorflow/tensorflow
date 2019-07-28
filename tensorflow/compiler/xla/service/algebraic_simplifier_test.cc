@@ -5563,5 +5563,47 @@ TEST_F(AlgebraicSimplifierTest, SlicePadLayout) {
               GmockMatch(m::Slice().WithShapeEqualTo(&root_shape)));
 }
 
+TEST_F(AlgebraicSimplifierTest, MinOfMaxToClamp) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c0 = f32[] constant(3.0)
+      c1 = f32[] constant(4.0)
+      b0 = f32[4] broadcast(c0), dimensions={}
+      b1 = f32[4] broadcast(c1), dimensions={}
+      m0 = f32[4] maximum(b0, p0)
+      ROOT m1 = f32[4] minimum(m0, b1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Clamp(m::Broadcast(m::ConstantScalar(3.0)), m::Parameter(0),
+                          m::Broadcast(m::ConstantScalar(4.0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaxOfMinToClamp) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c0 = f32[] constant(3.0)
+      c1 = f32[] constant(4.0)
+      b0 = f32[4] broadcast(c0), dimensions={}
+      b1 = f32[4] broadcast(c1), dimensions={}
+      m0 = f32[4] minimum(p0, b1)
+      ROOT m1 = f32[4] maximum(b0, m0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Clamp(m::Broadcast(m::ConstantScalar(3.0)), m::Parameter(0),
+                          m::Broadcast(m::ConstantScalar(4.0)))));
+}
+
 }  // namespace
 }  // namespace xla
