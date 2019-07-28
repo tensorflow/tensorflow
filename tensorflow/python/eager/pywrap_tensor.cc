@@ -118,26 +118,6 @@ PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
   return ret;
 }
 
-TFE_TensorHandle* CopyToDevice(TFE_TensorHandle* handle, PyObject* py_context,
-                               const char* device_name) {
-  TFE_Context* ctx = GetContextHandle(py_context);
-  if (ctx == nullptr) {  // PyErr already set by GetContextHandle
-    return nullptr;
-  }
-  auto status = tensorflow::make_safe(TF_NewStatus());
-  TFE_TensorHandle* new_handle =
-      TFE_TensorHandleCopyToDevice(handle, ctx, device_name, status.get());
-  if (TF_GetCode(status.get()) != TF_OK) {
-    PyErr_SetString(PyExc_RuntimeError,
-                    tensorflow::strings::StrCat(
-                        "Error copying tensor to device: ", device_name, ". ",
-                        TF_Message(status.get()))
-                        .c_str());
-    return nullptr;
-  }
-  return new_handle;
-}
-
 // Helper function to convert `v` to a tensorflow::DataType and store it in
 // `*out`. Returns true on success, false otherwise.
 // Note that we assume that v is a python int (not long) representing a
@@ -286,7 +266,8 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(PyObject* value, DataType dtype) {
 }
 
 TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
-                                       tensorflow::DataType dtype) {
+                                       tensorflow::DataType dtype,
+                                       const char* device_name) {
   tensorflow::Safe_PyObjectPtr value_decrefer;
   if (PyArray_IsScalar(value, Generic)) {
     // Convert numpy scalars to numpy arrays.
@@ -334,24 +315,22 @@ TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
 
   if (handle == nullptr) return nullptr;
 
+  Safe_TF_StatusPtr status = make_safe(TF_NewStatus());
   TF_DataType handle_dtype = TFE_TensorHandleDataType(handle.get());
   if (dtype != tensorflow::DT_INVALID &&
       dtype != static_cast<DataType>(handle_dtype)) {
     if (tensorflow::IsCompatible(dtype, static_cast<DataType>(handle_dtype))) {
-      Safe_TF_StatusPtr status = make_safe(TF_NewStatus());
       handle = tensorflow::make_safe(
           tensorflow::EagerCast(ctx, handle.get(), handle_dtype,
                                 static_cast<TF_DataType>(dtype), status.get()));
       if (TF_GetCode(status.get()) != TF_OK) {
-        PyErr_SetString(
-            PyExc_TypeError,
-            absl::StrCat(
-                "Error while casting from dtype ",
-                tensorflow::DataTypeString(static_cast<DataType>(handle_dtype)),
-                " to ",
-                tensorflow::DataTypeString(static_cast<DataType>(dtype)), ". ",
-                TF_Message(status.get()))
-                .c_str());
+        PyErr_SetString(PyExc_TypeError,
+                        absl::StrCat("Error while casting from dtype ",
+                                     tensorflow::DataTypeString(
+                                         static_cast<DataType>(handle_dtype)),
+                                     " to ", tensorflow::DataTypeString(dtype),
+                                     ". ", TF_Message(status.get()))
+                            .c_str());
         return nullptr;
       }
     } else {
@@ -362,6 +341,43 @@ TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
                        " to EagerTensor of dtype ",
                        tensorflow::DataTypeString(dtype))
               .c_str());
+      return nullptr;
+    }
+  }
+
+  // Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
+  // memory. We approximate the same behavior for eager execution - keeping
+  // int32 tensors in host memory.
+  //
+  // We do so to preclude the need for callers into such kernels from having to
+  // explicitly place the int32 tensors in host memory. For example, without
+  // this, one needed:
+  //
+  // with tf.device('/gpu:0'):
+  //   ...// code here
+  //   with tf.device('/cpu:0'):
+  //     shape = tf.constant(...)
+  //   y = tf.random_uniform(shape)
+  //
+  // Without the CPU device block, tfe.ops.random_uniform would fail since the
+  // kernel expects the shape in host memory.
+  //
+  // With this support, we simplify the code:
+  //
+  // with tf.device('/gpu:0'):
+  //   y = tf.random_uniform(...)
+  //
+  // The approximation is not exact there are GPU kernels which do not require
+  // host memory for int32 tensors. This will lead to a discrepancy between
+  // eager and graph execution.
+  // TODO(ashankar): Fix this.
+  if (device_name != nullptr &&
+      TFE_TensorHandleDataType(handle.get()) != TF_INT32) {
+    // Note that this is a shallow copy and will share the underlying buffer
+    // if copying to the same device.
+    handle = make_safe(TFE_TensorHandleCopyToDevice(handle.get(), ctx,
+                                                    device_name, status.get()));
+    if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_RuntimeError)) {
       return nullptr;
     }
   }
@@ -502,45 +518,10 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
     return 0;
   }
 
-  tensorflow::Safe_TFE_TensorHandlePtr handle =
-      tensorflow::make_safe(tensorflow::ConvertToEagerTensor(
-          GetContextHandle(py_context), value, dtype));
+  auto* handle = tensorflow::ConvertToEagerTensor(GetContextHandle(py_context),
+                                                  value, dtype, device_name);
   if (handle == nullptr) return -1;
-
-  // Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
-  // memory. We approximate the same behavior for eager execution - keeping
-  // int32 tensors in host memory.
-  //
-  // We do so to preclude the need for callers into such kernels from having to
-  // explicitly place the int32 tensors in host memory. For example, without
-  // this, one needed:
-  //
-  // with tf.device('/gpu:0'):
-  //   ...// code here
-  //   with tf.device('/cpu:0'):
-  //     shape = tf.constant(...)
-  //   y = tf.random_uniform(shape)
-  //
-  // Without the CPU device block, tfe.ops.random_uniform would fail since the
-  // kernel expects the shape in host memory.
-  //
-  // With this support, we simplify the code:
-  //
-  // with tf.device('/gpu:0'):
-  //   y = tf.random_uniform(...)
-  //
-  // The approximation is not exact there are GPU kernels which do not require
-  // host memory for int32 tensors. This will lead to a discrepancy between
-  // eager and graph execution.
-  // TODO(ashankar): Fix this.
-  if (TFE_TensorHandleDataType(handle.get()) != TF_INT32) {
-    // Note that this is a shallow copy and will share the underlying buffer
-    // if copying to the same device.
-    handle = tensorflow::make_safe(
-        CopyToDevice(handle.get(), py_context, device_name));
-    if (handle == nullptr) return -1;
-  }
-  self->handle = handle.release();
+  self->handle = handle;
 
   if (!MaybeInvokeCreatedOnEagerTensorProfiler(self)) {
     return -1;
@@ -682,7 +663,16 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
                         &device_name)) {
     return nullptr;
   }
-  auto handle = CopyToDevice(self->handle, self->context, device_name);
+
+  // Note that this is a shallow copy and will share the underlying buffer
+  // if copying to the same device.
+  TFE_TensorHandle* handle = TFE_TensorHandleCopyToDevice(
+      self->handle, GetContextHandle(self->context), device_name, self->status);
+  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_RuntimeError)) {
+    // Cleanup self->status before returning.
+    TF_SetStatus(self->status, TF_OK, "");
+    return nullptr;
+  }
   return EagerTensorFromHandle(handle);
 }
 
