@@ -81,8 +81,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
     with ops.device("/device:GPU:0"):
       # Bad device.
-      with self.assertRaisesRegexp(
-          TypeError, "Error parsing device argument to CopyToDevice"):
+      with self.assertRaisesRegexp(TypeError, "Error parsing device argument"):
         ops.EagerTensor(1.0, device=1)
 
   def testNumpyValue(self):

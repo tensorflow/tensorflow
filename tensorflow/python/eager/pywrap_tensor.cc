@@ -119,35 +119,20 @@ PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
 }
 
 TFE_TensorHandle* CopyToDevice(TFE_TensorHandle* handle, PyObject* py_context,
-                               PyObject* dev) {
-  const char* device = "";
-  if (dev != nullptr && dev != Py_None) {
-    device = PyBytes_AsString(dev);
-#if PY_MAJOR_VERSION >= 3
-    if (device == nullptr) {
-      PyErr_Clear();
-      device = PyUnicode_AsUTF8(dev);
-    }
-#endif
-    if (device == nullptr) {
-      PyErr_SetString(PyExc_TypeError,
-                      "Error parsing device argument to CopyToDevice");
-      return nullptr;
-    }
-  }
+                               const char* device_name) {
   TFE_Context* ctx = GetContextHandle(py_context);
   if (ctx == nullptr) {  // PyErr already set by GetContextHandle
     return nullptr;
   }
   auto status = tensorflow::make_safe(TF_NewStatus());
   TFE_TensorHandle* new_handle =
-      TFE_TensorHandleCopyToDevice(handle, ctx, device, status.get());
+      TFE_TensorHandleCopyToDevice(handle, ctx, device_name, status.get());
   if (TF_GetCode(status.get()) != TF_OK) {
-    PyErr_SetString(
-        PyExc_RuntimeError,
-        tensorflow::strings::StrCat("Error copying tensor to device: ", device,
-                                    ". ", TF_Message(status.get()))
-            .c_str());
+    PyErr_SetString(PyExc_RuntimeError,
+                    tensorflow::strings::StrCat(
+                        "Error copying tensor to device: ", device_name, ". ",
+                        TF_Message(status.get()))
+                        .c_str());
     return nullptr;
   }
   return new_handle;
@@ -179,6 +164,41 @@ PyObject* PyIntFromDataType(TF_DataType l) {
 #else
   return PyLong_FromLong(l);
 #endif
+}
+
+// PyObject->tensorflow::DataType conversion function to be used with
+// PyArg_Parse* APIs.
+int ConvertDataType(PyObject* obj, tensorflow::DataType* dst) {
+  if (obj == Py_None) {
+    *dst = tensorflow::DataType::DT_INVALID;
+  } else if (!PyIntToDataType(obj, dst)) {
+    PyErr_SetString(
+        PyExc_TypeError,
+        tensorflow::strings::StrCat(
+            "Expecting a DataType value for dtype. Got ", Py_TYPE(obj)->tp_name)
+            .c_str());
+    return 0;
+  }
+
+  return 1;
+}
+
+// Conversion function extracting a const char** device name from a PyObject.
+// The function should be used with PyArg_Parse* APIs.
+int ConvertDeviceName(PyObject* obj, const char** dst) {
+  if (obj == Py_None) {
+    *dst = nullptr;
+  } else {
+    auto device_name = TFE_GetPythonString(obj);
+    if (device_name == nullptr) {
+      PyErr_Clear();
+      PyErr_SetString(PyExc_TypeError, "Error parsing device argument.");
+      return 0;
+    }
+    *dst = device_name;
+  }
+
+  return 1;
 }
 
 }  // namespace
@@ -446,13 +466,14 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   self->weakreflist = nullptr;
   self->context = nullptr;
   PyObject* value;
-  PyObject* device = nullptr;
-  PyObject* dtype = Py_None;
+  const char* device_name = nullptr;
+  tensorflow::DataType dtype = tensorflow::DataType::DT_INVALID;
   PyObject* other_value = nullptr;
   const char* kwlist[] = {"value", "device", "dtype", "other_value", nullptr};
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO|OO",
-                                   const_cast<char**>(kwlist), &value, &device,
-                                   &dtype, &other_value)) {
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO&|O&O",
+                                   const_cast<char**>(kwlist), &value,
+                                   ConvertDeviceName, &device_name,
+                                   ConvertDataType, &dtype, &other_value)) {
     return -1;
   }
 
@@ -481,22 +502,9 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
     return 0;
   }
 
-  // Extract dtype
-  tensorflow::DataType desired_dtype = tensorflow::DT_INVALID;
-  if (dtype != Py_None) {
-    if (!PyIntToDataType(dtype, &desired_dtype)) {
-      PyErr_SetString(PyExc_TypeError,
-                      tensorflow::strings::StrCat(
-                          "Expecting a DataType value for dtype. Got ",
-                          Py_TYPE(dtype)->tp_name)
-                          .c_str());
-      return -1;
-    }
-  }
-  PyErr_Clear();
   tensorflow::Safe_TFE_TensorHandlePtr handle =
       tensorflow::make_safe(tensorflow::ConvertToEagerTensor(
-          GetContextHandle(py_context), value, desired_dtype));
+          GetContextHandle(py_context), value, dtype));
   if (handle == nullptr) return -1;
 
   // Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
@@ -528,8 +536,8 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   if (TFE_TensorHandleDataType(handle.get()) != TF_INT32) {
     // Note that this is a shallow copy and will share the underlying buffer
     // if copying to the same device.
-    handle =
-        tensorflow::make_safe(CopyToDevice(handle.get(), py_context, device));
+    handle = tensorflow::make_safe(
+        CopyToDevice(handle.get(), py_context, device_name));
     if (handle == nullptr) return -1;
   }
   self->handle = handle.release();
@@ -669,8 +677,9 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
                                             PyObject* kwds) {
   if (!_PyArg_NoKeywords("copy_to_device", kwds)) return nullptr;
 
-  PyObject* device_name = nullptr;
-  if (!PyArg_ParseTuple(args, "O:copy_to_device", &device_name)) {
+  const char* device_name = nullptr;
+  if (!PyArg_ParseTuple(args, "O&:copy_to_device", ConvertDeviceName,
+                        &device_name)) {
     return nullptr;
   }
   auto handle = CopyToDevice(self->handle, self->context, device_name);
