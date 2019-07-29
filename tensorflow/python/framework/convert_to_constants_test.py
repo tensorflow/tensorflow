@@ -392,6 +392,28 @@ class VariablesToConstantsTest(test.TestCase):
     root, output_func = self._freezeModel(model)
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
+  @test_util.run_v2_only
+  def testKerasLSTM(self):
+    """Test a Keras LSTM containing dynamic_rnn ops."""
+    input_data = {
+        "x":
+            constant_op.constant(
+                np.array(
+                    np.random.random_sample((10, 10, 10)), dtype=np.float32))
+    }
+
+    model = keras.models.Sequential(
+        [keras.layers.LSTM(units=10, input_shape=(10, 10))])
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[10, 10, 10], dtype=dtypes.float32)
+    ])
+    def to_save(x):
+      return model(x)
+
+    root, output_func = self._freezeModel(to_save)
+    self._testConvertedFunction(root, root.f, output_func, input_data)
+
 
 if __name__ == "__main__":
   test.main()
