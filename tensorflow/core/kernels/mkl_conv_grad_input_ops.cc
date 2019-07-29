@@ -337,7 +337,6 @@ class MklConvCustomBackpropInputOp
 
       // Corner cases: output with 0 elements and 0 batch size.
       Tensor* diff_src_tensor = nullptr;
-      Tensor tmp_tensor;
       if (src_tf_shape.num_elements() == 0 ||
           filter_tf_shape.num_elements() == 0 ||
           diff_dst_tf_shape.num_elements() == 0) {
@@ -432,6 +431,7 @@ class MklConvCustomBackpropInputOp
                                      bwd_diff_src_dims, bwd_diff_src_format);
       TensorShape diff_src_tf_shape;
       diff_src_tf_shape.AddDim(diff_src_pd.get_size() / sizeof(T));
+      Tensor tmp_tensor;
       if (eager_mode) {
         AllocTmpBuffer<T>(context, &tmp_tensor, diff_src_tf_shape);
         diff_src_tf_shape = diff_src_mkl_shape.GetTfShape();
