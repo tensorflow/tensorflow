@@ -205,6 +205,14 @@ def BroadcastableOp : TEST_Op<"broadcastable", [Broadcastable]> {
 def ParentOp : TEST_Op<"parent">;
 def ChildOp : TEST_Op<"child", [HasParent<"ParentOp">]>;
 
+
+def TerminatorOp : TEST_Op<"finish", [Terminator]> {
+}
+def SingleBlockImplicitTerminatorOp : TEST_Op<"SingleBlockImplicitTerminator",
+    [SingleBlockImplicitTerminator<"TerminatorOp">]> {
+  let regions = (region SizedRegion<1>:$region);
+}
+
 //===----------------------------------------------------------------------===//
 // Test Patterns
 //===----------------------------------------------------------------------===//

@@ -50,3 +50,35 @@ func @hasParent() {
   }) : () -> ()
 }
 
+// -----
+
+func @singleBlockImplicitTerminator() {
+   // expected-error@+1 {{'test.SingleBlockImplicitTerminator' op expects a non-empty block}}
+  "test.SingleBlockImplicitTerminator"() ({
+  ^entry:
+  }) : () -> ()
+}
+
+// -----
+
+func @singleBlockImplicitTerminator() {
+   // expected-error@+1 {{'test.SingleBlockImplicitTerminator' op expects region #0 to have 0 or 1 block}}
+  "test.SingleBlockImplicitTerminator"() ({
+  ^entry:
+    "test.finish" () : () -> ()
+  ^other:
+    "test.finish" () : () -> ()
+  }) : () -> ()
+}
+
+// -----
+
+func @singleBlockImplicitTerminator() {
+   // expected-error@+2 {{'test.SingleBlockImplicitTerminator' op expects regions to end with 'test.finish'}}
+   // expected-note@+1 {{in custom textual format, the absence of terminator implies 'test.finish'}}
+  "test.SingleBlockImplicitTerminator"() ({
+  ^entry:
+    "test.non_existent_op"() : () -> ()
+  }) : () -> ()
+}
+
