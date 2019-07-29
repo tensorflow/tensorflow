@@ -310,6 +310,9 @@ class Model(network.Network):
     self._distributed_model_cache = {}
     self._distributed_function_cache = {}
 
+    # Clear any `_eager_losses` that was added.
+    self._clear_losses()
+
     if (not context.executing_eagerly() and
         self._distribution_strategy is not None):
       # Ensures a Session is created and configured correctly for Distribution
