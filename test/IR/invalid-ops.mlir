@@ -720,7 +720,7 @@ func @sitofp_f32_to_i32(%arg0 : f32) {
 
 func @return_not_in_function() {
   "foo.region"() ({
-    // expected-error@+1 {{must be nested within a 'func' region}}
+    // expected-error@+1 {{'std.return' op expects parent op 'func'}}
     return
   }): () -> ()
   return

@@ -1018,6 +1018,10 @@ def Terminator       : NativeOpTrait<"IsTerminator">;
 class SingleBlockImplicitTerminator<string op>
     : ParamNativeOpTrait<"SingleBlockImplicitTerminator", op>;
 
+// Op's parent operation is the provided one.
+class HasParent<string op>
+    : ParamNativeOpTrait<"HasParent", op>;
+
 // Op result type is derived from the first attribute. If the attribute is an
 // subclass of `TypeAttrBase`, its value is used, otherwise, the type of the
 // attribute content is used.

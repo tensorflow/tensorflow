@@ -201,6 +201,10 @@ def BroadcastableOp : TEST_Op<"broadcastable", [Broadcastable]> {
   let results = (outs AnyTensor:$res);
 }
 
+// There the "HasParent" trait.
+def ParentOp : TEST_Op<"parent">;
+def ChildOp : TEST_Op<"child", [HasParent<"ParentOp">]>;
+
 //===----------------------------------------------------------------------===//
 // Test Patterns
 //===----------------------------------------------------------------------===//

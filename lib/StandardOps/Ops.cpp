@@ -1868,9 +1868,7 @@ static void print(OpAsmPrinter *p, ReturnOp op) {
 }
 
 static LogicalResult verify(ReturnOp op) {
-  auto function = dyn_cast_or_null<FuncOp>(op.getParentOp());
-  if (!function)
-    return op.emitOpError() << "must be nested within a 'func' region";
+  auto function = cast<FuncOp>(op.getParentOp());
 
   // The operand number and types must match the function signature.
   const auto &results = function.getType().getResults();

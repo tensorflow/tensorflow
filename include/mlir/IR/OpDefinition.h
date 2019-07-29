@@ -845,6 +845,20 @@ template <typename TerminatorOpType> struct SingleBlockImplicitTerminator {
   };
 };
 
+/// This class provides a verifier for ops that are expecting a specific parent.
+template <typename ParentOpType> struct HasParent {
+  template <typename ConcreteType>
+  class Impl : public TraitBase<ConcreteType, Impl> {
+  public:
+    static LogicalResult verifyTrait(Operation *op) {
+      if (isa<ParentOpType>(op->getParentOp()))
+        return success();
+      return op->emitOpError() << "expects parent op '"
+                               << ParentOpType::getOperationName() << "'";
+    }
+  };
+};
+
 } // end namespace OpTrait
 
 //===----------------------------------------------------------------------===//
