@@ -19,6 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 
 /* static */ constexpr const char* const AutoShardDatasetOp::kDatasetType;
 /* static */ constexpr const char* const AutoShardDatasetOp::kInputDataset;
@@ -83,5 +84,6 @@ REGISTER_KERNEL_BUILDER(Name("AutoShardDataset").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("ExperimentalAutoShardDataset").Device(DEVICE_CPU),
                         AutoShardDatasetOp);
 }  // anonymous namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow
