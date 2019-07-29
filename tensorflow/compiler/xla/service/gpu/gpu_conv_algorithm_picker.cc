@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -175,7 +175,9 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
                       instr->backend_config<CudnnConvBackendConfig>());
   backend_config.set_algorithm(best_algo.conv().algorithm());
   backend_config.set_tensor_ops_enabled(best_algo.conv().tensor_ops_enabled());
-  backend_config.set_scratch_size(best_algo.scratch_bytes());
+  // TODO ROCm: Needs the following for ROCm stream executor to invoke
+  // convolution related calls
+  // backend_config.set_scratch_size(best_algo.scratch_bytes());
 
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));

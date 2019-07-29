@@ -440,6 +440,8 @@ Status CudnnConvAlgorithmPicker::ProfileConvCandidates(
       tensorflow::Logger::GetSingleton()->LogProto(log);
     }
   }
+
+  return Status::OK();
 }
 
 }  // namespace gpu
