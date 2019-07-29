@@ -235,6 +235,7 @@ tf_cuda_cc_test(
     ],
     args =
         ["--heap_check=local"] + tf_additional_device_tracer_test_flags(),
+    extra_copts = tfe_xla_copts(),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
