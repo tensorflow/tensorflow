@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 
-#include "google/protobuf/any.pb.h"
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "google/protobuf/any.pb.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_blacklist.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/scratch_allocator.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -37,7 +38,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+
+#if not TENSROFLOW_USE_ROCM
 #include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -198,7 +202,7 @@ auto& autotune_cache_stats GUARDED_BY(autotune_cache_lock) =
     *new ConvCacheStats();
 }  // anonymous namespace
 
-StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
+StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
     const HloCustomCallInstruction* instr) {
   // Don't run this function concurrently on the same GPU.
   //
@@ -226,22 +230,6 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
     autotune_cache_stats.cache_misses++;
   }
 
-  StatusOr<AutotuneResult> result_or = PickBestAlgorithmNoCache(instr);
-  if (result_or.ok()) {
-    tensorflow::mutex_lock lock(autotune_cache_lock);
-    CHECK(autotune_cache.insert({key, result_or.ValueOrDie()}).second);
-  }
-  return result_or;
-}
-
-StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
-    const HloCustomCallInstruction* instr) {
-  XLA_SCOPED_LOGGING_TIMER(
-      absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithmImpl for ",
-                   instr->ToString()));
-
-  const Shape& result_shape = instr->shape().tuple_shapes(0);
-
   // Make sure any previous activity on this executor is done. We don't want to
   // interfere with programs that are still running on the GPU.
   if (!stream_exec_->SynchronizeAllActivity()) {
@@ -251,6 +239,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   // Create a stream for us to do our work on.
   se::Stream stream{stream_exec_};
   stream.Init();
+
   // allocator either points to this->allocator_ or, if that's null, to a
   // se::StreamExecutorMemoryAllocator for stream_exec_.
   se::DeviceMemoryAllocator* allocator;
@@ -262,21 +251,46 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     allocator = &*se_allocator;
   }
 
+  StatusOr<AutotuneResult> result_or(InternalError("Unknown platform."));
+  if (stream_exec_->platform_kind() == se::PlatformKind::kROCm) {
+    //result_or = PickBestAlgorithmNoCacheROCm(*instr, allocator, &stream);
+  } else if (stream_exec_->platform_kind() == se::PlatformKind::kCuda) {
+    result_or = PickBestAlgorithmNoCacheCuda(*instr, allocator, &stream);
+  }
+
+  if (result_or.ok()) {
+    tensorflow::mutex_lock lock(autotune_cache_lock);
+    CHECK(autotune_cache.insert({key, result_or.ValueOrDie()}).second);
+  }
+  return result_or;
+}
+
+StatusOr<tensorflow::AutotuneResult>
+GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
+    const HloCustomCallInstruction& instr, se::DeviceMemoryAllocator* allocator,
+    se::Stream* stream) {
+  XLA_SCOPED_LOGGING_TIMER(
+      absl::StrCat("GpuConvAlgorithmPicker::PickBestAlgorithmImpl for ",
+                   instr.ToString()));
+
+  const Shape& result_shape = instr.shape().tuple_shapes(0);
+  const auto device_ordinal = stream_exec_->device_ordinal();
+
   int64 rng_state = 0;
 
-  const auto initialize_buffer = [&stream, &result_shape,
+  const auto initialize_buffer = [stream, &result_shape,
                                   &rng_state](DeviceMemoryBase buffer) {
-    InitializeFloatBuffer(&stream, result_shape.element_type(), &rng_state,
+    InitializeFloatBuffer(stream, result_shape.element_type(), &rng_state,
                           buffer);
   };
 
-  const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
+  const HloModuleConfig& hlo_module_config = instr.GetModule()->config();
 
   // Allocate space for the input, filter, and output of the convolution.
   se::cuda::RedzoneAllocator input_output_allocator(
       &stream, allocator, PtxOptsFromConfig(hlo_module_config));
   std::vector<se::DeviceMemoryBase> operand_buffers;
-  for (const auto* operand : instr->operands()) {
+  for (const auto* operand : instr.operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator.AllocateBytes(
                             ShapeUtil::ByteSizeOf(operand->shape())));
@@ -285,11 +299,11 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   }
   TF_ASSIGN_OR_RETURN(auto result_buffer,
                       input_output_allocator.AllocateBytes(
-                          ShapeUtil::ByteSizeOf(result_shape)));
+                          stream, ShapeUtil::ByteSizeOf(result_shape)));
   initialize_buffer(result_buffer);
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
-                      instr->backend_config<CudnnConvBackendConfig>());
+                      instr.backend_config<CudnnConvBackendConfig>());
 
   optional<BufferComparator> comparator;
   // Use the first algorithm that's supported as reference. There isn't a
@@ -298,11 +312,11 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   se::DeviceMemoryBase reference_result_buffer;
   AlgorithmDesc first_algorithm;
 
-  TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
+  TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(&instr));
   std::vector<AutotuneResult> profile_results;
 
   const DebugOptions& debug_options =
-      instr->GetModule()->config().debug_options();
+      instr.GetModule()->config().debug_options();
 
   const bool crash_on_checking_failure =
       debug_options.xla_gpu_crash_on_verification_failures();
@@ -330,15 +344,15 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
         &stream, allocator, PtxOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
-            << instr->ToString();
+            << instr.ToString();
 
     // Use assignment instead of brace-list to make GCC 4.9 happy.
     RunConvOptions options;
     options.profile_result = &profile_result;
     options.algo_override = alg;
     Status launch_status =
-        RunCudnnConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
-                     &scratch_allocator, &stream, options);
+        RunCudnnConv(&instr, absl::MakeSpan(operand_buffers), result_buffer,
+                     &scratch_allocator, stream, options);
 
     if (!launch_status.ok()) {
       continue;
@@ -361,12 +375,12 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
     // Check for writes to redzones.
     TF_ASSIGN_OR_RETURN(bool input_output_allocator_redzone_clear,
-                        CheckRedzones(input_output_allocator, &stream,
-                                      "input/output", instr, &result));
+                        CheckRedzones(input_output_allocator, stream,
+                                      "input/output", &instr, &result));
 
     TF_ASSIGN_OR_RETURN(
         bool scratch_allocator_redzone_clear,
-        CheckRedzones(scratch_allocator, &stream, "scratch", instr, &result));
+        CheckRedzones(scratch_allocator, stream, "scratch", &instr, &result));
 
     if (!input_output_allocator_redzone_clear ||
         !scratch_allocator_redzone_clear) {
@@ -392,11 +406,11 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     if (comparator.has_value()) {
       XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::CompareEqual", 2);
       StatusOr<bool> compare_result = comparator->CompareEqual(
-          &stream, reference_result_buffer, result_buffer);
+          stream, reference_result_buffer, result_buffer);
       if (!compare_result.ok()) {
         LOG(ERROR) << "Unable to compare " << AlgorithmToString(first_algorithm)
                    << " against " << AlgorithmToString(alg) << " for "
-                   << instr->ToString() << ": " << compare_result.status();
+                   << instr.ToString() << ": " << compare_result.status();
         if (compare_result.status().code() ==
             tensorflow::error::RESOURCE_EXHAUSTED) {
           // Possibly OOM. Propatate the error.
@@ -407,12 +421,11 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
         LOG(ERROR)
             << "Results mismatch between different convolution algorithms. "
                "This is likely a bug/unexpected loss of precision in cudnn.\n"
-            << instr->ToString() << " for "
-            << AlgorithmToString(first_algorithm) << " vs "
-            << AlgorithmToString(alg);
-        PrintPlatformInfo(&stream);
+            << instr.ToString() << " for " << AlgorithmToString(first_algorithm)
+            << " vs " << AlgorithmToString(alg);
+        PrintPlatformInfo(stream);
         VLOG(1) << "Full module on failure: \n"
-                << instr->GetModule()->ToString();
+                << instr.GetModule()->ToString();
         auto* fail = result.mutable_failure();
         fail->set_kind(AutotuneResult::WRONG_RESULT);
         fail->set_buffer_address(
@@ -439,11 +452,11 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     tensorflow::AutotuningLog log;
     {
       ConvInstructionLog instr_log;
-      *instr_log.mutable_instruction() = instr->ToProto();
-      for (int i = 0; i < instr->operand_count(); i++) {
-        *instr_log.add_operand_shapes() = instr->operand(i)->shape().ToProto();
+      *instr_log.mutable_instruction() = instr.ToProto();
+      for (int i = 0; i < instr.operand_count(); i++) {
+        *instr_log.add_operand_shapes() = instr.operand(i)->shape().ToProto();
         instr_log.add_operand_addresses(
-            reinterpret_cast<uint64>(operand_buffers[i].opaque()));
+            reinterpret_cast<uint64>((operand_buffers)[i].opaque()));
       }
       instr_log.set_result_address(
           reinterpret_cast<uint64>(result_buffer.opaque()));
@@ -516,11 +529,10 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   return InternalError(
       "All algorithms tried for convolution %s failed.  Falling back to "
       "default algorithm.",
-      instr->ToString());
+      instr.ToString());
 }
 
-StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
-    HloInstruction* instr) {
+StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
   CHECK(IsCustomCallToDnnConvolution(*instr));
 
   StatusOr<AutotuneResult> best_algo_or =
@@ -548,6 +560,11 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
                       instr->backend_config<CudnnConvBackendConfig>());
   backend_config.set_algorithm(best_algo.conv().algorithm());
   backend_config.set_tensor_ops_enabled(best_algo.conv().tensor_ops_enabled());
+#if TENSORFLOW_USE_ROCM
+  // ROCm: Needs to set scratch size for ROCm stream executor make sure scratch
+  // space for convolution related calls are correctly allocated
+  backend_config.set_scratch_size(best_algo.scratch_bytes());
+#endif
 
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));
@@ -570,7 +587,7 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
   return true;
 }
 
-StatusOr<bool> CudnnConvAlgorithmPicker::RunOnComputation(
+StatusOr<bool> GpuConvAlgorithmPicker::RunOnComputation(
     HloComputation* computation) {
   std::vector<HloInstruction*> convs;
   for (auto* instr : computation->instructions()) {
@@ -587,11 +604,11 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnComputation(
   return changed;
 }
 
-StatusOr<bool> CudnnConvAlgorithmPicker::Run(HloModule* module) {
-  XLA_SCOPED_LOGGING_TIMER("CudnnConvAlgorithmPicker");
+StatusOr<bool> GpuConvAlgorithmPicker::Run(HloModule* module) {
+  XLA_SCOPED_LOGGING_TIMER("GpuConvAlgorithmPicker");
 
   if (module->config().debug_options().xla_gpu_disable_autotune()) {
-    VLOG(2) << "Convolution auto-tuning disabled, CudnnConvAlgorithmPicker "
+    VLOG(2) << "Convolution auto-tuning disabled, GpuConvAlgorithmPicker "
                "returning early.";
     return false;
   }
