@@ -52,9 +52,6 @@ public:
   explicit Attribute(const llvm::Record *record);
   explicit Attribute(const llvm::DefInit *init);
 
-  // Returns true if this attribute has storage type set.
-  bool hasStorageType() const;
-
   // Returns the storage type if set. Returns the default storage type
   // ("Attribute") otherwise.
   StringRef getStorageType() const;
@@ -153,9 +150,6 @@ public:
   explicit EnumAttr(const llvm::Record *record);
   explicit EnumAttr(const llvm::Record &record);
   explicit EnumAttr(const llvm::DefInit *init);
-
-  // Returns true if this EnumAttr is backed by a StringAttr.
-  bool isStrEnum() const;
 
   // Returns the enum class name.
   StringRef getEnumClassName() const;
