@@ -3595,8 +3595,8 @@ def avg_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):  #
     ksize = [1] + _get_sequence(ksize, 1, channel_index, "ksize")
     strides = [1] + _get_sequence(strides, 1, channel_index, "strides")
 
-    data_format = "NHWC" if data_format == "NWC" else "NCHW"
     expanding_dim = 1 if data_format == "NWC" else 2
+    data_format = "NHWC" if data_format == "NWC" else "NCHW"
 
     input = array_ops.expand_dims_v2(input, expanding_dim)
     result = gen_nn_ops.avg_pool(
@@ -3786,8 +3786,8 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
     ksize = [1] + _get_sequence(ksize, 1, channel_index, "ksize")
     strides = [1] + _get_sequence(strides, 1, channel_index, "strides")
 
-    data_format = "NHWC" if data_format == "NWC" else "NCHW"
     expanding_dim = 1 if data_format == "NWC" else 2
+    data_format = "NHWC" if data_format == "NWC" else "NCHW"
 
     input = array_ops.expand_dims_v2(input, expanding_dim)
     result = gen_nn_ops.max_pool(

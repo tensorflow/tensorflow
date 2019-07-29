@@ -26,6 +26,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import random_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -531,6 +532,43 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     gradients_impl.gradients(output, x)
     # Computing the gradient again shouldn't rewrite while_op again.
     self.assertLen(while_op.outputs, 5)
+
+  @test_util.run_deprecated_v1
+  def testRandomUniformShape(self):
+    shape = constant_op.constant([3])
+
+    def Body(i, u):
+      shape_extended = array_ops.concat([[5], shape], axis=0)
+      u = random_ops.random_uniform(shape_extended)
+      self.assertAllEqual(u.shape.as_list(), [5, 3])
+      return i + 1, u
+
+    _, _ = while_loop_v2(
+        cond=lambda i, _: i < 3,
+        body=Body,
+        loop_vars=[
+            0,
+            array_ops.zeros([5, 3], dtype=dtypes.float32),
+        ])
+
+  @test_util.run_deprecated_v1
+  def testReshapeShape(self):
+    shape = constant_op.constant([3, 4])
+
+    def Body(i, u):
+      shape_extended = array_ops.concat([[5], shape], axis=0)
+      u = array_ops.reshape(u, [-1])
+      u = array_ops.reshape(u, shape_extended)
+      assert u.shape.as_list() == [5, 3, 4], str(u.shape.as_list())
+      return i + 1, u
+
+    _, _ = while_loop_v2(
+        cond=lambda i, _: i < 3,
+        body=Body,
+        loop_vars=[
+            0,
+            array_ops.zeros([5, 3, 4], dtype=dtypes.float32),
+        ])
 
 
 def ScalarShape():

@@ -43,6 +43,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
@@ -1088,5 +1089,6 @@ REGISTER_KERNEL_BUILDER(Name("SnapshotDataset").Device(DEVICE_CPU),
                         SnapshotDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

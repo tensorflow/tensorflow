@@ -1,0 +1,78 @@
+op {
+  name: "StridedSliceAssign"
+  input_arg {
+    name: "ref"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "begin"
+    type_attr: "Index"
+  }
+  input_arg {
+    name: "end"
+    type_attr: "Index"
+  }
+  input_arg {
+    name: "strides"
+    type_attr: "Index"
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_ref"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Index"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "begin_mask"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "end_mask"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "ellipsis_mask"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "new_axis_mask"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "shrink_axis_mask"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+}

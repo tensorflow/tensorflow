@@ -1,0 +1,28 @@
+op {
+  name: "TensorArrayGradWithShape"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "shape_to_prepend"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "grad_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "source"
+    type: "string"
+  }
+  is_stateful: true
+}
