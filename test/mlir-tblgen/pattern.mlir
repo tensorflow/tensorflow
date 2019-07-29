@@ -10,6 +10,20 @@ func @verifyFusedLocs(%arg0 : i32) -> i32 {
   return %result : i32
 }
 
+// CHECK-LABEL: verifyZeroResult
+func @verifyZeroResult(%arg0 : i32) {
+  // CHECK: "test.op_i"(%arg0) : (i32) -> ()
+  "test.op_h"(%arg0) : (i32) -> ()
+  return
+}
+
+// CHECK-LABEL verifyZeroArg
+func @verifyZeroArg() -> i32 {
+  // CHECK: "test.op_k"() : () -> i32
+  %0 = "test.op_j"() : () -> i32
+  return %0 : i32
+}
+
 // CHECK-LABEL: verifyBenefit
 func @verifyBenefit(%arg0 : i32) -> i32 {
   %0 = "test.op_d"(%arg0) : (i32) -> i32

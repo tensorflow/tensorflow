@@ -806,9 +806,9 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
         formatValuePack("op->getResult({1})->getType()", valuePackName,
                         resultOp.getNumResults(), resultIndex);
 
-    os.indent(4) << formatv("auto {0} = rewriter.create<{1}>(loc, {2}",
-                            valuePackName, resultOp.getQualCppClassName(),
-                            resultTypes);
+    os.indent(4) << formatv("auto {0} = rewriter.create<{1}>(loc",
+                            valuePackName, resultOp.getQualCppClassName())
+                 << (resultTypes.empty() ? "" : ", ") << resultTypes;
   }
 
   // Create the builder call for the result.

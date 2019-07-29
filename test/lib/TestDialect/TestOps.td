@@ -245,6 +245,16 @@ def : Pat<(OpD $input), (OpF $input), [], (addBenefit 10)>;
 def : Pat<(OpG $input), (OpB $input, ConstantAttr<I32Attr, "20">:$attr)>;
 def : Pat<(OpG (OpG $input)), (OpB $input, ConstantAttr<I32Attr, "34">:$attr)>;
 
+// Test patterns for zero-result op.
+def OpH : TEST_Op<"op_h">, Arguments<(ins I32:$arg)>, Results<(outs)>;
+def OpI : TEST_Op<"op_i">, Arguments<(ins I32:$arg)>, Results<(outs)>;
+def : Pat<(OpH $input), (OpI $input)>;
+
+// Test patterns for zero-input op.
+def OpJ : TEST_Op<"op_j">, Arguments<(ins)>, Results<(outs I32:$res)>;
+def OpK : TEST_Op<"op_k">, Arguments<(ins)>, Results<(outs I32:$res)>;
+def : Pat<(OpJ), (OpK)>;
+
 // Test NativeCodeCall.
 def OpNativeCodeCall1 : TEST_Op<"native_code_call1"> {
   let arguments = (ins
