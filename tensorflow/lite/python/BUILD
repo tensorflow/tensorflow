@@ -101,6 +101,7 @@ py_test(
     tags = [
         "no_windows",
         "no_cuda",
+        "no_rocm",
     ],
     deps = [
         ":lite",
@@ -238,6 +239,10 @@ py_test(
     name = "convert_test",
     srcs = ["convert_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_cuda",
+        "no_rocm",
+    ],
     deps = [
         ":convert",
         ":interpreter",
