@@ -79,7 +79,8 @@ class TfExecutor_Op<string mnemonic, list<OpTrait> traits = []> :
   let parser = [{ return Parse$cppClass(parser, result); }];
 }
 
-def TfExecutor_GraphOp : TfExecutor_Op<"graph", []> {
+def TfExecutor_GraphOp : TfExecutor_Op<"graph",
+    [SingleBlockImplicitTerminator<"FetchOp">]> {
   let summary = [{The `tf_executor.graph` operation contains a region with a
     single block that lists the operations in a TensorFlow graph.}];
 
@@ -138,10 +139,18 @@ def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
     Variadic<AnyType>:$fetches
   );
 
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result",
+    [{
+      build(builder, result, {});
+    }]>
+   ];
+
   let verifier = ?;
 }
 
-def TfExecutor_IslandOp : TfExecutor_Op<"island", [HasParent<"GraphOp">]> {
+def TfExecutor_IslandOp : TfExecutor_Op<"island",
+    [HasParent<"GraphOp">, SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = [{
     The `tf_executor.island` operation is a wrapper for operations in other
     dialects to be nested in a `tf_executor.graph`.
@@ -204,6 +213,13 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
   let arguments = (ins
     Variadic<AnyType>:$fetches
   );
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState *result",
+    [{
+      build(builder, result, {});
+    }]>
+   ];
 
   let verifier = ?;
 }
