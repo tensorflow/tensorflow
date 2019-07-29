@@ -126,15 +126,13 @@ static void emitSerializationFunction(const Record *record, const Operator &op,
     auto argument = op.getArg(i);
     os << "  {\n";
     if (argument.is<NamedTypeConstraint *>()) {
-      os << "    if (" << operandNum
-         << " < op.getOperation()->getNumOperands()) {\n";
-      os << "      auto arg = findValueID(op.getOperation()->getOperand("
-         << operandNum << "));\n";
-      os << "      if (!arg) {\n";
+      os << "    for (auto arg : op.getODSOperands(" << i << ")) {\n";
+      os << "      auto argID = findValueID(arg);\n";
+      os << "      if (!argID) {\n";
       os << "        emitError(op.getLoc(), \"operand " << operandNum
          << " has a use before def\");\n";
       os << "      }\n";
-      os << "      operands.push_back(arg);\n";
+      os << "      operands.push_back(argID);\n";
       os << "    }\n";
       operandNum++;
     } else {
@@ -243,32 +241,53 @@ static void emitDeserializationFunction(const Record *record,
                     "SPIR-V ops can have only zero or one result");
   }
 
-  // Process arguments/attributes
+  // Process operands/attributes
   os << "  SmallVector<Value *, 4> operands;\n";
   os << "  SmallVector<NamedAttribute, 4> attributes;\n";
   unsigned operandNum = 0;
   for (unsigned i = 0, e = op.getNumArgs(); i < e; ++i) {
     auto argument = op.getArg(i);
-    os << "  if (wordIndex < words.size()) {\n";
-    if (argument.is<NamedTypeConstraint *>()) {
+    if (auto valueArg = argument.dyn_cast<NamedTypeConstraint *>()) {
+      if (valueArg->isVariadic()) {
+        if (i != e - 1) {
+          PrintFatalError(record->getLoc(),
+                          "SPIR-V ops can have Variadic<..> argument only if "
+                          "it's the last argument");
+        }
+        os << "  for (; wordIndex < words.size(); ++wordIndex)";
+      } else {
+        os << "  if (wordIndex < words.size())";
+      }
+      os << " {\n";
       os << "    auto arg = getValue(words[wordIndex]);\n";
       os << "    if (!arg) {\n";
       os << "      return emitError(unknownLoc, \"unknown result <id> : \") << "
             "words[wordIndex];\n";
       os << "    }\n";
       os << "    operands.push_back(arg);\n";
-      os << "    wordIndex++;\n";
+      if (!valueArg->isVariadic()) {
+        os << "    wordIndex++;\n";
+      }
       operandNum++;
+      os << "  }\n";
     } else {
+      os << "  if (wordIndex < words.size()) {\n";
       auto attr = argument.get<NamedAttribute *>();
       emitAttributeDeserialization(
           (attr->attr.isOptional() ? attr->attr.getBaseAttr() : attr->attr),
           record->getLoc(), "attributes", attr->name, "words", "wordIndex",
           "words.size()", os);
+      os << "  }\n";
     }
-    os << "  }\n";
   }
 
+  os << "  if (wordIndex != words.size()) {\n";
+  os << "    return emitError(unknownLoc, \"found more operands than expected "
+        "when deserializing "
+     << op.getQualCppClassName()
+     << ", only \") << wordIndex << \" of \" << words.size() << \" "
+        "processed\";\n";
+  os << "  }\n";
   os << formatv("  auto op = opBuilder.create<{0}>(unknownLoc, resultTypes, "
                 "operands, attributes); (void)op;\n",
                 op.getQualCppClassName());
