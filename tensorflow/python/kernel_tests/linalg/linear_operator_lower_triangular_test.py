@@ -34,7 +34,7 @@ class LinearOperatorLowerTriangularTest(
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     # Cholesky does not make sense for triangular matrices.
     return ["cholesky"]
 

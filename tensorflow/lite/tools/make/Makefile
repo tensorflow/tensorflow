@@ -106,7 +106,7 @@ tensorflow/lite/experimental/ruy/context.cc \
 tensorflow/lite/experimental/ruy/detect_dotprod.cc \
 tensorflow/lite/experimental/ruy/kernel_arm32.cc \
 tensorflow/lite/experimental/ruy/kernel_arm64.cc \
-tensorflow/lite/experimental/ruy/pack.cc \
+tensorflow/lite/experimental/ruy/pack_arm.cc \
 tensorflow/lite/experimental/ruy/pmu.cc \
 tensorflow/lite/experimental/ruy/thread_pool.cc \
 tensorflow/lite/experimental/ruy/trace.cc \
@@ -164,6 +164,7 @@ endif
 ifeq ($(BUILD_WITH_NNAPI),true)
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate.cc
 	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/nnapi_implementation.cc
+	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/quant_lstm_sup.cc
 else
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate_disabled.cc
 	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/nnapi_implementation_disabled.cc

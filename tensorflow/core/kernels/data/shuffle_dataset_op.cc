@@ -100,6 +100,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     }
   }
 
+  bool IsStateful() const override { return input_->IsStateful(); }
+
  protected:
   template <class T>
   class Iterator : public DatasetIterator<T> {

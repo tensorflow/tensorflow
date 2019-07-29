@@ -86,6 +86,10 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return kUnknownCardinality; }
 
+    bool IsStateful() const override {
+      return captured_func_->IsStateful() || input_->IsStateful();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

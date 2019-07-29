@@ -40,6 +40,12 @@ constexpr char kNCHW[] = "NCHW";
 constexpr float kVoltaGPURatioThreshold = 0.5;
 constexpr float kConv2DGPUFP16Threshold = 0.5;
 
+struct MutableNodeViewFormatter {
+  void operator()(std::string* out, utils::MutableNodeView* node_view) const {
+    absl::StrAppend(out, node_view->node()->name());
+  }
+};
+
 inline std::pair<int, int> GetNumGPUs(const Cluster& cluster) {
   auto devices = cluster.GetDevices();
   int num_gpus = 0;
@@ -267,11 +273,16 @@ Status EraseCancellableNodesAroundPad(TransposeContext* context) {
   utils::MutableGraphView* graph_view = context->graph_view.get();
   utils::Mutation* mutation = graph_view->GetMutationBuilder();
 
+  absl::flat_hash_set<utils::MutableNodeView*> cancelled_transposes;
+
   const int num_nodes = graph_view->NumNodes();
   for (int i = 0; i < num_nodes; ++i) {
     // Transpose node after Pad.
     auto* transpose_after = graph_view->GetNode(i);
     if (!IsTranspose(*transpose_after->node())) continue;
+
+    // This transpose was already cancelled in previous loop iteration.
+    if (cancelled_transposes.contains(transpose_after)) continue;
 
     // Pad node.
     const auto& transpose_after_fanin = transpose_after->GetRegularFanin(0);
@@ -306,10 +317,34 @@ Status EraseCancellableNodesAroundPad(TransposeContext* context) {
                                         &permute_t))
       continue;
 
-    VLOG(0) << "Cancel transpose node pair around pad node:"
+    // Pad output might be used multiple times by different Transpose nodes. If
+    // they all have identical permutation, we can cancel all of them.
+    std::vector<utils::MutableNodeView*> pad_fanout_transposes;
+    pad_fanout_transposes.emplace_back(transpose_after);
+
+    bool pad_has_unsupported_fanout = false;
+    for (auto& fanout : pad->GetRegularFanout(0)) {
+      auto* extra_transpose = fanout.node_view();
+      if (extra_transpose == transpose_after) continue;
+
+      // Check that fanout is a Transpose identical to the transpose_after.
+      Tensor extra_permute_t;
+      if (!GetValueAttrFromConstInputNode(*extra_transpose, IsTranspose, 1,
+                                          &extra_permute_t) ||
+          extra_permute_t.tensor_data() != permute_t.tensor_data()) {
+        pad_has_unsupported_fanout = true;
+        break;
+      }
+
+      pad_fanout_transposes.emplace_back(extra_transpose);
+    }
+    if (pad_has_unsupported_fanout) continue;
+
+    VLOG(0) << "Cancel Transpose nodes around Pad:"
             << " transpose_before=" << transpose_before->node()->name()
-            << " pad=" << pad->node()->name()
-            << " transpose_after=" << transpose_after->node()->name();
+            << " pad=" << pad->node()->name() << " transpose_after="
+            << absl::StrJoin(pad_fanout_transposes, ",",
+                             MutableNodeViewFormatter());
 
     // Permute paddings in place according to permutation in second transpose.
     auto permutation_s = absl::Span<int32>(permute_t.flat<int32>().data(),
@@ -325,14 +360,16 @@ Status EraseCancellableNodesAroundPad(TransposeContext* context) {
 
     // Transform Transpose nodes into Identity nodes.
     const auto transpose_to_identity =
-        [&mutation](utils::MutableNodeView* transpose) -> void {
+        [&cancelled_transposes,
+         &mutation](utils::MutableNodeView* transpose) -> void {
       mutation->UpdateNodeOp(transpose, "Identity");
       mutation->RemoveNodeAttr(transpose, "Tperm");
       mutation->RemoveRegularFanin(transpose, 1);
+      cancelled_transposes.insert(transpose);
     };
 
     transpose_to_identity(transpose_before);
-    transpose_to_identity(transpose_after);
+    absl::c_for_each(pad_fanout_transposes, transpose_to_identity);
   }
 
   return mutation->Apply();

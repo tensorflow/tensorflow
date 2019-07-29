@@ -161,7 +161,7 @@ def toco_convert_protos(model_flags_str,
       # Some of the subtests within the "convert_test" unit-test fail
       # with the error shown above. So watch out for that scenario and
       # convert debug_info_str to bytes where needed
-      if isinstance(debug_info_str, str):
+      if not isinstance(debug_info_str, bytes):
         fp_debug.write(debug_info_str.encode("utf-8"))
       else:
         fp_debug.write(debug_info_str)

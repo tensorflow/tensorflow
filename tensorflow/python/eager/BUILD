@@ -106,11 +106,22 @@ cuda_py_test(
 )
 
 py_library(
+    name = "executor",
+    srcs = ["executor.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
+py_library(
     name = "context",
     srcs = ["context.py"],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":executor",
         ":monitoring",
         "//tensorflow/python:device",
         "//tensorflow/python:device_spec",
@@ -192,6 +203,7 @@ py_library(
 py_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     visibility = ["//tensorflow:internal"],
@@ -256,6 +268,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "core_test",
+    size = "small",
     srcs = ["core_test.py"],
     additional_deps = [
         ":context",

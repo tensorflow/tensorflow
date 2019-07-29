@@ -500,8 +500,8 @@ def _run_layernorm_correctness_test(layer, dtype='float32'):
   model.add(norm)
   model.compile(loss='mse',
                 optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                run_eagerly=testing_utils.should_run_eagerly())
-  # TODO(b/137397816): run_distributed=testing_utils.should_run_distributed()
+                run_eagerly=testing_utils.should_run_eagerly(),
+                run_distributed=testing_utils.should_run_distributed())
 
   # centered on 5.0, variance 10.0
   x = (np.random.normal(loc=5.0, scale=10.0, size=(1000, 2, 2, 2))

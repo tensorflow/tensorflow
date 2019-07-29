@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/profiling/buffered_profiler.h"
 #include "tensorflow/lite/profiling/profile_summarizer.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
@@ -119,37 +120,11 @@ void GemmlowpProfilingListener::OnBenchmarkEnd(
 }
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
-  std::istringstream input(str);
   std::vector<std::string> results;
-  std::string item;
-  while (std::getline(input, item, delim)) {
-    results.push_back(item);
+  if (!util::SplitAndParse(str, delim, &results)) {
+    results.clear();
   }
   return results;
-}
-
-template <typename T>
-bool SplitAndParse(const std::string& str, char delim, std::vector<T>* values) {
-  std::istringstream input(str);
-  bool first = true;
-  while (!input.eof()) {
-    if (!first) {
-      char c;
-      input >> c;
-      if (c != delim) {
-        return false;
-      }
-    } else {
-      first = false;
-    }
-    T val;
-    input >> val;
-    if (!input.eof() && !input.good()) {
-      return false;
-    }
-    values->push_back(val);
-  }
-  return true;
 }
 
 template <typename T>
@@ -197,7 +172,7 @@ bool PopulateInputLayerInfo(
 
     input.name = names[i];
 
-    TFLITE_BENCHMARK_CHECK(SplitAndParse(shapes[i], ',', &input.shape))
+    TFLITE_BENCHMARK_CHECK(util::SplitAndParse(shapes[i], ',', &input.shape))
         << "Incorrect size string specified: " << shapes[i];
     for (int dim : input.shape) {
       if (dim == -1) {

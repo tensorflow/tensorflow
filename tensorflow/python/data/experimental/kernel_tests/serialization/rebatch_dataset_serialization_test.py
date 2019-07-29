@@ -34,7 +34,7 @@ class RebatchDatasetSerializationTest(
               4 * batch_size, drop_remainder=True),
           num_workers=4)
 
-    self.run_core_tests(lambda: build_dataset(200, 10), None, 20)
+    self.run_core_tests(lambda: build_dataset(200, 10), 20)
 
 
 if __name__ == "__main__":

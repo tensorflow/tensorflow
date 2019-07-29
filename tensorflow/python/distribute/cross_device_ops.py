@@ -262,7 +262,7 @@ class CrossDeviceOps(object):
       ValueError: if per_replica_value can't be converted to a PerReplica
         object.
     """
-    if not isinstance(per_replica_value, value_lib.PerReplica):
+    if not isinstance(per_replica_value, value_lib.DistributedValues):
       per_replica_value = _make_tensor_into_per_replica(per_replica_value)
 
     validate_destinations(destinations)

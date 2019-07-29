@@ -38,7 +38,7 @@ class ChooseFastestDatasetSerializationTest(
           dataset.batch(batch_size).map(map_fn)
       ])
 
-    self.run_core_tests(build_ds, None, num_outputs // 2)
+    self.run_core_tests(build_ds, num_outputs // 2)
 
 
 if __name__ == "__main__":

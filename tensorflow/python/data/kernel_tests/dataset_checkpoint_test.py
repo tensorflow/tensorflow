@@ -21,11 +21,9 @@ import os
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import parsing_ops
@@ -104,89 +102,7 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
         for i in range(start, break_point):
           self.assertEqual(i, sess.run(get_next))
         sess.run(save_op)
-        sess.run(restore_op)
-        for i in range(break_point, stop):
-          self.assertEqual(i, sess.run(get_next))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
-
-  def testRestoreWithoutBuildingDatasetGraph(self):
-
-    def _build_graph(start, stop, num_epochs):
-      dataset = dataset_ops.Dataset.range(start, stop).repeat(num_epochs)
-      iterator = dataset_ops.make_initializable_iterator(dataset)
-      init_op = iterator.initializer
-      get_next = iterator.get_next()
-      save_op = self._save_op(iterator._iterator_resource)
-      restore_op = self._restore_op(iterator._iterator_resource)
-      return init_op, get_next, save_op, restore_op
-
-    # Saving and restoring in different sessions.
-    start = 2
-    stop = 10
-    num_epochs = 5
-    break_point = 5
-    break_epoch = 3
-    with ops.Graph().as_default() as g:
-      init_op, get_next, save_op, _ = _build_graph(start, stop, num_epochs)
-      with self.session(graph=g) as sess:
-        sess.run(variables.global_variables_initializer())
         sess.run(init_op)
-        for _ in range(break_epoch):
-          for i in range(start, stop):
-            self.assertEqual(i, sess.run(get_next))
-        for i in range(start, break_point):
-          self.assertEqual(i, sess.run(get_next))
-        sess.run(save_op)
-
-    with ops.Graph().as_default() as g:
-      # Create an empty IteratorResource and restore the Iterator into it.
-      output_types = dtypes.int64
-      output_shapes = tensor_shape.TensorShape([])
-      iterator = iterator_ops.Iterator.from_structure(output_types,
-                                                      output_shapes)
-      restore_op = self._restore_op(iterator._iterator_resource)
-      get_next = iterator.get_next()
-      with self.session(graph=g) as sess:
-        sess.run(restore_op)
-        for i in range(break_point, stop):
-          self.assertEqual(i, sess.run(get_next))
-        for _ in range(break_epoch + 1, num_epochs):
-          for i in range(start, stop):
-            self.assertEqual(i, sess.run(get_next))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
-
-  def testRestoreInModifiedGraph(self):
-
-    def _build_graph(start, stop):
-      dataset = dataset_ops.Dataset.range(start, stop)
-      iterator = dataset_ops.make_initializable_iterator(dataset)
-      init_op = iterator.initializer
-      get_next = iterator.get_next()
-      save_op = self._save_op(iterator._iterator_resource)
-      restore_op = self._restore_op(iterator._iterator_resource)
-      return init_op, get_next, save_op, restore_op
-
-    # Saving and restoring in different sessions.
-    start = 2
-    stop = 10
-    stop_1 = 8
-    break_point = 5
-    with ops.Graph().as_default() as g:
-      init_op, get_next, save_op, _ = _build_graph(start, stop)
-      with self.session(graph=g) as sess:
-        sess.run(variables.global_variables_initializer())
-        sess.run(init_op)
-        for i in range(start, break_point):
-          self.assertEqual(i, sess.run(get_next))
-        sess.run(save_op)
-
-    with ops.Graph().as_default() as g:
-      # Intentionally build a graph with a different value for stop to make sure
-      # the original dataset graph is actually getting loaded.
-      init_op, get_next, _, restore_op = _build_graph(start, stop_1)
-      with self.session(graph=g) as sess:
         sess.run(restore_op)
         for i in range(break_point, stop):
           self.assertEqual(i, sess.run(get_next))
@@ -258,6 +174,7 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, restore_op = _build_graph(start, stop)
       with self.session(graph=g) as sess:
+        sess.run(init_op)
         sess.run(restore_op)
         for i in range(break_point1, break_point2):
           self.assertEqual(i, sess.run(get_next))
@@ -267,6 +184,7 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, restore_op = _build_graph(start, stop)
       with self.session(graph=g) as sess:
+        sess.run(init_op)
         sess.run(restore_op)
         for i in range(break_point2, stop):
           self.assertEqual(i, sess.run(get_next))
@@ -298,6 +216,7 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
         with self.assertRaises(errors.NotFoundError):
+          sess.run(init_op)
           sess.run(restore_op)
         for _ in range(break_epoch - 1):
           for i in range(start, stop):
@@ -309,6 +228,7 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
     with ops.Graph().as_default() as g:
       init_op, get_next, _, restore_op = _build_graph(start, stop, num_epochs)
       with self.session(graph=g) as sess:
+        sess.run(init_op)
         sess.run(restore_op)
         for i in range(break_range, stop):
           self.assertEqual(i, sess.run(get_next))
@@ -341,6 +261,7 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
         with self.assertRaises(errors.NotFoundError):
+          sess.run(init_op)
           sess.run(restore_op)
         for _ in range(num_epochs):
           for i in range(start, stop):
@@ -352,6 +273,7 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
     with ops.Graph().as_default() as g:
       init_op, get_next, _, restore_op = _build_graph(start, stop, num_epochs)
       with self.session(graph=g) as sess:
+        sess.run(init_op)
         sess.run(restore_op)
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)

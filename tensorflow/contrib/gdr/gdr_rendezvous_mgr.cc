@@ -163,7 +163,7 @@ class GdrRemoteRendezvous : public BaseRemoteRendezvous {
                               recv_args, step_id_, parsed.FullKey());
 
     // Record "call" in active_ so that it can be aborted cleanly.
-    RegisterCall(call);
+    RegisterCall(call, recv_args);
 
     // RendezvousMgr already aborted, shouldn't send RPC call any more
     if (!call->status().ok()) {

@@ -1024,7 +1024,7 @@ void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
       desc->colocation_constraints.insert(location);
     }
   } else {
-    desc->node_builder.Attr(attr_name, attr_value);
+    desc->node_builder.Attr(attr_name, std::move(attr_value));
   }
 
   status->status = Status::OK();

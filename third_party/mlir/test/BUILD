@@ -56,11 +56,11 @@ cc_library(
     deps = [
         ":TestOpsIncGen",
         "@llvm//:support",
+        "@local_config_mlir//:Dialect",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:Support",
         "@local_config_mlir//:Transforms",
-        "@local_config_mlir//:TypeUtilities",
     ],
     alwayslink = 1,
 )
@@ -70,6 +70,8 @@ cc_library(
     srcs = [
         "lib/Transforms/TestConstantFold.cpp",
         "lib/Transforms/TestLoopFusion.cpp",
+        "lib/Transforms/TestLoopMapping.cpp",
+        "lib/Transforms/TestLoopParametricTiling.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
     deps = [
@@ -78,6 +80,7 @@ cc_library(
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:EDSC",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:LoopOps",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",

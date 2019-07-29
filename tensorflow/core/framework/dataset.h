@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -298,6 +300,7 @@ class IteratorContext {
   struct Params {
     explicit Params(IteratorContext* ctx)
         : allocator_getter(ctx->allocator_getter()),
+          cancellation_manager(ctx->cancellation_manager()),
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
@@ -343,6 +346,9 @@ class IteratorContext {
     // The Allocator to be used to allocate the output of an iterator.
     std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
 
+    // The CancellationManager to be used to cancel execution of ops.
+    CancellationManager* cancellation_manager;
+
     // Interface to operating system functionality.
     Env* env = nullptr;
 
@@ -385,6 +391,10 @@ class IteratorContext {
 
   std::function<Allocator*(AllocatorAttributes)> allocator_getter() {
     return params_.allocator_getter;
+  }
+
+  CancellationManager* cancellation_manager() {
+    return params_.cancellation_manager;
   }
 
   Env* env() const { return params_.env; }
@@ -516,6 +526,10 @@ class IteratorBase {
   // Restores the state of this iterator.
   virtual Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
     return RestoreInternal(ctx, reader);
+  }
+
+  Status Restore(IteratorContext&& ctx, IteratorStateReader* reader) {
+    return Restore(&ctx, reader);
   }
 
  protected:
@@ -686,6 +700,10 @@ class DatasetBase : public core::RefCounted {
   virtual Status Save(SerializationContext* ctx,
                       IteratorStateWriter* writer) const;
 
+  // Indicates whether the dataset depends on external state, which is for
+  // instance used to decide whether dataset iterator can be saved.
+  virtual bool IsStateful() const { return false; }
+
  protected:
   friend Status AsGraphDef(
       OpKernelContext* ctx, const DatasetBase* dataset,
@@ -758,7 +776,10 @@ class DatasetBaseIterator : public IteratorBase {
                  bool* end_of_sequence) final;
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
-    TF_RETURN_IF_ERROR(params_.dataset->Save(ctx, writer));
+    if (params_.dataset->IsStateful()) {
+      return errors::FailedPrecondition(
+          "Saving iterator that depends on external state is not supported.");
+    }
     return IteratorBase::Save(ctx, writer);
   }
 

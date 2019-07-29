@@ -130,6 +130,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       return "ParallelInterleaveDatasetOp::Dataset";
     }
 
+    bool IsStateful() const override {
+      return captured_func_->IsStateful() || input_->IsStateful();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

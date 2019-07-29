@@ -40,14 +40,11 @@ class IteratorResource : public ResourceBase {
       : unbounded_thread_pool_(env, "tf_data_iterator_resource"),
         device_mgr_(std::move(device_mgr)),
         iterator_state_(std::make_shared<State>(
-            std::move(flib_def), std::move(pflr), flr, nullptr /* iterator */)),
+            std::move(flib_def), std::move(pflr), flr, /*iterator=*/nullptr)),
         output_dtypes_(output_dtypes),
         output_shapes_(output_shapes) {}
 
-  Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                 bool* end_of_sequence);
-
-  Status GetNext(IteratorContext&& ctx, std::vector<Tensor>* out_tensors,
+  Status GetNext(OpKernelContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence);
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer);
@@ -75,22 +72,12 @@ class IteratorResource : public ResourceBase {
           function_handle_cache(absl::make_unique<FunctionHandleCache>(flr)),
           iterator(std::move(iterator)) {}
 
-    State(std::shared_ptr<FunctionLibraryDefinition> flib_def,
-          std::shared_ptr<ProcessFunctionLibraryRuntime> pflr,
-          FunctionLibraryRuntime* flr,
-          std::unique_ptr<FunctionHandleCache> function_handle_cache,
-          std::unique_ptr<IteratorBase> iterator)
-        : flib_def(flib_def),
-          flr(flr),
-          pflr(pflr),
-          function_handle_cache(std::move(function_handle_cache)),
-          iterator(std::move(iterator)) {}
-
     std::shared_ptr<FunctionLibraryDefinition> flib_def;
     FunctionLibraryRuntime* flr = nullptr;  // not owned.
     std::shared_ptr<ProcessFunctionLibraryRuntime> pflr;
     std::unique_ptr<FunctionHandleCache> function_handle_cache;
     ResourceMgr resource_mgr;
+    CancellationManager cancellation_manager;
     std::unique_ptr<IteratorBase> iterator;
   };
 

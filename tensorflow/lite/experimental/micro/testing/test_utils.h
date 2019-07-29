@@ -73,7 +73,7 @@ inline uint8_t F2Q(const float value, const float min, const float max) {
 }
 
 // Converts a float value into a signed thirty-two-bit quantized value.
-inline uint8_t F2Q32(const float value, const float min, const float max) {
+inline int32_t F2Q32(const float value, const float min, const float max) {
   return static_cast<int32_t>((value - ZeroPointFromMinMax<int32_t>(min, max)) /
                               ScaleFromMinMax<int32_t>(min, max));
 }

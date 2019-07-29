@@ -385,8 +385,6 @@ class TestSequential(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_string_input(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     seq = keras.Sequential([
         keras.layers.InputLayer(input_shape=(1,), dtype=dtypes.string),
         keras.layers.Lambda(lambda x: x[0])

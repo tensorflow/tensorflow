@@ -60,10 +60,16 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
       std::function<std::vector<llvm_ir::IrArray>()>;
 
   FusedIrEmitter(GeneratorForOperandIrArrays operand_arrays_generator,
-                 ElementalIrEmitter* elemental_emitter)
+                 ElementalIrEmitter* elemental_emitter,
+                 llvm::Value* tile_param_x = nullptr,
+                 llvm::Value* tile_param_y = nullptr,
+                 absl::Span<llvm::Value* const> param_shmem_buffers = {})
       : operand_arrays_(),
         operand_arrays_generator_(std::move(operand_arrays_generator)),
-        tiled_parameter_info_(nullptr),
+        tile_param_x_(tile_param_x),
+        tile_param_y_(tile_param_y),
+        param_shmem_buffers_(param_shmem_buffers.begin(),
+                             param_shmem_buffers.end()),
         elemental_emitter_(elemental_emitter),
         b_(elemental_emitter->b()),
         module_(elemental_emitter->module()) {}
@@ -86,10 +92,6 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
 
   // Returns the generator function for the given instruction.
   IndexedGenerator GetGenerator(const HloInstruction* instruction) const;
-
-  void SetTiledParameterInfo(const llvm_ir::TiledParameterInfo* info) {
-    tiled_parameter_info_ = info;
-  }
 
   // Evaluates whether fusing 'producer' into 'consumer' might cause exponential
   // behavior in FusedIrEmitter. We currently can have exponential time/memory
@@ -118,7 +120,9 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
   absl::optional<std::vector<llvm_ir::IrArray>> operand_arrays_;
   GeneratorForOperandIrArrays operand_arrays_generator_;
 
-  const llvm_ir::TiledParameterInfo* tiled_parameter_info_;
+  llvm::Value* tile_param_x_;
+  llvm::Value* tile_param_y_;
+  std::vector<llvm::Value*> param_shmem_buffers_;
 
   ElementalIrEmitter* elemental_emitter_;
 

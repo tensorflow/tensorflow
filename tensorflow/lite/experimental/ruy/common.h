@@ -56,20 +56,6 @@ void* ToVoidPtr(T* p) {
   return const_cast<void*>(static_cast<const void*>(p));
 }
 
-// We need this where we have multiple threads potentially writing concurrently
-// to the same memory location. That is currently the case for Pack (see
-// the comment in TrMulTask where Pack is called) and in tracing.
-//
-// This is a strict-aliasing violation. For nicer things, see C++20 atomic_ref
-// and the defunct N4013. (Thanks to hboehm@).
-template <typename T>
-void relaxed_atomic_store(T* ptr, T value) {
-  static_assert(sizeof(std::atomic<T>) == sizeof(T), "");
-  std::atomic<T>* atomic = reinterpret_cast<std::atomic<T>*>(ptr);
-  RUY_DCHECK(atomic->is_lock_free());
-  atomic->store(value, std::memory_order_relaxed);
-}
-
 template <typename Scalar>
 Scalar SymmetricZeroPoint() {
   if (std::is_floating_point<Scalar>::value) {

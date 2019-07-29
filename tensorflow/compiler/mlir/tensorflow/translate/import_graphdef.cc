@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -176,6 +177,13 @@ class Importer {
       const std::string& base_name, const AttrValue& value,
       llvm::SmallVector<mlir::NamedAttribute, 4>* attributes);
 
+  // Helper to create either a tf_executor operation or a TF operation wrapped
+  // in an island.
+  mlir::Operation* createOperation(
+      const Node& node, llvm::StringRef op_name,
+      const mlir::OperationState& result,
+      const llvm::SmallVectorImpl<mlir::Value*>& control_operands);
+
   // Converts one NodeDef from the input GraphDef into an Operation and
   // inserts it into the MLIR module using builder_.
   Status ConvertNode(const Node& node);
@@ -200,11 +208,6 @@ class Importer {
   Status AddBackedge(mlir::Operation* sink, mlir::Operation* dst,
                      int dst_input);
 
-  // Gets the "source" of a NextIteration operation. If it doesn't exist,
-  // creates and inserts it to the front of the basic block.
-  mlir::Operation* GetOrCreateNextIterationSource(mlir::Operation* sink,
-                                                  mlir::Operation* dst);
-
   // Finds out the function definition for the given function name from the
   // graph and converts it to a function of the module. This method is called
   // on demand because the graph flib_def does not provide an iterator
@@ -216,7 +219,8 @@ class Importer {
   // arguments are added as basic block argument. Also the argument types and
   // the id of the nodes from the input graph needs to be specified.
   Status ConvertFunctionArgAndRets(
-      mlir::Block* bb, llvm::ArrayRef<mlir::Type> arg_types,
+      mlir::Block* bb, mlir::tf_executor::GraphOp graph_op,
+      llvm::ArrayRef<mlir::Type> arg_types,
       const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
       const absl::InlinedVector<OutputTensor, 4>& ret_nodes);
 
@@ -300,8 +304,8 @@ Status Importer::RemoveBackedges(const Graph& graph) {
   graph_ = absl::make_unique<Graph>(graph.flib_def());
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
-  TF_RETURN_IF_ERROR(
-      ::tensorflow::ConvertGraphDefToGraph(opts, graph_def, graph_.get()));
+  TF_RETURN_IF_ERROR(::tensorflow::ConvertGraphDefToGraph(
+      opts, std::move(graph_def), graph_.get()));
 
   // Remove all the backedges. So the nodes can be added to the shape refiner.
   TF_RETURN_IF_ERROR(back_edge_helper_.Remove(graph_.get()));
@@ -784,57 +788,70 @@ Status Importer::PrepareConvert(const Graph& graph) {
 }
 
 Status Importer::ConvertFunctionArgAndRets(
-    mlir::Block* bb, llvm::ArrayRef<mlir::Type> arg_types,
+    mlir::Block* bb, mlir::tf_executor::GraphOp graph_op,
+    llvm::ArrayRef<mlir::Type> arg_types,
     const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
     const absl::InlinedVector<OutputTensor, 4>& ret_nodes) {
   for (int i = 0, e = arg_types.size(); i < e; ++i) {
-    auto* inst = node_values_[arg_nodes[i].node->id()];
-    auto* bb_arg = bb->addArgument(arg_types[i]);
+    // The lookup can't fail here: otherwise some nodes in the function haven't
+    // be converted to mlir operations and don't have a mapping.
+    mlir::Operation* island =
+        node_values_.find(arg_nodes[i].node->id())->second;
+    // We are looking for the instruction inside the island
+    mlir::Block& body = island->getRegion(0).front();
+    mlir::Operation* inst = &body.front();
+
+    auto* bb_arg = bb->getArgument(i);
     mlir::Value* arg_def = bb_arg;
 
-    // If this is an input node add argument to the operation operands by
-    // creating a new input operation.
-    if (StringPiece(arg_nodes[i].node->type_string()) !=
-        FunctionLibraryDefinition::kArgOp) {
-      auto inst_name = inst->getName().getStringRef();
-      mlir::OperationState state(inst->getLoc(),
-                                 inst_name.str().append(".input"));
-      state.attributes.append(inst->getAttrs().begin(), inst->getAttrs().end());
-
-      // If there are quantization specifications, add them as the attributes
-      auto name = inst->getAttrOfType<mlir::StringAttr>("name").getValue();
-      auto input_spec_it = specs_.inputs.find(name.str());
-      if (input_spec_it != specs_.inputs.end()) {
-        auto input_spec = input_spec_it->second;
-        if (IsQuantizationType(input_spec.final_dtype)) {
-          // Uses the MLIR built-in type so it can be handled easily later.
-          auto final_type = mlir::IntegerType::get(
-              GetQuantizationTypeWidth(input_spec.final_dtype), context_);
-          state.attributes.push_back(builder_->getNamedAttr(
-              "min", builder_->getF32FloatAttr(input_spec.min_value)));
-          state.attributes.push_back(builder_->getNamedAttr(
-              "max", builder_->getF32FloatAttr(input_spec.max_value)));
-          state.attributes.push_back(builder_->getNamedAttr(
-              "type", builder_->getTypeAttr(final_type)));
-          inst->getParentOfType<mlir::FuncOp>().setAttr(
-              "tf.quantize", builder_->getUnitAttr());
-        }
-      }
-
-      for (auto* r : inst->getResults()) state.types.push_back(r->getType());
-
-      state.operands.append(inst->getOperands().begin(),
-                            inst->getOperands().end());
-      state.operands.push_back(bb_arg);
-      builder_->setInsertionPoint(inst);
-      auto* input = builder_->createOperation(state);
-      arg_def = input->getResult(arg_nodes[i].index);
-      // Verify on the equivalent TF op would have failed, but catching this
-      // earlier for now as this exposed a bug. TODO(jpienaar): remove post
-      // dialect refactoring.
-      DCHECK(input->getResult(0)->getType() == input->getOperand(0)->getType())
-          << "invalid placeholder_input constructed";
+    // If this is an arg node, just forward the entry block argument
+    if (arg_nodes[i].node->IsArg()) {
+      island->getResult(0)->replaceAllUsesWith(arg_def);
+      island->dropAllReferences();
+      island->erase();
+      continue;
     }
+
+    // This is an input node, we'll create a new input operation by suffixing
+    // the existing one with .input.
+    auto inst_name = inst->getName().getStringRef();
+    mlir::OperationState state(inst->getLoc(),
+                               inst_name.str().append(".input"));
+    state.attributes.append(inst->getAttrs().begin(), inst->getAttrs().end());
+
+    // If there are quantization specifications, add them as the attributes
+    auto name = inst->getAttrOfType<mlir::StringAttr>("name").getValue();
+    auto input_spec_it = specs_.inputs.find(name.str());
+    if (input_spec_it != specs_.inputs.end()) {
+      auto input_spec = input_spec_it->second;
+      if (IsQuantizationType(input_spec.final_dtype)) {
+        // Uses the MLIR built-in type so it can be handled easily later.
+        auto final_type = mlir::IntegerType::get(
+            GetQuantizationTypeWidth(input_spec.final_dtype), context_);
+        state.attributes.push_back(builder_->getNamedAttr(
+            "min", builder_->getF32FloatAttr(input_spec.min_value)));
+        state.attributes.push_back(builder_->getNamedAttr(
+            "max", builder_->getF32FloatAttr(input_spec.max_value)));
+        state.attributes.push_back(
+            builder_->getNamedAttr("type", builder_->getTypeAttr(final_type)));
+        inst->getParentOfType<mlir::FuncOp>().setAttr("tf.quantize",
+                                                      builder_->getUnitAttr());
+      }
+    }
+
+    for (auto* r : inst->getResults()) state.types.push_back(r->getType());
+
+    state.operands.append(inst->getOperands().begin(),
+                          inst->getOperands().end());
+    state.operands.push_back(bb_arg);
+    builder_->setInsertionPoint(inst);
+    auto* input = builder_->createOperation(state);
+    arg_def = input->getResult(arg_nodes[i].index);
+    // Verify on the equivalent TF op would have failed, but catching this
+    // earlier for now as this exposed a bug. TODO(jpienaar): remove post
+    // dialect refactoring.
+    DCHECK(input->getResult(0)->getType() == input->getOperand(0)->getType())
+        << "invalid placeholder_input constructed";
 
     for (auto index = 0; index < inst->getNumResults(); index++) {
       inst->getResult(index)->replaceAllUsesWith(arg_def);
@@ -843,24 +860,35 @@ Status Importer::ConvertFunctionArgAndRets(
     inst->erase();
   }
 
-  absl::InlinedVector<mlir::Value*, 8> inst_to_returned;
+  llvm::SmallVector<mlir::Value*, 8> inst_to_returned;
   for (const auto& ret : ret_nodes) {
     auto* inst = node_values_[ret.node->id()];
     auto op = absl::string_view(ret.node->type_string());
     if (op == FunctionLibraryDefinition::kRetOp ||
         op == FunctionLibraryDefinition::kDeviceRetOp) {
+      // Lookup the instruction inside the island
+      auto island_op = llvm::cast<mlir::tf_executor::IslandOp>(inst);
+      mlir::Operation* inner_op = &island_op.GetBody().front();
       // Remove kRetOp or kDeviceRetOp operation and return its operand.
       // kRetOp and kDeviceRetOp should have just one operand unless they have
       // control dependencies.
-      if (inst->getNumOperands() != 1)
+      if (inner_op->getNumOperands() != 1)
         return errors::Unimplemented("Return node with multiple inputs.");
-      inst_to_returned.push_back(inst->getOperand(0));
-      node_values_[ret.node->id()]->dropAllReferences();
-      node_values_[ret.node->id()]->erase();
+      inst_to_returned.push_back(inner_op->getOperand(0));
+      inst->dropAllReferences();
+      inst->erase();
     } else {
       inst_to_returned.push_back(inst->getResult(ret.index));
     }
   }
+
+  // Terminate the function by adding a Fetch operation to terminate the graph
+  // and a return operation to return the Graph results.
+  builder_->setInsertionPointToEnd(&graph_op.body().front());
+  builder_->create<mlir::tf_executor::FetchOp>(graph_op.getLoc(),
+                                               inst_to_returned);
+  inst_to_returned.assign(graph_op.getResults().begin(),
+                          graph_op.getResults().end());
   builder_->setInsertionPointToEnd(bb);
   builder_->create<mlir::ReturnOp>(
       mlir::UnknownLoc::get(context_),
@@ -963,6 +991,78 @@ std::string Importer::GetLocationStr(const Node& node, bool includeNodeName) {
   return s;
 }
 
+mlir::Operation* Importer::createOperation(
+    const Node& node, llvm::StringRef op_name,
+    const mlir::OperationState& result,
+    const llvm::SmallVectorImpl<mlir::Value*>& control_operands) {
+  // For the tf.executor specific operations (not wrapped in an island), we
+  // have an extra returned value for the control result, and we concatenate
+  // control and non-control operands.
+  mlir::SmallVector<mlir::Type, 4> types(result.types);
+  types.push_back(mlir::tf_executor::ControlType::get(builder_->getContext()));
+  mlir::SmallVector<mlir::Value*, 4> operands(result.operands);
+  operands.append(control_operands.begin(), control_operands.end());
+
+  auto loc = result.location;
+  // Dispatch based on the name and create the appropriate operation.
+  if (node.IsSwitch()) {
+    return builder_->create<mlir::tf_executor::SwitchOp>(loc, types, operands,
+                                                         result.attributes);
+  }
+  if (op_name == "tf.SwitchN") {
+    return builder_->create<mlir::tf_executor::SwitchNOp>(loc, types, operands,
+                                                          result.attributes);
+  }
+  if (node.IsMerge()) {
+    return builder_->create<mlir::tf_executor::MergeOp>(loc, types, operands,
+                                                        result.attributes);
+  }
+  if (node.IsNextIteration()) {
+    // NextIteration is a bit special, we create a pair of operations that are
+    // linked together through a token returned by the source.
+    // We make use of a separate builder to insert the source at the top of
+    // the block.
+    mlir::OpBuilder builder_at_begin(builder_->getBlock(),
+                                     builder_->getBlock()->begin());
+    auto source_op =
+        builder_at_begin.create<mlir::tf_executor::NextIterationSourceOp>(
+            loc, operands[0]->getType(), result.attributes);
+    return builder_->create<mlir::tf_executor::NextIterationSinkOp>(
+        loc, source_op.token(), operands, result.attributes);
+  }
+  if (node.IsLoopCond()) {
+    return builder_->create<mlir::tf_executor::LoopCondOp>(loc, types, operands,
+                                                           result.attributes);
+  }
+  if (node.IsEnter()) {
+    return builder_->create<mlir::tf_executor::EnterOp>(loc, types, operands,
+                                                        result.attributes);
+  }
+  if (node.IsExit()) {
+    return builder_->create<mlir::tf_executor::ExitOp>(loc, types, operands,
+                                                       result.attributes);
+  }
+  if (node.IsControlTrigger()) {
+    return builder_->create<mlir::tf_executor::ControlTriggerOp>(
+        loc, operands, result.attributes);
+  }
+  // Regular TensorFlow operation are wrapped in a tf_executor.island.
+  auto island = builder_->create<mlir::tf_executor::IslandOp>(
+      result.location, types, control_operands,
+      mlir::ArrayRef<mlir::NamedAttribute>{});
+  island.body().push_back(new mlir::Block);
+  mlir::OpBuilder island_builder(&island.GetBody());
+
+  // Create the operation inside the island now.
+  mlir::Operation* inner_op = island_builder.createOperation(result);
+  island.setAttrs(inner_op->getAttrList());
+
+  // Add the terminator for the island
+  mlir::SmallVector<mlir::Value*, 8> ret_vals(inner_op->getResults());
+  island_builder.create<mlir::tf_executor::YieldOp>(result.location, ret_vals);
+  return island.getOperation();
+}
+
 Status Importer::ConvertNode(const Node& node) {
   if (!node.IsOp()) {
     // Don't import the pseudo-nodes _SOURCE or _SINK. These are added by
@@ -980,8 +1080,8 @@ Status Importer::ConvertNode(const Node& node) {
   }
 
   auto get_full_op_name = [&](const std::string& op_name) {
-    const char* kTfControlFlowFormPrefix = "_tf.";
-    return kTfControlFlowFormPrefix + op_name;
+    const char* kTfPrefix = "tf.";
+    return kTfPrefix + op_name;
   };
 
   std::string op_name = get_full_op_name(node_type_name);
@@ -1003,8 +1103,6 @@ Status Importer::ConvertNode(const Node& node) {
     TF_ASSIGN_OR_RETURN(auto type, InferOutputType(context, i, *builder_));
     result.types.push_back(type);
   }
-  result.types.push_back(
-      builder_->getType<mlir::TFControlFlow::TFControlType>());
 
   // Surprisingly input edges can be nondeterministically ordered. This
   // particularly seems to be the case for the control edges between _SOURCE
@@ -1022,6 +1120,10 @@ Status Importer::ConvertNode(const Node& node) {
   });
 
   result.operands.reserve(in_edges.size());
+
+  // Collect the control operands separately, they will be held by the island.
+  mlir::SmallVector<mlir::Value*, 8> control_operands;
+
   for (const auto* input_edge : in_edges) {
     const Node& input_node = *input_edge->src();
     if (input_node.IsSource()) {
@@ -1049,9 +1151,10 @@ Status Importer::ConvertNode(const Node& node) {
       return errors::FailedPrecondition(
           "Graph not traversed in reverse post order; use seen before def!");
     mlir::Operation* inst = node_values_[input_node.id()];
-    result.operands.push_back(inst->getResult(input_edge->IsControlEdge()
-                                                  ? inst->getNumResults() - 1
-                                                  : input_edge->src_output()));
+    if (input_edge->IsControlEdge())
+      control_operands.push_back(inst->getResult(inst->getNumResults() - 1));
+    else
+      result.operands.push_back(inst->getResult(input_edge->src_output()));
   }
 
   using FuncPairType = std::pair<const std::string*, const AttrValue*>;
@@ -1093,7 +1196,10 @@ Status Importer::ConvertNode(const Node& node) {
     result.attributes.push_back(builder_->getNamedAttr("is_stateless", val));
   }
 
-  node_values_[node.id()] = builder_->createOperation(result);
+  // Register the mapping between the TF node and the newly created operation.
+  node_values_[node.id()] =
+      createOperation(node, op_name, result, control_operands);
+
   return Status::OK();
 }
 
@@ -1125,7 +1231,8 @@ Status Importer::AddBackedges() {
 
 Status Importer::AddBackedge(mlir::Operation* sink, mlir::Operation* dst,
                              int dst_input) {
-  mlir::Operation* source = GetOrCreateNextIterationSource(sink, dst);
+  // Get the NextIteration.Source operation from the token operand of the sink.
+  mlir::Operation* source = sink->getOperand(0)->getDefiningOp();
 
   // Adds the "source" to the operands of the dst by creating a new dst
   // operation.
@@ -1141,10 +1248,9 @@ Status Importer::AddBackedge(mlir::Operation* sink, mlir::Operation* dst,
       state.operands.push_back(dst->getOperand(input - 1));
     }
   }
-  state.attributes.append(dst->getAttrs().begin(), dst->getAttrs().end());
-  for (auto* result : dst->getResults()) {
-    state.types.push_back(result->getType());
-  }
+  state.attributes.assign(dst->getAttrs().begin(), dst->getAttrs().end());
+  state.types.assign(dst->getResultTypes().begin(),
+                     dst->getResultTypes().end());
   builder_->setInsertionPoint(dst);
   auto* new_dst = builder_->createOperation(state);
 
@@ -1159,25 +1265,6 @@ Status Importer::AddBackedge(mlir::Operation* sink, mlir::Operation* dst,
   return Status::OK();
 }
 
-mlir::Operation* Importer::GetOrCreateNextIterationSource(
-    mlir::Operation* sink, mlir::Operation* dst) {
-  auto iter = next_iteration_sink_source_.find(sink);
-  if (iter != next_iteration_sink_source_.end()) return iter->second;
-
-  auto inst_name = sink->getName().getStringRef();
-  inst_name.consume_back(".sink");
-  mlir::OperationState src_state(sink->getLoc(),
-                                 inst_name.str().append(".source"));
-  src_state.attributes.append(sink->getAttrs().begin(), sink->getAttrs().end());
-  src_state.types.push_back(dst->getResult(0)->getType());
-  src_state.types.push_back(
-      builder_->getType<mlir::TFControlFlow::TFControlType>());
-  builder_->setInsertionPoint(dst->getBlock(), dst->getBlock()->begin());
-  mlir::Operation* source = builder_->createOperation(src_state);
-  next_iteration_sink_source_[sink] = source;
-  return source;
-}
-
 Status Importer::Convert(llvm::StringRef func_name,
                          mlir::FunctionType func_type,
                          const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
@@ -1188,9 +1275,15 @@ Status Importer::Convert(llvm::StringRef func_name,
                                        func_name, func_type, attrs);
 
   module_.push_back(function);
-  builder_ = absl::make_unique<mlir::OpBuilder>(function.getBody());
   // Seeds the builder with an initial block.
-  auto* bb = builder_->createBlock(&function.getBody());
+  function.addEntryBlock();
+  builder_ = absl::make_unique<mlir::OpBuilder>(function.getBody());
+  auto* bb = &function.front();
+
+  // Create the graph operation in which we will convert the individual nodes.
+  auto graph = builder_->create<mlir::tf_executor::GraphOp>(
+      function.getLoc(), func_type.getResults());
+  builder_->createBlock(&graph.body());
 
   for (const Node* node : ordered_nodes_) {
     TF_RETURN_IF_ERROR(ConvertNode(*node));
@@ -1200,7 +1293,7 @@ Status Importer::Convert(llvm::StringRef func_name,
   // pairs.
   TF_RETURN_IF_ERROR(AddBackedges());
 
-  return ConvertFunctionArgAndRets(bb, func_type.getInputs(), arg_nodes,
+  return ConvertFunctionArgAndRets(bb, graph, func_type.getInputs(), arg_nodes,
                                    ret_nodes);
 }
 
@@ -1394,8 +1487,8 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
   if (add_default_attributes) {
     TF_RETURN_IF_ERROR(AddDefaultsToNodeDef(&preprocessed_graphdef));
   }
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(options, preprocessed_graphdef, &graph));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+      options, std::move(preprocessed_graphdef), &graph));
 
   return ConvertGraphToMlir(graph, debug_info, graph.flib_def(), specs,
                             context);

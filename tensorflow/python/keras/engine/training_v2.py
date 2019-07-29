@@ -59,6 +59,7 @@ def run_one_epoch(model,
                   batch_size=None,
                   strategy=None,
                   steps_per_epoch=None,
+                  num_samples=None,
                   mode=ModeKeys.TRAIN,
                   training_context=None,
                   total_epochs=None):
@@ -76,6 +77,8 @@ def run_one_epoch(model,
     batch_size: The size of the current batch.
     strategy: the distribution strategy instance from the model.
     steps_per_epoch: the number of steps to run for the epoch.
+    num_samples: the number of samples for the whole epoch if known. This can be
+      used to calculate the final partial batch, and scale the loss.
     mode: the mode for the current epoch.
     training_context: the context that contains callbacks and progress bar.
     total_epochs: the total number of epochs that will be run.
@@ -84,12 +87,18 @@ def run_one_epoch(model,
   Returns:
     The loss and metric value from the model.
   """
+  # Only use the sample to count if there is a partial batch at the end.
+  use_steps = num_samples is None
+
   if mode == ModeKeys.PREDICT:
     aggregator = training_utils.OutputsAggregator(
-        use_steps=True, steps=steps_per_epoch, batch_size=batch_size)
+        use_steps=use_steps,
+        steps=steps_per_epoch,
+        num_samples=num_samples,
+        batch_size=batch_size)
   else:
     aggregator = training_utils.MetricsAggregator(
-        use_steps=True, steps=steps_per_epoch)
+        use_steps=use_steps, steps=steps_per_epoch, num_samples=num_samples)
   callbacks = training_context.callbacks
   progbar = training_context.progbar
 
@@ -100,10 +109,17 @@ def run_one_epoch(model,
   step = 0
 
   while step < target_steps:
+    if use_steps:
+      current_batch_size = 1
+    elif step < target_steps - 1:
+      current_batch_size = batch_size
+    else:
+      current_batch_size = num_samples - step * batch_size
+
     # TODO(scottzhu): Maybe update the training context to take into account
     #  whether a batch of training happens. Then it could still use a
     #  context manager
-    batch_logs = {'batch': step, 'size': 1}
+    batch_logs = {'batch': step, 'size': current_batch_size}
     training_context.callbacks._call_batch_hook(
         mode, 'begin', step, batch_logs)
     training_context.progbar.on_batch_begin(step, batch_logs)
@@ -139,11 +155,18 @@ def run_one_epoch(model,
       batch_outs = [batch_outs]
     if strategy:
       batch_outs = dist_utils._per_replica_aggregate_batch(
-          batch_outs, model, mode)
+          strategy, batch_outs, model, mode)
 
     if step == 0:
       aggregator.create(batch_outs)
-    aggregator.aggregate(batch_outs)
+
+    if use_steps:
+      aggregator.aggregate(batch_outs)
+    else:
+      aggregator.aggregate(
+          batch_outs,
+          batch_start=step * batch_size,
+          batch_end=step * batch_size + current_batch_size)
     cbks.make_logs(model, batch_logs, batch_outs, mode)
 
     training_context.callbacks._call_batch_hook(
@@ -197,6 +220,8 @@ class Loop(training_utils.TrainingLoop):
           validation_steps=validation_steps,
           distribution_strategy=strategy)
 
+      total_samples = _get_total_number_of_samples(training_data_adapter)
+      use_sample = total_samples is not None
       do_validation = (validation_adapter is not None)
 
       if not steps_per_epoch:
@@ -254,11 +279,13 @@ class Loop(training_utils.TrainingLoop):
           batch_size=batch_size,
           epochs=epochs,
           steps_per_epoch=steps_per_epoch,
-          samples=None,
+          samples=total_samples,
+          count_mode='samples' if use_sample else 'steps',
           verbose=0,  # Handle ProgBarLogger separately in this loop.
           mode=ModeKeys.TRAIN)
 
-      with training_context.on_start(model, callbacks, verbose, ModeKeys.TRAIN):
+      with training_context.on_start(
+          model, callbacks, use_sample, verbose, ModeKeys.TRAIN):
         # TODO(scottzhu): Handle TPUStrategy training loop
         for epoch in range(initial_epoch, epochs):
           if training_context.callbacks.model.stop_training:
@@ -284,6 +311,7 @@ class Loop(training_utils.TrainingLoop):
                 batch_size=training_data_adapter.batch_size(),
                 strategy=strategy,
                 steps_per_epoch=steps_per_epoch,
+                num_samples=total_samples,
                 mode=ModeKeys.TRAIN,
                 training_context=training_context,
                 total_epochs=epochs)
@@ -301,9 +329,11 @@ class Loop(training_utils.TrainingLoop):
               else:
                 eval_data_iter = iter(validation_dataset)
 
+              val_total_samples = _get_total_number_of_samples(
+                  validation_adapter)
               eval_context = TrainingContext()
               with eval_context.on_start(
-                  model, callbacks, verbose=0, mode=ModeKeys.TEST):
+                  model, callbacks, use_sample, verbose=0, mode=ModeKeys.TEST):
                 with eval_context.on_epoch(epoch, ModeKeys.TEST):
                   model.reset_metrics()
                   eval_result = run_one_epoch(
@@ -314,6 +344,7 @@ class Loop(training_utils.TrainingLoop):
                       batch_size=validation_adapter.batch_size(),
                       strategy=strategy,
                       steps_per_epoch=validation_steps,
+                      num_samples=val_total_samples,
                       mode=ModeKeys.TEST,
                       training_context=eval_context,
                       total_epochs=1)
@@ -343,6 +374,8 @@ class Loop(training_utils.TrainingLoop):
           sample_weights=sample_weight,
           steps=steps,
           distribution_strategy=strategy)
+      total_samples = _get_total_number_of_samples(adapter)
+      use_sample = total_samples is not None
 
       if not steps:
         steps = adapter.get_size()
@@ -371,11 +404,13 @@ class Loop(training_utils.TrainingLoop):
           batch_size=batch_size,
           epochs=1,
           steps_per_epoch=steps,
-          samples=None,
+          samples=use_sample,
+          count_mode='samples' if use_sample else 'steps',
           verbose=0,  # Handle ProgBarLogger separately in this loop.
           mode=mode)
 
-      with training_context.on_start(model, callbacks, verbose, mode):
+      with training_context.on_start(
+          model, callbacks, use_sample, verbose, mode):
         # TODO(scottzhu): Handle TPUStrategy training loop
         with training_context.on_epoch(0, mode) as epoch_logs:
           model.reset_metrics()
@@ -387,6 +422,7 @@ class Loop(training_utils.TrainingLoop):
               batch_size=adapter.batch_size(),
               strategy=strategy,
               steps_per_epoch=steps,
+              num_samples=total_samples,
               mode=mode,
               training_context=training_context,
               total_epochs=1)
@@ -412,25 +448,13 @@ class Loop(training_utils.TrainingLoop):
 
 def _get_distribution_strategy(model):
   """Get the model's distribution strategy."""
-  if model._distribution_strategy:
-    return model._distribution_strategy
+  if model._compile_time_distribution_strategy:
+    strategy = model._compile_time_distribution_strategy
   else:
-    # Use the default strategy if no strategy was present at compile.
-    # Validate there is no actual strategy scope active at execution
-    # time.
+    # Grab the active strategy if the model was never compiled
+    # but it is now predicting.
     strategy = distribution_strategy_context.get_strategy()
-    if distribution_strategy_context.has_strategy():
-      raise ValueError(
-          'Model was compiled without any active distribution strategy, '
-          'but there is an execution-time distribution '
-          'strategy scope of (%s). '
-          'Try to make sure your code looks similar to the following.\n'
-          'with strategy.scope():\n'
-          '  model=_create_model()\n'
-          '  model.compile(...)\n'
-          '  model.fit(...)'% strategy)
-
-    return strategy
+  return strategy
 
 
 def _process_training_inputs(model, x, y, batch_size=None,
@@ -519,7 +543,7 @@ def _process_inputs(model, x, y, batch_size=None, sample_weights=None,
     # important which contains on-fly model build/tensor align for dict input,
     # etc. We should still call the _standardize_user_data with the peeked data
     # from generator or sequence, and let model compile.
-  return adapter_cls(x, y, batch_size=batch_size,
+  return adapter_cls(x, y, batch_size=batch_size, steps=steps,
                      sample_weights=sample_weights, shuffle=shuffle,
                      distribution_strategy=distribution_strategy)
 
@@ -548,14 +572,25 @@ def _update_sample_weight_mode(model, mode, dataset):
   del iterator
 
 
+def _get_total_number_of_samples(adapter):
+  if not adapter.get_size() or not adapter.batch_size():
+    return None
+  total_sample = adapter.get_size() * adapter.batch_size()
+  if adapter.has_partial_batch():
+    total_sample -= (adapter.batch_size() - adapter.partial_batch_size())
+  return total_sample
+
+
 class TrainingContext(object):
   """Utility object that wrap around callbacks and progress bars."""
 
   @tf_contextlib.contextmanager
-  def on_start(self, model, callbacks=None, verbose=0, mode=ModeKeys.TRAIN):
+  def on_start(self, model, callbacks=None, use_samples=False, verbose=0,
+               mode=ModeKeys.TRAIN):
     """Provide a scope for the whole training process."""
     # TODO(omalleyt): Handle ProgBar as part of Callbacks once hooks are ready.
-    progbar = training_utils.get_progbar(model, 'steps')
+    progbar = training_utils.get_progbar(
+        model, 'samples' if use_samples else 'steps')
     progbar.params = callbacks.params
     progbar.params['verbose'] = verbose
     callbacks.model.stop_training = False

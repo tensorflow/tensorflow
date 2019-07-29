@@ -235,7 +235,7 @@ class Kumaraswamy(transformed_distribution.TransformedDistribution):
           np.array(np.nan, dtype=self.dtype.as_numpy_dtype),
           name="nan")
       is_defined = (self.concentration1 > 1.) & (self.concentration0 > 1.)
-      return array_ops.where(is_defined, mode, nan)
+      return array_ops.where_v2(is_defined, mode, nan)
 
     return control_flow_ops.with_dependencies([
         check_ops.assert_less(

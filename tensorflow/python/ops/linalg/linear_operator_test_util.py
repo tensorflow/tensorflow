@@ -178,7 +178,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     raise NotImplementedError("make_x is not defined.")
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     """List of test names to skip."""
     # Subclasses should over-ride if they want to skip some tests.
     # To skip "test_foo", add "foo" to this list.
@@ -569,7 +569,7 @@ def add_tests(test_cls):
   ]
 
   for name, test_template_fn in test_name_dict.items():
-    if name in test_cls.tests_to_skip():
+    if name in test_cls.skip_these_tests():
       continue
 
     for dtype, use_placeholder, shape_info in itertools.product(
@@ -674,7 +674,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
   """
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     """List of test names to skip."""
     return [
         "cholesky",

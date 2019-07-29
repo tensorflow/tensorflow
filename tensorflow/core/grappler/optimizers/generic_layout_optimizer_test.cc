@@ -552,6 +552,8 @@ TEST_F(GenericLayoutOptimizerTest, CancelTransposeAroundPad) {
            {{"T", DT_FLOAT}, {"Tpaddings", DT_INT32}}),
       NDef("transpose_1", "Transpose", {"pad", "perm_nchw_to_nhwc"},
            {{"T", DT_FLOAT}, {"Tperm", DT_INT32}}),
+      NDef("transpose_2", "Transpose", {"pad", "perm_nchw_to_nhwc"},
+           {{"T", DT_FLOAT}, {"Tperm", DT_INT32}}),
   });
 
   GraphDef output;
@@ -575,17 +577,21 @@ TEST_F(GenericLayoutOptimizerTest, CancelTransposeAroundPad) {
       NDef("pad", "Pad", {"transpose_0", "paddings"},
            {{"T", DT_FLOAT}, {"Tpaddings", DT_INT32}}),
       NDef("transpose_1", "Identity", {"pad"}, {{"T", DT_FLOAT}}),
+      NDef("transpose_2", "Identity", {"pad"}, {{"T", DT_FLOAT}}),
   });
 
   CompareGraphs(expected, output);
 
   Tensor x = GenerateRandomTensor<DT_FLOAT>({2, 6, 6, 8});
-  item.fetch = {"transpose_1"};
+  item.fetch = {"transpose_1", "transpose_2"};
   item.feed.emplace_back("x", x);
   auto tensors_expected = EvaluateFetchNodes(item);
   GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
+  ASSERT_EQ(tensors.size(), 2);
+  ASSERT_EQ(tensors_expected.size(), 2);
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+  test::ExpectTensorEqual<float>(tensors_expected[1], tensors[1]);
 }
 
 // TODO(yanzha): Add more complex Graph for test.

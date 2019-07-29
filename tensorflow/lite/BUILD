@@ -224,6 +224,7 @@ cc_library(
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/experimental/resource_variable:resource_variable",
     ] + select({
         ":with_select_tf_ops": [
             "//tensorflow/lite/delegates/flex:delegate",

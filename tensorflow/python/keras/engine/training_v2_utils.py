@@ -29,6 +29,7 @@ import functools
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework.ops import composite_tensor
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import training_eager
@@ -77,7 +78,8 @@ def _make_execution_function(model, mode):
 
   def execution_function(input_fn):
     # `numpy` translates Tensors to values in Eager mode.
-    return [out.numpy() for out in distributed_function(input_fn)]
+    return [_non_none_constant_value(out)
+            for out in distributed_function(input_fn)]
 
   return execution_function
 
@@ -125,7 +127,8 @@ def _get_input_from_iterator(iterator):
   """Get elements from the iterator and verify the input shape and type."""
   next_element = next(iterator)
 
-  if tensor_util.is_tensor(next_element) or isinstance(next_element, dict):
+  if (tensor_util.is_tensor(next_element) or
+      isinstance(next_element, (dict, composite_tensor.CompositeTensor))):
     next_element = [next_element]
   if len(next_element) == 1:
     x, = next_element
