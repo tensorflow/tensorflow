@@ -608,10 +608,8 @@ cc_library(
 
 cc_library(
     name = "gpu_conv_algorithm_picker",
-    srcs = ["gpu_conv_algorithm_picker.cc"]
-    + if_cuda_is_configured(["cudnn_conv_algorithm_picker.cc",]),
-    hdrs = ["gpu_conv_algorithm_picker.h"]
-    + if_cuda_is_configured(["cudnn_conv_algorithm_picker.h",]),
+    srcs = ["gpu_conv_algorithm_picker.cc"],
+    hdrs = ["gpu_conv_algorithm_picker.h"],
     deps = [
         ":backend_configs",
         ":buffer_comparator",

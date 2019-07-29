@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,7 +40,6 @@ class GpuConvAlgorithmPicker : public HloModulePass {
   GpuConvAlgorithmPicker(se::StreamExecutor* stream_exec,
                          se::DeviceMemoryAllocator* allocator)
       : stream_exec_(stream_exec), allocator_(allocator) {}
-  virtual ~GpuConvAlgorithmPicker() {}
 
   absl::string_view name() const override {
     return "gpu-conv-algorithm-picker";
@@ -48,18 +47,15 @@ class GpuConvAlgorithmPicker : public HloModulePass {
 
   StatusOr<bool> Run(HloModule* module) override;
 
- protected:
-  string AlgorithmToString(const se::dnn::AlgorithmDesc& algo) {
-    if (algo.tensor_ops_enabled()) {
-      return absl::StrCat(algo.algo_id(), "+TC");
-    }
-    return absl::StrCat(algo.algo_id());
-  }
-
+ private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithm(
       const HloCustomCallInstruction* instr);
+
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheCuda(
+      const HloCustomCallInstruction& instr,
+      se::DeviceMemoryAllocator* allocator, se::Stream* stream);
 
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheROCm(
       const HloCustomCallInstruction& instr,
