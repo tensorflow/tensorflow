@@ -34,10 +34,8 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
 #include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/DebugStringHelper.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
@@ -56,11 +54,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-
-namespace mlir {
-/// Create a pass to convert from the TFExecutor to the TF control dialect.
-FunctionPassBase* CreateTFExecutorToControlDialectConversion();
-}  // namespace mlir
 
 namespace tensorflow {
 using llvm::cast;
@@ -611,12 +604,6 @@ Status Exporter::Convert(mlir::ModuleOp module, const ExporterConfigs& configs,
 Status ConvertMlirToGraph(mlir::ModuleOp module, const ExporterConfigs& confs,
                           std::unique_ptr<Graph>* graph,
                           FunctionLibraryDefinition* flib_def) {
-  mlir::PassManager pass_manager;
-  pass_manager.addPass(mlir::CreateTFExecutorToControlDialectConversion());
-  if (mlir::failed(pass_manager.run(module))) {
-    return errors::FailedPrecondition(
-        "Failed to convert TFExecutor Dialect to Control Dialect.");
-  }
   return Exporter::Convert(module, confs, graph, flib_def);
 }
 
