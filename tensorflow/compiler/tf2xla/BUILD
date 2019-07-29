@@ -202,6 +202,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":common",
+        ":frontend_attributes_util",
         ":host_compute_metadata_proto",
         ":sharding_util",
         ":side_effect_util",
@@ -267,6 +268,18 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "frontend_attributes_util",
+    srcs = ["frontend_attributes_util.cc"],
+    hdrs = ["frontend_attributes_util.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:framework",
     ],
 )
 

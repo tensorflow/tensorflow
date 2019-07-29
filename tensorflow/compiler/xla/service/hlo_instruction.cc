@@ -672,6 +672,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     instruction->set_sharding(sharding);
   }
 
+  if (proto.has_frontend_attributes()) {
+    instruction->set_frontend_attributes(proto.frontend_attributes());
+  }
+
   return std::move(instruction);
 }
 

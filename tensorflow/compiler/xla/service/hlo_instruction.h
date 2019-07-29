@@ -1384,6 +1384,14 @@ class HloInstruction {
   }
   Status set_backend_config(const tensorflow::protobuf::Message& proto);
 
+  void set_frontend_attributes(FrontendAttributes frontend_attributes) {
+    frontend_attributes_ = std::move(frontend_attributes);
+  }
+
+  const FrontendAttributes& frontend_attributes() const {
+    return frontend_attributes_;
+  }
+
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
   const string& raw_backend_config_string() const { return backend_config_; }
@@ -1877,6 +1885,10 @@ class HloInstruction {
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
   string backend_config_;
+
+  // Attributes passed from the frontend to give hints to the backend about
+  // how to compile this HLO.
+  FrontendAttributes frontend_attributes_;
 
   // This field is assigned to true when backend_config_ is assigned to
   // a default configuration.

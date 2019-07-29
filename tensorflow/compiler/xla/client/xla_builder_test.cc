@@ -978,5 +978,150 @@ TEST_F(XlaBuilderTest, CheckInputOutputAlias) {
   EXPECT_EQ(*alias_p1, ShapeIndex({0}));
 }
 
+void CheckAttributesMatch(const FrontendAttributes& attr,
+                          const FrontendAttributes& ref) {
+  EXPECT_EQ(ref.map_size(), attr.map_size());
+  for (auto reference : ref.map()) {
+    auto other = attr.map().find(reference.first);
+    EXPECT_NE(other, attr.map().end());
+    EXPECT_EQ(other->second, reference.second);
+  }
+}
+
+void CheckInstructionsAttributesMatch(
+    HloModule& module, const std::vector<FrontendAttributes>& expected) {
+  ASSERT_EQ(module.computation_count(), 1);
+  auto expected_it = expected.begin();
+  for (auto inst : module.mutable_computation(0)->instructions()) {
+    ASSERT_NE(expected_it, expected.end());
+    CheckAttributesMatch(inst->frontend_attributes(), *expected_it);
+    expected_it++;
+  }
+  EXPECT_EQ(expected_it, expected.end());
+}
+
+TEST_F(XlaBuilderTest, SimpleSetFrontendAttributes) {
+  XlaBuilder b(TestName());
+  FrontendAttributes attributes;
+
+  ConstantR0(&b, 0);  // No attribute set
+
+  (*attributes.mutable_map())["attr_a"] = "a";
+  b.SetFrontendAttributes(attributes);
+  ConstantR0(&b, 0);  // One attribute: { "attr_a": "a" }
+
+  b.ClearFrontendAttributes();
+  ConstantR0(&b, 0);  // No attribute set
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+
+  std::vector<FrontendAttributes> expected{FrontendAttributes(), attributes,
+                                           FrontendAttributes()};
+  CheckInstructionsAttributesMatch(*module, expected);
+}
+
+TEST_F(XlaBuilderTest, ComplexSetFrontendAttributes) {
+  XlaBuilder b(TestName());
+
+  ConstantR0(&b, 0);  // No attribute set.
+  std::vector<FrontendAttributes> expected{FrontendAttributes()};
+
+  {
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_a"] = "a";
+    b.SetFrontendAttributes(attributes);
+    ConstantR0(&b, 0);  // One attribute: { "attr_a": "a" }
+    expected.push_back(attributes);
+  }
+
+  {
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_b"] = "b";
+    b.SetFrontendAttributes(attributes);
+    ConstantR0(&b, 0);  // One attribute: { "attr_b": "b" }
+    expected.push_back(attributes);
+  }
+
+  {
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_b"] = "b";
+    (*attributes.mutable_map())["attr_c"] = "c";
+    b.SetFrontendAttributes(attributes);
+    ConstantR0(&b, 0);  // Two attributes: { "attr_b": "b", "attr_c": "c" }
+    expected.push_back(attributes);
+  }
+
+  b.ClearFrontendAttributes();
+  ConstantR0(&b, 0);  // No attribute set
+  expected.push_back(FrontendAttributes());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  CheckInstructionsAttributesMatch(*module, expected);
+}
+
+TEST_F(XlaBuilderTest, AddFrontendAttribute) {
+  XlaBuilder b(TestName());
+
+  ConstantR0(&b, 0);
+  std::vector<FrontendAttributes> expected{FrontendAttributes()};
+
+  // One attribute: { "attr_a": "a" }
+  {
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_a"] = "a";
+    b.SetFrontendAttributes(attributes);
+    ConstantR0(&b, 0);
+    expected.push_back(attributes);
+  }
+
+  // Two attributes: {"attra": "a", "attr_c": "c"}
+  {
+    auto op = ConstantR0(&b, 0);
+    EXPECT_IS_OK(b.AddFrontendAttribute(op, "attr_c", "c"));
+
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_a"] = "a";
+    (*attributes.mutable_map())["attr_c"] = "c";
+    expected.push_back(attributes);
+  }
+
+  // Override value of existing "attr_a"
+  // One attribute: { "attr_a", "a2"}
+  {
+    auto op = ConstantR0(&b, 0);
+    EXPECT_IS_OK(b.AddFrontendAttribute(op, "attr_a", "a2"));
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_a"] = "a2";
+    expected.push_back(attributes);
+  }
+
+  // Check "attr_a" is back to its original value
+  // One attribute: { "attr_a", "a"}
+  {
+    auto op = ConstantR0(&b, 0);
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_a"] = "a";
+    expected.push_back(attributes);
+  }
+
+  b.ClearFrontendAttributes();
+  ConstantR0(&b, 0);  // No attribute set
+  expected.push_back(FrontendAttributes());
+
+  // One attribute: { "attr_d", "d"}
+  {
+    auto op = ConstantR0(&b, 0);
+    EXPECT_IS_OK(b.AddFrontendAttribute(op, "attr_d", "d"));
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_d"] = "d";
+    expected.push_back(attributes);
+  }
+
+  ConstantR0(&b, 0);  // No attribute set
+  expected.push_back(FrontendAttributes());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  CheckInstructionsAttributesMatch(*module, expected);
+}
 }  // namespace
 }  // namespace xla

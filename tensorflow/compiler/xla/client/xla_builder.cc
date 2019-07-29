@@ -289,6 +289,14 @@ Status XlaBuilder::SetDynamicBinding(int64 dynamic_size_param_num,
   return Status::OK();
 }
 
+Status XlaBuilder::AddFrontendAttribute(const XlaOp& op, std::string attribute,
+                                        std::string value) {
+  TF_ASSIGN_OR_RETURN(auto instr_proto, LookUpMutableInstruction(op));
+  auto* frontend_attributes = instr_proto->mutable_frontend_attributes();
+  (*frontend_attributes->mutable_map())[attribute] = value;
+  return Status::OK();
+}
+
 XlaComputation XlaBuilder::BuildAndNoteError() {
   DCHECK(parent_builder_ != nullptr);
   auto build_status = Build();
@@ -2662,6 +2670,7 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
   if (sharding_) {
     *instr.mutable_sharding() = *sharding_;
   }
+  instr.mutable_frontend_attributes()->CopyFrom(frontend_attributes_);
 
   handle_to_index_[handle] = instructions_.size();
   instructions_.push_back(std::move(instr));
@@ -2719,32 +2728,69 @@ void XlaBuilder::AddCalledComputation(const XlaComputation& computation,
   }
 }
 
-StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
-    const XlaOp& op) const {
-  TF_RETURN_IF_ERROR(first_error_);
+namespace {
 
-  if (op.builder_ == nullptr) {
+template <typename InstructionType, typename HandleToIndexType,
+          typename InstructionProtoVectorType>
+StatusOr<InstructionType> LookUpInstructionByHandleInternal(
+    HandleToIndexType& handle_to_index,
+    InstructionProtoVectorType& instructions, int64 handle) {
+  auto it = handle_to_index.find(handle);
+  if (it == handle_to_index.end()) {
+    return InvalidArgument("No XlaOp with handle %d", handle);
+  }
+  return &instructions[it->second];
+}
+
+template <typename InstructionType, typename HandleToIndexType,
+          typename InstructionProtoVectorType, typename OpBuilderType,
+          typename BuilderType, typename OpType>
+StatusOr<InstructionType> LookUpInstructionInternal(
+    HandleToIndexType& handle_to_index,
+    InstructionProtoVectorType& instructions, OpBuilderType op_builder,
+    BuilderType builder, OpType op_handle) {
+  if (op_builder == nullptr) {
     return InvalidArgument(
         "invalid XlaOp with handle %d; the builder of this op is freed",
-        op.handle());
+        op_handle);
   }
-  if (op.builder_ != this) {
+  if (op_builder != builder) {
     return InvalidArgument(
         "XlaOp with handle %d is built by builder '%s', but is trying to use "
         "it in builder '%s'",
-        op.handle(), op.builder_->name(), this->name());
+        op_handle, op_builder->name(), builder->name());
   }
 
-  return LookUpInstructionByHandle(op.handle());
+  return LookUpInstructionByHandleInternal<InstructionType>(
+      handle_to_index, instructions, op_handle);
+}
+
+}  // namespace
+
+StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
+    const XlaOp& op) const {
+  TF_RETURN_IF_ERROR(first_error_);
+  return LookUpInstructionInternal<const HloInstructionProto*>(
+      handle_to_index_, instructions_, op.builder_, this, op.handle());
 }
 
 StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstructionByHandle(
     int64 handle) const {
-  auto it = handle_to_index_.find(handle);
-  if (it == handle_to_index_.end()) {
-    return InvalidArgument("No XlaOp with handle %d", handle);
-  }
-  return &instructions_[it->second];
+  return LookUpInstructionByHandleInternal<const HloInstructionProto*>(
+      handle_to_index_, instructions_, handle);
+}
+
+StatusOr<HloInstructionProto*> XlaBuilder::LookUpMutableInstruction(
+    const XlaOp& op) {
+  TF_RETURN_IF_ERROR(first_error_);
+  return LookUpInstructionInternal<HloInstructionProto*>(
+      handle_to_index_, instructions_, op.builder_, this, op.handle());
+}
+
+StatusOr<HloInstructionProto*> XlaBuilder::LookUpMutableInstructionByHandle(
+    int64 handle) {
+  return LookUpInstructionByHandleInternal<HloInstructionProto*>(
+      handle_to_index_, instructions_, handle);
 }
 
 // Enqueues a "retrieve parameter value" instruction for a parameter that was

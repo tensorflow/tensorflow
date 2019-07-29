@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -97,6 +98,15 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
   OP_REQUIRES_OK(context, sharding_parse_result.status());
   absl::optional<xla::OpSharding> op_sharding =
       sharding_parse_result.ValueOrDie();
+
+  auto frontend_attributes_result =
+      GetFrontendAttributesFromNodeDef(op_kernel->def());
+  OP_REQUIRES_OK(context, frontend_attributes_result.status());
+  absl::optional<xla::FrontendAttributes> frontend_attributes =
+      frontend_attributes_result.ValueOrDie();
+
+  xla::XlaScopedFrontendAttributesAssignment assign_frontend_attributes(
+      b, frontend_attributes);
 
   // If no sharding metadata is found, XLA is free to use whatever device it
   // wants. In practice this usually has the effect of placing things on device
