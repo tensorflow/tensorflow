@@ -2516,7 +2516,7 @@ Ba et al. “Layer Normalization”
   let verifier = [{ return Verify(*this); }];
 }
 
-// UnidirectionalSequenceLstm op .
+// UnidirectionalSequenceLstm op.
 // TODO(ashwinm): Add constraint to validate the combination of operands
 // that are valid for hybrid vs fully quantized vs float only semantics
 def TFL_UnidirectionalSequenceLSTMOp :
@@ -2592,6 +2592,59 @@ def TFL_UnidirectionalSequenceLSTMOp :
   let results = (outs AnyTensor:$output);
 
   let hasOptions = 1;
+
+  let verifier = [{ return Verify(*this); }];
+}
+
+def RnnResultConstraint : PredOpTrait<
+  "the input and result tensor elemental types must be same",
+  TCresVTEtIsSameAsOp<0, 0>>;
+
+// UnidirectionalSequenceRNN op.
+def TFL_UnidirectionalSequenceRNNOp :
+  TFL_Op<"unidirectional_sequence_rnn",
+         [RnnResultConstraint, StatefulOperands<[4]>]> {
+
+  let summary = "Unidirectional sequence rnn operator";
+
+  let description = [{
+    A recurrent neural network specified by an RNN cell. This Op takes in input
+    in a format {batch_size, seq_len, input_size} or
+    {seq_len, batch_size, input_size} if it's time-majored.
+
+    It implements the following operation for
+    each element in the sequence s = 1...sequence_length:
+      outputs[s] = state = activation(RNNOp(inputs[s]))
+
+    where RNNOp is RNNOp TF Lite Op and the “activation” is the function passed
+    as the “fused_activation_function” argument (if not “NONE”).
+  }];
+
+  let arguments = (
+    ins TensorOf<[F32, I8]>:$input,
+
+    // Weights
+    TFL_TensorOfOrNone<[F32, I8]>:$input_to_input_weights,
+
+    // Recurrent weights
+    TFL_TensorOfOrNone<[F32, I8]>:$recurrent_to_input_weights,
+
+    // Bias
+    TFL_TensorOfOrNone<[F32]>:$input_gate_bias,
+
+    // Hidden state.
+    TFL_StatefulTensor:$hidden_state,
+
+    // Attributes
+    BoolAttr:$time_major,
+    TFL_AFAttr:$fused_activation_function
+  );
+
+  let results = (outs AnyTensor:$output);
+
+  let hasOptions = 1;
+
+  let customOption = "SequenceRNNOptions";
 
   let verifier = [{ return Verify(*this); }];
 }

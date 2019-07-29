@@ -639,6 +639,19 @@ static LogicalResult Verify(UnidirectionalSequenceLSTMOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// UnidirectionalSequenceRNNOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(UnidirectionalSequenceRNNOp op) {
+  auto operands = op.GetStatefulOperands();
+  if (operands.size() == 1 && operands[0] == 4) {
+    return success();
+  }
+  return op.emitError(
+      "UnidirectionalSequenceRNNOp expected to have one stateful operand");
+}
+
+//===----------------------------------------------------------------------===//
 // AbsOp
 //===----------------------------------------------------------------------===//
 
