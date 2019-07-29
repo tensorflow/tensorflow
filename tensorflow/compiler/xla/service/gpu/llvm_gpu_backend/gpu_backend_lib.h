@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // LLVM-based compiler backend.
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LLVM_GPU_BACKEND_NVPTX_BACKEND_LIB_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LLVM_GPU_BACKEND_NVPTX_BACKEND_LIB_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LLVM_GPU_BACKEND_GPU_BACKEND_LIB_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LLVM_GPU_BACKEND_GPU_BACKEND_LIB_H_
 
 #include <string>
 #include <utility>
@@ -43,7 +43,16 @@ StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
                               const string& libdevice_dir_path);
 }  // namespace nvptx
 
+namespace amdgpu {
+// Compiles the argument module and returns it with LLVM AMDGPU backend.
+// rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
+// The contents of the module may be changed.
+StatusOr<std::vector<uint8>> CompileToHsaco(
+    llvm::Module* module, GpuVersion gpu_version,
+    const HloModuleConfig& hlo_module_config, const string& rocdl_dir_path);
+}  // namespace amdgpu
+
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LLVM_GPU_BACKEND_NVPTX_BACKEND_LIB_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LLVM_GPU_BACKEND_GPU_BACKEND_LIB_H_
