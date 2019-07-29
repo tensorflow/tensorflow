@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 
 using mkldnn::convolution_forward;
-using mkldnn::memory;
 using mkldnn::prop_kind;
 using mkldnn::stream;
 
@@ -1071,13 +1070,8 @@ class MklConvOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_persistent(
                                 DT_INT32, filter_mkl_format,
                                 &cached_filter_md_ptensor_, &second_tensor));
-    second_tensor->scalar<int32>()() =
-#ifdef ENABLE_MKLDNN_V1
-        static_cast<int32>(
-            GetFilterTfDataFormat(filter_mkl_shape, conv_prim_desc));
-#else
-        GetFilterTfDataFormat(filter_mkl_shape, conv_prim_desc);
-#endif  // ENABLE_MKLDNN_V1
+    second_tensor->scalar<int32>()() = static_cast<int32>(
+        GetFilterTfDataFormat(filter_mkl_shape, conv_prim_desc));
   }
 
   void AllocatePersistentTensor(OpKernelContext* context,
