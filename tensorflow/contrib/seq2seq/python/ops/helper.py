@@ -391,21 +391,12 @@ class ScheduledEmbeddingTrainingHelper(TrainingHelper):
 
       def maybe_sample():
         """Perform scheduled sampling."""
-        where_sampling = math_ops.cast(
-            array_ops.where(sample_ids > -1), dtypes.int32)
-        where_not_sampling = math_ops.cast(
-            array_ops.where(sample_ids <= -1), dtypes.int32)
-        sample_ids_sampling = array_ops.gather_nd(sample_ids, where_sampling)
-        inputs_not_sampling = array_ops.gather_nd(
-            base_next_inputs, where_not_sampling)
-        sampled_next_inputs = self._embedding_fn(sample_ids_sampling)
-        base_shape = array_ops.shape(base_next_inputs)
-        return (array_ops.scatter_nd(indices=where_sampling,
-                                     updates=sampled_next_inputs,
-                                     shape=base_shape)
-                + array_ops.scatter_nd(indices=where_not_sampling,
-                                       updates=inputs_not_sampling,
-                                       shape=base_shape))
+        sampling_mask = math_ops.cast(sample_ids > -1, base_next_inputs.dtype)
+        sampling_mask = tf.expand_dims(sampling_mask, axis=-1)
+        outputs_sampled = self._embedding_fn(sample_ids)
+        sampled_masked = sampling_mask * outputs_sampled
+        not_sampled_masked = (1 - sampling_mask) * base_next_inputs
+        return sampled_masked + not_sampled_masked
 
       all_finished = math_ops.reduce_all(finished)
       next_inputs = control_flow_ops.cond(
