@@ -262,7 +262,9 @@ TEST_P(OpsTest, RunZipTests) {
 
   std::ifstream tflite_stream(tflite_test_case);
   ASSERT_TRUE(tflite_stream.is_open()) << tflite_test_case;
-  tflite::testing::TfLiteDriver test_driver(FLAGS_use_nnapi);
+  tflite::testing::TfLiteDriver test_driver(
+      FLAGS_use_nnapi ? TfLiteDriver::DelegateType::kNnapi
+                      : TfLiteDriver::DelegateType::kNone);
 
   if (test_path.find("fully_quantize=True") != std::string::npos) {
     // TODO(b/134594898): Tighten this constraint.
