@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import numpy as np
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -29,11 +30,15 @@ from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
+from tensorflow.python.layers import layers
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_impl
@@ -41,8 +46,8 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
-
 
 def _input(shape):
   """Generates an input of a given shape."""
@@ -616,6 +621,49 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map, 'MatMul')
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
+  @test_util.run_deprecated_v1
+  def test_ingraph_train_loop(self):
+    """Tests a graph containing a while loop around a training update.
+
+    This requires the grappler pass to take special care with its handling of
+    Enter ops that appear in front of reads from non-resource variables. See
+    the use of NodeImplicitlyReadsVariable in auto_mixed_precision.cc.
+    """
+    if test.is_gpu_available(cuda_only=True):
+      random_seed.set_random_seed(1234)
+      np.random.seed(1234)
+      num_iter, bs, nchan, nclass = 100, 64, 32, 100
+
+      data = np.random.normal(size=(bs * num_iter, nchan)).astype(np.float32)
+      labels = np.random.randint(nclass, size=(bs * 100,))
+      ds = dataset_ops.Dataset.from_tensor_slices((data, labels))
+      ds = ds.batch(bs).prefetch(3)
+      it = ds.make_one_shot_iterator()
+
+      def body(_, i, j):
+        i += 1
+        x, yt = it.get_next()
+        y = layers.Dense(nclass)(x)
+        loss = losses.sparse_softmax_cross_entropy(yt, y)
+        opt = adam.AdamOptimizer()
+        train_op = opt.minimize(loss)
+        with ops.control_dependencies([train_op]):
+          loss = array_ops.identity(loss)
+        return loss, i, j
+
+      begin, end = constant_op.constant(0), constant_op.constant(num_iter)
+      loss, _, _ = control_flow_ops.while_loop(
+          lambda loss, i, j: math_ops.less(i, j),
+          body,
+          [0.0, begin, end])
+
+      output_val_ref, output_val, cost_graph = self._run(loss)
+      node_map = _build_node_map(cost_graph.node)
+
+      self._assert_output_fp16(node_map, 'while/dense/MatMul')
+      self._assert_output_fp16(
+          node_map, 'while/gradients/while/dense/MatMul_grad/MatMul_1')
+      self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
 if __name__ == '__main__':
   test.main()

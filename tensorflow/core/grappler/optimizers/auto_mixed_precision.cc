@@ -926,7 +926,7 @@ class AutoMixedPrecisionImpl {
   bool IsOnSuitableGPUArch(const NodeDef& node) const;
   bool ShouldProcess(const NodeDef& node) const;
   bool NodeHasFP16KernelForTypeAttr(const NodeDef& node, TypeAttrId taid) const;
-  bool IsIdentityAfterVariable(const NodeDef& node) const;
+  bool NodeImplicitlyReadsNonResourceVariable(const NodeDef& node) const;
   void ConvertBatchNormOpsToV2();
   bool SupportsFloat16(const NodeTypeId& node_type) const;
   const NodeDef* GetTailOfChain(const NodeDef& node, const string& op) const;
@@ -1461,10 +1461,11 @@ void AutoMixedPrecisionImpl::PropagateWhiteThroughClear(
                   ShouldProcess(*item.node) && IsFloat32(item) &&
                   SupportsFloat16(item) &&
                   (fp16_clearlist_.count(item.node->op())) &&
-                  // We don't propagate (backwards) through Identity nodes when
-                  // they immediately follow Variable nodes because otherwise it
-                  // breaks TensorBoard visualization.
-                  !IsIdentityAfterVariable(*item.node));
+                  // We don't propagate (backwards) through nodes that read
+                  // Variables because it can break the behavior of TensorBoard
+                  // visualization and/or (in the case of Enter nodes) the model
+                  // itself. This is only a problem for non-resource variables.
+                  !NodeImplicitlyReadsNonResourceVariable(*item.node));
         }),
         DfsTypeCallbacks::PreOrder([&](int idx) {
           clear_prop_set.insert(idx);
@@ -1614,13 +1615,17 @@ void AutoMixedPrecisionImpl::ForceColorMatchBetweenDataStructureOps(
   }
 }
 
-bool AutoMixedPrecisionImpl::IsIdentityAfterVariable(
+bool AutoMixedPrecisionImpl::NodeImplicitlyReadsNonResourceVariable(
     const NodeDef& node) const {
-  if (node.op() == "Identity") {
+  if (node.op() == "Identity" || node.op() == "Enter") {
     GraphView::InputPort node_input(&node, 0);
     MutableGraphView::OutputPort prev_output =
         graph_view_.GetRegularFanin(node_input);
-    if (prev_output.node && IsVariable(*prev_output.node)) {
+    const NodeDef* input = prev_output.node;
+    if (input && ((node.op() == "Identity" && (input->op() == "Variable" ||
+                                               input->op() == "VariableV2")) ||
+                  (node.op() == "Enter" &&
+                   NodeImplicitlyReadsNonResourceVariable(*input)))) {
       return true;
     }
   }
@@ -1726,7 +1731,7 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
               added_cast_node = graph_view_.AddNode(
                   BuildCastNode(src, to_fp16, src.node->device()));
               if (to_fp16 && !IsConstant(*node) && !IsVariable(*node) &&
-                  !IsIdentityAfterVariable(*node)) {
+                  !NodeImplicitlyReadsNonResourceVariable(*node)) {
                 ++num_nonvar_casts_to_fp16;
               }
             }
