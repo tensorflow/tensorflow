@@ -28,8 +28,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
+// See documentation in tensorflow/core/ops/experimental_dataset_ops.cc for a
+// high-level description of the following op.
 
 class ScanDatasetOp : public UnaryDatasetOpKernel {
  public:

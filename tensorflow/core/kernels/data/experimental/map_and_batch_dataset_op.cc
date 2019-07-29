@@ -45,8 +45,8 @@ constexpr char kDatasetName[] = "MapAndBatch";
 // Maximum number of batch results to buffer.
 constexpr int64 kMaxBatchResults = 16;
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
+// See documentation in ../../ops/experimental_dataset_ops.cc for a
+// high-level description of the following op.
 class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit MapAndBatchDatasetOp(OpKernelConstruction* ctx)

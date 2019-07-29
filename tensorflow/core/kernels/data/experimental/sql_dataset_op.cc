@@ -27,8 +27,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following ops.
+// See documentation in tensorflow/core/ops/experimental_dataset_ops.cc for a
+// high-level description of the following ops.
 
 class SqlDatasetOp : public DatasetOpKernel {
  public:
