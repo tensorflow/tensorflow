@@ -687,9 +687,9 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
       CHECK(output_tensor.CopyFrom(mkl_tensor, output_shape));
     }
   } catch (mkldnn::error& e) {
-    string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + string(e.message) + ", in file " +
-                       string(__FILE__) + ":" + std::to_string(__LINE__);
+    string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                       string(e.message) + ", in file " + string(__FILE__) +
+                       ":" + std::to_string(__LINE__);
     LOG(FATAL) << "Operation received an exception: " << error_msg;
   }
   return output_tensor;
@@ -1192,6 +1192,27 @@ inline memory::desc CreateBlockedMemDescHelper(const memory::dims& dim,
   md.layout_desc.blocking.offset_padding = 0;
 #endif  // ENABLE_MKLDNN_V1
   return memory::desc(md);
+}
+
+inline void CreateAndExecuteReorder(const reorder::primitive_desc& reorder_desc,
+                                    const memory& src_mem,
+                                    const memory& dst_mem,
+                                    const engine& engine) {
+  std::vector<primitive> net;
+#ifdef ENABLE_MKLDNN_V1
+  net.push_back(mkldnn::reorder(reorder_desc));
+  std::vector<MemoryArgsMap> net_args;
+  net_args.push_back({{MKLDNN_ARG_FROM, src_mem}, {MKLDNN_ARG_TO, dst_mem}});
+  DCHECK_EQ(net.size(), net_args.size());
+  stream cpu_stream(engine);
+  for (size_t i = 0; i < net.size(); ++i) {
+    net.at(i).execute(cpu_stream, net_args.at(i));
+  }
+  cpu_stream.wait();
+#else
+  net.push_back(mkldnn::reorder(reorder_desc, src_mem, dst_mem));
+  stream(stream::kind::eager).submit(net).wait();
+#endif  // ENABLE_MKLDNN_V1
 }
 
 template <typename T>
