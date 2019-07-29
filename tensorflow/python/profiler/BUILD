@@ -169,7 +169,14 @@ py_library(
     name = "traceme",
     srcs = ["traceme.py"],
     srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "traceme_benchmark_test",
+    srcs = ["traceme_benchmark_test.py"],
+    python_version = "PY3",
     deps = [
-        "//tensorflow/python:platform",
+        ":traceme",
+        "//tensorflow/python:client_testlib",
     ],
 )
