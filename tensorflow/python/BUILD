@@ -6135,6 +6135,22 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "collective_ops_benchmark",
+    srcs = ["ops/collective_ops_benchmark.py"],
+    additional_deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":collective_ops",
+        ":framework_for_generated_wrappers",
+        ":platform",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "ops/collective_ops_benchmark.py",
+)
+
+cuda_py_test(
     name = "concat_benchmark",
     srcs = ["ops/concat_benchmark.py"],
     additional_deps = [
