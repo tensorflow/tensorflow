@@ -20,9 +20,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/container/node_hash_map.h"
-#include "absl/types/optional.h"
-#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
@@ -32,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"

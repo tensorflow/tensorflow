@@ -314,8 +314,9 @@ void WarnIfBadDriverJITVersion() {
 
 }  // namespace
 
-NVPTXCompiler::NVPTXCompiler(se::Platform::Id platform_id)
-    : GpuCompiler(platform_id, nvptx::kTargetTriple, nvptx::kDataLayout) {}
+NVPTXCompiler::NVPTXCompiler()
+    : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::kTargetTriple,
+                  nvptx::kDataLayout) {}
 
 HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() {
   return &CanShareBufferHint;
@@ -360,9 +361,8 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
     XLA_SCOPED_LOGGING_TIMER(
         "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
     TF_ASSIGN_OR_RETURN(
-        ptx,
-        CompileToPtx(llvm_module, absl::get<std::pair<int, int>>(gpu_version),
-                     module->config(), libdevice_dir));
+        ptx, nvptx::CompileToPtx(llvm_module, gpu_version, module->config(),
+                                 libdevice_dir));
   }
 
   llvm_ir::DumpIrIfEnabled(*module, *llvm_module, /*optimized=*/true);

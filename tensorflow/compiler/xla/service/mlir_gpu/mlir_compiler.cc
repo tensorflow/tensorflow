@@ -102,8 +102,7 @@ static bool InitModule() {
       stream_executor::cuda::kCudaPlatformId, []() {
         return absl::make_unique<xla::FailoverCompiler>(
             absl::make_unique<xla::mlir::MlirCompiler>(),
-            absl::make_unique<xla::gpu::NVPTXCompiler>(
-                stream_executor::cuda::kCudaPlatformId));
+            absl::make_unique<xla::gpu::NVPTXCompiler>();
       });
   return true;
 }
