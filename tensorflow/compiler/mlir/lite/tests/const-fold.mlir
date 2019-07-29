@@ -304,7 +304,6 @@ func @add_dense_dense_float_mixfng_1_n() -> tensor<2x2xf32> {
 // CHECK:  return %0
 }
 
-
 // CHECK-LABEL: @rank
 func @rank() -> tensor<1xi32> {
   %cst = constant dense<[[1], [2]]> : tensor<2x1xi32>
@@ -324,3 +323,12 @@ func @reshape() -> tensor<1x2xi32> {
   %0 = "tfl.reshape"(%cst) : (tensor<2xi32>) -> tensor<1x2xi32>
   return %0 : tensor<1x2xi32>
 }
+
+// CHECK-LABEL: @pseudo_const
+func @pseudo_const() -> tensor<i32> {
+  // CHECK: [[cst:%.*]] = constant dense<1> : tensor<i32>
+  // CHECK: return [[cst]]
+  %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  return %0 : tensor<i32>
+}
+

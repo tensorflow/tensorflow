@@ -776,11 +776,33 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// ConstOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.empty() && "constant has no operands");
+
+  // Return the held attribute value.
+  return value();
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
+
+Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
+                                                      Attribute value,
+                                                      Type type, Location loc) {
+  // If this is an opaque elements attribute or the result type doesn't match
+  // the attribute type, then generate a tfl.pseudo_const.
+  if (value.isa<OpaqueElementsAttr>() ||
+      (value.isa<ElementsAttr>() && value.getType() != type))
+    return builder.create<ConstOp>(loc, type, value.cast<ElementsAttr>());
+  return nullptr;
+}
 
 }  // namespace TFL
 }  // namespace mlir
