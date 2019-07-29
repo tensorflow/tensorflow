@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import variables
@@ -27,7 +28,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope
-
+from tensorflow.python.framework import dtypes
 
 __all__ = [
     'group_norm',
@@ -93,6 +94,9 @@ def instance_norm(inputs,
   inputs = ops.convert_to_tensor(inputs)
   inputs_shape = inputs.shape
   inputs_rank = inputs.shape.ndims
+  # Cast `inputs` array to float64 if machine is big endian
+  if sys.byteorder == "big" and inputs.dtype.base_dtype == dtypes.float32:
+      inputs = math_ops.cast(inputs, dtypes.float64)
 
   if inputs_rank is None:
     raise ValueError('Inputs %s has undefined rank.' % inputs.name)

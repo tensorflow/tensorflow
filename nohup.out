@@ -1,0 +1,6 @@
+Starting local Bazel server and connecting to it...
+INFO: Options provided by the client:
+  Inherited 'common' options: --isatty=0 --terminal_columns=80
+INFO: Reading rc options for 'build' from /home/test/tensorflow/.bazelrc:
+  'build' options: --apple_platform_type=macos --define framework_shared_object=true --define=use_fast_cpp_protos=true --define=allow_oversize_protos=true --spawn_strategy=standalone --strategy=Genrule=standalone -c opt --announce_rc --define=grpc_no_ares=true --define=PREFIX=/usr --define=LIBDIR=$(PREFIX)/lib --define=INCLUDEDIR=$(PREFIX)/include
+ERROR: Config value opt is not defined in any .rc file
