@@ -48,7 +48,7 @@ class Loop_Op<string mnemonic, list<OpTrait> traits = []> :
 }
 
 def ForOp : Loop_Op<"for",
-      [NativeOpTrait<"SingleBlockImplicitTerminator<TerminatorOp>::Impl">]> {
+      [SingleBlockImplicitTerminator<"TerminatorOp">]> {
   let summary = "for operation";
   let description = [{
     The "loop.for" operation represents a loop nest taking 3 SSA value as
@@ -92,7 +92,7 @@ def ForOp : Loop_Op<"for",
 }
 
 def IfOp : Loop_Op<"if",
-      [NativeOpTrait<"SingleBlockImplicitTerminator<TerminatorOp>::Impl">]> {
+      [SingleBlockImplicitTerminator<"TerminatorOp">]> {
   let summary = "if-then-else operation";
   let description = [{
     The "loop.if" operation represents an if-then-else construct for
