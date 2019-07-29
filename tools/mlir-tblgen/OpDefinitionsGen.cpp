@@ -1277,6 +1277,14 @@ void OpOperandAdaptorEmitter::emitDef(const Operator &op, raw_ostream &os) {
 static void emitOpClasses(const std::vector<Record *> &defs, raw_ostream &os,
                           bool emitDecl) {
   IfDefScope scope("GET_OP_CLASSES", os);
+  // First emit forward declaration for each class, this allows them to refer
+  // to each others in traits for example.
+  if (emitDecl) {
+    for (auto *def : defs) {
+      Operator op(*def);
+      os << "class " << op.getCppClassName() << ";\n";
+    }
+  }
   for (auto *def : defs) {
     Operator op(*def);
     if (emitDecl) {

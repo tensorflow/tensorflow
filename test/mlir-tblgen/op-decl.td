@@ -1,4 +1,4 @@
-// RUN: mlir-tblgen -gen-op-decls -I %S/../../include %s | FileCheck %s
+// RUN: mlir-tblgen -gen-op-decls -I %S/../../include %s | FileCheck --dump-input-on-failure %s
 
 include "mlir/IR/OpBase.td"
 
@@ -37,6 +37,8 @@ def NS_AOp : NS_Op<"a_op", [NoSideEffect]> {
     void displayGraph();
   }];
 }
+
+// CHECK: class AOp;
 
 // CHECK-LABEL: NS::AOp declarations
 
