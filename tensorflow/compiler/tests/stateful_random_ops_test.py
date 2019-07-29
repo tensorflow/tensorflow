@@ -327,7 +327,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         gen_stateful_random_ops.stateful_standard_normal_v2(
             gen.state.handle, [0, 0], shape)
       with self.assertRaisesWithPredicateMatch(
-          TypeError, "Requested dtype: int64"):
+          TypeError, "EagerTensor of dtype int64"):
         gen_stateful_random_ops.stateful_standard_normal_v2(
             gen.state.handle, 1.1, shape)
       with self.assertRaisesWithPredicateMatch(

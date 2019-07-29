@@ -1,8 +1,11 @@
 licenses(["notice"])
 
+package(default_visibility = [":test_friends"])
+
 # Please only depend on this from MLIR tests.
 package_group(
     name = "test_friends",
+    includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
     packages = ["//..."],
 )
 
@@ -12,7 +15,6 @@ cc_library(
     name = "IRProducingAPITest",
     hdrs = ["APITest.h"],
     includes = ["."],
-    visibility = [":test_friends"],
 )
 
 gentbl(
@@ -51,15 +53,14 @@ cc_library(
         "lib/TestDialect/TestDialect.h",
     ],
     includes = ["lib/TestDialect"],
-    visibility = [":test_friends"],
     deps = [
         ":TestOpsIncGen",
         "@llvm//:support",
+        "@local_config_mlir//:Dialect",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:Support",
         "@local_config_mlir//:Transforms",
-        "@local_config_mlir//:TypeUtilities",
     ],
     alwayslink = 1,
 )
@@ -69,15 +70,17 @@ cc_library(
     srcs = [
         "lib/Transforms/TestConstantFold.cpp",
         "lib/Transforms/TestLoopFusion.cpp",
+        "lib/Transforms/TestLoopMapping.cpp",
+        "lib/Transforms/TestLoopParametricTiling.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
-    visibility = [":test_friends"],
     deps = [
         "@llvm//:support",
         "@local_config_mlir//:AffineOps",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:EDSC",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:LoopOps",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",

@@ -211,7 +211,7 @@ class IndexedSlicesSpec(type_spec.TypeSpec):
       self._dense_shape_dtype = None
     else:
       self._dense_shape_dtype = dtypes.as_dtype(dense_shape_dtype)
-    self._indices_shape = tensor_shape.as_shape(indices_shape)
+    self._indices_shape = tensor_shape.as_shape(indices_shape).with_rank(1)
 
   def _serialize(self):
     return (self._shape, self._values_dtype, self._indices_dtype,

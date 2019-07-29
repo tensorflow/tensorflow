@@ -629,6 +629,10 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.train.sdca_fprint",
         "tf.train.sdca_optimizer",
         "tf.train.sdca_shrink_l1",
+        "tf.data.experimental.TensorStructure",
+        "tf.data.experimental.SparseTensorStructure",
+        "tf.data.experimental.RaggedTensorStructure",
+        "tf.data.experimental.TensorArrayStructure",
     }
 
     # Manual mapping of function names to be reordered to their list of argument

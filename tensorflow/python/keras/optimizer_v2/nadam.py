@@ -119,77 +119,109 @@ class Nadam(optimizer_v2.OptimizerV2):
       # Create slots for the second moments.
       self.add_slot(var, 'v')
 
-  def _prepare(self, var_list):
-    var_dtype = var_list[0].dtype.base_dtype
-    beta_1_t = self._get_hyper('beta_1', var_dtype)
+  def _prepare_local(self, var_device, var_dtype, apply_state):
+    lr_t = array_ops.identity(self._get_hyper('learning_rate', var_dtype))
+    beta_1_t = array_ops.identity(self._get_hyper('beta_1', var_dtype))
+    beta_2_t = array_ops.identity(self._get_hyper('beta_2', var_dtype))
     local_step = math_ops.cast(self.iterations + 1, var_dtype)
-    decay_base = math_ops.cast(0.96, var_dtype)
-    self.m_cache_t = beta_1_t * (
-        1. - 0.5 * (math_ops.pow(decay_base, self._initial_decay * local_step)))
-    self.m_cache_t_1 = beta_1_t * (
-        1. - 0.5 *
-        (math_ops.pow(decay_base, self._initial_decay * (local_step + 1))))
-    m_schedule_new = self._m_cache * self.m_cache_t
-    self.m_schedule_new = state_ops.assign(
-        self._m_cache, m_schedule_new, use_locking=self._use_locking)
-    self.m_schedule_next = self.m_schedule_new * self.m_cache_t_1
+    next_step = math_ops.cast(self.iterations + 2, var_dtype)
 
-  def _resource_apply_dense(self, grad, var):
-    var_dtype = var.dtype.base_dtype
-    lr_t = self._get_hyper('learning_rate', var_dtype)
-    epsilon_t = ops.convert_to_tensor(self.epsilon, var_dtype)
+    decay_base = math_ops.cast(0.96, var_dtype)
+
+    m_t = beta_1_t * (1. - 0.5 * (
+        math_ops.pow(decay_base, self._initial_decay * local_step)))
+    m_t_1 = beta_1_t * (1. - 0.5 * (
+        math_ops.pow(decay_base, self._initial_decay * next_step)))
+
+    m_schedule_new = math_ops.cast(self._m_cache_read, var_dtype) * m_t
+    if var_dtype is self._m_cache.dtype:
+      m_schedule_new = array_ops.identity(state_ops.assign(
+          self._m_cache, m_schedule_new, use_locking=self._use_locking))
+    m_schedule_next = m_schedule_new * m_t_1
+
+    apply_state[(var_device, var_dtype)] = dict(
+        lr_t=lr_t,
+        neg_lr_t=-lr_t,
+        epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
+        beta_1_t=beta_1_t,
+        beta_2_t=beta_2_t,
+        m_t=m_t,
+        m_t_1=m_t_1,
+
+        one_minus_beta_1_t=1 - beta_1_t,
+        one_minus_beta_2_t=1 - beta_2_t,
+        one_minus_m_t=1. - m_t,
+        one_minus_m_schedule_new=1. - m_schedule_new,
+        one_minus_m_schedule_next=1. - m_schedule_next,
+        v_t_prime_denominator=1. - math_ops.pow(beta_2_t, local_step),
+    )
+
+  def _prepare(self, var_list):
+    # Get the value of the momentum cache before starting to apply gradients.
+    self._m_cache_read = array_ops.identity(self._m_cache)
+    return super(Nadam, self)._prepare(var_list)
+
+  def _resource_apply_dense(self, grad, var, apply_state=None):
+    var_device, var_dtype = var.device, var.dtype.base_dtype
+    coefficients = ((apply_state or {}).get((var_device, var_dtype))
+                    or self._fallback_apply_state(var_device, var_dtype))
+
     m = self.get_slot(var, 'm')
     v = self.get_slot(var, 'v')
-    beta_1_t = self._get_hyper('beta_1', var_dtype)
-    beta_2_t = self._get_hyper('beta_2', var_dtype)
-    local_step = math_ops.cast(self.iterations + 1, var_dtype)
 
-    g_prime = grad / (1. - self.m_schedule_new)
-    m_t = beta_1_t * m + (1 - beta_1_t) * grad
+    g_prime = grad / coefficients['one_minus_m_schedule_new']
+    m_t = (coefficients['beta_1_t'] * m +
+           coefficients['one_minus_beta_1_t'] * grad)
     m_t = state_ops.assign(m, m_t, use_locking=self._use_locking)
-    m_t_prime = m_t / (1. - self.m_schedule_next)
-    v_t = beta_2_t * v + (1 - beta_2_t) * math_ops.square(grad)
+    m_t_prime = m_t / coefficients['one_minus_m_schedule_next']
+    v_t = (coefficients['beta_2_t'] * v +
+           coefficients['one_minus_beta_2_t'] * math_ops.square(grad))
     v_t = state_ops.assign(v, v_t, use_locking=self._use_locking)
-    v_t_prime = v_t / (1. - math_ops.pow(beta_2_t, local_step))
-    m_t_bar = (1. - self.m_cache_t) * g_prime + self.m_cache_t_1 * m_t_prime
-    var_t = var - lr_t * m_t_bar / (math_ops.sqrt(v_t_prime) + epsilon_t)
+    v_t_prime = v_t / coefficients['v_t_prime_denominator']
+    m_t_bar = (coefficients['one_minus_m_t'] * g_prime +
+               coefficients['m_t_1'] * m_t_prime)
+    var_t = var - coefficients['lr_t'] * m_t_bar / (
+        math_ops.sqrt(v_t_prime) + coefficients['epsilon'])
     return state_ops.assign(var, var_t, use_locking=self._use_locking).op
 
-  def _resource_apply_sparse(self, grad, var, indices):
-    var_dtype = var.dtype.base_dtype
-    lr_t = self._get_hyper('learning_rate', var_dtype)
-    epsilon_t = ops.convert_to_tensor(self.epsilon, var_dtype)
-    v = self.get_slot(var, 'v')
-    beta_1_t = self._get_hyper('beta_1', var_dtype)
-    beta_2_t = self._get_hyper('beta_2', var_dtype)
-    local_step = math_ops.cast(self.iterations + 1, var_dtype)
+  def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
+    var_device, var_dtype = var.device, var.dtype.base_dtype
+    coefficients = ((apply_state or {}).get((var_device, var_dtype))
+                    or self._fallback_apply_state(var_device, var_dtype))
 
-    g_prime = grad / (1. - self.m_schedule_new)
+    m = self.get_slot(var, 'm')
+    v = self.get_slot(var, 'v')
+
+    g_prime = grad / coefficients['one_minus_m_schedule_new']
 
     # m_t = beta1 * m + (1 - beta1) * g_t
-    m = self.get_slot(var, 'm')
-    m_scaled_g_values = grad * (1 - beta_1_t)
-    m_t = state_ops.assign(m, m * beta_1_t, use_locking=self._use_locking)
+    m_scaled_g_values = grad * coefficients['one_minus_beta_1_t']
+    m_t = state_ops.assign(m, m * coefficients['beta_1_t'],
+                           use_locking=self._use_locking)
+
     with ops.control_dependencies([m_t]):
       m_t = self._resource_scatter_add(m, indices, m_scaled_g_values)
       m_t_slice = array_ops.gather(m_t, indices)
 
-    m_t_prime = m_t_slice / (1. - self.m_schedule_next)
-    m_t_bar = (1. - self.m_cache_t) * g_prime + self.m_cache_t_1 * m_t_prime
+    m_t_prime = m_t_slice / coefficients['one_minus_m_schedule_next']
+    m_t_bar = (coefficients['one_minus_m_t'] * g_prime +
+               coefficients['m_t_1'] * m_t_prime)
 
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
-    v = self.get_slot(var, 'v')
-    v_scaled_g_values = (grad * grad) * (1 - beta_2_t)
-    v_t = state_ops.assign(v, v * beta_2_t, use_locking=self._use_locking)
+    v_scaled_g_values = (grad * grad) * coefficients['one_minus_beta_2_t']
+    v_t = state_ops.assign(v, v * coefficients['beta_2_t'],
+                           use_locking=self._use_locking)
+
     with ops.control_dependencies([v_t]):
       v_t = self._resource_scatter_add(v, indices, v_scaled_g_values)
       v_t_slice = array_ops.gather(v_t, indices)
 
-    v_t_prime = v_t_slice / (1. - math_ops.pow(beta_2_t, local_step))
-    v_prime_sqrt = math_ops.sqrt(v_t_prime)
+    v_t_prime = v_t_slice / coefficients['v_t_prime_denominator']
+    v_prime_sqrt_plus_eps = math_ops.sqrt(v_t_prime) + coefficients['epsilon']
 
     var_update = self._resource_scatter_add(
-        var, indices, -lr_t * m_t_bar / (v_prime_sqrt + epsilon_t))
+        var, indices,
+        coefficients['neg_lr_t'] * m_t_bar / v_prime_sqrt_plus_eps)
     return control_flow_ops.group(*[var_update, m_t_bar, v_t])
 
   def get_config(self):

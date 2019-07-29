@@ -23,14 +23,76 @@ config_setting(
     define_values = {"tflite_with_ruy": "false"},
 )
 
+###### Beginning of config_setting's to match aarch64 ######
+#
+# We need to identify the aarch64 instruction set to decide whether to enable
+# tflite_with_ruy by default. This is surprisingly hard to do because select()
+# can only consume config_setting's, these config_settings are not centralized,
+# and the "cpu" value which they define are free-form strings and there is no
+# standardization of the strings that we need to match for the aarch64 architecture.
+#
+# First, we have the case of --config=chromiumos_arm, which defines cpu=arm but is
+# actually aarch64. For it, we name our config_setting chromiumos_arm64 to avoid
+# adding to the confusion, at the cost of diverging from the --config name.
+# This example shows that we can never hope to match aarch64 by looking only at
+# "cpu", since the value "arm" would be used to mean the (32-bit) ARM instruction set
+# in other configs.
 config_setting(
     name = "chromiumos_arm64",
     values = {
         "crosstool_top": "//external:chromiumos/crosstool",
         "cpu": "arm",
     },
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
 )
+
+# Next, several "cpu" values that unambiguously mean aarch64, that are observed in
+# practice with --config's that we care to support:
+
+# This is defined by the tensorflow:linux_aarch64 config_setting.
+config_setting(
+    name = "cpu_aarch64",
+    values = {"cpu": "aarch64"},
+    visibility = ["//visibility:private"],
+)
+
+# This is defined by some config_setting's in the wild and is a reasonable value to
+# support anyway.
+config_setting(
+    name = "cpu_arm64",
+    values = {"cpu": "arm64"},
+    visibility = ["//visibility:private"],
+)
+
+# This is the value defined by --config=ios_arm64.
+config_setting(
+    name = "cpu_ios_arm64",
+    values = {"cpu": "ios_arm64"},
+    visibility = ["//visibility:private"],
+)
+
+# arm64e variants of the above two. See:
+# https://stackoverflow.com/questions/52624308/xcode-arm64-vs-arm64e
+config_setting(
+    name = "cpu_arm64e",
+    values = {"cpu": "arm64e"},
+    visibility = ["//visibility:private"],
+)
+
+config_setting(
+    name = "cpu_ios_arm64e",
+    values = {"cpu": "ios_arm64e"},
+    visibility = ["//visibility:private"],
+)
+
+# This is the value defined by --config=android_arm64
+config_setting(
+    name = "cpu_arm64_v8a",
+    values = {"cpu": "arm64-v8a"},
+    visibility = ["//visibility:private"],
+)
+
+###### End of config_setting's to match aarch64 ######
 
 # Suppress warnings that are introduced by Eigen Tensor.
 EXTRA_EIGEN_COPTS = select({
@@ -128,8 +190,13 @@ cc_library(
     name = "tflite_with_ruy_default",
     visibility = ["//visibility:private"],
     deps = select({
-        "//tensorflow:android_arm64": [":tflite_with_ruy_enabled"],
         ":chromiumos_arm64": [":tflite_with_ruy_enabled"],
+        ":cpu_aarch64": [":tflite_with_ruy_enabled"],
+        ":cpu_arm64": [":tflite_with_ruy_enabled"],
+        ":cpu_arm64e": [":tflite_with_ruy_enabled"],
+        ":cpu_ios_arm64": [":tflite_with_ruy_enabled"],
+        ":cpu_ios_arm64e": [":tflite_with_ruy_enabled"],
+        ":cpu_arm64_v8a": [":tflite_with_ruy_enabled"],
         "//conditions:default": [],
     }),
 )
@@ -160,6 +227,7 @@ cc_library(
         # gemmlowp_context_ and ruy_context_ members.
         "//tensorflow/lite/experimental/ruy:context",
         "@gemmlowp",
+        "//tensorflow/lite:external_cpu_backend_context",
     ],
 )
 
@@ -237,23 +305,6 @@ cc_test(
         # ruy's reference path provides the reference implementation
         # that this test compares against.
         "//tensorflow/lite/experimental/ruy",
-    ],
-)
-
-cc_library(
-    name = "cpu_backend_support",
-    srcs = [
-        "cpu_backend_support.cc",
-    ],
-    hdrs = [
-        "cpu_backend_support.h",
-    ],
-    copts = tflite_copts(),
-    deps = [
-        ":cpu_backend_context",
-        ":op_macros",
-        "//tensorflow/lite/c:c_api_internal",
-        "@gemmlowp",
     ],
 )
 
@@ -415,7 +466,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":activation_functor",
-        ":cpu_backend_support",
+        ":cpu_backend_context",
         ":eigen_support",
         ":kernel_util",
         ":lstm_eval",
@@ -426,6 +477,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels/internal:audio_utils",
         "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:cpu_check",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:optimized",
@@ -438,6 +490,36 @@ cc_library(
         "//third_party/eigen3",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "variable_op_kernels",
+    srcs = [
+        "assign_variable.cc",
+        "read_variable.cc",
+    ],
+    deps = [
+        ":kernel_util",
+        ":op_macros",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels/internal:tensor",
+    ],
+)
+
+cc_test(
+    name = "variable_ops_test",
+    size = "small",
+    srcs = [
+        "variable_ops_test.cc",
+    ],
+    deps = [
+        ":test_main",
+        ":test_util",
+        ":variable_op_kernels",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -656,6 +738,7 @@ cc_test(
     name = "batch_to_space_nd_test",
     size = "small",
     srcs = ["batch_to_space_nd_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -669,6 +752,7 @@ cc_test(
     name = "cast_test",
     size = "small",
     srcs = ["cast_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -926,6 +1010,7 @@ cc_test(
     name = "reduce_test",
     size = "small",
     srcs = ["reduce_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1149,6 +1234,7 @@ cc_test(
     name = "log_softmax_test",
     size = "small",
     srcs = ["log_softmax_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1218,6 +1304,7 @@ cc_test(
     name = "space_to_depth_test",
     size = "small",
     srcs = ["space_to_depth_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1756,6 +1843,7 @@ cc_test(
     name = "quantize_test",
     size = "small",
     srcs = ["quantize_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1772,6 +1860,21 @@ cc_test(
     srcs = ["matrix_set_diag_test.cc"],
     deps = [
         ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "quant_basic_lstm_test",
+    size = "small",
+    srcs = ["quant_basic_lstm_test.cc"],
+    tags = ["tflite_nnapi"],
+    deps = [
+        ":builtin_ops",
+        ":kernel_util",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",

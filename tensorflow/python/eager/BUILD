@@ -53,6 +53,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop",
+        ":cancellation",
         ":context",
         ":core",
         ":def_function",
@@ -102,7 +103,6 @@ cuda_py_test(
         ":cancellation",
         ":test",
     ],
-    tags = ["no_pip"],
 )
 
 py_library(
@@ -192,6 +192,7 @@ py_library(
 py_test(
     name = "profiler_client_test",
     srcs = ["profiler_client_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     visibility = ["//tensorflow:internal"],
@@ -250,6 +251,7 @@ cuda_py_test(
         ":forwardprop",
         ":test",
     ],
+    shard_count = 5,
     xla_enable_strict_auto_jit = True,
 )
 
@@ -326,11 +328,13 @@ cuda_py_test(
     srcs = ["function_test.py"],
     additional_deps = [
         ":backprop",
+        ":cancellation",
         ":context",
         ":def_function",
         ":function",
         ":test",
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:dtypes",
@@ -508,6 +512,7 @@ cuda_py_test(
     additional_deps = [
         ":backprop",
         ":context",
+        ":forwardprop",
         ":function",
         ":test",
         ":profiler",
@@ -640,7 +645,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
     additional_deps = [

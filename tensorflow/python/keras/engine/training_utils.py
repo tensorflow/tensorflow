@@ -34,6 +34,7 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import dtypes
@@ -61,13 +62,18 @@ class Aggregator(object):
 
   Attributes:
     use_steps: Whether the loop is using `step` or `batch_size`.
-    num_samples_or_steps: Either `batch_size*num_batches` or `steps`.
+    num_samples: Total number of samples: `batch_size * num_batches`.
+    steps: Total number of steps.
+    batch_size: Batch size. It is used for validation checks between inputs and
+      outputs.
     results: What to return at the end of the aggregation loop.
   """
 
-  def __init__(self, use_steps, num_samples_or_steps):
+  def __init__(self, use_steps, num_samples=None, steps=None, batch_size=None):
     self.use_steps = use_steps
-    self.num_samples_or_steps = num_samples_or_steps
+    self.num_samples = num_samples
+    self.steps = steps
+    self.batch_size = batch_size
     self.results = []
 
   @abc.abstractmethod
@@ -99,7 +105,21 @@ class Aggregator(object):
 
 
 class MetricsAggregator(Aggregator):
-  """Aggregator that calculates loss and metrics info."""
+  """Aggregator that calculates loss and metrics info.
+
+  Attributes:
+    use_steps: Whether the loop is using `step` or `batch_size`.
+    num_samples: Total number of samples: `batch_size*num_batches`.
+    steps: Total number of steps, ie number of times to iterate over a dataset
+      to cover all samples.
+  """
+
+  def __init__(self, use_steps, num_samples=None, steps=None):
+    super(MetricsAggregator, self).__init__(
+        use_steps=use_steps,
+        num_samples=num_samples,
+        steps=steps,
+        batch_size=None)
 
   def create(self, batch_outs):
     self.results = [0.] * len(batch_outs)
@@ -116,7 +136,7 @@ class MetricsAggregator(Aggregator):
   def finalize(self):
     if not self.results:
       raise ValueError('Empty training data.')
-    self.results[0] /= self.num_samples_or_steps
+    self.results[0] /= (self.num_samples or self.steps)
 
 
 class ConcatAggregator(Aggregator):
@@ -126,16 +146,25 @@ class ConcatAggregator(Aggregator):
   structure of tensor-likes.
   """
 
-  def __init__(self):
+  def __init__(self, batch_size):
     self.composite = None
     super(ConcatAggregator, self).__init__(
-        use_steps=True, num_samples_or_steps=None)
+        use_steps=True, num_samples=None, steps=None, batch_size=batch_size)
 
   def create(self, batch_element):
     self.composite = composite_tensor_utils.is_composite_or_composite_value(
         batch_element)
 
   def aggregate(self, batch_element, batch_start=None, batch_end=None):
+
+    # TODO(psv): Add num_samples check here to detect when output batch
+    # #samples is < batch size and != input batch #samples.
+    if self.batch_size and self.batch_size < batch_element.shape[0]:
+      raise ValueError(
+          'Mismatch between expected batch size and model output batch size. '
+          'Output shape = {}, expected output shape = shape {}'.format(
+              batch_element.shape,
+              (self.batch_size,) + batch_element.shape[1:]))
     self.results.append(batch_element)
 
   def finalize(self):
@@ -202,17 +231,20 @@ class SliceAggregator(Aggregator):
   _BINARY_SIZE_THRESHOLD = 2 ** 14
   _MAX_COPY_SECONDS = 300
 
-  def __init__(self, num_samples_or_steps):
+  def __init__(self, num_samples, batch_size):
     self._async_copies = []
     self._pool = get_copy_pool()
     self._errors = []
     super(SliceAggregator, self).__init__(
-        use_steps=False, num_samples_or_steps=num_samples_or_steps)
+        use_steps=False,
+        num_samples=num_samples,
+        steps=None,
+        batch_size=batch_size)
 
   def create(self, batch_element):
     # This step does not need to be pipelined because NumPy empty array
     # initialization is effectively instantaneous.
-    shape = (self.num_samples_or_steps,) + batch_element.shape[1:]
+    shape = (self.num_samples,) + batch_element.shape[1:]
     dtype = batch_element.dtype
     if isinstance(batch_element, ops.EagerTensor):
       dtype = dtype.as_numpy_dtype()
@@ -225,7 +257,13 @@ class SliceAggregator(Aggregator):
       six.reraise(type(self._errors[0]), self._errors[0])
 
     # In the special case of single batch inference, no copy is needed.
-    if batch_end - batch_start == self.num_samples_or_steps:
+    if batch_end - batch_start == self.num_samples:
+      if self.num_samples != batch_element.shape[0]:
+        raise ValueError(
+            'Mismatch between expected batch size and model output batch size. '
+            'Output shape = {}, expected output shape = shape {}'.format(
+                batch_element.shape, self.results.shape))
+
       self.results = batch_element
       return
 
@@ -284,10 +322,11 @@ class OutputsAggregator(Aggregator):
         # If the output is not a ndarray, it will be either a composite tensor
         # or a composite tensor's Value object. In either case, we can't
         # allocate an array to hold the object - we'll handle it later.
-        self.results.append(ConcatAggregator())
+        self.results.append(ConcatAggregator(self.batch_size))
       elif isinstance(batch_element, (np.ndarray, ops.EagerTensor)):
-        self.results.append(ConcatAggregator() if self.use_steps else
-                            SliceAggregator(self.num_samples_or_steps))
+        self.results.append(
+            (ConcatAggregator(self.batch_size) if self.use_steps else
+             SliceAggregator(self.num_samples, self.batch_size)))
       else:
         # This is not a ndarray, a CompositeTensor, or a CompositeTensorValue.
         # Fail fast rather than trying to concatenate it.
@@ -395,6 +434,10 @@ def standardize_single_array(x, expected_shape=None):
 
   if composite_tensor_utils.is_composite_or_composite_value(x):
     return x
+
+  if isinstance(x, int):
+    raise ValueError(
+        'Expected an array data type but received an integer: {}'.format(x))
 
   if (x.shape is not None and len(x.shape) == 1 and
       (expected_shape is None or len(expected_shape) != 1)):
@@ -1148,7 +1191,8 @@ def check_steps_argument(input_data, steps, steps_name):
 
 
 def cast_single_tensor(x, dtype=None):
-  x = ops.convert_to_tensor(x)
+  if isinstance(x, np.ndarray):
+    x = ops.convert_to_tensor(x)
   dtype = dtype or K.floatx()
   if x.dtype.is_floating:
     return math_ops.cast(x, dtype=dtype)
@@ -1168,10 +1212,8 @@ def cast_if_floating_dtype(x):
   return nest.map_structure(cast_single_tensor, x)
 
 
-def cast_if_floating_to_model_input_dtypes(x, model):
+def cast_to_model_input_dtypes(x, model):
   """Casts the given data tensors to the dtypes of the model inputs.
-
-  Casts only if the input is already a floating point type.
 
   Args:
     x: tensor or list/tuple of tensors.
@@ -1181,10 +1223,8 @@ def cast_if_floating_to_model_input_dtypes(x, model):
     Converted input. Each tensor is casted to the corresponding input in
     `model.inputs`.
   """
-  # TODO(b/131372221): We should probably cast even if the input is not
-  # floating-point.
   input_dtypes = nest.map_structure(lambda t: t.dtype, model.inputs)
-  return nest.map_structure(cast_single_tensor, x, input_dtypes)
+  return nest.map_structure(math_ops.cast, x, input_dtypes)
 
 
 def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
@@ -1545,6 +1585,12 @@ def infer_steps_for_dataset(dataset, steps, epochs=1, steps_name='steps'):
     ValueError: In case of invalid argument values.
   """
   assert isinstance(dataset, dataset_ops.DatasetV2)
+  if (multi_worker_util.in_multi_worker_mode() and
+      dataset.options().experimental_distribute.auto_shard):
+    # If the dataset would be auto-sharded, we should not infer a local
+    # steps_per_epoch due to the possible inbalanced sharding between workers.
+    return None
+
   size = K.get_value(cardinality.cardinality(dataset))
   if size == cardinality.INFINITE and steps is None:
     raise ValueError('When passing an infinitely repeating dataset, you '
@@ -1721,6 +1767,13 @@ def convert_eager_tensors_to_numpy(structure):
     return element
 
   return nest.map_structure(_convert, structure)
+
+
+def list_to_tuple(maybe_list):
+  """Datasets will stack the list of tensor, so switch them to tuples."""
+  if isinstance(maybe_list, list):
+    return tuple(maybe_list)
+  return maybe_list
 
 
 def should_run_validation(validation_freq, epoch):

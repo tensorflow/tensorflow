@@ -309,8 +309,7 @@ class AggregationTest(keras_parameterized.TestCase):
     training_utils.SliceAggregator._MAX_COPY_SECONDS = self._old_timeout
 
   def _run_with_steps(self):
-    aggregator = training_utils.OutputsAggregator(
-        use_steps=True, num_samples_or_steps=None)
+    aggregator = training_utils.OutputsAggregator(use_steps=True)
     for i, batch in enumerate(np.array_split(_TEST_DATA, 4)):
       if i == 0:
         aggregator.create(batch)
@@ -324,7 +323,7 @@ class AggregationTest(keras_parameterized.TestCase):
 
   def _run_without_steps(self):
     aggregator = training_utils.OutputsAggregator(
-        use_steps=False, num_samples_or_steps=6)
+        use_steps=False, num_samples=6)
 
     batch_start = 0
     for i, batch in enumerate(np.array_split(_TEST_DATA, 4)):
@@ -349,7 +348,7 @@ class AggregationTest(keras_parameterized.TestCase):
 
   def test_nested_aggregation(self):
     aggregator = training_utils.OutputsAggregator(
-        use_steps=False, num_samples_or_steps=6)
+        use_steps=False, num_samples=6)
 
     batches = np.array_split(_TEST_DATA, 4)
     batch_start = 0
@@ -366,8 +365,7 @@ class AggregationTest(keras_parameterized.TestCase):
     self.assertAllEqual(aggregator.results, (_TEST_DATA, _TEST_DATA))
 
   def test_concat_single_batch(self):
-    aggregator = training_utils.OutputsAggregator(
-        use_steps=True, num_samples_or_steps=None)
+    aggregator = training_utils.OutputsAggregator(use_steps=True)
     data = _TEST_DATA.copy()
     aggregator.create(data)
     assert len(aggregator.results) == 1
@@ -379,7 +377,7 @@ class AggregationTest(keras_parameterized.TestCase):
 
   def test_slice_single_batch(self):
     aggregator = training_utils.OutputsAggregator(
-        use_steps=False, num_samples_or_steps=6)
+        use_steps=False, num_samples=6)
     data = _TEST_DATA.copy()
     aggregator.create(data)
     assert len(aggregator.results) == 1

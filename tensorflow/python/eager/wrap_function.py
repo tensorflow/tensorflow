@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -191,6 +192,14 @@ def _lift_unlifted_variables(graph, variable_holder):
       mutable_collection = ops.get_collection_ref(collection_name)
       for index, current in enumerate(mutable_collection):
         mutable_collection[index] = lifted_variables.get(current, current)
+        if not resource_variable_ops.is_resource_variable(
+            mutable_collection[index]):
+          logging.warning(
+              "Unable to create a python object for variable {} because it is "
+              "a reference variable. It may not be visible to training APIs. "
+              "If this is a problem, consider rebuilding the SavedModel after "
+              "running tf.compat.v1.enable_resource_variables().".format(
+                  mutable_collection[index]))
 
 
 # TODO(allenl): make this trackable

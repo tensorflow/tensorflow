@@ -22,15 +22,16 @@ limitations under the License.
 namespace tflite {
 namespace reference_integer_ops {
 
+template <typename T>
 inline void Dequantize(const tflite::DequantizationParams& op_params,
-                       const RuntimeShape& input_shape, const int8* input_data,
+                       const RuntimeShape& input_shape, const T* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
   const int32 zero_point = op_params.zero_point;
   const double scale = op_params.scale;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
-    const int32 val = input_data[i];
+    const int32 val = static_cast<int32>(input_data[i]);
     const float result = static_cast<float>(scale * (val - zero_point));
     output_data[i] = result;
   }

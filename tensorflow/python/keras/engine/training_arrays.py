@@ -35,6 +35,7 @@ from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -207,7 +208,8 @@ def model_iteration(model,
     val_samples_or_steps = validation_steps
   else:
     # Get num samples for printing.
-    val_samples_or_steps = val_inputs and val_inputs[0].shape[0] or None
+    val_samples_or_steps = val_inputs and nest.flatten(
+        val_inputs)[0].shape[0] or None
 
   if mode == ModeKeys.TRAIN and verbose:
     _print_train_info(num_samples_or_steps, val_samples_or_steps, is_dataset)
@@ -239,11 +241,15 @@ def model_iteration(model,
 
   # Select aggregation method.
   if mode == ModeKeys.PREDICT:
-    aggregator = training_utils.OutputsAggregator(use_steps,
-                                                  num_samples_or_steps)
+    aggregator = training_utils.OutputsAggregator(
+        use_steps,
+        num_samples=None if steps_per_epoch else num_samples_or_steps,
+        steps=steps_per_epoch)
   else:
-    aggregator = training_utils.MetricsAggregator(use_steps,
-                                                  num_samples_or_steps)
+    aggregator = training_utils.MetricsAggregator(
+        use_steps,
+        num_samples=None if steps_per_epoch else num_samples_or_steps,
+        steps=steps_per_epoch)
 
   if model._compile_distribution:
     distributed_training_utils._copy_weights_to_distributed_model(model, mode)
@@ -283,8 +289,6 @@ def model_iteration(model,
         # Get outputs.
         try:
           # `ins` can be callable in tf.distribute.Strategy + eager case.
-          # TODO(b/134179782):  Simplify this condition when cloning never
-          # happens.
           if not callable(ins) or (
               model._distribution_strategy and
               not distributed_training_utils.is_distributing_by_cloning(model)):
@@ -309,7 +313,7 @@ def model_iteration(model,
                   % (steps_name, steps_per_epoch * epochs))
             elif step > 0:
               steps_per_epoch = step
-              aggregator.num_samples_or_steps = steps_per_epoch
+              aggregator.steps = steps_per_epoch
               if mode == ModeKeys.TRAIN:
                 progbar.params['steps'] = steps_per_epoch
                 progbar.progbar.target = steps_per_epoch
@@ -330,7 +334,7 @@ def model_iteration(model,
 
         if model._distribution_strategy:
           batch_outs = distributed_training_utils._per_replica_aggregate_batch(
-              batch_outs, model, mode)
+              model._distribution_strategy, batch_outs, model, mode)
 
         # Aggregate results.
         if step == 0:

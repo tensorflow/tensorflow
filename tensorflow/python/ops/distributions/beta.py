@@ -238,7 +238,7 @@ class Beta(distribution.Distribution):
     return constant_op.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   def _sample_n(self, n, seed=None):
     expanded_concentration1 = array_ops.ones_like(
@@ -312,7 +312,7 @@ class Beta(distribution.Distribution):
           name="nan")
       is_defined = math_ops.logical_and(self.concentration1 > 1.,
                                         self.concentration0 > 1.)
-      return array_ops.where(is_defined, mode, nan)
+      return array_ops.where_v2(is_defined, mode, nan)
     return control_flow_ops.with_dependencies([
         check_ops.assert_less(
             array_ops.ones([], dtype=self.dtype),

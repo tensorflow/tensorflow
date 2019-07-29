@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import argparse
 import sys
+import tempfile
 
 import numpy as np
 import tensorflow as tf
@@ -41,7 +42,12 @@ def main(_):
   sess = tf.Session()
   if FLAGS.debug:
     # Use the command-line interface (CLI) of tfdbg.
-    sess = tf_debug.LocalCLIDebugWrapperSession(sess, ui_type=FLAGS.ui_type)
+    config_file_path = (tempfile.mktemp(".tfdbg_config")
+                        if FLAGS.use_random_config_path else None)
+    sess = tf_debug.LocalCLIDebugWrapperSession(
+        sess,
+        ui_type=FLAGS.ui_type,
+        config_file_path=config_file_path)
   elif FLAGS.tensorboard_debug_address:
     # Use the TensorBoard Debugger Plugin (GUI of tfdbg).
     sess = tf_debug.TensorBoardDebugWrapperSession(
@@ -73,6 +79,14 @@ if __name__ == "__main__":
       type=str,
       default="curses",
       help="Command-line user interface type (curses | readline).")
+  parser.add_argument(
+      "--use_random_config_path",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="""If set, set config file path to a random file in the temporary
+      directory.""")
   parser.add_argument(
       "--tensorboard_debug_address",
       type=str,

@@ -43,11 +43,10 @@ from tensorflow.python.autograph.converters import function_scopes
 from tensorflow.python.autograph.converters import lists
 from tensorflow.python.autograph.converters import logical_expressions
 from tensorflow.python.autograph.converters import return_statements
-from tensorflow.python.autograph.converters import side_effect_guards
 from tensorflow.python.autograph.converters import slices
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import function_wrapping
+from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.core import unsupported_features_checker
 from tensorflow.python.autograph.lang import special_functions
@@ -129,6 +128,7 @@ _CACHE_LOCK = threading.RLock()
 
 
 _CACHE = _ConversionCache()
+_UNCONVERTED_CACHE = _ConversionCache()
 
 
 # Note: strictly speaking, a simple factory might have been sufficient for
@@ -324,7 +324,9 @@ def convert(entity, program_ctx):
   return _instantiate(entity, converted_entity_info, free_nonglobal_var_names)
 
 
-def is_whitelisted_for_graph(o, check_call_override=True):
+# TODO(mdan): allow_namedtuple_subclass should be hardcoded to True.
+def is_whitelisted_for_graph(
+    o, check_call_override=True, allow_namedtuple_subclass=False):
   """Checks whether an entity is whitelisted for use in graph mode.
 
   Examples of whitelisted entities include all members of the tensorflow
@@ -335,6 +337,8 @@ def is_whitelisted_for_graph(o, check_call_override=True):
     check_call_override: Reserved for internal use. When set to `False`, it
       disables the rule according to which classes are whitelisted if their
       __call__ method is whitelisted.
+    allow_namedtuple_subclass: Reserved for internal use. When `True`,
+      namedtuple subclasses are not whitelisted.
 
   Returns:
     Boolean
@@ -398,7 +402,10 @@ def is_whitelisted_for_graph(o, check_call_override=True):
         return True
 
       owner_class = inspect_utils.getdefiningclass(o, owner_class)
-      if is_whitelisted_for_graph(owner_class, check_call_override=False):
+      if is_whitelisted_for_graph(
+          owner_class,
+          check_call_override=False,
+          allow_namedtuple_subclass=True):
         logging.log(2, 'Whitelisted: %s: owner is whitelisted %s', o,
                     owner_class)
         return True
@@ -407,11 +414,32 @@ def is_whitelisted_for_graph(o, check_call_override=True):
     # Due to the way they're constructed, namedtuple types cannot be converted
     # because they don't expose source code. But we assume they are safe for
     # graph mode since they are just containers.
-    logging.log(2, 'Whitelisted: %s: named tuple', o)
-    return True
+    if allow_namedtuple_subclass:
+      if not any(inspect_utils.isnamedtuple(base) for base in o.__bases__):
+        logging.log(2, 'Whitelisted: %s: named tuple', o)
+        return True
+    else:
+      logging.log(2, 'Whitelisted: %s: named tuple or subclass', o)
+      return True
 
   logging.log(2, 'Not whitelisted: %s: default rule', o)
   return False
+
+
+def check_cached_unconverted(entity, options):
+  try:
+    # Catch-all for entities that are unhashable or don't allow weakrefs.
+    return _UNCONVERTED_CACHE.has(entity, options)
+  except TypeError:
+    return False
+
+
+def cache_unconverted(entity, options):
+  try:
+    # Catch-all for entities that are unhashable or don't allow weakrefs.
+    _UNCONVERTED_CACHE[entity][options] = True
+  except TypeError:
+    pass
 
 
 # TODO(mdan): Rename to convert_*_node to avoid confusion with convert.
@@ -584,7 +612,7 @@ def _add_self_references(namespace, autograph_module):
     ag_internal.STD = converter.STANDARD_OPTIONS
     ag_internal.Feature = converter.Feature
     ag_internal.utils = utils
-    ag_internal.function_scope = function_wrapping.function_scope
+    ag_internal.FunctionScope = function_wrappers.FunctionScope
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>
@@ -664,6 +692,7 @@ def node_to_graph(node, context):
   unsupported_features_checker.verify(node)
 
   node = converter.standard_analysis(node, context, is_initial=True)
+  node = converter.apply_(node, context, function_scopes)
   node = converter.apply_(node, context, arg_defaults)
   node = converter.apply_(node, context, directives)
   node = converter.apply_(node, context, break_statements)
@@ -681,9 +710,4 @@ def node_to_graph(node, context):
   node = converter.apply_(node, context, control_flow)
   node = converter.apply_(node, context, conditional_expressions)
   node = converter.apply_(node, context, logical_expressions)
-  if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
-    node = converter.apply_(node, context, side_effect_guards)
-  # TODO(mdan): If function scopes ever does more, the toggle will need moving.
-  if context.program.options.uses(converter.Feature.NAME_SCOPES):
-    node = converter.apply_(node, context, function_scopes)
   return node

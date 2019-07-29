@@ -269,6 +269,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
     csinfo_.fused_batch_norm_v2 = "FusedBatchNormV2";
     csinfo_.fused_batch_norm_grad_v2 = "FusedBatchNormGradV2";
+    csinfo_.fused_batch_norm_v3 = "FusedBatchNormV3";
+    csinfo_.fused_batch_norm_grad_v3 = "FusedBatchNormGradV3";
     csinfo_.fused_conv2d = "_FusedConv2D";
     csinfo_.identity = "Identity";
     csinfo_.leakyrelu = "LeakyRelu";
@@ -456,6 +458,20 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v2),
          CopyAttrsFusedBatchNormV2, AlwaysRewrite,
          kRewriteForLayoutPropagation});
+
+    // Using CopyAttrsFusedBatchNormV2 for V3 on CPU, as there are no additional
+    // attributes.
+    rinfo_.push_back(
+        {csinfo_.fused_batch_norm_v3,
+         mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_v3),
+         CopyAttrsFusedBatchNormV2, AlwaysRewrite,
+         kRewriteForLayoutPropagation});
+    rinfo_.push_back(
+        {csinfo_.fused_batch_norm_grad_v3,
+         mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad_v3),
+         CopyAttrsFusedBatchNormV2, AlwaysRewrite,
+         kRewriteForLayoutPropagation});
+
     rinfo_.push_back({csinfo_.fused_conv2d, csinfo_.mkl_fused_conv2d,
                       CopyAttrsFusedConv2D, FusedConv2DRewrite,
                       kRewriteForLayoutPropagation});
@@ -876,6 +892,8 @@ rinfo_.push_back({csinfo_.tanh_grad,
     string fused_batch_norm_grad;
     string fused_batch_norm_v2;
     string fused_batch_norm_grad_v2;
+    string fused_batch_norm_v3;
+    string fused_batch_norm_grad_v3;
     string fused_conv2d;
     string identity;
     string leakyrelu;
@@ -3190,7 +3208,6 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   // Create node.
   Node* new_node;
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
-  CHECK_NOTNULL(new_node);
 
   // In the following code of this function, an unsorted set is used to make
   // sure no duplicated edges be added into the new node. Therefore, we can
@@ -3381,7 +3398,8 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   // Create node.
   Node* new_node;
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
-  DCHECK(new_node);
+  // No need to check if new_node is null because it will be null only when
+  // Finalize fails.
 
   // Incoming data edges from 'pred' node and 'succ' node to new 'new_node'
   // node are already copied in BuildNode.
@@ -3490,7 +3508,6 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
   // Create node.
   Node* new_node;
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
-  CHECK_NOTNULL(new_node);
 
   // In the following code of this function, an unsorted set is used to make
   // sure no duplicated edges be added into the new node. Therefore, we can
@@ -3647,7 +3664,6 @@ Status MklLayoutRewritePass::RewriteNodeForLayoutPropagation(
   if (s != Status::OK()) {
     return s;
   }
-  DCHECK(*new_node != nullptr);
 
   // In the following code of this function, an unsorted set is used to make
   // sure no duplicated edges be added into the new node. Therefore, we can
@@ -3723,7 +3739,6 @@ Status MklLayoutRewritePass::RewriteNodeForJustOpNameChange(
   if (s != Status::OK()) {
     return s;
   }
-  DCHECK(*new_node != nullptr);
 
   // In the following code of this function, an unsorted set is used to make
   // sure no duplicated edges be added into the new node. Therefore, we can
@@ -3780,7 +3795,6 @@ Status MklLayoutRewritePass::RewriteNode(std::unique_ptr<Graph>* g,
                         "RewriteNode will fail.");
   }
   TF_CHECK_OK(ret_status);
-  DCHECK(new_node != nullptr);
 
   // Copy the runtime device assigned from original code to new node.
   new_node->set_assigned_device_name(orig_node->assigned_device_name());
@@ -3799,19 +3813,24 @@ const MklLayoutRewritePass::RewriteInfo*
 MklLayoutRewritePass::CheckForQuantizedNodeRewrite(const Node* n) const {
   DataType T1, T2;
   DataType Tinput, Tfilter;
+  bool type_attrs_present = false;
 
-  if ((GetNodeAttr(n->def(), "Tinput", &Tinput).ok() &&
-       GetNodeAttr(n->def(), "Tfilter", &Tfilter).ok()) ||
-      (GetNodeAttr(n->def(), "T1", &T1).ok() &&
-       GetNodeAttr(n->def(), "T2", &T2).ok())) {
-    if (mkl_op_registry::IsMklLayoutDependentOp(
-            mkl_op_registry::GetMklOpName(n->type_string()), T1, T2) ||
-        mkl_op_registry::IsMklLayoutDependentOp(
-            mkl_op_registry::GetMklOpName(n->type_string()), Tinput, Tfilter)) {
-      for (auto ri = rinfo_.cbegin(); ri != rinfo_.cend(); ++ri) {
-        if (n->type_string().compare(ri->name) == 0 && ri->rewrite_rule(n)) {
-          return &*ri;
-        }
+  if (GetNodeAttr(n->def(), "Tinput", &Tinput).ok() &&
+      GetNodeAttr(n->def(), "Tfilter", &Tfilter).ok() &&
+      mkl_op_registry::IsMklLayoutDependentOp(
+          mkl_op_registry::GetMklOpName(n->type_string()), Tinput, Tfilter)) {
+    type_attrs_present = true;
+  } else if (GetNodeAttr(n->def(), "T1", &T1).ok() &&
+             GetNodeAttr(n->def(), "T2", &T2).ok() &&
+             mkl_op_registry::IsMklLayoutDependentOp(
+                 mkl_op_registry::GetMklOpName(n->type_string()), T1, T2)) {
+    type_attrs_present = true;
+  }
+
+  if (type_attrs_present) {
+    for (auto ri = rinfo_.cbegin(); ri != rinfo_.cend(); ++ri) {
+      if (n->type_string().compare(ri->name) == 0 && ri->rewrite_rule(n)) {
+        return &*ri;
       }
     }
   }
@@ -3968,7 +3987,8 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   // Create node.
   Node* new_node;
   TF_CHECK_OK(nb.Finalize(&**g, &new_node));
-  DCHECK(new_node);
+  // No need to check if new_node is null because it will be null only when
+  // Finalize fails.
 
   // Fill outputs.
   for (const Edge* e : transpose_to_nchw->out_edges()) {

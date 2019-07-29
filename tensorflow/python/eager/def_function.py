@@ -252,7 +252,8 @@ class Function(object):
                input_signature=None,
                autograph=True,
                experimental_autograph_options=None,
-               experimental_relax_shapes=False):
+               experimental_relax_shapes=False,
+               experimental_compile=None):
     """Initializes a `Function`.
 
     Args:
@@ -268,7 +269,14 @@ class Function(object):
         conversion options when autograph is set to True.
       experimental_relax_shapes: When true, argument shapes may be relaxed to
         avoid unecessary retracing.
-
+      experimental_compile: If false, the function is interpreted by the
+        standard TensorFlow executor, which dispatches op kernels one by one as
+        they become executable. If True, the function is compiled by XLA. XLA
+        would fuse all the ops and emit more efficient code to run for some
+        devices (e.g. TPU, XLA_GPU) and some use cases (e.g. dense tensor
+        computation). It requires that the whole function is compilable by XLA.
+        If None (default), compile the function with XLA when running on TPU and
+        use the standard TensorFlow executor when running on other devices.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -280,6 +288,7 @@ class Function(object):
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
     self.experimental_relax_shapes = experimental_relax_shapes
+    self._experimental_compile = experimental_compile
     self._created_variables = None
     self._stateful_fn = None
     self._stateless_fn = None
@@ -316,9 +325,16 @@ class Function(object):
 
   def _defun(self, fn):
     """Returns a defun generated from the input function."""
-    return function_lib.defun(
+    attributes = None
+    if self._experimental_compile is not None:
+      if self._experimental_compile:
+        attributes = {"_XlaCompile": True}
+      else:
+        attributes = {"_XlaCompile": False}
+    return function_lib.defun_with_attributes(
         fn,
         input_signature=self.input_signature,
+        attributes=attributes,
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options,
         experimental_relax_shapes=self.experimental_relax_shapes)
@@ -511,13 +527,15 @@ class Function(object):
     # Note: using defun here avoids an infinite recursion.
     @function_lib.defun
     def initialize_variables():
+      op_map = {}
       for v, init in initializer_map.items():
         with ops.init_scope():
           if resource_variable_ops.var_is_initialized_op(v.handle):
             # Ignore variables which are already initialized at trace time.
             continue
-        v.assign(lift_to_graph.lift_to_graph(
-            [init], ops.get_default_graph())[init])
+        op_map = lift_to_graph.lift_to_graph(
+            [init], ops.get_default_graph(), op_map=op_map)
+        v.assign(op_map[init])
 
     with ops.init_scope():
       return initialize_variables.get_concrete_function()()
@@ -728,7 +746,8 @@ def function(func=None,
              input_signature=None,
              autograph=True,
              experimental_autograph_options=None,
-             experimental_relax_shapes=False):
+             experimental_relax_shapes=False,
+             experimental_compile=None):
   """Creates a callable TensorFlow graph from a Python function.
 
   `function` constructs a callable that executes a TensorFlow graph
@@ -985,7 +1004,17 @@ def function(func=None,
       autograph=True.
     experimental_relax_shapes: When true, argument shapes may be relaxed to
       avoid unecessary retracing.
-
+    experimental_compile: If false, the function is interpreted by the standard
+      TensorFlow executor, which dispatches op kernels one by one as they become
+      executable. If True, the function is compiled by XLA
+      (https://www.tensorflow.org/xla). XLA would fuse all the ops and emit more
+      efficient code to run for some devices (e.g. TPU, XLA_GPU) and some use
+      cases (e.g. dense tensor computation). It requires that the whole function
+      is compilable by XLA (e.g. static tensor shape, a subset of operations,
+      no string, compile-time constant input, etc). If None (default),
+      compile the function with XLA when running on TPU and use the standard
+      TensorFlow executor when running on other devices. Note: TensorArrays on
+      TPU don't work with standard TensorFlow executor.
   Returns:
      If `func` is not None, returns a callable that will execute the compiled
      function (and return zero or more `tf.Tensor` objects).
@@ -1012,7 +1041,8 @@ def function(func=None,
             input_signature=input_signature,
             autograph=autograph,
             experimental_autograph_options=experimental_autograph_options,
-            experimental_relax_shapes=experimental_relax_shapes))
+            experimental_relax_shapes=experimental_relax_shapes,
+            experimental_compile=experimental_compile))
 
   # This code path is for the `foo = tf.function(foo, ...)` use case
   if func is not None:

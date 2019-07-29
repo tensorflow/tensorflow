@@ -22,7 +22,6 @@ import os
 
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import structure
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import wrap_function
@@ -522,7 +521,7 @@ class WrappedGraphTest(test.TestCase):
     with ops.Graph().as_default() as graph:
       x = array_ops.placeholder(dtypes.variant, shape=[], name='foo')
       ds = dataset_ops.from_variant(x, structure=(
-          structure.TensorStructure(dtypes.int32, [])))
+          tensor_spec.TensorSpec([], dtypes.int32)))
       y = ds.reduce(array_ops.zeros([], dtype=dtypes.int32), lambda p, q: p + q)
 
     graph_def = graph.as_graph_def()

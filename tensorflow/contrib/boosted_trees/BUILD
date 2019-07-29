@@ -123,6 +123,7 @@ py_test(
     python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
+        "nofwdcompat",  # b/137641346
         "notsan",  # b/62863147
     ],
     deps = [

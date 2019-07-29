@@ -13,6 +13,11 @@ package(
 )
 
 cc_library(
+    name = "platform",
+    hdrs = ["platform.h"],
+)
+
+cc_library(
     name = "check_macros",
     hdrs = ["check_macros.h"],
     deps = ["//tensorflow/lite/kernels/internal:compatibility"],
@@ -60,6 +65,7 @@ cc_library(
     ],
     deps = [
         ":opt_set",
+        ":platform",
         ":time",
     ],
 )
@@ -105,6 +111,12 @@ cc_test(
 )
 
 cc_library(
+    name = "side_pair",
+    hdrs = ["side_pair.h"],
+    deps = [":check_macros"],
+)
+
+cc_library(
     name = "block_map",
     srcs = [
         "block_map.cc",
@@ -115,6 +127,7 @@ cc_library(
     deps = [
         ":check_macros",
         ":opt_set",
+        ":side_pair",
         ":size_util",
         "@gemmlowp//:profiler",
     ],
@@ -158,13 +171,17 @@ cc_library(
     hdrs = [
         "detect_dotprod.h",
     ],
+    visibility = ruy_visibility(),
 )
 
 cc_library(
     name = "path",
     hdrs = ["path.h"],
     visibility = ruy_visibility(),
-    deps = [":size_util"],
+    deps = [
+        ":platform",
+        ":size_util",
+    ],
 )
 
 cc_library(
@@ -178,7 +195,7 @@ cc_library(
     deps = [
         ":block_map",
         ":check_macros",
-        ":common",
+        ":side_pair",
         ":time",
     ],
 )
@@ -238,13 +255,15 @@ cc_library(
         ":matrix",
         ":opt_set",
         ":path",
+        ":platform",
     ],
 )
 
 cc_library(
     name = "kernel",
     srcs = [
-        "kernel.cc",
+        "kernel_arm32.cc",
+        "kernel_arm64.cc",
     ],
     hdrs = [
         "kernel.h",
@@ -254,6 +273,8 @@ cc_library(
         ":internal_matrix",
         ":opt_set",
         ":path",
+        ":platform",
+        ":side_pair",
         ":size_util",
         ":spec",
         ":tune",
@@ -265,7 +286,7 @@ cc_library(
 cc_library(
     name = "pack",
     srcs = [
-        "pack.cc",
+        "pack_arm.cc",
     ],
     hdrs = [
         "pack.h",
@@ -275,9 +296,21 @@ cc_library(
         ":internal_matrix",
         ":opt_set",
         ":path",
+        ":platform",
         ":spec",
         ":tune",
         "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
+    name = "trmul_params",
+    hdrs = ["trmul_params.h"],
+    deps = [
+        ":context",
+        ":internal_matrix",
+        ":side_pair",
+        ":tune",
     ],
 )
 
@@ -288,14 +321,16 @@ cc_library(
     deps = [
         ":allocator",
         ":block_map",
+        ":check_macros",
         ":common",
         ":context",
         ":internal_matrix",
-        ":kernel",
         ":opt_set",
-        ":pack",
+        ":side_pair",
+        ":spec",
         ":thread_pool",
         ":trace",
+        ":trmul_params",
         ":tune",
         "@gemmlowp//:profiler",
     ],
@@ -317,8 +352,11 @@ cc_library(
         ":check_macros",
         ":common",
         ":context",
+        ":kernel",
         ":matrix",
+        ":pack",
         ":path",
+        ":side_pair",
         ":size_util",
         ":spec",
         ":trmul",
@@ -370,6 +408,7 @@ cc_library(
         ":ruy",
         ":time",
         "@com_google_googletest//:gtest",
+        ":platform",
     ] + ruy_test_ext_deps(),
 )
 

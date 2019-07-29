@@ -105,6 +105,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "notsan",
     ],
@@ -165,6 +166,7 @@ distribute_py_test(
     shard_count = 19,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         # TODO(b/134764123): Re-enable this test.
         "notap",
@@ -184,6 +186,7 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "notsan",
     ],
@@ -201,6 +204,7 @@ distribute_py_test(
     shard_count = 8,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "notsan",
     ],
@@ -222,7 +226,6 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_oss",  # b/136660639
         "no_windows_gpu",
-        "notap",  # b/131937016
         "notsan",
     ],
     deps = [

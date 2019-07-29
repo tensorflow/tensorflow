@@ -14,17 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include <deque>
 
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -91,16 +95,40 @@ class MultiDeviceIterator : public ResourceBase {
   }
 
   void GetNextFromShard(OpKernelContext* ctx, int shard_num,
-                        int64 incarnation_id,
-                        MultiDeviceIteratorCallback callback) {
+                        int64 incarnation_id, std::function<void()> done) {
     tf_shared_lock l(mu_);
     IteratorContext::Params params(ctx);
     params.flr = flr_;
     params.function_handle_cache = function_handle_cache_.get();
     params.resource_mgr = &resource_mgr_;
     params.thread_factory = unbounded_thread_pool_.get_thread_factory();
-
+    params.cancellation_manager = &cancellation_manager_;
+    std::function<void()> deregister_fn;
+    OP_REQUIRES_OK_ASYNC(ctx,
+                         ConnectCancellationManagers(
+                             ctx->cancellation_manager(),
+                             params.cancellation_manager, &deregister_fn),
+                         done);
     IteratorContext iter_ctx(std::move(params));
+    MultiDeviceIteratorCallback callback = std::bind(
+        [ctx](const HostBufferElement& elem, const std::function<void()>& done,
+              const std::function<void()>& deregister_fn) {
+          // iterator->Unref();
+          Status s = elem.status;
+          if (!s.ok()) {
+            ctx->SetStatus(s);
+          } else if (elem.end_of_sequence) {
+            ctx->SetStatus(errors::OutOfRange("End of sequence"));
+          } else {
+            for (int i = 0; i < elem.value.size(); ++i) {
+              ctx->set_output(i, elem.value[i]);
+            }
+          }
+          deregister_fn();
+          done();
+        },
+        std::placeholders::_1, std::move(done), std::move(deregister_fn));
+
     multi_device_buffer_->GetNextFromShard(&iter_ctx, shard_num, incarnation_id,
                                            std::move(callback));
   }
@@ -121,6 +149,8 @@ class MultiDeviceIterator : public ResourceBase {
   }
 
   ResourceMgr* resource_mgr() { return &resource_mgr_; }
+
+  CancellationManager* cancellation_manager() { return &cancellation_manager_; }
 
  private:
   // A private class that uses a background thread to keep a per device buffer
@@ -354,6 +384,7 @@ class MultiDeviceIterator : public ResourceBase {
   const std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   const std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   ResourceMgr resource_mgr_;
+  CancellationManager cancellation_manager_;
   std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
 
   int64 incarnation_id_ GUARDED_BY(mu_) = 0;
@@ -480,6 +511,46 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("MultiDeviceIterator").Device(DEVICE_CPU),
                         MultiDeviceIteratorHandleOp);
 
+// This atomic is used to ensure that each new AnonymousMultiDeviceIterator
+// handle is unique.
+static std::atomic<int64> current_multi_device_iterator_id_;
+
+class AnonymousMultiDeviceIteratorOp
+    : public AnonymousIteratorResourceOp<MultiDeviceIterator> {
+ public:
+  explicit AnonymousMultiDeviceIteratorOp(OpKernelConstruction* ctx)
+      : AnonymousIteratorResourceOp<MultiDeviceIterator>(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("devices", &devices_));
+  }
+
+ private:
+  void GenerateContainerNames(string* unique_name,
+                              string* container_name) override {
+    *unique_name =
+        strings::StrCat("_AnonymousMultiDeviceIterator",
+                        current_multi_device_iterator_id_.fetch_add(1));
+    *container_name = "AnonymousMultiDeviceIterator";
+  }
+
+  Status CreateResource(OpKernelContext* ctx,
+                        std::unique_ptr<FunctionLibraryDefinition> flib_def,
+                        std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+                        FunctionLibraryRuntime* lib,
+                        MultiDeviceIterator** resource) override {
+    auto function_handle_cache = absl::make_unique<FunctionHandleCache>(lib);
+    *resource =
+        new MultiDeviceIterator(ctx->env(), output_dtypes_, output_shapes_,
+                                devices_, std::move(flib_def), std::move(pflr),
+                                lib, std::move(function_handle_cache));
+    return Status::OK();
+  }
+
+  std::vector<string> devices_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("AnonymousMultiDeviceIterator").Device(DEVICE_CPU),
+                        AnonymousMultiDeviceIteratorOp);
+
 // Calls init on the MultiDeviceIterator.
 class MultiDeviceIteratorInitOp : public OpKernel {
  public:
@@ -502,6 +573,13 @@ class MultiDeviceIteratorInitOp : public OpKernel {
     params.flr = resource->flr();
     params.function_handle_cache = resource->function_handle_cache();
     params.resource_mgr = resource->resource_mgr();
+    params.cancellation_manager = resource->cancellation_manager();
+    std::function<void()> deregister_fn;
+    OP_REQUIRES_OK(ctx, ConnectCancellationManagers(ctx->cancellation_manager(),
+                                                    params.cancellation_manager,
+                                                    &deregister_fn));
+    auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
+
     IteratorContext iter_ctx(std::move(params));
     OP_REQUIRES_OK(
         ctx, dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iterator));
@@ -539,24 +617,7 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
 
-    MultiDeviceIteratorCallback callback = std::bind(
-        [ctx](const HostBufferElement& elem, DoneCallback done) {
-          // iterator->Unref();
-          Status s = elem.status;
-          if (!s.ok()) {
-            ctx->SetStatus(s);
-          } else if (elem.end_of_sequence) {
-            ctx->SetStatus(errors::OutOfRange("End of sequence"));
-          } else {
-            for (int i = 0; i < elem.value.size(); ++i) {
-              ctx->set_output(i, elem.value[i]);
-            }
-          }
-          done();
-        },
-        std::placeholders::_1, std::move(done));
-
-    iterator->GetNextFromShard(ctx, shard_num, incarnation_id, callback);
+    iterator->GetNextFromShard(ctx, shard_num, incarnation_id, std::move(done));
   }
 };
 
@@ -652,6 +713,35 @@ class MultiDeviceIteratorFromStringHandleOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(
     Name("MultiDeviceIteratorFromStringHandle").Device(DEVICE_CPU),
     MultiDeviceIteratorFromStringHandleOp);
+
+class DeleteMultiDeviceIteratorOp : public OpKernel {
+ public:
+  explicit DeleteMultiDeviceIteratorOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    ResourceHandle handle = ctx->input(0).flat<ResourceHandle>()(0);
+    // The iterator resource is guaranteed to exist because the variant tensor
+    // wrapping the deleter is provided as an unused input to this op, which
+    // guarantees that it has not run yet.
+    Status s = ctx->resource_manager()->Delete(handle);
+    if (errors::IsNotFound(s)) {
+      // TODO(b/135948230): Investigate why is the above statement not true and
+      // then get rid of the special case.
+      ctx->SetStatus(Status::OK());
+      return;
+    }
+    ctx->SetStatus(s);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("DeleteMultiDeviceIterator").Device(DEVICE_CPU),
+                        DeleteMultiDeviceIteratorOp);
+// Since this op takes in Iterator handles as (unused) inputs, we don't want
+// to constrain the iterator location to CPU only. Therefore, we exempt the
+// colocation restriction for this op allowing the iterators to be placed on
+// other devices.
+REGISTER_INPUT_COLOCATION_EXEMPTION("DeleteMultiDeviceIterator");
 
 }  // namespace
 }  // namespace data

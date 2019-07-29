@@ -107,16 +107,34 @@ bool IsAttrs(PyObject* o);
 // Returns a true if its input is an ops.Tensor.
 //
 // Args:
-//   seq: the input to be checked.
+//   o: the input to be checked.
 //
 // Returns:
 //   True if the object is a tensor.
 bool IsTensor(PyObject* o);
 
+// Returns a true if its input is a ResourceVariable.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is a ResourceVariable.
+bool IsResourceVariable(PyObject* o);
+
+// Returns a true if its input is a Variable.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is a Variable.
+bool IsVariable(PyObject* o);
+
 // Returns a true if its input is an ops.IndexesSlices.
 //
 // Args:
-//   seq: the input to be checked.
+//   o: the input to be checked.
 //
 // Returns:
 //   True if the object is an ops.IndexedSlices.

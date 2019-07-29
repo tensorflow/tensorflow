@@ -238,7 +238,11 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
         return self.layer2(self.layer1(inputs))
 
     model = DummyModel()
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2, epochs=2)
     self.assertLen(model.layers, 2)
     self.assertLen(model.trainable_variables, 4)
@@ -610,7 +614,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
         loss='mse',
         optimizer='rmsprop',
         metrics=['acc', keras.metrics.CategoricalAccuracy()],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = np.ones((num_samples, input_dim))
     y = np.zeros((num_samples, num_classes))
@@ -630,7 +635,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
         loss='mse',
         optimizer='rmsprop',
         metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x1 = np.ones((num_samples, input_dim))
     x2 = np.ones((num_samples, input_dim))
@@ -640,7 +646,7 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
     _ = model.evaluate([x1, x2], [y1, y2], verbose=0)
 
-  def test_single_io_workflow_with_dataset_iterators(self):
+  def test_single_io_workflow_with_datasets(self):
     num_classes = 2
     num_samples = 10
     input_dim = 50
@@ -650,17 +656,17 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
       model.compile(
           loss='mse',
           optimizer='rmsprop',
-          run_eagerly=testing_utils.should_run_eagerly())
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
       x = np.ones((num_samples, input_dim), dtype=np.float32)
       y = np.zeros((num_samples, num_classes), dtype=np.float32)
       dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
-      iterator = dataset_ops.make_one_shot_iterator(dataset)
 
-      model.fit(iterator, epochs=2, steps_per_epoch=10, verbose=0)
-      _ = model.evaluate(iterator, steps=10, verbose=0)
+      model.fit(dataset, epochs=2, steps_per_epoch=10, verbose=0)
+      _ = model.evaluate(dataset, steps=10, verbose=0)
 
   def test_attributes(self):
     # layers, weights, trainable_weights, non_trainable_weights, inputs, outputs
@@ -683,7 +689,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.train_on_batch([x1, x2], [y1, y2])
 
     self.assertEqual(model.built, True)
@@ -716,7 +723,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     y_ref = model.predict(x)
 
     model.train_on_batch(x, y)
@@ -749,7 +757,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     loss = model.train_on_batch(x, y)
     self.assertGreater(loss, 0.1)
 
@@ -770,7 +779,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
     model.fit({'input_1': x1, 'input_2': x2},
               {'output_1': y1, 'output_2': y2},
@@ -782,7 +792,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.train_on_batch([x1, x2], [y1, y2])
     model.train_on_batch({'input_1': x1, 'input_2': x2},
                          {'output_1': y1, 'output_2': y2})
@@ -803,7 +814,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.evaluate([x1, x2], [y1, y2])
     model.test_on_batch([x1, x2], [y1, y2])
 
@@ -814,7 +826,6 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.predict_on_batch([x1, x2])
 
   def test_saving(self):
-
     num_classes = (2, 3)
     num_samples = 100
     input_dim = 50
@@ -828,7 +839,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
     y_ref_1, y_ref_2 = model.predict([x1, x2])
 
@@ -867,7 +879,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
         loss='mse',
         optimizer='rmsprop',
         metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = np.ones((num_samples, input_dim))
     y = np.zeros((num_samples, num_classes))
@@ -891,7 +904,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
         loss='mse',
         optimizer='rmsprop',
         metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = np.ones((num_samples, input_dim))
     y = np.zeros((num_samples, num_classes))
@@ -915,7 +929,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
         loss='mse',
         optimizer='rmsprop',
         metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = np.ones((num_samples, input_dim))
     y = np.zeros((num_samples, num_classes))
@@ -950,7 +965,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
         loss='mse',
         optimizer='rmsprop',
         metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
 
     x = np.ones((num_samples, input_dim))
     y = np.zeros((num_samples, num_classes))
@@ -989,7 +1005,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     loss = model.train_on_batch(x, y)
     self.assertGreater(loss, 0.1)
 
@@ -1011,7 +1028,8 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     model.predict(x)
     model.compile(
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x)
     model.evaluate(x)
 
@@ -1236,22 +1254,6 @@ class CustomCallSignatureTests(test.TestCase):
         ValueError, 'cannot build your model if it has positional'):
       model.build(input_shape=[first_input_shape, second_input_shape])
 
-  def test_inputs_in_signature(self):
-
-    class HasInputsAndOtherPositional(keras.Model):
-
-      def call(self, inputs, some_other_arg, training=False):
-        return inputs
-
-      def compute_output_shape(self, input_shape):
-        return input_shape
-
-    model = HasInputsAndOtherPositional()
-    with self.assertRaisesRegexp(
-        TypeError, 'everything else as a keyword argument'):
-      x1, x2 = keras.Input((1, 1)), keras.Input((1, 1))
-      model(x1, x2)
-
   def test_kwargs_in_signature(self):
 
     class HasKwargs(keras.Model):
@@ -1265,34 +1267,6 @@ class CustomCallSignatureTests(test.TestCase):
     if not context.executing_eagerly():
       self.assertEqual(len(model.inputs), 1)
 
-  def test_args_in_signature(self):
-
-    class HasArgs(keras.Model):
-
-      def call(self, x, *args, **kwargs):
-        return [x] + list(args)
-
-      def compute_output_shape(self, input_shape):
-        return input_shape
-
-    model = HasArgs()
-    x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
-    model(x1, x2, x3, a=3)
-    self.assertEqual(len(model.inputs), 3)
-
-  def test_args_and_keywords_in_signature(self):
-
-    class HasArgs(keras.Model):
-
-      def call(self, x, training=True, *args, **kwargs):  # pylint:disable=keyword-arg-before-vararg
-        return x
-
-    model = HasArgs()
-    x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
-    with self.assertRaisesRegexp(
-        TypeError, 'may not accept both positional arguments and '):
-      model(x1, x2, x3, a=3)
-
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
   def test_training_no_default(self):
@@ -1305,17 +1279,33 @@ class CustomCallSignatureTests(test.TestCase):
     model(arg, True)
     self.assertEqual(len(model.inputs), 1)
 
-  def test_training_no_default_with_positional(self):
+  def test_positional_arg_in_call(self):
 
-    class TrainingNoDefaultWithPositional(keras.Model):
+    class ModelWithPositionalArgs(keras.Model):
 
-      def call(self, x, training, positional):
-        return x
+      def call(self, x, x2, x3=None):
+        return x + x2
 
-    model = TrainingNoDefaultWithPositional()
-    x1, x2, x3 = keras.Input((1, 1)), keras.Input((1, 1)), keras.Input((1, 1))
-    with self.assertRaisesRegexp(TypeError, 'after a non-input'):
-      model(x1, x2, x3)
+    x = np.ones((10, 1))
+    y = np.ones((10, 1))
+    m = ModelWithPositionalArgs()
+    m.compile('sgd', 'mse')
+    with self.assertRaisesRegexp(ValueError, r'Models passed to `fit`'):
+      m.fit(x, y, batch_size=2)
+    with self.assertRaisesRegexp(ValueError, r'Models passed to `evaluate`'):
+      m.evaluate(x, y, batch_size=2)
+    with self.assertRaisesRegexp(ValueError, r'Models passed to `predict`'):
+      m.predict(x, batch_size=2)
+    with self.assertRaisesRegexp(ValueError,
+                                 r'Models passed to `train_on_batch`'):
+      m.train_on_batch(x, y)
+    with self.assertRaisesRegexp(ValueError,
+                                 r'Models passed to `test_on_batch`'):
+      m.test_on_batch(x, y)
+    with self.assertRaisesRegexp(ValueError,
+                                 r'Models passed to `predict_on_batch`'):
+      m.predict_on_batch(x)
+
 
 if __name__ == '__main__':
   test.main()

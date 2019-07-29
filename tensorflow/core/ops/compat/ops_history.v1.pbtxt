@@ -1718,6 +1718,36 @@ op {
   is_stateful: true
 }
 op {
+  name: "AnonymousMultiDeviceIterator"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "devices"
+    type: "list(string)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "Any"
   input_arg {
     name: "input"
@@ -12291,6 +12321,24 @@ op {
   is_stateful: true
 }
 op {
+  name: "BoostedTreesFlushQuantileSummaries"
+  input_arg {
+    name: "quantile_stream_resource_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "summaries"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
   name: "BoostedTreesGetEnsembleStates"
   input_arg {
     name: "tree_ensemble_handle"
@@ -20065,6 +20113,59 @@ op {
   }
 }
 op {
+  name: "CumulativeLogsumexp"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "axis"
+    type_attr: "Tidx"
+  }
+  output_arg {
+    name: "out"
+    type_attr: "T"
+  }
+  attr {
+    name: "exclusive"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "reverse"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "DataFormatDimMap"
   input_arg {
     name: "x"
@@ -20149,6 +20250,17 @@ op {
   output_arg {
     name: "cardinality"
     type: DT_INT64
+  }
+}
+op {
+  name: "DatasetFromGraph"
+  input_arg {
+    name: "graph_def"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
   }
 }
 op {
@@ -21430,6 +21542,28 @@ op {
   input_arg {
     name: "deleter"
     type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
+  name: "DeleteMultiDeviceIterator"
+  input_arg {
+    name: "multi_device_iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "iterators"
+    type: DT_RESOURCE
+    number_attr: "N"
+  }
+  input_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
   }
   is_stateful: true
 }
@@ -26334,6 +26468,40 @@ op {
   }
 }
 op {
+  name: "ExperimentalRebatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "num_workers"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "use_fallback"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
   name: "ExperimentalScanDataset"
   input_arg {
     name: "input_dataset"
@@ -29405,157 +29573,11 @@ op {
     default_value {
       s: "NHWC"
     }
-  }
-  attr {
-    name: "is_training"
-    type: "bool"
-    default_value {
-      b: true
-    }
-  }
-}
-op {
-  name: "FusedBatchNorm"
-  input_arg {
-    name: "x"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "scale"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "offset"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "mean"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "variance"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "y"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "batch_mean"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "batch_variance"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "reserve_space_1"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "reserve_space_2"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-      }
-    }
-  }
-  attr {
-    name: "epsilon"
-    type: "float"
-    default_value {
-      f: 0.0001
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
     allowed_values {
       list {
         s: "NHWC"
         s: "NCHW"
       }
-    }
-  }
-  attr {
-    name: "is_training"
-    type: "bool"
-    default_value {
-      b: true
-    }
-  }
-}
-op {
-  name: "FusedBatchNormGrad"
-  input_arg {
-    name: "y_backprop"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "x"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "scale"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "reserve_space_1"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "reserve_space_2"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "x_backprop"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "scale_backprop"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "offset_backprop"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "reserve_space_3"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "reserve_space_4"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-      }
-    }
-  }
-  attr {
-    name: "epsilon"
-    type: "float"
-    default_value {
-      f: 0.0001
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
     }
   }
   attr {
@@ -29819,173 +29841,6 @@ op {
         s: "NHWC"
         s: "NCHW"
       }
-    }
-  }
-  attr {
-    name: "is_training"
-    type: "bool"
-    default_value {
-      b: true
-    }
-  }
-}
-op {
-  name: "FusedBatchNormV2"
-  input_arg {
-    name: "x"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "scale"
-    type_attr: "U"
-  }
-  input_arg {
-    name: "offset"
-    type_attr: "U"
-  }
-  input_arg {
-    name: "mean"
-    type_attr: "U"
-  }
-  input_arg {
-    name: "variance"
-    type_attr: "U"
-  }
-  output_arg {
-    name: "y"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "batch_mean"
-    type_attr: "U"
-  }
-  output_arg {
-    name: "batch_variance"
-    type_attr: "U"
-  }
-  output_arg {
-    name: "reserve_space_1"
-    type_attr: "U"
-  }
-  output_arg {
-    name: "reserve_space_2"
-    type_attr: "U"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_HALF
-        type: DT_FLOAT
-      }
-    }
-  }
-  attr {
-    name: "U"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-      }
-    }
-  }
-  attr {
-    name: "epsilon"
-    type: "float"
-    default_value {
-      f: 0.0001
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-  }
-  attr {
-    name: "is_training"
-    type: "bool"
-    default_value {
-      b: true
-    }
-  }
-}
-op {
-  name: "FusedBatchNormV2"
-  input_arg {
-    name: "x"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "scale"
-    type_attr: "U"
-  }
-  input_arg {
-    name: "offset"
-    type_attr: "U"
-  }
-  input_arg {
-    name: "mean"
-    type_attr: "U"
-  }
-  input_arg {
-    name: "variance"
-    type_attr: "U"
-  }
-  output_arg {
-    name: "y"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "batch_mean"
-    type_attr: "U"
-  }
-  output_arg {
-    name: "batch_variance"
-    type_attr: "U"
-  }
-  output_arg {
-    name: "reserve_space_1"
-    type_attr: "U"
-  }
-  output_arg {
-    name: "reserve_space_2"
-    type_attr: "U"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_HALF
-        type: DT_BFLOAT16
-        type: DT_FLOAT
-      }
-    }
-  }
-  attr {
-    name: "U"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-      }
-    }
-  }
-  attr {
-    name: "epsilon"
-    type: "float"
-    default_value {
-      f: 0.0001
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
     }
   }
   attr {
@@ -57734,6 +57589,40 @@ op {
   }
 }
 op {
+  name: "RebatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "num_workers"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "use_fallback"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
   name: "Reciprocal"
   input_arg {
     name: "x"
@@ -75771,6 +75660,172 @@ op {
   }
 }
 op {
+  name: "SnapshotDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "compression"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "reader_path_prefix"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "writer_path_prefix"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shard_size_bytes"
+    type: "int"
+    default_value {
+      i: 10737418240
+    }
+  }
+  attr {
+    name: "pending_snapshot_expiry_seconds"
+    type: "int"
+    default_value {
+      i: 86400
+    }
+  }
+  attr {
+    name: "num_reader_threads"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "reader_buffer_size"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+}
+op {
+  name: "SnapshotDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "path"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "compression"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "reader_path_prefix"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "writer_path_prefix"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shard_size_bytes"
+    type: "int"
+    default_value {
+      i: 10737418240
+    }
+  }
+  attr {
+    name: "pending_snapshot_expiry_seconds"
+    type: "int"
+    default_value {
+      i: 86400
+    }
+  }
+  attr {
+    name: "num_reader_threads"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "reader_buffer_size"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "num_writer_threads"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "writer_buffer_size"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+}
+op {
   name: "Softmax"
   input_arg {
     name: "logits"
@@ -87330,6 +87385,63 @@ op {
   }
 }
 op {
+  name: "StringNGrams"
+  input_arg {
+    name: "data"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "data_splits"
+    type_attr: "Tsplits"
+  }
+  output_arg {
+    name: "ngrams"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "ngrams_splits"
+    type_attr: "Tsplits"
+  }
+  attr {
+    name: "separator"
+    type: "string"
+  }
+  attr {
+    name: "ngram_widths"
+    type: "list(int)"
+    has_minimum: true
+  }
+  attr {
+    name: "left_pad"
+    type: "string"
+  }
+  attr {
+    name: "right_pad"
+    type: "string"
+  }
+  attr {
+    name: "pad_width"
+    type: "int"
+  }
+  attr {
+    name: "preserve_short_sequences"
+    type: "bool"
+  }
+  attr {
+    name: "Tsplits"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "StringSplit"
   input_arg {
     name: "input"
@@ -88457,6 +88569,81 @@ op {
     type: "string"
     default_value {
       s: "STEP_MARK_AT_ENTRY"
+    }
+  }
+}
+op {
+  name: "TPUReplicateMetadata"
+  attr {
+    name: "num_replicas"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_cores_per_replica"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "topology"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "use_tpu"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "device_assignment"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "computation_shape"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "host_compute_core"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "padding_map"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "step_marker_location"
+    type: "string"
+    default_value {
+      s: "STEP_MARK_AT_ENTRY"
+    }
+  }
+  attr {
+    name: "allow_soft_placement"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }

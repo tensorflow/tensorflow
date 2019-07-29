@@ -66,13 +66,10 @@ struct LegalizeTF : public FunctionPass<LegalizeTF> {
 
 DECL_CONVERT_OP(Concat);
 DECL_CONVERT_OP(ConcatV2);
-DECL_CONVERT_OP(Gather);
-DECL_CONVERT_OP(GatherV2);
 DECL_CONVERT_OP(MatMul);
 DECL_CONVERT_OP(Pack);
 DECL_CONVERT_OP(Split);
 DECL_CONVERT_OP(SplitV);
-DECL_CONVERT_OP(TopKV2);
 DECL_CONVERT_OP(Unpack);
 
 #undef DECL_CONVERT_OP
@@ -112,27 +109,6 @@ PatternMatchResult ConvertTFConcatV2Op::matchAndRewrite(
   rewriter.replaceOpWithNewOp<ConcatenationOp>(
       op, output_type, values, ExtractSingleElementAsInteger(axis),
       fused_activation_function);
-  return matchSuccess();
-}
-
-PatternMatchResult mlir::TFL::ConvertTFGatherOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  // Gather in TF -> Gather in TFL with axis=0
-  IntegerType type = IntegerType::get(32, rewriter.getContext());
-  rewriter.replaceOpWithNewOp<TFL::GatherOp>(
-      op, op->getOperand(0), op->getOperand(1), IntegerAttr::get(type, 0));
-  return matchSuccess();
-}
-
-PatternMatchResult ConvertTFGatherV2Op::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_op = cast<TF::GatherV2Op>(op);
-
-  ElementsAttr axis;
-  if (!matchPattern(tf_op.axis(), m_Constant(&axis))) return matchFailure();
-  rewriter.replaceOpWithNewOp<GatherOp>(op, op->getOperand(0),
-                                        op->getOperand(1),
-                                        ExtractSingleElementAsInteger(axis));
   return matchSuccess();
 }
 
@@ -207,14 +183,6 @@ PatternMatchResult ConvertTFSplitVOp::matchAndRewrite(
   return matchSuccess();
 }
 
-PatternMatchResult ConvertTFTopKV2Op::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  // TopK in TFL is always sorted so we ignore that attribute here.
-  rewriter.replaceOpWithNewOp<TFL::TopKV2Op>(op, op->getOperand(0),
-                                             op->getOperand(1));
-  return matchSuccess();
-}
-
 PatternMatchResult ConvertTFUnpackOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_unpack_op = cast<TF::UnpackOp>(op);
@@ -237,9 +205,8 @@ void LegalizeTF::runOnFunction() {
 
   // Add the generated patterns to the list.
   populateWithGenerated(ctx, &patterns);
-  RewriteListBuilder<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFGatherOp,
-                     ConvertTFGatherV2Op, ConvertTFMatMulOp, ConvertTFPackOp,
-                     ConvertTFSplitOp, ConvertTFSplitVOp, ConvertTFTopKV2Op,
+  RewriteListBuilder<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
+                     ConvertTFPackOp, ConvertTFSplitOp, ConvertTFSplitVOp,
                      ConvertTFUnpackOp>::build(patterns, ctx);
   applyPatternsGreedily(func, std::move(patterns));
 }

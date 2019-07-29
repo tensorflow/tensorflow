@@ -43,59 +43,26 @@ namespace TFL {
 //
 namespace {
 
-/// Applies quantization on the model in TFL dialect.
+// Applies quantization on the model in TFL dialect.
 struct QuantizePass : public FunctionPass<QuantizePass> {
   void runOnFunction() override;
 };
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_quantize.inc"
 
-struct QuantizeConcatOp : public RewritePattern {
-  explicit QuantizeConcatOp(MLIRContext* context)
-      : RewritePattern(QuantizeOp::getOperationName(), 1, context) {}
-
-  PatternMatchResult matchAndRewrite(Operation* op,
-                                     PatternRewriter& rewriter) const override;
-};
-
-PatternMatchResult mlir::TFL::QuantizeConcatOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto quantize_op = cast<QuantizeOp>(op);
-  auto concat_op =
-      dyn_cast_or_null<ConcatenationOp>(quantize_op.input()->getDefiningOp());
-  if (!concat_op) {
-    return matchFailure();
-  }
-
-  SmallVector<Value*, 4> values;
-  values.reserve(concat_op.getNumOperands());
-  for (auto operand : concat_op.values()) {
-    if (auto opInst =
-            dyn_cast_or_null<DequantizeOp>(operand->getDefiningOp())) {
-      values.push_back(opInst.input());
-    } else {
-      return matchFailure();
-    }
-  }
-  rewriter.replaceOpWithNewOp<TFL::ConcatenationOp>(
-      op, quantize_op.output()->getType(), values,
-      rewriter.getI32IntegerAttr(concat_op.axis().getZExtValue()),
-      rewriter.getStringAttr(concat_op.fused_activation_function()));
-  return matchSuccess();
-}
-
 void QuantizePass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(ctx, &patterns);
-  mlir::RewriteListBuilder<mlir::TFL::QuantizeConcatOp>::build(patterns, ctx);
+  mlir::RewriteListBuilder<mlir::TFL::GenericFullQuantizationPattern<
+      mlir::TFL::QuantizeOp, mlir::TFL::DequantizeOp>>::build(patterns, ctx);
   applyPatternsGreedily(func, std::move(patterns));
 }
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect QuantizeTFL pass.
-FunctionPassBase *CreateQuantizePass() { return new QuantizePass(); }
+FunctionPassBase* CreateQuantizePass() { return new QuantizePass(); }
 
 static PassRegistration<QuantizePass> pass(
     "tfl-quantize", "Apply quantization on models in TensorFlow Lite dialect");

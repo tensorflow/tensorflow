@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
@@ -22,8 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
 namespace mlir {
-static mlir::Operation* ExtractOnlyOp(mlir::Module module) {
-  mlir::Function fn = module.getNamedFunction("main");
+static mlir::Operation* ExtractOnlyOp(mlir::ModuleOp module) {
+  mlir::FuncOp fn = module.lookupSymbol<mlir::FuncOp>("main");
   if (!fn) return nullptr;
 
   if (fn.getBlocks().size() != 1) return nullptr;
@@ -38,7 +39,8 @@ static mlir::Operation* ExtractOnlyOp(mlir::Module module) {
   return &block.front();
 }
 
-static LogicalResult MlirToTfNodeDef(Module module, llvm::StringRef filename) {
+static LogicalResult MlirToTfNodeDef(ModuleOp module,
+                                     llvm::StringRef filename) {
   auto* context = module.getContext();
 
   auto file = openOutputFile(filename);

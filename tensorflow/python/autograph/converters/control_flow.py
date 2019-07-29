@@ -347,7 +347,7 @@ class ControlFlowTransformer(converter.Base):
     return loop_vars, loop_vars_ast_tuple
 
   def visit_While(self, node):
-    self.generic_visit(node)
+    node = self.generic_visit(node)
 
     (basic_loop_vars, composite_loop_vars, reserved_symbols,
      possibly_undefs) = self._get_loop_vars(
@@ -419,7 +419,7 @@ class ControlFlowTransformer(converter.Base):
     return undefined_assigns + node
 
   def visit_For(self, node):
-    self.generic_visit(node)
+    node = self.generic_visit(node)
 
     (basic_loop_vars, composite_loop_vars,
      reserved_symbols, possibly_undefs) = self._get_loop_vars(

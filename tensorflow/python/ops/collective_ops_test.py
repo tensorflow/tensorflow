@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import collective_ops
@@ -181,6 +182,30 @@ class CollectiveOpTest(test.TestCase):
                                [[[0, 1], [2, 3]], [[4, 5], [6, 7]],
                                 [[10, 11], [12, 13]], [[14, 15], [16, 17]]],
                                True)
+
+  @test_util.run_deprecated_v1
+  def testCollectiveGatherShapeMismatch(self):
+    group_key = 1
+    instance_key = 1
+    t0 = [1, 2, 3, 4]
+    t1 = [5, 6, 7, 8]
+    t2 = [9, 10]
+    with self.session(
+        config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
+      with ops.device('/CPU:0'):
+        in0 = constant_op.constant(t0)
+        colred0 = collective_ops.all_gather(in0, 2, group_key, instance_key)
+      with ops.device('/CPU:1'):
+        in1 = constant_op.constant(t1)
+        in2 = constant_op.constant(t2)
+        colred1 = collective_ops.all_gather(in1, 2, group_key, instance_key)
+        colred2 = collective_ops.all_gather(in2, 2, group_key, instance_key)
+      run_options = config_pb2.RunOptions()
+      run_options.experimental.collective_graph_key = 1
+      sess.run([colred0, colred1], options=run_options)
+      with self.assertRaisesRegexp(errors.InternalError,
+                                   'Inconsistent output shapes'):
+        sess.run([colred0, colred2], options=run_options)
 
 
 if __name__ == '__main__':

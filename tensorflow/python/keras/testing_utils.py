@@ -261,6 +261,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
 _thread_local_data = threading.local()
 _thread_local_data.model_type = None
 _thread_local_data.run_eagerly = None
+_thread_local_data.run_distributed = None
 
 
 @tf_contextlib.contextmanager
@@ -314,6 +315,38 @@ def should_run_eagerly():
                      'decorator.')
 
   return _thread_local_data.run_eagerly and context.executing_eagerly()
+
+
+@tf_contextlib.contextmanager
+def run_distributed_scope(value):
+  """Provides a scope within which we compile models to run with distribution.
+
+  The boolean gets restored to its original value upon exiting the scope.
+
+  Arguments:
+     value: Bool specifying if we should run models with default distribution
+     in the active test. Should be True or False.
+
+  Yields:
+    The provided value.
+  """
+  previous_value = _thread_local_data.run_distributed
+  try:
+    _thread_local_data.run_distributed = value
+    yield value
+  finally:
+    # Restore model type to initial value.
+    _thread_local_data.run_distributed = previous_value
+
+
+def should_run_distributed():
+  """Returns whether the models we are testing should be run distributed."""
+  if _thread_local_data.run_distributed is None:
+    raise ValueError('Cannot call `should_run_distributed()` outside of a '
+                     '`run_distributed_scope()` or `run_all_keras_modes` '
+                     'decorator.')
+
+  return _thread_local_data.run_distributed and context.executing_eagerly()
 
 
 def get_model_type():

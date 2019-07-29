@@ -281,8 +281,7 @@ ParseResult ParseIslandOp(OpAsmParser *parser, OperationState *result) {
   if (parser->parseOperandList(op_infos, OpAsmParser::Delimiter::OptionalParen))
     return failure();
   if (!op_infos.empty()) {
-    SmallVector<Type, 2> types;
-    types.push_back(control_type);
+    SmallVector<Type, 2> types(op_infos.size(), control_type);
     parser->resolveOperands(op_infos, types, loc, result->operands);
   }
 
@@ -694,7 +693,7 @@ void Print(NextIterationSinkOp next_iteration, OpAsmPrinter *p) {
   *p << next_iteration.getOperationName() << " [";
   p->printOperand(next_iteration.getOperand(0));
   *p << "] ";
-  p->printOperand(next_iteration.getOperand(1));
+  p->printOperands(llvm::drop_begin(next_iteration.getOperands(), 1));
   *p << " : " << next_iteration.getOperand(1)->getType();
   p->printOptionalAttrDict(next_iteration.getAttrs());
 }

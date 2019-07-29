@@ -179,6 +179,7 @@ package_group(
     name = "dependency_whitelist",
     packages = [
         "//learning/freud/topic_models/tensorflow/...",
+        "//perftools/accelerators/xprof/api/...",
         "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
     ],
 )
@@ -362,6 +363,7 @@ cc_library(
         ":lib_platform",
         "//tensorflow/core/platform/default/build_config:base",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -622,6 +624,20 @@ filegroup(
         "platform/subprocess.h",
     ] + tf_additional_monitoring_hdrs(),
     visibility = ["//visibility:private"],
+)
+
+tf_cc_test(
+    name = "platform_unbounded_work_queue_test",
+    srcs = ["platform/unbounded_work_queue_test.cc"],
+    deps = [
+        ":framework",
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":test",
+        ":test_main",
+        "@com_google_absl//absl/memory",
+    ],
 )
 
 # Headers that are not exported as part of ":lib".
@@ -1189,6 +1205,7 @@ cc_library(
         [
             "@nsync//:nsync_cpp",
         ] + [
+            "@com_google_absl//absl/base:log_severity",
             "//third_party/eigen3",
             "//tensorflow/core/platform/default/build_config:minimal",
         ],
@@ -2451,6 +2468,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "lib/strings/proto_serialization.h",
     "lib/strings/scanner.h",
     "lib/wav/wav_io.h",
+    "platform/annotation.h",
     "platform/demangle.h",
     "platform/denormal.h",
     "platform/host_info.h",
@@ -2461,8 +2479,22 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "platform/snappy.h",
     "platform/tensor_coding.h",
     "platform/tracing.h",
+    "platform/unbounded_work_queue.h",
     "util/env_var.h",
 ]
+
+cc_library(
+    name = "annotation",
+    srcs = [],
+    hdrs = [
+        "platform/annotation.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
 
 # Replicated for lib_internal and lib_internal_impl.
 LIB_INTERNAL_DEFINES = (
@@ -2643,6 +2675,7 @@ cc_library(
         ":lib_internal",
         "//tensorflow/core/platform/default/build_config:png",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
         "@zlib_archive//:zlib",
     ],
@@ -2664,6 +2697,7 @@ cc_library(
     deps = [
         ":platform_base",
         "//tensorflow/core/platform/default/build_config:logging",
+        "@com_google_absl//absl/base:log_severity",
     ],
 )
 
@@ -2695,6 +2729,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:jpeg",
         "//tensorflow/core/platform/default/build_config:logging",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2728,6 +2763,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:gif",
         "//tensorflow/core/platform/default/build_config:logging",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2755,6 +2791,7 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform/default/build_config:logging",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
         "@png_archive//:png",
     ],
@@ -3411,6 +3448,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         ":shared_counter",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -3458,7 +3496,7 @@ tf_cuda_library(
         ":protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
-        "//tensorflow/core/profiler/lib:profiler_graph_lib",
+        "//tensorflow/core/profiler/lib:profiler_lib",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -3497,6 +3535,7 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":lib",
         ":protos_all_cc",
+        "@com_google_absl//absl/flags:flag",
         "//tensorflow/core/profiler/internal:profiler_interface",
     ] + tf_additional_device_tracer_deps(),
     alwayslink = True,
@@ -3631,11 +3670,15 @@ tf_cuda_library(
     srcs = [
         "common_runtime/gpu/gpu_id.h",
     ],
-    hdrs = ["common_runtime/gpu/gpu_mem_allocator.h"],
+    hdrs = [
+        "common_runtime/gpu/gpu_host_allocator.h",
+        "common_runtime/gpu/gpu_mem_allocator.h",
+    ],
     features = ["parse_headers"],
     visibility = ["//visibility:public"],
     deps = [
         ":allocator",
+        ":lib",
         ":lib_internal",
         ":stream_executor",
     ],
@@ -4336,7 +4379,7 @@ tf_cc_tests_gpu(
         "common_runtime/ring_reducer_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":all_kernels",
         ":core",
@@ -4365,7 +4408,7 @@ tf_cc_tests_gpu(
         "common_runtime/ring_gatherer_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":all_kernels",
         ":core",
@@ -4394,7 +4437,7 @@ tf_cc_tests_gpu(
         "common_runtime/hierarchical_tree_broadcaster_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":all_kernels",
         ":core",

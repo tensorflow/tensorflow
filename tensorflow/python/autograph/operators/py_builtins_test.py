@@ -155,6 +155,49 @@ class PyBuiltinsTest(test.TestCase):
     self.assertEqual(caller_3(1), 2)
     self.assertEqual(caller_3(2), 3)
 
+  def test_super_with_one_arg_in_original_context(self):
+    test_case_self = self
+
+    class TestBase(object):
+
+      def plus_twenty(self, x):
+        return x + 20
+
+    class TestSubclass(TestBase):
+
+      def plus_twenty(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def one_arg(self):
+        test_base_unbound = py_builtins.super_in_original_context(
+            super, (TestSubclass,), 0)
+        test_base = test_base_unbound.__get__(self, TestSubclass)
+        return test_base.plus_twenty(1)
+
+    tc = TestSubclass()
+    self.assertEqual(tc.one_arg(), 21)
+
+  def test_super_with_two_args_in_original_context(self):
+    test_case_self = self
+
+    class TestBase(object):
+
+      def plus_twenty(self, x):
+        return x + 20
+
+    class TestSubclass(TestBase):
+
+      def plus_twenty(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def two_args(self):
+        test_base = py_builtins.super_in_original_context(
+            super, (TestSubclass, self), 0)
+        return test_base.plus_twenty(1)
+
+    tc = TestSubclass()
+    self.assertEqual(tc.two_args(), 21)
+
 
 if __name__ == '__main__':
   test.main()

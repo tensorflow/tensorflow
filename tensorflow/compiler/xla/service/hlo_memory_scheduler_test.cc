@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -37,6 +38,25 @@ namespace xla {
 namespace {
 
 class HloSchedulingTest : public HloTestBase {};
+
+int64 PeakMemoryUseOfEntryComputation(
+    HloModule* module, LogicalBuffer::SizeFunction size_function) {
+  CHECK(module->has_entry_computation());
+  CHECK(module->has_schedule());
+
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module).ConsumeValueOrDie();
+
+  const HloSchedule& schedule = module->schedule();
+
+  HloComputation* computation = module->entry_computation();
+  const HloInstructionSequence& sequence = schedule.sequence(computation);
+  return HeapSimulator::Run(absl::make_unique<NoFragmentationStatsHeap>(),
+                            *computation, sequence, *alias_analysis,
+                            size_function)
+      .ValueOrDie()
+      .heap_size;
+}
 
 TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
   // Tests scheduling of the following HLO code:
@@ -122,9 +142,13 @@ ENTRY root {
   auto size_fn = [](const BufferValue& buffer) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
+  int64 peak_memory;
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(module.get(), size_fn, ListMemoryScheduler));
+      ScheduleModule(module.get(), size_fn,
+                     ComputationSchedulerToModuleScheduler(ListMemoryScheduler),
+                     &peak_memory));
+  TF_ASSERT_OK(module->set_schedule(schedule));
   // Verify that all instructions are in the sequence.
   const std::vector<HloInstruction*>& sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -145,6 +169,8 @@ ENTRY root {
   SequentialHloOrdering ordering(schedule);
   EXPECT_TRUE(ordering.ExecutesBefore(instructions_by_name.at("d"),
                                       instructions_by_name.at("e")));
+  EXPECT_EQ(PeakMemoryUseOfEntryComputation(module.get(), size_fn),
+            peak_memory);
 }
 
 TEST_F(HloSchedulingTest, HostSendDoneSchedule) {
@@ -170,9 +196,10 @@ ENTRY entry {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloSchedule schedule,
-      ScheduleModule(module.get(), size_fn, ListMemoryScheduler));
+  TF_ASSERT_OK_AND_ASSIGN(HloSchedule schedule,
+                          ScheduleModule(module.get(), size_fn,
+                                         ComputationSchedulerToModuleScheduler(
+                                             ListMemoryScheduler)));
   // Verify that all instructions are in the sequence.
   const std::vector<HloInstruction*>& sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -215,14 +242,14 @@ TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  TF_ASSERT_OK_AND_ASSIGN(HloSchedule schedule,
-                          ScheduleModule(
-                              module.get(),
-                              [](const BufferValue& buffer) {
-                                return ShapeUtil::ByteSizeOf(buffer.shape(),
-                                                             TUPLE_SIZE);
-                              },
-                              ListMemoryScheduler));
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(
+          module.get(),
+          [](const BufferValue& buffer) {
+            return ShapeUtil::ByteSizeOf(buffer.shape(), TUPLE_SIZE);
+          },
+          ComputationSchedulerToModuleScheduler(ListMemoryScheduler)));
 
   // Verify that all instructions are in the sequence.
   EXPECT_EQ(module->entry_computation()->instruction_count(),
@@ -266,13 +293,14 @@ TEST_F(HloSchedulingTest, MultiOutputFusionAccountedCorrectly) {
   auto fusion = computation->CreateFusionInstruction(
       {tuple, mul, add}, HloInstruction::FusionKind::kLoop);
 
-  TF_ASSERT_OK_AND_ASSIGN(HloSchedule schedule,
-                          ScheduleModule(
-                              module.get(),
-                              [](const BufferValue& buffer) {
-                                return ShapeUtil::ByteSizeOf(buffer.shape(), 2);
-                              },
-                              ListMemoryScheduler));
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(
+          module.get(),
+          [](const BufferValue& buffer) {
+            return ShapeUtil::ByteSizeOf(buffer.shape(), 2);
+          },
+          ComputationSchedulerToModuleScheduler(ListMemoryScheduler)));
 
   // Verify that all instructions are in the sequence.
   EXPECT_EQ(module->entry_computation()->instruction_count(),

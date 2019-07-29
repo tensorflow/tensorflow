@@ -300,7 +300,7 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
                                              self._container_strategy())
 
   def _experimental_distribute_datasets_from_function(self, dataset_fn):
-    return input_lib.DistributedDatasetsFromFunction(
+    return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
         self._input_workers,
         [distribute_lib.InputContext()],
@@ -402,6 +402,10 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
   @property
   def experimental_should_init(self):
     return True
+
+  @property
+  def experimental_between_graph(self):
+    return False
 
   @property
   def should_checkpoint(self):

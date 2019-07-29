@@ -147,3 +147,32 @@ func @FuseFullyConnectedAdd(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) 
   // CHECK: %1 = "tfl.pseudo_input"(%arg1) : (tensor<40x37xf32>) -> tensor<40x37xf32>
   // CHECK: %2 = "tfl.fully_connected"(%0, %1, %cst)
 }
+
+// CHECK-LABEL: @NoPadStridedSliceNonNewAxisMask
+func @NoPadStridedSliceNonNewAxisMask(%arg0: tensor<1x2x3x1xf32>) -> tensor<1x2x3x1xf32> {
+  %cst = constant dense<0> : tensor<4xi32>
+  %cst_0 = constant dense<1> : tensor<4xi32>
+  %0 = "tfl.pseudo_input"(%arg0) : (tensor<1x2x3x1xf32>) -> tensor<1x2x3x1xf32>
+  %1 = "tfl.strided_slice"(%0, %cst, %cst, %cst_0) {begin_mask = 15 : i32, ellipsis_mask = 0 : i32, end_mask = 15 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<1x2x3x1xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x3x1xf32>
+  return %1 : tensor<1x2x3x1xf32>
+
+  // CHECK: %cst = constant dense<0> : tensor<4xi32>
+  // CHECK: %cst_0 = constant dense<1> : tensor<4xi32>
+  // CHECK: %0 = "tfl.pseudo_input"(%arg0) : (tensor<1x2x3x1xf32>) -> tensor<1x2x3x1xf32>
+  // CHECK: %1 = "tfl.strided_slice"(%0, %cst, %cst, %cst_0) {begin_mask = 15 : i32, ellipsis_mask = 0 : i32, end_mask = 15 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<1x2x3x1xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x3x1xf32>
+}
+
+// CHECK-LABEL: @PadStridedSliceNewAxisMask
+func @PadStridedSliceNewAxisMask(%arg0: tensor<2x3xf32>) -> tensor<1x2x3x1xf32> {
+  %cst = constant dense<0> : tensor<4xi32>
+  %cst_0 = constant dense<1> : tensor<4xi32>
+  %0 = "tfl.pseudo_input"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  %1 = "tfl.strided_slice"(%0, %cst, %cst, %cst_0) {begin_mask = 6 : i32, ellipsis_mask = 0 : i32, end_mask = 6 : i32, new_axis_mask = 9 : i32, shrink_axis_mask = 0 : i32} : (tensor<2x3xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x3x1xf32>
+  return %1 : tensor<1x2x3x1xf32>
+
+  // CHECK: %cst = constant dense<0> : tensor<4xi32>
+  // CHECK: %cst_0 = constant dense<1> : tensor<4xi32>
+  // CHECK: %0 = "tfl.pseudo_input"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  // CHECK: %1 = "tfl.reshape"(%0) : (tensor<2x3xf32>) -> tensor<1x2x3x1xf32>
+  // CHECK: %2 = "tfl.strided_slice"(%1, %cst, %cst, %cst_0) {begin_mask = 15 : i32, ellipsis_mask = 0 : i32, end_mask = 15 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<1x2x3x1xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x3x1xf32>
+}

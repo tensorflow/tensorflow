@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import argparse
 import collections
+import hashlib
 import math
 import os
 import random
@@ -37,6 +38,14 @@ from tensorflow.contrib.tensorboard.plugins import projector
 data_index = 0
 
 
+def _hash_file(fpath):
+  hasher = hashlib.sha256()
+  with open(fpath, 'rb') as fpath_file:
+    for chunk in iter(lambda: fpath_file.read(65535), b''):
+      hasher.update(chunk)
+  return hasher.hexdigest()
+
+
 def word2vec_basic(log_dir):
   """Example of building, training and visualizing a word2vec model."""
   # Create the directory for TensorBoard variables if there is not.
@@ -44,16 +53,22 @@ def word2vec_basic(log_dir):
     os.makedirs(log_dir)
 
   # Step 1: Download the data.
+  # Note: Source website does not support HTTPS right now.
   url = 'http://mattmahoney.net/dc/'
 
   # pylint: disable=redefined-outer-name
-  def maybe_download(filename, expected_bytes):
+  def maybe_download(filename, expected_bytes, sha256=None):
     """Download a file if not present, and make sure it's the right size."""
     local_filename = os.path.join(gettempdir(), filename)
     if not os.path.exists(local_filename):
       local_filename, _ = urllib.request.urlretrieve(url + filename,
                                                      local_filename)
     statinfo = os.stat(local_filename)
+
+    if sha256 and _hash_file(local_filename) != sha256:
+      raise Exception('Failed to verify ' + local_filename + ' due to hash '
+                      'mismatch. Can you get to it with a browser?')
+
     if statinfo.st_size == expected_bytes:
       print('Found and verified', filename)
     else:
@@ -62,7 +77,10 @@ def word2vec_basic(log_dir):
                       '. Can you get to it with a browser?')
     return local_filename
 
-  filename = maybe_download('text8.zip', 31344016)
+  filename = maybe_download(
+      'text8.zip',
+      31344016,
+      sha256='a6640522afe85d1963ad56c05b0ede0a0c000dddc9671758a6cc09b7a38e5232')
 
   # Read the data into a list of strings.
   def read_data(filename):
@@ -226,7 +244,7 @@ def word2vec_basic(log_dir):
   # Step 5: Begin training.
   num_steps = 100001
 
-  with tf.Session(graph=graph) as session:
+  with tf.compat.v1.Session(graph=graph) as session:
     # Open a writer to write summaries.
     writer = tf.summary.FileWriter(log_dir, session.graph)
 

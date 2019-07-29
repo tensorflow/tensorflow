@@ -19,12 +19,14 @@ limitations under the License.
 
 #include <string.h>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/stream_executor/host/host_platform_id.h"
 #include "tensorflow/stream_executor/host/host_stream.h"
 #include "tensorflow/stream_executor/host/host_timer.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
+#include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
 namespace host {
@@ -161,10 +163,66 @@ bool HostExecutor::AllocateStream(Stream *stream) { return true; }
 void HostExecutor::DeallocateStream(Stream *stream) {}
 
 bool HostExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
+  auto event = std::make_shared<absl::Notification>();
+  AsHostStream(other)->EnqueueTask([event]() { event->Notify(); });
   AsHostStream(dependent)->EnqueueTask(
-      [other]() { SE_CHECK_OK(other->BlockHostUntilDone()); });
-  AsHostStream(dependent)->BlockUntilDone();
+      [event]() { event->WaitForNotification(); });
   return true;
+}
+
+class HostEvent : public internal::EventInterface {
+ public:
+  HostEvent() : notification_(std::make_shared<absl::Notification>()) {}
+
+  std::shared_ptr<absl::Notification> &notification() { return notification_; }
+
+ private:
+  // We use a std::shared_ptr here because the client may delete the HostEvent
+  // object while there are still RecordEvent and WaitForEvent callbacks pending
+  // on a stream.
+  std::shared_ptr<absl::Notification> notification_;
+};
+
+std::unique_ptr<internal::EventInterface>
+HostExecutor::CreateEventImplementation() {
+  return std::unique_ptr<internal::EventInterface>(new HostEvent());
+}
+
+static HostEvent *AsHostEvent(Event *event) {
+  DCHECK(event != nullptr);
+  return static_cast<HostEvent *>(event->implementation());
+}
+
+port::Status HostExecutor::AllocateEvent(Event * /*event*/) {
+  return port::Status::OK();
+}
+
+port::Status HostExecutor::DeallocateEvent(Event * /*event*/) {
+  return port::Status::OK();
+}
+
+port::Status HostExecutor::RecordEvent(Stream *stream, Event *event) {
+  std::shared_ptr<absl::Notification> notification =
+      AsHostEvent(event)->notification();
+  AsHostStream(stream)->EnqueueTask([notification]() {
+    CHECK(!notification->HasBeenNotified());
+    notification->Notify();
+  });
+  return port::Status::OK();
+}
+
+port::Status HostExecutor::WaitForEvent(Stream *stream, Event *event) {
+  std::shared_ptr<absl::Notification> notification =
+      AsHostEvent(event)->notification();
+  AsHostStream(stream)->EnqueueTask(
+      [notification]() { notification->WaitForNotification(); });
+  return port::Status::OK();
+}
+
+Event::Status HostExecutor::PollForEventStatus(Event *event) {
+  absl::Notification &notification = *AsHostEvent(event)->notification();
+  return notification.HasBeenNotified() ? Event::Status::kComplete
+                                        : Event::Status::kPending;
 }
 
 bool HostExecutor::StartTimer(Stream *stream, Timer *timer) {

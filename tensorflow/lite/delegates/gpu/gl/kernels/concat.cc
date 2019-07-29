@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -86,6 +87,7 @@ class AlignedConcatByChannels : public NodeShader {
     *generated_code = {
         /*parameters=*/{{"border", inputs[0]->tensor.shape.c / 4}},
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(source),
@@ -173,6 +175,7 @@ class ConcatByAnyChannel : public NodeShader {
     *generated_code = {
         /*parameters=*/{},
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(output->tensor.shape.w, output->tensor.shape.h, 1),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(code),
@@ -349,7 +352,7 @@ class FlatConcatByHeight : public NodeShader {
                       GeneratedCode* generated_code) const final {
     auto inputs = ctx.graph->FindInputs(ctx.node->id);
     std::string code;
-    std::vector<UniformParameter> params;
+    std::vector<Variable> params;
     for (int i = 0, shift = 0; i < inputs.size();
          shift += inputs[i]->tensor.shape.h, i++) {
       code += "if (";
@@ -372,6 +375,7 @@ class FlatConcatByHeight : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(params),
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(code),
@@ -415,7 +419,7 @@ class FlatConcatByWidth : public NodeShader {
                       GeneratedCode* generated_code) const final {
     auto inputs = ctx.graph->FindInputs(ctx.node->id);
     std::string code;
-    std::vector<UniformParameter> params;
+    std::vector<Variable> params;
     for (int i = 0, shift = 0; i < inputs.size();
          shift += inputs[i]->tensor.shape.w, i++) {
       code += "if (";
@@ -438,6 +442,7 @@ class FlatConcatByWidth : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(params),
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(code),

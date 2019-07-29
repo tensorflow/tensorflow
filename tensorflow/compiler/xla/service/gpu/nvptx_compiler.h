@@ -38,6 +38,17 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Temporarily expose the optimization pipeline for the GPU backend for reuse
+// in the MLIR GPU backend.
+// TODO(b/137624192): Remove once MLIR backend uses tailored optimizations.
+namespace impl {
+
+Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
+                         se::DeviceMemoryAllocator* device_allocator);
+Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
+
+}  // namespace impl
+
 // The GPU compiler generates efficient GPU executables.
 class NVPTXCompiler : public LLVMCompiler {
  public:

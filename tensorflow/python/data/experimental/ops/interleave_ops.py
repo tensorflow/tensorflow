@@ -25,6 +25,7 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import gen_stateless_random_ops
@@ -276,7 +277,7 @@ def choose_from_datasets_v2(datasets, choice_dataset):
       type.
   """
   if not structure.are_compatible(choice_dataset.element_spec,
-                                  structure.TensorStructure(dtypes.int64, [])):
+                                  tensor_spec.TensorSpec([], dtypes.int64)):
     raise TypeError("`choice_dataset` must be a dataset of scalar "
                     "`tf.int64` tensors.")
   return _DirectedInterleaveDataset(choice_dataset, datasets)

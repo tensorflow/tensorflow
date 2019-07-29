@@ -26,11 +26,11 @@ namespace tflite {
 // Error reporter that reports errors via the module's emitError.
 class EmitErrorReporter : public ErrorReporter {
  public:
-  explicit EmitErrorReporter(mlir::Module module) : module_(module) {}
+  explicit EmitErrorReporter(mlir::ModuleOp module) : module_(module) {}
   int Report(const char* format, va_list args) override;
 
  private:
-  mlir::Module module_;
+  mlir::ModuleOp module_;
 };
 
 }  // namespace tflite

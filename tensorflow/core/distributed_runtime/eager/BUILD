@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -62,6 +63,7 @@ cc_library(
         "eager_service_impl.h",
     ],
     deps = [
+        ":remote_mgr",
         ":remote_tensor_handle",
         "//tensorflow:grpc++",
         "//tensorflow/c:c_api_internal",
@@ -92,6 +94,7 @@ tf_cc_test(
     srcs = ["eager_service_impl_test.cc"],
     deps = [
         ":eager_service_impl",
+        ":remote_mgr",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/core:eager_service_proto_cc",
@@ -110,6 +113,24 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "remote_mgr",
+    srcs = [
+        "remote_mgr.cc",
+    ],
+    hdrs = [
+        "remote_mgr.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":remote_tensor_handle",
+        "//tensorflow/core:eager_service_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
+    ],
+)
+
+cc_library(
     name = "remote_tensor_handle_data",
     srcs = ["remote_tensor_handle_data.cc"],
     hdrs = ["remote_tensor_handle_data.h"],
@@ -118,5 +139,26 @@ cc_library(
         ":eager_client",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:tensor_handle_data",
+    ],
+)
+
+cc_library(
+    name = "remote_copy_node",
+    srcs = [
+        "remote_copy_node.cc",
+    ],
+    hdrs = [
+        "remote_copy_node.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":remote_mgr",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:attr_builder",
+        "//tensorflow/core/common_runtime/eager:eager_executor",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
     ],
 )

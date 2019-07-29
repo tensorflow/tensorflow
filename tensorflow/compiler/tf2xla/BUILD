@@ -737,12 +737,16 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":resource_operation_table",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -753,6 +757,7 @@ tf_cuda_cc_test(
     deps = [
         ":resource_util",
         "//tensorflow/cc:scope",
+        "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",

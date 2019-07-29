@@ -29,6 +29,7 @@ from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework.auto_control_deps import AutomaticControlDependencies
@@ -193,6 +194,10 @@ class FuncGraph(ops.Graph):
     self._watched_variables = weakref.WeakSet()
     self.outer_graph = ops.get_default_graph()
     self.captures = py_collections.OrderedDict()
+    # If not None, records the names of output args of this function. Used to
+    # preserve the output names in the signature of a serialized+deserialized
+    # function. Private at the moment mostly because it's often out of date.
+    self._output_names = None
     self.deferred_captures = py_collections.OrderedDict()
     # Inherit capture-by-value from outer graph.
     if capture_by_value is not None:
@@ -373,6 +378,10 @@ class FuncGraph(ops.Graph):
       # optimizers.
       old_graph_key = self._graph_key
       self._graph_key = graph._graph_key
+      # Inherit the auto_cast_variable_read_dtype, since this should not change
+      # inside a function.
+      old_auto_cast_var_read_dtype = self._auto_cast_variable_read_dtype
+      self._auto_cast_variable_read_dtype = graph._auto_cast_variable_read_dtype
       # pylint: enable=protected-access
 
       with outer_cm as g:
@@ -383,6 +392,7 @@ class FuncGraph(ops.Graph):
           self._device_function_stack = old_device_stack
           self._variable_creator_stack = old_creator_stack
           self._graph_key = old_graph_key
+          self._auto_cast_variable_read_dtype = old_auto_cast_var_read_dtype
     return inner_cm()
 
   @property
@@ -537,6 +547,11 @@ class FuncGraph(ops.Graph):
 
     Returns:
       Tensor from this FuncGraph.
+
+    Raises:
+      InaccessibleTensorError: if any tensors are accessed in a manner that
+      bypasses the mechanisms required for the data dependencies to be correctly
+      wired.
     """
     # Note: _forward_func_graph is currently only set when building the gradient
     # graph graph of a defun call. If the backwards graph tries to capture
@@ -569,14 +584,11 @@ class FuncGraph(ops.Graph):
       inner_graph = tensor.graph
       while inner_graph is not None and isinstance(inner_graph, FuncGraph):
         if inner_graph is self:
-          raise ValueError(
-              "Trying to capture a tensor from an inner function. This can be "
-              "caused by accessing a tensor defined inside a loop or "
-              "conditional body, or a subfunction, from a calling function, "
-              "without going through the proper return value mechanism. "
-              "Consider using TensorFlow mechanisms such as TensorArrays "
-              "to return tensors from inner functions or loop / conditional "
-              "bodies. Tensor: %s; tensor graph: %s; this graph: %s"
+          raise errors.InaccessibleTensorError(
+              "The tensor '%s' cannot be accessed here: it is defined"
+              " in another function or code block. Use return values,"
+              " explicit Python locals or TensorFlow collections to access"
+              " it. Defined in: %s; accessed from: %s.\n"
               % (tensor, tensor.graph, self))
         inner_graph = inner_graph.outer_graph
       return self._capture_helper(tensor, name)

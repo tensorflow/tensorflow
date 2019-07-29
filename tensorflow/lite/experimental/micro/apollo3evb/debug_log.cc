@@ -36,11 +36,16 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/micro/debug_log.h"
 
-#include <cstdio>
-
 // These are headers from Ambiq's Apollo3 SDK.
 #include "am_bsp.h"         // NOLINT
-#include "am_mcu_apollo.h"  // NOLINT
 #include "am_util.h"        // NOLINT
 
-extern "C" void DebugLog(const char* s) { am_util_stdio_printf("%s", s); }
+extern "C" void DebugLog(const char* s) {
+  static bool is_initialized = false;
+  if (!is_initialized) {
+    am_bsp_itm_printf_enable();
+    is_initialized = true;
+  }
+
+  am_util_stdio_printf("%s", s);
+}

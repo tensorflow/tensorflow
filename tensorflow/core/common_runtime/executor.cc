@@ -1272,7 +1272,6 @@ class ExecutorState {
   std::unique_ptr<DeviceBase> user_device_;
   Executor::Args::Runner runner_;
   bool sync_on_finish_;
-  const bool trace_using_annotations_;
 
   // Owned.
 
@@ -1405,7 +1404,6 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       cancellation_manager_(args.cancellation_manager),
       runner_(args.runner),
       sync_on_finish_(args.sync_on_finish),
-      trace_using_annotations_(impl->params_.device->TraceUsingAnnotations()),
       num_outstanding_ops_(0) {
   if (args.user_intra_op_threadpool != nullptr) {
     Device* device = impl_->params_.device;
@@ -1600,8 +1598,7 @@ struct ExecutorState::AsyncState {
 // Returns true if `item` might be traced by the given trace and event
 // collectors. Returns false only if `item` definitely will not be traced.
 bool MightTrace(const NodeItem& item,
-                const tracing::EventCollector* event_collector,
-                bool using_annotations) {
+                const tracing::EventCollector* event_collector) {
   // Tracing will only be enabled if either `event_collector` is non null,
   // or `trace_collector` is non-null and enabled for this particular kernel.
   // Although `profiler::TraceMe`, `tracing::ScopedAnnotation`, and
@@ -1612,12 +1609,9 @@ bool MightTrace(const NodeItem& item,
   if (event_collector != nullptr) {
     return true;
   }
-  auto* trace_collector = tracing::GetTraceCollector();
-  if (trace_collector) {
-    if (using_annotations && trace_collector->IsEnabledForAnnotations()) {
-      return true;
-    }
-  }
+
+  if (tracing::ScopedAnnotation::IsEnabled()) return true;
+
   return profiler::TraceMeRecorder::Active(
       profiler::GetTFTraceMeLevel(item.kernel->IsExpensive()));
 }
@@ -1816,20 +1810,15 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           if (completed) ScheduleFinish();
         };
         nodestats::SetOpStart(stats);
-        if (TF_PREDICT_FALSE(
-                MightTrace(item, event_collector_, trace_using_annotations_))) {
+        {
           profiler::TraceMe activity(
               [&] {
                 return strings::StrCat(
                     op_kernel->name(), ":", op_kernel->type_string(),
-                    "#id=", step_id_, ",step_container_name=",
-                    step_container_ == nullptr ? "n/a"
-                                               : step_container_->name(),
+                    "#id=", step_container_ ? step_container_->step_id() : 0,
                     ",device=", device->name(), ",async=true#");
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
-          device->ComputeAsync(async, &state->ctx, done);
-        } else {
           device->ComputeAsync(async, &state->ctx, done);
         }
       } else {
@@ -1837,31 +1826,21 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         OpKernelContext ctx(&params, item.num_outputs);
         nodestats::SetOpStart(stats);
 
-        if (TF_PREDICT_FALSE(
-                MightTrace(item, event_collector_, trace_using_annotations_))) {
+        if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
           const string& op_name = op_kernel->name();
           const string kernel_label = strings::StrCat(
-              op_name, ":", op_kernel->type_string(), "#id=", step_id_,
-              ",step_container_name=",
-              step_container_ == nullptr ? "n/a" : step_container_->name(),
+              op_name, ":", op_kernel->type_string(),
+              "#id=", step_container_ ? step_container_->step_id() : 0,
               ",device=", device->name(), ",async=false#");
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
-          if (trace_using_annotations_) {
-            // 'TraceMe' will trace the OpKernel scheduling time.
-            profiler::TraceMe activity(absl::string_view(kernel_label),
-                                       profiler::TraceMeLevel::kInfo);
-            // 'ScopedAnnotation' will trace the OpKernel execution time.
-            tracing::ScopedAnnotation annotation(kernel_label);
-            device->Compute(op_kernel, &ctx);
-          } else {
-            // Use the cheaper `TraceMe` to trace just the OpKernel
-            // execution.
-            profiler::TraceMe activity(
-                absl::string_view(kernel_label),
-                profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
-            device->Compute(op_kernel, &ctx);
-          }
+          // 'TraceMe' will trace the OpKernel scheduling time.
+          profiler::TraceMe activity(
+              absl::string_view(kernel_label),
+              profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
+          // 'ScopedAnnotation' will trace the OpKernel execution time.
+          tracing::ScopedAnnotation annotation(kernel_label);
+          device->Compute(op_kernel, &ctx);
         } else {
           // In the common case, avoid creating any tracing objects.
           if (op_kernel->IsExpensive()) {

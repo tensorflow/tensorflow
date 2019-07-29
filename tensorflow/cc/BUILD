@@ -631,7 +631,6 @@ tf_gen_op_wrappers_cc(
         "tpu_replication_ops",
     ],
     pkg = "//tensorflow/core",
-    visibility = ["//tensorflow:internal"],
 )
 
 cc_library(

@@ -64,7 +64,6 @@ from tensorflow.python.ops import map_fn as map_fn_lib
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
@@ -775,7 +774,7 @@ def variable(value, dtype=None, name=None, constraint=None):
         indices=indices, values=sparse_coo.data, dense_shape=sparse_coo.shape)
     v._keras_shape = sparse_coo.shape
     return v
-  v = resource_variable_ops.ResourceVariable(
+  v = variables_module.Variable(
       value,
       dtype=dtypes_module.as_dtype(dtype),
       name=name,
@@ -5429,9 +5428,9 @@ def ctc_label_dense_to_sparse(labels, label_lengths):
   num_batches_tns = array_ops.stack([label_shape[0]])
   max_num_labels_tns = array_ops.stack([label_shape[1]])
 
-  def range_less_than(_, current_input):
+  def range_less_than(old_input, current_input):
     return array_ops.expand_dims(
-        math_ops.range(label_shape[1]), 0) < array_ops.fill(
+        math_ops.range(array_ops.shape(old_input)[1]), 0) < array_ops.fill(
             max_num_labels_tns, current_input)
 
   init = math_ops.cast(
