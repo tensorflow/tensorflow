@@ -143,6 +143,7 @@ class Model(network.Network):
 
   def __init__(self, *args, **kwargs):
     super(Model, self).__init__(*args, **kwargs)
+    _keras_api_gauge.get_cell('model').set(True)
     # initializing _distribution_strategy here since it is possible to call
     # predict on a model without compiling it.
     self._distribution_strategy = None
@@ -242,7 +243,6 @@ class Model(network.Network):
         ValueError: In case of invalid arguments for
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
-    _keras_api_gauge.get_cell('compile').set(True)
     self._run_eagerly = kwargs.pop('run_eagerly', None)
     self._run_distributed = kwargs.pop('run_distributed', False)
 
@@ -323,6 +323,7 @@ class Model(network.Network):
       # time the model gets called on training data.
       return
     self._is_compiled = True
+    _keras_api_gauge.get_cell('compile').set(True)
 
     # Prepare list of loss functions, same size of model outputs.
     self.loss_functions = training_utils.prepare_loss_functions(
@@ -705,7 +706,7 @@ class Model(network.Network):
         ValueError: In case of mismatch between the provided input data
             and what the model expects.
     """
-    _keras_api_gauge.get_cell('train').set(True)
+    _keras_api_gauge.get_cell('fit').set(True)
     # Legacy support
     if 'nb_epoch' in kwargs:
       logging.warning(
@@ -1279,7 +1280,7 @@ class Model(network.Network):
     if self._distribution_strategy:
       raise NotImplementedError('`fit_generator` is not supported for '
                                 'models compiled with tf.distribute.Strategy.')
-    _keras_api_gauge.get_cell('train').set(True)
+    _keras_api_gauge.get_cell('fit_generator').set(True)
     self._check_call_args('fit_generator')
     return training_generator.fit_generator(
         self,
@@ -1353,8 +1354,9 @@ class Model(network.Network):
     if self._distribution_strategy:
       raise NotImplementedError('`evaluate_generator` is not supported for '
                                 'models compiled with tf.distribute.Strategy.')
-    _keras_api_gauge.get_cell('evaluate').set(True)
+    _keras_api_gauge.get_cell('evaluate_generator').set(True)
     self._check_call_args('evaluate_generator')
+
     return training_generator.evaluate_generator(
         self,
         generator,
@@ -1411,8 +1413,7 @@ class Model(network.Network):
     if self._distribution_strategy:
       raise NotImplementedError('`predict_generator` is not supported for '
                                 'models compiled with tf.distribute.Strategy.')
-    _keras_api_gauge.get_cell('predict').set(True)
-    self._check_call_args('predict_generator')
+    _keras_api_gauge.get_cell('predict_generator').set(True)
     return training_generator.predict_generator(
         self,
         generator,
