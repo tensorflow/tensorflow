@@ -159,6 +159,37 @@ def _SumGrad(op, grad):
         else:
           input_shape = array_ops.shape(op.inputs[0])
         return [array_ops.tile(grad, input_shape), None]
+      elif None not in input_0_shape and not context.executing_eagerly():
+        # The shape and reduction indices are statically known, so we use a
+        # graph-level cache to avoid recomputing `reduced_shape()` for each
+        # invocation.
+        graph = ops.get_default_graph()
+
+        # Canonicalize `axes` to be a tuple of indices. The incoming
+        # value may be a scalar or a vector, and may include negative indices.
+        axes = tuple(axes.reshape(-1))
+
+        try:
+          output_shape_kept_dims, tile_scaling = graph._reduced_shape_cache[  # pylint: disable=protected-access
+              (input_0_shape, axes)]
+        except KeyError:
+
+          # Compute and cache `output_shape_kept_dims` and `tile_scaling`.
+          def EvaluateAsTuple(t):
+            value = c_api.TF_TryEvaluateConstant_wrapper(
+                t.graph._c_graph, t._as_tf_output())  # pylint: disable=protected-access
+            assert value is not None
+            return tuple(value)
+
+          output_shape_kept_dims = EvaluateAsTuple(
+              math_ops.reduced_shape(input_0_shape, axes))
+          tile_scaling = EvaluateAsTuple(
+              _safe_shape_div(input_0_shape, output_shape_kept_dims))
+          graph._reduced_shape_cache[(input_0_shape, axes)] = (  # pylint:disable=protected-access
+              output_shape_kept_dims, tile_scaling)
+
+        grad = array_ops.reshape(grad, output_shape_kept_dims)
+        return [array_ops.tile(grad, tile_scaling), None]
 
   input_shape = array_ops.shape(op.inputs[0])
   # TODO(apassos) remove this once device placement for eager ops makes more
