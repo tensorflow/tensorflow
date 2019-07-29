@@ -986,7 +986,7 @@ void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
     for (int64 i = 0; i < element_count; i++) {
       if (*data_index >= limit) {
         // If not enough elements has been printed, append "...".
-        if (dim_index != 0 && i < element_count) {
+        if (dim_index != 0) {
           strings::StrAppend(result, "...");
         }
         return;
