@@ -241,6 +241,15 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       return static_cast<double>(n) * ratio_numerator_ / ratio_denominator_;
     }
 
+    bool IsStateful() const override {
+      for (const auto& captured_func : captured_funcs_) {
+        if (captured_func->IsStateful()) {
+          return true;
+        }
+      }
+      return input_->IsStateful();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

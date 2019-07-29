@@ -123,6 +123,9 @@ LogicalResult Verify(GraphOp graph) {
   for (Operation &op : graph.GetBody()) {
     if (op.getDialect() != executorDialect)
       return op.emitOpError() << "unallowed inside a tf_executor.graph region";
+    if (isa<GraphOp>(op))
+      return op.emitOpError()
+             << "unallowed directly inside another tf_executor.graph";
   }
 
   Operation &fetch = graph.GetBody().back();
@@ -281,8 +284,7 @@ ParseResult ParseIslandOp(OpAsmParser *parser, OperationState *result) {
   if (parser->parseOperandList(op_infos, OpAsmParser::Delimiter::OptionalParen))
     return failure();
   if (!op_infos.empty()) {
-    SmallVector<Type, 2> types;
-    types.push_back(control_type);
+    SmallVector<Type, 2> types(op_infos.size(), control_type);
     parser->resolveOperands(op_infos, types, loc, result->operands);
   }
 

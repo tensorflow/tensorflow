@@ -184,10 +184,10 @@ class MicroBenchmarks(test.Benchmark):
     ctx = context.context()
     if device == GPU:
       # Warmup the GPU
-      ops.EagerTensor(value, context=ctx, device=device)
+      ops.EagerTensor(value, device=device)
 
     def func():
-      ops.EagerTensor(value, context=ctx, device=device, dtype=dtype)
+      ops.EagerTensor(value, device=device, dtype=dtype)
 
     self._run(func, 30000)
 

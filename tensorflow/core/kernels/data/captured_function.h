@@ -204,6 +204,9 @@ class CapturedFunction {
                      std::unique_ptr<InstantiatedCapturedFunction>*
                          instantiated_captured_function);
 
+  // Determines whether the captured function is stateful.
+  bool IsStateful() const;
+
   // Returns the additional captured inputs that will be passed to the function.
   const std::vector<Tensor>& captured_inputs() const {
     return captured_inputs_;

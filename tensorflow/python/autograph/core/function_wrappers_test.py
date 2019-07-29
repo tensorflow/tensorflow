@@ -12,25 +12,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for function_wrapping module."""
+"""Tests for function_wrappers module."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph.core import function_wrapping
+from tensorflow.python.autograph.core import function_wrappers
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import test_util
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class FunctionWrappingTest(test.TestCase):
+class FunctionWrappersTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
-  def test_function_scope_name(self):
-    with function_wrapping.function_scope('test_name'):
+  def test_name_scope(self):
+    if context.executing_eagerly():
+      self.skipTest('Tensor names are disabled in eager')
+
+    with function_wrappers.FunctionScope(
+        True, 'test_name', False):
       t = constant_op.constant(1)
     self.assertIn('test_name', t.name)
+
+  def test_auto_cotrol_deps(self):
+    v = variables.Variable(1)
+    with function_wrappers.FunctionScope(False, None, True) as scope:
+      v.assign(2)
+      op = scope.mark_return_value(constant_op.constant(1))
+    self.evaluate(op)
+    self.assertEqual(self.evaluate(v.read_value()), 2)
+
+  def test_all_disabled(self):
+    with function_wrappers.FunctionScope(False, None, False):
+      t = constant_op.constant(1)
+    self.assertEqual(self.evaluate(t), 1)
 
 if __name__ == '__main__':
   test.main()

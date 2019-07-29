@@ -525,7 +525,7 @@ class Tensor(_TensorLike):
       self._disallow_when_autograph_disabled(
           "using a `tf.Tensor` as a Python `bool`")
     elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
-      self._disallow_when_autograph_disabled(
+      self._disallow_when_autograph_enabled(
           "using a `tf.Tensor` as a Python `bool`")
     else:
       # Default: V1-style Graph execution.
@@ -533,7 +533,7 @@ class Tensor(_TensorLike):
 
   def _disallow_iteration(self):
     if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
-      self._disallow_when_autograph_enabled("iterating over `tf.Tensor`")
+      self._disallow_when_autograph_disabled("iterating over `tf.Tensor`")
     elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
       self._disallow_when_autograph_enabled("iterating over `tf.Tensor`")
     else:
@@ -921,7 +921,7 @@ class _EagerTensorBase(Tensor):
     """
     raise NotImplementedError()
 
-  def _copy_to_device(self, context, device):  # pylint: disable=redefined-outer-name
+  def _copy_to_device(self, device_name):  # pylint: disable=redefined-outer-name
     raise NotImplementedError()
 
   @staticmethod
@@ -930,7 +930,6 @@ class _EagerTensorBase(Tensor):
 
   def _copy_nograd(self, ctx=None, device_name=None):
     """Copies tensor to dest device, but doesn't record the operation."""
-    # pylint: disable=protected-access
     # Creates a new tensor on the dest device.
     if ctx is None:
       ctx = context.context()
@@ -939,7 +938,7 @@ class _EagerTensorBase(Tensor):
     # pylint: disable=protected-access
     try:
       ctx.ensure_initialized()
-      new_tensor = self._copy_to_device(context=ctx._handle, device=device_name)
+      new_tensor = self._copy_to_device(device_name)
     except core._NotOkStatusException as e:
       six.raise_from(core._status_to_exception(e.code, e.message), None)
     return new_tensor
@@ -2069,8 +2068,6 @@ class Operation(object):
     """The list of `Tensor` objects representing the outputs of this op."""
     return self._outputs
 
-# pylint: disable=protected-access
-
   class _InputList(object):
     """Immutable input list wrapper."""
 
@@ -2091,9 +2088,6 @@ class Operation(object):
 
     def __getitem__(self, i):
       return self._inputs[i]
-
-
-# pylint: enable=protected-access
 
   @property
   def inputs(self):
@@ -2845,6 +2839,10 @@ class Graph(object):
     self._add_control_dependencies = False
     # Cache for OpDef protobufs retrieved via the C API.
     self._op_def_cache = {}
+    # Cache for constant results of `broadcast_gradient_args()`. The keys are
+    # tuples of fully-defined shapes: (x_shape_tuple, y_shape_tuple), and the
+    # values are tuples of reduction indices: (rx, ry).
+    self._bcast_grad_args_cache = {}
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
@@ -5875,8 +5873,9 @@ def _get_graph_from_inputs(op_input_list, graph=None):
     The appropriate graph to use for the given inputs.
 
   """
-  if get_default_graph().building_function:
-    return get_default_graph()
+  current_default_graph = get_default_graph()
+  if current_default_graph.building_function:
+    return current_default_graph
 
   op_input_list = tuple(op_input_list)  # Handle generators correctly
   if graph and not isinstance(graph, Graph):
@@ -5909,7 +5908,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
         raise ValueError("%s is not from the passed-in graph." % graph_element)
 
   # 2. If all else fails, we use the default graph, which is always there.
-  return graph or get_default_graph()
+  return graph or current_default_graph
 
 
 @tf_export(v1=["GraphKeys"])
@@ -6254,15 +6253,21 @@ class name_scope(object):  # pylint: disable=invalid-name
         raise ValueError(
             "At least one of name (%s) and default_name (%s) must be provided."
             % (self._name, self._default_name))
-      if self._values is None:
-        self._values = []
-      if self._values:
-        g = _get_graph_from_inputs(self._values)
-        self._g_manager = g.as_default()
-        self._g_manager.__enter__()
+
+      g = get_default_graph()
+      if self._values and not g.building_function:
+        # Specialize based on the knowledge that `_get_graph_from_inputs()`
+        # ignores `inputs` when building a function.
+        g_from_inputs = _get_graph_from_inputs(self._values)
+        if g_from_inputs is not g:
+          g = g_from_inputs
+          self._g_manager = g.as_default()
+          self._g_manager.__enter__()
+        else:
+          self._g_manager = None
       else:
-        g = get_default_graph()
         self._g_manager = None
+
       try:
         self._name_scope = g.name_scope(self._name)
         return self._name_scope.__enter__()

@@ -78,7 +78,8 @@ def _make_execution_function(model, mode):
 
   def execution_function(input_fn):
     # `numpy` translates Tensors to values in Eager mode.
-    return [out.numpy() for out in distributed_function(input_fn)]
+    return [_non_none_constant_value(out)
+            for out in distributed_function(input_fn)]
 
   return execution_function
 

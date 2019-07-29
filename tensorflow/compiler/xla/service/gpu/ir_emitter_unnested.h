@@ -67,29 +67,21 @@ class IrEmitterUnnested : public IrEmitter {
    public:
     explicit KernelCodegenInfo(llvm_ir::KernelMappingScheme* mapping_scheme)
         : mapping_scheme_(mapping_scheme),
-          tiled_param_info_(nullptr),
           lane_id_(nullptr),
           index_ty_(nullptr) {}
     virtual ~KernelCodegenInfo() {}
 
     void SetLaneId(llvm::Value* v) { lane_id_ = v; }
     void SetIndexType(llvm::Type* t) { index_ty_ = t; }
-    void SetTiledParamInfo(llvm_ir::TiledParameterInfo* tiled_param_info) {
-      tiled_param_info_ = tiled_param_info;
-    }
 
     llvm::Value* GetLaneId() const { return lane_id_; }
     llvm_ir::KernelMappingScheme* GetKernelMappingScheme() const {
       return mapping_scheme_;
     }
-    llvm_ir::TiledParameterInfo* GetTiledParameterInfo() const {
-      return tiled_param_info_;
-    }
     llvm::Type* GetIndexType() const { return index_ty_; }
 
    protected:
     llvm_ir::KernelMappingScheme* mapping_scheme_;
-    llvm_ir::TiledParameterInfo* tiled_param_info_;
     llvm::Value* lane_id_;
     llvm::Type* index_ty_;
   };
@@ -265,18 +257,20 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.
-  void EmitTileElementForCopy(HloInstruction* hlo,
-                              const llvm_ir::IrArray::Index& index,
-                              const KernelCodegenInfo* kernel_info,
-                              llvm::Value* y_loc, llvm::Value* x_loc,
-                              int64 x_iter_num);
+  void EmitTileElementForCopy(
+      HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
+      const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
+      llvm::Value* x_loc, int64 x_iter_num,
+      absl::Span<llvm::Value* const> param_shmem_buffers);
+
   // Emits code to process a tensor element in a tile for the given kLoop fusion
   // HLO containing parameters that are 0-2-1 transpose of its outputs.
-  void EmitTileElementForFusion(HloInstruction* hlo,
-                                const llvm_ir::IrArray::Index& index,
-                                const KernelCodegenInfo* kernel_info,
-                                llvm::Value* y_loc, llvm::Value* x_loc,
-                                int64 x_iter_num);
+  void EmitTileElementForFusion(
+      HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
+      const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
+      llvm::Value* x_loc, int64 x_iter_num,
+      absl::Span<llvm::Value* const> param_shmem_buffers);
+
   // Emits code to process a tensor element in a tile for the given input hlo
   // that is either a unnested kReduce or a kInput fusion.
   void EmitTileElementForReduction(HloInstruction* unnested_hlo,

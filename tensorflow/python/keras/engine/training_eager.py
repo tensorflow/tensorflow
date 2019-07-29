@@ -25,7 +25,6 @@ import numpy as np
 
 from tensorflow.python.eager.backprop import GradientTape
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
@@ -247,14 +246,14 @@ def _process_single_batch(model,
       if trainable_weights:
         # TODO(tanzheny) b/132690565: Provide mechanism for user to override
         # model.train_on_batch.
-        if isinstance(model.optimizer,
-                      list) and not hasattr(model, '_backwards'):
-          raise ValueError('The `optimizer` in `compile` should be a single '
-                           'optimizer.')
-        grads = tape.gradient(scaled_total_loss, trainable_weights)
-        if isinstance(model.optimizer, loss_scale_optimizer.LossScaleOptimizer):
-          grads = model.optimizer.get_unscaled_gradients(grads)
-        model.optimizer.apply_gradients(zip(grads, trainable_weights))
+        if hasattr(model, '_backwards'):
+          model._backwards(tape, scaled_total_loss)
+        else:
+          grads = tape.gradient(scaled_total_loss, trainable_weights)
+          if isinstance(model.optimizer,
+                        loss_scale_optimizer.LossScaleOptimizer):
+            grads = model.optimizer.get_unscaled_gradients(grads)
+          model.optimizer.apply_gradients(zip(grads, trainable_weights))
       else:
         logging.warning('The list of trainable weights is empty. Make sure that'
                         ' you are not setting model.trainable to False before '
@@ -282,16 +281,9 @@ def train_on_batch(model,
       total loss and the loss associated with each output.
   """
   if isinstance(inputs, collections.Sequence):
-    if len(inputs) and tensor_util.is_tensor(inputs[0]):
-      inputs = training_utils.cast_if_floating_to_model_input_dtypes(inputs,
-                                                                     model)
-      if targets:
-        targets = training_utils.cast_if_floating_dtype(targets)
-    else:
-      inputs = training_utils.cast_if_floating_to_model_input_dtypes(
-          inputs, model)
-      if targets:
-        targets = training_utils.cast_if_floating_dtype(targets)
+    inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
+    if targets:
+      targets = training_utils.cast_if_floating_dtype(targets)
   if sample_weights:
     sample_weights = [
         training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
@@ -335,16 +327,9 @@ def test_on_batch(model,
       total loss, loss and metrics associated with each output.
   """
   if isinstance(inputs, collections.Sequence):
-    if len(inputs) and tensor_util.is_tensor(inputs[0]):
-      inputs = training_utils.cast_if_floating_to_model_input_dtypes(inputs,
-                                                                     model)
-      if targets:
-        targets = training_utils.cast_if_floating_dtype(targets)
-    else:
-      inputs = training_utils.cast_if_floating_to_model_input_dtypes(
-          inputs, model)
-      if targets:
-        targets = training_utils.cast_if_floating_dtype(targets)
+    inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
+    if targets:
+      targets = training_utils.cast_if_floating_dtype(targets)
   if sample_weights:
     sample_weights = [
         training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))

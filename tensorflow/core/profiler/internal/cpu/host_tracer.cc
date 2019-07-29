@@ -141,7 +141,7 @@ Status HostTracer::CollectData(RunMetadata* run_metadata) {
 }  // namespace
 
 // Not in anonymous namespace for testing purposes.
-std::unique_ptr<ProfilerInterface> CreateHostTracer(const ProfilerContext*) {
+std::unique_ptr<ProfilerInterface> CreateHostTracer() {
   int host_trace_level = 2;
   return absl::make_unique<HostTracer>(host_trace_level);
 }

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
+#include "tensorflow/lite/experimental/ruy/side_pair.h"
 #include "tensorflow/lite/experimental/ruy/size_util.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
 #include "tensorflow/lite/experimental/ruy/tune.h"
@@ -76,20 +77,16 @@ void RunKernelTyped(Tuning tuning, const PackedMatrix<LhsScalar>& lhs,
 // Main entry point for kernels.
 template <Path ThePath, typename LhsScalar, typename RhsScalar,
           typename DstScalar, typename Spec>
-void RunKernel(Tuning tuning, const PMatrix& lhs, const PMatrix& rhs,
-               void* spec, int start_row, int start_col, int end_row,
-               int end_col, DMatrix* dst) {
+void RunKernel(Tuning tuning, const SidePair<PMatrix>& src, void* spec,
+               const SidePair<int>& start, const SidePair<int>& end,
+               DMatrix* dst) {
   Matrix<DstScalar> mdst = ToMatrix<DstScalar>(*dst);
   RunKernelTyped<ThePath, LhsScalar, RhsScalar, DstScalar, Spec>(
-      tuning, ToPackedMatrix<LhsScalar>(lhs), ToPackedMatrix<RhsScalar>(rhs),
-      *static_cast<const Spec*>(spec), start_row, start_col, end_row, end_col,
-      &mdst);
+      tuning, ToPackedMatrix<LhsScalar>(src[Side::kLhs]),
+      ToPackedMatrix<RhsScalar>(src[Side::kRhs]),
+      *static_cast<const Spec*>(spec), start[Side::kLhs], start[Side::kRhs],
+      end[Side::kLhs], end[Side::kRhs], &mdst);
 }
-
-// The signature of RunKernel is the same, regardless of template parameters.
-using RunKernelFn =
-    decltype(RunKernel<Path::kStandardCpp, std::int8_t, std::int8_t,
-                       std::int8_t, BasicSpec<std::int32_t, std::int8_t>>);
 
 // Copied from TF Lite code.
 inline std::int32_t MultiplyByQuantizedMultiplier(

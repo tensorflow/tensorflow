@@ -42,17 +42,12 @@ namespace tensorflow {
 
 using llvm::ArrayRef;
 using llvm::SmallVector;
-using mlir::Attribute;
-using mlir::BoolAttr;
 using mlir::Builder;
 using mlir::DenseFPElementsAttr;
 using mlir::DenseIntElementsAttr;
 using mlir::ElementsAttr;
-using mlir::FloatAttr;
-using mlir::IntegerAttr;
 using mlir::OpaqueElementsAttr;
 using mlir::ShapedType;
-using mlir::SplatElementsAttr;
 using mlir::Type;
 using tensorflow::errors::InvalidArgument;
 
@@ -77,39 +72,25 @@ Status ConvertToMlirShape(const TensorShapeProto& input_shape,
   return Status::OK();
 }
 
-// Converts a TensorFlow tensor to an MLIR opaque elements attribute.
-StatusOr<ElementsAttr> ConvertToOpaqueElementsAttr(const Tensor& input_tensor,
-                                                   ShapedType type,
-                                                   Builder* builder) {
+static TensorProto ConvertToProto(const Tensor& input_tensor,
+                                  bool use_tensor_content = true) {
   TensorProto tensor_proto;
-  input_tensor.AsProtoTensorContent(&tensor_proto);
-  // TODO(shpeisman): restructure code to reuse dialect pointer across calls.
-  auto* dialect = builder->getContext()->getRegisteredDialect("tf");
-  return builder->getOpaqueElementsAttr(
-      dialect, type, mangling_util::MangleTensor(tensor_proto));
+  // Using tensor content (mostly*) reduces serialization overhead during RPC
+  // calls, but is less human reader friendly. People reading protobufs are less
+  // frequent than serialization, so default to using tensor content
+  // representation.
+  // * For scalars and short strings it may be marginally worse and a more
+  //   intelligent decision could be made by caller.
+  if (use_tensor_content)
+    input_tensor.AsProtoTensorContent(&tensor_proto);
+  else
+    input_tensor.AsProtoField(&tensor_proto);
+  return tensor_proto;
 }
 
-// Template predicate that provides a constant member `value` equal to true if
-// a sequence of `From` values can be copied wholesale to locations for `To`
-// values.
-
-// Primary template declaration
-template <typename From, typename To, typename Enable = void>
-struct IsBatchCopyable;
-
-// Partial template specialization: allow wholesale copy for the same type
-template <typename Self>
-struct IsBatchCopyable<Self, Self> : std::true_type {};
-
-// SFINAE: integral types depend on the bitwidth
-template <typename From, typename To>
-struct IsBatchCopyable<
-    From, To,
-    typename std::enable_if<std::is_integral<From>::value &&
-                            std::is_integral<To>::value>::type> {
-  static constexpr bool value =
-      std::numeric_limits<From>::digits == std::numeric_limits<To>::digits;
-};
+static std::string MangleTensor(const Tensor& tensor) {
+  return mangling_util::MangleTensor(ConvertToProto(tensor));
+}
 
 // Converts a TensorFlow tensor into an MLIR elements attribute.
 template <typename T>
@@ -118,18 +99,6 @@ StatusOr<ElementsAttr> ConvertFlatTensor(const Tensor& input_tensor,
   auto arr = input_tensor.flat<T>();
   return mlir::DenseElementsAttr::get(
       type, llvm::makeArrayRef(arr.data(), arr.size()));
-}
-
-// Converts a TensorFlow tensor proto with DT_BOOL data type into an MLIR
-// elements attribute.
-StatusOr<ElementsAttr> ConvertBoolTensor(const Tensor& input_tensor,
-                                         ShapedType type, Builder* builder) {
-  // When the repeated "bool_val" field only has one element, it is converted to
-  // a splat elements attribute; When it has more than one element, it is
-  // converted to a dense elements attribute; otherwise, convert the whole
-  // tensor to an opaque elements attribute if the "tensor_content" field is
-  // set.
-  return ConvertToOpaqueElementsAttr(input_tensor, type, builder);
 }
 
 StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
@@ -142,29 +111,25 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
   ConvertToMlirShape(input_shape, &shape);
   auto type = builder->getTensorType(shape, elt_type);
 
+#define CONVERT_FLAT(DTYPE, CTYPE) \
+  case DTYPE:                      \
+    return ConvertFlatTensor<CTYPE>(input_tensor, type, builder);
+
   // TODO(fengliuai): customize the conversions for more types.
   switch (input_dtype) {
-    case DT_FLOAT:
-      return ConvertFlatTensor<float>(input_tensor, type, builder);
-    case DT_INT32:
-      return ConvertFlatTensor<int32>(input_tensor, type, builder);
-    case DT_INT64:
-      return ConvertFlatTensor<int64>(input_tensor, type, builder);
-    case DT_BOOL:
-      return ConvertBoolTensor(input_tensor, type, builder);
+    CONVERT_FLAT(DT_BOOL, bool)
+    CONVERT_FLAT(DT_FLOAT, float)
+    CONVERT_FLAT(DT_INT32, int32)
+    CONVERT_FLAT(DT_INT64, int64)
     default:
-      // The value of the opaque elements attribute contains the whole tensor
-      // proto, not just the tensor content.
-
       // TODO(shpeisman): restructure code to reuse dialect pointer across
       // calls.
       auto* dialect = builder->getContext()->getRegisteredDialect("tf");
-
-      TensorProto tensor_proto;
-      input_tensor.AsProtoTensorContent(&tensor_proto);
-      return builder->getOpaqueElementsAttr(
-          dialect, type, mangling_util::MangleTensor(tensor_proto));
+      return builder->getOpaqueElementsAttr(dialect, type,
+                                            MangleTensor(input_tensor));
   }
+
+#undef CONVERT_FLAT
 }
 
 StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
@@ -202,10 +167,9 @@ Status ConvertFloatElementsAttr(const ElementsAttr attr,
     for (auto value : elts.getValues<float>()) {
       output_tensor->add_float_val(value);
     }
-  } else {
-    return ConvertOpaqueElementsAttr(attr, output_tensor);
+    return Status::OK();
   }
-  return Status::OK();
+  return ConvertOpaqueElementsAttr(attr, output_tensor);
 }
 
 // Converts an MLIR elements attribute to a TensorFlow tensor proto
@@ -216,10 +180,9 @@ Status ConvertIntElementsAttr(const mlir::ElementsAttr attr,
     for (auto val : elts) {
       output_tensor->add_int_val(val.getSExtValue());
     }
-  } else {
-    return ConvertOpaqueElementsAttr(attr, output_tensor);
+    return Status::OK();
   }
-  return Status::OK();
+  return ConvertOpaqueElementsAttr(attr, output_tensor);
 }
 
 // Converts an MLIR elements attribute to a TensorFlow tensor proto
@@ -230,10 +193,9 @@ Status ConvertInt64ElementsAttr(const mlir::ElementsAttr attr,
     for (auto val : elts) {
       output_tensor->add_int64_val(val.getSExtValue());
     }
-  } else {
-    return ConvertOpaqueElementsAttr(attr, output_tensor);
+    return Status::OK();
   }
-  return Status::OK();
+  return ConvertOpaqueElementsAttr(attr, output_tensor);
 }
 
 // Converts an MLIR elements attribute to a TensorFlow tensor proto
@@ -244,10 +206,9 @@ Status ConvertBoolElementsAttr(const mlir::ElementsAttr attr,
     for (auto val : elts) {
       output_tensor->add_bool_val(val.getBoolValue());
     }
-  } else {
-    return ConvertOpaqueElementsAttr(attr, output_tensor);
+    return Status::OK();
   }
-  return Status::OK();
+  return ConvertOpaqueElementsAttr(attr, output_tensor);
 }
 
 Status ConvertToTensorProto(const ElementsAttr attr,

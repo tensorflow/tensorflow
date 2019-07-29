@@ -34,8 +34,9 @@ class KerasExperimentalSaveLoadTest(test_base.TestSavedModelBase):
     saved_model.export_saved_model(model, saved_dir)
 
   def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
-                          output_name):
+                          output_name, run_distributed):
     restored_keras_model = saved_model.load_from_saved_model(saved_dir)
+    restored_keras_model._run_distributed = run_distributed
     return restored_keras_model.predict(
         predict_dataset, steps=test_base.PREDICT_STEPS)
 

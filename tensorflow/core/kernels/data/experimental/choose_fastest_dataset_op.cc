@@ -157,6 +157,15 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
 
     int64 Cardinality() const override { return cardinality_; }
 
+    bool IsStateful() const override {
+      for (const auto& input : inputs_) {
+        if (input->IsStateful()) {
+          return true;
+        }
+      }
+      return false;
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

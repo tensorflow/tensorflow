@@ -210,6 +210,71 @@ Status CreateFunctionLibraryDefinition(
   return (*result)->CopyFunctionDefFrom(func_name, *lib_def);
 }
 
+bool IsNodeStateful(const FunctionLibraryDefinition& library,
+                    const NodeDef& node);
+
+bool IsFunctionStateful(const FunctionLibraryDefinition& library,
+                        const FunctionDef& function_def) {
+  if (!function_def.signature().is_stateful()) return false;
+
+  for (const NodeDef& node_def : function_def.node_def()) {
+    if (IsNodeStateful(library, node_def)) return true;
+  }
+  return false;
+}
+
+// Returns whether an op has been whitelisted as stateless. Uses a heuristic to
+// whitelist source dataset ops which have been marked stateful due to
+// b/65524810. Also looks up the `op_def->name` in the global
+// `WhitelistedStatefulOpRegistry`.
+bool IsOpWhitelisted(const OpDef* op_def) {
+  return ((absl::EndsWith(op_def->name(), "Dataset") ||
+           absl::EndsWith(op_def->name(), "DatasetV2")) &&
+          op_def->output_arg_size() == 1 &&
+          op_def->output_arg(0).type() == DT_VARIANT) ||
+         WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());
+}
+
+bool IsNodeStateful(const FunctionLibraryDefinition& library,
+                    const NodeDef& node) {
+  const OpDef* op_def;
+  Status s = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  if (!s.ok()) {
+    return false;
+  }
+
+  if (IsOpWhitelisted(op_def)) return false;
+
+  if (!op_def->is_stateful()) return false;
+
+  if (op_def->name() == "Assert") {
+    return false;
+  }
+
+  if (op_def->name() == "If") {
+    const FunctionDef* then_func =
+        library.Find(node.attr().at("then_branch").func().name());
+    const FunctionDef* else_func =
+        library.Find(node.attr().at("else_branch").func().name());
+    if ((then_func != nullptr && !IsFunctionStateful(library, *then_func)) &&
+        (else_func != nullptr && !IsFunctionStateful(library, *else_func))) {
+      return false;
+    }
+  }
+
+  if (op_def->name() == "While") {
+    const FunctionDef* cond_func =
+        library.Find(node.attr().at("cond").func().name());
+    const FunctionDef* body_func =
+        library.Find(node.attr().at("body").func().name());
+    if ((cond_func != nullptr && !IsFunctionStateful(library, *cond_func)) &&
+        (body_func != nullptr && !IsFunctionStateful(library, *body_func))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 Status MakeIteratorFromInputElement(
@@ -404,6 +469,15 @@ Status CapturedFunction::Instantiate(
                                            *ctx->runner(),
                                            ctx->cancellation_manager(), this));
   return Status::OK();
+}
+
+bool CapturedFunction::IsStateful() const {
+  for (const auto& name : lib_def()->ListFunctionNames()) {
+    if (IsFunctionStateful(*lib_def(), *(lib_def()->Find(name)))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 namespace {

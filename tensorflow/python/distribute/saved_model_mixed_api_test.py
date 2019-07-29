@@ -42,7 +42,7 @@ class SavedModelSaveAndLoadTest(test_base.TestSavedModelBase):
     keras_saved_model.export_saved_model(model, saved_dir, serving_only=True)
 
   def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
-                          output_name):
+                          output_name, run_distributed):
     return test_base.load_and_run_with_saved_model_api(distribution, saved_dir,
                                                        predict_dataset,
                                                        output_name)

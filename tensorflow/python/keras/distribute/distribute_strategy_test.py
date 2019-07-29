@@ -1511,8 +1511,14 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
   @combinations.generate(
       combinations.times(all_strategy_combinations_minus_default(),
                          combinations.combine(run_distributed=[True, False])))
-  def test_distribution_strategy_with_symbolic_add_loss(self, distribution,
-                                                        run_distributed):
+  def test_distribution_strategy_with_symbolic_add_loss(
+      self, mode, distribution, run_distributed):
+
+    # TODO(b/123533246): Enable the test for TPU once bug is fixed
+    if (isinstance(distribution,
+                   (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)) and
+        mode == 'graph' and not run_distributed):
+      self.skipTest('TPU Strategy in graph mode fails with this test.')
 
     def _make_model_with_add_loss():
       inputs = keras.Input((10,))
@@ -1825,6 +1831,36 @@ def _sequential_with_add_loss_and_metric(input_shape, num_classes, l1, l2):
   return model
 
 
+def _functional_with_layer_reuse(input_shape, num_classes, l1, l2):
+  base_model = keras.Sequential([
+      keras.layers.Conv2D(
+          32, kernel_size=5, activation='relu', input_shape=input_shape),
+      keras.layers.MaxPooling2D(pool_size=2),
+      keras.layers.Conv2D(64, kernel_size=5, activation='relu'),
+      keras.layers.MaxPooling2D(pool_size=2),
+      keras.layers.Flatten(),
+      keras.layers.Dense(1024, activation='relu'),
+      keras.layers.Dense(num_classes, name='logits'),
+  ])
+  inputs = keras.Input(input_shape, name='images')
+  logits = base_model(inputs)
+  model = keras.Model(inputs=inputs, outputs=logits)
+  # Reuse sequential layer and create new nodes.
+  zero_logits = base_model(array_ops.zeros_like(inputs))
+  one_logits = base_model(array_ops.ones_like(inputs))
+  # L2 loss.
+  l2_loss = math_ops.reduce_mean(
+      math_ops.reduce_sum(math_ops.square(logits - zero_logits), -1))
+  model.add_loss(l2_loss * l2)
+  model.add_metric(l2_loss, aggregation='mean', name='l2_loss')
+  # L1 loss.
+  l1_loss = math_ops.reduce_mean(
+      math_ops.reduce_sum(math_ops.abs(logits - one_logits), -1))
+  model.add_loss(l1_loss * l1)
+  model.add_metric(l1_loss, aggregation='mean', name='l1_loss')
+  return model
+
+
 class TestDistributionStrategyWithMultipleAddLossAndMetricCalls(
     test.TestCase, parameterized.TestCase):
   """Tests complex models with multiple add loss and metric calls."""
@@ -1836,10 +1872,16 @@ class TestDistributionStrategyWithMultipleAddLossAndMetricCalls(
               model_fn=[
                   _functional_with_add_loss_and_metric,
                   _sequential_with_add_loss_and_metric,
+                  _functional_with_layer_reuse,
               ],
               l1=[0.01],
               l2=[0.1])))
   def test_fit_and_evaluate(self, distribution, model_fn, l1, l2):
+    # TODO(b/138445028): Enable the test for TPU once bug is fixed.
+    if (isinstance(distribution,
+                   (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1))):
+      self.skipTest('Flaky with TPUStrategy')
+
     # Make fake MNIST-like image data.
     dataset = dataset_ops.DatasetV2.from_tensor_slices(
         (np.random.uniform(size=(64, 28, 28, 1)).astype(np.float32),

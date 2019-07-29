@@ -237,8 +237,7 @@ class TimeDistributedTest(test.TestCase):
           mask_value=0.,), input_shape=(None, 4)))
       model.add(keras.layers.TimeDistributed(keras.layers.Dense(5)))
       model.compile(optimizer='rmsprop', loss='mse')
-      model_input = np.random.randint(
-          low=1, high=5, size=(10, 3, 4)).astype(np.float32)
+      model_input = np.random.randint(low=1, high=5, size=(10, 3, 4))
       for i in range(4):
         model_input[i, i:, :] = 0.
       model.compile(optimizer='rmsprop', loss='mse')

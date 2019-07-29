@@ -141,3 +141,24 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:tensor_handle_data",
     ],
 )
+
+cc_library(
+    name = "remote_copy_node",
+    srcs = [
+        "remote_copy_node.cc",
+    ],
+    hdrs = [
+        "remote_copy_node.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":remote_mgr",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:attr_builder",
+        "//tensorflow/core/common_runtime/eager:eager_executor",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
+    ],
+)

@@ -74,6 +74,10 @@ class MapDatasetOp::Dataset : public DatasetBase {
 
   int64 Cardinality() const override { return input_->Cardinality(); }
 
+  bool IsStateful() const override {
+    return captured_func_->IsStateful() || input_->IsStateful();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

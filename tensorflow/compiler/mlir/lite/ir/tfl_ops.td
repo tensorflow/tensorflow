@@ -364,6 +364,8 @@ an output element, this operation computes \\(y = |x|\\).
   let arguments = (ins AnyTensor:$x);
 
   let results = (outs AnyTensor:$y);
+
+  let hasFolder = 1;
 }
 
 def TFL_AddOp : TFL_Op<"add", [Broadcastable, NoSideEffect, Commutative]> {
@@ -557,6 +559,8 @@ def TFL_CosOp: TFL_Op<"cos", [NoSideEffect, SameOperandsAndResultType]> {
   let arguments = (ins TFL_FpTensor:$x);
 
   let results = (outs TFL_FpTensor:$y);
+
+  let hasFolder = 1;
 }
 
 def TFL_DepthwiseConv2DOp :
@@ -1127,6 +1131,8 @@ def TFL_LogOp: TFL_Op<"log", [NoSideEffect, SameOperandsAndResultType]> {
   let arguments = (ins AnyTensor:$x);
 
   let results = (outs AnyTensor:$y);
+
+  let hasFolder = 1;
 }
 
 // TODO(b/130643170): Adds some constraint for the input/output element types.
@@ -1583,6 +1589,8 @@ def TFL_RankOp: TFL_Op<"rank", [NoSideEffect]> {
   let arguments = (ins AnyTensor:$input);
 
   let results = (outs TFL_IntTensor:$output);
+
+  let hasFolder = 1;
 }
 
 def TFL_ReluOp: TFL_Op<"relu", [NoSideEffect, SameOperandsAndResultType]> {
@@ -1675,6 +1683,8 @@ def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect, SameOperandsAndResultType]> {
   let arguments = (ins AnyTensor:$x);
 
   let results = (outs AnyTensor:$y);
+
+  let hasFolder = 1;
 }
 
 def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect, TFL_NoQuantizableResult]> {
@@ -1790,6 +1800,8 @@ def TFL_SinOp: TFL_Op<"sin", [NoSideEffect, SameOperandsAndResultType]> {
   let arguments = (ins TFL_FpTensor:$x);
 
   let results = (outs TFL_FpTensor:$y);
+
+  let hasFolder = 1;
 }
 
 // TODO(b/130643170): Adds some constraint for the input/output element types.
@@ -1828,6 +1840,8 @@ def TFL_SqrtOp: TFL_Op<"sqrt", [NoSideEffect, SameOperandsAndResultType]> {
   let arguments = (ins AnyTensor:$x);
 
   let results = (outs AnyTensor:$y);
+
+  let hasFolder = 1;
 }
 
 def TFL_SquareOp: TFL_Op<"square", [NoSideEffect, SameOperandsAndResultType]> {
@@ -1842,6 +1856,8 @@ def TFL_SquareOp: TFL_Op<"square", [NoSideEffect, SameOperandsAndResultType]> {
   let results = (outs AnyTensor:$y);
 
   let hasOptions = 0b1;
+
+  let hasFolder = 1;
 }
 
 def TFL_SubOp : TFL_Op<"sub", [Broadcastable, NoSideEffect]> {
@@ -2081,6 +2097,33 @@ def TFL_SpaceToBatchNdOp: TFL_Op<"space_to_batch_nd", [
   let results = (outs
     TensorOf<[F32, I16, I32, I64, TFL_QI8, TFL_QUI8]>:$output
   );
+}
+
+def TFL_SpaceToDepthOp: TFL_Op<"space_to_depth", [
+    NoSideEffect,
+    TFL_SameOperandsAndResultsScale,
+    PredOpTrait<"input and output must have same element type",
+      TCresVTEtIsSameAsOp<0, 0>>
+  ]> {
+  let summary = "SpaceToDepth operator";
+
+  let description = [{
+    Rearranges blocks of spatial data, into depth. More specifically,
+    this op outputs a copy of the input tensor where values from the `height`
+    and `width` dimensions are moved to the `depth` dimension.
+    `block_size` indicates the input block size.
+   }];
+
+  let arguments = (ins
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8, TFL_QUI8]>:$input,
+    I32Attr:$block_size
+  );
+
+  let results = (outs
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8, TFL_QUI8]>:$output
+  );
+
+  let hasOptions = 1;
 }
 
 def TFL_SplitOp : TFL_Op<"split", [NoSideEffect]> {
@@ -2473,7 +2516,7 @@ Ba et al. “Layer Normalization”
   let verifier = [{ return Verify(*this); }];
 }
 
-// UnidirectionalSequenceLstm op .
+// UnidirectionalSequenceLstm op.
 // TODO(ashwinm): Add constraint to validate the combination of operands
 // that are valid for hybrid vs fully quantized vs float only semantics
 def TFL_UnidirectionalSequenceLSTMOp :
@@ -2549,6 +2592,59 @@ def TFL_UnidirectionalSequenceLSTMOp :
   let results = (outs AnyTensor:$output);
 
   let hasOptions = 1;
+
+  let verifier = [{ return Verify(*this); }];
+}
+
+def RnnResultConstraint : PredOpTrait<
+  "the input and result tensor elemental types must be same",
+  TCresVTEtIsSameAsOp<0, 0>>;
+
+// UnidirectionalSequenceRNN op.
+def TFL_UnidirectionalSequenceRNNOp :
+  TFL_Op<"unidirectional_sequence_rnn",
+         [RnnResultConstraint, StatefulOperands<[4]>]> {
+
+  let summary = "Unidirectional sequence rnn operator";
+
+  let description = [{
+    A recurrent neural network specified by an RNN cell. This Op takes in input
+    in a format {batch_size, seq_len, input_size} or
+    {seq_len, batch_size, input_size} if it's time-majored.
+
+    It implements the following operation for
+    each element in the sequence s = 1...sequence_length:
+      outputs[s] = state = activation(RNNOp(inputs[s]))
+
+    where RNNOp is RNNOp TF Lite Op and the “activation” is the function passed
+    as the “fused_activation_function” argument (if not “NONE”).
+  }];
+
+  let arguments = (
+    ins TensorOf<[F32, I8]>:$input,
+
+    // Weights
+    TFL_TensorOfOrNone<[F32, I8]>:$input_to_input_weights,
+
+    // Recurrent weights
+    TFL_TensorOfOrNone<[F32, I8]>:$recurrent_to_input_weights,
+
+    // Bias
+    TFL_TensorOfOrNone<[F32]>:$input_gate_bias,
+
+    // Hidden state.
+    TFL_StatefulTensor:$hidden_state,
+
+    // Attributes
+    BoolAttr:$time_major,
+    TFL_AFAttr:$fused_activation_function
+  );
+
+  let results = (outs AnyTensor:$output);
+
+  let hasOptions = 1;
+
+  let customOption = "SequenceRNNOptions";
 
   let verifier = [{ return Verify(*this); }];
 }

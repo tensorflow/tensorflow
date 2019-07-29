@@ -740,7 +740,7 @@ class ConcreteFunction(object):
     possible_gradient_type = _PossibleTapeGradientTypes(
         pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes(args))
     if possible_gradient_type == _PossibleTapeGradientTypes.FIRST_ORDER:
-      if context.executing_eagerly():
+      if executing_eagerly:
         # There is a single non-persistent tape active, so the user can only
         # request first-order gradients from a tape. We can spend less time
         # graph building since we know this.
@@ -773,7 +773,7 @@ class ConcreteFunction(object):
     # tape is recording.
 
     # Only need to override the gradient in graph mode and when we have outputs.
-    if context.executing_eagerly() or not self.outputs:
+    if executing_eagerly or not self.outputs:
       outputs = self._inference_function.call(
           ctx, args, cancellation_manager=cancellation_manager)
     else:

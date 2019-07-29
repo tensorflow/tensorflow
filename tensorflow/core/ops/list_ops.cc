@@ -590,18 +590,17 @@ REGISTER_OP("TensorListConcatLists")
 
       auto* handle_data_a = c->input_handle_shapes_and_types(0);
       auto* handle_data_b = c->input_handle_shapes_and_types(1);
-      if ((handle_data_a == nullptr || handle_data_a->empty()) &&
-          (handle_data_b == nullptr || handle_data_b->empty())) {
+      bool handle_data_a_nonempty = handle_data_a && !handle_data_a->empty();
+      bool handle_data_b_nonempty = handle_data_b && !handle_data_b->empty();
+      if (!(handle_data_a_nonempty || handle_data_b_nonempty)) {
         c->set_output_handle_shapes_and_types(
             0, {{c->UnknownShape(), element_dtype}});
         return Status::OK();
       }
       shape_inference::ShapeAndType list_shape_type_a =
-          (handle_data_a && !handle_data_a->empty()) ? handle_data_a->at(0)
-                                                     : handle_data_b->at(0);
+          handle_data_a_nonempty ? handle_data_a->at(0) : handle_data_b->at(0);
       const shape_inference::ShapeAndType& list_shape_type_b =
-          (handle_data_b && !handle_data_b->empty()) ? handle_data_b->at(0)
-                                                     : handle_data_a->at(0);
+          handle_data_b_nonempty ? handle_data_b->at(0) : handle_data_a->at(0);
       if (list_shape_type_a.dtype != element_dtype) {
         return errors::InvalidArgument("input_a.type != element_dtype: ",
                                        DataTypeString(list_shape_type_a.dtype),
