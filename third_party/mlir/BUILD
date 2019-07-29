@@ -42,6 +42,7 @@ cc_library(
         "lib/IR/Diagnostics.cpp",
         "lib/IR/Dialect.cpp",
         "lib/IR/Function.cpp",
+        "lib/IR/FunctionSupport.cpp",
         "lib/IR/IntegerSet.cpp",
         "lib/IR/IntegerSetDetail.h",
         "lib/IR/Location.cpp",
@@ -1341,9 +1342,9 @@ cc_binary(
         ":StandardDialectRegistration",
         ":Transforms",
         ":VectorDialectRegistration",
+        "//test:TestDialect",
+        "//test:TestTransforms",
         "@llvm//:support",
-        "@local_config_mlir//test:TestDialect",
-        "@local_config_mlir//test:TestTransforms",
     ],
 )
 
