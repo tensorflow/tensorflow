@@ -560,138 +560,95 @@ Status DatasetOpsTestBase::AddDatasetInput(
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::EvaluateDatasetNodeName(
+Status DatasetOpsTestBase::CheckDatasetNodeName(
     const DatasetBase& dataset, const string& expected_dataset_node_name) {
-  if (dataset.node_name() != expected_dataset_node_name) {
-    return errors::Internal(
-        "The test for Dataset::node_name() failed: expected ",
-        expected_dataset_node_name, " but got ", dataset.type_string(), ".");
-  }
+  EXPECT_EQ(dataset.node_name(), expected_dataset_node_name);
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::EvaluateDatasetTypeString(
+Status DatasetOpsTestBase::CheckDatasetTypeString(
     const DatasetBase& dataset, const string& expected_dataset_type_string) {
-  if (dataset.type_string() != expected_dataset_type_string) {
-    return errors::Internal(
-        "The test for Dataset::type_string() failed: expected ",
-        expected_dataset_type_string, " but got ", dataset.type_string(), ".");
-  }
+  EXPECT_EQ(dataset.type_string(), expected_dataset_type_string);
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::EvaluateDatasetOutputDtypes(
+Status DatasetOpsTestBase::CheckDatasetOutputDtypes(
     const DatasetBase& dataset, const DataTypeVector& expected_output_dtypes) {
-  Status status =
-      VerifyTypesMatch(dataset.output_dtypes(), expected_output_dtypes);
-  if (!status.ok()) {
-    return errors::Internal("The test for Dataset::output_dtypes() failed: ",
-                            status.ToString());
-  }
+  TF_EXPECT_OK(
+      VerifyTypesMatch(dataset.output_dtypes(), expected_output_dtypes));
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::EvaluateDatasetOutputShapes(
+Status DatasetOpsTestBase::CheckDatasetOutputShapes(
     const DatasetBase& dataset,
     const std::vector<PartialTensorShape>& expected_output_shapes) {
-  Status status =
-      VerifyShapesCompatible(dataset.output_shapes(), expected_output_shapes);
-  if (!status.ok()) {
-    return errors::Internal("The test for Dataset::output_shapes() failed: ",
-                            status.ToString());
-  }
+  TF_EXPECT_OK(
+      VerifyShapesCompatible(dataset.output_shapes(), expected_output_shapes));
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::EvaluateDatasetCardinality(
-    const DatasetBase& dataset, int64 expected_cardinality) {
-  if (dataset.Cardinality() != expected_cardinality) {
-    return errors::Internal(
-        "The test for Dataset::Cardinality() failed: expected ",
-        expected_cardinality, " but got ", dataset.Cardinality(), ".");
-  }
+Status DatasetOpsTestBase::CheckDatasetCardinality(const DatasetBase& dataset,
+                                                   int64 expected_cardinality) {
+  EXPECT_EQ(dataset.Cardinality(), expected_cardinality);
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::EvaluateDatasetSave(const DatasetBase& dataset) {
+Status DatasetOpsTestBase::CheckDatasetSave(const DatasetBase& dataset) {
   std::unique_ptr<SerializationContext> serialization_context;
   TF_RETURN_IF_ERROR(CreateSerializationContext(&serialization_context));
   VariantTensorData data;
   VariantTensorDataWriter writer(&data);
-  Status status = dataset.Save(serialization_context.get(), &writer);
-  if (!status.ok()) {
-    return errors::Internal("The test for Dataset::Save() failed: ",
-                            status.ToString());
-  }
+  TF_EXPECT_OK(dataset.Save(serialization_context.get(), &writer));
   TF_RETURN_IF_ERROR(writer.Flush());
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::EvaluateDatasetIsStateful(const DatasetBase& dataset,
-                                                     bool expected_stateful) {
-  if (dataset.IsStateful() != expected_stateful) {
-    return errors::Internal(
-        "The test for Dataset::IsStateful() failed: expected ",
-        expected_stateful, " but got ", dataset.IsStateful(), ".");
-  }
+Status DatasetOpsTestBase::CheckDatasetIsStateful(const DatasetBase& dataset,
+                                                  bool expected_stateful) {
+  EXPECT_EQ(dataset.IsStateful(), expected_stateful);
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::EvaluateIteratorOutputDtypes(
+Status DatasetOpsTestBase::CheckIteratorOutputDtypes(
     const IteratorBase& iterator,
     const DataTypeVector& expected_output_dtypes) {
-  Status status =
-      VerifyTypesMatch(iterator.output_dtypes(), expected_output_dtypes);
-  if (!status.ok()) {
-    return errors::Internal("The test for Iterator::output_dtypes() failed: ",
-                            status.ToString());
-  }
+  TF_EXPECT_OK(
+      VerifyTypesMatch(iterator.output_dtypes(), expected_output_dtypes));
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::EvaluateIteratorOutputShapes(
+Status DatasetOpsTestBase::CheckIteratorOutputShapes(
     const IteratorBase& iterator,
     const std::vector<PartialTensorShape>& expected_output_shapes) {
-  Status status =
-      VerifyShapesCompatible(iterator.output_shapes(), expected_output_shapes);
-  if (!status.ok()) {
-    return errors::Internal("The test for Iterator::output_shapes() failed: ",
-                            status.ToString());
-  }
+  TF_EXPECT_OK(
+      VerifyShapesCompatible(iterator.output_shapes(), expected_output_shapes));
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::EvaluateIteratorPrefix(
+Status DatasetOpsTestBase::CheckIteratorPrefix(
     const IteratorBase& iterator, const string& expected_iterator_prefix) {
-  if (iterator.prefix() != expected_iterator_prefix) {
-    return errors::Internal("The test for Iterator::prefix() failed: expected ",
-                            expected_iterator_prefix, " but got ",
-                            iterator.prefix());
-  }
+  EXPECT_EQ(iterator.prefix(), expected_iterator_prefix);
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::EvaluateIteratorGetNext(
+Status DatasetOpsTestBase::CheckIteratorGetNext(
     IteratorBase* iterator, IteratorContext* iterator_context,
     const std::vector<Tensor>& expected_outputs, bool compare_order) {
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
   while (!end_of_sequence) {
     std::vector<Tensor> next;
-    TF_EXPECT_OK(iterator->GetNext(iterator_context, &next, &end_of_sequence));
+    TF_RETURN_IF_ERROR(
+        iterator->GetNext(iterator_context, &next, &end_of_sequence));
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
 
-  Status status = ExpectEqual(out_tensors, expected_outputs,
-                              /*compare_order*/ compare_order);
-  if (!status.ok()) {
-    return errors::Internal("The test for Iterator::GetNext() failed: ",
-                            status.ToString());
-  }
+  TF_EXPECT_OK(ExpectEqual(out_tensors, expected_outputs,
+                           /*compare_order=*/compare_order));
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::EvaluateIteratorSerialization(
+Status DatasetOpsTestBase::CheckIteratorSerialization(
     const DatasetBase& dataset, IteratorContext* iterator_context,
     const string& iterator_prefix, const std::vector<Tensor>& expected_outputs,
     const std::vector<int>& breakpoints) {
@@ -704,55 +661,31 @@ Status DatasetOpsTestBase::EvaluateIteratorSerialization(
   std::vector<Tensor> out_tensors;
   int cur_iteration = 0;
   auto expected_outputs_it = expected_outputs.begin();
-  Status status;
   for (int breakpoint : breakpoints) {
     VariantTensorData data;
     VariantTensorDataWriter writer(&data);
-    status = iterator->Save(serialization_ctx.get(), &writer);
-    if (!status.ok()) {
-      return errors::Internal("The test for Iterator::Save() failed: ",
-                              status.ToString());
-    }
+    TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_RETURN_IF_ERROR(writer.Flush());
     VariantTensorDataReader reader(&data);
-    status = RestoreIterator(iterator_context, &reader, iterator_prefix,
-                             dataset, &iterator);
-    if (!status.ok()) {
-      return errors::Internal("The test for Iterator::Restore() failed: ",
-                              status.ToString());
-    }
+    TF_EXPECT_OK(RestoreIterator(iterator_context, &reader, iterator_prefix,
+                                 dataset, &iterator));
 
     while (cur_iteration <= breakpoint) {
       TF_RETURN_IF_ERROR(
           iterator->GetNext(iterator_context, &out_tensors, &end_of_sequence));
       if (!end_of_sequence) {
-        if (expected_outputs_it == expected_outputs.end()) {
-          return errors::Internal(
-              "The test for Iterator::Restore() failed: the iterator reached "
-              "the end but should have more elements.");
-        }
-        status = ExpectEqual(out_tensors.back(), *expected_outputs_it);
-        if (!status.ok()) {
-          return errors::Internal("The test for Iterator::Restore() failed: ",
-                                  status.ToString());
-        }
+        EXPECT_NE(expected_outputs_it, expected_outputs.end());
+        TF_EXPECT_OK(ExpectEqual(out_tensors.back(), *expected_outputs_it));
         expected_outputs_it++;
       }
       cur_iteration++;
     }
 
     if (breakpoint >= expected_outputs.size()) {
-      if (!end_of_sequence || expected_outputs_it != expected_outputs.end()) {
-        return errors::Internal(
-            "The test for iterator serialization failed: the iterator should "
-            "have reached the end but have more elements.");
-      }
+      EXPECT_TRUE(end_of_sequence);
+      EXPECT_EQ(expected_outputs_it, expected_outputs.end());
     } else {
-      if (end_of_sequence) {
-        return errors::Internal(
-            "The test for iterator serialization failed: the iterator reached "
-            "the end but should have more elements.");
-      }
+      EXPECT_FALSE(end_of_sequence);
     }
   }
   return Status::OK();

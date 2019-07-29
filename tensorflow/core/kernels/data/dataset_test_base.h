@@ -195,60 +195,60 @@ class DatasetOpsTestBase : public ::testing::Test {
   Status GetDatasetFromContext(OpKernelContext* context, int output_index,
                                DatasetBase** const dataset);
 
-  // Tests `DatasetBase::node_name()`.
-  Status EvaluateDatasetNodeName(const DatasetBase& dataset,
-                                 const string& expected_dataset_node_name);
+  // Checks `DatasetBase::node_name()`.
+  Status CheckDatasetNodeName(const DatasetBase& dataset,
+                              const string& expected_dataset_node_name);
 
-  // Tests `DatasetBase::type_string()`.
-  Status EvaluateDatasetTypeString(const DatasetBase& dataset,
-                                   const string& expected_dataset_type_string);
+  // Checks `DatasetBase::type_string()`.
+  Status CheckDatasetTypeString(const DatasetBase& dataset,
+                                const string& expected_dataset_type_string);
 
-  // Tests `DatasetBase::output_dtypes()`.
-  Status EvaluateDatasetOutputDtypes(
-      const DatasetBase& dataset, const DataTypeVector& expected_output_dtypes);
+  // Checks `DatasetBase::output_dtypes()`.
+  Status CheckDatasetOutputDtypes(const DatasetBase& dataset,
+                                  const DataTypeVector& expected_output_dtypes);
 
-  // Tests `DatasetBase::output_shapes()`.
-  Status EvaluateDatasetOutputShapes(
+  // Checks `DatasetBase::output_shapes()`.
+  Status CheckDatasetOutputShapes(
       const DatasetBase& dataset,
       const std::vector<PartialTensorShape>& expected_output_shapes);
 
-  // Tests `DatasetBase::Cardinality()`.
-  Status EvaluateDatasetCardinality(const DatasetBase& dataset,
-                                    int64 expected_cardinality);
+  // Checks `DatasetBase::Cardinality()`.
+  Status CheckDatasetCardinality(const DatasetBase& dataset,
+                                 int64 expected_cardinality);
 
-  // Tests `DatasetBase::Save()`.
-  Status EvaluateDatasetSave(const DatasetBase& dataset);
+  // Checks `DatasetBase::Save()`.
+  Status CheckDatasetSave(const DatasetBase& dataset);
 
-  // Tests `DatasetBase::IsStateful()`.
-  Status EvaluateDatasetIsStateful(const DatasetBase& dataset,
-                                   bool expected_stateful);
+  // Checks `DatasetBase::IsStateful()`.
+  Status CheckDatasetIsStateful(const DatasetBase& dataset,
+                                bool expected_stateful);
 
-  // Tests `IteratorBase::output_dtypes()`.
-  Status EvaluateIteratorOutputDtypes(
+  // Checks `IteratorBase::output_dtypes()`.
+  Status CheckIteratorOutputDtypes(
       const IteratorBase& iterator,
       const DataTypeVector& expected_output_dtypes);
 
-  // Tests `IteratorBase::output_shapes()`.
-  Status EvaluateIteratorOutputShapes(
+  // Checks `IteratorBase::output_shapes()`.
+  Status CheckIteratorOutputShapes(
       const IteratorBase& iterator,
       const std::vector<PartialTensorShape>& expected_output_shapes);
 
-  // Tests `IteratorBase::prefix()`.
-  Status EvaluateIteratorPrefix(const IteratorBase& iterator,
-                                const string& expected_iterator_prefix);
+  // Checks `IteratorBase::prefix()`.
+  Status CheckIteratorPrefix(const IteratorBase& iterator,
+                             const string& expected_iterator_prefix);
 
-  // Tests `IteratorBase::GetNext()`.
-  Status EvaluateIteratorGetNext(IteratorBase* iterator,
-                                 IteratorContext* iterator_context,
-                                 const std::vector<Tensor>& expected_outputs,
-                                 bool compare_order);
+  // Checks `IteratorBase::GetNext()`.
+  Status CheckIteratorGetNext(IteratorBase* iterator,
+                              IteratorContext* iterator_context,
+                              const std::vector<Tensor>& expected_outputs,
+                              bool compare_order);
 
-  // Tests `IteratorBase::Save()` and `IteratorBase::Restore()`.
-  Status EvaluateIteratorSerialization(
-      const DatasetBase& dataset, IteratorContext* iterator_context,
-      const string& iterator_prefix,
-      const std::vector<Tensor>& expected_outputs,
-      const std::vector<int>& breakpoints);
+  // Checks `IteratorBase::Save()` and `IteratorBase::Restore()`.
+  Status CheckIteratorSerialization(const DatasetBase& dataset,
+                                    IteratorContext* iterator_context,
+                                    const string& iterator_prefix,
+                                    const std::vector<Tensor>& expected_outputs,
+                                    const std::vector<int>& breakpoints);
 
  protected:
   // Creates a thread pool for parallel tasks.
