@@ -1126,6 +1126,24 @@ def validate_dataset_input(x, y, sample_weight, validation_split=None):
         'Received: x=%s, validation_split=%f' % (x, validation_split))
 
 
+def validate_input_types(inp, orig_inp, allow_dict=True, field_name='inputs'):
+  """Helper function to validate either inputs or targets."""
+  if isinstance(inp, (list, tuple)):
+    if not all(isinstance(v, np.ndarray) or
+               tensor_util.is_tensor(v) for v in inp):
+      raise ValueError(
+          'Please provide as model inputs either a single array or a list of '
+          'arrays. You passed: {}={}'.format(field_name, str(orig_inp)))
+  elif isinstance(inp, dict):
+    if not allow_dict:
+      raise ValueError(
+          'You cannot pass a dictionary as model {}.'.format(field_name))
+  elif not isinstance(inp, np.ndarray) and not tensor_util.is_tensor(inp):
+    raise ValueError(
+        'Please provide as model inputs either a single array or a list of '
+        'arrays. You passed: {}={}'.format(field_name, orig_inp))
+
+
 def check_generator_arguments(y=None, sample_weight=None,
                               validation_split=None):
   """Validates arguments passed when using a generator."""
