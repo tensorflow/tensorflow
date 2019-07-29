@@ -109,6 +109,15 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
       return strings::StrCat("DirectedInterleaveDatasetOp::Dataset");
     }
 
+    bool IsStateful() const override {
+      for (const auto& input : data_inputs_) {
+        if (input->IsStateful()) {
+          return true;
+        }
+      }
+      return selector_input_->IsStateful();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

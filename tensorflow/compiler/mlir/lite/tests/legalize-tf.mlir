@@ -957,3 +957,12 @@ func @argmax64(%arg0: tensor<3xi32>, %arg1: tensor<i32>) -> tensor<i64> {
 // CHECK-LABEL: argmax64
 // CHECK:  %0 = "tfl.arg_max"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<i64>
 }
+
+func @space_to_depth(%arg0: tensor<1x2x2x1xf32>) -> tensor<?xf32> {
+  %0 = "tf.SpaceToDepth"(%arg0) {block_size = 2: i64,  data_format = "NHWC"}: (tensor<1x2x2x1xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+
+  // CHECK-LABEL: space_to_depth
+  // CHECK: %[[ARG:.*]]: tensor<1x2x2x1xf32>
+  // CHECK: "tfl.space_to_depth"(%[[ARG]]) {block_size = 2 : i32} : (tensor<1x2x2x1xf32>) -> tensor<?xf32>
+}

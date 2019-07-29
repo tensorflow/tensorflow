@@ -137,6 +137,8 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    bool IsStateful() const override { return input_->IsStateful(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

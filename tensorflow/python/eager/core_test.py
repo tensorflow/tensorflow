@@ -31,6 +31,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute as execute_lib
+from tensorflow.python.eager import executor
 from tensorflow.python.eager import test
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -515,6 +516,22 @@ class TFETest(test_util.TensorFlowTestCase):
 
     test_var = variables.Variable([2., 3.])
     self.assertAllEqual(test_fn(test_var), 1.0)
+
+  def testPyFunctionAsync(self):
+
+    def simple_fn(v):
+      one = constant_op.constant(1.)
+      return v + one
+
+    @def_function.function
+    def test_fn(v):
+      return script_ops.eager_py_func(simple_fn, [v], dtypes.float32)
+
+    async_executor = executor.Executor(enable_async=True)
+    with context.executor_scope(async_executor):
+      test_var = variables.Variable(2.)
+      self.assertAllEqual(test_fn(test_var), 3.0)
+    async_executor.wait()
 
   @test_util.run_gpu_only
   def testNumpyForceCPU(self):

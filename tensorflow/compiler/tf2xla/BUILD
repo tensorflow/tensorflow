@@ -207,6 +207,7 @@ cc_library(
         ":side_effect_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:flags",
+        "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/jit:xla_cluster_util",
         "//tensorflow/compiler/tf2xla:rearrange_function_argument",
         "//tensorflow/compiler/tf2xla/lib:util",

@@ -46,7 +46,7 @@ class ChooseFastestBranchDatasetSerializationTest(
           ratio_numerator=10)
 
     for size in [100, 1000]:
-      self.run_core_tests(lambda: build_ds(size), None, size // 10)  # pylint: disable=cell-var-from-loop
+      self.run_core_tests(lambda: build_ds(size), size // 10)  # pylint: disable=cell-var-from-loop
 
   def testWithCapture(self):
 
@@ -64,7 +64,7 @@ class ChooseFastestBranchDatasetSerializationTest(
       return optimization._ChooseFastestBranchDataset(
           dataset, [branch_0, branch_1], num_elements_per_branch=3)
 
-    self.run_core_tests(build_ds, None, 10)
+    self.run_core_tests(build_ds, 10)
 
   def testWithPrefetch(self):
 
@@ -82,7 +82,7 @@ class ChooseFastestBranchDatasetSerializationTest(
       return optimization._ChooseFastestBranchDataset(
           dataset, [branch_0, branch_1], num_elements_per_branch=3)
 
-    self.run_core_tests(build_ds, None, 10)
+    self.run_core_tests(build_ds, 10)
 
   def testWithMoreOutputThanInput(self):
 
@@ -97,7 +97,7 @@ class ChooseFastestBranchDatasetSerializationTest(
           ratio_denominator=10,
           num_elements_per_branch=100)
 
-    self.run_core_tests(build_ds, None, 1000)
+    self.run_core_tests(build_ds, 1000)
 
 
 if __name__ == "__main__":

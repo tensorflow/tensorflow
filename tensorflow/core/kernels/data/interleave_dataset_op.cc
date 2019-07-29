@@ -81,6 +81,10 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
+  bool IsStateful() const override {
+    return captured_func_->IsStateful() || input_->IsStateful();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

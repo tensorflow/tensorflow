@@ -51,7 +51,6 @@ def tflite_linkopts_unstripped():
     return select({
         "//tensorflow:android": [
             "-Wl,--no-export-dynamic",  # Only inc syms referenced by dynamic obj.
-            "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export.
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],

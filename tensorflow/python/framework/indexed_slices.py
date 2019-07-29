@@ -23,6 +23,7 @@ import collections
 import warnings
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -235,7 +236,14 @@ class IndexedSlicesSpec(type_spec.TypeSpec):
       return (value.values, value.indices, value.dense_shape)
 
   def _from_components(self, tensor_list):
-    return IndexedSlices(*tensor_list)
+    if (all(isinstance(t, np.ndarray) for t in tensor_list) and
+        not tf2.enabled()):
+      if len(tensor_list) == 2:
+        return IndexedSlicesValue(tensor_list[0], tensor_list[1], None)
+      else:
+        return IndexedSlicesValue(*tensor_list)
+    else:
+      return IndexedSlices(*tensor_list)
 
 
 @tf_export(v1=["convert_to_tensor_or_indexed_slices"])

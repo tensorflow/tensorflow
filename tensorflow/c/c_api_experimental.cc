@@ -598,7 +598,10 @@ struct TF_CheckpointReader : public tensorflow::checkpoint::CheckpointReader {
 TF_CheckpointReader* TF_NewCheckpointReader(const char* filename,
                                             TF_Status* status) {
   TF_CheckpointReader* reader = new TF_CheckpointReader(filename, status);
-  if (!status->status.ok()) return nullptr;
+  if (!status->status.ok()) {
+    TF_DeleteCheckpointReader(reader);
+    return nullptr;
+  }
   const auto& m = reader->GetVariableToDataTypeMap();
   for (auto it = m.begin(); it != m.end(); ++it)
     reader->variable_list.push_back(it->first);

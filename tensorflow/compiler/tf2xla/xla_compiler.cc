@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -529,6 +530,11 @@ Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
 std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   std::unique_ptr<Graph> graph(new Graph(options_.flib_def));
   CopyGraph(*fbody->graph, graph.get());
+
+  // Performs a first function inlining pass before shape inference, since
+  // otherwise shape inference can't see inside functions and a comprehensive
+  // shape_map, including function ops, is needed to constant-propagate Shape
+  // Ops below.
   auto flags = GetBuildXlaOpsPassFlags();
   OptimizerOptions opts;
   opts.set_opt_level(OptimizerOptions::L0);
@@ -567,6 +573,28 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
                      /*device=*/nullptr, &graph, graph_optimizer_options);
 
+  // Run shape inference on the graph and optimize the graph again.
+  GraphShapeInfo shape_info;
+  InferShapes(graph.get(), /*arg_shapes=*/{},
+              flib_runtime_->GetFunctionLibraryDefinition(), &shape_info)
+      .IgnoreError();
+  auto node_name_index = graph->BuildNodeNameIndex();
+  std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
+  for (const auto& node_shape_info : shape_info) {
+    const string& node_name = node_shape_info.first;
+    const std::vector<InferredShape>& output_shapes = node_shape_info.second;
+    const auto& node_iter = node_name_index.find(node_name);
+    if (node_iter != node_name_index.end()) {
+      auto& partial_shapes = shape_map[node_name];
+      for (const auto& inferred_shape : output_shapes) {
+        partial_shapes.push_back(inferred_shape.shape);
+      }
+    }
+  }
+  graph_optimizer_options.shape_map = &shape_map;
+  optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
+                     /*device=*/nullptr, &graph, graph_optimizer_options);
+
   return graph;
 }
 
@@ -592,6 +620,33 @@ Status XlaCompiler::CompileFunction(
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       CheckSignature(fbody->arg_types, args),
       "Signature check failure while compiling: ", fn_name_attrs.name());
+
+  // Set shapes for _Arg nodes. They are useful for constant folding (e.g. an
+  // Xla op requires a compile-time constant input, and that input is shape of
+  // an _Arg node.
+  for (int i = 0; i < args.size(); i++) {
+    // Skip resource variables and tensor lists.
+    DataType dtype;
+    TF_RETURN_IF_ERROR(GetNodeAttr(fbody->arg_nodes[i]->def(), "T", &dtype));
+    if (dtype == DT_RESOURCE || dtype == DT_VARIANT) {
+      continue;
+    }
+
+    if (absl::holds_alternative<xla::Shape>(args[i].shape)) {
+      xla::Shape xla_shape = absl::get<xla::Shape>(args[i].shape);
+      TensorShape tensor_shape;
+      if (XLAShapeToTensorShape(xla_shape, &tensor_shape).ok()) {
+        fbody->arg_nodes[i]->ClearAttr("_output_shapes");
+        fbody->arg_nodes[i]->AddAttr("_output_shapes",
+                                     std::vector<TensorShape>{tensor_shape});
+      }
+    } else {
+      TensorShape tensor_shape = absl::get<TensorShape>(args[i].shape);
+      fbody->arg_nodes[i]->ClearAttr("_output_shapes");
+      fbody->arg_nodes[i]->AddAttr("_output_shapes",
+                                   std::vector<TensorShape>{tensor_shape});
+    }
+  }
 
   std::unique_ptr<Graph> graph = GetGraph(fbody);
 

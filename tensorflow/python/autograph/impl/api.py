@@ -28,7 +28,6 @@ import re
 import sys
 import textwrap
 import traceback
-from enum import Enum
 
 # pylint:disable=g-bad-import-order
 import six
@@ -42,7 +41,6 @@ from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.utils import ag_logging as logging
-from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -238,20 +236,6 @@ def convert(recursive=False, optional_features=None, force_conversion=True):
   return decorator
 
 
-class RunMode(Enum):
-  """Specifies the way a converted function or method should be executed in TF.
-
-  Attributes:
-   * GRAPH: Call this function directly, as-is. This is suitable for functions
-     that were already designed for TF graphs and contain ops.
-   * PY_FUNC: Wrap this function into a py_func op. This is suitable for code
-     that will only run correctly in Python, for example code that renders to
-     the display, reads keyboard input, etc.
-  """
-  GRAPH = 1
-  PY_FUNC = 2
-
-
 def call_with_unspecified_conversion_status(func):
   """Decorator that resets the conversion context to the unspecified status."""
   def wrapper(*args, **kwargs):
@@ -272,18 +256,11 @@ def do_not_convert_internal(f):
 
 
 @tf_export('autograph.experimental.do_not_convert')
-def do_not_convert(func=None, run_as=RunMode.GRAPH, return_dtypes=None):
+def do_not_convert(func=None):
   """Decorator that suppresses the conversion of a function.
-
-  See also: docs/pyfunc_dtypes.md
 
   Args:
     func: function to decorate.
-    run_as: RunMode, specifies how to use the function in TensorFlow.
-    return_dtypes: Optional[Iterable[ Union[tf.DType,
-      utils.py_func.MatchDType]]], the return data types of the converted
-      function, if run_as is RunMode.PY_FUNC. Ignored otherwise. May be set to
-      None if the function has no return values.
 
   Returns:
     If `func` is not None, returns a `Callable` which is equivalent to
@@ -293,28 +270,11 @@ def do_not_convert(func=None, run_as=RunMode.GRAPH, return_dtypes=None):
     above case.
   """
   if func is None:
-    return functools.partial(
-        do_not_convert,
-        run_as=run_as,
-        return_dtypes=return_dtypes)
+    return do_not_convert
 
-  def graph_wrapper(*args, **kwargs):
+  def wrapper(*args, **kwargs):
     with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED):
       return func(*args, **kwargs)
-
-  def py_func_wrapper(*args, **kwargs):
-    if kwargs:
-      raise NotImplementedError('RunMode.PY_FUNC does not yet support kwargs')
-    # TODO(mdan): Add support for kwargs.
-    return py_func.wrap_py_func(
-        func, return_dtypes, args, kwargs, use_dummy_return=not return_dtypes)
-
-  if run_as == RunMode.GRAPH:
-    wrapper = graph_wrapper
-  elif run_as == RunMode.PY_FUNC:
-    wrapper = py_func_wrapper
-  else:
-    raise ValueError('unknown value for run_as: %s' % run_as)
 
   if inspect.isfunction(func) or inspect.ismethod(func):
     wrapper = functools.update_wrapper(wrapper, func)

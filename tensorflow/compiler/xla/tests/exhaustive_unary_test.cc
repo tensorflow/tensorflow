@@ -684,6 +684,7 @@ XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Lgamma) {
 
 XLA_TEST_P(Exhaustive32BitOrLessUnaryTest, Round) { Run(Round, std::round); }
 
+#if defined(UNARY_TEST_TARGET_F32_OR_SMALLER)
 INSTANTIATE_TEST_SUITE_P(
     F32, Exhaustive32BitOrLessUnaryTest,
     ::testing::Combine(::testing::Values(F32),
@@ -702,6 +703,7 @@ INSTANTIATE_TEST_SUITE_P(
     BF16, Exhaustive32BitOrLessUnaryTest,
     ::testing::Combine(::testing::Values(BF16),
                        ::testing::Values(std::make_pair(0, 1 << 16))));
+#endif
 #endif
 
 // Exhaustive test for unary operations for double.
@@ -755,8 +757,50 @@ class ExhaustiveF64UnaryTest : public ExhaustiveRealUnaryTestBase,
 
 XLA_TEST_P(ExhaustiveF64UnaryTest, Log) { Run(Log, std::log); }
 
-// TODO(bixia): add other unary ops for double
+XLA_TEST_P(ExhaustiveF64UnaryTest, Log1p) { Run(Log1p, std::log1p); }
 
+XLA_TEST_P(ExhaustiveF64UnaryTest, Exp) { Run(Exp, std::exp); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Expm1) { Run(Expm1, std::expm1); }
+
+// TODO(b/138385863): Turn on the test for GPU after fixing the bug.
+XLA_TEST_P(ExhaustiveF64UnaryTest, DISABLED_ON_GPU(PowOneHalf)) {
+  Run([](XlaOp x) { return Pow(x, ScalarLike(x, 0.5)); },
+      +[](double x) { return std::pow(x, 0.5); });
+}
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Rsqrt) {
+  Run(
+      Rsqrt, +[](double x) { return 1 / std::sqrt(x); });
+}
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Sqrt) { Run(Sqrt, std::sqrt); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Acosh) { Run(Acosh, std::acosh); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Asinh) { Run(Asinh, std::asinh); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Atanh) { Run(Atanh, std::atanh); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Acos) { Run(Acos, std::acos); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Asin) { Run(Asin, std::asin); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Cosh) { Run(Cosh, std::cosh); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Sinh) { Run(Sinh, std::sinh); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Tanh) { Run(Tanh, std::tanh); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Cos) { Run(Cos, std::cos); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Sin) { Run(Sin, std::sin); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Tan) { Run(Tan, std::tan); }
+
+XLA_TEST_P(ExhaustiveF64UnaryTest, Round) { Run(Round, std::round); }
+
+#if defined(UNARY_TEST_TARGET_F64)
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
 INSTANTIATE_TEST_SUITE_P(
     SpecialValues, ExhaustiveF64UnaryTest,
@@ -777,6 +821,7 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(F64),
         ::testing::ValuesIn(GetFpValuesForMagnitudeExtremeNormals<double>(
             4000000000ull, 16000000))));
+#endif
 #endif
 
 class ExhaustiveComplexUnaryTestBase : public ExhaustiveOpTestBase {
@@ -917,6 +962,7 @@ class ExhaustiveC64UnaryTest
   }
 };
 
+#if defined(UNARY_TEST_TARGET_COMPLEX)
 INSTANTIATE_TEST_SUITE_P(
     F32SpecialValues, ExhaustiveC64UnaryTest,
     ::testing::Combine(
@@ -953,6 +999,7 @@ INSTANTIATE_TEST_SUITE_P(
                                                                          4000)),
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<float>(40000, 4000))));
+#endif
 
 // Unary op test for complex<double>.
 //
@@ -1001,6 +1048,7 @@ XLA_TEST_P(ExhaustiveC128UnaryTest, Log) {
   Run(Log, [](complex128 x) { return std::log(x); });
 }
 
+#if defined(UNARY_TEST_TARGET_COMPLEX)
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
 INSTANTIATE_TEST_SUITE_P(
     SpecialValues, ExhaustiveC128UnaryTest,
@@ -1038,6 +1086,7 @@ INSTANTIATE_TEST_SUITE_P(
             GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000)),
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<double>(40000, 2000))));
+#endif
 #endif
 
 }  // namespace xla

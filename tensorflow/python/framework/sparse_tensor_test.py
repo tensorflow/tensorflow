@@ -187,6 +187,18 @@ class SparseTensorSpecTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(st.values, st_reconstructed.values)
     self.assertAllEqual(st.dense_shape, st_reconstructed.dense_shape)
 
+  @test_util.run_v1_only("SparseTensorValue is deprecated in v2")
+  def testFromNumpyComponents(self):
+    indices = np.array([[0], [8]])
+    values = np.array([1.0, 9.0])
+    dense_shape = np.array([100])
+    spec = sparse_tensor.SparseTensorSpec()
+    st = spec._from_components([indices, values, dense_shape])
+    self.assertIsInstance(st, sparse_tensor.SparseTensorValue)
+    self.assertAllEqual(st.indices, indices)
+    self.assertAllEqual(st.values, values)
+    self.assertAllEqual(st.dense_shape, dense_shape)
+
   @parameterized.parameters([
       sparse_tensor.SparseTensorSpec(dtype=dtypes.string),
       sparse_tensor.SparseTensorSpec(shape=[5, None, None]),

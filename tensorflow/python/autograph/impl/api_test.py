@@ -35,7 +35,6 @@ from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import parser
-from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
@@ -108,11 +107,11 @@ class ApiTest(test.TestCase):
       self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   @test_util.run_deprecated_v1
-  def test_convert_then_do_not_convert_graph(self):
+  def test_convert_then_do_not_convert(self):
 
     class TestClass(object):
 
-      @api.do_not_convert(run_as=api.RunMode.GRAPH)
+      @api.do_not_convert
       def called_member(self, a):
         return tf.negative(a)
 
@@ -120,32 +119,6 @@ class ApiTest(test.TestCase):
       def test_method(self, x, s, a):
         while tf.reduce_sum(x) > s:
           x //= self.called_member(a)
-        return x
-
-    tc = TestClass()
-    x = tc.test_method(
-        constant_op.constant((2, 4)), constant_op.constant(1),
-        constant_op.constant(-2))
-    self.assertAllEqual((0, 1), self.evaluate(x))
-
-  @test_util.run_deprecated_v1
-  def test_convert_then_do_not_convert_py_func(self):
-
-    class TestClass(object):
-
-      @api.do_not_convert(
-          run_as=api.RunMode.PY_FUNC, return_dtypes=py_func.MatchDType(1))
-      def called_member(self, a):
-        return np.negative(a)
-
-      @api.convert(recursive=True)
-      def test_method(self, x, s, a):
-        while tf.reduce_sum(x) > s:
-          y = self.called_member(a)
-          # set_shape works around while_loop's limitations.
-          # TODO(mdan): Allow specifying shapes (or ShapeLike) instead.
-          y.set_shape(a.shape)
-          x //= y
         return x
 
     tc = TestClass()

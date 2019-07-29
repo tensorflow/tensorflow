@@ -66,13 +66,14 @@ string GetUniqueWireID() {
 
 }  // namespace
 
-RemoteCopyNode::RemoteCopyNode(EagerContext* ctx, TensorHandle* src,
-                               TensorHandle* dst, Device* recv_device,
-                               uint64 recv_op_id)
+RemoteCopyNode::RemoteCopyNode(EagerContext* ctx, EagerExecutor* executor,
+                               TensorHandle* src, TensorHandle* dst,
+                               Device* recv_device, uint64 recv_op_id)
     : EagerNode(),
       src_(src),
       dst_(dst),
       ctx_(ctx),
+      executor_(executor),
       send_device_(src->DeviceOrHostCPU(ctx)),
       recv_device_(recv_device),
       wire_id_(GetUniqueWireID()),
@@ -107,7 +108,7 @@ Status RemoteCopyNode::RunSend() {
   DCHECK(send_device_ != nullptr);
 
   if (send_device_->IsLocal()) {
-    TF_RETURN_IF_ERROR(ctx_->GetStatus());
+    TF_RETURN_IF_ERROR(executor_->status());
 
     op.AddInput(src_);
 
@@ -169,7 +170,7 @@ Status RemoteCopyNode::RunRecv() {
   op.MutableAttrs()->Set("tensor_type", src_->dtype);
 
   if (recv_device_->IsLocal()) {
-    TF_RETURN_IF_ERROR(ctx_->GetStatus());
+    TF_RETURN_IF_ERROR(executor_->status());
 
     core::RefCountPtr<KernelAndDevice> kernel;
     TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(&op, &kernel));

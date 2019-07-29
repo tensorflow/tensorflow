@@ -20,12 +20,14 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 import gc
+import numpy as np
 import os
 import threading
 import weakref
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -102,13 +104,47 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual([1, 2, 3], t.get_shape())
 
   def testIterable(self):
+    if not context.executing_eagerly():
+      self.skipTest("Eager-mode test")
     op = ops.Operation(
         ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
     t = op.outputs[0]
-    self.assertTrue(isinstance(t, ops.Tensor))
-    with self.assertRaisesRegexp(TypeError, "iter"):
-      for _ in t:
-        pass
+    with self.assertRaisesRegexp(TypeError, "Cannot iterate"):
+      next(iter(t))
+
+  def testIterableGraph(self):
+    if context.executing_eagerly():
+      self.skipTest("Graph-mode test")
+
+    op = ops.Operation(
+        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
+    t = op.outputs[0]
+    with self.assertRaisesRegexp(TypeError, "iterating.*not allowed in Graph"):
+      next(iter(t))
+    with self.assertRaisesRegexp(
+        TypeError, "iterating.*AutoGraph did not convert"):
+      with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
+        next(iter(t))
+    with self.assertRaisesRegexp(
+        TypeError, "iterating.*AutoGraph is disabled"):
+      with ag_ctx.ControlStatusCtx(ag_ctx.Status.DISABLED):
+        next(iter(t))
+
+  def testImplicitBool(self):
+    op = ops.Operation(
+        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.bool])
+    t = op.outputs[0]
+    with self.assertRaisesRegexp(
+        TypeError, "using.*as a.*bool.*not allowed in Graph"):
+      bool(t)
+    with self.assertRaisesRegexp(
+        TypeError, "using.*as a.*bool.*AutoGraph did not convert"):
+      with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
+        bool(t)
+    with self.assertRaisesRegexp(
+        TypeError, "using.*as a.*bool.*AutoGraph is disabled"):
+      with ag_ctx.ControlStatusCtx(ag_ctx.Status.DISABLED):
+        bool(t)
 
   def testAddShape(self):
     with self.cached_session():
@@ -302,6 +338,26 @@ class IndexedSlicesSpecTest(test_util.TensorFlowTestCase,
       self.assertIs(st_reconstructed.dense_shape, None)
     else:
       self.assertAllEqual(x.dense_shape, st_reconstructed.dense_shape)
+
+  @test_util.run_v1_only("IndexedSlicesValue is deprecated in v2")
+  def testFromNumpyComponents(self):
+    indices = np.array([3, 8])
+    values = np.array([1.0, 9.0])
+    dense_shape = np.array([100])
+
+    spec1 = indexed_slices.IndexedSlicesSpec(dense_shape_dtype=dtypes.int32)
+    st1 = spec1._from_components((values, indices, dense_shape))
+    self.assertIsInstance(st1, indexed_slices.IndexedSlicesValue)
+    self.assertAllEqual(st1.indices, indices)
+    self.assertAllEqual(st1.values, values)
+    self.assertAllEqual(st1.dense_shape, dense_shape)
+
+    spec2 = indexed_slices.IndexedSlicesSpec()
+    st2 = spec2._from_components((values, indices))
+    self.assertIsInstance(st2, indexed_slices.IndexedSlicesValue)
+    self.assertAllEqual(st2.indices, indices)
+    self.assertAllEqual(st2.values, values)
+    self.assertIs(st2.dense_shape, None)
 
 
 class NodeDefConstructorTest(test_util.TensorFlowTestCase):

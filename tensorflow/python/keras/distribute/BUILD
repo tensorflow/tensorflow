@@ -168,8 +168,6 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
-        # TODO(b/134764123): Re-enable this test.
-        "notap",
         "notsan",
     ],
     deps = [

@@ -36,6 +36,26 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "benchmark_model_performance_options",
+    srcs = [
+        "benchmark_tflite_performance_options_main.cc",
+    ],
+    copts = common_copts,
+    linkopts = tflite_linkopts() + select({
+        "//tensorflow:android": [
+            "-pie",  # Android 5.0 and later supports only PIE
+            "-lm",  # some builtin ops, e.g., tanh, need -lm
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":benchmark_performance_options",
+        ":benchmark_tflite_model_lib",
+        ":logging",
+    ],
+)
+
 tf_cc_binary(
     name = "benchmark_model_plus_flex",
     srcs = [
@@ -96,6 +116,22 @@ cc_library(
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools/evaluation:utils",
         "@gemmlowp",
+    ],
+)
+
+cc_library(
+    name = "benchmark_performance_options",
+    srcs = [
+        "benchmark_performance_options.cc",
+    ],
+    hdrs = ["benchmark_performance_options.h"],
+    copts = common_copts,
+    deps = [
+        ":benchmark_model_lib",
+        ":benchmark_utils",
+        ":logging",
+        "//tensorflow/lite/profiling:time",
+        "//tensorflow/lite/tools:command_line_flags",
     ],
 )
 

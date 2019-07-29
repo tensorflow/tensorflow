@@ -21,6 +21,36 @@ limitations under the License.
 
 namespace xla {
 
+// This class contains pre-set assignments determined by memory space
+// assignment. It contains two data structures: (1) a chunks vector that maps a
+// defining HloPosition to a Chunk (offset and size), and (2) a sizes vector
+// that maps the memory space to its size. If there is only one alternate memory
+// space like there is currently, there will be one entry in sizes.
+class PresetAssignments {
+ public:
+  PresetAssignments() = default;
+
+  void add_chunk(const HloPosition& position,
+                 const HeapSimulator::Chunk& chunk) {
+    chunks_.emplace_back(position, chunk);
+  }
+
+  void add_size(int64 memory_space, int64 size) {
+    sizes_.emplace_back(memory_space, size);
+  }
+
+  absl::Span<const std::pair<const HloPosition, const HeapSimulator::Chunk>>
+  chunks() const {
+    return chunks_;
+  }
+
+  absl::Span<const std::pair<int64, int64>> sizes() const { return sizes_; }
+
+ private:
+  std::vector<std::pair<const HloPosition, const HeapSimulator::Chunk>> chunks_;
+  std::vector<std::pair<int64, int64>> sizes_;
+};
+
 // MemorySpaceAssignment assigns memory spaces (default or alternate) to each
 // instruction in the module. It will greedily try placing as as many values in
 // the alternate memory space as possible. It uses the heap simulator to
@@ -69,9 +99,11 @@ class MemorySpaceAssignment {
   //   - CopyAllocation(memory_space=kAlternate, start_time=22, end_time=25)
   class Allocation {
    public:
-    Allocation(HloInstruction* defining_instruction, MemorySpace memory_space,
-               Chunk chunk, int64 start_time, int64 end_time)
-        : defining_instruction_(defining_instruction),
+    Allocation(HloInstruction* instruction, HloPosition defining_position,
+               MemorySpace memory_space, Chunk chunk, int64 start_time,
+               int64 end_time)
+        : instruction_(instruction),
+          defining_position_(defining_position),
           memory_space_(memory_space),
           chunk_(chunk),
           start_time_(start_time),
@@ -89,10 +121,13 @@ class MemorySpaceAssignment {
     // insert asynchronous copy instructions if necessary.
     virtual Status Process(MemorySpaceAssignment* memory_space_assignment);
 
-    // Returns the defining instruction for this allocation.
-    virtual HloInstruction* defining_instruction() const {
-      return defining_instruction_;
-    }
+    // Returns the instruction that produces this allocation. It might be
+    // different than the instruction in defining_position (e.g., a
+    // GetTupleElement instruction does not define the buffer).
+    virtual HloInstruction* instruction() const { return instruction_; }
+
+    // Returns the defining position for this allocation.
+    HloPosition defining_position() const { return defining_position_; }
 
     const std::vector<HloUse>& uses() const { return uses_; }
     MemorySpace memory_space() const { return memory_space_; }
@@ -101,7 +136,8 @@ class MemorySpaceAssignment {
     int64 end_time() const { return end_time_; }
 
    protected:
-    HloInstruction* defining_instruction_;
+    HloInstruction* instruction_;
+    HloPosition defining_position_;
     std::vector<HloUse> uses_;
     MemorySpace memory_space_;
     Chunk chunk_;
@@ -116,7 +152,8 @@ class MemorySpaceAssignment {
                    Chunk chunk, int64 start_time, int64 end_time,
                    HloInstruction* copy_start_schedule_after,
                    HloInstruction* copy_done_schedule_before)
-        : Allocation(/*defining_instruction=*/nullptr, memory_space, chunk,
+        : Allocation(/*instruction=*/nullptr,
+                     /*defining_position=*/{nullptr, {}}, memory_space, chunk,
                      start_time, end_time),
           prev_allocation_(prev_allocation),
           copy_start_schedule_after_(copy_start_schedule_after),
@@ -124,13 +161,13 @@ class MemorySpaceAssignment {
 
     Status Process(MemorySpaceAssignment* memory_space_assignment) override;
 
-    HloInstruction* defining_instruction() const override {
-      // Unless explicitly set, the defining instruction of a copy allocation in
+    HloInstruction* instruction() const override {
+      // Unless explicitly set, the instruction of a copy allocation in
       // retrieved from the previous allocation.
-      if (defining_instruction_ != nullptr) {
-        return defining_instruction_;
+      if (instruction_ != nullptr) {
+        return instruction_;
       } else {
-        return prev_allocation_.defining_instruction();
+        return prev_allocation_.instruction();
       }
     }
 
@@ -159,7 +196,7 @@ class MemorySpaceAssignment {
   // HloValues (e.g., based on the opcode) to be placed on the alternate memory.
   // TODO(berkin): Use the cost model instead of using number of instructions to
   // decide how early to prefetch.
-  static StatusOr<bool> Run(
+  static StatusOr<std::unique_ptr<PresetAssignments>> Run(
       HloModule* module, int64 alternate_memory_space, int64 max_size_in_bytes,
       int64 min_prefetch_interval, int64 max_prefetch_interval,
       int64 alternate_memory_space_alignment_in_bytes,
@@ -168,7 +205,9 @@ class MemorySpaceAssignment {
 
  private:
   MemorySpaceAssignment(HloModule* module, int64 alternate_memory_space)
-      : module_(module), alternate_memory_space_(alternate_memory_space) {}
+      : module_(module),
+        alternate_memory_space_(alternate_memory_space),
+        preset_assignments_(absl::make_unique<PresetAssignments>()) {}
 
   // Process calls Process methods of the allocations after the allocations have
   // been finalized.
@@ -189,6 +228,7 @@ class MemorySpaceAssignment {
   HloModule* module_;
   int64 alternate_memory_space_;
   AllocationMap allocation_map_;
+  std::unique_ptr<PresetAssignments> preset_assignments_;
 
   // These maps hold vectors of new instructions that need to be scheduled after
   // (or before) the instruction in the key. FixSchedule uses these maps to
@@ -229,7 +269,8 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // limits, and append the new allocation(s) to allocations. The new
   // allocations can be in default or alternate memory spaces, or can be
   // prefetches or evictions.
-  void FindAllocation(int64 start_time, int64 end_time, HloUse use,
+  void FindAllocation(int64 start_time, int64 end_time,
+                      HloPosition defining_position, HloUse use,
                       const BufferInterval& interval,
                       MemorySpaceAssignment::AllocationSequence* allocations);
 

@@ -204,34 +204,6 @@ class KernelMappingScheme {
   bool dilated_x_;
 };
 
-// A class to represent information for tiled parameters to support IR emission
-// for 021 transpose.
-class TiledParameterInfo {
- public:
-  TiledParameterInfo(absl::Span<llvm::Value* const> param_buffers,
-                     llvm::Value* y, llvm::Value* x)
-      : param_buffers_(param_buffers), y_(y), x_(x) {}
-
-  llvm::Value* x() const { return x_; }
-  llvm::Value* y() const { return y_; }
-
-  void set_x(llvm::Value* x) { x_ = x; }
-  void set_y(llvm::Value* y) { y_ = y; }
-
-  llvm::Value* GetBufferForParameter(int64 index) const {
-    return param_buffers_[index];
-  }
-
- private:
-  // Param_buffers_[i] stores the tile buffer for the ith parameter or nullptr
-  // if the parameter is not tiled.
-  absl::Span<llvm::Value* const> param_buffers_;
-  // The y coordinate within a tile.
-  llvm::Value* y_;
-  // The x coordinate within a tile.
-  llvm::Value* x_;
-};
-
 }  // namespace llvm_ir
 }  // namespace xla
 

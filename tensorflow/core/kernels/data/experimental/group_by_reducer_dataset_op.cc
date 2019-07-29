@@ -113,6 +113,13 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       return "GroupByReducerDatasetOp::Dataset";
     }
 
+    bool IsStateful() const override {
+      return captured_key_func_->IsStateful() ||
+             captured_init_func_->IsStateful() ||
+             captured_reduce_func_->IsStateful() ||
+             captured_finalize_func_->IsStateful() || input_->IsStateful();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

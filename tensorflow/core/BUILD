@@ -363,7 +363,6 @@ cc_library(
         ":lib_platform",
         "//tensorflow/core/platform/default/build_config:base",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1205,7 +1204,6 @@ cc_library(
         [
             "@nsync//:nsync_cpp",
         ] + [
-            "@com_google_absl//absl/base:log_severity",
             "//third_party/eigen3",
             "//tensorflow/core/platform/default/build_config:minimal",
         ],
@@ -2675,7 +2673,6 @@ cc_library(
         ":lib_internal",
         "//tensorflow/core/platform/default/build_config:png",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
         "@zlib_archive//:zlib",
     ],
@@ -2697,7 +2694,6 @@ cc_library(
     deps = [
         ":platform_base",
         "//tensorflow/core/platform/default/build_config:logging",
-        "@com_google_absl//absl/base:log_severity",
     ],
 )
 
@@ -2729,7 +2725,6 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:jpeg",
         "//tensorflow/core/platform/default/build_config:logging",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2763,7 +2758,6 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:gif",
         "//tensorflow/core/platform/default/build_config:logging",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2791,7 +2785,6 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform/default/build_config:logging",
-        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
         "@png_archive//:png",
     ],
