@@ -59,6 +59,14 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
   # Invoke all(weighted and unweighted) metrics.
   metric_results = []
   if targets:
+    # Insert None values corresponding to the targets that need to be skipped
+    # on the model.
+    if len(model._targets) != len(targets):
+      new_targets = [
+          None if t is None else targets.pop(0) for t in model._targets
+      ]
+      targets = new_targets
+
     metric_results = model._handle_metrics(
         outputs,
         targets=targets,
