@@ -631,9 +631,7 @@ class MklDummyOp : public OpKernel {
   }
 };
 
-#ifdef ENABLE_MKLDNN_V1
 #undef MKLDNN_SIZE_DTYPE
-#endif  // ENABLE_MKLDNN_V1
 
 }  // namespace tensorflow
 
