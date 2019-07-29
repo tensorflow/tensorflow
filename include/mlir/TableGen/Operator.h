@@ -59,9 +59,6 @@ public:
   // format if its dialect name is not empty.
   std::string getOperationName() const;
 
-  // Returns this op's C++ namespaces.
-  StringRef getCppNamespaces() const;
-
   // Returns this op's C++ class name.
   StringRef getCppClassName() const;
 
@@ -106,13 +103,9 @@ public:
   llvm::iterator_range<attribute_iterator> getAttributes() const;
 
   int getNumAttributes() const { return attributes.size(); }
-  // Returns the total number of native attributes.
-  int getNumNativeAttributes() const;
-  int getNumDerivedAttributes() const;
 
   // Op attribute accessors.
   NamedAttribute &getAttribute(int index) { return attributes[index]; }
-  const NamedAttribute &getAttribute(int index) const;
 
   // Op operand iterators.
   value_iterator operand_begin();
@@ -135,18 +128,10 @@ public:
   Argument getArg(int index) const;
   StringRef getArgName(int index) const;
 
-  // Returns the number of `PredOpTrait` traits.
-  int getNumPredOpTraits() const;
-
   // Returns true if this op has the given MLIR C++ `trait`.
   // TODO: We should add a C++ wrapper class for TableGen OpTrait instead of
   // requiring the raw MLIR trait here.
   bool hasTrait(llvm::StringRef trait) const;
-
-  using const_region_iterator = const NamedRegion *;
-  const_region_iterator region_begin() const;
-  const_region_iterator region_end() const;
-  llvm::iterator_range<const_region_iterator> getRegions() const;
 
   // Returns the number of regions.
   unsigned getNumRegions() const;

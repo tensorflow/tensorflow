@@ -46,22 +46,6 @@ public:
   bool isVariadic() const;
 };
 
-// Wrapper class providing helper methods for accessing MLIR Type defined
-// in TableGen. This class should closely reflect what is defined as
-// class Type in TableGen.
-class Type : public TypeConstraint {
-public:
-  explicit Type(const llvm::Record *record);
-  explicit Type(const llvm::DefInit *init);
-
-  // Returns the TableGen def name for this type.
-  StringRef getTableGenDefName() const;
-
-  // Gets the base type of this variadic type constraint.
-  // Precondition: isVariadic() is true.
-  Type getVariadicBaseType() const;
-};
-
 } // end namespace tblgen
 } // end namespace mlir
 

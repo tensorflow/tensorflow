@@ -67,11 +67,6 @@ bool tblgen::Attribute::isEnumAttr() const {
   return def->isSubClassOf("EnumAttrInfo");
 }
 
-bool tblgen::Attribute::hasStorageType() const {
-  const auto *init = def->getValueInit("storageType");
-  return !getValueAsString(init).empty();
-}
-
 StringRef tblgen::Attribute::getStorageType() const {
   const auto *init = def->getValueInit("storageType");
   auto type = getValueAsString(init);
@@ -174,10 +169,6 @@ tblgen::EnumAttr::EnumAttr(const llvm::Record &record) : Attribute(&record) {}
 
 tblgen::EnumAttr::EnumAttr(const llvm::DefInit *init)
     : EnumAttr(init->getDef()) {}
-
-bool tblgen::EnumAttr::isStrEnum() const {
-  return def->isSubClassOf("StrEnumAttr");
-}
 
 StringRef tblgen::EnumAttr::getEnumClassName() const {
   return def->getValueAsString("className");

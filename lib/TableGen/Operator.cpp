@@ -62,10 +62,6 @@ std::string tblgen::Operator::getOperationName() const {
 
 StringRef tblgen::Operator::getDialectName() const { return dialect.getName(); }
 
-StringRef tblgen::Operator::getCppNamespaces() const {
-  return dialect.getCppNamespace();
-}
-
 StringRef tblgen::Operator::getCppClassName() const { return cppClassName; }
 
 std::string tblgen::Operator::getQualCppClassName() const {
@@ -124,18 +120,6 @@ unsigned tblgen::Operator::getNumVariadicResults() const {
       [](const NamedTypeConstraint &c) { return c.constraint.isVariadic(); });
 }
 
-int tblgen::Operator::getNumNativeAttributes() const {
-  return numNativeAttributes;
-}
-
-int tblgen::Operator::getNumDerivedAttributes() const {
-  return getNumAttributes() - getNumNativeAttributes();
-}
-
-const tblgen::NamedAttribute &tblgen::Operator::getAttribute(int index) const {
-  return attributes[index];
-}
-
 unsigned tblgen::Operator::getNumVariadicOperands() const {
   return std::count_if(
       operands.begin(), operands.end(),
@@ -145,12 +129,6 @@ unsigned tblgen::Operator::getNumVariadicOperands() const {
 StringRef tblgen::Operator::getArgName(int index) const {
   DagInit *argumentValues = def.getValueAsDag("arguments");
   return argumentValues->getArgName(index)->getValue();
-}
-
-int tblgen::Operator::getNumPredOpTraits() const {
-  return std::count_if(traits.begin(), traits.end(), [](const OpTrait &trait) {
-    return isa<tblgen::PredOpTrait>(&trait);
-  });
 }
 
 bool tblgen::Operator::hasTrait(StringRef trait) const {
@@ -164,19 +142,6 @@ bool tblgen::Operator::hasTrait(StringRef trait) const {
     }
   }
   return false;
-}
-
-tblgen::Operator::const_region_iterator tblgen::Operator::region_begin() const {
-  return regions.begin();
-}
-
-tblgen::Operator::const_region_iterator tblgen::Operator::region_end() const {
-  return regions.end();
-}
-
-llvm::iterator_range<tblgen::Operator::const_region_iterator>
-tblgen::Operator::getRegions() const {
-  return {region_begin(), region_end()};
 }
 
 unsigned tblgen::Operator::getNumRegions() const { return regions.size(); }
