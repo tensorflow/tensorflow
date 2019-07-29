@@ -565,9 +565,10 @@ struct FusedBatchNormFreezeGrad<CPUDevice, T, U> {
   }
 };
 
-#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
+#if !GOOGLE_CUDA
 namespace {
 // See implementation under GOOGLE_CUDA #ifdef below.
+// This is a CUDA specific feature, do not enable it for non-CUDA builds
 bool BatchnormSpatialPersistentEnabled() { return false; }
 }  // namespace
 #endif
@@ -586,6 +587,7 @@ se::dnn::ActivationMode AsDnnActivationMode(
   }
 }
 
+#if GOOGLE_CUDA
 // NOTE(ezhulenev): See `BatchnormSpatialPersistentEnabled` documentation in the
 // `cuda_dnn.cc` for details.
 bool BatchnormSpatialPersistentEnabled() {
@@ -602,6 +604,8 @@ bool BatchnormSpatialPersistentEnabled() {
   return false;
 #endif
 }
+#endif
+
 }  // namespace
 
 template <typename T, typename U>
@@ -629,6 +633,7 @@ struct FusedBatchNorm<GPUDevice, T, U> {
     const bool has_reserve_space_3 =
         reserve_space_allocator != nullptr && workspace_allocator != nullptr;
 
+#if GOOGLE_CUDA
     // Check if cuDNN batch normalization has a fast NHWC implementation:
     //   (1) In inference mode it's always fast.
     //   (2) Tensorflow enabled batchnorm spatial persistence, and
@@ -637,6 +642,10 @@ struct FusedBatchNorm<GPUDevice, T, U> {
         !is_training ||
         (BatchnormSpatialPersistentEnabled() &&
          DataTypeToEnum<T>::value == DT_HALF && has_reserve_space_3);
+#else
+    // fast NHWC implementation is a CUDA only feature
+    const bool fast_nhwc_batch_norm = false;
+#endif
 
     // If input tensor is in NHWC format, and we have a fast cuDNN
     // implementation, there is no need to do data format conversion.
@@ -827,6 +836,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
     const int64 height = GetTensorDim(x, tensor_format, 'H');
     const int64 width = GetTensorDim(x, tensor_format, 'W');
 
+#if GOOGLE_CUDA
     // Check if cuDNN batch normalization has a fast NHWC implementation:
     //   (1) Tensorflow enabled batchnorm spatial persistence, and
     //       FusedBatchNormGradV3 passed non-null reserve space and allocator.
@@ -834,6 +844,10 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
                                       DataTypeToEnum<T>::value == DT_HALF &&
                                       reserve_space != nullptr &&
                                       workspace_allocator != nullptr;
+#else
+    // fast NHWC implementation is a CUDA only feature
+    const bool fast_nhwc_batch_norm = false;
+#endif
 
     // If input tensor is in NHWC format, and we have a fast cuDNN
     // implementation, there is no need to do data format conversion.
