@@ -317,7 +317,7 @@ def load_function_def_library(library, load_shared_name_suffix=None):
 
     # Also register the gradients in the current root context.
     with ops.init_scope():
-      func._register_gradient()  # pylint: disable=protected-access
+      func._register_delayed_rewrite_gradient()  # pylint: disable=protected-access
 
   return functions
 
@@ -363,8 +363,8 @@ def fix_node_def(node_def, functions, shared_name_suffix, debug_name):
       # function call is the default gradient for the function and not a
       # custom one.
       fname = node_def.attr["f"].func.name
-      node_def.attr["_gradient_op_type"].s = compat.as_bytes(
-          functions[fname]._gradient_name)  # pylint: disable=protected-access
+      gradient_name = functions[fname]._register_delayed_rewrite_gradient()  # pylint: disable=protected-access
+      node_def.attr["_gradient_op_type"].s = compat.as_bytes(gradient_name)
     else:
       logging.warning("Importing a function (%s) with ops with custom "
                       "gradients. Will likely fail if a gradient is "

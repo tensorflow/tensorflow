@@ -409,13 +409,12 @@ def _call_function_with_mapped_captures(function, args, resource_map):
   """Calls `function` in the exported graph, using mapped resource captures."""
   export_captures = _map_captures_to_created_tensors(
       function.graph.captures, resource_map)
-  mapped_inputs = args + export_captures
   # Calls the function quite directly, since we have new captured resource
   # tensors we need to feed in which weren't part of the original function
   # definition.
   # pylint: disable=protected-access
-  outputs = function._build_call_outputs(
-      function._inference_function.call(context.context(), mapped_inputs))
+  outputs = function._call_flat(args, export_captures)
+  # pylint: enable=protected-access
   return outputs
 
 
