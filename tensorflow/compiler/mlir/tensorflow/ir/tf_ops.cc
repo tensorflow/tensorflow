@@ -119,6 +119,35 @@ void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// AssertOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// Removes Assert with constant true predicate.
+struct AssertWithTrue : public OpRewritePattern<AssertOp> {
+  using OpRewritePattern<AssertOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(AssertOp op,
+                                     PatternRewriter &rewriter) const override {
+    ElementsAttr cst;
+    if (matchPattern(op.condition(), m_Constant(&cst))) {
+      if (cst.getValue({}).cast<BoolAttr>().getValue()) {
+        rewriter.replaceOp(op, llvm::None);
+        return matchSuccess();
+      }
+    }
+    return matchFailure();
+  }
+};
+}  // namespace
+
+void AssertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  RewriteListBuilder<AssertWithTrue>::build(results, context);
+}
+
+//===----------------------------------------------------------------------===//
 // BitcastOp
 //===----------------------------------------------------------------------===//
 
