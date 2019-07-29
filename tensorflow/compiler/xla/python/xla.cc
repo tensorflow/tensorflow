@@ -425,7 +425,10 @@ PYBIND11_MODULE(xla_extension, m) {
                     &DebugOptions::set_xla_cpu_fast_math_honor_nans)
       .def_property("xla_cpu_fast_math_honor_division",
                     &DebugOptions::xla_cpu_fast_math_honor_division,
-                    &DebugOptions::set_xla_cpu_fast_math_honor_division);
+                    &DebugOptions::set_xla_cpu_fast_math_honor_division)
+      .def_property("xla_gpu_enable_fast_min_max",
+                    &DebugOptions::xla_gpu_enable_fast_min_max,
+                    &DebugOptions::set_xla_gpu_enable_fast_min_max);
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
