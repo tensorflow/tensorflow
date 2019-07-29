@@ -97,12 +97,7 @@ class SavedModelTest(scripts.TestCase, parameterized.TestCase):
     fast_test_mode = True
     temp_dir = self.get_temp_dir()
     feature_extrator_dir = os.path.join(temp_dir, "mnist_feature_extractor")
-
-    # TODO(b/135043074): remove this if-else.
-    if named_strategy is None:
-      full_model_dir = os.path.join(temp_dir, "full_model")
-    else:
-      full_model_dir = None
+    full_model_dir = os.path.join(temp_dir, "full_model")
 
     self.assertCommandSucceeded(
         "export_mnist_cnn",
