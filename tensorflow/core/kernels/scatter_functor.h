@@ -211,9 +211,8 @@ struct ScatterFunctorBase {
     // same index has to be serialized. To reduce the number of locks and the
     // memory usage, we divide the whole index space into kMaxLocks regions with
     // each lock serializing access to a region.
-    const Index num_locks = std::min(limit, kMaxLocks);
     const Index entries_per_lock = (limit + kMaxLocks - 1) / kMaxLocks;
-    mutex accessed[num_locks];
+    mutex accessed[kMaxLocks];
     std::atomic<Index> bad_index(-1);
     auto ParallelScatter = [&](Index start, Index end) {
       for (Index i = start; i < end; ++i) {
