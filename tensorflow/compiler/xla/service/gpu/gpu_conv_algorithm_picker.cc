@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 
-#if not TENSROFLOW_USE_ROCM
+#if !TENSORFLOW_USE_ROCM
 #include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 #endif
 
@@ -130,6 +130,7 @@ void PrintPlatformInfo(const se::Stream* stream) {
   }
 }
 
+#if !TENSORFLOW_USE_ROCM
 // Returns true if the redzones in `allocator`'s allocations are unmodified.
 //
 // If the redzones are modified, logs an error, sets the appropriate failure
@@ -173,6 +174,7 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
   PrintPlatformInfo(stream);
   return false;
 }
+#endif
 
 using ConvCacheKey =
     std::tuple<se::StreamExecutor*,
@@ -253,7 +255,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
 
   StatusOr<AutotuneResult> result_or(InternalError("Unknown platform."));
   if (stream_exec_->platform_kind() == se::PlatformKind::kROCm) {
-    //result_or = PickBestAlgorithmNoCacheROCm(*instr, allocator, &stream);
+    result_or = PickBestAlgorithmNoCacheROCm(*instr, allocator, &stream);
   } else if (stream_exec_->platform_kind() == se::PlatformKind::kCuda) {
     result_or = PickBestAlgorithmNoCacheCuda(*instr, allocator, &stream);
   }
@@ -269,9 +271,10 @@ StatusOr<tensorflow::AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     const HloCustomCallInstruction& instr, se::DeviceMemoryAllocator* allocator,
     se::Stream* stream) {
-  XLA_SCOPED_LOGGING_TIMER(
-      absl::StrCat("GpuConvAlgorithmPicker::PickBestAlgorithmImpl for ",
-                   instr.ToString()));
+// Right now Redzone allocator is available in Cuda target only
+#if !TENSORFLOW_USE_ROCM
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+      "GpuConvAlgorithmPicker::PickBestAlgorithmImpl for ", instr.ToString()));
 
   const Shape& result_shape = instr.shape().tuple_shapes(0);
   const auto device_ordinal = stream_exec_->device_ordinal();
@@ -524,6 +527,78 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   if (best_result != profile_results.end() && !has_failure(*best_result)) {
     return *best_result;
+  }
+#endif
+
+  return InternalError(
+      "All algorithms tried for convolution %s failed.  Falling back to "
+      "default algorithm.",
+      instr.ToString());
+}
+
+StatusOr<tensorflow::AutotuneResult>
+GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheROCm(
+    const HloCustomCallInstruction& instr, se::DeviceMemoryAllocator* allocator,
+    se::Stream* stream) {
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+      "GpuConvAlgorithmPicker::PickBestAlgorithmImpl for ", instr.ToString()));
+
+  const auto device_ordinal = stream_exec_->device_ordinal();
+  std::vector<se::DeviceMemoryBase> operand_buffers;
+
+  ScratchAllocator input_output_allocator(device_ordinal, allocator);
+  const auto initialize_buffer = [stream](DeviceMemoryBase buffer) {
+    // Although we don't have evidence this matters, zero out the buffers
+    // before autotuning.  It's conceivable that using uninitialized memory as
+    // the inputs might affect performance if e.g. the inputs contain
+    // denormals, and this is easy enough.
+    stream->ThenMemZero(&buffer, buffer.size());
+  };
+
+  // Allocate space for the input, filter, and output of the convolution.  We
+  // use a ScratchAllocator for this instead of calling allocator_ directly so
+  // that our allocations don't leak.
+  for (const auto* operand : instr.operands()) {
+    TF_ASSIGN_OR_RETURN(auto buffer,
+                        input_output_allocator.AllocateBytes(
+                            stream, ShapeUtil::ByteSizeOf(operand->shape())));
+    initialize_buffer(buffer);
+    operand_buffers.push_back(buffer);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      auto result_buffer,
+      input_output_allocator.AllocateBytes(
+          stream, ShapeUtil::ByteSizeOf(instr.shape().tuple_shapes(0))));
+  initialize_buffer(result_buffer);
+
+  ScratchAllocator scratch_allocator(device_ordinal, allocator);
+  se::dnn::ProfileResult profile_result;
+  VLOG(3) << "Auto-tuning for " << instr.ToString();
+  RunConvOptions options;
+  options.profile_result = &profile_result;
+#if TENSORFLOW_USE_ROCM
+  // ROCm: Needs to set the first time caller flag
+  options.first_call_from_algorithm_picker = true;
+#endif
+
+  bool launch_ok =
+      RunCudnnConv(&instr, absl::MakeSpan(operand_buffers), result_buffer,
+                   &scratch_allocator, stream, options)
+          .ok();
+
+  AutotuneResult best_result;
+  if (launch_ok && profile_result.is_valid()) {
+    best_result.mutable_conv()->set_algorithm(
+        profile_result.algorithm().algo_id());
+    best_result.mutable_conv()->set_tensor_ops_enabled(
+        profile_result.algorithm().tensor_ops_enabled());
+    int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
+    best_result.set_scratch_bytes(scratch_bytes_used);
+    *best_result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
+        absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+
+    return best_result;
   }
 
   return InternalError(
