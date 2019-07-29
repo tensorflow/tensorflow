@@ -195,15 +195,18 @@ Status RemoteCopyNode::RunRemoteRecv(EagerOperation* op) {
     return status;
   }
 
-  EnqueueResponse* response = new EnqueueResponse;
-
   // Don't issue the recv until send has completed.
   //  - local send will complete very quickly.
   //  - remote send will take some time, but remote->remote copy is
   //    probably rare enough that we don't care much.
   // Blocks until send has completed.
   Status send_status = captured_state_->GetSendStatus();
+  if (!send_status.ok()) {
+    captured_state_->dst()->Poison(send_status);
+    return send_status;
+  }
 
+  EnqueueResponse* response = new EnqueueResponse;
   const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
   Device* recv_device = recv_device_;
   Notification n;
