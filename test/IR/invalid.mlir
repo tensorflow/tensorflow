@@ -1044,3 +1044,32 @@ func @invalid_region_dominance() {
   }) : () -> ()
   return
 }
+
+// -----
+
+func @hexadecimal_bf16() {
+  // expected-error @+1 {{integer literal not valid for specified type}}
+  "foo"() {value = 0xffff : bf16} : () -> ()
+}
+
+// -----
+
+func @hexadecimal_float_leading_minus() {
+  // expected-error @+1 {{hexadecimal float literal should not have a leading minus}}
+  "foo"() {value = -0x7fff : f16} : () -> ()
+}
+
+// -----
+
+func @hexadecimal_float_literal_overflow() {
+  // expected-error @+1 {{hexadecimal float constant out of range for attribute}}
+  "foo"() {value = 0xffffffff : f16} : () -> ()
+}
+
+// -----
+
+func @decimal_float_literal() {
+  // expected-error @+2 {{unexpected decimal integer literal for a float attribute}}
+  // expected-note @+1 {{add a trailing dot to make the literal a float}}
+  "foo"() {value = 42 : f32} : () -> ()
+}

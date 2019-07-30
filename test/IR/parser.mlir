@@ -945,3 +945,81 @@ func @dialect_attribute_with_type() {
   // CHECK-NEXT: foo = #foo.attr : i32
   "foo.unknown_op"() {foo = #foo.attr : i32} : () -> ()
 }
+
+// CHECK-LABEL: @f16_special_values
+func @f16_special_values() {
+  // F16 NaNs.
+  // CHECK: constant 0x7C01 : f16
+  %0 = constant 0x7C01 : f16
+  // CHECK: constant 0x7FFF : f16
+  %1 = constant 0x7FFF : f16
+  // CHECK: constant 0xFFFF : f16
+  %2 = constant 0xFFFF : f16
+
+  // F16 positive infinity.
+  // CHECK: constant 0x7C00 : f16
+  %3 = constant 0x7C00 : f16
+  // F16 negative inifinity.
+  // CHECK: constant 0xFC00 : f16
+  %4 = constant 0xFC00 : f16
+
+  return
+}
+
+// CHECK-LABEL: @f32_special_values
+func @f32_special_values() {
+  // F32 signaling NaNs.
+  // CHECK: constant 0x7F800001 : f32
+  %0 = constant 0x7F800001 : f32
+  // CHECK: constant 0x7FBFFFFF : f32
+  %1 = constant 0x7FBFFFFF : f32
+
+  // F32 quiet NaNs.
+  // CHECK: constant 0x7FC00000 : f32
+  %2 = constant 0x7FC00000 : f32
+  // CHECK: constant 0xFFFFFFFF : f32
+  %3 = constant 0xFFFFFFFF : f32
+
+  // F32 positive infinity.
+  // CHECK: constant 0x7F800000 : f32
+  %4 = constant 0x7F800000 : f32
+  // F32 negative infinity.
+  // CHECK: constant 0xFF800000 : f32
+  %5 = constant 0xFF800000 : f32
+
+  return
+}
+
+// CHECK-LABEL: @f64_special_values
+func @f64_special_values() {
+  // F64 signaling NaNs.
+  // CHECK: constant 0x7FF0000000000001 : f64
+  %0 = constant 0x7FF0000000000001 : f64
+  // CHECK: constant 0x7FF8000000000000 : f64
+  %1 = constant 0x7FF8000000000000 : f64
+
+  // F64 quiet NaNs.
+  // CHECK: constant 0x7FF0000001000000 : f64
+  %2 = constant 0x7FF0000001000000 : f64
+  // CHECK: constant 0xFFF0000001000000 : f64
+  %3 = constant 0xFFF0000001000000 : f64
+
+  // F64 positive inifinity.
+  // CHECK: constant 0x7FF0000000000000 : f64
+  %4 = constant 0x7FF0000000000000 : f64
+  // F64 negative infinity.
+  // CHECK: constant 0xFFF0000000000000 : f64
+  %5 = constant 0xFFF0000000000000 : f64
+
+  return
+}
+
+// We want to print floats in exponential notation with 6 significant digits,
+// but it may lead to precision loss when parsing back, in which case we print
+// the decimal form instead.
+// CHECK-LABEL: @f32_potential_precision_loss()
+func @f32_potential_precision_loss() {
+  // CHECK: constant -1.23697901 : f32
+  %0 = constant -1.23697901 : f32
+  return
+}
