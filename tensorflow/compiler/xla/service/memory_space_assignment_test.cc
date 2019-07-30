@@ -31,7 +31,7 @@ class MemorySpaceAssignmentTest : public HloTestBase {
   const int64 kDefaultMemorySpace = 0;
   const int64 kAlternateMemorySpace = 1;
 
-  void AssignMemorySpace(HloModule* module) {
+  std::unique_ptr<PresetAssignments> AssignMemorySpace(HloModule* module) {
     auto size_fn = [](const BufferValue& buffer) {
       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
     };
@@ -49,13 +49,14 @@ class MemorySpaceAssignmentTest : public HloTestBase {
       return true;
     };
 
-    ASSERT_IS_OK(MemorySpaceAssignment::Run(
-                     module, kAlternateMemorySpace, /*max_size_in_bytes=*/128,
-                     /*min_prefetch_interval=*/2,
-                     /*max_prefetch_interval=*/10,
-                     /*alternate_memory_space_alignment_in_bytes=*/8, size_fn,
-                     is_allowed_in_alternate_mem)
-                     .status());
+    return std::move(MemorySpaceAssignment::Run(
+                         module, kAlternateMemorySpace,
+                         /*max_size_in_bytes=*/128,
+                         /*min_prefetch_interval=*/2,
+                         /*max_prefetch_interval=*/10,
+                         /*alternate_memory_space_alignment_in_bytes=*/8,
+                         size_fn, is_allowed_in_alternate_mem)
+                         .ValueOrDie());
   }
 };
 
@@ -103,7 +104,7 @@ TEST_F(MemorySpaceAssignmentTest, Simple) {
   schedule.set_sequence(computation, {p0, p1, add, sub, mul});
   TF_CHECK_OK(module->set_schedule(schedule));
 
-  AssignMemorySpace(module.get());
+  auto preset_assignments = AssignMemorySpace(module.get());
 
   // Inputs and outputs are currently placed in the default memory. Everything
   // else should be in the alternate memory.
@@ -116,6 +117,10 @@ TEST_F(MemorySpaceAssignmentTest, Simple) {
   EXPECT_THAT(mul, op::ShapeWithLayout(shape));
   EXPECT_THAT(add, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(sub, op::ShapeWithLayout(shape_in_alternate_mem));
+
+  // Make sure the preset assignments is sane.
+  EXPECT_THAT(preset_assignments->chunks().size(), 2);
+  EXPECT_THAT(preset_assignments->sizes().size(), 1);
 }
 
 TEST_F(MemorySpaceAssignmentTest, NegateChain) {

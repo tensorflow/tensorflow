@@ -1222,8 +1222,13 @@ Status BufferAssigner::AssignPresetBuffers(
       preset_allocations;
   for (auto& color_and_size : preset_assignments_->sizes()) {
     LogicalBuffer::Color color(color_and_size.first);
-    preset_allocations.emplace(
+    auto inserted = preset_allocations.emplace(
         color, assignment->NewEmptyAllocation(color_and_size.second, color));
+    BufferAllocation* inserted_allocation = inserted.first->second;
+    VLOG(3) << "Created preset buffer allocation "
+            << inserted_allocation->index()
+            << ", color: " << inserted_allocation->color()
+            << ", size: " << inserted_allocation->size();
   }
 
   const HloAliasAnalysis& alias_analysis = assignment->alias_analysis();
@@ -1234,8 +1239,12 @@ Status BufferAssigner::AssignPresetBuffers(
         alias_analysis.GetUniqueBufferAt(position.instruction, position.index);
     VLOG(3) << "Preset allocation for buffer: " << buffer;
     const HeapSimulator::Chunk& chunk = position_and_chunk.second;
-    preset_allocations[buffer.color()]->AddAssignment(buffer.GetUniqueValue(),
-                                                      chunk.offset, chunk.size);
+    auto preset_allocations_iter = preset_allocations.find(buffer.color());
+    CHECK(preset_allocations_iter != preset_allocations.end())
+        << "No preset buffer allocation for color " << buffer.color()
+        << " found.";
+    preset_allocations_iter->second->AddAssignment(buffer.GetUniqueValue(),
+                                                   chunk.offset, chunk.size);
     // Ensure that there is at most one preset allocation for each buffer.
     CHECK_EQ(assigned_buffers->count(&buffer), 0);
     assigned_buffers->emplace(&buffer);
