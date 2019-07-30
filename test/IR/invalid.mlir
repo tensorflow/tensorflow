@@ -1062,7 +1062,7 @@ func @hexadecimal_float_leading_minus() {
 // -----
 
 func @hexadecimal_float_literal_overflow() {
-  // expected-error @+1 {{hexadecimal float constant out of range for attribute}}
+  // expected-error @+1 {{hexadecimal float constant out of range for type}}
   "foo"() {value = 0xffffffff : f16} : () -> ()
 }
 
@@ -1072,4 +1072,70 @@ func @decimal_float_literal() {
   // expected-error @+2 {{unexpected decimal integer literal for a float attribute}}
   // expected-note @+1 {{add a trailing dot to make the literal a float}}
   "foo"() {value = 42 : f32} : () -> ()
+}
+
+// -----
+
+func @float_in_int_tensor() {
+  // expected-error @+1 {{expected integer elements, but parsed floating-point}}
+  "foo"() {bar = dense<[42.0, 42]> : tensor<2xi32>} : () -> ()
+}
+
+// -----
+
+func @float_in_bool_tensor() {
+  // expected-error @+1 {{expected integer elements, but parsed floating-point}}
+  "foo"() {bar = dense<[true, 42.0]> : tensor<2xi1>} : () -> ()
+}
+
+// -----
+
+func @decimal_int_in_float_tensor() {
+  // expected-error @+1 {{expected floating-point elements, but parsed integer}}
+  "foo"() {bar = dense<[42, 42.0]> : tensor<2xf32>} : () -> ()
+}
+
+// -----
+
+func @bool_in_float_tensor() {
+  // expected-error @+1 {{expected floating-point elements, but parsed integer}}
+  "foo"() {bar = dense<[42.0, true]> : tensor<2xf32>} : () -> ()
+}
+
+// -----
+
+func @hexadecimal_float_leading_minus_in_tensor() {
+  // expected-error @+1 {{hexadecimal float literal should not have a leading minus}}
+  "foo"() {bar = dense<-0x7FFFFFFF> : tensor<2xf32>} : () -> ()
+}
+
+// -----
+
+// Check that we report an error when a value could be parsed, but does not fit
+// into the specified type.
+func @hexadecimal_float_too_wide_for_type_in_tensor() {
+  // expected-error @+1 {{hexadecimal float constant out of range for type}}
+  "foo"() {bar = dense<0x7FF0000000000000> : tensor<2xf32>} : () -> ()
+}
+
+// -----
+
+// Check that we report an error when a value is too wide to be parsed.
+func @hexadecimal_float_too_wide_in_tensor() {
+  // expected-error @+1 {{hexadecimal float constant out of range for attribute}}
+  "foo"() {bar = dense<0x7FFFFFF0000000000000> : tensor<2xf32>} : () -> ()
+}
+
+// -----
+
+func @integer_too_wide_in_tensor() {
+  // expected-error @+1 {{integer constant out of range for type}}
+  "foo"() {bar = dense<0xFFFFFFFFFFFFFF> : tensor<2xi16>} : () -> ()
+}
+
+// -----
+
+func @bool_literal_in_non_bool_tensor() {
+  // expected-error @+1 {{expected i1 type for 'true' or 'false' values}}
+  "foo"() {bar = dense<true> : tensor<2xi16>} : () -> ()
 }

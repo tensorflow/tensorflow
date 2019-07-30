@@ -1023,3 +1023,16 @@ func @f32_potential_precision_loss() {
   %0 = constant -1.23697901 : f32
   return
 }
+
+// CHECK-LABEL: @special_float_values_in_tensors
+func @special_float_values_in_tensors() {
+  // CHECK: dense<0xFFFFFFFF> : tensor<4x4xf32>
+  "foo"(){bar = dense<0xFFFFFFFF> : tensor<4x4xf32>} : () -> ()
+  // CHECK: dense<[{{\[}}0xFFFFFFFF, 0x7F800000], [0x7FBFFFFF, 0x7F800001]]> : tensor<2x2xf32>
+  "foo"(){bar = dense<[[0xFFFFFFFF, 0x7F800000], [0x7FBFFFFF, 0x7F800001]]> : tensor<2x2xf32>} : () -> ()
+  // CHECK: dense<[0xFFFFFFFF, 0.000000e+00]> : tensor<2xf32>
+  "foo"(){bar = dense<[0xFFFFFFFF, 0.0]> : tensor<2xf32>} : () -> ()
+
+  // CHECK: sparse<[{{\[}}1, 1, 0], [0, 1, 1]], [0xFFFFFFFF, 0x7F800001]>
+  "foo"(){bar = sparse<[[1,1,0],[0,1,1]], [0xFFFFFFFF, 0x7F800001]> : tensor<2x2x2xf32>} : () -> ()
+}
