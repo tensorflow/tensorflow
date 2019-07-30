@@ -108,6 +108,25 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   A `Dataset` can be used to represent an input pipeline as a
   collection of elements and a "logical plan" of transformations that act on
   those elements.
+
+  A dataset contains elements that each have the same (nested) structure and the
+  individual components of the structure can be of any type representable by
+  `tf.TypeSpec`, including `tf.Tensor`, `tf.data.Dataset`, `tf.SparseTensor`,
+  `tf.RaggedTensor`, or `tf.TensorArray`.
+
+  Example elements:
+  ```python
+  # Integer element
+  a = 1
+  # Float element
+  b = 2.0
+  # Tuple element with 2 components
+  c = (1, 2)
+  # Dict element with 3 components
+  d = {"a": (2, 2), "b": 3}
+  # Element containing a dataset
+  e = tf.data.Dataset.from_element(10)
+  ```
   """
 
   def __init__(self, variant_tensor):
