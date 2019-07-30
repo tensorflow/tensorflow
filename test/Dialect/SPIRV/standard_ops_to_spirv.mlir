@@ -1,4 +1,4 @@
-// RUN: mlir-opt -std-to-spirv %s -o - | FileCheck %s
+// RUN: mlir-opt -convert-std-to-spirv %s -o - | FileCheck %s
 
 // CHECK-LABEL: @fmul_scalar
 func @fmul_scalar(%arg: f32) -> f32 {

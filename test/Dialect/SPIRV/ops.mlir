@@ -345,17 +345,6 @@ spv.module "Logical" "VulkanKHR" {
 
 // -----
 
-spv.module "Logical" "VulkanKHR" {
-   %2 = spv.Variable : !spv.ptr<f32, Workgroup>
-   func @do_nothing() -> () {
-     spv.Return
-   }
-   // expected-error @+1 {{'spv.EntryPoint' op invalid storage class 'Workgroup'}}
-   spv.EntryPoint "GLCompute" @do_nothing, %2 : !spv.ptr<f32, Workgroup>
-}
-
-// -----
-
 //===----------------------------------------------------------------------===//
 // spv.ExecutionMode
 //===----------------------------------------------------------------------===//

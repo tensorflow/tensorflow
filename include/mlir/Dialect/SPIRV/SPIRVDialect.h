@@ -38,6 +38,9 @@ public:
 
   /// Prints a type registered to this dialect.
   void printType(Type type, llvm::raw_ostream &os) const override;
+
+  /// Checks if a type is valid in SPIR-V dialect.
+  bool isValidSPIRVType(Type t) const;
 };
 
 } // end namespace spirv

@@ -1,4 +1,4 @@
-//==- StdOpsToSPIRVConversion.td - Std Ops to SPIR-V Patterns *- tablegen -*==//
+//==- StandardToSPIRV.td - Standard Ops to SPIR-V Patterns ---*- tablegen -*==//
 
 // Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,13 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Defines Patterns to lower standard ops to SPIR-V
+// Defines Patterns to lower standard ops to SPIR-V.
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef STANDARD_OPS_TO_SPIRV
+#ifdef MLIR_CONVERSION_STANDARDTOSPIRV_TD
 #else
-#define STANDARD_OPS_TO_SPIRV
+#define MLIR_CONVERSION_STANDARDTOSPIRV_TD
 
 #ifdef STANDARD_OPS
 #else
@@ -45,4 +45,4 @@ multiclass BinaryOpPattern<Op src, SPV_Op tgt> {
 
 defm : BinaryOpPattern<MulFOp, SPV_FMulOp>;
 
-#endif // STANDARD_OPS_TO_SPIRV
+#endif // MLIR_CONVERSION_STANDARDTOSPIRV_TD

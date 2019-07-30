@@ -76,18 +76,24 @@ def SPV_ModuleOp : SPV_Op<"module", []> {
   }];
 
   let arguments = (ins
+    SPV_AddressingModelAttr:$addressing_model,
+    SPV_MemoryModelAttr:$memory_model,
     OptionalAttr<StrArrayAttr>:$capabilities,
     OptionalAttr<StrArrayAttr>:$extensions,
-    OptionalAttr<StrArrayAttr>:$extended_instruction_sets,
-    SPV_AddressingModelAttr:$addressing_model,
-    SPV_MemoryModelAttr:$memory_model
+    OptionalAttr<StrArrayAttr>:$extended_instruction_sets
   );
 
   let results = (outs);
 
   let regions = (region SizedRegion<1>:$body);
 
-  let builders = [OpBuilder<"Builder *, OperationState *state">];
+  let builders = [OpBuilder<"Builder *, OperationState *state">,
+                  OpBuilder<[{Builder *, OperationState *state,
+                              IntegerAttr addressing_model,
+                              IntegerAttr memory_model,
+                              /*optional*/ArrayAttr capabilities = nullptr,
+                              /*optional*/ArrayAttr extensions = nullptr,
+                              /*optional*/ArrayAttr extended_instruction_sets = nullptr}]>];
 
   // We need to ensure the block inside the region is properly terminated;
   // the auto-generated builders do not guarantee that.

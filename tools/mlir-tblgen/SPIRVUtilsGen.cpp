@@ -420,6 +420,8 @@ static bool emitOpUtils(const RecordKeeper &recordKeeper, raw_ostream &os) {
   llvm::emitSourceFileHeader("SPIR-V Op Utilites", os);
 
   auto defs = recordKeeper.getAllDerivedDefinitions("I32EnumAttr");
+  os << "#ifndef SPIRV_OP_UTILS_H_\n";
+  os << "#define SPIRV_OP_UTILS_H_\n";
   emitEnumGetAttrNameFnDecl(os);
   emitEnumGetSymbolizeFnDecl(os);
   for (const auto *def : defs) {
@@ -427,6 +429,7 @@ static bool emitOpUtils(const RecordKeeper &recordKeeper, raw_ostream &os) {
     emitEnumGetAttrNameFnDefn(enumAttr, os);
     emitEnumGetSymbolizeFnDefn(enumAttr, os);
   }
+  os << "#endif // SPIRV_OP_UTILS_H\n";
   return false;
 }
 

@@ -27,12 +27,6 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
 
-namespace mlir {
-namespace spirv {
-#include "mlir/Dialect/SPIRV/SPIRVOpUtils.inc"
-} // namespace spirv
-} // namespace mlir
-
 using namespace mlir;
 
 // TODO(antiagainst): generate these strings using ODS.
@@ -550,20 +544,8 @@ static LogicalResult verify(spirv::EntryPointOp entryPointOp) {
       return entryPointOp.emitOpError("interface operands to entry point must "
                                       "be generated from a variable op");
     }
-    // Before version 1.4 the variables can only have storage_class of Input or
-    // Output.
-    // TODO: Add versioning so that this can be avoided for 1.4
-    auto storageClass =
-        interface->getType().cast<spirv::PointerType>().getStorageClass();
-    switch (storageClass) {
-    case spirv::StorageClass::Input:
-    case spirv::StorageClass::Output:
-      break;
-    default:
-      return entryPointOp.emitOpError("invalid storage class '")
-             << stringifyStorageClass(storageClass)
-             << "' for interface variables";
-    }
+    // TODO:  Before version 1.4 the variables can only have storage_class of
+    // Input or Output. That needs to be verified.
   }
   return success();
 }
@@ -671,6 +653,22 @@ static void ensureModuleEnd(Region *region, Builder builder, Location loc) {
 }
 
 void spirv::ModuleOp::build(Builder *builder, OperationState *state) {
+  ensureModuleEnd(state->addRegion(), *builder, state->location);
+}
+
+void spirv::ModuleOp::build(Builder *builder, OperationState *state,
+                            IntegerAttr addressing_model,
+                            IntegerAttr memory_model, ArrayAttr capabilities,
+                            ArrayAttr extensions,
+                            ArrayAttr extended_instruction_sets) {
+  state->addAttribute("addressing_model", addressing_model);
+  state->addAttribute("memory_model", memory_model);
+  if (capabilities)
+    state->addAttribute("capabilities", capabilities);
+  if (extensions)
+    state->addAttribute("extensions", extensions);
+  if (extended_instruction_sets)
+    state->addAttribute("extended_instruction_sets", extended_instruction_sets);
   ensureModuleEnd(state->addRegion(), *builder, state->location);
 }
 
