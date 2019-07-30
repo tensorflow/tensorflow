@@ -115,73 +115,64 @@ def run_one_epoch(model,
       current_batch_size = batch_size
     else:
       current_batch_size = num_samples - step * batch_size
+    with training_context.on_batch(
+        step=step, mode=mode, size=current_batch_size) as batch_logs:
+      try:
+        batch_outs = execution_function(iterator)
+      except (StopIteration, errors.OutOfRangeError):
+        # TODO(kaftan): File bug about tf function and errors.OutOfRangeError?
+        # Are there any other C++ errors tf function should recapture?
+        # The only acceptable case here is that the input has a unknown
+        # length, and configured to fully consume it.
+        if (dataset_size is None
+            and steps_per_epoch is None
+            and step > 0):
+          # The input passed by the user ran out of batches.
+          # Now we know the cardinality of the input(dataset or generator).
+          steps_per_epoch = step
+          aggregator.steps = steps_per_epoch
+          progbar.params['steps'] = steps_per_epoch
+          progbar.progbar.target = steps_per_epoch
+        else:
+          callbacks.model.stop_training = True
+          logging.warning(
+              'Your input ran out of data; interrupting training. '
+              'Make sure that your dataset or generator can generate at '
+              'least `steps_per_epoch * epochs` batches (in this case, '
+              '{} batches). You may need to use the repeat() function '
+              'when building your dataset.'.format(
+                  total_epochs * steps_per_epoch))
+        # In either case, break out the loop for training batch.
+        # Also note the training_context that data inputs are exhausted, so all
+        # the post batch hooks can be skipped.
+        batch_logs['data_exhausted'] = True
+        break
 
-    # TODO(scottzhu): Maybe update the training context to take into account
-    #  whether a batch of training happens. Then it could still use a
-    #  context manager
-    batch_logs = {'batch': step, 'size': current_batch_size}
-    training_context.callbacks._call_batch_hook(
-        mode, 'begin', step, batch_logs)
-    training_context.progbar.on_batch_begin(step, batch_logs)
-    try:
-      batch_outs = execution_function(iterator)
-    except (StopIteration, errors.OutOfRangeError):
-      # TODO(kaftan): File bug about tf function and errors.OutOfRangeError?
-      # Are there any other C++ errors tf function should recapture?
-      # The only acceptable case here is that the input has a unknown
-      # length, and configured to fully consume it.
-      if (dataset_size is None
-          and steps_per_epoch is None
-          and step > 0):
-        # The input passed by the user ran out of batches.
-        # Now we know the cardinality of the input(dataset or generator).
-        steps_per_epoch = step
-        aggregator.steps = steps_per_epoch
-        progbar.params['steps'] = steps_per_epoch
-        progbar.progbar.target = steps_per_epoch
+      if not isinstance(batch_outs, list):
+        batch_outs = [batch_outs]
+      if strategy:
+        batch_outs = dist_utils._per_replica_aggregate_batch(
+            strategy, batch_outs, model, mode)
+
+      if step == 0:
+        aggregator.create(batch_outs)
+
+      if use_steps:
+        aggregator.aggregate(batch_outs)
       else:
-        callbacks.model.stop_training = True
-        logging.warning(
-            'Your input ran out of data; interrupting training. '
-            'Make sure that your dataset or generator can generate at '
-            'least `steps_per_epoch * epochs` batches (in this case, '
-            '{} batches). You may need to use the repeat() function '
-            'when building your dataset.'.format(
-                total_epochs * steps_per_epoch))
-      # In either case, break out the loop for training batch.
-      break
-
-    if not isinstance(batch_outs, list):
-      batch_outs = [batch_outs]
-    if strategy:
-      batch_outs = dist_utils._per_replica_aggregate_batch(
-          strategy, batch_outs, model, mode)
-
-    if step == 0:
-      aggregator.create(batch_outs)
-
-    if use_steps:
-      aggregator.aggregate(batch_outs)
-    else:
-      aggregator.aggregate(
-          batch_outs,
-          batch_start=step * batch_size,
-          batch_end=step * batch_size + current_batch_size)
-    cbks.make_logs(model, batch_logs, batch_outs, mode)
-
-    training_context.callbacks._call_batch_hook(
-        mode, 'end', step, batch_logs)
-    training_context.progbar.on_batch_end(step, batch_logs)
-
-    step += 1
+        aggregator.aggregate(
+            batch_outs,
+            batch_start=step * batch_size,
+            batch_end=step * batch_size + current_batch_size)
+      cbks.make_logs(model, batch_logs, batch_outs, mode)
+      step += 1
 
     if callbacks.model.stop_training:
       break
 
   # End of an epoch.
   aggregator.finalize()
-  results = aggregator.results
-  return results
+  return aggregator.results
 
 
 class Loop(training_utils.TrainingLoop):
@@ -623,15 +614,16 @@ class TrainingContext(object):
       self.progbar.on_epoch_end(epoch, epoch_logs)
 
   @tf_contextlib.contextmanager
-  def on_batch(self, step=0, mode=ModeKeys.TRAIN):
+  def on_batch(self, step=0, mode=ModeKeys.TRAIN, size=1):
     """Provide a scope for running one batch."""
-    batch_logs = {'batch': step, 'size': 1}
+    batch_logs = {'batch': step, 'size': size}
     self.callbacks._call_batch_hook(
         mode, 'begin', step, batch_logs)
     self.progbar.on_batch_begin(step, batch_logs)
     try:
       yield batch_logs
     finally:
-      self.callbacks._call_batch_hook(
-          mode, 'end', step, batch_logs)
-      self.progbar.on_batch_end(step, batch_logs)
+      if not batch_logs.pop('data_exhausted', False):
+        self.callbacks._call_batch_hook(
+            mode, 'end', step, batch_logs)
+        self.progbar.on_batch_end(step, batch_logs)
