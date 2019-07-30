@@ -884,6 +884,9 @@ bool Translator::IsStatefulOperand(mlir::Operation* op, int operand_index) {
   } else if (auto tfl =
                  llvm::dyn_cast<mlir::TFL::UnidirectionalSequenceLSTMOp>(op)) {
     operand_indices = tfl.GetStatefulOperands();
+  } else if (auto tfl =
+                 llvm::dyn_cast<mlir::TFL::UnidirectionalSequenceRNNOp>(op)) {
+    operand_indices = tfl.GetStatefulOperands();
   }
   return absl::c_find(operand_indices, operand_index) != operand_indices.end();
 }
