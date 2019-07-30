@@ -225,7 +225,7 @@ void SeastarRemoteRendezvous::RecvFromRemoteAsync(
              recv_args, std::move(done));
 
   // Record "call" in active_ so that it can be aborted cleanly.
-  RegisterCall(call);
+  RegisterCall(call, recv_args);
   if (!call->status().ok()) {
     LOG(WARNING) << "Rendezvous has been aborted, ignore the rpc call."
                  << ", rendezvous key: " << parsed.FullKey();
