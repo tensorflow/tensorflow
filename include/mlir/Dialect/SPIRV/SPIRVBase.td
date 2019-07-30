@@ -196,6 +196,97 @@ def SPV_AddressingModelAttr :
   let cppNamespace = "::mlir::spirv";
 }
 
+def SPV_D_RelaxedPrecision            : I32EnumAttrCase<"RelaxedPrecision", 0>;
+def SPV_D_SpecId                      : I32EnumAttrCase<"SpecId", 1>;
+def SPV_D_Block                       : I32EnumAttrCase<"Block", 2>;
+def SPV_D_BufferBlock                 : I32EnumAttrCase<"BufferBlock", 3>;
+def SPV_D_RowMajor                    : I32EnumAttrCase<"RowMajor", 4>;
+def SPV_D_ColMajor                    : I32EnumAttrCase<"ColMajor", 5>;
+def SPV_D_ArrayStride                 : I32EnumAttrCase<"ArrayStride", 6>;
+def SPV_D_MatrixStride                : I32EnumAttrCase<"MatrixStride", 7>;
+def SPV_D_GLSLShared                  : I32EnumAttrCase<"GLSLShared", 8>;
+def SPV_D_GLSLPacked                  : I32EnumAttrCase<"GLSLPacked", 9>;
+def SPV_D_CPacked                     : I32EnumAttrCase<"CPacked", 10>;
+def SPV_D_BuiltIn                     : I32EnumAttrCase<"BuiltIn", 11>;
+def SPV_D_NoPerspective               : I32EnumAttrCase<"NoPerspective", 13>;
+def SPV_D_Flat                        : I32EnumAttrCase<"Flat", 14>;
+def SPV_D_Patch                       : I32EnumAttrCase<"Patch", 15>;
+def SPV_D_Centroid                    : I32EnumAttrCase<"Centroid", 16>;
+def SPV_D_Sample                      : I32EnumAttrCase<"Sample", 17>;
+def SPV_D_Invariant                   : I32EnumAttrCase<"Invariant", 18>;
+def SPV_D_Restrict                    : I32EnumAttrCase<"Restrict", 19>;
+def SPV_D_Aliased                     : I32EnumAttrCase<"Aliased", 20>;
+def SPV_D_Volatile                    : I32EnumAttrCase<"Volatile", 21>;
+def SPV_D_Constant                    : I32EnumAttrCase<"Constant", 22>;
+def SPV_D_Coherent                    : I32EnumAttrCase<"Coherent", 23>;
+def SPV_D_NonWritable                 : I32EnumAttrCase<"NonWritable", 24>;
+def SPV_D_NonReadable                 : I32EnumAttrCase<"NonReadable", 25>;
+def SPV_D_Uniform                     : I32EnumAttrCase<"Uniform", 26>;
+def SPV_D_UniformId                   : I32EnumAttrCase<"UniformId", 27>;
+def SPV_D_SaturatedConversion         : I32EnumAttrCase<"SaturatedConversion", 28>;
+def SPV_D_Stream                      : I32EnumAttrCase<"Stream", 29>;
+def SPV_D_Location                    : I32EnumAttrCase<"Location", 30>;
+def SPV_D_Component                   : I32EnumAttrCase<"Component", 31>;
+def SPV_D_Index                       : I32EnumAttrCase<"Index", 32>;
+def SPV_D_Binding                     : I32EnumAttrCase<"Binding", 33>;
+def SPV_D_DescriptorSet               : I32EnumAttrCase<"DescriptorSet", 34>;
+def SPV_D_Offset                      : I32EnumAttrCase<"Offset", 35>;
+def SPV_D_XfbBuffer                   : I32EnumAttrCase<"XfbBuffer", 36>;
+def SPV_D_XfbStride                   : I32EnumAttrCase<"XfbStride", 37>;
+def SPV_D_FuncParamAttr               : I32EnumAttrCase<"FuncParamAttr", 38>;
+def SPV_D_FPRoundingMode              : I32EnumAttrCase<"FPRoundingMode", 39>;
+def SPV_D_FPFastMathMode              : I32EnumAttrCase<"FPFastMathMode", 40>;
+def SPV_D_LinkageAttributes           : I32EnumAttrCase<"LinkageAttributes", 41>;
+def SPV_D_NoContraction               : I32EnumAttrCase<"NoContraction", 42>;
+def SPV_D_InputAttachmentIndex        : I32EnumAttrCase<"InputAttachmentIndex", 43>;
+def SPV_D_Alignment                   : I32EnumAttrCase<"Alignment", 44>;
+def SPV_D_MaxByteOffset               : I32EnumAttrCase<"MaxByteOffset", 45>;
+def SPV_D_AlignmentId                 : I32EnumAttrCase<"AlignmentId", 46>;
+def SPV_D_MaxByteOffsetId             : I32EnumAttrCase<"MaxByteOffsetId", 47>;
+def SPV_D_NoSignedWrap                : I32EnumAttrCase<"NoSignedWrap", 4469>;
+def SPV_D_NoUnsignedWrap              : I32EnumAttrCase<"NoUnsignedWrap", 4470>;
+def SPV_D_ExplicitInterpAMD           : I32EnumAttrCase<"ExplicitInterpAMD", 4999>;
+def SPV_D_OverrideCoverageNV          : I32EnumAttrCase<"OverrideCoverageNV", 5248>;
+def SPV_D_PassthroughNV               : I32EnumAttrCase<"PassthroughNV", 5250>;
+def SPV_D_ViewportRelativeNV          : I32EnumAttrCase<"ViewportRelativeNV", 5252>;
+def SPV_D_SecondaryViewportRelativeNV : I32EnumAttrCase<"SecondaryViewportRelativeNV", 5256>;
+def SPV_D_PerPrimitiveNV              : I32EnumAttrCase<"PerPrimitiveNV", 5271>;
+def SPV_D_PerViewNV                   : I32EnumAttrCase<"PerViewNV", 5272>;
+def SPV_D_PerTaskNV                   : I32EnumAttrCase<"PerTaskNV", 5273>;
+def SPV_D_PerVertexNV                 : I32EnumAttrCase<"PerVertexNV", 5285>;
+def SPV_D_NonUniformEXT               : I32EnumAttrCase<"NonUniformEXT", 5300>;
+def SPV_D_RestrictPointerEXT          : I32EnumAttrCase<"RestrictPointerEXT", 5355>;
+def SPV_D_AliasedPointerEXT           : I32EnumAttrCase<"AliasedPointerEXT", 5356>;
+def SPV_D_CounterBuffer               : I32EnumAttrCase<"CounterBuffer", 5634>;
+def SPV_D_UserSemantic                : I32EnumAttrCase<"UserSemantic", 5635>;
+def SPV_D_UserTypeGOOGLE              : I32EnumAttrCase<"UserTypeGOOGLE", 5636>;
+
+def SPV_DecorationAttr :
+    I32EnumAttr<"Decoration", "valid SPIR-V Decoration", [
+      SPV_D_RelaxedPrecision, SPV_D_SpecId, SPV_D_Block, SPV_D_BufferBlock,
+      SPV_D_RowMajor, SPV_D_ColMajor, SPV_D_ArrayStride, SPV_D_MatrixStride,
+      SPV_D_GLSLShared, SPV_D_GLSLPacked, SPV_D_CPacked, SPV_D_BuiltIn,
+      SPV_D_NoPerspective, SPV_D_Flat, SPV_D_Patch, SPV_D_Centroid, SPV_D_Sample,
+      SPV_D_Invariant, SPV_D_Restrict, SPV_D_Aliased, SPV_D_Volatile, SPV_D_Constant,
+      SPV_D_Coherent, SPV_D_NonWritable, SPV_D_NonReadable, SPV_D_Uniform,
+      SPV_D_UniformId, SPV_D_SaturatedConversion, SPV_D_Stream, SPV_D_Location,
+      SPV_D_Component, SPV_D_Index, SPV_D_Binding, SPV_D_DescriptorSet, SPV_D_Offset,
+      SPV_D_XfbBuffer, SPV_D_XfbStride, SPV_D_FuncParamAttr, SPV_D_FPRoundingMode,
+      SPV_D_FPFastMathMode, SPV_D_LinkageAttributes, SPV_D_NoContraction,
+      SPV_D_InputAttachmentIndex, SPV_D_Alignment, SPV_D_MaxByteOffset,
+      SPV_D_AlignmentId, SPV_D_MaxByteOffsetId, SPV_D_NoSignedWrap,
+      SPV_D_NoUnsignedWrap, SPV_D_ExplicitInterpAMD, SPV_D_OverrideCoverageNV,
+      SPV_D_PassthroughNV, SPV_D_ViewportRelativeNV,
+      SPV_D_SecondaryViewportRelativeNV, SPV_D_PerPrimitiveNV, SPV_D_PerViewNV,
+      SPV_D_PerTaskNV, SPV_D_PerVertexNV, SPV_D_NonUniformEXT,
+      SPV_D_RestrictPointerEXT, SPV_D_AliasedPointerEXT, SPV_D_CounterBuffer,
+      SPV_D_UserSemantic, SPV_D_UserTypeGOOGLE
+    ]> {
+  let returnType = "::mlir::spirv::Decoration";
+  let convertFromStorage = "static_cast<::mlir::spirv::Decoration>($_self.getInt())";
+  let cppNamespace = "::mlir::spirv";
+}
+
 def SPV_D_1D          : I32EnumAttrCase<"1D", 0>;
 def SPV_D_2D          : I32EnumAttrCase<"2D", 1>;
 def SPV_D_3D          : I32EnumAttrCase<"3D", 2>;

@@ -26,13 +26,12 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/Support/StringExtras.h"
 
 using namespace mlir;
 
 // TODO(antiagainst): generate these strings using ODS.
 static constexpr const char kAlignmentAttrName[] = "alignment";
-static constexpr const char kBindingAttrName[] = "binding";
-static constexpr const char kDescriptorSetAttrName[] = "descriptor_set";
 static constexpr const char kIndicesAttrName[] = "indices";
 static constexpr const char kValueAttrName[] = "value";
 static constexpr const char kValuesAttrName[] = "values";
@@ -67,8 +66,7 @@ static LogicalResult extractValueFromConstOp(Operation *op,
 }
 
 template <typename EnumClass>
-static ParseResult parseEnumAttribute(EnumClass &value, OpAsmParser *parser,
-                                      OperationState *state) {
+static ParseResult parseEnumAttribute(EnumClass &value, OpAsmParser *parser) {
   Attribute attrVal;
   SmallVector<NamedAttribute, 1> attr;
   auto loc = parser->getCurrentLocation();
@@ -89,6 +87,15 @@ static ParseResult parseEnumAttribute(EnumClass &value, OpAsmParser *parser,
            << " attribute specification: " << attrVal;
   }
   value = attrOptional.getValue();
+  return success();
+}
+
+template <typename EnumClass>
+static ParseResult parseEnumAttribute(EnumClass &value, OpAsmParser *parser,
+                                      OperationState *state) {
+  if (parseEnumAttribute(value, parser)) {
+    return failure();
+  }
   state->addAttribute(
       spirv::attributeName<EnumClass>(),
       parser->getBuilder().getI32IntegerAttr(bitwiseCast<int32_t>(value)));
@@ -601,7 +608,7 @@ static ParseResult parseLoadOp(OpAsmParser *parser, OperationState *state) {
   spirv::StorageClass storageClass;
   OpAsmParser::OperandType ptrInfo;
   Type elementType;
-  if (parseEnumAttribute(storageClass, parser, state) ||
+  if (parseEnumAttribute(storageClass, parser) ||
       parser->parseOperand(ptrInfo) ||
       parseMemoryAccessAttributes(parser, state) ||
       parser->parseOptionalAttributeDict(state->attributes) ||
@@ -813,7 +820,7 @@ static ParseResult parseStoreOp(OpAsmParser *parser, OperationState *state) {
   SmallVector<OpAsmParser::OperandType, 2> operandInfo;
   auto loc = parser->getCurrentLocation();
   Type elementType;
-  if (parseEnumAttribute(storageClass, parser, state) ||
+  if (parseEnumAttribute(storageClass, parser) ||
       parser->parseOperandList(operandInfo, 2) ||
       parseMemoryAccessAttributes(parser, state) || parser->parseColon() ||
       parser->parseType(elementType)) {
@@ -873,13 +880,17 @@ static ParseResult parseVariableOp(OpAsmParser *parser, OperationState *state) {
 
   // Parse optional descriptor binding
   Attribute set, binding;
+  auto descriptorSetName =
+      convertToSnakeCase(stringifyDecoration(spirv::Decoration::DescriptorSet));
+  auto bindingName =
+      convertToSnakeCase(stringifyDecoration(spirv::Decoration::Binding));
   if (succeeded(parser->parseOptionalKeyword("bind"))) {
     Type i32Type = parser->getBuilder().getIntegerType(32);
     if (parser->parseLParen() ||
-        parser->parseAttribute(set, i32Type, kDescriptorSetAttrName,
+        parser->parseAttribute(set, i32Type, descriptorSetName,
                                state->attributes) ||
         parser->parseComma() ||
-        parser->parseAttribute(binding, i32Type, kBindingAttrName,
+        parser->parseAttribute(binding, i32Type, bindingName,
                                state->attributes) ||
         parser->parseRParen())
       return failure();
@@ -931,12 +942,17 @@ static void print(spirv::VariableOp varOp, OpAsmPrinter *printer) {
   }
 
   // Print optional descriptor binding
-  auto set = varOp.getAttrOfType<IntegerAttr>(kDescriptorSetAttrName);
-  auto binding = varOp.getAttrOfType<IntegerAttr>(kBindingAttrName);
-  if (set && binding) {
-    elidedAttrs.push_back(kDescriptorSetAttrName);
-    elidedAttrs.push_back(kBindingAttrName);
-    *printer << " bind(" << set.getInt() << ", " << binding.getInt() << ")";
+  auto descriptorSetName =
+      convertToSnakeCase(stringifyDecoration(spirv::Decoration::DescriptorSet));
+  auto bindingName =
+      convertToSnakeCase(stringifyDecoration(spirv::Decoration::Binding));
+  auto descriptorSet = varOp.getAttrOfType<IntegerAttr>(descriptorSetName);
+  auto binding = varOp.getAttrOfType<IntegerAttr>(bindingName);
+  if (descriptorSet && binding) {
+    elidedAttrs.push_back(descriptorSetName);
+    elidedAttrs.push_back(bindingName);
+    *printer << " bind(" << descriptorSet.getInt() << ", " << binding.getInt()
+             << ")";
   }
 
   printer->printOptionalAttrDict(op->getAttrs(), elidedAttrs);
