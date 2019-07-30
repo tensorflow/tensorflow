@@ -204,11 +204,7 @@ class Layer(module.Module):
     self._inbound_nodes = []
     self._outbound_nodes = []
 
-    call_fn_args = self._call_fn_args
-    self._expects_training_arg = ('training' in call_fn_args or
-                                  self._call_accepts_kwargs)
-    self._expects_mask_arg = ('mask' in call_fn_args or
-                              self._call_accepts_kwargs)
+    self._init_call_fn_args()
 
     # Whether the `call` method can be used to build a TF graph without issues.
     self._dynamic = dynamic
@@ -689,7 +685,8 @@ class Layer(module.Module):
           # subclassed layers and models.
           # tf_convert will respect the value of autograph setting in the
           # enclosing tf.function, if any.
-          if base_layer_utils.is_subclassed(self):
+          if (base_layer_utils.is_subclassed(self) and
+              not base_layer_utils.from_saved_model(self)):
             call_fn = autograph.tf_convert(
                 self.call, ag_ctx.control_status_ctx())
           else:
@@ -2108,6 +2105,17 @@ class Layer(module.Module):
   # TODO(b/110718070): Remove when fixed.
   def _is_layer(self):
     return True
+
+  def _init_call_fn_args(self):
+    # Clear cached call function arguments.
+    self.__class__._call_fn_args.fget.cache.pop(self, None)
+    self.__class__._call_accepts_kwargs.fget.cache.pop(self, None)
+
+    call_fn_args = self._call_fn_args
+    self._expects_training_arg = ('training' in call_fn_args or
+                                  self._call_accepts_kwargs)
+    self._expects_mask_arg = ('mask' in call_fn_args or
+                              self._call_accepts_kwargs)
 
   @property
   @tracking.cached_per_instance
