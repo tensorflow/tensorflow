@@ -223,11 +223,3 @@ AMDGPUCompiler::CompileTargetBinary(const HloModule* module,
 
 }  // namespace gpu
 }  // namespace xla
-
-static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(
-      stream_executor::rocm::kROCmPlatformId,
-      []() { return absl::make_unique<xla::gpu::AMDGPUCompiler>(stream_executor::rocm::kROCmPlatformId); });
-  return true;
-}
-static bool module_initialized = InitModule();

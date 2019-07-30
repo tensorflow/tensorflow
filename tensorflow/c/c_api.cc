@@ -226,7 +226,7 @@ Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
         "Failed to allocate memory to serialize message of type '",
         in.GetTypeName(), "' and size ", proto_size);
   }
-  if (!in.SerializeToArray(buf, proto_size)) {
+  if (!in.SerializeWithCachedSizesToArray(static_cast<uint8*>(buf))) {
     port::Free(buf);
     return InvalidArgument("Unable to serialize ", in.GetTypeName(),
                            " protocol buffer, perhaps the serialized size (",

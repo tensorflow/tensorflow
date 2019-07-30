@@ -98,6 +98,7 @@ class DepthwiseConvolution : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/std::move(objects),
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/
         GetIdealWorkgroupIfPossible(

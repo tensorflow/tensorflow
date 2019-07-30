@@ -125,7 +125,10 @@ def main(_):
         "The --debug and --tensorboard_debug_address flags are mutually "
         "exclusive.")
   if FLAGS.debug:
-    sess = tf_debug.LocalCLIDebugWrapperSession(sess, ui_type=FLAGS.ui_type)
+    sess = tf_debug.LocalCLIDebugWrapperSession(
+        sess,
+        ui_type=FLAGS.ui_type,
+        use_random_config_path=FLAGS.use_random_config_path)
   elif FLAGS.tensorboard_debug_address:
     sess = tf_debug.TensorBoardDebugWrapperSession(
         sess, FLAGS.tensorboard_debug_address)
@@ -189,6 +192,14 @@ if __name__ == "__main__":
       help="Connect to the TensorBoard Debugger Plugin backend specified by "
       "the gRPC address (e.g., localhost:1234). Mutually exclusive with the "
       "--debug flag.")
+  parser.add_argument(
+      "--use_random_config_path",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="""If set, set config file path to a random file in the temporary
+      directory.""")
   FLAGS, unparsed = parser.parse_known_args()
   with tf.Graph().as_default():
     tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

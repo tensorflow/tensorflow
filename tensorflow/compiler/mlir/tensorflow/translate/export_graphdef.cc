@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -90,7 +91,7 @@ std::string GetName(Operation* inst) {
 // Stateful helper class to export a function into a Graph.
 class Exporter {
  public:
-  // Converts the given Module to a Graph. The give module should only contain
+  // Converts the given Module to a Graph. The given module should only contain
   // one entry function, which is identified by name "main". This entry function
   // is converted to the base of the graph graph. The rest of the functions are
   // converted to the library functions in that graph.
@@ -407,6 +408,24 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(const ExporterConfigs& confs,
   }
 
   auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+
+  // Extract version info.
+  auto version_attr = function.getParentOfType<mlir::ModuleOp>()
+                          .getAttrOfType<mlir::DictionaryAttr>("tf.versions");
+  if (version_attr) {
+    VersionDef versions;
+    versions.set_producer(
+        version_attr.get("producer").cast<mlir::IntegerAttr>().getInt());
+    versions.set_min_consumer(
+        version_attr.get("min_consumer").cast<mlir::IntegerAttr>().getInt());
+    for (auto bad_consumer :
+         version_attr.get("bad_consumers").cast<mlir::ArrayAttr>()) {
+      versions.mutable_bad_consumers()->Add(
+          bad_consumer.cast<mlir::IntegerAttr>().getInt());
+    }
+    graph->set_versions(versions);
+  }
+
   // We have to add the function library here, so a custom operation, which is
   // defined in the function library can be added to the graph.
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(*flib));

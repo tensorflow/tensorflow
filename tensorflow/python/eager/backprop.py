@@ -833,8 +833,15 @@ class GradientTape(object):
 
     Args:
       tensor: a Tensor or list of Tensors.
+
+    Raises:
+      ValueError: if it encounters something that is not a tensor.
     """
     for t in nest.flatten(tensor):
+      if not (pywrap_tensorflow.IsTensor(t) or
+              pywrap_tensorflow.IsVariable(t)):
+        raise ValueError("Passed in object of type {}, not tf.Tensor".format(
+            type(t)))
       if not t.dtype.is_floating:
         logging.log_first_n(
             logging.WARN, "The dtype of the watched tensor must be "

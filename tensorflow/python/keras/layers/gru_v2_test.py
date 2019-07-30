@@ -441,8 +441,11 @@ class GRUV2Test(keras_parameterized.TestCase):
     layer = layer_class(
         units, return_sequences=False, stateful=True, weights=None)
     model.add(layer)
-    model.compile(optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                  loss='mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 
@@ -511,9 +514,11 @@ class GRUV2Test(keras_parameterized.TestCase):
         rnn.GRU(units, return_sequences=True, stateful=True),
         keras.layers.Dense(vocab_size)
     ])
-    model.compile(optimizer='adam',
-                  loss='sparse_categorical_crossentropy',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer='adam',
+        loss='sparse_categorical_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x, y, epochs=1, shuffle=False)
 
   @test_util.run_v2_only
@@ -589,7 +594,8 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     y_train = keras.utils.to_categorical(y_train, self.output_shape)
 
     model.compile(optimizer='sgd',
-                  loss=['categorical_crossentropy', None])
+                  loss=['categorical_crossentropy', None],
+                  run_distributed=testing_utils.should_run_distributed())
 
     existing_loss = 0
     for _ in range(self.epoch):

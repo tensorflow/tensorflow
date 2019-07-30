@@ -70,37 +70,27 @@ struct TrMulTask final : Task {
 
     std::uint16_t block_r, block_c;
     int start_r, start_c, end_r, end_c;
-    std::uint16_t next_block_r, next_block_c;
-    int next_start_r, next_start_c, next_end_r, next_end_c;
 
+    // Each thread starts by initially reserving the block whose id
+    // is the thread id.
     std::uint32_t n = thread_id;
-    std::uint32_t next_n;
-
-    GetBlockByIndex(block_map, n, &block_r, &block_c);
     TraceRecordBlockReserved(thread_id, n, trace);
-    GetBlockMatrixCoords(block_map, block_r, block_c, &start_r, &start_c,
-                         &end_r, &end_c);
-    TraceRecordBlockCoordsComputed(n, trace);
 
     while (n < num_blocks) {
-      // Get index of next block to handle
-      next_n = atomic_n->fetch_add(1, std::memory_order_relaxed);
-      // If we actually got a next block to handle (not already at end)
-      if (next_n < num_blocks) {
-        // Get coords of that next block to handle
-        // TODO(benoitjacob): is this whole next_* business worth it?
-        // The idea was to have more independent things to do in parallel
-        // (Pack+Kernel on current block while we resolve next block atomic
-        // index and coords) but we don't seem to be actually taking advantage
-        // of this unless the compiler is doing a really good code-reordering
-        // job here, which is made unlikely by the conditional enclosing this.
-        GetBlockByIndex(block_map, next_n, &next_block_r, &next_block_c);
-        TraceRecordBlockReserved(thread_id, next_n, trace);
-        GetBlockMatrixCoords(block_map, next_block_r, next_block_c,
-                             &next_start_r, &next_start_c, &next_end_r,
-                             &next_end_c);
-        TraceRecordBlockCoordsComputed(next_n, trace);
-      }
+      // Reserve the next block to handle. In order to hide the latency
+      // (typically comparable to an access to the level of data cache that
+      // is shared among CPU cores, e.g. 60 cycles on an ARM CPU as of 2019)
+      // of this atomic operation, we structure this code so as to avoid
+      // immediately depending on the `next_n` result.
+      const std::uint32_t next_n =
+          atomic_n->fetch_add(1, std::memory_order_relaxed);
+      TraceRecordBlockReserved(thread_id, next_n, trace);
+      // Get coordinates of the current block to handle, in "block space".
+      GetBlockByIndex(block_map, n, &block_r, &block_c);
+      // Get coordinates of the current block to handle, in matrix space.
+      GetBlockMatrixCoords(block_map, block_r, block_c, &start_r, &start_c,
+                           &end_r, &end_c);
+      TraceRecordBlockCoordsComputed(n, trace);
       // Maybe pack the current LHS block, if not already packed.
       // Note that if two threads concurrently hit the same LHS block to pack,
       // we allow them to concurrently pack it, writing the same packed matrix
@@ -130,13 +120,9 @@ struct TrMulTask final : Task {
       // Actually do matrix multiplication work
       params->RunKernel(tuning, start_r, start_c, end_r, end_c);
       TraceRecordBlockFinished(n, trace);
+      // Move on to the next block as obtained by the atomic increment
+      // at the start of this while loop iteration.
       n = next_n;
-      block_r = next_block_r;
-      block_c = next_block_c;
-      start_r = next_start_r;
-      start_c = next_start_c;
-      end_r = next_end_r;
-      end_c = next_end_c;
     }
 
     local_allocator->FreeAll();

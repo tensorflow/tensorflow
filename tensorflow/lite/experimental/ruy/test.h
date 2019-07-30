@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/ruy/platform.h"
 #include "tensorflow/lite/experimental/ruy/pmu.h"
 #include "tensorflow/lite/experimental/ruy/ruy.h"
 #include "tensorflow/lite/experimental/ruy/ruy_advanced.h"
@@ -1651,7 +1652,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
       }
 // We link against a generic BLAS target that only maps to OpenBLAS on specific
 // architectures.
-#if defined RUY_ARM_64 || defined RUY_ARM_32
+#if RUY_PLATFORM(ARM_32) || RUY_PLATFORM(ARM_64)
       // OpenBLAS multi-threading is disabled, so avoid mixing single-threaded
       // and multi-threaded benchmark results.
       if (max_num_threads == 1) {

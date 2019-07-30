@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
@@ -706,6 +707,16 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
       self.assertValuesEqual(expected, actual)
 
   # pylint: enable=g-long-lambda
+
+  def testDatasetSpecConstructor(self):
+    rt_spec = ragged_tensor.RaggedTensorSpec([10, None], dtypes.int32)
+    st_spec = sparse_tensor.SparseTensorSpec([10, 20], dtypes.float32)
+    t_spec = tensor_spec.TensorSpec([10, 8], dtypes.string)
+    element_spec = {"rt": rt_spec, "st": st_spec, "t": t_spec}
+    ds_struct = dataset_ops.DatasetSpec(element_spec, [5])
+    self.assertEqual(ds_struct._element_spec, element_spec)
+    # Note: shape was automatically converted from a list to a TensorShape.
+    self.assertEqual(ds_struct._dataset_shape, tensor_shape.TensorShape([5]))
 
 
 if __name__ == "__main__":

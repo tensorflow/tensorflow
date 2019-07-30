@@ -34,11 +34,6 @@ class GenericLayoutOptimizer : public GraphOptimizer {
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override;
-
- private:
-  string target_device_ = "GPU";
-  string src_format_ = "NHWC";
-  string dst_format_ = "NCHW";
 };
 
 }  // namespace grappler

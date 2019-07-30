@@ -155,7 +155,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
           loc, types, operands, ArrayRef<NamedAttribute>{});
     } else if (op.getName().getStringRef() == "_tf.NextIteration.source") {
       replacement = builder.create<tf_executor::NextIterationSourceOp>(
-          loc, op.getResult(0)->getType(), operands);
+          loc, op.getResult(0)->getType());
       // Record a mapping of the name to the nextiteration.source so that when
       // we convert the sink we can get the token.
       StringAttr frame = op.getAttrOfType<StringAttr>("name");

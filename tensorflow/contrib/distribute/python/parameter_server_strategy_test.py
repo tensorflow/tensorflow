@@ -461,9 +461,6 @@ class ParameterServerStrategyTestBase(
       self.assertEqual(x_val, 10.0 + 1.0 * num_workers * d.num_replicas_in_sync)
       self.assertEqual(y_val, 20.0 + 1.0 * num_workers * d.num_replicas_in_sync)
       self.assertEqual(z_val, 30.0 + 1.0 * num_workers)
-      return (x_val == 10.0 + 1.0 * num_workers * d.num_replicas_in_sync and
-              y_val == 20.0 + 1.0 * num_workers * d.num_replicas_in_sync and
-              z_val == 30.0 + 1.0 * num_workers)
 
   def _test_minimize_loss_graph(self,
                                 task_type,
@@ -556,7 +553,6 @@ class ParameterServerStrategyTestBase(
       error_after = abs(after - 1)
       # Error should go down
       self.assertLess(error_after, error_before)
-      return error_after < error_before
 
   def _test_input_fn_iterator(self,
                               task_type,

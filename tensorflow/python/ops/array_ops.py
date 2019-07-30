@@ -1129,9 +1129,23 @@ def _cast_nested_seqs_to_dtype(dtype):
   return _maybe_cast
 
 
+_NON_AUTOPACKABLE_TYPES = set(np.core.numerictypes.ScalarType)
+_NON_AUTOPACKABLE_TYPES.add(np.ndarray)
+
+
+def _should_not_autopack(v):
+  # The condition we really want is
+  #    ops.is_dense_tensor_like(...)
+  # but it is >5x slower due to abc.ABCMeta.__instancecheck__.
+  # pylint: disable=unidiomatic-typecheck
+  # TODO(slebedev): add nest.all?
+  return all(type(elem) in _NON_AUTOPACKABLE_TYPES for elem in nest.flatten(v))
+  # pylint: enable=unidiomatic-typecheck
+
+
 def _autopacking_conversion_function(v, dtype=None, name=None, as_ref=False):
   """Tensor conversion function that automatically packs arguments."""
-  if as_ref:
+  if as_ref or _should_not_autopack(v):
     return NotImplemented
   inferred_dtype = _get_dtype_from_nested_lists(v)
   if inferred_dtype is None:
@@ -1939,7 +1953,7 @@ def matrix_diag(diagonal,
   """
   # LINT.IfChange
   if compat.forward_compatible(2019, 7, 31):
-  # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
+    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
 
     # Special case to sidestep the tf.constant conversion error:
     # TypeError: Expected bool, got 0 of type 'int' instead.
@@ -2051,7 +2065,7 @@ def matrix_diag_part(
   """
   # LINT.IfChange
   if compat.forward_compatible(2019, 7, 31):
-  # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
+    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
 
     # Special case to sidestep the tf.constant conversion error:
     # TypeError: Expected bool, got 0 of type 'int' instead.
@@ -2158,7 +2172,7 @@ def matrix_set_diag(
   """
   # LINT.IfChange
   if compat.forward_compatible(2019, 7, 31):
-  # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
+    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
     return gen_array_ops.matrix_set_diag_v2(
         input=input, diagonal=diagonal, k=k, name=name)
 

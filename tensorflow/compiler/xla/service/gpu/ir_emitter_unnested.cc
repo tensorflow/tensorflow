@@ -2592,8 +2592,7 @@ void IrEmitterUnnested::EmitPrologueForOneReduction(
     HloInstruction* unnested_hlo, HloInstruction* reduce_inst, int reduce_idx,
     KernelCodegenInfo* kernel_info, GpuElementalIrEmitter* elemental_emitter,
     ShapeIndex output_shape_index) {
-  ReductionCodegenInfo* reduction_info =
-      static_cast<ReductionCodegenInfo*>(kernel_info);
+  auto reduction_info = static_cast<ReductionCodegenInfo*>(kernel_info);
 
   InlinedVector<HloComputation*, 1>* reducers =
       reduction_info->GetMutableReducers();
@@ -2652,8 +2651,7 @@ void IrEmitterUnnested::EmitPrologueForReduction(
                                         : unnested_hlo;
   absl::Span<HloInstruction* const> output_instructions =
       GetOutputInstructions(&reduce_or_tuple);
-  ReductionCodegenInfo* reduction_info =
-      static_cast<ReductionCodegenInfo*>(kernel_info);
+  auto reduction_info = static_cast<ReductionCodegenInfo*>(kernel_info);
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
                                           ir_emitter_context_->llvm_module(),
                                           &b_, GetNestedComputer());
@@ -2728,8 +2726,7 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForAllReduces(
 
 void IrEmitterUnnested::EmitEpilogueForReduction(
     HloInstruction* unnested_hlo, KernelCodegenInfo* kernel_info) {
-  ReductionCodegenInfo* reduction_info =
-      static_cast<ReductionCodegenInfo*>(kernel_info);
+  auto reduction_info = static_cast<ReductionCodegenInfo*>(kernel_info);
   int num_reduces = reduction_info->GetNumberOfReduces();
   absl::Span<llvm::AllocaInst* const> partial_result_addresses =
       reduction_info->GetPartialResultAddresses();
@@ -2844,8 +2841,7 @@ void IrEmitterUnnested::EmitTileElementForReduction(
   tiled_param_info->set_x(x_loc);
 
   // Record the untransposed output linear address for the reduction.
-  const ReductionCodegenInfo* reduction_info =
-      dynamic_cast<const ReductionCodegenInfo*>(kernel_info);
+  auto reduction_info = dynamic_cast<const ReductionCodegenInfo*>(kernel_info);
   int partial_result_index = reduction_info->IsRowReduction() ? 0 : x_iter_num;
   Store(reduction_info->GetUntransposedOutputLinearAddress(&b_, index),
         InBoundsGEP(reduction_info->GetCurrentOutputLinearIndexAddress(),
@@ -3030,11 +3026,15 @@ void IrEmitterUnnested::EmitBlock(const TileGenerator& emit_one_tile,
 
 // Emits a kernel for the hlo instruction using the given kernel mapping scheme.
 //
+// The emitted code is written into the member variable b_, which corresponds to
+// the kernel thunk currently being constructed (previous call to
+// BuildKernelThunk).
+//
 // unnested_hlo: The unnested hlo instruction for which the kernel is generated.
 //   Currently, these hlo instructions are supported: kLoop fusion, kCopy.
 // tiled_param_ids: The IDs for the parameters that are 0-2-1 transpose of
 //   other tensors with the same dimensions and are safe to be tranposed via
-//   the shared memory tranpose implementation.
+//   the shared memory transpose implementation.
 // mapping_scheme: The tiling scheme to use.
 // kernel_generator: Contains function objects for code generation, such as
 //   element generator, block prologue and epilogue generators.
@@ -3061,14 +3061,12 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
             << llvm_ir::DumpToString(*param_shmem_buffers[id]);
   }
 
-  const ReductionCodegenInfo* reduction_info =
-      dynamic_cast<const ReductionCodegenInfo*>(kernel_info);
+  auto reduction_info = dynamic_cast<const ReductionCodegenInfo*>(kernel_info);
   bool is_column_reduction =
       (reduction_info && !reduction_info->IsRowReduction());
 
-  LaunchDimensions launch_dimensions =
-      LaunchDimensions(mapping_scheme->GetNumberOfBlocks(),
-                       mapping_scheme->GetThreadsPerBlock());
+  LaunchDimensions launch_dimensions(mapping_scheme->GetNumberOfBlocks(),
+                                     mapping_scheme->GetThreadsPerBlock());
 
   // TODO(b/110211620): Enable int32 index type for column reduction.
   llvm::Type* index_ty =
@@ -3208,7 +3206,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
 // algorithm to improve the memory access patterns for the input parameters
 // with a shape that is a 0-2-1 transpose of the output tensor shape. The caller
 // is responsible for making sure that it is safe to apply the shared memory
-// tranpose on the input parameters.
+// transpose on the input parameters.
 //
 //
 // For the purpose of tiling, the output tensors have a logical shape of three
@@ -3276,7 +3274,7 @@ namespace {
 // the preload tile. If this is not true, we can't use a shmem transpose for P.
 //
 // If the computation of output element [z, y, x] only requires the element of
-// P with the same indices, the shmem tranpose implementation can be applied
+// P with the same indices, the shmem transpose implementation can be applied
 // to P safely. This is a sufficient but not necessary condition. We check all
 // the transitive users of P to see if we can find a user that may cause an
 // exception to the situation. If such a user is not found, we conclude that P
@@ -3296,7 +3294,7 @@ namespace {
 // block.
 //
 // TODO(bixia): In order to extend this for kInput fusion, that is reduction
-// with tranpose, we only need to end the use-chain checking with the input of
+// with transpose, we only need to end the use-chain checking with the input of
 // a reduce operations. In this case, the above description on "output" apply
 // to the result of such a use-chain, which provides the input to the reduce
 // operation.
@@ -3328,9 +3326,9 @@ bool IsInstructionSafeForShmemTranspose(const HloInstruction* hlo) {
   }
 }
 
-// Given a group of input parameters that are 0-2-1 tranpose of the outputs of
+// Given a group of input parameters that are 0-2-1 transpose of the outputs of
 // a fusion kernel, returns the input parameters that are safe for the shared
-// memory tranpose implementation.
+// memory transpose implementation.
 //
 // When a tile based shared memory transpose is used to implement an input with
 // 0-2-1 transpose, we preload a tile of the input elements
@@ -3348,8 +3346,7 @@ std::vector<int64> FilterInputsForShmemTranspose(const HloInstruction* fusion,
     if (IsInstructionSafeForShmemTranspose(input)) {
       filtered_input_ids.push_back(input_ids[i]);
     } else {
-      VLOG(10) << "Input not safe for shmem transpose " << input->ToString()
-               << "\n";
+      VLOG(10) << "Input not safe for shmem transpose " << input->ToString();
     }
   }
   return filtered_input_ids;
@@ -3704,13 +3701,13 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
         EmitEpilogueForReduction(hlo, kernel_info);
       });
 
-  LaunchDimensions launch_dimensions =
-      EmitKernel(unnested_hlo, {}, kernel_generator, &reduction_info);
+  LaunchDimensions launch_dimensions = EmitKernel(
+      unnested_hlo, /*param_ids=*/{}, kernel_generator, &reduction_info);
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
 
   thunks.push_back(std::move(kernel_thunk));
-  std::unique_ptr<SequentialThunk> sequential_thunk =
+  auto sequential_thunk =
       absl::make_unique<SequentialThunk>(std::move(thunks), unnested_hlo);
   AddThunkToThunkSequence(std::move(sequential_thunk));
 

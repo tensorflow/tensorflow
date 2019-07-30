@@ -21,7 +21,8 @@ limitations under the License.
 namespace tflite {
 
 CpuBackendContext::CpuBackendContext()
-    : ruy_context_(new ruy::Context),
+    : TfLiteInternalBackendContext(),
+      ruy_context_(new ruy::Context),
       gemmlowp_context_(new gemmlowp::GemmContext) {
   set_max_num_threads(1);
 }

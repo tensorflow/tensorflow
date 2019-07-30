@@ -86,11 +86,9 @@ void ExecuteWithProfiling(bool async) {
     EXPECT_TRUE(HasSubstr(profile_proto_str, "/device:GPU:0"));
     // device name with "stream:all" is collected by Device Tracer.
     EXPECT_TRUE(HasSubstr(profile_proto_str, "stream:all"));
-    // TODO(fishx): move following check out from this if statement.
-    // This is collected by TraceMe
-    EXPECT_TRUE(HasSubstr(profile_proto_str, "/host:CPU"));
   }
-  EXPECT_TRUE(HasSubstr(profile_proto_str, "/device:CPU:0"));
+  // "/host:CPU" is collected by TraceMe
+  EXPECT_TRUE(HasSubstr(profile_proto_str, "/host:CPU"));
   EXPECT_TRUE(HasSubstr(profile_proto_str, "MatMul"));
   TF_DeleteBuffer(profiler_result);
 

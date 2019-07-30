@@ -143,6 +143,7 @@ cc_library(
     name = "xla_tensor",
     srcs = ["xla_tensor.cc"],
     hdrs = ["xla_tensor.h"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/xla/client:local_client",

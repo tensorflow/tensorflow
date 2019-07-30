@@ -231,6 +231,8 @@ enum BuiltinOperator : byte {
   MATRIX_SET_DIAG = 115,
   ROUND = 116,
   HARD_SWISH = 117,
+  IF = 118,
+  WHILE = 119,
 }
 
 // Options for the builtin operators.
@@ -325,7 +327,9 @@ union BuiltinOptions {
   MatrixDiagOptions,
   QuantizeOptions,
   MatrixSetDiagOptions,
-  HardSwishOptions
+  HardSwishOptions,
+  IfOptions,
+  WhileOptions
 }
 
 enum Padding : byte { SAME, VALID }
@@ -781,6 +785,16 @@ table QuantizeOptions {
 }
 
 table MatrixSetDiagOptions {
+}
+
+table IfOptions {
+  then_subgraph_index:int;
+  else_subgraph_index:int;
+}
+
+table WhileOptions {
+  cond_subgraph_index:int;
+  body_subgraph_index:int;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

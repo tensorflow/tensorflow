@@ -25,21 +25,21 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [ ],
+// CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 3,
 // CHECK-NEXT:      name: "mul0",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [ ],
+// CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 4,
 // CHECK-NEXT:      name: "mul1",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }
 // CHECK-NEXT:    }, {
-// CHECK-NEXT:      shape: [ ],
+// CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 5,
 // CHECK-NEXT:      name: "exp",
 // CHECK-NEXT:      quantization: {

@@ -129,9 +129,11 @@ class NodeDefBuilder {
 
   // Finish building the NodeDef, returning any errors or setting
   // *node_def if none.
+  // If `consume` is true, the builder state will be moved into `node_def`,
+  // and the builder will be left in an undefined state.
   // WARNING: Not all problems are detected!  The resulting NodeDef may
   // not be valid!  Call ValidateNodeDef() from node_def_utils to be sure.
-  Status Finalize(NodeDef* node_def) const;
+  Status Finalize(NodeDef* node_def, bool consume = false);
 
   // Accessors for the values set in the constructor.
   const string& node_name() const { return node_def_.name(); }

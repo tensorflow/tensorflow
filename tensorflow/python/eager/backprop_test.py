@@ -1357,6 +1357,12 @@ class BackpropTest(test.TestCase):
       tf_da = gradients.gradients(tf_max, [tf_aa])
       self.assertAllEqual(da[0], tf_da[0].eval())
 
+  @test_util.run_in_graph_and_eager_modes
+  def testWatchBadThing(self):
+    g = backprop.GradientTape()
+    with self.assertRaisesRegexp(ValueError, 'ndarray'):
+      g.watch(np.array(1.))
+
 
 class JacobianTest(test.TestCase):
 

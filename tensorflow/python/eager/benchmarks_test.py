@@ -191,10 +191,35 @@ class MicroBenchmarks(test.Benchmark):
 
     self._run(func, 30000)
 
-  def benchmark_create_constant(self):
-    func = lambda: constant_op.constant(3.0)
+  def _benchmark_create_constant(self, value, dtype):
+    def func():
+      return constant_op.constant(value, dtype=dtype)
+
+    for _ in range(1000):
+      func()  # Warmup.
 
     self._run(func, 30000)
+
+  def benchmark_create_float_constant(self):
+    self._benchmark_create_constant(42.0, dtype=None)
+
+  def benchmark_create_int32_constant(self):
+    self._benchmark_create_constant(42, dtype=dtypes.int32)
+
+  def _benchmark_add_scalars(self, a, b):
+    def func():
+      return math_ops.add(a, b)
+
+    for _ in range(1000):
+      func()  # Warmup.
+
+    self._run(func, 30000)
+
+  def benchmark_add_float_scalars(self):
+    self._benchmark_add_scalars(42.0, 24.0)
+
+  def benchmark_add_int_scalars(self):
+    self._benchmark_add_scalars(42, 24)
 
   def benchmark_create_float_tensor_from_list_CPU(self):
     self._benchmark_create_tensor([[3.0]], dtypes.float32.as_datatype_enum, CPU)
@@ -684,6 +709,26 @@ class MicroBenchmarks(test.Benchmark):
         func()
       self._run(func, 3000)
 
+  def _benchmark_forwardprop_in_defun_of_defun_matmul_CPU(self, shape):
+    with ops.device(CPU):
+      matmul = def_function.function(math_ops.matmul)
+
+      @def_function.function()
+      def compiled_function(x, tangent):
+        with forwardprop.ForwardGradientAccumulator() as acc:
+          acc.watch(x, tangent)
+          result = matmul(x, x, transpose_b=True)
+        return result, acc.jvp(result)
+
+      m = random_ops.random_uniform(shape).cpu()
+      tangent = random_ops.random_uniform(shape).cpu()
+      func = lambda: compiled_function(m, tangent)
+
+      # Warmup before benchmark
+      for _ in range(100):
+        func()
+      self._run(func, 3000)
+
   def _benchmark_forwardprop_of_defun_matmul_CPU(self, shape):
     with ops.device(CPU):
       m = random_ops.random_uniform(shape).cpu()
@@ -707,6 +752,9 @@ class MicroBenchmarks(test.Benchmark):
   def benchmark_forwardprop_in_defun_matmul_256_by_2096_CPU(self):
     self._benchmark_forwardprop_in_defun_matmul_CPU(shape=(256, 2096))
 
+  def benchmark_forwardprop_in_defun_of_defun_matmul_256_by_2096_CPU(self):
+    self._benchmark_forwardprop_in_defun_of_defun_matmul_CPU(shape=(256, 2096))
+
   def benchmark_forwardprop_of_defun_matmul_256_by_2096_CPU(self):
     self._benchmark_forwardprop_of_defun_matmul_CPU(shape=(256, 2096))
 
@@ -715,6 +763,9 @@ class MicroBenchmarks(test.Benchmark):
 
   def benchmark_forwardprop_in_defun_matmul_100_by_784_CPU(self):
     self._benchmark_forwardprop_in_defun_matmul_CPU(shape=(100, 784))
+
+  def benchmark_forwardprop_in_defun_of_defun_matmul_100_by_784_CPU(self):
+    self._benchmark_forwardprop_in_defun_of_defun_matmul_CPU(shape=(100, 784))
 
   def benchmark_forwardprop_of_defun_matmul_100_by_784_CPU(self):
     self._benchmark_forwardprop_of_defun_matmul_CPU(shape=(100, 784))

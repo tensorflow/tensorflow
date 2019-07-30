@@ -47,7 +47,9 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -432,14 +434,13 @@ class OptimizerV2(trackable.Trackable):
         self._create_hypers()
         self._create_slots(var_list)
 
-      self._prepare(var_list)
-
+      apply_state = self._prepare(var_list)
       return distribute_ctx.get_replica_context().merge_call(
-          self._distributed_apply,
+          functools.partial(self._distributed_apply, apply_state=apply_state),
           args=(grads_and_vars,),
           kwargs={"name": name})
 
-  def _distributed_apply(self, distribution, grads_and_vars, name):
+  def _distributed_apply(self, distribution, grads_and_vars, name, apply_state):
     """`apply_gradients` using a `DistributionStrategy`."""
     reduced_grads = distribution.extended.batch_reduce_to(
         ds_reduce_util.ReduceOp.SUM, grads_and_vars)
@@ -450,13 +451,20 @@ class OptimizerV2(trackable.Trackable):
       """Apply gradient to variable."""
       if isinstance(var, ops.Tensor):
         raise NotImplementedError("Trying to update a Tensor ", var)
+
+      apply_kwargs = {}
       if isinstance(grad, ops.IndexedSlices):
         if var.constraint is not None:
           raise RuntimeError(
               "Cannot use a constraint function on a sparse variable.")
+        if "apply_state" in self._sparse_apply_args:
+          apply_kwargs["apply_state"] = apply_state
         return self._resource_apply_sparse_duplicate_indices(
-            grad.values, var, grad.indices)
-      update_op = self._resource_apply_dense(grad, var)
+            grad.values, var, grad.indices, **apply_kwargs)
+
+      if "apply_state" in self._dense_apply_args:
+        apply_kwargs["apply_state"] = apply_state
+      update_op = self._resource_apply_dense(grad, var, **apply_kwargs)
       if var.constraint is not None:
         with ops.control_dependencies([update_op]):
           return var.assign(var.constraint(var))
@@ -588,12 +596,32 @@ class OptimizerV2(trackable.Trackable):
     return slot_dict[slot_name]
 
   def _prepare(self, var_list):
-    # pre-build the decayed learning rate only if learning rate exists.
-    if var_list and "learning_rate" in self._hyper:
-      var_dtypes = set([var.dtype.base_dtype for var in var_list])
-      self._decayed_lr_t = {}
-      for var_dtype in var_dtypes:
-        self._decayed_lr_t[var_dtype] = self._decayed_lr(var_dtype)
+    keys = set()
+    for var in var_list:
+      var_devices = (getattr(var, "devices", None) or  # Distributed
+                     [var.device])                     # Regular
+      var_dtype = var.dtype.base_dtype
+      for var_device in var_devices:
+        keys.add((var_device, var_dtype))
+
+    apply_state = {}
+    for var_device, var_dtype in keys:
+      apply_state[(var_device, var_dtype)] = {}
+      with ops.device(var_device):
+        self._prepare_local(var_device, var_dtype, apply_state)
+
+    return apply_state
+
+  def _prepare_local(self, var_device, var_dtype, apply_state):
+    if "learning_rate" in self._hyper:
+      lr_t = array_ops.identity(self._decayed_lr(var_dtype))
+      apply_state[(var_device, var_dtype)]["lr_t"] = lr_t
+
+  def _fallback_apply_state(self, var_device, var_dtype):
+    """Compatibility for subclasses that don't pass apply_state through."""
+    apply_state = {(var_device, var_dtype): {}}
+    self._prepare_local(var_device, var_dtype, apply_state)
+    return apply_state[(var_device, var_dtype)]
 
   def _create_hypers(self):
     if self._hypers_created:
@@ -814,20 +842,22 @@ class OptimizerV2(trackable.Trackable):
     """Call the function if param is callable."""
     return param() if callable(param) else param
 
-  def _resource_apply_dense(self, grad, handle):
+  def _resource_apply_dense(self, grad, handle, apply_state):
     """Add ops to apply dense gradients to the variable `handle`.
 
     Args:
       grad: a `Tensor` representing the gradient.
       handle: a `Tensor` of dtype `resource` which points to the variable to be
         updated.
+      apply_state: A dict which is used across multiple apply calls.
 
     Returns:
       An `Operation` which updates the value of the variable.
     """
     raise NotImplementedError()
 
-  def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
+  def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices,
+                                               **kwargs):
     """Add ops to apply sparse gradients to `handle`, with repeated indices.
 
     Optimizers which override this method must deal with repeated indices. See
@@ -844,15 +874,17 @@ class OptimizerV2(trackable.Trackable):
         updated.
       indices: a `Tensor` of integral type representing the indices for which
         the gradient is nonzero. Indices may be repeated.
+      **kwargs: May optionally contain `apply_state`
 
     Returns:
       An `Operation` which updates the value of the variable.
     """
     summed_grad, unique_indices = _deduplicate_indexed_slices(
         values=grad, indices=indices)
-    return self._resource_apply_sparse(summed_grad, handle, unique_indices)
+    return self._resource_apply_sparse(summed_grad, handle, unique_indices,
+                                       **kwargs)
 
-  def _resource_apply_sparse(self, grad, handle, indices):
+  def _resource_apply_sparse(self, grad, handle, indices, apply_state):
     """Add ops to apply sparse gradients to the variable `handle`.
 
     Similar to `_apply_sparse`, the `indices` argument to this method has been
@@ -866,6 +898,7 @@ class OptimizerV2(trackable.Trackable):
         updated.
       indices: a `Tensor` of integral type representing the indices for which
         the gradient is nonzero. Indices are unique.
+      apply_state: A dict which is used across multiple apply calls.
 
     Returns:
       An `Operation` which updates the value of the variable.
@@ -881,6 +914,16 @@ class OptimizerV2(trackable.Trackable):
     with ops.control_dependencies(
         [resource_variable_ops.resource_scatter_update(x.handle, i, v)]):
       return x.value()
+
+  @property
+  @tracking.cached_per_instance
+  def _dense_apply_args(self):
+    return tf_inspect.getfullargspec(self._resource_apply_dense).args
+
+  @property
+  @tracking.cached_per_instance
+  def _sparse_apply_args(self):
+    return tf_inspect.getfullargspec(self._resource_apply_sparse).args
 
   # ---------------
   # For implementing the trackable interface

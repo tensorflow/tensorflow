@@ -211,7 +211,7 @@ NodeDefBuilder& NodeDefBuilder::Device(StringPiece device_spec) {
   return *this;
 }
 
-Status NodeDefBuilder::Finalize(NodeDef* node_def) const {
+Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
   const std::vector<string>* errors_ptr = &errors_;
   std::vector<string> errors_storage;
   if (op_def_ != nullptr && inputs_specified_ < op_def_->input_arg_size()) {
@@ -243,7 +243,11 @@ Status NodeDefBuilder::Finalize(NodeDef* node_def) const {
   } else {
     NodeDef node_def_backup;
     if (node_def == nullptr) node_def = &node_def_backup;
-    *node_def = node_def_;
+    if (consume) {
+      *node_def = std::move(node_def_);
+    } else {
+      *node_def = node_def_;
+    }
 
     // Add control inputs after the regular inputs.
     for (const auto& control_input : control_inputs_) {

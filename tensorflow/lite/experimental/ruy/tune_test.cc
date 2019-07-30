@@ -33,6 +33,7 @@ TEST(TuneTest, TuneTest) {
 
   tuning_resolver.SetTuning(Tuning::kAuto);
 
+#ifdef RUY_IMPLEMENT_TUNING
   for (auto tuning : {Tuning::kOutOfOrder, Tuning::kInOrder}) {
     tuning_resolver.SetTuning(tuning);
     ASSERT_TRUE(tuning_resolver.Resolve() == tuning);
@@ -40,6 +41,7 @@ TEST(TuneTest, TuneTest) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
     ASSERT_TRUE(tuning_resolver.Resolve() == tuning);
   }
+#endif
 }
 
 }  // namespace

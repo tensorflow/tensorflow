@@ -763,7 +763,6 @@ class DistributedIteratorMultiWorkerTest(
             strategy,
             sess=sess,
             input_context=input_context)
-        return True
 
     self._run_between_graph_clients(_worker_fn, self._cluster_spec, 0)
 

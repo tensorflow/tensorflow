@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -71,6 +72,8 @@ class ToTFRecordOp : public AsyncOpKernel {
       std::unique_ptr<FunctionHandleCache> function_handle_cache =
           absl::make_unique<FunctionHandleCache>(params.flr);
       params.function_handle_cache = function_handle_cache.get();
+      auto resource_mgr = absl::make_unique<ResourceMgr>();
+      params.resource_mgr = resource_mgr.get();
       IteratorContext iter_ctx(std::move(params));
 
       OP_REQUIRES_OK_ASYNC(
