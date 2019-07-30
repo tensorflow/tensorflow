@@ -1309,7 +1309,8 @@ class RemoteMonitor(Callback):
 class LearningRateScheduler(Callback):
   """Learning rate scheduler.
   
-  A callback for scheduling the learning rate to change after every epoch or batch.
+  A callback for scheduling to update the optimizer's learning rate at the start of each epoch. 
+  The learning rate used in this callback replaces the default learning rate set by the gradient descent optimization algorithm.
   A custom function, such as a learning rate decay function, can be defined and passed as the `schedule` parameter in this callback.
   
   Example:
