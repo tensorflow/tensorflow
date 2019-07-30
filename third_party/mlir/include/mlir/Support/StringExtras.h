@@ -24,6 +24,8 @@
 
 #include "llvm/ADT/StringExtras.h"
 
+#include <cctype>
+
 namespace mlir {
 /// Converts a string to snake-case from camel-case by replacing all uppercase
 /// letters with '_' followed by the letter in lowercase, except if the
