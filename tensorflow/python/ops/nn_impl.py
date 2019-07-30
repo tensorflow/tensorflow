@@ -504,26 +504,27 @@ def _swish_shape(op):
   return [op.inputs[0].shape]
 
 
-@function.Defun(shape_func=_swish_shape, func_name="swish_grad", noinline=True)
+@function.Defun(shape_func=_swish_shape, func_name="swish_grad")
 def _swish_grad(features, grad):
   """Gradient of Swish function defined below."""
-  sigmoid_features = math_ops.sigmoid(features)
+  # Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x) around
+  # for backprop, effectively doubling the tensor's memory consumption. We use a
+  # control dependency here so that sigmoid(features) is re-computed during
+  # backprop (the control dep prevents it being de-duped with the forward pass)
+  # and we can free the sigmoid(features) expression immediately after use
+  # during the forward pass.
+  with ops.control_dependencies([grad]):
+    sigmoid_features = math_ops.sigmoid(features)
   activation_grad = (
       sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
   return grad * activation_grad
 
 
-# Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x) around
-# for backprop, effectively doubling the tensor's memory consumption. We use a
-# @Defun decorator with noinline=True so that sigmoid(features) is re-computed
-# during backprop, and we can free the sigmoid(features) expression immediately
-# after use during the forward pass.
 @tf_export("nn.swish")
 @function.Defun(
     grad_func=_swish_grad,
     shape_func=_swish_shape,
-    func_name="swish",
-    noinline=True)
+    func_name="swish")
 def swish(features):
   # pylint: disable=g-doc-args
   """Computes the Swish activation function: `x * sigmoid(x)`.
