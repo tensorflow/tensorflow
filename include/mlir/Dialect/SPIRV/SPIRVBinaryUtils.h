@@ -15,14 +15,15 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines common utilities for SPIR-V binary module.
+// This file declares common utilities for SPIR-V binary module.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_SPIRV_SERIALIZATION_SPIRV_BINARY_UTILS_H_
-#define MLIR_SPIRV_SERIALIZATION_SPIRV_BINARY_UTILS_H_
+#ifndef MLIR_DIALECT_SPIRV_SPIRV_BINARY_UTILS_H_
+#define MLIR_DIALECT_SPIRV_SPIRV_BINARY_UTILS_H_
 
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
+#include "mlir/Support/LogicalResult.h"
 
 #include <cstdint>
 
@@ -35,10 +36,17 @@ constexpr unsigned kHeaderWordCount = 5;
 /// SPIR-V magic number
 constexpr uint32_t kMagicNumber = 0x07230203;
 
+/// The serializer tool ID registered to the Khronos Group
+constexpr uint32_t kGeneratorNumber = 22;
+
+/// Auto-generated getOpcode<*Op>() specializations
 #define GET_SPIRV_SERIALIZATION_UTILS
 #include "mlir/Dialect/SPIRV/SPIRVSerialization.inc"
+
+/// Appends a SPRI-V module header to `header` with the given `idBound`.
+void appendModuleHeader(SmallVectorImpl<uint32_t> &header, uint32_t idBound);
 
 } // end namespace spirv
 } // end namespace mlir
 
-#endif // MLIR_SPIRV_SERIALIZATION_SPIRV_BINARY_UTILS_H_
+#endif // MLIR_DIALECT_SPIRV_SPIRV_BINARY_UTILS_H_
