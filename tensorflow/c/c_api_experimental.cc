@@ -1139,3 +1139,8 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
 
   // TODO(bgogul): Set output_resource_shapes_and_types.
 }
+
+void TF_ImportGraphDefOptionsSetValidateColocationConstraints(
+    TF_ImportGraphDefOptions* opts, unsigned char enable) {
+  opts->opts.validate_colocation_constraints = enable;
+}
