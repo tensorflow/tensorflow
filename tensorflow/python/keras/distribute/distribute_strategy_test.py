@@ -31,6 +31,7 @@ from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
@@ -39,6 +40,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import loss_reduction
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
 
@@ -1709,6 +1711,66 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       self.assertLen(ds_model.metrics, 1)
 
     self.assertAllClose(history.history, ds_history.history)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategies_minus_tpu,
+          mode=['eager'],
+          run_distributed=[True]))
+  def test_sparse_tensor_outputs(self, distribution, run_distributed):
+
+    class ToSparse(keras.layers.Layer):
+      """Create a sparse tensor based on a given dense tensor."""
+
+      def call(self, inputs):
+        indices = array_ops.where_v2(math_ops.not_equal(inputs, 0))
+        values = array_ops.gather_nd(inputs, indices)
+        shape = array_ops.shape(inputs, out_type='int64')
+        return sparse_tensor.SparseTensor(indices, values, dense_shape=shape)
+
+    model = keras.Sequential([ToSparse()])
+    model._run_distributed = run_distributed
+
+    # Define some input data with additional padding.
+    input_data = np.array([[1, 0, 0], [2, 3, 0]])
+    output = model.predict(input_data, batch_size=2)
+
+    expected_indices = np.array([[0, 0], [1, 0], [1, 1]])
+    expected_values = np.array([1, 2, 3])
+    expected_dense_shape = np.array([2, 3])
+
+    self.assertAllEqual(output.indices, expected_indices)
+    self.assertAllEqual(output.values, expected_values)
+    self.assertAllEqual(output.dense_shape, expected_dense_shape)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategies_minus_tpu,
+          mode=['eager'],
+          run_distributed=[True]))
+  def test_ragged_tensor_outputs(self, distribution, run_distributed):
+
+    class ToRagged(keras.layers.Layer):
+      """Create a ragged tensor based on a given dense tensor."""
+
+      def __init__(self, padding, ragged_rank=1, **kwargs):
+        super(ToRagged, self).__init__(**kwargs)
+        self._padding = padding
+        self._ragged_rank = ragged_rank
+
+      def call(self, inputs):
+        return ragged_tensor.RaggedTensor.from_tensor(
+            inputs, padding=self._padding, ragged_rank=self._ragged_rank)
+
+    model = keras.Sequential([ToRagged(padding=0)])
+    model._run_distributed = run_distributed
+
+    # Define some input data with additional padding.
+    input_data = np.array([[1, 0, 0], [2, 3, 0]])
+    output = model.predict(input_data, batch_size=2)
+
+    expected_values = [[1], [2, 3]]
+    self.assertAllEqual(expected_values, output)
 
   @combinations.generate(
       combinations.combine(

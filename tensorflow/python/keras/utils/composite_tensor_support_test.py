@@ -220,6 +220,8 @@ class CompositeTensorOutputTest(keras_parameterized.TestCase):
     # converts the ragged tensor back to a dense tensor.
     layers = [ToRagged(padding=0)]
     model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
+    model._run_distributed = testing_utils.should_run_distributed()
+    model._run_eagerly = testing_utils.should_run_eagerly()
 
     # Define some input data with additional padding.
     input_data = np.array([[1, 0, 0], [2, 3, 0]])
@@ -233,6 +235,8 @@ class CompositeTensorOutputTest(keras_parameterized.TestCase):
     # converts the ragged tensor back to a dense tensor.
     layers = [ToRagged(padding=0)]
     model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
+    model._run_distributed = testing_utils.should_run_distributed()
+    model._run_eagerly = testing_utils.should_run_eagerly()
 
     # Define some input data with additional padding.
     input_data = np.array([[1, 0, 0], [2, 3, 0], [4, 0, 0], [5, 6, 0]])
@@ -246,6 +250,8 @@ class CompositeTensorOutputTest(keras_parameterized.TestCase):
     # converts the ragged tensor back to a dense tensor.
     layers = [ToSparse()]
     model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
+    model._run_distributed = testing_utils.should_run_distributed()
+    model._run_eagerly = testing_utils.should_run_eagerly()
 
     # Define some input data with additional padding.
     input_data = np.array([[1, 0, 0], [2, 3, 0]])
@@ -264,6 +270,8 @@ class CompositeTensorOutputTest(keras_parameterized.TestCase):
     # converts the ragged tensor back to a dense tensor.
     layers = [ToSparse()]
     model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
+    model._run_distributed = testing_utils.should_run_distributed()
+    model._run_eagerly = testing_utils.should_run_eagerly()
 
     # Define some input data with additional padding.
     input_data = np.array([[1, 0, 0], [2, 3, 0], [4, 0, 0], [5, 6, 0]])
