@@ -3798,6 +3798,7 @@ def rnn(step_function,
         tensor_array_ops.TensorArray(
             dtype=out.dtype,
             size=time_steps_t,
+            element_shape=out.shape,
             tensor_array_name='output_ta_%s' % i)
         for i, out in enumerate(nest.flatten(output_time_zero)))
 
