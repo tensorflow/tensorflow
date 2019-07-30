@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import six
 
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -288,11 +287,14 @@ def lift_to_graph(init_tensors,
 
   # When lifting from one FuncGraph to another, we will need to capture the
   # relevant tensors as well.
-  captures = collections.OrderedDict()
+  captures = []
+  inverse_captures = {}
+  internal_captures = []
   if (isinstance(base_graph, func_graph.FuncGraph) and
       isinstance(graph, func_graph.FuncGraph)):
     captures = base_graph.captures
-  inverse_captures = {v: k for k, v in captures.items()}
+    inverse_captures = {v: k for k, v in captures}
+    internal_captures = base_graph.internal_captures
 
   # ops_to_copy now holds a reverse topologically sorted list of ops which
   # ends in the initializer. We copy those to the outermost graph and
@@ -302,7 +304,7 @@ def lift_to_graph(init_tensors,
                   })  # Pass through variables.
     source_ops = set()
     # Add the sources in the same order as the original graph.
-    for s in six.itervalues(captures):
+    for s in internal_captures:
       if s in sources:
         sources.remove(s)
         source_ops.add(s.op)

@@ -721,9 +721,7 @@ class _TapeGradientFunctions(object):
     """Forward+backward functions where the backward function sees `outputs`."""
     # First figure out which of `outputs` are trainable. We'll accept gradients
     # for each of these in the backward function.
-    handles_to_variables = {self._func_graph.captures[v.handle]: v
-                            for v in self._func_graph.variables
-                            if v.handle in self._func_graph.captures}
+    handles_to_variables = self._func_graph.variable_captures
     trainable_outputs = []
     for output in outputs:
       if gradients_util.IsTrainable(output):
@@ -753,8 +751,9 @@ class _TapeGradientFunctions(object):
           src_graph=self._func_graph)
 
       captures_from_forward = [
-          c for c in backwards_graph.captures.keys() if
-          not isinstance(c, ops.EagerTensor) and c.graph is self._func_graph]
+          c for c in backwards_graph.external_captures
+          if not isinstance(c, ops.EagerTensor) and c.graph is self._func_graph
+      ]
       existing_outputs = set(self._func_graph.outputs)
       for capture in captures_from_forward:
         if capture not in existing_outputs:
@@ -770,7 +769,7 @@ class _TapeGradientFunctions(object):
     # `backward_function` correspond to outputs (including
     # side outputs) of `self._tape_forward_function`.
     backwards_graph.inputs = (
-        gradients_wrt_outputs + list(backwards_graph.captures.values()))
+        gradients_wrt_outputs + backwards_graph.internal_captures)
     backwards_graph.outputs.extend(
         grad
         for grad in nest.flatten(gradients_wrt_inputs, expand_composites=True)
@@ -980,9 +979,8 @@ class ConcreteFunction(object):
     self._arg_keywords = None
     self._num_positional_args = None
     self._func_graph = func_graph
-    self._captured_inputs = list(self._func_graph.captures.keys())
-    self._captured_closures = [
-        x[0] for x in self._func_graph.deferred_captures.values()]
+    self._captured_inputs = self._func_graph.external_captures
+    self._captured_closures = self._func_graph.deferred_external_captures
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
     attrs = _parse_func_attrs(attrs or {})

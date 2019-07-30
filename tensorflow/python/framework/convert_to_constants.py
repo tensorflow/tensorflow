@@ -182,7 +182,7 @@ def _get_tensor_data(func):
   }
 
   # Iterates through all captures which are represented as Placeholders.
-  for idx, (val_tensor, name_tensor) in enumerate(func.graph.captures.items()):
+  for idx, (val_tensor, name_tensor) in enumerate(func.graph.captures):
     tensor_name = _get_tensor_name(name_tensor.name)
     is_variable = idx in map_index_to_variable
     if is_variable:
@@ -352,7 +352,7 @@ def _construct_concrete_function(func, output_graph_def,
     ConcreteFunction.
   """
   # Create a ConcreteFunction from the new GraphDef.
-  input_tensors = list(func.graph.captures.values())
+  input_tensors = func.graph.internal_captures
   converted_inputs = set(
       [input_tensors[index] for index in converted_input_indices])
   not_converted_inputs = set(func.inputs).difference(converted_inputs)

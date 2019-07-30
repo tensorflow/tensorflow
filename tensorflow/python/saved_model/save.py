@@ -322,7 +322,7 @@ def _map_captures_to_created_tensors(
       `resource_map`.
   """
   export_captures = []
-  for exterior, interior in original_captures.items():
+  for exterior, interior in original_captures:
     mapped_resource = resource_map.get(exterior, None)
     if mapped_resource is None:
       raise AssertionError(

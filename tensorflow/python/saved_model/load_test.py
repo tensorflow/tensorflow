@@ -874,14 +874,15 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     root = Root()
     self.assertIn(root.v.handle,
-                  root.use_v.get_concrete_function().graph.captures)
+                  root.use_v.get_concrete_function().graph.external_captures)
     for _ in range(cycles):
       root = self.cycle(root, 1, signatures=root.use_v.get_concrete_function())
-    func_captures = root.use_v.get_concrete_function().graph.captures
+    func_captures = root.use_v.get_concrete_function().graph.external_captures
     self.assertLen(func_captures, 2)
     self.assertIn(root.v.handle, func_captures)
     self.assertIn(root.v1.handle, func_captures)
-    signature_captures = root.signatures["serving_default"].graph.captures
+    signature_captures = root.signatures[
+        "serving_default"].graph.external_captures
     self.assertLen(signature_captures, 2)
     self.assertIn(root.v.handle, signature_captures)
     self.assertIn(root.v1.handle, signature_captures)

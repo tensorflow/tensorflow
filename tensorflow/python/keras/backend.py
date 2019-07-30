@@ -3457,8 +3457,7 @@ class EagerExecutionFunction(object):
       with ops.control_dependencies(updates_ops):
         self.outputs[0] = array_ops.identity(self.outputs[0])
 
-      exec_graph.inputs = self._input_references + list(
-          exec_graph.captures.values())
+      exec_graph.inputs = self._input_references + exec_graph.internal_captures
       exec_graph.outputs = self.outputs
       graph_fn = eager_function.ConcreteFunction(exec_graph)
 
