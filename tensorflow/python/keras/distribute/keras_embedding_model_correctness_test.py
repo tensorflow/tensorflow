@@ -51,8 +51,6 @@ class DistributionStrategyEmbeddingModelCorrectnessTest(
         model.set_weights(initial_weights)
 
       model.compile(
-          # TODO(b/130808953): Switch back the V1 optimizer once global_step is
-          # mirrored.
           optimizer=gradient_descent_keras.SGD(learning_rate=0.1),
           loss='sparse_categorical_crossentropy',
           metrics=['sparse_categorical_accuracy'],
