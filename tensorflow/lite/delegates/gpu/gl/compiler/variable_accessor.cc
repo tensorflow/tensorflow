@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/gl/compiler/parameter_accessor.h"
+#include "tensorflow/lite/delegates/gpu/gl/compiler/variable_accessor.h"
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -24,12 +24,12 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace gl {
-namespace parameter_accessor_internal {
+namespace variable_accessor_internal {
 
 // Parse the following regex manually
 // name(\[index\])?(\.field)?
-ParameterReference Parse(absl::string_view input) {
-  ParameterReference ref;
+VariableReference Parse(absl::string_view input) {
+  VariableReference ref;
   auto start_index = input.find('[');
   if (start_index != std::string::npos) {
     auto end_index = input.rfind(']');
@@ -51,11 +51,11 @@ ParameterReference Parse(absl::string_view input) {
   return ref;
 }
 
-}  // namespace parameter_accessor_internal
+}  // namespace variable_accessor_internal
 
 namespace {
 
-struct UniformTypeGetter {
+struct VariableTypeGetter {
   std::string operator()(int) const { return "int"; }
   std::string operator()(const int2&) const { return "ivec2"; }
   std::string operator()(const std::vector<int2>&) const { return "ivec2"; }
@@ -67,9 +67,9 @@ struct UniformTypeGetter {
   std::string operator()(const float4&) const { return "vec4"; }
 };
 
-// Returns GLSL uniform type of the given parameter.
-std::string GetUniformType(const Variable::ValueType& value) {
-  return absl::visit(UniformTypeGetter(), value);
+// Returns GLSL uniform type of the given variable.
+std::string GetVariableType(const Variable::ValueType& value) {
+  return absl::visit(VariableTypeGetter(), value);
 }
 
 template <typename T>
@@ -102,25 +102,25 @@ struct ConstGenerator {
 
   template <typename T>
   void operator()(const Vec2<T>& v) const {
-    absl::StrAppend(result, UniformTypeGetter()(v), "(",
+    absl::StrAppend(result, VariableTypeGetter()(v), "(",
                     absl::StrJoin(ToString<T, 2>(v.data_), ","), ")");
   }
 
   template <typename T>
   void operator()(const Vec3<T>& v) const {
-    absl::StrAppend(result, UniformTypeGetter()(v), "(",
+    absl::StrAppend(result, VariableTypeGetter()(v), "(",
                     absl::StrJoin(ToString<T, 3>(v.data_), ","), ")");
   }
 
   template <typename T>
   void operator()(const Vec4<T>& v) const {
-    absl::StrAppend(result, UniformTypeGetter()(v), "(",
+    absl::StrAppend(result, VariableTypeGetter()(v), "(",
                     absl::StrJoin(ToString<T, 4>(v.data_), ","), ")");
   }
 
   template <typename T>
   void operator()(const std::vector<T>& v) const {
-    std::string type = UniformTypeGetter()(v);
+    std::string type = VariableTypeGetter()(v);
     absl::StrAppend(result, type, "[", v.size(), "](");
     bool first = true;
     for (const auto& i : v) {
@@ -137,31 +137,55 @@ struct ConstGenerator {
   std::string* result;
 };
 
-// Appends string representation of a parameter value.
+// Appends string representation of a variable value.
 void GetValue(const Variable::ValueType& value, std::string* result) {
   absl::visit(ConstGenerator{result}, value);
 }
 
-struct UniformDeclarationGenerator {
+struct SharedVariableDeclarationGenerator {
   template <typename T>
   void operator()(const T&) const {
-    absl::StrAppend(result, "uniform ", GetUniformType(param.value), " ",
-                    param.name, ";\n");
+    absl::StrAppend(result, "shared ", GetVariableType(variable.value), " ",
+                    variable.name, ";\n");
   }
 
   template <typename T>
   void operator()(const std::vector<T>& v) const {
-    absl::StrAppend(result, "uniform ", GetUniformType(param.value), " ",
-                    param.name, "[", v.size(), "];\n");
+    absl::StrAppend(result, "shared ", GetVariableType(variable.value), " ",
+                    variable.name, "[", v.size(), "];\n");
   }
 
-  const Variable& param;
+  const Variable& variable;
   std::string* result;
 };
 
-void GenerateUniformDeclaration(const Variable& parameter,
-                                std::string* result) {
-  absl::visit(UniformDeclarationGenerator{parameter, result}, parameter.value);
+void GenerateSharedVariableDeclaration(const Variable& variable,
+                                       std::string* result) {
+  absl::visit(SharedVariableDeclarationGenerator{variable, result},
+              variable.value);
+}
+
+struct UniformParameterDeclarationGenerator {
+  template <typename T>
+  void operator()(const T&) const {
+    absl::StrAppend(result, "uniform ", GetVariableType(variable.value), " ",
+                    variable.name, ";\n");
+  }
+
+  template <typename T>
+  void operator()(const std::vector<T>& v) const {
+    absl::StrAppend(result, "uniform ", GetVariableType(variable.value), " ",
+                    variable.name, "[", v.size(), "];\n");
+  }
+
+  const Variable& variable;
+  std::string* result;
+};
+
+void GenerateUniformParameterDeclaration(const Variable& variable,
+                                         std::string* result) {
+  absl::visit(UniformParameterDeclarationGenerator{variable, result},
+              variable.value);
 }
 
 struct VariableLengthGetter {
@@ -277,37 +301,38 @@ void AssembleAccessor(absl::string_view name, absl::string_view index,
 
 }  // namespace
 
-RewriteStatus ParameterAccessor::Rewrite(absl::string_view input,
-                                         std::string* output) {
-  auto ref = parameter_accessor_internal::Parse(input);
+RewriteStatus VariableAccessor::Rewrite(absl::string_view input,
+                                        std::string* output) {
+  auto ref = variable_accessor_internal::Parse(input);
   if (ref.name.empty()) {
     absl::StrAppend(output, "INVALID_SYNTAX");
     return RewriteStatus::ERROR;
   }
 
-  auto it = name_to_param_.find(std::string(ref.name.data(), ref.name.size()));
-  if (it == name_to_param_.end()) {
+  auto it =
+      name_to_variable_.find(std::string(ref.name.data(), ref.name.size()));
+  if (it == name_to_variable_.end()) {
     // Uniform with this name is not registered.
     return RewriteStatus::NOT_RECOGNIZED;
   }
   const auto& value = it->second.value;
 
   if (!ref.index.empty() && !IsVariableLength(value)) {
-    // Trying to access parameter by index, but it is not variable-length.
+    // Trying to access variable by index, but it is not variable-length.
     absl::StrAppend(output, "INVALID_ACCESS_BY_INDEX");
     return RewriteStatus::ERROR;
   }
 
   Field f = ToField(ref.field);
   if (!ref.field.empty() && !HasField(value, f)) {
-    // Trying to access a parameter by field, but it does not have it.
+    // Trying to access a variable by field, but it does not have it.
     absl::StrAppend(output, "INVALID_ACCESS_BY_FIELD");
     return RewriteStatus::ERROR;
   }
 
   // Error checks are complete now.
 
-  // All variable-length parameters are encoded as-is without inlining.
+  // All variable-length variables are encoded as-is without inlining.
   if (!inline_values_ || IsVariableLength(value)) {
     AssembleAccessor(it->second.name, ref.index, ref.field, output);
   } else {
@@ -322,20 +347,33 @@ RewriteStatus ParameterAccessor::Rewrite(absl::string_view input,
   return RewriteStatus::SUCCESS;
 }
 
-bool ParameterAccessor::AddParameter(Variable param) {
-  std::string name = param.name;
-  return name_to_param_.insert({name, std::move(param)}).second;
+bool VariableAccessor::AddSharedVariable(Variable&& variable) {
+  const std::string name = variable.name;
+  if (!name_to_variable_.insert({name, std::move(variable)}).second) {
+    return false;
+  }
+  shared_variables_.insert(name);
+  return true;
 }
 
-std::string ParameterAccessor::GetConstDeclarations() const {
-  // Variable length parameters are declared as const and accessed via variable
+bool VariableAccessor::AddUniformParameter(Variable&& variable) {
+  const std::string name = variable.name;
+  if (!name_to_variable_.insert({name, std::move(variable)}).second) {
+    return false;
+  }
+  uniform_parameters_.insert(name);
+  return true;
+}
+
+std::string VariableAccessor::GetConstDeclarations() const {
+  // Variable length variables are declared as const and accessed via variable
   // with index.
   std::string declarations;
-  for (auto& param : name_to_param_) {
-    const auto& value = param.second.value;
+  for (const auto& variable : name_to_variable_) {
+    const auto& value = variable.second.value;
     if (IsVariableLength(value)) {
-      absl::StrAppend(&declarations, "const ", GetUniformType(value), " ",
-                      param.second.name, "[] = ");
+      absl::StrAppend(&declarations, "const ", GetVariableType(value), " ",
+                      variable.second.name, "[] = ");
       GetValue(value, &declarations);
       absl::StrAppend(&declarations, ";\n");
     }
@@ -343,24 +381,35 @@ std::string ParameterAccessor::GetConstDeclarations() const {
   return declarations;
 }
 
-std::string ParameterAccessor::GetUniformDeclarations() const {
+std::string VariableAccessor::GetSharedVariableDeclarations() const {
+  std::string declarations;
+  for (const auto& name : shared_variables_) {
+    const auto& variable = name_to_variable_.at(name);
+    GenerateSharedVariableDeclaration(variable, &declarations);
+  }
+  return declarations;
+}
+
+std::string VariableAccessor::GetUniformParameterDeclarations() const {
   std::string declarations;
   if (!inline_values_) {
-    for (auto& param : name_to_param_) {
-      GenerateUniformDeclaration(param.second, &declarations);
+    for (const auto& name : uniform_parameters_) {
+      const auto& variable = name_to_variable_.at(name);
+      GenerateUniformParameterDeclaration(variable, &declarations);
     }
   }
   return declarations;
 }
 
-std::vector<Variable> ParameterAccessor::GetUniformParameters() const {
-  std::vector<Variable> params;
+std::vector<Variable> VariableAccessor::GetUniformParameters() const {
+  std::vector<Variable> variables;
   if (!inline_values_) {
-    for (auto& param : name_to_param_) {
-      params.push_back(param.second);
+    variables.reserve(name_to_variable_.size());
+    for (const auto& variable : name_to_variable_) {
+      variables.push_back(variable.second);
     }
   }
-  return params;
+  return variables;
 }
 
 }  // namespace gl
