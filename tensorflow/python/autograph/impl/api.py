@@ -121,13 +121,30 @@ class StackTraceMapper(tf_stack.StackTraceMapper):
   def __init__(self, converted_fn):
     self._source_map = converted_fn.ag_source_map
 
-  def map(self, filename, lineno, name):
-    loc = origin_info.LineLocation(filename=filename, lineno=lineno)
-    if loc not in self._source_map:
-      return filename, lineno, name
+  def get_effective_source_map(self):
+    effective_source_map = self._effective_source_map
+    if effective_source_map is None:
+      if self.parent is not None:
+        parent_map = self.parent.get_effective_source_map()
+      else:
+        parent_map = {}
 
-    origin = self._source_map[loc]
-    return origin.loc.filename, origin.loc.lineno, origin.function_name
+      effective_source_map = {}
+      for loc, origin in self._source_map.items():
+        effective_source_map[(loc.filename, loc.lineno)] = (
+            origin.loc.filename, origin.loc.lineno, origin.function_name)
+
+      for key, value in parent_map.items():
+        filename, lineno, _ = value
+        value_loc = origin_info.LineLocation(filename=filename, lineno=lineno)
+        if value_loc in self._source_map:
+          origin = self._source_map[value_loc]
+          effective_source_map[key] = (
+              origin.loc.filename, origin.loc.lineno, origin.function_name)
+        else:
+          effective_source_map[key] = value
+      self._effective_source_map = effective_source_map
+    return effective_source_map
 
 
 def tf_convert(f, ctx, convert_by_default=True, force_conversion=False):
