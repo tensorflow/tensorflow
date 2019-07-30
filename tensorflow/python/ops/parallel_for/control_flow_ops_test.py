@@ -61,6 +61,7 @@ from tensorflow.python.util import nest
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.with_control_flow_v2
 class PForTest(PForTestCase):
 
   def test_op_conversion_fallback_to_while_loop(self):
