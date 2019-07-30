@@ -26,6 +26,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import random_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -259,18 +260,17 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
   def testPruningV2(self):
     self._testPruning()
 
-  @parameterized.named_parameters(
-      ("V1", control_flow_ops.while_loop, "StackPushV2"),
-      ("V2", while_loop_v2, "TensorListPushBack"),
-  )
-  @test_util.run_deprecated_v1
-  def testDoNotAccumulateInvariants(self, while_loop_fn, push_op):
+  def _testDoNotAccumulateInvariants(self):
+    push_op = ("TensorListPushBack"
+               if control_flow_v2_toggles.control_flow_v2_enabled() else
+               "StackPushV2")
+
     # Tests that loop invariants, i.e., tensors that are "captured" by the
     # while loop and not passed as loop variables are not accumulated in
     # gradient computation.
     v = constant_op.constant(5.0, name="v")
 
-    r = while_loop_fn(
+    r = control_flow_ops.while_loop(
         lambda _: True, lambda x: v * x, [1.0], maximum_iterations=5)
 
     output = gradients_impl.gradients(r, v)[0]
@@ -282,6 +282,15 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # loop invariant it is not accumulated so we have just one accumulator for
     # x.
     self.assertLen([n for n in g.node if n.op == push_op], 1)
+
+  @test_util.run_deprecated_v1
+  def testDoNotAccumulateInvariantsV1(self):
+    self._testDoNotAccumulateInvariants()
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_control_flow_v2
+  def testDoNotAccumulateInvariantsV2(self):
+    self._testDoNotAccumulateInvariants()
 
   @test_util.run_deprecated_v1
   def testCaptureExternalTensorInCond(self):

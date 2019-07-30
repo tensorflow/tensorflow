@@ -3865,6 +3865,7 @@ cuda_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
