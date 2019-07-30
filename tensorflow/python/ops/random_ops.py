@@ -114,7 +114,7 @@ def parameterized_truncated_normal(shape,
   Returns:
     A tensor of the specified shape filled with random truncated normal values.
   """
-  with tf.name_scope(name, "parameterized_truncated_normal",
+  with ops.name_scope(name, "parameterized_truncated_normal",
                       [shape, means, stddevs, minvals, maxvals]) as name:
     shape_tensor = tensor_util.shape_tensor(shape)
     means_tensor = tf.convert_to_tensor(means, dtype=dtype, name="means")
@@ -164,7 +164,7 @@ def truncated_normal(shape,
   Returns:
     A tensor of the specified shape filled with random truncated normal values.
   """
-  with tf.name_scope(name, "truncated_normal", [shape, mean, stddev]) as name:
+  with ops.name_scope(name, "truncated_normal", [shape, mean, stddev]) as name:
     shape_tensor = tensor_util.shape_tensor(shape)
     mean_tensor = tf.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = tf.convert_to_tensor(stddev, dtype=dtype, name="stddev")
@@ -230,7 +230,7 @@ def random_uniform(shape,
     if dtype.is_integer:
       raise ValueError("Must specify maxval for integer dtype %r" % dtype)
     maxval = 1
-  with tf.name_scope(name, "random_uniform", [shape, minval, maxval]) as name:
+  with ops.name_scope(name, "random_uniform", [shape, minval, maxval]) as name:
     shape = tensor_util.shape_tensor(shape)
     minval = tf.convert_to_tensor(minval, dtype=dtype, name="min")
     maxval = tf.convert_to_tensor(maxval, dtype=dtype, name="max")
@@ -304,7 +304,7 @@ def random_crop(value, size, seed=None, name=None):
   # TODO(shlens): Implement edge case to guarantee output size dimensions.
   # If size > value.shape, zero pad the result so that it always has shape
   # exactly size.
-  with tf.name_scope(name, "random_crop", [value, size]) as name:
+  with ops.name_scope(name, "random_crop", [value, size]) as name:
     value = tf.convert_to_tensor(value, name="value")
     size = tf.convert_to_tensor(size, dtype=dtypes.int32, name="size")
     shape = array_ops.shape(value)
@@ -348,7 +348,7 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
   Returns:
     The drawn samples of shape `[batch_size, num_samples]`.
   """
-  with tf.name_scope(name, "multinomial", [logits]):
+  with ops.name_scope(name, "multinomial", [logits]):
     return multinomial_categorical_impl(logits, num_samples, output_dtype, seed)
 
 
@@ -376,7 +376,7 @@ def categorical(logits, num_samples, dtype=None, seed=None, name=None):
   Returns:
     The drawn samples of shape `[batch_size, num_samples]`.
   """
-  with tf.name_scope(name, "categorical", [logits]):
+  with ops.name_scope(name, "categorical", [logits]):
     return multinomial_categorical_impl(logits, num_samples, dtype, seed)
 
 
@@ -462,7 +462,7 @@ def random_gamma(shape,
       `tf.concat([shape, tf.shape(alpha + beta)], axis=0)` with values of type
       `dtype`.
   """
-  with tf.name_scope(name, "random_gamma", [shape, alpha, beta]):
+  with ops.name_scope(name, "random_gamma", [shape, alpha, beta]):
     shape = tf.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)
     alpha = tf.convert_to_tensor(alpha, name="alpha", dtype=dtype)
     beta = tf.convert_to_tensor(
@@ -551,7 +551,7 @@ def random_poisson_v2(shape, lam, dtype=dtypes.float32, seed=None, name=None):
     samples: a `Tensor` of shape `tf.concat([shape, tf.shape(lam)], axis=0)`
       with values of type `dtype`.
   """
-  with tf.name_scope(name, "random_poisson", [lam, shape]):
+  with ops.name_scope(name, "random_poisson", [lam, shape]):
     shape = tf.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)
     seed1, seed2 = random_seed.get_seed(seed)
     return gen_random_ops.random_poisson_v2(
