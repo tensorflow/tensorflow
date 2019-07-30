@@ -54,9 +54,12 @@ void TestElementwiseFloat(std::initializer_list<int> input_dims_data,
   if (registration->init) {
     user_data = registration->init(&context, nullptr, 0);
   }
-  TfLiteIntArray* inputs_array = IntArrayFromInitializer({1, 0});
-  TfLiteIntArray* outputs_array = IntArrayFromInitializer({1, 1});
-  TfLiteIntArray* temporaries_array = IntArrayFromInitializer({0});
+  auto inputs_array_data = {1, 0};
+  TfLiteIntArray* inputs_array = IntArrayFromInitializer(inputs_array_data);
+  auto outputs_array_data = {1, 1};
+  TfLiteIntArray* outputs_array = IntArrayFromInitializer(outputs_array_data);
+  auto temporaries_array_data = {0};
+  TfLiteIntArray* temporaries_array = IntArrayFromInitializer(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
