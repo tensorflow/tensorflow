@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #include "tensorflow/core/platform/test.h"
 
-
 namespace Eigen {
 namespace internal {
 
