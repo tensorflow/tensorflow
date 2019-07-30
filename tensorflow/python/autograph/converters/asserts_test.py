@@ -21,7 +21,6 @@ from __future__ import print_function
 from tensorflow.python.autograph.converters import asserts
 from tensorflow.python.autograph.converters import function_scopes
 from tensorflow.python.autograph.core import converter_testing
-from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
@@ -34,13 +33,11 @@ class AssertsTest(converter_testing.TestCase):
 
     def test_fn(a):
       assert a, 'testmsg'
+      return a
 
     with ops.Graph().as_default():
       with self.converted(test_fn, (function_scopes, asserts), {}) as result:
-        with function_wrappers.FunctionScope(
-            False, None, use_auto_deps=True) as scope:
-          result.test_fn(constant_op.constant(False))
-          op = scope.mark_return_value(constant_op.constant(1))
+        op = result.test_fn(constant_op.constant(False))
 
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, 'testmsg'):
         self.evaluate(op)

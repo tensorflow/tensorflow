@@ -490,7 +490,7 @@ class ApiTest(test.TestCase):
       return x + 1
 
     x = api.converted_call(
-        f, converter.ConversionOptions(recursive=True, force_conversion=True),
+        f, converter.ConversionOptions(recursive=True, user_requested=True),
         (constant_op.constant(0),), {})
     self.assertTrue(self.evaluate(x))
 
@@ -565,7 +565,7 @@ class ApiTest(test.TestCase):
 
     # TODO(mdan): Add the missing level of support to LOGICAL_EXPRESSIONS.
     opts = converter.ConversionOptions(
-        force_conversion=True, optional_features=None)
+        user_requested=True, optional_features=None)
 
     x = api.converted_call(gen_math_ops.add, opts, (1, 1), {})
 
@@ -615,8 +615,8 @@ class ApiTest(test.TestCase):
     opts = converter.ConversionOptions(recursive=True)
 
     obj = TestClass(5, 2)
-    x = api.converted_call(
-        obj.test_method, opts, (constant_op.constant([2, 4]),), {})
+    x = api.converted_call(obj.test_method, opts,
+                           (constant_op.constant([2, 4]),), {})
 
     self.assertAllEqual(self.evaluate(x), [1, 2])
 
@@ -693,7 +693,7 @@ class ApiTest(test.TestCase):
     def f():
       return dataset_ops.Dataset.range(-3, 3).map(other_fn)
 
-    # Dataset iteration only works inside tf.function.
+    # Dataset iteration only works inside tf.
     @def_function.function
     def graph_fn():
       opts = converter.ConversionOptions(recursive=True)
@@ -870,13 +870,10 @@ class ApiTest(test.TestCase):
 
     self.assertNotEqual(converted_recursive.ag_module,
                         converted_non_recursive.ag_module)
-    self.assertIn('ag__.STD', tf_inspect.getsource(converted_recursive))
-    self.assertNotIn('internal_convert_user_code=False',
-                     tf_inspect.getsource(converted_recursive))
-    self.assertIn('internal_convert_user_code=False',
-                  tf_inspect.getsource(converted_non_recursive))
-    self.assertNotIn('internal_convert_user_code=True',
-                     tf_inspect.getsource(converted_non_recursive))
+    self.assertRegex(tf_inspect.getsource(converted_recursive),
+                     'FunctionScope(.*recursive=True.*)')
+    self.assertRegex(tf_inspect.getsource(converted_non_recursive),
+                     'FunctionScope(.*recursive=False.*)')
 
   def test_to_graph_preserves_bindings(self):
     y = 3
@@ -898,6 +895,22 @@ class ApiTest(test.TestCase):
       return y**2
 
     self.assertTrue(hasattr(api.to_graph(test_fn), 'ag_source_map'))
+
+  def test_to_graph_sets_conversion_context(self):
+
+    def g():
+      self.assertEqual(ag_ctx.control_status_ctx().status,
+                       ag_ctx.Status.ENABLED)
+      return 0
+
+    # Note: the autograph=False sets the contect to Status.DISABLED. The test
+    # verifies that to_graph overrides that.
+    @def_function.function(autograph=False)
+    def f():
+      converted_g = api.to_graph(g)
+      converted_g()
+
+    f()
 
   def test_to_code_basic(self):
 
@@ -967,7 +980,7 @@ class ApiTest(test.TestCase):
 
     decorated_f = tf_decorator.make_decorator(f, wrapper)
 
-    # Note: the autograph setting of tf.function has nothing to do with the
+    # Note: the autograph setting of tf has nothing to do with the
     # test case. We just disable it to avoid confusion.
     @def_function.function(autograph=False)
     def test_fn(ctx):

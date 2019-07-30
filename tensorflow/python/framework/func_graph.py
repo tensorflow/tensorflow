@@ -835,7 +835,7 @@ def func_graph_from_py_func(name,
                 autograph.ConversionOptions(
                     recursive=True,
                     optional_features=autograph_options,
-                    force_conversion=True,
+                    user_requested=True,
                 ), args, kwargs)
           except Exception as e:  # pylint:disable=broad-except
             if hasattr(e, "ag_error_metadata"):
