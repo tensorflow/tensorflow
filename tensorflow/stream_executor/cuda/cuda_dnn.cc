@@ -2533,13 +2533,6 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     return *algo_desc;
   }
 
-  if (!absl::StrContains(scratch_or.status().ToString(),
-                         "CUDNN_STATUS_ALLOC_FAILED")) {
-    return port::Status(port::error::INVALID_ARGUMENT,
-                        absl::StrCat("cuDNN returned unexpected error: ",
-                                     scratch_or.status().ToString()));
-  }
-
   algo_desc = algorithm_config.algorithm_no_scratch();
 
   // Failed to allocate workspace for the first algorithm, fall back to the
