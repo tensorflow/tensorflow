@@ -574,8 +574,9 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     }
   }
   return tflite::CreateTensor(
-      builder_, builder_.CreateVector(shape), tflite_element_type, buffer_idx,
-      builder_.CreateString(name), q_params, /*is_variable=*/is_variable);
+      builder_, builder_.CreateVector(shape), tflite_element_type,
+      (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
+      /*is_variable=*/is_variable);
 }
 
 BufferOffset<tflite::Operator> Translator::BuildIfOperator(
@@ -910,6 +911,10 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     if (!tensor_or) return false;
     tensors.push_back(*tensor_or);
 
+    // TODO(ashwinm): Check if for stateful tensors, if it is also needed to
+    // make the Buffer empty apart from setting the buffer_idx=0 in the Tensor.
+    // This does not seem to affect runtime behavior for RNN/LSTM, but would be
+    // good for reducing memory footprint.
     if (auto* inst = value->getDefiningOp()) {
       auto buffer_or = BuildBuffer(inst);
       if (!buffer_or) return false;

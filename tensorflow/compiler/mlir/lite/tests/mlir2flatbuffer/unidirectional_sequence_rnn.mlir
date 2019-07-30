@@ -37,7 +37,6 @@ func @main(tensor<4 x f32>, tensor<4 x f32>, tensor<4 x f32>, tensor<4 x f32>) -
 // CHECK-NEXT:         }
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
-// CHECK-NEXT:         buffer: 5,
 // CHECK-NEXT:         name: "Const",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
