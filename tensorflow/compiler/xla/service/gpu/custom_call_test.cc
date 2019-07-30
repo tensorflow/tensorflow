@@ -122,63 +122,16 @@ void Callback_SubBuffers(se::gpu::GpuStreamHandle stream, void** buffers,
   //  7:  result at tuple index {2}, shape f32[1024]
   //
 
-<<<<<<< HEAD
-  // Check the param 0 tuple, namely that
-  //
-  //   (*buffers[0])[0] == buffers[1] and
-  //   (*buffers[0])[1] == buffers[2].
-  //
-  // because buffers contains pointers to device memory, we have to retrieve
-  // these values via cudaMemcpy.
-  void* p0[2];
-  gpuMemcpy(p0, buffers[0], 2 * sizeof(void*), gpuMemcpyDeviceToHost);
-  ASSERT_EQ(p0[0], buffers[1]);
-  ASSERT_EQ(p0[1], buffers[2]);
-
-  // Check the param 1 tuple, namely that
-  //
-  //   (*buffers[3])[0] == buffers[4]
-  //   (*buffers[3])[1] == buffers[5].
-  void* p1[2];
-  gpuMemcpy(p1, buffers[3], 2 * sizeof(void*), gpuMemcpyDeviceToHost);
-  ASSERT_EQ(p1[0], buffers[4]);
-  ASSERT_EQ(p1[1], buffers[5]);
-
-  // We don't have an equivalent check for the output tuple (i.e. we don't check
-  // (*buffers[6])[0] == buffers[7]) because it's up to us to set the tuple
-  // as part of this custom-call.
-
-  // Write the results.  First set the root tuple output buffer to {b7, b8,
-  // b11}.
-  void* root[3] = {buffers[7], buffers[8], buffers[11]};
-  gpuMemcpy(buffers[6], root, 3 * sizeof(void*), gpuMemcpyHostToDevice);
-
-  // Now set the sub-tuple output buffer at index 8 to {b9, b10}.
-  void* sub_tuple[2] = {buffers[9], buffers[10]};
-  gpuMemcpy(buffers[8], sub_tuple, 2 * sizeof(void*), gpuMemcpyDeviceToHost);
-
-  // Now set output leaf buffers 7, 9, 10, and 11, copying data from the
-  // corresponding same-sized inputs.
-  gpuMemcpyAsync(buffers[7], buffers[5], 8 * sizeof(float),
-                 gpuMemcpyDeviceToDevice, stream);
-  gpuMemcpyAsync(buffers[9], buffers[1], 128 * sizeof(float),
-                 gpuMemcpyDeviceToDevice, stream);
-  gpuMemcpyAsync(buffers[10], buffers[2], 256 * sizeof(float),
-                 gpuMemcpyDeviceToDevice, stream);
-  gpuMemcpyAsync(buffers[11], buffers[4], 1024 * sizeof(float),
-                 gpuMemcpyDeviceToDevice, stream);
-=======
   // Set output leaf buffers, copying data from the corresponding same-sized
   // inputs.
-  cudaMemcpyAsync(buffers[4], buffers[3], 8 * sizeof(float),
-                  cudaMemcpyDeviceToDevice, stream);
-  cudaMemcpyAsync(buffers[5], buffers[0], 128 * sizeof(float),
-                  cudaMemcpyDeviceToDevice, stream);
-  cudaMemcpyAsync(buffers[6], buffers[1], 256 * sizeof(float),
-                  cudaMemcpyDeviceToDevice, stream);
-  cudaMemcpyAsync(buffers[7], buffers[2], 1024 * sizeof(float),
-                  cudaMemcpyDeviceToDevice, stream);
->>>>>>> upstream/master
+  gpuMemcpyAsync(buffers[4], buffers[3], 8 * sizeof(float),
+                 gpuMemcpyDeviceToDevice, stream);
+  gpuMemcpyAsync(buffers[5], buffers[0], 128 * sizeof(float),
+                 gpuMemcpyDeviceToDevice, stream);
+  gpuMemcpyAsync(buffers[6], buffers[1], 256 * sizeof(float),
+                 gpuMemcpyDeviceToDevice, stream);
+  gpuMemcpyAsync(buffers[7], buffers[2], 1024 * sizeof(float),
+                 gpuMemcpyDeviceToDevice, stream);
 }
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_SubBuffers, PLATFORM);
 TEST_F(CustomCallTest, SubBuffers) {
@@ -215,10 +168,10 @@ TEST_F(CustomCallTest, SubBuffers) {
 void Callback_TupleSelect(CUstream stream, void** buffers,
                           const char* /*opaque*/, size_t /*opaque_len*/) {
   // Set the two output leaf buffers equal to the two input leaf buffers.
-  cudaMemcpyAsync(buffers[2], buffers[0], 10 * sizeof(float),
-                  cudaMemcpyDeviceToDevice, stream);
-  cudaMemcpyAsync(buffers[3], buffers[1], 10 * sizeof(float),
-                  cudaMemcpyDeviceToDevice, stream);
+  gpuMemcpyAsync(buffers[2], buffers[0], 10 * sizeof(float),
+                 gpuMemcpyDeviceToDevice, stream);
+  gpuMemcpyAsync(buffers[3], buffers[1], 10 * sizeof(float),
+                 gpuMemcpyDeviceToDevice, stream);
 }
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_TupleSelect, "CUDA");
 // Tuple-shaped select is a case where XLA can't know all buffer assignments

@@ -78,11 +78,7 @@ inline EIGEN_DEVICE_FUNC bool CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(
 // convolution depending on a template argument of this enum.
 enum DepthwiseConv2dDirection { DIRECTION_FORWARD, DIRECTION_BACKWARD };
 
-<<<<<<< HEAD
-// A Gpu kernel to compute the depthwise convolution forward pass
-=======
 // A GPU kernel to compute the depthwise convolution forward pass
->>>>>>> upstream/master
 // in NHWC format.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
@@ -328,11 +324,7 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
   }
 }
 
-<<<<<<< HEAD
-// A Gpu kernel to compute the depthwise convolution forward pass
-=======
 // A GPU kernel to compute the depthwise convolution forward pass
->>>>>>> upstream/master
 // in NCHW format.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
@@ -790,11 +782,7 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
   }
 }
 
-<<<<<<< HEAD
-// A simple launch pad to launch the Gpu kernel for depthwise convolution.
-=======
 // A simple launch pad to launch the GPU kernel for depthwise convolution.
->>>>>>> upstream/master
 template <typename T>
 void LaunchDepthwiseConvOp<GpuDevice, T>::operator()(OpKernelContext* ctx,
                                                      const DepthwiseArgs& args,
@@ -1013,11 +1001,7 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   }
 }
 
-<<<<<<< HEAD
-// A simple launch pad to launch the Gpu kernel for depthwise convolution.
-=======
 // A simple launch pad to launch the GPU kernel for depthwise convolution.
->>>>>>> upstream/master
 template <typename T>
 void LaunchDepthwiseConvBackpropInputOp<GpuDevice, T>::operator()(
     OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,
@@ -1326,11 +1310,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
   }
 }
 
-<<<<<<< HEAD
-// A Gpu kernel to compute the depthwise convolution backprop w.r.t. filter.
-=======
 // A GPU kernel to compute the depthwise convolution backprop w.r.t. filter.
->>>>>>> upstream/master
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
 __global__ void __launch_bounds__(640, 2)
@@ -1774,11 +1754,7 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
   }
 }
 
-<<<<<<< HEAD
-// A simple launch pad to launch the Gpu kernel for depthwise convolution.
-=======
 // A simple launch pad to launch the GPU kernel for depthwise convolution.
->>>>>>> upstream/master
 template <typename T>
 void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
     OpKernelContext* ctx, const DepthwiseArgs& args, const T* out_backprop,

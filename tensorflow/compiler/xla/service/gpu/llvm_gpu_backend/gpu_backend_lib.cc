@@ -560,10 +560,9 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
 
   // Add AMDGPU version-specific bitcodes.
   result.push_back(tensorflow::io::JoinPath(
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
-      rocdl_dir_path, tensorflow::strings::StrCat(
-                          "oclc_isa_version_", amdgpu_version, ".amdgcn.bc")));
-  return std::move(result);
+      rocdl_dir_path,
+      absl::StrCat("oclc_isa_version_", amdgpu_version, ".amdgcn.bc")));
+  return result;
 }
 
 // Emits the given module to HSA Code Object. target_machine is an initialized
@@ -653,22 +652,13 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   hsaco_file.seekg(0, std::ios::beg);
   hsaco_file.read(reinterpret_cast<char*>(&hsaco[0]), hsaco_file_size);
   return std::move(hsaco);
-=======
-      rocdl_dir_path,
-      absl::StrCat("oclc_isa_version_", amdgpu_version, ".amdgcn.bc")));
-  return result;
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.cc
 }
 
 // Links ROCm-Device-Libs into the given module if the module needs it.
 Status LinkROCDLIfNecessary(llvm::Module* module, int amdgpu_version,
                             const string& rocdl_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
-    return tensorflow::Status::OK();
-=======
     return Status::OK();
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.cc
   }
 
   return LinkWithBitcodeVector(module,
@@ -693,10 +683,8 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, int amdgpu_version,
     const HloModuleConfig& hlo_module_config) {
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
-  return std::move(GetTargetMachine(target_triple,
-                                    absl::StrCat("gfx", amdgpu_version),
-                                    hlo_module_config, "-code-object-v3"));
+  return GetTargetMachine(target_triple, absl::StrCat("gfx", amdgpu_version),
+                          hlo_module_config, "-code-object-v3");
 }
 
 void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
@@ -712,15 +700,10 @@ void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
 
   llvm::PassRegistry* registry = llvm::PassRegistry::getPassRegistry();
   InitializePasses(registry);
-=======
-  return GetTargetMachine(target_triple, absl::StrCat("gfx", amdgpu_version),
-                          hlo_module_config, "-code-object-v3");
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.cc
 }
 
 }  // namespace
 
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
 namespace amdgpu {
 StatusOr<std::vector<uint8>> CompileToHsaco(
     llvm::Module* module, GpuVersion gpu_version,
@@ -763,7 +746,5 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
 
 }  // namespace amdgpu
 
-=======
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.cc
 }  // namespace gpu
 }  // namespace xla
