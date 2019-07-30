@@ -32,23 +32,6 @@ namespace gpu {
 
 namespace m = match;
 
-static complex128 GetScalarConstantAsComplex(const Literal &literal) {
-  switch (literal.shape().element_type()) {
-    case F16:
-      return {static_cast<double>(literal.Get<Eigen::half>({})), 0};
-    case F32:
-      return {literal.Get<float>({}), 0};
-    case F64:
-      return {literal.Get<double>({}), 0};
-    case C64:
-      return literal.Get<complex64>({});
-    case C128:
-      return literal.Get<complex128>({});
-    default:
-      LOG(FATAL) << "Unexpected type: " << literal.shape();
-  }
-}
-
 // The rewriting proceeds in a bottom-up way:
 //
 // (kDot A B) is rewritten into a (kCustomCall:gemm A B)
@@ -103,7 +86,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       if (config.beta() == 0.0 && existing_gemm->user_count() == 1) {
         complex128 prev_alpha = {config.alpha_real(), config.alpha_imag()};
         complex128 new_alpha =
-            GetScalarConstantAsComplex(alpha->literal()) * prev_alpha;
+            *alpha->literal().GetAsComplex128({}) * prev_alpha;
         config.set_alpha_real(new_alpha.real());
         config.set_alpha_imag(new_alpha.imag());
         TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(config));
