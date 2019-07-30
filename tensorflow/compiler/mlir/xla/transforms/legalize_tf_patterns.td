@@ -22,6 +22,9 @@ include "tensorflow/compiler/mlir/xla/ir/xla_ops.td"
 
 def NullElementsAttr : NativeCodeCall<"ElementsAttr()">;
 
+def HasNoUse: Constraint<
+    CPred<"$0->use_begin() == $0->use_end()">, "has no use">;
+
 //===----------------------------------------------------------------------===//
 // BatchNorm op patterns.
 //===----------------------------------------------------------------------===//
@@ -30,17 +33,19 @@ def FeatureDimension : NativeCodeCall<
     "getFeatureDimensionAttr($_builder, $0, $1)">;
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 
-def : Pattern<(TF_FusedBatchNormOp F32Tensor:$x, F32Tensor:$scale,
-                               F32Tensor:$offset, F32Tensor:$mean,
-                               F32Tensor:$variance, F32Attr:$epsilon,
+def : Pattern<
+    (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
                                $data_format, FalseBoolAttr:$is_training),
-           [(XLA_BatchNormInferenceOp $x, $scale, $offset, $mean, $variance,
-               $epsilon, (FeatureDimension $data_format, $x)),
-            /*batch_mean=*/(verifyUnusedValue),
-            /*batch_variance=*/(verifyUnusedValue),
-            /*reserve_space_1=*/(verifyUnusedValue),
-            /*reserve_space_2=*/(verifyUnusedValue)
-           ]>;
+    [(XLA_BatchNormInferenceOp $x, $scale, $offset, $mean, $variance,
+                               $epsilon, (FeatureDimension $data_format, $x)),
+     // We already guaranteed that the last four results has no use so it
+     // does not matter what value we provide here for replacement.
+     /*batch_mean=*/(replaceWithValue $x),
+     /*batch_variance=*/(replaceWithValue $x),
+     /*reserve_space_1=*/(replaceWithValue $x),
+     /*reserve_space_2=*/(replaceWithValue $x)],
+    [(HasNoUse $root__1), (HasNoUse $root__2),
+     (HasNoUse $root__3), (HasNoUse $root__4)]>;
 
 //===----------------------------------------------------------------------===//
 // Bias op patterns.
