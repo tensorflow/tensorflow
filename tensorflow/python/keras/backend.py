@@ -3424,8 +3424,12 @@ class EagerExecutionFunction(object):
             [p_new for [_, p_new] in legacy_update_ops
              if isinstance(p_new, ops.Tensor)])
         lifted_map = lift_to_graph.lift_to_graph(
-            init_tensors=init_tensors, graph=exec_graph, sources=inputs,
-            add_sources=True, handle_captures=True, base_graph=source_graph)
+            tensors=init_tensors,
+            graph=exec_graph,
+            sources=inputs,
+            add_sources=True,
+            handle_captures=True,
+            base_graph=source_graph)
 
         inputs = [lifted_map[i] for i in inputs]
         outputs = [lifted_map[i] for i in outputs]

@@ -202,7 +202,7 @@ def _copy_source(s, graph, op_map, handle_captures, inverse_captures,
   op_map[s.op] = copied_placeholder.op
 
 
-def lift_to_graph(init_tensors,
+def lift_to_graph(tensors,
                   graph,
                   sources=None,
                   disallowed_placeholders=None,
@@ -213,7 +213,7 @@ def lift_to_graph(init_tensors,
   """Copies the tensor and all its inputs recursively to the outer graph.
 
   Args:
-    init_tensors: The Tensor to lift.
+    tensors: The Tensors to lift.
     graph: The graph to lift to.
     sources: Optional sequence of nodes to start from. If omitted the whole
       subgraph which feeds into `init_tensor` is lifted.
@@ -234,10 +234,14 @@ def lift_to_graph(init_tensors,
   Raises:
     UnliftableError: If a placeholder blocks lifting.
   """
-  variable_init_tensors = {i for i in init_tensors if isinstance(
-      i, resource_variable_ops.ResourceVariable)}
-  init_tensors = set(init_tensors).difference(variable_init_tensors)
-  base_graph = base_graph or list(init_tensors)[0].graph
+  variable_init_tensors = []
+  init_tensors = []
+  for tensor in tensors:
+    if isinstance(tensor, resource_variable_ops.ResourceVariable):
+      variable_init_tensors.append(tensor)
+    else:
+      init_tensors.append(tensor)
+  base_graph = base_graph or init_tensors[0].graph
   op_map = op_map or object_identity.ObjectIdentityDictionary()
 
   # Check that the initializer does not depend on any placeholders.
@@ -288,12 +292,13 @@ def lift_to_graph(init_tensors,
   # When lifting from one FuncGraph to another, we will need to capture the
   # relevant tensors as well.
   captures = []
-  inverse_captures = {}
+  inverse_captures = object_identity.ObjectIdentityDictionary()
   internal_captures = []
   if (isinstance(base_graph, func_graph.FuncGraph) and
       isinstance(graph, func_graph.FuncGraph)):
     captures = base_graph.captures
-    inverse_captures = {v: k for k, v in captures}
+    for external_capture, internal_capture in captures:
+      inverse_captures[internal_capture] = external_capture
     internal_captures = base_graph.internal_captures
 
   # ops_to_copy now holds a reverse topologically sorted list of ops which
