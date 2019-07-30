@@ -22,6 +22,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
+#include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
@@ -43,11 +45,11 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
+using ::absl::StrCat;
 using ::testing::ElementsAre;
 
 class TRTEngineOpTestBase : public OpsTestBase {
  public:
-
   void AddSimpleTrtOp(DataType dtype, int max_cached_engines_count = 1) {
     // Create the GPU device.
     std::unique_ptr<Device> device(
@@ -55,31 +57,31 @@ class TRTEngineOpTestBase : public OpsTestBase {
 
     // Create simple TF graph.
     Scope s = Scope::NewRootScope();
-    auto feed = ops::Placeholder(s.WithOpName("TensorRTInputPH_0"), dtype,
-                                 ops::Placeholder::Shape({-1, -1}));
+    auto feed = ops::_Arg(s.WithOpName("TensorRTInputPH_0"), dtype, 0);
     auto add = ops::Add(s.WithOpName("add"), feed, feed);
-    ops::Identity(s.WithOpName("TensorRTOutputPH_0"), add);
+    ops::_Retval(s.WithOpName("TensorRTOutputPH_0"), add, 0);
 
     // Serialize the graph. TRTEngineOp will convert it using dynamic mode.
     GraphDef graph_def;
     TF_ASSERT_OK(s.ToGraphDef(&graph_def));
-    const string func_name = "myop_native_segment";
     Graph* graph = s.graph();
-    Graph segment_graph(graph->flib_def());
-    TF_ASSERT_OK(convert::ConvertSegmentToGraph(graph_def, &segment_graph));
-    TF_ASSERT_OK(convert::RegisterGraphToFunctionLibrary(&segment_graph, graph,
-        flib_def_->ToProto(), "myop"));
-    
+    const char* op_name = "myop";
+    TF_ASSERT_OK(
+        convert::RegisterGraphToFunctionLibrary(graph_def, graph, op_name));
+    TF_ASSERT_OK(flib_def_->AddLibrary(graph->flib_def()));
+
     PartialTensorShape shape({-1, -1});
 
     // Create the op.
     OpsTestBase::SetDevice(DEVICE_GPU, std::move(device));
-    TF_ASSERT_OK(NodeDefBuilder("myop", "TRTEngineOp")
+    NameAttrList function;
+    function.set_name(StrCat(op_name, "_native_segment"));
+    TF_ASSERT_OK(NodeDefBuilder(op_name, "TRTEngineOp")
                      .Input(FakeInput(1, dtype))
                      .Attr("input_shapes", {shape})
                      .Attr("output_shapes", {shape})
                      .Attr("static_engine", false)
-                     .Attr("segment_funcdef_name", func_name)
+                     .Attr("segment_func", function)
                      .Attr("serialized_segment", "")
                      .Attr("calibration_data", "")
                      .Attr("max_cached_engines_count", max_cached_engines_count)
@@ -88,7 +90,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
                      .Attr("use_calibration", false)
                      .Attr("OutT", {dtype})
                      .Finalize(OpsTestBase::node_def()));
-    TF_ASSERT_OK(OpsTestBase::InitOp());
+    TF_ASSERT_OK(InitOpWithFunctionLibrary());
   }
 
   template <typename T>
@@ -102,9 +104,20 @@ class TRTEngineOpTestBase : public OpsTestBase {
     inputs_.clear();
     gtl::STLDeleteElements(&tensors_);
   }
+
+ private:
+  Status InitOpWithFunctionLibrary() {
+    OpKernel* kernel = nullptr;
+    Status status = CreateOpKernel(device_type_, device_, allocator(),
+                                   pflr_->GetFLR(device_->name()), node_def_,
+                                   TF_GRAPH_DEF_VERSION, &kernel);
+    kernel_ = std::unique_ptr<OpKernel>(kernel);
+    if (kernel_ != nullptr) input_types_ = kernel_->input_types();
+    return status;
+  }
 };
 
-TEST_F(TRTEngineOpTestBase, dynamic_shapes) {
+TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   TRTEngineOpTestBase::AddSimpleTrtOp(DT_FLOAT, /*max_cached_engines_count=*/4);
 
   // Execute the op with batch size > 1.

@@ -5203,7 +5203,8 @@ Status ConvertGraphDefToEngine(
       string type_key;
       if (node_def.op() == "Placeholder") {
         if (!strings::safe_strto32(  // non-absl ok
-                node_name.c_str() + strlen(IONamePrefixes::kInputPHName), &slot_number)) {
+                node_name.c_str() + strlen(IONamePrefixes::kInputPHName),
+                &slot_number)) {
           return errors::InvalidArgument("Failed to parse slot number from ",
                                          node_name);
         }
@@ -5214,11 +5215,9 @@ Status ConvertGraphDefToEngine(
         slot_number = node_def.attr().at("index").i();
         type_key = "T";
       } else {
-        return errors::InvalidArgument("Node ", node_name,
-                                       " with name starting with kInputPHName "
-                                       "is neither Placeholder nor Arg, "
-                                       "instead ",
-                                       node_def.op());
+        return errors::InvalidArgument(
+            "Node ", node_name,
+            " with is neither Placeholder nor Arg, instead ", node_def.op());
       }
       nvinfer1::DataType trt_dtype;
       nvinfer1::Dims trt_dims;
@@ -5245,17 +5244,19 @@ Status ConvertGraphDefToEngine(
       int32 slot_number = -1;
       if (node_def.op() == "Identity") {
         if (!strings::safe_strto32(  // non-absl ok
-                node_name.c_str() + strlen(IONamePrefixes::kOutputPHName), &slot_number)) {
+                node_name.c_str() + strlen(IONamePrefixes::kOutputPHName),
+                &slot_number)) {
           return errors::InvalidArgument("Failed to parse slot number from ",
                                          node_name);
         }
       } else if (tensorflow::grappler::IsRetval(node_def)) {
         slot_number = node_def.attr().at("index").i();
       } else {
-        return errors::InvalidArgument("Node with name ", node_name,
-                                       " starting with IONamePrefixes::kOutputPHName is "
-                                       "neither Identity nor Retval, instead ",
-                                       node_def.op());
+        return errors::InvalidArgument(
+            "Node with name ", node_name,
+            " starting with IONamePrefixes::kOutputPHName is "
+            "neither Identity nor Retval, instead ",
+            node_def.op());
       }
       // Get output type that TensorFlow expects
       TFAttrs attrs(node_def);
@@ -5295,8 +5296,6 @@ Status ConvertSegmentToGraphDef(
     std::vector<EngineConnection>* connections, GraphDef* segment_def,
     string* scope_name) {
   std::set<string> marker_nodes;
-  int arg_num = 0;
-  int ret_num = 0;
   // Update connection shapes/data types and add corresponding input/output
   // nodes in the segment graphdef.
   for (size_t i = 0; i < connections->size(); ++i) {
@@ -5326,7 +5325,8 @@ Status ConvertSegmentToGraphDef(
 
     // Add dummy input/output nodes to the segment graphdef.
     if (connection.is_input_edge) {
-      const string node_name = StrCat(IONamePrefixes::kInputPHName, connection.port_number);
+      const string node_name =
+          StrCat(IONamePrefixes::kInputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
         VLOG(1) << "Reusing input " << node_name << " for the edge "
                 << connection.outside_node_name << ":"
@@ -5339,15 +5339,15 @@ Status ConvertSegmentToGraphDef(
       NodeDefBuilder builder(node_name, "_Arg");
       auto status = builder.Attr("shape", partial_shape)
                         .Attr("T", dtype)
-                        .Attr("index", arg_num)
+                        .Attr("index", connection.port_number)
                         .Finalize(seg_node);
-      arg_num++;
       VLOG(1) << "Constructing input " << node_name << " for the edge "
               << connection.outside_node_name << ":" << connection.outside_port
               << " -> " << connection.inside_node_name << ":"
               << connection.inside_port;
     } else {
-      const string node_name = StrCat(IONamePrefixes::kOutputPHName, connection.port_number);
+      const string node_name =
+          StrCat(IONamePrefixes::kOutputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
         VLOG(1) << "Reusing output " << node_name << " for the edge "
                 << connection.inside_node_name << ":" << connection.inside_port
@@ -5360,10 +5360,9 @@ Status ConvertSegmentToGraphDef(
       NodeDefBuilder builder(node_name, "_Retval");
       auto status =
           builder.Attr("T", dtype)
-              .Attr("index", ret_num)
+              .Attr("index", connection.port_number)
               .Input(connection.inside_node_name, connection.inside_port, dtype)
               .Finalize(seg_node);
-      ret_num++;
       VLOG(1) << "Constructing output " << node_name << " for the edge "
               << connection.inside_node_name << ":" << connection.inside_port
               << " -> " << connection.outside_node_name << ":"

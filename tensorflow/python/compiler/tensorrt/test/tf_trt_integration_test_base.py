@@ -23,6 +23,7 @@ import errno
 import gc
 import itertools
 import os
+import re
 import shutil
 import tempfile
 import warnings
@@ -555,7 +556,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       if node.op == "TRTEngineOp":
         logging.info("Found TRTEngineOp: " + node.name)
         num_engines += 1
-        segment_funcdef_name = node.attr["segment_funcdef_name"].s
+        segment_funcdef_name = node.attr["segment_func"].func.name
         function_name = node.name + "_native_segment"
         is_dynamic_engine = not node.attr["static_engine"].b
         self.assertNotEmpty(segment_funcdef_name, node.name)
@@ -596,10 +597,11 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         node.name for node in gdef_to_verify.node if node.op == "TRTEngineOp"
     ]
     for func in gdef_to_verify.library.function:
-      for node in func.node_def:
-        all_op_names.append(node.name)
-        if node.op == "TRTEngineOp":
-          trt_op_names.append(node.name)
+      if not re.search(r"TRTEngineOp_\d+_native_segment", func.signature.name):
+        for node in func.node_def:
+          all_op_names.append(node.name)
+          if node.op == "TRTEngineOp":
+            trt_op_names.append(node.name)
     # Remove the function name prefix.
     def _Canonicalize(names):
       return set([self._ToString(name.split("/")[-1]) for name in names])

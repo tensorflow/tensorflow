@@ -171,6 +171,7 @@ tf_cuda_cc_test(
         ":trt_conversion",
         "@com_google_googletest//:gtest",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core:framework",
@@ -238,12 +239,10 @@ tf_cuda_library(
     srcs = [
         "utils/trt_int8_calibrator.cc",
         "utils/trt_lru_cache.cc",
-        "utils/funcdef_to_graphdef.cc",
     ],
     hdrs = [
         "utils/trt_int8_calibrator.h",
         "utils/trt_lru_cache.h",
-        "utils/funcdef_to_graphdef.h",
     ],
     deps = [
         ":trt_allocator",

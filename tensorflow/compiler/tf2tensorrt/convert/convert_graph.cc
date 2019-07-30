@@ -324,8 +324,6 @@ Status CreateTRTNode(const ConversionParams& params,
                      nvinfer1::IGpuAllocator* alloc,
                      std::vector<Node*>* engine_nodes) {
   const auto& info = infos.at(pos);
-  std::vector<TensorShapeProto> output_shape_protos;
-  std::vector<TensorShapeProto> input_shape_protos;
   std::vector<PartialTensorShape> input_shapes;
   std::vector<NodeDefBuilder::NodeOut> inputs;
   std::vector<Node*> input_nodes;
@@ -359,25 +357,16 @@ Status CreateTRTNode(const ConversionParams& params,
     } else {
       // Data edges
       if (!conn.is_input_edge) {
-        // Set the shapes and data types of output edge.
-        TensorShapeProto out_shape;
-        // shape of the output node inside segment
-        conn.inside_shape.AsProto(&out_shape);
-        if (output_shape_protos.size() <= conn.port_number) {
-          output_shape_protos.resize(conn.port_number + 1);
+        // Set the data types of output edge.
+        if (out_types.size() <= conn.port_number) {
           out_types.resize(conn.port_number + 1);
         }
-        output_shape_protos.at(conn.port_number) = out_shape;
         out_types.at(conn.port_number) = conn.connection_type;
       } else {
         // Set the shapes and data types of input edge.
-        TensorShapeProto in_shape;
-        conn.outside_shape.AsProto(&in_shape);
-        if (input_shape_protos.size() <= conn.port_number) {
-          input_shape_protos.resize(conn.port_number + 1);
+        if (input_shapes.size() <= conn.port_number) {
           input_shapes.resize(conn.port_number + 1);
         }
-        input_shape_protos.at(conn.port_number) = in_shape;
         input_shapes.at(conn.port_number) = conn.outside_shape;
         // Shape must be fully defined (excluding batch dimension) for static
         // mode.
@@ -458,13 +447,13 @@ Status CreateTRTNode(const ConversionParams& params,
   }
 
   NodeDef trt_node;
+  NameAttrList function;
+  function.set_name(StrCat(info.engine_name, "_native_segment"));
   Status status =
-      node_builder.Attr("input_shapes", input_shape_protos)
-          .Attr("output_shapes", output_shape_protos)
+      node_builder
           .Attr("static_engine",
                 info.engine_type == EngineInfo::EngineType::TRTStatic)
-          .Attr("segment_funcdef_name",
-                StrCat(info.engine_name, "_native_segment"))
+          .Attr("segment_func", function)
           .Attr("serialized_segment", segment_string)
           .Attr("calibration_data", "")
           .Attr("max_cached_engines_count", info.maximum_cached_engines)
@@ -533,118 +522,28 @@ Status CreateTRTNode(const ConversionParams& params,
   return Status::OK();
 }
 
-Status ConvertSegmentToGraph(const GraphDef& segment, Graph* segment_graph) {
-  // segment_graph is a graph for the segment, to be modified by this function
-  // graph is the input graph to be optimized by TRT.
-  GraphConstructorOptions gcopts;
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(gcopts, segment, segment_graph));
-  std::map<string, Node*> io_nodes;
-  int num_inputs = 0;
-  for (auto n : segment_graph->op_nodes()) {
-    if (absl::StartsWith(n->name(), IONamePrefixes::kInputPHName)) {
-      num_inputs++;
-      io_nodes.insert({n->name(), n});
-    } else if (absl::StartsWith(n->name(), IONamePrefixes::kOutputPHName)) {
-      io_nodes.insert({n->name(), n});
-    }
-  }
-
-  for (int i = 0; i < num_inputs; ++i) {
-    auto name = StrCat(IONamePrefixes::kInputPHName, i);
-    auto node = io_nodes[name];
-    NodeDef nd;
-    NodeDefBuilder node_builder(StrCat(name, "_Arg"),
-                                FunctionLibraryDefinition::kArgOp);
-    VLOG(1) << "Adding " << StrCat(name, "_Arg");
-    TF_RETURN_IF_ERROR(node_builder.Attr("T", node->output_type(0))
-                           .Attr("index", i)
-                           .Finalize(&nd));
-    Status s;
-    auto node_arg = segment_graph->AddNode(nd, &s);
-    if (!s.ok()) {
-      LOG(ERROR) << "Couldn't add _Arg node for " << name;
-    }
-    for (auto edge : node->out_edges()) {
-      segment_graph->AddEdge(node_arg, 0, edge->dst(), edge->dst_input());
-      VLOG(1) << "Updating funcdef input " << node_arg->name() << ":" << 0
-              << " - > " << edge->dst()->name() << ":" << edge->dst_input();
-      if (!s.ok()) {
-        LOG(ERROR) << "Failed to update edge from " << node_arg->name()
-                   << " to " << edge->dst()->name() << ":" << edge->dst_input();
-      }
-    }
-    segment_graph->RemoveNode(node);
-  }
-
-  for (int i = 0; i < io_nodes.size() - num_inputs; ++i) {
-    auto name = StrCat(IONamePrefixes::kOutputPHName, i);
-    auto node = io_nodes[name];
-    NodeDef nd;
-    NodeDefBuilder node_builder(StrCat(name, "_Ret"),
-                                FunctionLibraryDefinition::kRetOp);
-    auto edge = *(node->in_edges().begin());
-    NodeDefBuilder::NodeOut nout(edge->src()->name(), edge->src_output(),
-                                 edge->src()->output_type(edge->src_output()));
-    VLOG(1) << " input " << nout.node << ":" << nout.index
-            << " dtype=" << DataTypeString(nout.data_type);
-    // nvcc complains that Input(<brace-enclosed initializer list>) is
-    // ambiguous, so do not use Input({nout}).
-    node_builder.Input(nout);
-    TF_RETURN_IF_ERROR(node_builder.Attr("T", node->output_type(0))
-                           .Attr("index", i)
-                           .Finalize(&nd));
-    if (VLOG_IS_ON(3)) {
-      VLOG(3) << nd.DebugString();
-    }
-    Status s;
-    auto node_ret = segment_graph->AddNode(nd, &s);
-    if (!s.ok()) {
-      LOG(ERROR) << "Couldn't add _Ret node for " << name;
-    }
-    VLOG(1) << "Update edge from " << edge->src()->name() << ":"
-            << edge->src_output() << " - > " << node_ret->name() << ":" << 0;
-    segment_graph->AddEdge(edge->src(), edge->src_output(), node_ret, 0);
-    s = segment_graph->UpdateEdge(edge->src(), edge->src_output(), node_ret, 0);
-    if (!s.ok()) {
-      LOG(ERROR) << "Failed to update edge from " << edge->src()->name() << ":"
-                 << edge->src_output() << " - > " << node_ret->name() << ":"
-                 << 0;
-    }
-    segment_graph->RemoveNode(node);
-  }
-  return Status::OK();
-}
-
- 
-Status RegisterGraphToFunctionLibrary(Graph* segment_graph, Graph* graph,
-                                      FunctionDefLibrary fdeflib,
-                                      const string& engine_name) {
-  auto native_segment = fdeflib.add_function();
+Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
+                                      Graph* graph, const string& engine_name) {
+  Graph segment_graph(graph->flib_def());
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(GraphConstructorOptions(),
+                                            segment_graph_def, &segment_graph));
+  FunctionDefLibrary library;
+  auto segment_func = library.add_function();
   TF_RETURN_IF_ERROR(GraphToFunctionDef(
-      *segment_graph, StrCat(engine_name, "_native_segment"), native_segment));
+      segment_graph, StrCat(engine_name, "_native_segment"), segment_func));
   // Set kIntsonDeviceAttr to true so that all TRTEngineOp outputs are always on
   // a GPU device as expected. Otherwise, some of the tensors of type DT_INT32
   // would be on host if the op generating the tensor has host memory tag set.
-  (*native_segment
-        ->mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr]
+  (*segment_func->mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr]
       .set_b(true);
   if (VLOG_IS_ON(7)) {
     VLOG(7) << engine_name << " Function_Def ";
-    VLOG(7) << native_segment->DebugString();
+    VLOG(7) << segment_func->DebugString();
   }
-  VLOG(1) << "Adding funcdef to graphlib";
-  TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(fdeflib));
+  VLOG(1) << "Adding funcdef " << segment_func->signature().name()
+          << " to graphlib";
+  TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(library));
   return Status::OK();
-}
-
-Status RegisterSegmentToFunctionLibrary(Graph* graph, const GraphDef& segment,
-                                        Graph* segment_graph,
-                                        string engine_name) {
-  GraphConstructorOptions gcopts;
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(gcopts, segment, segment_graph));
-  FunctionDefLibrary fdeflib;
-  return RegisterGraphToFunctionLibrary(segment_graph, graph, fdeflib,
-                                                  engine_name);
 }
 
 std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
@@ -765,9 +664,9 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     curr_engine.use_calibration = params.use_calibration;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
 
-    Graph segment_graph(flib);
-    status = RegisterSegmentToFunctionLibrary(&graph,
-        curr_engine.segment_graph_def, &segment_graph, curr_engine.engine_name);
+    status = RegisterGraphToFunctionLibrary(curr_engine.segment_graph_def,
+                                            &graph, curr_engine.engine_name);
+
     if (!status.ok()) {
       LOG(WARNING) << "Failed to register segment graphdef to the library " << t
                    << ": " << status;

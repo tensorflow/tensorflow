@@ -561,8 +561,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
                sess,
                batch_size,
                expect_engine_is_run=True):
-    result = sess.run(
-        "output:0", feed_dict={"input:0": [[[1.0]]] * batch_size})
+    result = sess.run("output:0", feed_dict={"input:0": [[[1.0]]] * batch_size})
     self.assertAllEqual([[[4.0]]] * batch_size, result)
 
   @test_util.deprecated_graph_mode_only

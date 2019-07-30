@@ -27,8 +27,6 @@ class IONamePrefixes {
  public:
   static constexpr const char* const kInputPHName = "TensorRTInputPH_";
   static constexpr const char* const kOutputPHName = "TensorRTOutputPH_";
-  static constexpr const char* const kInputPHNameLower = "tensorrtinputph_";
-  static constexpr const char* const kOutputPHNameLower = "tensorrtoutputph_";
 };
 
 template <typename T>
