@@ -24,6 +24,7 @@ set(LIBS
   MLIRFxpMathOps
   MLIRGPU
   MLIRGPUtoNVVMTransforms
+  MLIRGPUtoSPIRVTransforms
   MLIRLinalg
   MLIRLLVMIR
   MLIRLoopOps
