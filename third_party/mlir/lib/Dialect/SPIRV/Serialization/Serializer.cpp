@@ -21,7 +21,7 @@
 
 #include "mlir/Dialect/SPIRV/Serialization.h"
 
-#include "SPIRVBinaryUtils.h"
+#include "mlir/Dialect/SPIRV/SPIRVBinaryUtils.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
@@ -115,9 +115,6 @@ private:
   //===--------------------------------------------------------------------===//
   // Module structure
   //===--------------------------------------------------------------------===//
-
-  /// Creates SPIR-V module header in the given `header`.
-  LogicalResult processHeader();
 
   LogicalResult processMemoryModel();
 
@@ -234,7 +231,6 @@ private:
   // The following are for different SPIR-V instruction sections. They follow
   // the logical layout of a SPIR-V module.
 
-  SmallVector<uint32_t, spirv::kHeaderWordCount> header;
   SmallVector<uint32_t, 4> capabilities;
   SmallVector<uint32_t, 0> extensions;
   SmallVector<uint32_t, 0> extendedSets;
@@ -282,17 +278,16 @@ LogicalResult Serializer::serialize() {
 }
 
 void Serializer::collect(SmallVectorImpl<uint32_t> &binary) {
-  auto moduleSize = header.size() + capabilities.size() + extensions.size() +
-                    extendedSets.size() + memoryModel.size() +
-                    entryPoints.size() + executionModes.size() +
-                    decorations.size() + typesGlobalValues.size() +
-                    functions.size();
+  auto moduleSize = spirv::kHeaderWordCount + capabilities.size() +
+                    extensions.size() + extendedSets.size() +
+                    memoryModel.size() + entryPoints.size() +
+                    executionModes.size() + decorations.size() +
+                    typesGlobalValues.size() + functions.size();
 
   binary.clear();
   binary.reserve(moduleSize);
 
-  processHeader();
-  binary.append(header.begin(), header.end());
+  spirv::appendModuleHeader(binary, nextID);
   binary.append(capabilities.begin(), capabilities.end());
   binary.append(extensions.begin(), extensions.end());
   binary.append(extendedSets.begin(), extendedSets.end());
@@ -307,37 +302,6 @@ void Serializer::collect(SmallVectorImpl<uint32_t> &binary) {
 //===----------------------------------------------------------------------===//
 // Module structure
 //===----------------------------------------------------------------------===//
-
-LogicalResult Serializer::processHeader() {
-  // The serializer tool ID registered to the Khronos Group
-  constexpr uint32_t kGeneratorNumber = 22;
-  // The major and minor version number for the generated SPIR-V binary.
-  // TODO(antiagainst): use target environment to select the version
-  constexpr uint8_t kMajorVersion = 1;
-  constexpr uint8_t kMinorVersion = 0;
-
-  // See "2.3. Physical Layout of a SPIR-V Module and Instruction" in the SPIR-V
-  // spec for the definition of the binary module header.
-  //
-  // The first five words of a SPIR-V module must be:
-  // +-------------------------------------------------------------------------+
-  // | Magic number                                                            |
-  // +-------------------------------------------------------------------------+
-  // | Version number (bytes: 0 | major number | minor number | 0)             |
-  // +-------------------------------------------------------------------------+
-  // | Generator magic number                                                  |
-  // +-------------------------------------------------------------------------+
-  // | Bound (all result <id>s in the module guaranteed to be less than it)    |
-  // +-------------------------------------------------------------------------+
-  // | 0 (reserved for instruction schema)                                     |
-  // +-------------------------------------------------------------------------+
-  header.push_back(spirv::kMagicNumber);
-  header.push_back((kMajorVersion << 16) | (kMinorVersion << 8));
-  header.push_back(kGeneratorNumber);
-  header.push_back(nextID); // <id> bound
-  header.push_back(0);      // Schema (reserved word)
-  return success();
-}
 
 LogicalResult Serializer::processMemoryModel() {
   uint32_t mm = module.getAttrOfType<IntegerAttr>("memory_model").getInt();

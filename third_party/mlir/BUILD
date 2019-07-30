@@ -833,10 +833,11 @@ cc_library(
     srcs = [
         "include/mlir/Dialect/SPIRV/SPIRVSerialization.inc",
         "lib/Dialect/SPIRV/Serialization/Deserializer.cpp",
-        "lib/Dialect/SPIRV/Serialization/SPIRVBinaryUtils.h",
+        "lib/Dialect/SPIRV/Serialization/SPIRVBinaryUtils.cpp",
         "lib/Dialect/SPIRV/Serialization/Serializer.cpp",
     ],
     hdrs = [
+        "include/mlir/Dialect/SPIRV/SPIRVBinaryUtils.h",
         "include/mlir/Dialect/SPIRV/Serialization.h",
     ],
     includes = ["include"],

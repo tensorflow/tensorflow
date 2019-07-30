@@ -21,7 +21,7 @@
 
 #include "mlir/Dialect/SPIRV/Serialization.h"
 
-#include "SPIRVBinaryUtils.h"
+#include "mlir/Dialect/SPIRV/SPIRVBinaryUtils.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/IR/Builders.h"
@@ -133,9 +133,12 @@ private:
   Value *getValue(uint32_t id) { return valueMap.lookup(id); }
 
   /// Slices the first instruction out of `binary` and returns its opcode and
-  /// operands via `opcode` and `operands` respectively.
-  LogicalResult sliceInstruction(spirv::Opcode &opcode,
-                                 ArrayRef<uint32_t> &operands);
+  /// operands via `opcode` and `operands` respectively. Returns failure if
+  /// there is no more remaining instructions (`expectedOpcode` will be used to
+  /// compose the error message) or the next instruction is malformed.
+  LogicalResult
+  sliceInstruction(spirv::Opcode &opcode, ArrayRef<uint32_t> &operands,
+                   Optional<spirv::Opcode> expectedOpcode = llvm::None);
 
   /// Processes a SPIR-V instruction with the given `opcode` and `operands`.
   /// This method is the main entrance for handling SPIR-V instruction; it
@@ -216,10 +219,19 @@ LogicalResult Deserializer::deserialize() {
 
   spirv::Opcode opcode;
   ArrayRef<uint32_t> operands;
-  while (succeeded(sliceInstruction(opcode, operands))) {
+  auto binarySize = binary.size();
+  while (curOffset < binarySize) {
+    // Slice the next instruction out and populate `opcode` and `operands`.
+    // Interally this also updates `curOffset`.
+    if (failed(sliceInstruction(opcode, operands)))
+      return failure();
+
     if (failed(processInstruction(opcode, operands)))
       return failure();
   }
+
+  assert(curOffset == binarySize &&
+         "deserializer should never index beyond the binary end");
 
   for (auto &defered : deferedInstructions) {
     if (failed(processInstruction(defered.first, defered.second, false))) {
@@ -324,7 +336,8 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
       auto argType = functionType.getInput(i);
       spirv::Opcode opcode;
       ArrayRef<uint32_t> operands;
-      if (failed(sliceInstruction(opcode, operands))) {
+      if (failed(sliceInstruction(opcode, operands,
+                                  spirv::Opcode::OpFunctionParameter))) {
         return failure();
       }
       if (opcode != spirv::Opcode::OpFunctionParameter) {
@@ -361,19 +374,20 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
 
   spirv::Opcode opcode;
   ArrayRef<uint32_t> instOperands;
-  while (succeeded(sliceInstruction(opcode, instOperands)) &&
+  while (succeeded(sliceInstruction(opcode, instOperands,
+                                    spirv::Opcode::OpFunctionEnd)) &&
          opcode != spirv::Opcode::OpFunctionEnd) {
     if (failed(processInstruction(opcode, instOperands))) {
       return failure();
     }
   }
-  std::swap(funcBody, opBuilder);
   if (opcode != spirv::Opcode::OpFunctionEnd) {
     return failure();
   }
   if (!instOperands.empty()) {
     return emitError(unknownLoc, "unexpected operands for OpFunctionEnd");
   }
+  std::swap(funcBody, opBuilder);
   return success();
 }
 
@@ -750,17 +764,22 @@ LogicalResult Deserializer::processConstantNull(ArrayRef<uint32_t> operands) {
 // Instruction
 //===----------------------------------------------------------------------===//
 
-LogicalResult Deserializer::sliceInstruction(spirv::Opcode &opcode,
-                                             ArrayRef<uint32_t> &operands) {
+LogicalResult
+Deserializer::sliceInstruction(spirv::Opcode &opcode,
+                               ArrayRef<uint32_t> &operands,
+                               Optional<spirv::Opcode> expectedOpcode) {
   auto binarySize = binary.size();
   if (curOffset >= binarySize) {
-    return failure();
+    return emitError(unknownLoc, "expected ")
+           << (expectedOpcode ? spirv::stringifyOpcode(*expectedOpcode)
+                              : "more")
+           << " instruction";
   }
+
   // For each instruction, get its word count from the first word to slice it
   // from the stream properly, and then dispatch to the instruction handler.
 
   uint32_t wordCount = binary[curOffset] >> 16;
-  opcode = static_cast<spirv::Opcode>(binary[curOffset] & 0xffff);
 
   if (wordCount == 0)
     return emitError(unknownLoc, "word count cannot be zero");
@@ -769,6 +788,7 @@ LogicalResult Deserializer::sliceInstruction(spirv::Opcode &opcode,
   if (nextOffset > binarySize)
     return emitError(unknownLoc, "insufficient words for the last instruction");
 
+  opcode = static_cast<spirv::Opcode>(binary[curOffset] & 0xffff);
   operands = binary.slice(curOffset + 1, wordCount - 1);
   curOffset = nextOffset;
   return success();
