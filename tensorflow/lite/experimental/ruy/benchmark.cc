@@ -73,9 +73,9 @@ void Benchmark() {
     setenv("QUICK_BENCHMARK", "1", 0);
 #endif
     std::vector<int> sizes;
-    for (int i = 16; i <= 2048; i *= 2) {
+    for (int i = 16; i <= 4096; i *= 2) {
       sizes.push_back(i);
-      if (i < 2048) {
+      if (i < 4096) {
         sizes.push_back(i * 3 / 2);
       }
     }
