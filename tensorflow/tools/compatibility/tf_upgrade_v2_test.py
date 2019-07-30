@@ -684,7 +684,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     for c in classes:
       ns = "tf.estimator." + c
       text = ns + "()"
-      expected_text = ns + "(loss_reduction=tf.compat.v1.losses.Reduction.SUM)"
+      expected_text = ns + "(loss_reduction=tf.keras.losses.Reduction.SUM)"
       _, report, errors, new_text = self._upgrade(text)
       self.assertEqual(expected_text, new_text)
 
@@ -703,7 +703,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     text = "tf.estimator.BaselineClassifier(model_dir=model_dir)"
     expected_text = ("tf.estimator.BaselineClassifier(" +
                      "model_dir=model_dir, "
-                     "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+                     "loss_reduction=tf.keras.losses.Reduction.SUM)")
     _, report, errors, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
@@ -728,7 +728,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       suffix = "(input_layer_partitioner=TEST)"
       text = ns + suffix
       suffix = ("(input_layer_partitioner=TEST, "
-                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+                "loss_reduction=tf.keras.losses.Reduction.SUM)")
       expected_text = "tf.compat.v1.estimator." + c + suffix
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(new_text, expected_text)
@@ -764,7 +764,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       suffix = "(optimizer=TEST)"
       text = ns + suffix
       suffix = ("(optimizer=TEST, "
-                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+                "loss_reduction=tf.keras.losses.Reduction.SUM)")
       expected_text = "tf.compat.v1.estimator." + c + suffix
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(new_text, expected_text)
@@ -779,7 +779,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       suffix = "(dnn_optimizer=TEST, linear_optimizer=Test)"
       text = ns + suffix
       suffix = ("(dnn_optimizer=TEST, linear_optimizer=Test, "
-                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+                "loss_reduction=tf.keras.losses.Reduction.SUM)")
       expected_text = "tf.compat.v1.estimator." + c + suffix
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(new_text, expected_text)
@@ -815,7 +815,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       suffix = "(input_layer_partitioner=TEST, optimizer=TEST)"
       text = ns + suffix
       suffix = ("(input_layer_partitioner=TEST, optimizer=TEST, "
-                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+                "loss_reduction=tf.keras.losses.Reduction.SUM)")
       expected_text = "tf.compat.v1.estimator." + c + suffix
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(new_text, expected_text)
@@ -833,7 +833,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       text = ns + suffix
       suffix = ("(input_layer_partitioner=TEST, dnn_optimizer=TEST, "
                 "linear_optimizer=TEST, "
-                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+                "loss_reduction=tf.keras.losses.Reduction.SUM)")
       expected_text = "tf.compat.v1.estimator." + c + suffix
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(new_text, expected_text)
