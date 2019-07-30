@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_TIME_H_
 
 #include <chrono>  // NOLINT(build/c++11)
+#include <cstdint>
 
 #ifdef __linux__
 #include <ctime>
@@ -24,33 +25,52 @@ limitations under the License.
 
 namespace ruy {
 
-using Clock = std::chrono::steady_clock;
+using InternalDefaultClock = std::chrono::steady_clock;
 
-using TimePoint = Clock::time_point;
-using Duration = Clock::duration;
+using TimePoint = InternalDefaultClock::time_point;
+using Duration = InternalDefaultClock::duration;
 
-inline double ToSeconds(Duration d) {
-  return std::chrono::duration_cast<std::chrono::duration<double>>(d).count();
+template <typename RepresentationType>
+Duration DurationFromSeconds(RepresentationType representation) {
+  return std::chrono::duration_cast<Duration>(
+      std::chrono::duration<RepresentationType>(representation));
 }
 
-inline Duration DurationFromSeconds(double s) {
-  return std::chrono::duration_cast<Duration>(std::chrono::duration<double>(s));
+template <typename RepresentationType>
+Duration DurationFromMilliseconds(RepresentationType representation) {
+  return std::chrono::duration_cast<Duration>(
+      std::chrono::duration<RepresentationType, std::milli>(representation));
 }
 
-// Low-resolution clock (updated only on ticks) that's very cheap to query
-// (because it's just reading a value in memory, not an actual clock access).
-// Linux-specific, falling back to normal Clock outside of Linux.
+template <typename RepresentationType>
+Duration DurationFromNanoseconds(RepresentationType representation) {
+  return std::chrono::duration_cast<Duration>(
+      std::chrono::duration<RepresentationType, std::nano>(representation));
+}
+
+inline float ToFloatSeconds(const Duration& duration) {
+  return std::chrono::duration_cast<std::chrono::duration<float>>(duration)
+      .count();
+}
+
+inline std::int64_t ToInt64Nanoseconds(const Duration& duration) {
+  return std::chrono::duration_cast<
+             std::chrono::duration<std::int64_t, std::nano>>(duration)
+      .count();
+}
+
+inline TimePoint Now() { return InternalDefaultClock::now(); }
+
+inline TimePoint CoarseNow() {
 #ifdef __linux__
-struct CoarseClock {
-  static TimePoint now() {
-    timespec t;
-    clock_gettime(CLOCK_MONOTONIC_COARSE, &t);
-    return TimePoint(DurationFromSeconds(t.tv_sec + 1e-9 * t.tv_nsec));
-  }
-};
+  timespec t;
+  clock_gettime(CLOCK_MONOTONIC_COARSE, &t);
+  return TimePoint(
+      DurationFromNanoseconds(1000000000LL * t.tv_sec + t.tv_nsec));
 #else
-using CoarseClock = Clock;
+  return Now();
 #endif
+}
 
 }  // namespace ruy
 

@@ -88,16 +88,17 @@ float TuningResolver::EvalRatio() {
   Duration timing_nicely_ordered = Duration::max();
 
   for (int r = 0; r < kRepeats; r++) {
-    TimePoint t0 = Clock::now();
+    TimePoint t0 = Now();
     PoorlyOrderedKernel(kLoopIters);
-    TimePoint t1 = Clock::now();
+    TimePoint t1 = Now();
     NicelyOrderedKernel(kLoopIters);
-    TimePoint t2 = Clock::now();
+    TimePoint t2 = Now();
     timing_poorly_ordered = std::min(timing_poorly_ordered, t1 - t0);
     timing_nicely_ordered = std::min(timing_nicely_ordered, t2 - t1);
   }
 
-  return ToSeconds(timing_nicely_ordered) / ToSeconds(timing_poorly_ordered);
+  return ToFloatSeconds(timing_nicely_ordered) /
+         ToFloatSeconds(timing_poorly_ordered);
 }
 
 float TuningResolver::ThresholdRatio() {
@@ -138,17 +139,15 @@ Tuning TuningResolver::ResolveNow() { return Tuning::kOutOfOrder; }
 
 #endif
 
-static constexpr double kExpirySecs = 0.25;
-
 TuningResolver::TuningResolver()
-    : expiry_duration_(DurationFromSeconds(kExpirySecs)) {}
+    : expiry_duration_(DurationFromMilliseconds(250)) {}
 
 Tuning TuningResolver::Resolve() {
 #ifdef RUY_IMPLEMENT_TUNING
   if (unresolved_tuning_ != Tuning::kAuto) {
     return unresolved_tuning_;
   }
-  TimePoint new_timepoint = CoarseClock::now();
+  TimePoint new_timepoint = CoarseNow();
   if (last_resolved_tuning_ != Tuning::kAuto &&
       (new_timepoint - last_resolved_timepoint_) < expiry_duration_) {
     return last_resolved_tuning_;
