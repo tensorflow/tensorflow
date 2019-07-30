@@ -22,6 +22,7 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_like
@@ -904,6 +905,18 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
       pass
     except TypeError:  # Could come from slicing prev.
       pass
+  elif tensor.op.type == "Placeholder" and tensor.op.graph.building_function:
+    # If we are inside a FuncGraph try to lookup the constant value of the
+    # corresponding external capture. Note that we only look at captures and
+    # not the fed inputs because those can be fed different values in different
+    # instantiations of the function call or different iterations of a
+    # tf.while_loop.
+    try:
+      external_capture = tensor.op.graph.external_captures[
+          tensor.op.graph.internal_captures.index(tensor)]
+      return constant_value_as_shape(external_capture)
+    except ValueError:  # `tensor` not in `internal_captures`.
+      pass
 
   ret = tensor_shape.unknown_shape(shape.dims[0].value)
   value = constant_value(tensor)
@@ -944,3 +957,12 @@ def shape_tensor(shape):  # pylint: disable=invalid-name
       # not convertible to Tensors becasue of mixed content.
       shape = tuple(map(tensor_shape.dimension_value, shape))
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
+
+
+def maybe_set_static_shape(tensor, shape):  # pylint: disable=invalid-name
+  if (not context.executing_eagerly() and
+      ops.get_default_graph().building_function and
+      not tensor.shape.is_fully_defined()):
+    shape = shape_tensor(shape)
+    const_shape = constant_value_as_shape(shape)
+    tensor.set_shape(const_shape)

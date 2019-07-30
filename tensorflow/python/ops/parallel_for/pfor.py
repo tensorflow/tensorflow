@@ -52,6 +52,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 
 flags.DEFINE_bool(
     "op_conversion_fallback_to_while_loop", False,
@@ -1071,7 +1072,7 @@ class PFor(object):
     self.all_indices = (
         math_ops.range(loop_len) if all_indices is None else all_indices)
 
-    self._conversion_map = {}
+    self._conversion_map = object_identity.ObjectIdentityDictionary()
     self._conversion_map[loop_var] = wrap(self.all_indices, True)
     self._pfor_ops = set(pfor_ops)
     self._pfor_op_ids = set([x._id for x in pfor_ops])
@@ -1316,7 +1317,7 @@ class PFor(object):
                (not is_stateful and not some_input_converted and
                 not some_control_input_converted)) and
               y.graph == ops.get_default_graph()):
-          if y == y_op:
+          if y is y_op:
             assert not isinstance(y_op, WhileOp)
             new_outputs = y_op
           else:
@@ -1359,7 +1360,7 @@ class PFor(object):
         logging.vlog(2, "converted %s %s", y_op, new_outputs)
 
         # Insert into self._conversion_map
-        if y == y_op:
+        if y is y_op:
           assert isinstance(new_outputs, ops.Operation)
           self._add_conversion(y_op, new_outputs)
         else:
@@ -1909,7 +1910,7 @@ def _convert_gather(pfor_input):
     if axis_value is not None:
       axis = axis_value
   if indices_stacked and not param_stacked:
-    if indices == pfor_input.pfor.all_indices and axis == 0:
+    if indices is pfor_input.pfor.all_indices and axis == 0:
       param_shape0 = param.shape.dims[0].value
       indices_shape0 = indices.shape.dims[0].value
       if param_shape0 is not None and indices_shape0 == param_shape0:

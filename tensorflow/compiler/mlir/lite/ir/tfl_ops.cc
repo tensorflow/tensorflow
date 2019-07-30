@@ -776,11 +776,110 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// ConstOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.empty() && "constant has no operands");
+
+  // Return the held attribute value.
+  return value();
+}
+
+//===----------------------------------------------------------------------===//
+// RangeOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// Compute the length of a range (1-D) tensor given `start`, `limit`, `delta`.
+// Template parameter `FloatOrInt` must be standard C integer or floating-point
+// types.
+template <typename FloatOrInt>
+int GetLengthOfRange(FloatOrInt start, FloatOrInt limit, FloatOrInt delta) {
+  // Refer to the implementation in
+  // tensorflow/lite/kernels/range.cc.
+  return std::is_integral<FloatOrInt>::value
+             ? ((std::abs(limit - start) + std::abs(delta) - 1) /
+                std::abs(delta))
+             : std::ceil(std::abs((limit - start) / delta));
+}
+
+// Builds a constant range tensor of `result_elem_type` elements.
+// Template parameter `FloatOrIntAtrr` must be mlir::IntegerAttr or
+// mlir::FloatAttr.
+template <typename FloatOrIntAtrr>
+DenseElementsAttr BuildConstRangeTensor(Type result_elem_type, int num_elements,
+                                        FloatOrIntAtrr start_attr,
+                                        FloatOrIntAtrr delta_attr) {
+  using ValueType = typename FloatOrIntAtrr::ValueType;  // APInt or APFloat
+  ValueType start = start_attr.getValue();
+  ValueType delta = delta_attr.getValue();
+
+  SmallVector<ValueType, 16> new_values;
+  new_values.reserve(num_elements);
+  ValueType new_value = start;
+  for (int i = 0; i < num_elements; ++i) {
+    new_values.push_back(new_value);
+    new_value = new_value + delta;
+  }
+  // Result is always a 1-D tensor.
+  auto new_result_type =
+      RankedTensorType::get({num_elements}, result_elem_type);
+  return DenseElementsAttr::get(new_result_type, new_values);
+}
+}  // namespace
+
+OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 3);
+  auto start_tensor = operands[0].dyn_cast_or_null<ElementsAttr>();
+  auto limit_tensor = operands[1].dyn_cast_or_null<ElementsAttr>();
+  auto delta_tensor = operands[2].dyn_cast_or_null<ElementsAttr>();
+  if (start_tensor && limit_tensor && delta_tensor) {
+    // Operands should all be scalars
+    assert(start_tensor.getType().getRank() == 0 &&
+           limit_tensor.getType().getRank() == 0 &&
+           delta_tensor.getType().getRank() == 0);
+    Type elem_type = getType().cast<ShapedType>().getElementType();
+    if (elem_type.isa<IntegerType>()) {
+      auto start_attr = start_tensor.getValue({}).cast<IntegerAttr>();
+      auto limit_attr = limit_tensor.getValue({}).cast<IntegerAttr>();
+      auto delta_attr = delta_tensor.getValue({}).cast<IntegerAttr>();
+      const int num_elements = GetLengthOfRange(
+          start_attr.getInt(), limit_attr.getInt(), delta_attr.getInt());
+      return BuildConstRangeTensor(elem_type, num_elements, start_attr,
+                                   delta_attr);
+    } else if (elem_type.isa<FloatType>()) {
+      auto start_attr = start_tensor.getValue({}).cast<FloatAttr>();
+      auto limit_attr = limit_tensor.getValue({}).cast<FloatAttr>();
+      auto delta_attr = delta_tensor.getValue({}).cast<FloatAttr>();
+      const int num_elements = GetLengthOfRange(start_attr.getValueAsDouble(),
+                                                limit_attr.getValueAsDouble(),
+                                                delta_attr.getValueAsDouble());
+      return BuildConstRangeTensor(elem_type, num_elements, start_attr,
+                                   delta_attr);
+    }
+  }
+
+  return nullptr;
+}
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
+
+Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
+                                                      Attribute value,
+                                                      Type type, Location loc) {
+  // If this is an opaque elements attribute or the result type doesn't match
+  // the attribute type, then generate a tfl.pseudo_const.
+  if (value.isa<OpaqueElementsAttr>() ||
+      (value.isa<ElementsAttr>() && value.getType() != type))
+    return builder.create<ConstOp>(loc, type, value.cast<ElementsAttr>());
+  return nullptr;
+}
 
 }  // namespace TFL
 }  // namespace mlir

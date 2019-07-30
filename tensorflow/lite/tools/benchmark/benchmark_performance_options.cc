@@ -101,7 +101,7 @@ std::vector<std::string> BenchmarkPerformanceOptions::GetValidPerfOptions()
   return {"all", "cpu", "gpu", "nnapi"};
 }
 
-bool BenchmarkPerformanceOptions::HasOption(const string& option) const {
+bool BenchmarkPerformanceOptions::HasOption(const std::string& option) const {
   return std::find(perf_options_.begin(), perf_options_.end(), option) !=
          perf_options_.end();
 }

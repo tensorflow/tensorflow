@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
+#include "tensorflow/lite/delegates/gpu/gl/compiler/variable_accessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
@@ -32,9 +33,9 @@ ShaderCodegen::ShaderCodegen(const CompilationOptions& options,
 
 Status ShaderCodegen::Build(CompiledNodeAttributes attr,
                             ShaderCode* shader_code) const {
-  ParameterAccessor parameters(options_.inline_parameters);
+  VariableAccessor variable_accessor(options_.inline_parameters);
   ObjectAccessor objects(gpu_type_ == GpuType::MALI, options_.sampler_textures,
-                         &parameters);
+                         &variable_accessor);
 
   auto add_object = [&](const std::string& name, Object&& object) {
     if (!objects.AddObject(name, std::forward<Object>(object))) {
@@ -43,15 +44,15 @@ Status ShaderCodegen::Build(CompiledNodeAttributes attr,
     return OkStatus();
   };
 
-  auto add_parameter = [&](Variable&& param) {
-    if (!parameters.AddParameter(std::forward<Variable>(param))) {
+  auto add_uniform_parameter = [&](Variable&& param) {
+    if (!variable_accessor.AddUniformParameter(std::forward<Variable>(param))) {
       return InternalError("There is a parameter with the same name");
     }
     return OkStatus();
   };
 
   for (auto&& param : attr.code.parameters) {
-    RETURN_IF_ERROR(add_parameter(std::move(param)));
+    RETURN_IF_ERROR(add_uniform_parameter(std::move(param)));
   }
 
   for (auto&& object : attr.code.objects) {
@@ -71,11 +72,11 @@ Status ShaderCodegen::Build(CompiledNodeAttributes attr,
 
   // TODO(akulik): workload params need to go away and be replaced with
   // output_data_0_w
-  RETURN_IF_ERROR(add_parameter(
+  RETURN_IF_ERROR(add_uniform_parameter(
       {"workload_x", static_cast<int32_t>(attr.code.workload.x)}));
-  RETURN_IF_ERROR(add_parameter(
+  RETURN_IF_ERROR(add_uniform_parameter(
       {"workload_y", static_cast<int32_t>(attr.code.workload.y)}));
-  RETURN_IF_ERROR(add_parameter(
+  RETURN_IF_ERROR(add_uniform_parameter(
       {"workload_z", static_cast<int32_t>(attr.code.workload.z)}));
 
   std::string source_code = R"(
@@ -123,22 +124,23 @@ Status ShaderCodegen::Build(CompiledNodeAttributes attr,
 
   {
     TextPreprocessor preprocessor('$', /*keep_unknown_rewrites=*/false);
-    preprocessor.AddRewrite(&parameters);
+    preprocessor.AddRewrite(&variable_accessor);
     RETURN_IF_ERROR(preprocessor.Rewrite(source_code, &source_code));
   }
 
   if (options_.inline_parameters) {
-    source_code = absl::StrCat(parameters.GetConstDeclarations(), source_code);
+    source_code =
+        absl::StrCat(variable_accessor.GetConstDeclarations(), source_code);
   }
 
   std::string declarations = absl::StrCat(
       objects.GetFunctionsDeclarations(), "\n", objects.GetObjectDeclarations(),
-      "\n", parameters.GetUniformDeclarations());
+      "\n", variable_accessor.GetUniformParameterDeclarations());
   *shader_code = ShaderCode(
-      parameters.GetUniformParameters(), objects.GetObjects(),
+      variable_accessor.GetUniformParameters(), objects.GetObjects(),
       attr.code.workload, attr.code.workgroup,
       absl::StrCat("layout(std430) buffer;\nprecision ",
-                   (options_.allow_precision_loss ? "mediump" : "highp"),
+                   options_.allow_precision_loss ? "mediump" : "highp",
                    " float;\n", declarations, "\nvoid main() {\n", source_code,
                    "\n}"),
       attr.node_indices);

@@ -2304,7 +2304,10 @@ class TensorFlowOpLayer(Layer):
     if not isinstance(node_def, bytes):
       node_def = node_def.encode('utf-8')
     self.node_def = node_def_pb2.NodeDef.FromString(node_def)
-    self.constants = constants or {}
+    # JSON serialization stringifies keys which are integer input indices.
+    self.constants = ({
+        int(index): constant for index, constant in constants.items()
+    } if constants is not None else {})
     # Layer uses original op unless it is called on new inputs.
     # This means `built` is not set in `__call__`.
     self.built = True

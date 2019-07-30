@@ -116,8 +116,7 @@ def _lift_single_variable(old_variable, graph, variable_holder):
       trainable=old_variable.trainable,
       extra_handle_data=old_variable.handle)
   new_variable._initializer_op = old_variable._initializer_op  # pylint: disable=protected-access
-  graph.inputs.append(old_variable.handle)
-  graph.captures[new_variable.handle] = old_variable.handle
+  graph.add_capture(new_variable.handle, old_variable.handle)
   # Now that we've added the new variable to graph.captures,
   # graph.capture will use that cached value and do some post-processing
   # on the capture like recording it on the tape.
@@ -311,10 +310,9 @@ class WrappedFunction(function.ConcreteFunction):
     pruned_graph.outputs.extend(lift_map[x] for x in tensor_fetches)
     pruned_graph.control_outputs.extend(
         [lift_map[operation] for operation in operation_fetches])
-    for external_capture, internal_capture in self.graph.captures.items():
-      pruned_graph.captures[external_capture] = lift_map[internal_capture]
     pruned_graph.inputs.extend(lift_map[x] for x in flat_feeds)
-    pruned_graph.inputs.extend(pruned_graph.captures.values())
+    for external_capture, internal_capture in self.graph.captures:
+      pruned_graph.add_capture(external_capture, lift_map[internal_capture])
     for ti in tensor_infos:
       if ti.WhichOneof("encoding") == "name":  # Dense tensors only
         t = pruned_graph.as_graph_element(ti.name)

@@ -38,6 +38,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 constexpr char kDatasetName[] = "MapAndBatch";
@@ -778,5 +779,6 @@ REGISTER_INPUT_COLOCATION_EXEMPTION("MapAndBatchDataset");
 REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalMapAndBatchDataset");
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

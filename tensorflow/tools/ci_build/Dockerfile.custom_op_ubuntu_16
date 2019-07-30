@@ -1,12 +1,4 @@
-# Dockerfile to build a manylinux 2010 compliant cross-compiler.
-#
-# Builds a devtoolset gcc/libstdc++ that targets manylinux 2010 compatible
-# glibc (2.12) and system libstdc++ (4.4).
-#
-# To push a new version, run:
-# $ docker build -f Dockerfile.rbe.ubuntu16.04-manylinux2010 \
-#  --tag "gcr.io/tensorflow-testing/nosla-ubuntu16.04-manylinux2010" .
-# $ docker push gcr.io/tensorflow-testing/nosla-ubuntu16.04-manylinux2010
+# Dockerfile for Ubuntu 16.04 manylinux2010 custom ops with CPU.
 
 FROM ubuntu:16.04 as devtoolset
 

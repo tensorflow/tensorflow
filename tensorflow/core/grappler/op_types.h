@@ -99,6 +99,7 @@ bool IsLog(const NodeDef& node);
 bool IsLogicalAnd(const NodeDef& node);
 bool IsLogicalNot(const NodeDef& node);
 bool IsLogicalOr(const NodeDef& node);
+bool IsLoopCond(const NodeDef& node);
 bool IsMatMul(const NodeDef& node);
 bool IsMax(const NodeDef& node);
 bool IsMaxPoolGrad(const NodeDef& node);

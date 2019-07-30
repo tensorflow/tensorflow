@@ -755,6 +755,7 @@ tf_py_test(
     srcs = ["layers/tensorflow_op_layer_test.py"],
     additional_deps = [
         ":keras",
+        ":saving",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:backprop",

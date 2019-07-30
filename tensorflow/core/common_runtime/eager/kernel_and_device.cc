@@ -207,7 +207,7 @@ void UpdateStats(OpKernelContext* context,
 
     absl::optional<AllocatorStats> allocator_stats =
         allocator_pair.first->GetStats();
-    if (stats) {
+    if (allocator_stats) {
       memory->set_allocator_bytes_in_use(allocator_stats->bytes_in_use);
     }
     allocator_pair.second->GetRecordsAndUnRef();

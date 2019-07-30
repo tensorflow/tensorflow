@@ -25,6 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class IteratorGetDeviceOp : public OpKernel {
@@ -52,5 +53,6 @@ REGISTER_KERNEL_BUILDER(
     IteratorGetDeviceOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

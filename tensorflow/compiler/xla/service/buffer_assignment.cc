@@ -250,6 +250,13 @@ void BufferAllocation::AddAssignment(const HloValue& buffer, int64 offset,
   offset_size.offset = offset;
   offset_size.size = size;
   assigned_buffers_.emplace(&buffer, offset_size);
+  // For debugging purposes, store the assigned memory space in the
+  // instruction's layout.
+  HloInstruction* defining_instruction = buffer.defining_instruction();
+  if (defining_instruction->shape().has_layout()) {
+    defining_instruction->mutable_shape()->mutable_layout()->set_memory_space(
+        buffer.color().value());
+  }
 }
 
 BufferAllocationProto BufferAllocation::ToProto() const {

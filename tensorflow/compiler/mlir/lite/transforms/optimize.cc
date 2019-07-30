@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
@@ -36,6 +37,8 @@ namespace TFL {
 //===----------------------------------------------------------------------===//
 // The actual Optimize Pass.
 namespace {
+
+using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
 struct Optimize : public FunctionPass<Optimize> {
@@ -116,6 +119,35 @@ struct FuseFullyConnectedAndAdd : public RewritePattern {
         /*fused_activation_function=*/fused_activation_func,
         /*weights_format=*/weight_format,
         /*keep_num_dims=*/keep_num_dims);
+
+    return matchSuccess();
+  }
+};
+
+// TODO(b/136285429): Move to tablegen when variadic is supported.
+struct FuseFullyConnectedAndRelu : public RewritePattern {
+  explicit FuseFullyConnectedAndRelu(MLIRContext *context)
+      : RewritePattern(TFL::ReluOp::getOperationName(), {"tfl.fully_connected"},
+                       4, context) {}
+
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const override {
+    auto relu_op = cast<ReluOp>(op);
+    Operation *input = relu_op.getOperand()->getDefiningOp();
+    if (!isa_and_nonnull<FullyConnectedOp>(input)) return matchFailure();
+    auto fully_connected_op = cast<FullyConnectedOp>(input);
+    if (fully_connected_op.fused_activation_function() != "NONE")
+      return matchFailure();
+
+    auto new_activation_func = rewriter.getStringAttr("RELU");
+    auto new_weights_format =
+        rewriter.getStringAttr(fully_connected_op.weights_format());
+    auto new_keep_num_dims =
+        rewriter.getBoolAttr(fully_connected_op.keep_num_dims());
+    rewriter.replaceOpWithNewOp<FullyConnectedOp>(
+        relu_op, relu_op.getType(), fully_connected_op.input(),
+        fully_connected_op.filter(), fully_connected_op.bias(),
+        new_activation_func, new_weights_format, new_keep_num_dims);
 
     return matchSuccess();
   }
@@ -204,12 +236,13 @@ struct PadStridedSliceDims : public RewritePattern {
 
 void Optimize::runOnFunction() {
   OwningRewritePatternList patterns;
+  auto *ctx = &getContext();
   auto func = getFunction();
   // Add the generated patterns to the list.
-  TFL::populateWithGenerated(&getContext(), &patterns);
-  patterns.push_back(
-      llvm::make_unique<FuseFullyConnectedAndAdd>(&getContext()));
-  patterns.push_back(llvm::make_unique<PadStridedSliceDims>(&getContext()));
+  TFL::populateWithGenerated(ctx, &patterns);
+  RewriteListBuilder<FuseFullyConnectedAndAdd, FuseFullyConnectedAndRelu,
+                     PadStridedSliceDims>::build(patterns, ctx);
+
   applyPatternsGreedily(func, std::move(patterns));
 }
 

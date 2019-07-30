@@ -19,6 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 
 // See documentation in tensorflow/core/ops/experimental_dataset_ops.cc for a
 // high-level description of the following op.
@@ -43,6 +44,7 @@ class AssertNextDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow
 

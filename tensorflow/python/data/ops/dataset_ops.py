@@ -30,6 +30,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.python import tf2
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
@@ -108,6 +109,25 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   A `Dataset` can be used to represent an input pipeline as a
   collection of elements and a "logical plan" of transformations that act on
   those elements.
+
+  A dataset contains elements that each have the same (nested) structure and the
+  individual components of the structure can be of any type representable by
+  `tf.TypeSpec`, including `tf.Tensor`, `tf.data.Dataset`, `tf.SparseTensor`,
+  `tf.RaggedTensor`, or `tf.TensorArray`.
+
+  Example elements:
+  ```python
+  # Integer element
+  a = 1
+  # Float element
+  b = 2.0
+  # Tuple element with 2 components
+  c = (1, 2)
+  # Dict element with 3 components
+  d = {"a": (2, 2), "b": 3}
+  # Element containing a dataset
+  e = tf.data.Dataset.from_element(10)
+  ```
   """
 
   def __init__(self, variant_tensor):
@@ -1597,13 +1617,13 @@ class DatasetV1(DatasetV2):
         raise AttributeError("Please use _variant_tensor instead of "
                              "_as_variant_tensor() to obtain the variant "
                              "associated with a dataset")
-      raise AttributeError("A likely cause of this error is that the super "
+      raise AttributeError("{}: A likely cause of this error is that the super "
                            "call for this dataset is not the last line of the "
                            "__init__ method. The base class causes the "
                            "_as_variant_tensor call in its constructor and "
                            "if that uses attributes defined in the __init__ "
                            "method, those attrs need to be defined before the "
-                           "super call.")
+                           "super call.".format(e))
     super(DatasetV1, self).__init__(variant_tensor)
 
   @abc.abstractmethod
@@ -2239,8 +2259,7 @@ class Options(options_lib.OptionsBase):
 
     if self.experimental_deterministic is False:
       result.append("make_sloppy")
-    exp_stats_options = self.experimental_stats
-    if exp_stats_options and exp_stats_options.latency_all_edges:
+    if self.experimental_stats and self.experimental_stats.latency_all_edges:
       result.append("latency_all_edges")
     if self.experimental_slack:
       result.append("slack")
@@ -2923,6 +2942,48 @@ class CacheDataset(UnaryUnchangedStructureDataset):
     super(CacheDataset, self).__init__(input_dataset, variant_tensor)
 
 
+class _RandomSeedGeneratorDeleter(object):
+  """An object which cleans up an anonymous random seed generator resource.
+
+  An alternative to defining a __del__ method on an object. Even if the parent
+  object is part of a reference cycle, the cycle will be collectable.
+  """
+
+  def __init__(self, handle, device, deleter):
+    self._deleter = deleter
+    self._handle = handle
+    self._device = device
+    self._eager_mode = context.executing_eagerly()
+
+  def __del__(self):
+    with ops.device(self._device):
+      # Make sure the resource is deleted in the same mode as it was created in.
+      if self._eager_mode:
+        with context.eager_mode():
+          gen_dataset_ops.delete_random_seed_generator(
+              handle=self._handle, deleter=self._deleter)
+      else:
+        with context.graph_mode():
+          gen_dataset_ops.delete_random_seed_generator(
+              handle=self._handle, deleter=self._deleter)
+
+
+class _RandomSeedGenerator(object):
+  """Represents a random seed generator resource."""
+
+  def __init__(self, seed, seed2):
+    super(_RandomSeedGenerator, self).__init__()
+    self._device = context.context().device_name
+    self._handle, self._deleter = (
+        gen_dataset_ops.anonymous_random_seed_generator(seed=seed, seed2=seed2))
+    self._resource_deleter = _RandomSeedGeneratorDeleter(
+        handle=self._handle, device=self._device, deleter=self._deleter)
+
+  @property
+  def handle(self):
+    return self._handle
+
+
 class ShuffleDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that randomly shuffles the elements of its input."""
 
@@ -2959,13 +3020,24 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
       self._reshuffle_each_iteration = True
     else:
       self._reshuffle_each_iteration = reshuffle_each_iteration
-    variant_tensor = gen_dataset_ops.shuffle_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        buffer_size=self._buffer_size,
-        seed=self._seed,
-        seed2=self._seed2,
-        reshuffle_each_iteration=self._reshuffle_each_iteration,
-        **self._flat_structure)
+
+    if tf2.enabled() and self._reshuffle_each_iteration and (
+        context.executing_eagerly() or
+        ops.get_default_graph()._building_function):  # pylint: disable=protected-access
+      self._seed_generator = _RandomSeedGenerator(self._seed, self._seed2)
+      variant_tensor = gen_dataset_ops.shuffle_dataset_v2(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          buffer_size=self._buffer_size,
+          seed_generator=self._seed_generator.handle,
+          **self._flat_structure)
+    else:
+      variant_tensor = gen_dataset_ops.shuffle_dataset(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          buffer_size=self._buffer_size,
+          seed=self._seed,
+          seed2=self._seed2,
+          reshuffle_each_iteration=self._reshuffle_each_iteration,
+          **self._flat_structure)
     super(ShuffleDataset, self).__init__(input_dataset, variant_tensor)
 
 

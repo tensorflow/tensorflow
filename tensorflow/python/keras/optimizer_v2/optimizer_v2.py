@@ -1024,7 +1024,7 @@ def _filter_grads(grads_and_vars):
                      ([v.name for _, v in grads_and_vars],))
   if vars_with_empty_grads:
     logging.warning(
-        ("Gradients does not exist for variables %s when minimizing the loss."),
+        ("Gradients do not exist for variables %s when minimizing the loss."),
         ([v.name for v in vars_with_empty_grads]))
   return filtered
 

@@ -59,6 +59,7 @@ tf_cc_binary(
 
 tf_cc_binary(
     name = "tf-mlir-translate",
+    srcs = ["tf_mlir_translate_main.cc"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
@@ -67,12 +68,14 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:translate_registration",
         "//tensorflow/compiler/mlir/tensorflow:translate_tf_dialect_op",
         "//tensorflow/compiler/mlir/xla:xla_mlir_translate",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_proto_cc",
         "//tensorflow/stream_executor/lib",
         "@llvm//:support",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:Support",
+        "@local_config_mlir//:TranslateClParser",
         "@local_config_mlir//:Translation",
-        "@local_config_mlir//:tools/mlir-translate/mlir-translate",
     ],
 )
 

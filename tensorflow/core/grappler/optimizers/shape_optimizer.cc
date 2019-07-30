@@ -95,7 +95,7 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       }
       const auto& prop =
           properties.GetOutputProperties(reduce_indices.node->name());
-      if (prop.size() < reduce_indices.port_id) {
+      if (prop.size() <= reduce_indices.port_id) {
         continue;
       }
       const TensorShapeProto& reduction_indices_shape =

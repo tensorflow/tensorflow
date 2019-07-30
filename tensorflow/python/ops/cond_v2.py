@@ -275,8 +275,7 @@ def get_func_graphs(op):
           fdef, input_shapes)
     for external_t, internal_t in zip(inputs, func_graph.inputs):
       custom_gradient.copy_handle_data(external_t, internal_t)
-    func_graph.captures = collections.OrderedDict(zip(inputs,
-                                                      func_graph.inputs))
+    func_graph.reset_captures(zip(inputs, func_graph.inputs))
     # Link the op so that the gradient code can use it.
     func_graph._forward_cond = op
     return func_graph
@@ -482,8 +481,7 @@ def _make_inputs_match(branch_graphs, branch_inputs):
     branch_graph.inputs = input_list
 
     # Rewrite the FuncGraphs' state to reflect the new inputs.
-    branch_graph.captures = collections.OrderedDict(
-        zip(new_inputs, branch_graph.inputs))
+    branch_graph.reset_captures(zip(new_inputs, branch_graph.inputs))
 
   return new_inputs
 
@@ -751,7 +749,7 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
     if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
       # XLA does not yet support optionals, so capture intermediates directly.
       # TODO(skyewm,jpienaar): can XLA support optionals?
-      if tensor not in self.captures:
+      if tensor not in self.external_captures:
         self.xla_intermediates.append(tensor)
         self.op_needs_rewrite = True
       return super(_CondGradFuncGraph, self)._capture_helper(tensor, name)
