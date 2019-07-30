@@ -584,11 +584,13 @@ class FuncGraph(ops.Graph):
     return tensor
 
   def _capture_helper(self, tensor, name):
-    placeholder = self._captures.get(tensor, None)
-    if placeholder is None:
+    capture = self._captures.get(ops.tensor_id(tensor))
+    if capture is None:
       placeholder = _create_substitute_placeholder(
           tensor, name=name, dtype=tensor.dtype)
       self.add_capture(tensor, placeholder)
+    else:
+      placeholder = capture[1]
     tape.record_operation("captured_value", [placeholder], [tensor],
                           lambda x: [x])
     return placeholder
@@ -596,7 +598,7 @@ class FuncGraph(ops.Graph):
   @property
   def captures(self):
     """Order list of tuples containing external and internal captures."""
-    return self._captures.items()
+    return self._captures.values()
 
   def add_capture(self, tensor, placeholder):
     """Capture a specific tensor and utilize the provided placeholder.
@@ -605,16 +607,22 @@ class FuncGraph(ops.Graph):
       tensor: Tensor to captures.
       placeholder: Provided placeholder for the tensor.
     """
-    self._captures[tensor] = placeholder
+    self._captures[ops.tensor_id(tensor)] = (tensor, placeholder)
     self.inputs.append(placeholder)
 
   def reset_captures(self, capture_list):
     """Set the captures with the provided list of captures & placeholder."""
-    self._captures = py_collections.OrderedDict(capture_list)
+    self._captures = py_collections.OrderedDict()
+    for tensor, placeholder in capture_list:
+      self._captures[ops.tensor_id(tensor)] = (tensor, placeholder)
 
   def pop_capture(self, tensor):
     """Remove the capture and return the generated placeholder."""
-    return self._captures.pop(tensor, None)
+    capture = self._captures.pop(ops.tensor_id(tensor), None)
+    if capture is None:
+      return None
+
+    return capture[1]
 
   def clear_captures(self):
     # TODO(b/115366440): Delete this method when a custom OrderedDict is added.
@@ -628,19 +636,19 @@ class FuncGraph(ops.Graph):
 
   def capture_distributed_variable(self, variable, placeholder):
     """Add given distributed variable to captures with given placeholder."""
-    self._captures[variable] = placeholder
+    self._captures[variable] = (variable, placeholder)
     tape.record_operation("captured_value", [placeholder], [variable],
                           lambda x: [x])
 
   @property
   def external_captures(self):
     """External tensors captured by this function."""
-    return list(self._captures.keys())
+    return [c[0] for c in self._captures.values()]
 
   @property
   def internal_captures(self):
     """Placeholders in this function corresponding captured tensors."""
-    return list(self._captures.values())
+    return [c[1] for c in self._captures.values()]
 
   @property
   def deferred_external_captures(self):
@@ -656,9 +664,9 @@ class FuncGraph(ops.Graph):
   def variable_captures(self):
     """Map of variable handles to variables that as in the list of captures."""
     return {
-        self._captures[v.handle]: v
+        self._captures[ops.tensor_id(v.handle)][1]: v
         for v in self.variables
-        if v.handle in self._captures
+        if ops.tensor_id(v.handle) in self._captures
     }
 
 

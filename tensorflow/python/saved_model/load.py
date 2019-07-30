@@ -180,7 +180,8 @@ class Loader(object):
             concrete_function.graph.capture_distributed_variable(
                 bound_input, internal_capture)
           else:
-            concrete_function.graph._captures[bound_input] = internal_capture  # pylint: disable=protected-access
+            concrete_function.graph._captures[ops.tensor_id(bound_input)] = (  # pylint: disable=protected-access
+                bound_input, internal_capture)
             if internal_capture.dtype == dtypes.resource:
               if resource_variable_ops.is_resource_variable(bound_input):
                 try:

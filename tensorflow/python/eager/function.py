@@ -727,7 +727,7 @@ class _TapeGradientFunctions(object):
       if gradients_util.IsTrainable(output):
         # Swap in the Variable object for resource handles if we can so
         # sparse gradients work.
-        output = handles_to_variables.get(output, output)
+        output = handles_to_variables.get(ops.tensor_id(output), output)
         trainable_outputs.append(output)
 
     backwards_graph = func_graph_module.FuncGraph(
