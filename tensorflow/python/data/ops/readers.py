@@ -49,7 +49,7 @@ def _create_or_validate_filenames_dataset(filenames):
       raise TypeError(
           "`filenames` must be a `tf.data.Dataset` of `tf.string` elements.")
     if not dataset_ops.get_legacy_output_shapes(filenames).is_compatible_with(
-        tensor_shape.scalar()):
+        tensor_shape.TensorShape([])):
       raise TypeError(
           "`filenames` must be a `tf.data.Dataset` of scalar `tf.string` "
           "elements.")

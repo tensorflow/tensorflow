@@ -205,6 +205,26 @@ class PoolingTest(test.TestCase):
         padding="VALID",
         expected=[29.5, 32.5, 50.5, 53.5, 176.5, 179.5, 197.5, 200.5])
 
+  def _MaxPool3DEmptyTensorOutputShape(self):
+    """Verifies the output shape of the max pooling function when tensor is empty.
+
+    Args: none
+    """
+    input_sizes = [0, 112, 112, 112, 64]
+
+    input_data = 1
+    input_tensor = constant_op.constant(
+        input_data, shape=input_sizes, name="input")
+    max_pool_3d = nn_ops.max_pool3d(
+        input_tensor,
+        ksize=[2, 2, 2],
+        strides=[2, 2, 2],
+        padding="VALID",
+        data_format="NDHWC",
+        name="max_pool_3d")
+    values = self.evaluate(max_pool_3d)
+    self.assertEqual(values.shape, (0, 56, 56, 56, 64))
+
   def _ConstructAndTestGradientForConfig(self,
                                          pool_func,
                                          input_sizes,

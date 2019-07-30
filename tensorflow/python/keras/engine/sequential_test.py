@@ -61,6 +61,11 @@ class TestSequential(keras_parameterized.TestCase):
     self.assertEqual(model.get_layer(name='dp').name, 'dp')
 
   @keras_parameterized.run_all_keras_modes
+  def test_single_layer_in_init(self):
+    model = keras.models.Sequential(keras.layers.Dense(1))
+    self.assertLen(model.layers, 1)
+
+  @keras_parameterized.run_all_keras_modes
   def test_sequential_pop(self):
     num_hidden = 5
     input_dim = 3
@@ -153,9 +158,8 @@ class TestSequential(keras_parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
     dataset = dataset.repeat(100)
     dataset = dataset.batch(10)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
-    model.fit(iterator, epochs=1, steps_per_epoch=steps_per_epoch)
+    model.fit(dataset, epochs=1, steps_per_epoch=steps_per_epoch)
     self.assertTrue(model.built)
     self.assertEqual(len(model.weights), 2 * 2)
     self.assertFalse(model._is_graph_network)
@@ -381,8 +385,6 @@ class TestSequential(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_string_input(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     seq = keras.Sequential([
         keras.layers.InputLayer(input_shape=(1,), dtype=dtypes.string),
         keras.layers.Lambda(lambda x: x[0])

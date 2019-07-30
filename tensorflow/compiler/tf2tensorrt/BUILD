@@ -236,13 +236,11 @@ tf_custom_op_py_library(
 tf_cuda_library(
     name = "trt_resources",
     srcs = [
-        "utils/calibration_resource.cc",
         "utils/trt_int8_calibrator.cc",
         "utils/trt_lru_cache.cc",
         "utils/funcdef_to_graphdef.cc",
     ],
     hdrs = [
-        "utils/calibration_resource.h",
         "utils/trt_int8_calibrator.h",
         "utils/trt_lru_cache.h",
         "utils/funcdef_to_graphdef.h",

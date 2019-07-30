@@ -21,8 +21,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/funcdef_to_graphdef.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
@@ -106,8 +104,7 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Allocate necessary resources for calibration
   Status AllocateCalibrationResources(OpKernelContext* ctx,
-                                      TRTEngineCacheResource* cache_res,
-                                      TRTCalibrationResource** cr);
+                                      TRTEngineCacheResource* cache_res);
 
   Status GetEngineCacheResource(OpKernelContext* ctx,
                                 TRTEngineCacheResource** cache_res);
@@ -288,22 +285,13 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   VLOG(1) << "Executing TRT calibration: " << name();
   helper->Ref();
   core::ScopedUnref sc(helper);
-  // Get the cache resource outside the LookupOrCreate() below to avoid
-  // deadlock.
+
   TRTEngineCacheResource* cache_res = nullptr;
   OP_REQUIRES_OK_ASYNC(ctx, GetEngineCacheResource(ctx, &cache_res), *helper);
   core::ScopedUnref unref_cache_res(cache_res);
-  TRTCalibrationResource* calib_res = nullptr;
-  OP_REQUIRES_OK_ASYNC(
-      ctx,
-      ctx->resource_manager()->LookupOrCreate(
-          std::string(kCalibrationContainerName), name(),
-          reinterpret_cast<TRTCalibrationResource**>(&calib_res),
-          {[ctx, cache_res, this](TRTCalibrationResource** cr) -> Status {
-            return this->AllocateCalibrationResources(ctx, cache_res, cr);
-          }}),
-      *helper);
-  core::ScopedUnref calib_sc(calib_res);
+
+  CalibrationContext* calib_ctx = cache_res->calib_ctx_.get();
+
   int num_inputs = ctx->num_inputs();
   // TODO(laigd): need to check that input shape matches.
   // Pass input data to calibrator
@@ -317,7 +305,7 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                       *helper);
     // Check the allocated buffer is sufficient for input
     const auto device_tensor =
-        calib_res->device_tensors_.at(i).AccessTensor(ctx);
+        calib_ctx->device_tensors_.at(i).AccessTensor(ctx);
     CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
     input_data.emplace(
         StrCat(IONamePrefixes::kInputPHName, static_engine_ ? i : input_node_ids_[i]),
@@ -338,7 +326,7 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   // until setDone() is called later by the calibration thread in
   // AllocateCalibrationResources(). In that case, this setBatch() will always
   // be able to detect the error and return false.
-  OP_REQUIRES_ASYNC(ctx, calib_res->calibrator_->setBatch(input_data, *stream),
+  OP_REQUIRES_ASYNC(ctx, calib_ctx->calibrator_->setBatch(input_data, *stream),
                     errors::Internal("Failed to feed calibration data"),
                     *helper);
   VLOG(2) << "Passed calibration data";
@@ -596,9 +584,12 @@ Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
 
   // Get engine cache.
   return ctx->resource_manager()->LookupOrCreate(
-      "TF-TRT-Engine-Cache", string(resource_name), cache_res,
+      std::string(kCacheContainerName), std::string(resource_name), cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
+        if (calibration_mode_) {
+          TF_RETURN_IF_ERROR(AllocateCalibrationResources(ctx, *cr));
+        }
         return Status::OK();
       }});
 }
@@ -710,11 +701,13 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   return cache.at(engine_input_shapes).get();
 }
 
+// TODO(hinsu): Move this allocation to CalibrationContext constructor, if
+// possible.
 Status TRTEngineOp::AllocateCalibrationResources(
-    OpKernelContext* ctx, TRTEngineCacheResource* cache_res,
-    TRTCalibrationResource** cr) {
-  auto cres = new TRTCalibrationResource();
-  *cr = cres;
+    OpKernelContext* ctx, TRTEngineCacheResource* cache_res) {
+  cache_res->calib_ctx_ = absl::make_unique<CalibrationContext>();
+  auto* cres = cache_res->calib_ctx_.get();
+
   // Get the input shapes.
   const int batch_size = ctx->input(0).dim_size(0);
   const int num_inputs = ctx->num_inputs();
@@ -774,8 +767,9 @@ Status TRTEngineOp::AllocateCalibrationResources(
         auto s = convert::ConvertGraphDefToEngine(
             this->segment_graph_, TrtPrecisionMode::INT8,
             cres->calibrator_->getBatchSize(), this->workspace_size_,
-            partial_shapes, &cres->logger_, cache_res->allocator_.get(),
-            cres->calibrator_.get(), &cres->engine_,
+            partial_shapes, &cache_res->GetLogger(),
+            cache_res->allocator_.get(), cres->calibrator_.get(),
+            &cres->engine_,
             /*use_calibration=*/true,
             /*convert_successfully=*/nullptr);
         if (!s.ok()) {

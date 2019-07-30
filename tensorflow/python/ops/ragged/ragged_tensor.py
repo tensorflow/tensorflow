@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -1985,16 +1986,17 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
       return [value]
 
   def _from_components(self, tensor_list):
-    # Currently, Keras converts tensors to numpy and then calls from_components
-    # with those np.arrays.  So if we see np.ndarrays, convert them to tensors.
-    # TODO(b/133606651) Update Keras to do something different here.  Consider
-    # adding something like TypeSpec.from_numpy_components?
-    if isinstance(tensor_list[0], np.ndarray):
-      tensor_list = [ops.convert_to_tensor(t) for t in tensor_list]
-
     result = tensor_list[0]
-    for row_splits in reversed(tensor_list[1:]):
-      result = RaggedTensor(result, row_splits, internal=True)
+    if (all(isinstance(t, np.ndarray) for t in tensor_list) and
+        not tf2.enabled()):
+      for row_splits in reversed(tensor_list[1:]):
+        result = ragged_tensor_value.RaggedTensorValue(result, row_splits)
+    else:
+      if isinstance(tensor_list[0], np.ndarray):
+        tensor_list = [ops.convert_to_tensor(t) for t in tensor_list]
+        result = tensor_list[0]
+      for row_splits in reversed(tensor_list[1:]):
+        result = RaggedTensor(result, row_splits, internal=True)
     return result
 
   # The RaggedTensorSpec tensor_list encoding uses to/from_variant ops

@@ -594,6 +594,20 @@ REGISTER_OP("BoostedTreesMakeQuantileSummaries")
       return Status::OK();
     });
 
+REGISTER_OP("BoostedTreesFlushQuantileSummaries")
+    .Attr("num_features: int >= 0")
+    .Input("quantile_stream_resource_handle: resource")
+    .Output("summaries: num_features * float")
+    .SetShapeFn([](InferenceContext* c) {
+      int num_features;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      for (int i = 0; i < num_features; ++i) {
+        // the columns are value, weight, min_rank, max_rank.
+        c->set_output(i, c->MakeShape({c->UnknownDim(), 4}));
+      }
+      return Status::OK();
+    });
+
 REGISTER_OP("BoostedTreesQuantileStreamResourceAddSummaries")
     .Attr("num_features: int >= 0")
     .Input("quantile_stream_resource_handle: resource")

@@ -81,6 +81,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
   int64 Cardinality() const override { return input_->Cardinality(); }
 
+  bool IsStateful() const override { return input_->IsStateful(); }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -330,8 +332,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    // Prefetches elements of the input, storing results in an internal
-    // buffer.
+    // Prefetches elements of the input, storing results in an internal buffer.
     //
     // It owns the iterator context passed to it.
     void PrefetchThread(const std::shared_ptr<IteratorContext>& ctx) {

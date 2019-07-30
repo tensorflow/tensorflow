@@ -78,6 +78,15 @@ auto* build_graph_time_usecs = monitoring::Counter<0>::New(
     "spent optimizing the graph with Grappler, and time spent pruning the "
     "sub-graph.");
 
+auto* xla_compilations = monitoring::Counter<0>::New(
+    "/tensorflow/core/xla_compilations",
+    "The number of XLA compilations used to collect "
+    "/tensorflow/core/xla_compilation_time_usecs");
+
+auto* xla_compilation_time_usecs = monitoring::Counter<0>::New(
+    "/tensorflow/core/xla_compilation_time_usecs",
+    "The total time spent on compiling XLA graphs in microseconds.");
+
 }  // namespace
 
 void RecordTFDataAutotune(const string& name) {
@@ -116,6 +125,13 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs) {
   if (running_time_usecs > 0) {
     build_graph_calls->GetCell()->IncrementBy(1);
     build_graph_time_usecs->GetCell()->IncrementBy(running_time_usecs);
+  }
+}
+
+void UpdateXlaCompilationTime(const uint64 compilation_time_usecs) {
+  if (compilation_time_usecs > 0) {
+    xla_compilations->GetCell()->IncrementBy(1);
+    xla_compilation_time_usecs->GetCell()->IncrementBy(compilation_time_usecs);
   }
 }
 

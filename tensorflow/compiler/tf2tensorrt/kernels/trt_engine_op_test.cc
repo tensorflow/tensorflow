@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/function.h"

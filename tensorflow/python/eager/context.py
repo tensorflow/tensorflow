@@ -30,6 +30,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
+from tensorflow.python.eager import executor
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
@@ -186,8 +187,8 @@ class _ThreadLocalData(threading.local):
     self.summary_recording = None
     self.summary_recording_distribution_strategy = True
     self.summary_step = None
-    self.execution_mode = SYNC
     self.function_call_options = None
+    self.executor = None
 
 
 ContextSwitch = collections.namedtuple(
@@ -313,6 +314,8 @@ class _TensorCacheDeleter(object):
     self._context_id = context_id
 
   def __del__(self):
+    if _tensor_caches_map is None:
+      return
     if self._context_id in _tensor_caches_map:
       del _tensor_caches_map[self._context_id]
 
@@ -390,7 +393,7 @@ class Context(object):
           "execution_mode should be None/SYNC/ASYNC. Got %s" % execution_mode)
     if execution_mode is None:
       execution_mode = SYNC
-    self._execution_mode = execution_mode
+    self._default_is_async = execution_mode == ASYNC
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -479,7 +482,7 @@ class Context(object):
         if self._mirroring_policy is not None:
           pywrap_tensorflow.TFE_ContextOptionsSetMirroringPolicy(
               opts, self._mirroring_policy)
-        if self._execution_mode == ASYNC:
+        if self._default_is_async == ASYNC:
           pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
         self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
@@ -743,18 +746,11 @@ class Context(object):
     """List of the names of devices available to execute operations."""
     return self._devices
 
+  # TODO(fishx): remove this property.
   @property
   def execution_mode(self):
     """Gets execution mode for current thread."""
-    # Only get the execution mode from the context if it has already been
-    # initialized
-    if self._context_handle is None:
-      return self._execution_mode
-
-    mode = self._thread_local_data.execution_mode
-    if mode is None:
-      mode = self._execution_mode
-    return mode
+    return ASYNC if self.is_async() else SYNC
 
   @execution_mode.setter
   def execution_mode(self, mode):
@@ -762,18 +758,44 @@ class Context(object):
     if mode not in (None, SYNC, ASYNC):
       raise ValueError(
           "Execution mode should be None/SYNC/ASYNC. Got %s" % mode)
+
     if mode is None:
       mode = SYNC
 
-    if self._thread_local_data.execution_mode != mode:
-      self._thread_local_data.execution_mode = mode
-
+    enable_async = (mode == ASYNC)
+    if self.is_async() != enable_async:
       # Only set the execution mode if the context has already been initialized
       if self._context_handle is not None:
-        pywrap_tensorflow.TFE_ContextSetAsyncForThread(self._context_handle,
-                                                       mode == ASYNC)
+        self.async_wait()
+        executor_new = executor.Executor(enable_async)
+        self._thread_local_data.executor = executor_new
+        pywrap_tensorflow.TFE_ContextSetExecutorForThread(
+            self._context_handle, executor_new.handle())
       else:
-        self._execution_mode = mode
+        self._default_is_async = enable_async
+
+  def is_async(self):
+    if self._thread_local_data.executor is None:
+      return self._default_is_async
+    else:
+      return self._thread_local_data.executor.is_async()
+
+  @property
+  def executor(self):
+    return self._thread_local_data.executor
+
+  @executor.setter
+  def executor(self, e):
+    ensure_initialized()
+    if self._thread_local_data.executor != e:
+      self._thread_local_data.executor = e
+
+      if e is None:
+        pywrap_tensorflow.TFE_ContextClearExecutorForThread(
+            self._context_handle)
+      else:
+        pywrap_tensorflow.TFE_ContextSetExecutorForThread(
+            self._context_handle, e.handle())
 
   @property
   def config(self):
@@ -1468,9 +1490,6 @@ class Context(object):
   def end_step(self):
     pywrap_tensorflow.TFE_ContextEndStep(self._handle)
 
-_context = None
-_context_lock = threading.Lock()
-
 
 class _EagerDeviceContext(object):
   """Context-manager forcing placement of ops and Tensors on a device."""
@@ -1524,11 +1543,27 @@ class _EagerDeviceContext(object):
     ctx._set_device(old_device_name, old_device_spec)  # pylint: disable=protected-access
 
 
-def _create_context():
+# Do not set directly. Use _set_context.
+_context = None
+_context_lock = threading.Lock()
+
+
+def _set_context_locked(ctx):
   global _context
+  pywrap_tensorflow.TFE_Py_SetEagerContext(ctx)
+  _context = ctx
+
+
+def _set_context(ctx):
+  with _context_lock:
+    _set_context_locked(ctx)
+
+
+def _create_context():
   with _context_lock:
     if _context is None:
-      _context = Context()
+      ctx = Context()
+      _set_context_locked(ctx)
 
 
 def context():
@@ -1715,6 +1750,7 @@ def set_execution_mode(mode):
   context().execution_mode = mode
 
 
+# TODO(fishx): remove this method.
 @tf_contextlib.contextmanager
 def execution_mode(mode):
   """Context manager for setting execution mode for current thread."""
@@ -1725,6 +1761,26 @@ def execution_mode(mode):
     yield
   finally:
     ctx.execution_mode = old_mode
+
+
+@tf_contextlib.contextmanager
+def executor_scope(e):
+  """Context manager for changing executor for current thread.
+
+  Args:
+    e: A Executor to execute eager ops under this scope. Setting it to None will
+      switch back to use the default executor for the context.
+
+  Yields:
+    Context manager for setting the executor for current thread.
+  """
+  ctx = context()
+  executor_old = ctx.executor
+  try:
+    ctx.executor = e
+    yield
+  finally:
+    ctx.executor = executor_old
 
 
 @tf_export("experimental.function_executor_type")
@@ -1748,6 +1804,11 @@ def function_executor_type(executor_type):
     yield
   finally:
     context().function_call_options = old_options
+
+
+def is_async():
+  """Returns true if current thread is in async mode."""
+  return context().is_async()
 
 
 def async_wait():

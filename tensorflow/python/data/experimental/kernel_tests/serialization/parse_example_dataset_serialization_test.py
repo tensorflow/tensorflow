@@ -41,9 +41,7 @@ class ParseExampleDatasetSerializationTest(
     # pylint: disable=g-long-lambda
     self.run_core_tests(
         lambda: self.ParseExampleDataset(
-            num_repeat=num_repeat, batch_size=batch_size),
-        lambda: self.ParseExampleDataset(num_repeat=10, batch_size=4),
-        num_outputs)
+            num_repeat=num_repeat, batch_size=batch_size), num_outputs)
 
 
 if __name__ == "__main__":

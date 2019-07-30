@@ -869,7 +869,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
             num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
         model.compile(
             loss='categorical_crossentropy',
-            optimizer=keras.optimizers.SGD(lr=0.1))
+            optimizer=gradient_descent.SGD(lr=0.1))
         return model
 
       # TODO(psv): Make sure the callback works correctly when min_delta is
@@ -975,7 +975,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
             num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
         model.compile(
             loss='categorical_crossentropy',
-            optimizer=keras.optimizers.SGD(lr=0.1),
+            optimizer=gradient_descent.SGD(lr=0.1),
             metrics=['accuracy'])
         return model
 
@@ -1345,8 +1345,6 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
 
     See: <https://github.com/tensorflow/tensorflow/issues/25707>
     """
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(self.logdir)
@@ -1410,8 +1408,6 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     )
 
   def test_TensorBoard_weight_histograms(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(self.logdir, histogram_freq=1)
@@ -1442,8 +1438,6 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     )
 
   def test_TensorBoard_weight_images(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(

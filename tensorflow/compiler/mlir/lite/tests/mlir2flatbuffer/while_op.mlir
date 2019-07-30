@@ -3,8 +3,7 @@
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:   operator_codes: [ {
-// CHECK-NEXT:     builtin_code: CUSTOM,
-// CHECK-NEXT:     custom_code: "Experimental_While"
+// CHECK-NEXT:     builtin_code: WHILE
 // CHECK-NEXT:   }, {
 // CHECK-NEXT:     builtin_code: GREATER
 // CHECK-NEXT:   }, {
@@ -49,8 +48,12 @@
 // CHECK-NEXT:     operators: [ {
 // CHECK-NEXT:       inputs: [ 0, 1 ],
 // CHECK-NEXT:       outputs: [ 2, 3 ],
-// CHECK-NEXT:       custom_options: [ 99, 111, 110, 100, 95, 115, 117, 98, 103, 114, 97, 112, 104, 95, 105, 110, 100, 101, 120, 0, 98, 111, 100, 121, 95, 115, 117, 98, 103, 114, 97, 112, 104, 95, 105, 110, 100, 101, 120, 0, 2, 21, 42, 2, 1, 2, 2, 1, 4, 4, 4, 36, 1 ]
-// CHECK-NEXT:     } ]
+// CHECK-NEXT:       builtin_options_type: WhileOptions,
+// CHECK-NEXT:       builtin_options: {
+// CHECK-NEXT:         cond_subgraph_index: 1,
+// CHECK-NEXT:         body_subgraph_index: 2
+// CHECK-NEXT:       }
+// CHECK-NEXT:     } ],
 // CHECK-NEXT:     name: "main"
 // CHECK-NEXT:   }, {
 // CHECK-NEXT:     tensors: [ {
@@ -91,7 +94,7 @@
 // CHECK-NEXT:       opcode_index: 1,
 // CHECK-NEXT:       inputs: [ 0, 2 ],
 // CHECK-NEXT:       outputs: [ 3 ]
-// CHECK-NEXT:     } ]
+// CHECK-NEXT:     } ],
 // CHECK-NEXT:     name: "cond"
 // CHECK-NEXT:   }, {
 // CHECK-NEXT:     tensors: [ {
@@ -151,7 +154,7 @@
 // CHECK-NEXT:       builtin_options: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
-// CHECK-NEXT:     } ]
+// CHECK-NEXT:     } ],
 // CHECK-NEXT:     name: "body"
 // CHECK-NEXT:   } ],
 // CHECK-NEXT:   description: "MLIR Converted.",

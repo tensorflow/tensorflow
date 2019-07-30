@@ -155,6 +155,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kWhere, 1}, "1.14.0"},
           {{OperatorType::kDequantize, 1}, "1.13.1"},
           {{OperatorType::kDequantize, 2}, "1.14.0"},
+          {{OperatorType::kDequantize, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kReverseSequence, 1}, "1.14.0"},
           {{OperatorType::kEqual, 1}, "1.14.0"},
           {{OperatorType::kEqual, 2}, "1.14.0"},

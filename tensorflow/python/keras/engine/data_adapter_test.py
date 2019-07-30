@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
@@ -31,7 +32,7 @@ from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class DataAdapterTestBase(test.TestCase):
+class DataAdapterTestBase(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super(DataAdapterTestBase, self).setUp()
@@ -67,62 +68,55 @@ class TestSequence(data_utils.Sequence):
     return 10
 
 
-class NumpyDataAdapterTest(DataAdapterTestBase):
+class TensorLikeDataAdapterTest(DataAdapterTestBase):
 
   def setUp(self):
-    super(NumpyDataAdapterTest, self).setUp()
-    self.adapter_cls = data_adapter.NumpyArrayDataAdapter
+    super(TensorLikeDataAdapterTest, self).setUp()
+    self.adapter_cls = data_adapter.TensorLikeDataAdapter
 
-  def test_can_handle(self):
+  def test_can_handle_numpy(self):
     self.assertTrue(self.adapter_cls.can_handle(self.numpy_input))
     self.assertTrue(
         self.adapter_cls.can_handle(self.numpy_input, self.numpy_target))
 
-    self.assertFalse(self.adapter_cls.can_handle(self.tensor_input))
     self.assertFalse(self.adapter_cls.can_handle(self.dataset_input))
     self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
 
-  def test_iterator_expect_batch_size(self):
-    with self.assertRaisesRegexp(ValueError, 'batch size is required'):
+  def test_iterator_expect_batch_size_numpy(self):
+    with self.assertRaisesRegexp(
+        ValueError, r'`batch_size` or `steps` is required'):
       self.adapter_cls(self.numpy_input, self.numpy_target)
 
-  def test_size(self):
+  def test_size_numpy(self):
     adapter = self.adapter_cls(
         self.numpy_input, self.numpy_target, batch_size=5)
     self.assertEqual(adapter.get_size(), 10)
     self.assertFalse(adapter.has_partial_batch())
 
-  def test_batch_size(self):
+  def test_batch_size_numpy(self):
     adapter = self.adapter_cls(
         self.numpy_input, self.numpy_target, batch_size=5)
     self.assertEqual(adapter.batch_size(), 5)
 
-  def test_partial_batch(self):
+  def test_partial_batch_numpy(self):
     adapter = self.adapter_cls(
         self.numpy_input, self.numpy_target, batch_size=4)
     self.assertEqual(adapter.get_size(), 13)   # 50/4
     self.assertTrue(adapter.has_partial_batch())
+    self.assertEqual(adapter.partial_batch_size(), 2)
 
-  def test_training(self):
+  def test_training_numpy(self):
     dataset = self.adapter_cls(
         self.numpy_input, self.numpy_target, batch_size=5).get_dataset()
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
     self.model.fit(dataset)
-
-
-class TensorDataAdapterTest(DataAdapterTestBase):
-
-  def setUp(self):
-    super(TensorDataAdapterTest, self).setUp()
-    self.adapter_cls = data_adapter.TensorDataAdapter
 
   def test_can_handle(self):
     self.assertTrue(self.adapter_cls.can_handle(self.tensor_input))
     self.assertTrue(
         self.adapter_cls.can_handle(self.tensor_input, self.tensor_target))
 
-    self.assertFalse(self.adapter_cls.can_handle(self.numpy_input))
     self.assertFalse(self.adapter_cls.can_handle(self.dataset_input))
     self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
@@ -139,16 +133,33 @@ class TensorDataAdapterTest(DataAdapterTestBase):
     self.assertEqual(adapter.get_size(), 10)
     self.assertFalse(adapter.has_partial_batch())
 
-  def test_batch_size(self):
+  @parameterized.named_parameters(
+      ('batch_size_5', 5, None, 5),
+      ('batch_size_50', 50, 4, 50),  # Sanity check: batch_size takes precedence
+      ('steps_1', None, 1, 50),
+      ('steps_4', None, 4, 13),
+      )
+  def test_batch_size(self, batch_size_in, steps, batch_size_out):
     adapter = self.adapter_cls(
-        self.tensor_input, self.tensor_target, batch_size=5)
-    self.assertEqual(adapter.batch_size(), 5)
+        self.tensor_input, self.tensor_target, batch_size=batch_size_in,
+        steps=steps)
+    self.assertEqual(adapter.batch_size(), batch_size_out)
 
-  def test_partial_batch(self):
+  @parameterized.named_parameters(
+      ('batch_size_5', 5, None, 10, 0),
+      ('batch_size_4', 4, None, 13, 2),
+      ('steps_1', None, 1, 1, 0),
+      ('steps_5', None, 5, 5, 0),
+      ('steps_4', None, 4, 4, 11),
+      )
+  def test_partial_batch(
+      self, batch_size_in, steps, size, partial_batch_size):
     adapter = self.adapter_cls(
-        self.tensor_input, self.tensor_target, batch_size=4)
-    self.assertEqual(adapter.get_size(), 13)   # 50/4
-    self.assertTrue(adapter.has_partial_batch())
+        self.tensor_input, self.tensor_target, batch_size=batch_size_in,
+        steps=steps)
+    self.assertEqual(adapter.get_size(), size)   # 50/steps
+    self.assertEqual(adapter.has_partial_batch(), bool(partial_batch_size))
+    self.assertEqual(adapter.partial_batch_size(), partial_batch_size or None)
 
 
 class DatasetAdapterTest(DataAdapterTestBase):
@@ -180,6 +191,7 @@ class DatasetAdapterTest(DataAdapterTestBase):
   def test_partial_batch(self):
     adapter = self.adapter_cls(self.dataset_input)
     self.assertFalse(adapter.has_partial_batch())
+    self.assertIsNone(adapter.partial_batch_size())
 
 
 class GeneratorDataAdapterTest(DataAdapterTestBase):
@@ -211,6 +223,7 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
   def test_partial_batch(self):
     adapter = self.adapter_cls(self.generator_input)
     self.assertFalse(adapter.has_partial_batch())
+    self.assertIsNone(adapter.partial_batch_size())
 
 
 class KerasSequenceAdapterTest(DataAdapterTestBase):
@@ -242,6 +255,7 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
   def test_partial_batch(self):
     adapter = self.adapter_cls(self.sequence_input)
     self.assertFalse(adapter.has_partial_batch())
+    self.assertIsNone(adapter.partial_batch_size())
 
 
 if __name__ == '__main__':

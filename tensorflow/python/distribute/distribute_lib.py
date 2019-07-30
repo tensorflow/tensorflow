@@ -63,7 +63,7 @@ the same way with eager and graph execution.
   each replica are aggregated together before updating the model variables. This
   is in contrast to _asynchronous_, or _async_ training, where each replica
   updates the model variables independently. You may also have replicas
-  partitioned into gropus which are in sync within each group but async between
+  partitioned into groups which are in sync within each group but async between
   groups.
 * _Parameter servers_: These are machines that hold a single copy of
   parameters/variables, used by some strategies (right now just
@@ -672,8 +672,6 @@ class Strategy(object):
   def experimental_distribute_datasets_from_function(self, dataset_fn):
     """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
 
-    Note: This API can only be used in eager mode.
-
     `dataset_fn` will be called once for each worker in the strategy. Each
     replica on that worker will dequeue one batch of inputs from the local
     `Dataset` (i.e. if a worker has two replicas, two batches will be dequeued
@@ -718,11 +716,8 @@ class Strategy(object):
       A "distributed `Dataset`", which acts like a `tf.data.Dataset` except
       it produces "per-replica" values.
     """
-    if ops.executing_eagerly_outside_functions():
-      return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
-          dataset_fn)
-    raise RuntimeError("`experimental_distribute_datasets_from_function` is "  # pylint: disable=g-doc-exception
-                       "only supported when eager execution is enabled.")
+    return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
+        dataset_fn)
 
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """Run `fn` on each replica, with the given arguments.

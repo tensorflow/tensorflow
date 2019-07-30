@@ -14,6 +14,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:session_options",
+        "@com_google_absl//absl/memory",
     ],
 )
 

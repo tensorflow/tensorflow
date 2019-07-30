@@ -879,6 +879,117 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(np.min(preds), 0.)  # At least one unit was dropped.
 
   @keras_parameterized.run_all_keras_modes
+  def test_mask_derived_from_keras_layer(self):
+    inputs = keras.Input((5, 10))
+    mask = keras.Input((5,))
+    outputs = keras.layers.RNN(keras.layers.LSTMCell(100))(inputs, mask=mask)
+    model = keras.Model([inputs, mask], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed()
+    )
+    history = model.fit(
+        x=[np.ones((10, 5, 10)), np.zeros((10, 5))],
+        y=np.zeros((10, 100)),
+        batch_size=2)
+    # All data is masked, returned values are 0's.
+    self.assertEqual(history.history['loss'][0], 0.0)
+    history = model.fit(
+        x=[np.ones((10, 5, 10)), np.ones((10, 5))],
+        y=np.zeros((10, 100)),
+        batch_size=2)
+    # Data is not masked, returned values are random.
+    self.assertGreater(history.history['loss'][0], 0.0)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_call_arg_derived_from_keras_layer(self):
+
+    class MyAdd(keras.layers.Layer):
+
+      def call(self, x1, x2):
+        return x1 + x2
+
+    input1 = keras.Input(10)
+    input2 = keras.Input(10)
+    outputs = MyAdd()(input1, input2)
+    model = keras.Model([input1, input2], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
+    history = model.fit(
+        x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_call_kwarg_derived_from_keras_layer(self):
+
+    class MaybeAdd(keras.layers.Layer):
+
+      def call(self, x1, x2=None):
+        if x2 is not None:
+          return x1 + x2
+        return x1
+
+    input1 = keras.Input(10)
+    input2 = keras.Input(10)
+    outputs = MaybeAdd()(input1, x2=input2)
+    model = keras.Model([input1, input2], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
+    history = model.fit(
+        x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_call_nested_arg_derived_from_keras_layer(self):
+
+    class AddAll(keras.layers.Layer):
+
+      def call(self, x1, x2, x3=None):
+        out = x1 + x2
+        if x3 is not None:
+          for t in x3.values():
+            out += t
+        return out
+
+    input1 = keras.Input(10)
+    input2 = keras.Input(10)
+    input3 = keras.Input(10)
+    outputs = AddAll()(
+        input1,
+        4 * array_ops.ones((1, 10)),
+        x3={
+            'a': input2,
+            'b': input3,
+            'c': 5 * array_ops.ones((1, 10))
+        })
+    model = keras.Model([input1, input2, input3], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
+    history = model.fit(
+        x=[np.ones((10, 10)), 2 * np.ones((10, 10)), 3 * np.ones((10, 10))],
+        y=15 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that all inputs were correctly added.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+  @keras_parameterized.run_all_keras_modes
   def test_multi_output_model_with_none_masking(self):
     def func(x):
       return [x * 0.2, x * 0.3]

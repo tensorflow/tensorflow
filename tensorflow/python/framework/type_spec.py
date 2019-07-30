@@ -49,6 +49,13 @@ class TypeSpec(object):
   A `tf.TypeSpec` provides metadata describing an object accepted or returned
   by TensorFlow APIs.  Concrete subclasses, such as `tf.TensorSpec` and
   `tf.RaggedTensorSpec`, are used to describe different value types.
+
+  For example, `tf.function`'s `input_signature` argument accepts a list
+  (or nested structure) of `TypeSpec`s.
+
+  Creating new subclasses of TypeSpec (outside of TensorFlow core) is not
+  currently supported.  In particular, we may make breaking changes to the
+  private methods and properties defined by this base class.
   """
   # === Subclassing ===
   #

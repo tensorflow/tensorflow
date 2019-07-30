@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
@@ -43,7 +44,6 @@ limitations under the License.
 #include "mlir/Support/Functional.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
-#include "mlir/Support/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
@@ -276,8 +276,8 @@ LogicalResult LowerStaticTensorListPass::UpdateWhileFunctionType(
 
   auto *context = &getContext();
   auto module = getModule();
-  FuncOp cond_func = module.lookupSymbol<FuncOp>(while_op->getCond());
-  FuncOp body_func = module.lookupSymbol<FuncOp>(while_op->getBody());
+  FuncOp cond_func = module.lookupSymbol<FuncOp>(while_op->cond());
+  FuncOp body_func = module.lookupSymbol<FuncOp>(while_op->body());
 
   if (cond_func) {
     // Change `cond_func`'s argument types to `unranked_argument_types`.

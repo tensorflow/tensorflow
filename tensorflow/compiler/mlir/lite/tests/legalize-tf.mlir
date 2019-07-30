@@ -142,7 +142,7 @@ func @const() -> tensor<2xi32> {
   return %0: tensor<2xi32>
 
 // CHECK-LABEL: @const
-// CHECK: %0 = "tfl.pseudo_const"() {value = opaque<"tf", "0x746674656E736F722464747970653A2044545F494E5433320A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20320A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3230305C3030305C3030305C3030305C3230305C3030305C3030305C303030220A"> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK: "tfl.pseudo_const"() {value = opaque<"tf", "0x746674656E736F722464747970653A2044545F494E5433320A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20320A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3230305C3030305C3030305C3030305C3230305C3030305C3030305C303030220A"> : tensor<2xi32>} : () -> tensor<2xi32>
 }
 
 func @placeholder(%arg0: tensor<f32>) -> tensor<f32> {
@@ -923,4 +923,46 @@ func @ReverseSequence(%arg0: tensor<2x3xf32>, %arg1: tensor<2xi32>) -> tensor<2x
 
 // CHECK-LABEL: ReverseSequence
 // CHECK:  "tfl.reverse_sequence"(%arg0, %arg1) {batch_dim = 0 : i32, seq_dim = 0 : i32} : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x3xf32>
+}
+
+func @LRN(%arg0: tensor<2x3x4x5xf32>) -> tensor<2x3x4x5xf32> {
+  %0 = "tf.LRN"(%arg0) {depth_radius = 5 :i64, bias = 1.0 :f32, alpha = 1.0 : f32, beta = 0.5 :f32} : (tensor<2x3x4x5xf32>) -> (tensor<2x3x4x5xf32>)
+  return %0: tensor<2x3x4x5xf32>
+
+  // CHECK-LABEL: LRN
+  // CHECK: %0 = "tfl.local_response_normalization"(%arg0) {alpha = 1.000000e+00 : f32, beta = 5.000000e-01 : f32, bias = 1.000000e+00 : f32, radius = 5 : i32} : (tensor<2x3x4x5xf32>) -> tensor<2x3x4x5xf32>
+  // CHECK: return %0 : tensor<2x3x4x5xf32>
+}
+
+func @OneHot(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<*xf32> {
+  %0 = "tf.OneHot"(%arg0, %arg1, %arg2, %arg3) {axis = -1 : i64} : (tensor<3xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<*xf32>
+  return %0: tensor<*xf32>
+
+// CHECK-LABEL: OneHot
+// CHECK: "tfl.one_hot"(%arg0, %arg1, %arg2, %arg3) {axis = -1 : i32} : (tensor<3xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<*xf32>
+}
+
+func @argmax(%arg0: tensor<3xi32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %0 = "tf.ArgMax"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<i32>
+  return %0 : tensor<i32>
+
+// CHECK-LABEL: argmax
+// CHECK:  %0 = "tfl.arg_max"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<i32>
+}
+
+func @argmax64(%arg0: tensor<3xi32>, %arg1: tensor<i32>) -> tensor<i64> {
+  %0 = "tf.ArgMax"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<i64>
+  return %0 : tensor<i64>
+
+// CHECK-LABEL: argmax64
+// CHECK:  %0 = "tfl.arg_max"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<i64>
+}
+
+func @space_to_depth(%arg0: tensor<1x2x2x1xf32>) -> tensor<?xf32> {
+  %0 = "tf.SpaceToDepth"(%arg0) {block_size = 2: i64,  data_format = "NHWC"}: (tensor<1x2x2x1xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+
+  // CHECK-LABEL: space_to_depth
+  // CHECK: %[[ARG:.*]]: tensor<1x2x2x1xf32>
+  // CHECK: "tfl.space_to_depth"(%[[ARG]]) {block_size = 2 : i32} : (tensor<1x2x2x1xf32>) -> tensor<?xf32>
 }

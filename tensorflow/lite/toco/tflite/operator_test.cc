@@ -974,6 +974,42 @@ TEST_F(OperatorTest, VersioningFullyConnectedTest) {
   EXPECT_EQ(op->GetVersion(int8_signature), 4);
 }
 
+TEST_F(OperatorTest, VersioningDequantizeTest) {
+  DequantizeOperator dequant_op;
+  dequant_op.inputs = {"input"};
+  dequant_op.outputs = {"output"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op = operator_by_type_map.at(dequant_op.type).get();
+
+  Model int16_model;
+  Array& input_int16_array = int16_model.GetOrCreateArray(dequant_op.inputs[0]);
+  input_int16_array.data_type = ArrayDataType::kInt16;
+  OperatorSignature int16_signature = {.op = &dequant_op,
+                                       .model = &int16_model};
+  EXPECT_EQ(op->GetVersion(int16_signature), 3);
+
+  Model float16_model;
+  Array& input_float16_array =
+      float16_model.GetOrCreateArray(dequant_op.inputs[0]);
+  input_float16_array.data_type = ArrayDataType::kFloat16;
+  OperatorSignature float16_signature = {.op = &dequant_op,
+                                         .model = &float16_model};
+  EXPECT_EQ(op->GetVersion(float16_signature), 3);
+
+  Model int8_model;
+  Array& input_int8_array = int8_model.GetOrCreateArray(dequant_op.inputs[0]);
+  input_int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &dequant_op, .model = &int8_model};
+  EXPECT_EQ(op->GetVersion(int8_signature), 2);
+
+  Model float_model;
+  Array& input_float_array = float_model.GetOrCreateArray(dequant_op.inputs[0]);
+  input_float_array.data_type = ArrayDataType::kFloat;
+  OperatorSignature float_signature = {.op = &dequant_op,
+                                       .model = &float_model};
+  EXPECT_EQ(op->GetVersion(float_signature), 1);
+}
+
 TEST_F(OperatorTest, VersioningConv2DTest) {
   ConvOperator conv_op;
   conv_op.inputs = {"input", "filter"};

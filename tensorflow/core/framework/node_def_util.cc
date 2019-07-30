@@ -753,6 +753,10 @@ void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def) {
       AttrValueMap::value_type(string(name), value));
 }
 
+void AddNodeAttr(StringPiece name, AttrValue&& value, NodeDef* node_def) {
+  (*node_def->mutable_attr())[string(name)] = std::move(value);
+}
+
 #define ADD_NODE_ATTR(T)                                           \
   void AddNodeAttr(StringPiece name, T value, NodeDef* node_def) { \
     AttrValue attr_value;                                          \

@@ -91,6 +91,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
+#include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
@@ -519,6 +520,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend");
+  auto slow_compile_alarm = SlowCompilationAlarm();
 
   TF_RET_CHECK(stream_exec != nullptr);
 
@@ -628,8 +630,10 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   string ptx;
   {
     XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - CompileToPtx");
-    TF_ASSIGN_OR_RETURN(ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
-                                          module->config(), libdevice_dir));
+    TF_ASSIGN_OR_RETURN(
+        ptx, nvptx::CompileToPtx(&llvm_module,
+                                 std::pair<int, int>{cc_major, cc_minor},
+                                 module->config(), libdevice_dir));
   }
 
   llvm_ir::DumpIrIfEnabled(*module, llvm_module, /*optimized=*/true);
@@ -672,7 +676,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   }
 
   auto* gpu_executable = new GpuExecutable(
-      ptx, cubin, {cc_major, cc_minor}, std::move(thunk_schedule),
+      ptx, cubin, std::make_pair(cc_major, cc_minor), std::move(thunk_schedule),
       std::move(module), std::move(buffer_assignment),
       std::move(profile_printer), std::move(profile_index_map));
   if (embed_ir_in_executable) {

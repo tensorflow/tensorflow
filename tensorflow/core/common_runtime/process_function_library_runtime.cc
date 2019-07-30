@@ -700,6 +700,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     options.graph_collector->CollectOptimizedGraph(def);
   }
 
+  VLOG(2) << "Main function graph to be partitioned:";
+  VLOG(2) << DebugString(graph->ToGraphDefDebug());
+
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
   TF_RETURN_IF_ERROR(
       PartitionFunctionGraph(device_set_, std::move(graph), &subgraphs));

@@ -108,6 +108,25 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   A `Dataset` can be used to represent an input pipeline as a
   collection of elements and a "logical plan" of transformations that act on
   those elements.
+
+  A dataset contains elements that each have the same (nested) structure and the
+  individual components of the structure can be of any type representable by
+  `tf.TypeSpec`, including `tf.Tensor`, `tf.data.Dataset`, `tf.SparseTensor`,
+  `tf.RaggedTensor`, or `tf.TensorArray`.
+
+  Example elements:
+  ```python
+  # Integer element
+  a = 1
+  # Float element
+  b = 2.0
+  # Tuple element with 2 components
+  c = (1, 2)
+  # Dict element with 3 components
+  d = {"a": (2, 2), "b": 3}
+  # Element containing a dataset
+  e = tf.data.Dataset.from_element(10)
+  ```
   """
 
   def __init__(self, variant_tensor):
@@ -1164,7 +1183,18 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     some but not all Python code.
 
     2) Use `tf.py_function`, which allows you to write arbitrary Python code but
-    will generally result in worse performance than 1).
+    will generally result in worse performance than 1). For example:
+
+    ```python
+    d = tf.data.Dataset.from_tensor_slices(['hello', 'world'])
+
+    # transform a string tensor to upper case string using a Python function
+    def upper_case_fn(t: tf.Tensor) -> str:
+        return t.numpy().decode('utf-8').upper()
+
+    d.map(lambda x: tf.py_function(func=upper_case_fn,
+          inp=[x], Tout=tf.string))  # ==> [ "HELLO", "WORLD" ]
+    ```
 
     Args:
       map_func: A function mapping a dataset element to another dataset element.
@@ -3153,7 +3183,7 @@ def _padding_value_to_tensor(value, output_type):
     TypeError: if the padding value's type does not match `output_type`.
   """
   value = ops.convert_to_tensor(value, name="padding_value")
-  if not value.shape.is_compatible_with(tensor_shape.scalar()):
+  if not value.shape.is_compatible_with(tensor_shape.TensorShape([])):
     raise ValueError("Padding value should be a scalar, but is not: %s" % value)
   if value.dtype != output_type:
     raise TypeError("Padding value tensor (%s) does not match output type: %s" %
@@ -3217,10 +3247,10 @@ class PaddedBatchDataset(UnaryDataset):
         drop_remainder, dtype=dtypes.bool, name="drop_remainder")
 
     def _padded_shape_to_batch_shape(s):
-      return tensor_shape.vector(
-          tensor_util.constant_value(self._batch_size) if smart_cond.
-          smart_constant_value(self._drop_remainder) else None).concatenate(
-              tensor_util.constant_value_as_shape(s))
+      return tensor_shape.TensorShape([
+          tensor_util.constant_value(self._batch_size)
+          if smart_cond.smart_constant_value(self._drop_remainder) else None
+      ]).concatenate(tensor_util.constant_value_as_shape(s))
 
     output_shapes = nest.map_structure(
         _padded_shape_to_batch_shape, self._padded_shapes)

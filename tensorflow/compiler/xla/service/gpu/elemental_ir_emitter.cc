@@ -144,7 +144,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
   // Binary math functions transform are of type [T] -> T.
   for (PrimitiveType input_type : input_types) {
     if (output_type != input_type) {
-      return Unimplemented("Input type ≠ output type: %s ≠ %s",
+      return Unimplemented("Input type != output type: %s != %s",
                            PrimitiveType_Name(input_type),
                            PrimitiveType_Name(output_type));
     }
@@ -408,7 +408,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
               SDiv(input_multi_index[i],
                    index_typed_const(window.dimensions(i).base_dilation()));
 
-          // We must check whether 0 ≤ input_multi_index[i] < bound, as
+          // We must check whether 0 <= input_multi_index[i] < bound, as
           // otherwise we are in the pad and so can skip the computation. This
           // comparison is equivalent to the unsigned comparison
           // input_multi_index[i] < bound, as a negative value wraps to a large

@@ -111,6 +111,12 @@ cc_test(
 )
 
 cc_library(
+    name = "side_pair",
+    hdrs = ["side_pair.h"],
+    deps = [":check_macros"],
+)
+
+cc_library(
     name = "block_map",
     srcs = [
         "block_map.cc",
@@ -121,6 +127,7 @@ cc_library(
     deps = [
         ":check_macros",
         ":opt_set",
+        ":side_pair",
         ":size_util",
         "@gemmlowp//:profiler",
     ],
@@ -188,7 +195,7 @@ cc_library(
     deps = [
         ":block_map",
         ":check_macros",
-        ":common",
+        ":side_pair",
         ":time",
     ],
 )
@@ -267,6 +274,7 @@ cc_library(
         ":opt_set",
         ":path",
         ":platform",
+        ":side_pair",
         ":size_util",
         ":spec",
         ":tune",
@@ -278,7 +286,7 @@ cc_library(
 cc_library(
     name = "pack",
     srcs = [
-        "pack.cc",
+        "pack_arm.cc",
     ],
     hdrs = [
         "pack.h",
@@ -296,20 +304,33 @@ cc_library(
 )
 
 cc_library(
+    name = "trmul_params",
+    hdrs = ["trmul_params.h"],
+    deps = [
+        ":context",
+        ":internal_matrix",
+        ":side_pair",
+        ":tune",
+    ],
+)
+
+cc_library(
     name = "trmul",
     srcs = ["trmul.cc"],
     hdrs = ["trmul.h"],
     deps = [
         ":allocator",
         ":block_map",
+        ":check_macros",
         ":common",
         ":context",
         ":internal_matrix",
-        ":kernel",
         ":opt_set",
-        ":pack",
+        ":side_pair",
+        ":spec",
         ":thread_pool",
         ":trace",
+        ":trmul_params",
         ":tune",
         "@gemmlowp//:profiler",
     ],
@@ -331,8 +352,11 @@ cc_library(
         ":check_macros",
         ":common",
         ":context",
+        ":kernel",
         ":matrix",
+        ":pack",
         ":path",
+        ":side_pair",
         ":size_util",
         ":spec",
         ":trmul",

@@ -127,6 +127,9 @@ class ObjectIdentitySet(collections.MutableSet):
   def add(self, key):
     self._storage.add(self._wrap_key(key))
 
+  def update(self, items):
+    self._storage.update([self._wrap_key(item) for item in items])
+
   def __len__(self):
     return len(self._storage)
 

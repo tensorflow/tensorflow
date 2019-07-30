@@ -253,8 +253,6 @@ class Network(base_layer.Layer):
         kwargs, {'trainable'},
         'Functional models may only specify `name` and `trainable` keyword '
         'arguments during initialization. Got an unexpected argument:')
-    self._call_convention = (base_layer_utils
-                             .CallConvention.EXPLICIT_INPUTS_ARGUMENT)
     # Normalize and set self.inputs, self.outputs.
     if isinstance(inputs, list) and len(nest.flatten(inputs)) == 1:
       inputs = inputs[0]
@@ -312,12 +310,11 @@ class Network(base_layer.Layer):
       self._input_coordinates.append((layer, node_index, tensor_index))
 
     # Keep track of the network's nodes and layers.
-    nodes, nodes_by_depth, layers, layers_by_depth = _map_graph_network(
+    nodes, nodes_by_depth, layers, _ = _map_graph_network(
         self.inputs, self.outputs)
     self._network_nodes = nodes
     self._nodes_by_depth = nodes_by_depth
     self._layers = layers
-    self._layers_by_depth = layers_by_depth
     self._layer_call_argspecs = {}
     for layer in self._layers:
       self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
@@ -378,8 +375,6 @@ class Network(base_layer.Layer):
                                   self._call_accepts_kwargs)
     self._expects_mask_arg = ('mask' in self._call_fn_args or
                               self._call_accepts_kwargs)
-    call_argspec = tf_inspect.getfullargspec(self.call)
-    self._call_convention = self._determine_call_convention(call_argspec)
     self.outputs = []
     self.inputs = []
     self.built = False
@@ -389,45 +384,6 @@ class Network(base_layer.Layer):
     if self._is_graph_network:
       return any(layer.dynamic for layer in self.layers)
     return self._dynamic or any(layer.dynamic for layer in self.layers)
-
-  def _determine_call_convention(self, call_argspec):
-    """Decides how `self.call()` is invoked. See `CallConvention`."""
-    if call_argspec.varargs:
-      may_take_single_argument = False
-    else:
-      try:
-        # Note: tf_inspect doesn't raise a TypeError when regular inspect would,
-        # so we need to keep in mind that "getcallargs" may have returned
-        # something even though we under-specified positional arguments.
-        all_args = tf_inspect.getcallargs(self.call, None)
-        self_args = set()
-        for arg_name, obj in all_args.items():
-          if obj is self:
-            self_args.add(arg_name)
-        may_take_single_argument = True
-      except TypeError:
-        may_take_single_argument = False
-    if may_take_single_argument:
-      # A single positional argument (plus "self") is considered equivalent to
-      # an "inputs" argument.
-      all_positional_args = len(call_argspec.args)
-      if call_argspec.defaults is not None:
-        all_positional_args -= len(call_argspec.defaults)
-      non_self_positional_args = all_positional_args
-      for positional_arg_name in call_argspec.args[:all_positional_args]:
-        if positional_arg_name in self_args:
-          non_self_positional_args -= 1
-      if non_self_positional_args == 1:
-        if 'inputs' in call_argspec.args[all_positional_args:]:
-          raise TypeError(
-              "Model.call() takes a single positional argument (to which "
-              "inputs are passed by convention) and a separate 'inputs' "
-              "argument. Unable to determine which arguments are inputs.")
-        return base_layer_utils.CallConvention.SINGLE_POSITIONAL_ARGUMENT
-    if 'inputs' in call_argspec.args:
-      return base_layer_utils.CallConvention.EXPLICIT_INPUTS_ARGUMENT
-    else:
-      return base_layer_utils.CallConvention.POSITIONAL_ARGUMENTS_ARE_INPUTS
 
   def _track_layers(self, layers):
     """Add Trackable dependencies on a list of Layers."""
@@ -812,7 +768,6 @@ class Network(base_layer.Layer):
     """Computes output tensors for new inputs.
 
     # Note:
-        - Expects `inputs` to be a list (potentially with 1 element).
         - Can be run on non-Keras tensors.
 
     Arguments:
@@ -842,7 +797,7 @@ class Network(base_layer.Layer):
     # Dictionary mapping reference tensors to computed tensors.
     tensor_dict = {}
 
-    for x, y, mask in zip(self.inputs, inputs, masks):
+    for x, y in zip(self.inputs, inputs):
       tensor_dict[str(id(x))] = y
 
     depth_keys = list(self._nodes_by_depth.keys())
@@ -864,16 +819,20 @@ class Network(base_layer.Layer):
           computed_tensors = nest.map_structure(
               lambda t: tensor_dict[str(id(t))], node.input_tensors)
 
-          # Ensure `training` and `mask` arg propagation if applicable.
-          kwargs = node.arguments or {}
+          # Ensure `training` arg propagation if applicable.
+          kwargs = copy.copy(node.arguments) if node.arguments else {}
           argspec = self._layer_call_argspecs[layer].args
           if 'training' in argspec:
             kwargs.setdefault('training', training)
-          if 'mask' in argspec:
-            computed_masks = nest.map_structure(
-                lambda t: getattr(t, '_keras_mask', None),
-                computed_tensors)
-            kwargs.setdefault('mask', computed_masks)
+
+          # Map Keras tensors in kwargs to their computed value.
+          def _map_tensor_if_from_keras_layer(t):
+            if isinstance(t, ops.Tensor) and hasattr(t, '_keras_history'):
+              t_id = str(id(t))
+              return tensor_dict[t_id]
+            return t
+
+          kwargs = nest.map_structure(_map_tensor_if_from_keras_layer, kwargs)
 
           # Compute outputs.
           output_tensors = layer(computed_tensors, **kwargs)
@@ -909,11 +868,7 @@ class Network(base_layer.Layer):
     }
     node_conversion_map = {}
     for layer in self.layers:
-      if issubclass(layer.__class__, Network) and layer._is_graph_network:
-        # Networks start with a pre-existing node linking their input to output.
-        kept_nodes = 1
-      else:
-        kept_nodes = 0
+      kept_nodes = 1 if _should_skip_first_node(layer) else 0
       for original_node_index, node in enumerate(layer._inbound_nodes):
         node_key = _make_node_key(layer.name, original_node_index)
         if node_key in self._network_nodes:
@@ -1017,9 +972,8 @@ class Network(base_layer.Layer):
     Raises:
         ValueError: In case of improperly formatted config dict.
     """
-    # Layer instances created during
-    # the graph reconstruction process
-    created_layers = {}
+    # Layer instances created during the graph reconstruction process.
+    created_layers = collections.OrderedDict()
 
     # Dictionary mapping layer instances to
     # node data that specifies a layer call.
@@ -1150,7 +1104,12 @@ class Network(base_layer.Layer):
         layer for layer in created_layers.values() if layer not in model.layers
     ]
     if ancillary_layers:
-      model._insert_layers(ancillary_layers)
+      relevant_nodes = nest.flatten([
+          layer.inbound_nodes[1:]
+          if _should_skip_first_node(layer) else layer.inbound_nodes
+          for layer in created_layers.values()
+      ])
+      model._insert_layers(ancillary_layers, relevant_nodes)
     return model
 
   def save(self,
@@ -1603,26 +1562,23 @@ class Network(base_layer.Layer):
 
       node = unprocessed_nodes.pop(0)
       depth = _get_min_depth(node)
-      if depth is None:
+      if depth is None:  # Defer until inbound nodes are processed.
         unprocessed_nodes.append(node)
-      else:
-        node_key = _make_node_key(
-            node.outbound_layer.name,
-            node.outbound_layer._inbound_nodes.index(node))
+        continue
+      node_key = _make_node_key(node.outbound_layer.name,
+                                node.outbound_layer._inbound_nodes.index(node))
+      if node_key not in self._network_nodes:
         node_to_depth[node] = depth
         self._network_nodes.add(node_key)
         self._nodes_by_depth[depth].append(node)
 
-    # Insert layers into `_layer_by_depth` and other layer attrs.
+    # Insert layers and update other layer attrs.
+    layer_set = set(self._layers)
     for layer in layers:
-      depth = min([
-          node_to_depth[node]
-          for node in layer.inbound_nodes
-          if node in network_nodes
-      ])
-      self._layers_by_depth[depth].append(layer)
-      self._layers.append(layer)
-      self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
+      if layer not in layer_set:
+        self._layers.append(layer)
+        self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
+        layer_set.add(layer)
 
   def _assert_weights_created(self):
     """Asserts that all the weights for the network have been created.
@@ -1653,6 +1609,24 @@ class Network(base_layer.Layer):
   @property
   def _object_identifier(self):
     return '_tf_keras_network'
+
+  def _graph_network_add_loss(self, symbolic_loss):
+    new_nodes, new_layers = _map_subgraph_network(self.inputs, [symbolic_loss])
+    # Losses must be keyed on inputs no matter what in order to be supported in
+    # DistributionStrategy.
+    add_loss_layer = base_layer.AddLoss(unconditional=False)
+    add_loss_layer(symbolic_loss)
+    new_nodes.extend(add_loss_layer.inbound_nodes)
+    new_layers.append(add_loss_layer)
+    self._insert_layers(new_layers, new_nodes)
+
+  def _graph_network_add_metric(self, value, aggregation, name):
+    new_nodes, new_layers = _map_subgraph_network(self.inputs, [value])
+    add_metric_layer = base_layer.AddMetric(aggregation, name)
+    add_metric_layer(value)
+    new_nodes.extend(add_metric_layer.inbound_nodes)
+    new_layers.append(add_metric_layer)
+    self._insert_layers(new_layers, new_nodes)
 
 
 def _is_hdf5_filepath(filepath):
@@ -1769,11 +1743,10 @@ def _map_graph_network(inputs, outputs):
 
     # Update the depth of inbound nodes.
     # The "depth" of a node is the max of the depths
-    # of all layers it is connected to.
-    for inbound_layer, node_index, _, _ in node.iterate_inbound():
-      inbound_node = inbound_layer._inbound_nodes[node_index]  # pylint: disable=protected-access
-      previous_depth = nodes_depths.get(inbound_node, 0)
-      nodes_depths[inbound_node] = max(depth + 1, previous_depth)
+    # of all nodes it is connected to + 1.
+    for node_dep in node._get_all_node_dependencies():
+      previous_depth = nodes_depths.get(node_dep, 0)
+      nodes_depths[node_dep] = max(depth + 1, previous_depth)
 
   # Handle inputs that are not connected to outputs.
   # We do not error out here because the inputs may be used to compute losses
@@ -1800,7 +1773,7 @@ def _map_graph_network(inputs, outputs):
   depth_keys = list(layers_by_depth.keys())
   depth_keys.sort(reverse=True)
 
-  # Set self.layers and self._layers_by_depth.
+  # Set self.layers ordered by depth.
   layers = []
   for depth in depth_keys:
     layers_for_depth = layers_by_depth[depth]
@@ -1846,3 +1819,25 @@ def _map_graph_network(inputs, outputs):
                        str(all_names.count(name)) + ' times in the model. '
                        'All layer names should be unique.')
   return network_nodes, nodes_by_depth, layers, layers_by_depth
+
+
+def _map_subgraph_network(inputs, outputs):
+  """Returns the nodes and layers in the topology from `inputs` to `outputs`.
+
+  Args:
+    inputs: List of input tensors.
+    outputs: List of output tensors.
+
+  Returns:
+    A tuple of List{Node] and List[Layer].
+  """
+  base_layer_utils.create_keras_history(outputs)
+  # Keep only nodes and layers in the topology betweeen inputs and outputs.
+  _, nodes_by_depth, layers, _ = _map_graph_network(inputs, outputs)
+  return nest.flatten([nodes for nodes in nodes_by_depth.values()]), layers
+
+
+def _should_skip_first_node(layer):
+  """Returns True if the first layer node should not be saved or loaded."""
+  # Networks start with a pre-existing node linking their input to output.
+  return issubclass(layer.__class__, Network) and layer._is_graph_network

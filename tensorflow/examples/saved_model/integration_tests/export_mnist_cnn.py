@@ -117,7 +117,7 @@ def wrap_keras_model_for_export(model, batch_input_shape,
   # the desired argspec.
   def wrapped(*args, **kwargs):  # TODO(arnoegw): Can we use call_fn itself?
     return call_fn(*args, **kwargs)
-  traced_call_fn = tf.function(autograph=False)(
+  traced_call_fn = tf.function(
       tf_decorator.make_decorator(call_fn, wrapped, decorator_argspec=argspec))
 
   # Now we need to trigger traces for all supported combinations of the

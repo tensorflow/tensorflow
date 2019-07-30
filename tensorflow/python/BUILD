@@ -12,13 +12,14 @@ visibility = [
     "//tensorflow_models:__subpackages__",
     "//tensorflow_model_optimization:__subpackages__",
     "//third_party/py/cleverhans:__subpackages__",
+    "//third_party/py/neural_structured_learning:__subpackages__",
     "//third_party/py/tensorflow_examples:__subpackages__",
     "//third_party/py/tf_slim:__subpackages__",
     # TODO(aselle): to pass open source test.
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
 
-load("//tensorflow:tensorflow.bzl", "if_not_v2", "if_not_windows", "tf_cuda_library", "tf_gen_op_wrapper_py", "py_test", "tf_py_test", "py_tests", "tf_py_build_info_genrule", "tf_cc_shared_object", "tf_custom_op_library_additional_deps_impl")
+load("//tensorflow:tensorflow.bzl", "if_mlir", "if_not_v2", "if_not_windows", "tf_cuda_library", "tf_gen_op_wrapper_py", "py_test", "tf_py_test", "py_tests", "tf_py_build_info_genrule", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
@@ -1334,6 +1335,7 @@ py_library(
     deps = [
         ":framework_ops",
         ":framework_test_combinations_lib",
+        ":tf2",
         ":util",
         "//tensorflow/python/eager:context",
     ],
@@ -2535,7 +2537,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":platform",
-        ":util",
     ],
 )
 
@@ -2550,6 +2551,17 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+    ],
+)
+
+py_library(
+    name = "control_flow_v2_toggles",
+    srcs = ["ops/control_flow_v2_toggles.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":control_flow_util",
+        ":framework_ops",
+        ":util",
     ],
 )
 
@@ -4453,12 +4465,12 @@ py_library(
         "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
-        "//tensorflow/tools/compatibility:all_renames_v2",
-        "//third_party/py/numpy",
-        "@com_google_protobuf//:protobuf_python",
         "@org_python_pypi_backports_weakref",
+        "@com_google_protobuf//:protobuf_python",
+        "//third_party/py/numpy",
         "@six_archive//:six",
-    ],
+        "//tensorflow/tools/compatibility:all_renames_v2",
+    ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass"]),
 )
 
 # Placeholder for intenal nest_test comments.
@@ -4791,6 +4803,7 @@ tf_py_wrap_cc(
         "util/py_checkpoint_reader.i",
         "util/stat_summarizer.i",
         "util/tfprof.i",
+        "util/traceme.i",
         "util/transform_graph.i",
         "util/util.i",
         "//tensorflow/lite/toco/python:toco.i",
@@ -4839,6 +4852,7 @@ tf_py_wrap_cc(
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/profiler/internal:print_model_analysis",
+        "//tensorflow/core/profiler/internal:python_traceme",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
@@ -6118,6 +6132,22 @@ cuda_py_test(
     ],
     main = "ops/batch_norm_benchmark.py",
     xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "collective_ops_benchmark",
+    srcs = ["ops/collective_ops_benchmark.py"],
+    additional_deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":collective_ops",
+        ":framework_for_generated_wrappers",
+        ":platform",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "ops/collective_ops_benchmark.py",
 )
 
 cuda_py_test(

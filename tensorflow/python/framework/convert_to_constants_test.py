@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
@@ -46,6 +47,24 @@ from tensorflow.python.util import nest
 
 class VariablesToConstantsTest(test.TestCase):
 
+  def _freezeModel(self, model):
+    """Freezes the model.
+
+    Args:
+      model: Function.
+
+    Returns:
+      root: AutoTrackable object with original ConcreteFunction.
+      output_func: frozen ConcreteFunction.
+    """
+    root = tracking.AutoTrackable()
+    root.f = model
+    input_func = root.f.get_concrete_function()
+
+    output_func = convert_to_constants.convert_variables_to_constants_v2(
+        input_func, lower_control_flow=False)
+    return root, output_func
+
   def _hasStatefulPartitionedCallOp(self, graph_def):
     """Determines if a StatefulPartitionedCall op exists in the graph."""
     for node in graph_def.node:
@@ -59,6 +78,11 @@ class VariablesToConstantsTest(test.TestCase):
 
   def _testConvertedFunction(self, obj, func, converted_concrete_func,
                              input_data):
+    # Ensure the converted graph has no variables and no function calls.
+    constant_graph_def = converted_concrete_func.graph.as_graph_def()
+    self.assertEqual(0, self._getNumVariables(constant_graph_def))
+    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
+
     # Check that the converted ConcreteFunction produces the same result as the
     # original Function.
     expected_value = nest.flatten(func(**input_data))
@@ -103,10 +127,6 @@ class VariablesToConstantsTest(test.TestCase):
 
     output_func = convert_to_constants.convert_variables_to_constants_v2(
         input_func)
-    constant_graph_def = output_func.graph.as_graph_def()
-    self.assertEqual(0, self._getNumVariables(constant_graph_def))
-    self.assertFalse(constant_graph_def.library.function)
-
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
   @test_util.run_v2_only
@@ -124,10 +144,6 @@ class VariablesToConstantsTest(test.TestCase):
 
     output_func = convert_to_constants.convert_variables_to_constants_v2(
         input_func)
-    constant_graph_def = output_func.graph.as_graph_def()
-    self.assertEqual(0, self._getNumVariables(constant_graph_def))
-    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
-
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
   @test_util.run_v2_only
@@ -145,10 +161,6 @@ class VariablesToConstantsTest(test.TestCase):
 
     output_func = convert_to_constants.convert_variables_to_constants_v2(
         input_func)
-    constant_graph_def = output_func.graph.as_graph_def()
-    self.assertEqual(0, self._getNumVariables(constant_graph_def))
-    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
-
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
   @test_util.run_v2_only
@@ -171,10 +183,6 @@ class VariablesToConstantsTest(test.TestCase):
 
     output_func = convert_to_constants.convert_variables_to_constants_v2(
         input_func)
-    constant_graph_def = output_func.graph.as_graph_def()
-    self.assertEqual(0, self._getNumVariables(constant_graph_def))
-    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
-
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
   @test_util.run_v2_only
@@ -208,15 +216,12 @@ class VariablesToConstantsTest(test.TestCase):
 
     output_func = convert_to_constants.convert_variables_to_constants_v2(
         input_func)
-    constant_graph_def = output_func.graph.as_graph_def()
-    self.assertEqual(0, self._getNumVariables(constant_graph_def))
-    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
-
     self._testConvertedFunction(root, root.add, output_func, input_data)
 
   @test_util.run_v2_only
   def testKerasModel(self):
-    input_data = constant_op.constant(1., shape=[1, 1])
+    """Test a basic Keras model with Variables."""
+    input_data = {"x": constant_op.constant(1., shape=[1, 1])}
 
     # Create a simple Keras model.
     x = [-1, 0, 1, 2, 3, 4]
@@ -227,26 +232,14 @@ class VariablesToConstantsTest(test.TestCase):
     model.compile(optimizer="sgd", loss="mean_squared_error")
     model.fit(x, y, epochs=1)
 
-    # Get the concrete function from the Keras model.
-    @def_function.function
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[1, 1], dtype=dtypes.float32)
+    ])
     def to_save(x):
       return model(x)
 
-    input_func = to_save.get_concrete_function(input_data)
-
-    variable_graph_def = input_func.graph.as_graph_def()
-    self.assertEqual(2, self._getNumVariables(variable_graph_def))
-
-    output_func = convert_to_constants.convert_variables_to_constants_v2(
-        input_func)
-    constant_graph_def = output_func.graph.as_graph_def()
-    self.assertEqual(0, self._getNumVariables(constant_graph_def))
-    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
-
-    # Check value.
-    expected_value = to_save(input_data)
-    actual_value = nest.flatten(output_func(input_data))
-    self.assertEqual(expected_value.numpy(), actual_value)
+    root, output_func = self._freezeModel(to_save)
+    self._testConvertedFunction(root, root.f, output_func, input_data)
 
   def _singleMetaGraphSavedModel(self):
     export_graph = ops.Graph()
@@ -275,20 +268,20 @@ class VariablesToConstantsTest(test.TestCase):
 
   @test_util.run_v2_only
   def testRefVariableImport(self):
+    """Test a model with 1.X ReferenceVariables."""
+    input_data = {"start": constant_op.constant(1., shape=[1, 1])}
+
     saved = self._singleMetaGraphSavedModel()
     imported = load(saved)
     fn = imported.signatures["serving_default"]
-    output_func = convert_to_constants.convert_variables_to_constants_v2(fn)
-    constant_graph_def = output_func.graph.as_graph_def()
-    self.assertEqual(0, self._getNumVariables(constant_graph_def))
-    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
 
-    input_data = {"start": constant_op.constant(1., shape=[1, 1])}
+    output_func = convert_to_constants.convert_variables_to_constants_v2(fn)
     root = tracking.AutoTrackable()
     self._testConvertedFunction(root, fn, output_func, input_data)
 
   @test_util.run_v2_only
-  def testControlFlow(self):
+  def testIf(self):
+    """Test a model with the If op."""
     input_data = {
         "x": constant_op.constant([1., 2.], shape=[1, 2]),
         "b": constant_op.constant(True)
@@ -310,21 +303,33 @@ class VariablesToConstantsTest(test.TestCase):
       return control_flow_ops.cond(
           b, true_fn=lambda: true_fn(x), false_fn=lambda: false_fn(x))
 
-    root = tracking.AutoTrackable()
-    root.f = model
-    input_func = root.f.get_concrete_function()
-    input_func(**input_data)
+    root, output_func = self._freezeModel(model)
+    self._testConvertedFunction(root, root.f, output_func, input_data)
 
-    output_func = convert_to_constants.convert_variables_to_constants_v2(
-        input_func, lower_control_flow=False)
-    constant_graph_def = output_func.graph.as_graph_def()
-    self.assertEqual(0, self._getNumVariables(constant_graph_def))
-    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
+  @test_util.run_v2_only
+  def testStatelessIf(self):
+    """Test a model with the StatelessIf op."""
+    input_data = {"b": constant_op.constant(True)}
 
+    x = constant_op.constant([1., 2.], shape=[1, 2], name="x")
+
+    def true_fn():
+      return x
+
+    def false_fn():
+      return x + 2
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool)])
+    def model(b):
+      return cond_v2.cond_v2(b, true_fn, false_fn)
+
+    root, output_func = self._freezeModel(model)
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
   @test_util.run_v2_only
   def testStaticRnn(self):
+    """Test a StaticRnn containing If ops."""
     input_data = {
         "x":
             constant_op.constant(
@@ -341,20 +346,12 @@ class VariablesToConstantsTest(test.TestCase):
       return rnn.static_rnn(
           cell, seq, dtype=dtypes.float32, sequence_length=[1])
 
-    root = tracking.AutoTrackable()
-    root.f = model
-    input_func = root.f.get_concrete_function()
-
-    output_func = convert_to_constants.convert_variables_to_constants_v2(
-        input_func, lower_control_flow=False)
-    constant_graph_def = output_func.graph.as_graph_def()
-    self.assertEqual(0, self._getNumVariables(constant_graph_def))
-    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
-
+    root, output_func = self._freezeModel(model)
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
   @test_util.run_v2_only
   def testLoop(self):
+    """Test a While loop."""
     input_data = {"x": constant_op.constant([1., 2., 3., 4.], shape=[2, 2])}
 
     weights = variables.Variable([[0.1, 0.2], [0.3, 0.4]], dtype=dtypes.float32)
@@ -371,21 +368,12 @@ class VariablesToConstantsTest(test.TestCase):
     def model(x):
       return control_flow_ops.while_loop(condition, body, [x])
 
-    root = tracking.AutoTrackable()
-    root.f = model
-    input_func = root.f.get_concrete_function()
-    input_func(**input_data)
-
-    output_func = convert_to_constants.convert_variables_to_constants_v2(
-        input_func, lower_control_flow=False)
-    constant_graph_def = output_func.graph.as_graph_def()
-    self.assertEqual(0, self._getNumVariables(constant_graph_def))
-    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
-
+    root, output_func = self._freezeModel(model)
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
   @test_util.run_v2_only
   def testDynamicRnn(self):
+    """Test a DynamicRnn containing While loops."""
     input_data = {
         "x":
             constant_op.constant(
@@ -401,16 +389,29 @@ class VariablesToConstantsTest(test.TestCase):
     def model(x):
       return rnn.dynamic_rnn(cell, x, dtype=dtypes.float32)
 
-    root = tracking.AutoTrackable()
-    root.f = model
-    input_func = root.f.get_concrete_function()
+    root, output_func = self._freezeModel(model)
+    self._testConvertedFunction(root, root.f, output_func, input_data)
 
-    output_func = convert_to_constants.convert_variables_to_constants_v2(
-        input_func, lower_control_flow=False)
-    constant_graph_def = output_func.graph.as_graph_def()
-    self.assertEqual(0, self._getNumVariables(constant_graph_def))
-    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
+  @test_util.run_v2_only
+  def testKerasLSTM(self):
+    """Test a Keras LSTM containing dynamic_rnn ops."""
+    input_data = {
+        "x":
+            constant_op.constant(
+                np.array(
+                    np.random.random_sample((10, 10, 10)), dtype=np.float32))
+    }
 
+    model = keras.models.Sequential(
+        [keras.layers.LSTM(units=10, input_shape=(10, 10))])
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[10, 10, 10], dtype=dtypes.float32)
+    ])
+    def to_save(x):
+      return model(x)
+
+    root, output_func = self._freezeModel(to_save)
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
 

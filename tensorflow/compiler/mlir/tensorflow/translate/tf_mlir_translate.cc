@@ -80,6 +80,7 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;
   }
+
   return module_or.ConsumeValueOrDie();
 }
 

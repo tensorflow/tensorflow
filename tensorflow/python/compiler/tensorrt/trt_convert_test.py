@@ -35,6 +35,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -42,13 +43,14 @@ from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder
+from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import loader_impl
+from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
-from tensorflow.python.saved_model import load
-from tensorflow.python.saved_model import save
 from tensorflow.python.tools import saved_model_utils
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -66,6 +68,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
   # Use a small max_workspace_size for tests so they don't consume too much GPU
   # memory.
   _TRT_MAX_WORKSPACE_SIZE_BYTES = 2 << 20
+
+  def mkdtemp(self):
+    return tempfile.mkdtemp(dir=self.get_temp_dir())
 
   def testGetTensorrtRewriterConfig(self):
     """Test case for TrtGraphConverter.get_tensorrt_rewriter_config()."""
@@ -288,8 +293,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     if not is_tensorrt_enabled():
       return
 
-    tmp_dir = self.get_temp_dir()
-    input_saved_model_dir = os.path.join(tmp_dir, "in_dir1")
+    input_saved_model_dir = self.mkdtemp()
     self._WriteInputSavedModel(input_saved_model_dir)
 
     for need_calibration in [False, True]:
@@ -297,11 +301,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       self._TestTrtGraphConverter()
 
       # Use SavedModel as input.
-      output_saved_model_dir = os.path.join(
-          tmp_dir, "out_dir1%s" % ("_int8" if need_calibration else ""))
       self._TestTrtGraphConverter(
           input_saved_model_dir=input_saved_model_dir,
-          output_saved_model_dir=output_saved_model_dir,
+          output_saved_model_dir=self.mkdtemp(),
           need_calibration=need_calibration)
 
   def _CreateConverterV2(self, input_saved_model_dir):
@@ -322,7 +324,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     np_input = np.random.random_sample([4, 1, 1]).astype(np.float32)
 
     # Create a model and save it.
-    input_saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    input_saved_model_dir = self.mkdtemp()
     root = self._GetModelForV2()
     expected_output = root.run(np_input)
     save.save(root, input_saved_model_dir,
@@ -350,7 +352,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     _check_trt_ops(converted_concrete_func.graph.as_graph_def())
 
     # Save the converted model without any TRT engine cache.
-    output_saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    output_saved_model_dir = self.mkdtemp()
     converter.save(output_saved_model_dir)
     unexpected_asset_file = os.path.join(
         output_saved_model_dir, "assets/trt-serialized-engine.TRTEngineOp_0")
@@ -360,10 +362,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     output_with_trt = converted_func(np_input)
     self.assertEqual(1, len(output_with_trt))
     self.assertAllClose(
-        expected_output, output_with_trt[0], atol=1e-6, rtol=1e-6)
+        expected_output, output_with_trt.values()[0], atol=1e-6, rtol=1e-6)
 
     # Save the converted model again with serialized engine cache.
-    output_saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    output_saved_model_dir = self.mkdtemp()
     converter.save(output_saved_model_dir)
     expected_asset_file = os.path.join(
         output_saved_model_dir, "assets/trt-serialized-engine.TRTEngineOp_0")
@@ -385,7 +387,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     output_with_trt = converted_signature(ops.convert_to_tensor(np_input))
     # The output of running the converted signature is a dict due to
     # compatibility reasons with V1 SavedModel signature mechanism.
-    output_with_trt = output_with_trt[output_with_trt.keys()[0]]
+    output_with_trt = output_with_trt.values()[0]
     self.assertAllClose(expected_output, output_with_trt, atol=1e-6, rtol=1e-6)
 
   @test_util.run_v2_only
@@ -397,7 +399,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     np_input = np.random.random_sample([4, 1, 1]).astype(np.float32)
 
     # Create a model and save it.
-    input_saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    input_saved_model_dir = self.mkdtemp()
     root = self._GetModelForV2()
     save.save(root, input_saved_model_dir,
               {_SAVED_MODEL_SIGNATURE_KEY: root.run})
@@ -406,7 +408,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     converter = self._CreateConverterV2(input_saved_model_dir)
     converted_func = converter.convert()
     converted_func(np_input)  # Populate the TRT engine cache.
-    output_saved_model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    output_saved_model_dir = self.mkdtemp()
     converter.save(output_saved_model_dir)
 
     def _destroy_cache():
@@ -438,6 +440,123 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
                                  r"Resource .* does not exist."):
       _destroy_cache()
 
+  def _CompareSavedModel(self, model_class):
+    signature_key = "serving_default"
+
+    def _GetModelPaths(model_class):
+      input_saved_model_dir = self.mkdtemp()
+      root = model_class()
+      save.save(root, input_saved_model_dir)
+
+      converter = trt_convert.TrtGraphConverterV2(
+          input_saved_model_dir=input_saved_model_dir)
+      converter.convert()
+      output_saved_model_dir = self.mkdtemp()
+      converter.save(output_saved_model_dir)
+      return input_saved_model_dir, output_saved_model_dir
+
+    def _GetSignatureDef(export_dir):
+      saved_model_proto = loader_impl.parse_saved_model(export_dir)
+      self.assertEqual(1, len(saved_model_proto.meta_graphs))
+      meta_graph = saved_model_proto.meta_graphs[0]
+      self.assertIn(signature_key, meta_graph.signature_def)
+      return meta_graph.signature_def[signature_key]
+
+    def _CompareSignatureDef(original_def, converted_def, is_input):
+      endpoints = original_def.inputs if is_input else original_def.outputs
+      converted_endpoints = (
+          converted_def.inputs if is_input else converted_def.outputs)
+      self.assertEqual(set(endpoints.keys()), set(converted_endpoints.keys()))
+      for key in endpoints:
+        original_input = endpoints[key]
+        converted_input = converted_endpoints[key]
+        self.assertEqual(original_input.name, converted_input.name)
+        self.assertEqual(original_input.dtype, converted_input.dtype)
+        self.assertEqual(
+            tensor_shape.TensorShape(original_input.tensor_shape).as_list(),
+            tensor_shape.TensorShape(converted_input.tensor_shape).as_list())
+
+    def _GetStructuredOutputs(export_dir):
+      root = load.load(export_dir)
+      return root.signatures[signature_key].structured_outputs
+
+    saved_model_path, converted_saved_model_path = _GetModelPaths(model_class)
+    original_def = _GetSignatureDef(saved_model_path)
+    converted_def = _GetSignatureDef(converted_saved_model_path)
+    self.assertEqual(original_def.method_name, converted_def.method_name)
+    _CompareSignatureDef(original_def, converted_def, True)
+    _CompareSignatureDef(original_def, converted_def, False)
+
+    self.assertEqual(
+        _GetStructuredOutputs(saved_model_path),
+        _GetStructuredOutputs(converted_saved_model_path))
+
+  @test_util.run_v2_only
+  def testRetainSignatureInfo_NoInputs(self):
+
+    class _Model(tracking.AutoTrackable):
+
+      @def_function.function(input_signature=[])
+      def run(self):
+        return array_ops.constant(1.0)
+
+    self._CompareSavedModel(_Model)
+
+  @test_util.run_v2_only
+  def testRetainSignatureInfo_OneInput(self):
+
+    class _Model(tracking.AutoTrackable):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[None, 1], dtype=dtypes.float32)
+      ])
+      def run(self, inp):
+        return inp + inp * inp
+
+    self._CompareSavedModel(_Model)
+
+  @test_util.run_v2_only
+  def testRetainSignatureInfo_TwoInputs(self):
+
+    class _Model(tracking.AutoTrackable):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[None, 1], dtype=dtypes.float32),
+          tensor_spec.TensorSpec(shape=[None, 2], dtype=dtypes.float32)
+      ])
+      def run(self, inp1, inp2):
+        return inp1 + inp2 * inp2
+
+    self._CompareSavedModel(_Model)
+
+  @test_util.run_v2_only
+  def testRetainSignatureInfo_OneOutputSignatureKey(self):
+
+    class _Model(tracking.AutoTrackable):
+
+      @def_function.function(input_signature=[])
+      def run(self):
+        return {"my_output": array_ops.constant(1.0)}
+
+    self._CompareSavedModel(_Model)
+
+  @test_util.run_v2_only
+  def testRetainSignatureInfo_TwoOutputSignatureKeys(self):
+
+    class _Model(tracking.AutoTrackable):
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[None, 1], dtype=dtypes.float32)
+      ])
+      def run(self, inp):
+        # Here the keys are not ordered lexicographically on purpose.
+        return {
+            "output_b": array_ops.constant(1.0),
+            "output_a": inp + inp * inp
+        }
+
+    self._CompareSavedModel(_Model)
+
   def _TestRun(self,
                sess,
                batch_size,
@@ -467,9 +586,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     if not is_tensorrt_enabled():
       return
 
-    tmp_dir = self.get_temp_dir()
-    input_saved_model_dir = os.path.join(tmp_dir, "in_dir2")
-    output_saved_model_dir = os.path.join(tmp_dir, "out_dir2")
+    input_saved_model_dir = self.mkdtemp()
+    output_saved_model_dir = self.mkdtemp()
     self._WriteInputSavedModel(input_saved_model_dir)
     output_graph_def = self._ConvertGraph(
         input_saved_model_dir=input_saved_model_dir,
@@ -505,9 +623,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     if not is_tensorrt_enabled():
       return
 
-    tmp_dir = self.get_temp_dir()
-    input_saved_model_dir = os.path.join(tmp_dir, "in_dir3")
-    output_saved_model_dir = os.path.join(tmp_dir, "out_dir3")
+    input_saved_model_dir = self.mkdtemp()
+    output_saved_model_dir = self.mkdtemp()
     self._WriteInputSavedModel(input_saved_model_dir)
     output_graph_def = self._ConvertGraph(
         input_saved_model_dir=input_saved_model_dir,

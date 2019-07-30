@@ -32,9 +32,7 @@ void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
   op->operation.ConsumeInput(h->handle);
 }
 
-TFE_Profiler* TFE_NewProfiler(TFE_ProfilerContext* ctx) {
-  return new TFE_Profiler(ctx);
-}
+TFE_Profiler* TFE_NewProfiler() { return new TFE_Profiler(); }
 
 bool TFE_ProfilerIsOk(TFE_Profiler* profiler) {
   return profiler->profiler->Status().ok();
@@ -55,23 +53,10 @@ void TFE_ProfilerSerializeToString(TFE_Profiler* profiler, TF_Buffer* buf,
   };
 }
 
-TFE_ProfilerContext* TFE_NewProfilerContext() {
-  return new TFE_ProfilerContext;
-}
-
-void TFE_ProfilerContextSetEagerContext(TFE_ProfilerContext* profiler_context,
-                                        TFE_Context* eager_context) {
-  profiler_context->profiler_context.eager_context = eager_context->context;
-}
-
-void TFE_DeleteProfilerContext(TFE_ProfilerContext* profiler_context) {
-  delete profiler_context;
-}
-
-void TFE_StartProfilerServer(TFE_ProfilerContext* context, int port) {
-  // Release child thread intentionally. The child thread can be terminate by
+void TFE_StartProfilerServer(int port) {
+  // Release child thread intentionally. The child thread can be terminated by
   // terminating the main thread.
-  tensorflow::StartProfilerServer(&context->profiler_context, port).release();
+  tensorflow::StartProfilerServer(port).release();
 }
 
 void TFE_ContextEnableGraphCollection(TFE_Context* ctx) {
@@ -579,4 +564,34 @@ bool TFE_CancellationManagerIsCancelled(
 void TFE_DeleteCancellationManager(
     TFE_CancellationManager* cancellation_manager) {
   delete cancellation_manager;
+}
+
+void TFE_OpSetCancellationManager(TFE_Op* op,
+                                  TFE_CancellationManager* cancellation_manager,
+                                  TF_Status* status) {
+  op->operation.SetCancellationManager(
+      &cancellation_manager->cancellation_manager);
+}
+
+TFE_Executor* TFE_NewExecutor(bool is_async) {
+  auto* executor = new TFE_Executor;
+  if (is_async) {
+    executor->executor.EnableAsync();
+  }
+  return executor;
+}
+
+void TFE_DeleteExecutor(TFE_Executor* executor) { delete executor; }
+
+void TFE_ExecutorWaitForAllPendingNodes(TFE_Executor* executor,
+                                        TF_Status* status) {
+  status->status = executor->executor.WaitForAllPendingNodes();
+}
+
+void TFE_ContextSetExecutorForThread(TFE_Context* ctx, TFE_Executor* executor) {
+  ctx->context->SetExecutorForThread(&executor->executor);
+}
+
+void TFE_ContextClearExecutorForThread(TFE_Context* ctx) {
+  ctx->context->ClearExecutorForThread();
 }

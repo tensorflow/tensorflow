@@ -237,11 +237,12 @@ class Exchange {
   };
 
   Exchange(const ::grpc::ByteBuffer& request_buf, protobuf::Message* response,
-           StatusCallback cb)
+           StatusCallback cb, string debug_string)
       : state_(State::kExchangeCreated),
         request_buf_(request_buf),
         response_(response),
-        cb_(std::move(cb)) {}
+        cb_(std::move(cb)),
+        debug_string_(std::move(debug_string)) {}
 
   const ::grpc::ByteBuffer& request_buf() { return request_buf_; }
   ::grpc::ByteBuffer* response_buf() { return &response_buf_; }
@@ -274,6 +275,7 @@ class Exchange {
   ::grpc::ByteBuffer response_buf_;
   protobuf::Message* response_;
   StatusCallback cb_;
+  string debug_string_;
 };
 
 const char* ToString(Exchange::State s);
@@ -303,7 +305,8 @@ class ExchangeQueue {
  public:
   // Creates a new exchange and adds it to the end of the queue.
   void Emplace(const ::grpc::ByteBuffer& request_buf,
-               protobuf::Message* response, StatusCallback cb);
+               protobuf::Message* response, StatusCallback cb,
+               std::string debug_string);
 
   // Returns an exchange for which we can initiated request writing, if any.
   // Returns nullptr if there is no such exchange.
@@ -363,7 +366,13 @@ class StreamingRPCState : public UntypedStreamingRPCState {
                     const std::shared_ptr<::grpc::ClientContext>& context)
       : context_(context), call_(std::move(call)), call_done_(false) {
     Ref();
+    VLOG(3) << "Created new StreamingRPCState " << this;
+    VLOG(3) << "StreamingRPCState(" << this << ") calling grpc::StartCall";
     call_->StartCall(&call_started_tag_);
+  }
+
+  ~StreamingRPCState() override {
+    VLOG(3) << "Destructing StreamingRPCState " << this;
   }
 
   // Attempts to send the next request. `done` is invoked when
@@ -391,12 +400,21 @@ class StreamingRPCState : public UntypedStreamingRPCState {
       // `done` is not invoked intentionally.
       return false;
     }
-    exchanges_.Emplace(request_buf, response, done);
+    if (VLOG_IS_ON(3)) {
+      // If vlog 3 is enabled, include first 100 chars of request as debug
+      // string.
+      exchanges_.Emplace(request_buf, response, done,
+                         request.ShortDebugString().substr(0, 100));
+    } else {
+      exchanges_.Emplace(request_buf, response, done, "");
+    }
     MaybeIssueRequestWriteLocked();
     return true;
   }
 
   void CallStarted(bool ok) override {
+    VLOG(3) << "StreamingRPCState(" << this << ")::CallStarted(ok=" << ok
+            << ")";
     mutex_lock l(mu_);
     if (!ok) {
       call_done_ = true;
@@ -408,6 +426,8 @@ class StreamingRPCState : public UntypedStreamingRPCState {
   }
 
   void RequestWriteCompleted(bool ok) override {
+    VLOG(3) << "StreamingRPCState(" << this
+            << ")::RequestWriteCompleted(ok=" << ok << ")";
     mu_.lock();
     if (call_done_) {
       mu_.unlock();
@@ -426,6 +446,8 @@ class StreamingRPCState : public UntypedStreamingRPCState {
   }
 
   void ResponseReadCompleted(bool ok) override {
+    VLOG(3) << "StreamingRPCState(" << this
+            << ")::ResponseReadCompleted(ok=" << ok << ")";
     mu_.lock();
     if (call_done_) {
       mu_.unlock();
@@ -466,6 +488,8 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     call_done_ = true;
     Status status = errors::Unknown("gRPC streaming call has ended: ",
                                     context_->debug_error_string());
+    VLOG(2) << "Ending gRPC stremaing call on the client side due to "
+            << status.ToString();
     // Swap the exchanges_ into a temporary ExchangeQueue so that we can
     // complete all exchanges without holding mu_ in case user callback
     // reach back into this. This should be impossible now, but safer for
@@ -485,6 +509,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     }
     exchange->MarkRequestWriteIssued();
     Ref();
+    VLOG(3) << "StreamingRPCState(" << this << ") calling grpc::Write";
     call_->Write(exchange->request_buf(), &request_write_completed_tag_);
   }
 
@@ -495,6 +520,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     }
     exchange->MarkResponseReadIssued();
     Ref();
+    VLOG(3) << "StreamingRPCState(" << this << ") calling grpc::Read";
     call_->Read(exchange->response_buf(), &response_read_completed_tag_);
   }
 
@@ -569,6 +595,16 @@ class StreamingRPCDispatcher {
       // Consider retrying to create and start a call few more times.
       done(errors::Unknown("gRPC call failed right after it was created"));
     }
+  }
+
+  // Request to cancel the current streaming call. Non-blocking.
+  void CancelCall() {
+    mutex_lock l(mu_);
+    if (state_ == nullptr) {
+      return;
+    }
+    context_->TryCancel();
+    state_ = nullptr;
   }
 
  private:

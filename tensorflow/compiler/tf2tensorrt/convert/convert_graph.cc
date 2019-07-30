@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/segment.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"

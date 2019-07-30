@@ -1300,6 +1300,26 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     r = control_flow_ops.while_loop(c, b, [i, []])
     self.assertEqual(self.evaluate(r), 10)
 
+    # Adding maximum_iterations should yield the same result.
+    r = control_flow_ops.while_loop(c, b, [i, []], maximum_iterations=50)
+    # Note: this result is still incorrect - it should be just 10.
+    self.assertEqual(self.evaluate(r), [10, []])
+
+  def testWhileLoopSameReturnShape_FalseSingleLoopVar(self):
+    i = constant_op.constant(0)
+    c = lambda i: math_ops.less(i, 10)
+
+    # Body return must be unpacked in this case.
+    b = lambda i: math_ops.add(i, 1)
+
+    # Should only return the tensor.
+    r = control_flow_ops.while_loop(c, b, [i])
+    self.assertEqual(self.evaluate(r), 10)
+
+    # Adding maximum_iterations should yield the same result.
+    r = control_flow_ops.while_loop(c, b, [i], maximum_iterations=50)
+    self.assertEqual(self.evaluate(r), 10)
+
   def testWhileLoopSameReturnShape_True(self):
     i = constant_op.constant(0)
     c = lambda i, _: math_ops.less(i, 10)
@@ -1310,6 +1330,26 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     # Should only return the original structure.
     r = control_flow_ops.while_loop(c, b, [i, []], return_same_structure=True)
     self.assertEqual(self.evaluate(r), [10, []])
+
+    # Adding maximum_iterations should yield the same result.
+    r = control_flow_ops.while_loop(
+        c, b, [i, []], return_same_structure=True, maximum_iterations=50)
+    self.assertEqual(self.evaluate(r), [10, []])
+
+  def testWhileLoopSameReturnShape_TrueSingleLoopVar(self):
+    i = constant_op.constant(0)
+    c = lambda i: math_ops.less(i, 10)
+
+    b = lambda i: [math_ops.add(i, 1)]
+
+    # Should not unpack the single variable
+    r = control_flow_ops.while_loop(c, b, [i], return_same_structure=True)
+    self.assertEqual(self.evaluate(r), [10])
+
+    # Adding maximum_iterations should yield the same result.
+    r = control_flow_ops.while_loop(
+        c, b, [i], return_same_structure=True, maximum_iterations=50)
+    self.assertEqual(self.evaluate(r), [10])
 
 
 class AssertTest(test_util.TensorFlowTestCase):
@@ -1327,6 +1367,12 @@ class AssertTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testAssertInFunction(self):
+    # TODO(fishx): Re-enable this test for GPU.
+    # NOTE(fishx): Disable this test for now because, in GPU, multiple errors
+    # will be thrown. But since the root cause error is marked as "derived"
+    # error. So it might be ignored.
+    if test_util.is_gpu_available():
+      self.skipTest("Skip GPU Test")
 
     @def_function.function
     def whiny(value):

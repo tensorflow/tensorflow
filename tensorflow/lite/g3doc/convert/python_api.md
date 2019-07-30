@@ -1,9 +1,12 @@
 # Converter Python API guide
 
-This page provides examples on how to use the TensorFlow Lite Converter and the
-TensorFlow Lite interpreter using the Python API.
+This page describes how to convert TensorFlow models into the TensorFlow Lite
+format using the TensorFlow Lite Converter Python API.
 
-Note: These docs describe the converter in the TensorFlow nightly release,
+If you're looking for information about how to run a TensorFlow Lite model,
+see [TensorFlow Lite inference](../guide/inference.md).
+
+Note: This page describes the converter in the TensorFlow nightly release,
 installed using `pip install tf-nightly`. For docs describing older versions
 reference ["Converting models from TensorFlow 1.12"](#pre_tensorflow_1.12).
 
@@ -20,13 +23,12 @@ be targeted to devices with mobile.
 ## API
 
 The API for converting TensorFlow models to TensorFlow Lite is
-`tf.lite.TFLiteConverter`. The API for calling the Python interpreter is
-`tf.lite.Interpreter`.
+`tf.lite.TFLiteConverter`, which provides class methods based on the original
+format of the model. For example, `TFLiteConverter.from_session()` is available
+for GraphDefs, `TFLiteConverter.from_saved_model()` is available for
+SavedModels, and `TFLiteConverter.from_keras_model_file()` is available for
+`tf.Keras` files.
 
-`TFLiteConverter` provides class methods based on the original format of the
-model. `TFLiteConverter.from_session()` is available for GraphDefs.
-`TFLiteConverter.from_saved_model()` is available for SavedModels.
-`TFLiteConverter.from_keras_model_file()` is available for `tf.Keras` files.
 Example usages for simple float-point models are shown in
 [Basic Examples](#basic). Examples usages for more complex models is shown in
 [Complex Examples](#complex).
@@ -177,65 +179,6 @@ with tf.Session() as sess:
   open("converted_model.tflite", "wb").write(tflite_model)
 ```
 
-## TensorFlow Lite Python interpreter <a name="interpreter"></a>
-
-### Using the interpreter from a model file <a name="interpreter_file"></a>
-
-The following example shows how to use the TensorFlow Lite Python interpreter
-when provided a TensorFlow Lite FlatBuffer file. The example also demonstrates
-how to run inference on random input data. Run
-`help(tf.lite.Interpreter)` in the Python terminal to get detailed
-documentation on the interpreter.
-
-```python
-import numpy as np
-import tensorflow as tf
-
-# Load TFLite model and allocate tensors.
-interpreter = tf.lite.Interpreter(model_path="converted_model.tflite")
-interpreter.allocate_tensors()
-
-# Get input and output tensors.
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
-
-# Test model on random input data.
-input_shape = input_details[0]['shape']
-input_data = np.array(np.random.random_sample(input_shape), dtype=np.float32)
-interpreter.set_tensor(input_details[0]['index'], input_data)
-
-interpreter.invoke()
-
-# The function `get_tensor()` returns a copy of the tensor data.
-# Use `tensor()` in order to get a pointer to the tensor.
-output_data = interpreter.get_tensor(output_details[0]['index'])
-print(output_data)
-```
-
-### Using the interpreter from model data <a name="interpreter_data"></a>
-
-The following example shows how to use the TensorFlow Lite Python interpreter
-when starting with the TensorFlow Lite Flatbuffer model previously loaded. This
-example shows an end-to-end use case, starting from building the TensorFlow
-model.
-
-```python
-import numpy as np
-import tensorflow as tf
-
-img = tf.placeholder(name="img", dtype=tf.float32, shape=(1, 64, 64, 3))
-const = tf.constant([1., 2., 3.]) + tf.constant([1., 4., 4.])
-val = img + const
-out = tf.identity(val, name="out")
-
-with tf.Session() as sess:
-  converter = tf.lite.TFLiteConverter.from_session(sess, [img], [out])
-  tflite_model = converter.convert()
-
-# Load TFLite model and allocate tensors.
-interpreter = tf.lite.Interpreter(model_content=tflite_model)
-interpreter.allocate_tensors()
-```
 
 ## Additional instructions
 

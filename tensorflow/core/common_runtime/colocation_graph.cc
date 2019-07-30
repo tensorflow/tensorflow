@@ -438,7 +438,7 @@ bool Member::MergeSupportedDevices(
   return true;
 }
 
-Status Member::AssignDevice(const Node& node, bool allow_soft_placement) {
+Status Member::AssignDevice(const Node& node) {
   if (node.assigned_device_name_index() == assigned_device_name_index_) {
     return Status::OK();
   }
@@ -914,7 +914,7 @@ Status ColocationGraph::LimitToAssignedDevice(const Node& node) {
   }
   int root = FindAndUpdateRoot(node.id());
   Member& root_member = members_[root];
-  return root_member.AssignDevice(node, allow_soft_placement_);
+  return root_member.AssignDevice(node);
 }
 
 void ColocationGraph::GetSoftDeviceCandidates(

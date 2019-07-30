@@ -355,7 +355,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
     }
     // We want to repeat 'filter' in the 'input_feature_dim' dimension
     // 'group_count' times.
-    if (filter_expansion_) {
+    if (!is_cost_viable_(convolution) || filter_expansion_) {
       Shape reshaped_filter_shape =
           ShapeUtil::DeleteDimension(kernel_input_feature_dim, filter->shape());
       auto reshaped_filter =

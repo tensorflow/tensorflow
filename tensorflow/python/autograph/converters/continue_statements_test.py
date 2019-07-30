@@ -29,7 +29,7 @@ class ContinueCanonicalizationTest(converter_testing.TestCase):
 
   def assertTransformedEquivalent(self, test_fn, *inputs):
     with self.converted(test_fn, continue_statements, {'ops': ops},
-                        constant_op.constant) as result:
+                        (constant_op.constant,)) as result:
       self.assertEqual(test_fn(*inputs), result.test_fn(*inputs))
 
   def test_basic(self):

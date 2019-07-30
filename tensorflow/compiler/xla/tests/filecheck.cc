@@ -26,7 +26,8 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> RunFileCheck(const string& input, const string& pattern) {
+StatusOr<bool> RunFileCheck(const std::string& input,
+                            absl::string_view pattern) {
   using tensorflow::io::JoinPath;
 
   // Generate an input file for the FileCheck pattern.

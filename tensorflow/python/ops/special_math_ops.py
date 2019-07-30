@@ -521,7 +521,7 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
 
 def _transpose_if_necessary(tensor, perm):
   """Like transpose(), but avoids creating a new tensor if possible."""
-  if perm != range(len(perm)):
+  if perm != list(range(len(perm))):
     return array_ops.transpose(tensor, perm=perm)
   else:
     return tensor

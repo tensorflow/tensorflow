@@ -30,8 +30,10 @@ limitations under the License.
 namespace tensorflow {
 
 BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
-                           bool allow_growth, const string& name)
-    : sub_allocator_(sub_allocator),
+                           bool allow_growth, const string& name,
+                           bool garbage_collection)
+    : garbage_collection_(garbage_collection),
+      sub_allocator_(sub_allocator),
       name_(name),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1) {
@@ -260,6 +262,97 @@ size_t BFCAllocator::RoundedBytes(size_t bytes) {
   return rounded_bytes;
 }
 
+bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes)
+    EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+  // Do nothing if garbage collection is off.
+  if (!garbage_collection_) {
+    return false;
+  }
+
+  // Searching for free regions.
+  absl::flat_hash_set<void*> free_region_ptrs;
+  size_t total_free_bytes = 0;
+  for (const AllocationRegion& region : region_manager_.regions()) {
+    ChunkHandle h = region_manager_.get_handle(region.ptr());
+    bool any_use = false;
+    while (h != kInvalidChunkHandle) {
+      const Chunk* c = ChunkFromHandle(h);
+      if (c->in_use()) {
+        any_use = true;
+        break;
+      }
+      h = c->next;
+    }
+
+    if (!any_use) {
+      VLOG(2) << "Found free region with ptr = " << region.ptr();
+      free_region_ptrs.insert(region.ptr());
+      total_free_bytes += region.memory_size();
+    }
+  }
+
+  if (total_free_bytes == 0) {
+    return false;
+  }
+
+  // Rough estimation to check whether deallocation can help.
+  size_t available_bytes =
+      memory_limit_ - total_region_allocated_bytes_ + total_free_bytes;
+  if (rounded_bytes > available_bytes) {
+    return false;
+  }
+
+  LOG(WARNING) << "Garbage collection: deallocate free memory regions"
+               << " (i.e., allocations) so that we can re-allocate a larger"
+               << " region to avoid OOM due to memory fragmentation. If you"
+               << " see this message frequently, you are running near the"
+               << " threshold of the available device memory and re-allocation"
+               << " may incur great performance overhead. You may try smaller"
+               << " batch sizes to observe the performance impact."
+               << " Set TF_ENABLE_GPU_GARBAGE_COLLECTION=false if you'd like to"
+               << " disable this feature.";
+
+  // Deallocate free regions.
+  DeallocateRegions(free_region_ptrs);
+
+  return true;
+}
+
+void BFCAllocator::DeallocateRegions(
+    const absl::flat_hash_set<void*>& region_ptrs)
+    EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+  // Explicitly remove the const qualifier as some compilers disallow passing
+  // const_iterator to std::vector::erase(), which is used in
+  // RemoveAllocationRegion().
+  auto regions =
+      const_cast<std::vector<AllocationRegion>*>(&region_manager_.regions());
+  auto it = regions->begin();
+  while (it != regions->end()) {
+    if (!region_ptrs.contains(it->ptr())) {
+      ++it;
+      continue;
+    }
+
+    VLOG(2) << "Deallocate region with ptr = " << it->ptr();
+    // Remove all chunk registrations from Bins.
+    ChunkHandle h = region_manager_.get_handle(it->ptr());
+    while (h != kInvalidChunkHandle) {
+      const Chunk* c = ChunkFromHandle(h);
+      if (c->bin_num != kInvalidBinNum) {
+        RemoveFreeChunkFromBin(h);
+      }
+      auto h_to_delete = h;
+      h = c->next;
+      DeleteChunk(h_to_delete);
+    }
+
+    // Deallocate the memory.
+    sub_allocator_->Free(it->ptr(), it->memory_size());
+    total_region_allocated_bytes_ -= it->memory_size();
+    it = region_manager_.RemoveAllocationRegion(it);
+  }
+}
+
 void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
                                         size_t num_bytes,
                                         bool dump_log_on_failure,
@@ -304,6 +397,18 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
       if (ptr != nullptr) {
         return ptr;
       }
+    }
+  }
+
+  // Reaching this point means that no chunks can satisfy the request. Also,
+  // the unallocated bytes cannot satisfy the request. Before giving up, let's
+  // try deallocating free regions so that suballocator can combine them with
+  // the unallocated bytes and form a larger region.
+  if (DeallocateFreeRegions(rounded_bytes) &&
+      Extend(unused_alignment, rounded_bytes)) {
+    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
+    if (ptr != nullptr) {
+      return ptr;
     }
   }
 

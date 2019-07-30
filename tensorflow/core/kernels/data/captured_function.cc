@@ -207,8 +207,72 @@ Status CreateFunctionLibraryDefinition(
   }
   *result = absl::make_unique<FunctionLibraryDefinition>(
       lib_def->ReachableDefinitions(*fdef));
-  TF_RETURN_IF_ERROR((*result)->AddFunctionDef(*fdef));
-  return Status::OK();
+  return (*result)->CopyFunctionDefFrom(func_name, *lib_def);
+}
+
+bool IsNodeStateful(const FunctionLibraryDefinition& library,
+                    const NodeDef& node);
+
+bool IsFunctionStateful(const FunctionLibraryDefinition& library,
+                        const FunctionDef& function_def) {
+  if (!function_def.signature().is_stateful()) return false;
+
+  for (const NodeDef& node_def : function_def.node_def()) {
+    if (IsNodeStateful(library, node_def)) return true;
+  }
+  return false;
+}
+
+// Returns whether an op has been whitelisted as stateless. Uses a heuristic to
+// whitelist source dataset ops which have been marked stateful due to
+// b/65524810. Also looks up the `op_def->name` in the global
+// `WhitelistedStatefulOpRegistry`.
+bool IsOpWhitelisted(const OpDef* op_def) {
+  return ((absl::EndsWith(op_def->name(), "Dataset") ||
+           absl::EndsWith(op_def->name(), "DatasetV2")) &&
+          op_def->output_arg_size() == 1 &&
+          op_def->output_arg(0).type() == DT_VARIANT) ||
+         WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());
+}
+
+bool IsNodeStateful(const FunctionLibraryDefinition& library,
+                    const NodeDef& node) {
+  const OpDef* op_def;
+  Status s = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  if (!s.ok()) {
+    return false;
+  }
+
+  if (IsOpWhitelisted(op_def)) return false;
+
+  if (!op_def->is_stateful()) return false;
+
+  if (op_def->name() == "Assert") {
+    return false;
+  }
+
+  if (op_def->name() == "If") {
+    const FunctionDef* then_func =
+        library.Find(node.attr().at("then_branch").func().name());
+    const FunctionDef* else_func =
+        library.Find(node.attr().at("else_branch").func().name());
+    if ((then_func != nullptr && !IsFunctionStateful(library, *then_func)) &&
+        (else_func != nullptr && !IsFunctionStateful(library, *else_func))) {
+      return false;
+    }
+  }
+
+  if (op_def->name() == "While") {
+    const FunctionDef* cond_func =
+        library.Find(node.attr().at("cond").func().name());
+    const FunctionDef* body_func =
+        library.Find(node.attr().at("body").func().name());
+    if ((cond_func != nullptr && !IsFunctionStateful(library, *cond_func)) &&
+        (body_func != nullptr && !IsFunctionStateful(library, *body_func))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace
@@ -402,8 +466,18 @@ Status CapturedFunction::Instantiate(
   *instantiated_captured_function =
       absl::WrapUnique<InstantiatedCapturedFunction>(
           new InstantiatedCapturedFunction(lib, f_handle, std::move(ret_types),
-                                           *ctx->runner(), this));
+                                           *ctx->runner(),
+                                           ctx->cancellation_manager(), this));
   return Status::OK();
+}
+
+bool CapturedFunction::IsStateful() const {
+  for (const auto& name : lib_def()->ListFunctionNames()) {
+    if (IsFunctionStateful(*lib_def(), *(lib_def()->Find(name)))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 namespace {
@@ -523,11 +597,12 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 InstantiatedCapturedFunction::InstantiatedCapturedFunction(
     FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
     DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
-    CapturedFunction* captured_func)
+    CancellationManager* cancellation_manager, CapturedFunction* captured_func)
     : lib_(lib),
       f_handle_(f_handle),
       ret_types_(std::move(ret_types)),
       captured_runner_(std::move(runner)),
+      cancellation_manager_(cancellation_manager),
       captured_func_(captured_func) {}
 
 // NOTE: We don't release f_handle_ here and instead delegate the function
@@ -553,14 +628,12 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
   f_opts.step_container = &step_container;
   f_opts.runner = ctx->runner();
   f_opts.create_rendezvous = ShouldCreateRendezvous();
-  // TODO(mrry): Add cancellation manager support to IteratorContext
-  // so that we can cancel running map functions. The local
-  // cancellation manager here is created so that we can run kernels
-  // (such as queue kernels) that depend on the non-nullness of
-  // `OpKernelContext::cancellation_manager()`, but additional effort
-  // will be required to plumb it through the `IteratorContext`.
-  CancellationManager c_mgr;
-  f_opts.cancellation_manager = &c_mgr;
+  CancellationManager cancellation_manager;
+  f_opts.cancellation_manager = &cancellation_manager;
+  std::function<void()> deregister_fn;
+  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
+      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
                            ret_types_);
@@ -591,14 +664,12 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   f_opts.step_container = &step_container;
   f_opts.runner = ctx->runner();
   f_opts.create_rendezvous = ShouldCreateRendezvous();
-  // TODO(mrry): Add cancellation manager support to IteratorContext
-  // so that we can cancel running map functions. The local
-  // cancellation manager here is created so that we can run kernels
-  // (such as queue kernels) that depend on the non-nullness of
-  // `OpKernelContext::cancellation_manager()`, but additional effort
-  // will be required to plumb it through the `IteratorContext`.
-  CancellationManager c_mgr;
-  f_opts.cancellation_manager = &c_mgr;
+  CancellationManager cancellation_manager;
+  f_opts.cancellation_manager = &cancellation_manager;
+  std::function<void()> deregister_fn;
+  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
+      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
@@ -629,14 +700,12 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   f_opts.step_container = &step_container;
   f_opts.runner = &captured_runner_;
   f_opts.create_rendezvous = ShouldCreateRendezvous();
-  // TODO(mrry): Add cancellation manager support to IteratorContext
-  // so that we can cancel running map functions. The local
-  // cancellation manager here is created so that we can run kernels
-  // (such as queue kernels) that depend on the non-nullness of
-  // `OpKernelContext::cancellation_manager()`, but additional effort
-  // will be required to plumb it through the `IteratorContext`.
-  CancellationManager c_mgr;
-  f_opts.cancellation_manager = &c_mgr;
+  CancellationManager cancellation_manager;
+  f_opts.cancellation_manager = &cancellation_manager;
+  std::function<void()> deregister_fn;
+  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
+      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
@@ -682,59 +751,65 @@ void InstantiatedCapturedFunction::RunAsync(
   f_opts.step_container = step_container;
   f_opts.runner = ctx->runner();
   f_opts.create_rendezvous = ShouldCreateRendezvous();
-  // TODO(mrry): Add cancellation manager support to IteratorContext
-  // so that we can cancel running map functions. The local
-  // cancellation manager here is created so that we can run kernels
-  // (such as queue kernels) that depend on the non-nullness of
-  // `OpKernelContext::cancellation_manager()`, but additional effort
-  // will be required to plumb it through the `IteratorContext`.
-  CancellationManager* c_mgr = new CancellationManager();
-  f_opts.cancellation_manager = c_mgr;
+  auto cancellation_manager = absl::make_unique<CancellationManager>();
+  f_opts.cancellation_manager = cancellation_manager.get();
+  std::function<void()> deregister_fn;
+  Status s = ConnectCancellationManagers(
+      ctx->cancellation_manager(), cancellation_manager.get(), &deregister_fn);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
+
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (ctx->model() || ctx->stats_aggregator()) {
     stats_collector = absl::make_unique<SimpleStepStatsCollector>();
   }
   f_opts.stats_collector = stats_collector.get();
 
+  // Transfer ownership of the cancellation manager to `callback`.
+  CancellationManager* raw_cancellation_manager =
+      cancellation_manager.release();
   auto callback = std::bind(
-      [this, rets, step_container, c_mgr, frame](
+      [this, rets, step_container, raw_cancellation_manager, frame](
           const FunctionLibraryRuntime::DoneCallback& done,
-          const std::shared_ptr<model::Model>& model,
-          const std::shared_ptr<StatsAggregator>& stats_aggregator,
+          IteratorContext* ctx, const std::function<void()>& deregister_fn,
           const string& prefix,
           const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
           // Begin unbound arguments.
           Status s) {
         delete step_container;
-        delete c_mgr;
+        deregister_fn();
+        delete raw_cancellation_manager;
         if (s.ok()) {
           s = frame->ConsumeRetvals(rets);
         }
         delete frame;
-        // TODO(b/129085499) Utilize the `node_name` which would be unique than
-        // the prefix for the function execution time statistics.
-        // prefix_with_func_name would then be node_name + func_name.
-        if (stats_aggregator) {
-          string prefix_end =
-              str_util::Split(prefix, "::", str_util::SkipEmpty()).back();
-          string prefix_with_func_name =
-              strings::StrCat(prefix_end, stats_utils::kDelimiter,
-                              captured_func_->func().name());
-          stats_aggregator->AddToHistogram(
-              stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
-              {static_cast<float>(stats_collector->processing_time())},
-              model->NumElements(prefix));
-        }
-        if (model) {
-          model->AddProcessingTime(prefix, stats_collector->processing_time());
-          model->RecordStart(prefix, false /* stop_output */);
+        if (ctx->model()) {
+          // TODO(b/129085499) Utilize the `node_name` which would be unique
+          // than the prefix for the function execution time statistics.
+          // prefix_with_func_name would then be node_name + func_name.
+          if (ctx->stats_aggregator()) {
+            string prefix_end =
+                str_util::Split(prefix, "::", str_util::SkipEmpty()).back();
+            string prefix_with_func_name =
+                strings::StrCat(prefix_end, stats_utils::kDelimiter,
+                                captured_func_->func().name());
+            ctx->stats_aggregator()->AddToHistogram(
+                stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
+                {static_cast<float>(stats_collector->processing_time())},
+                ctx->model()->NumElements(prefix));
+          }
+          ctx->model()->AddProcessingTime(prefix,
+                                          stats_collector->processing_time());
+          ctx->model()->RecordStart(prefix, false /* stop_output */);
         }
         done(s);
-        if (model) {
-          model->RecordStop(prefix, false /* start_output */);
+        if (ctx->model()) {
+          ctx->model()->RecordStop(prefix, false /* start_output */);
         }
       },
-      std::move(done), ctx->model(), ctx->stats_aggregator(), prefix,
+      std::move(done), ctx, std::move(deregister_fn), prefix,
       std::move(stats_collector), std::placeholders::_1);
 
   lib_->Run(f_opts, f_handle_, frame, std::move(callback));

@@ -111,11 +111,14 @@ class LoadTest(test.TestCase):
         8.,
         self.evaluate(tape.gradient(output, imported.variables[0])))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_ref_variable_import(self):
     saved = self._v1_single_metagraph_saved_model(use_resource=False)
     imported = load.load(saved)
     fn = imported.signatures["serving_default"]
-    self.assertEqual(6., fn(start=constant_op.constant(2.))["output"].numpy())
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertEqual(
+        6., self.evaluate(fn(start=constant_op.constant(2.))["output"]))
 
   def _v1_output_shape_saved_model(self):
     export_graph = ops.Graph()
@@ -194,7 +197,7 @@ class LoadTest(test.TestCase):
                      self.evaluate(second_imported.signatures["second_key"](
                          second_start=constant_op.constant(2.))))
 
-  def _v1_asset_saved_model(self):
+  def _v1_asset_saved_model(self, clear_shared_name):
     export_graph = ops.Graph()
     vocab_path = os.path.join(self.get_temp_dir(), "vocab.txt")
     with open(vocab_path, "w") as f:
@@ -211,6 +214,9 @@ class LoadTest(test.TestCase):
       start = array_ops.placeholder(
           shape=None, dtype=dtypes.string, name="in")
       output = table.lookup(start, name="out")
+      if clear_shared_name:
+        export_graph.get_operation_by_name("hash_table")._clear_attr(
+            "shared_name")
       with session_lib.Session() as session:
         session.run([table.initializer])
         path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
@@ -225,7 +231,7 @@ class LoadTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_asset_loading(self):
-    first_path = self._v1_asset_saved_model()
+    first_path = self._v1_asset_saved_model(clear_shared_name=False)
     imported = load.load(first_path)
     self.evaluate(lookup_ops.tables_initializer())
     fn = imported.signatures["serving_default"]
@@ -250,6 +256,15 @@ class LoadTest(test.TestCase):
     third_import = load.load(third_path)
     self.evaluate(lookup_ops.tables_initializer())
     fn = third_import.signatures["serving_default"]
+    self.assertAllClose({"output": [2, 0]},
+                        fn(start=constant_op.constant(["gamma", "alpha"])))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_node_name_sharing(self):
+    fourth_path = self._v1_asset_saved_model(clear_shared_name=True)
+    fourth_import = load.load(fourth_path)
+    self.evaluate(lookup_ops.tables_initializer())
+    fn = fourth_import.signatures["serving_default"]
     self.assertAllClose({"output": [2, 0]},
                         fn(start=constant_op.constant(["gamma", "alpha"])))
 

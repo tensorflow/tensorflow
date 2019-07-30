@@ -49,6 +49,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -1183,7 +1184,7 @@ class MultiWorkerMirroredStrategyTestWithChief(
       strategy = mirrored_strategy.MirroredStrategy()
       self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
                             cross_device_ops_lib.NcclAllReduce)
-    self.skipTest('b/130551176, run the following once fixed.')
+    self.skipTest("b/130551176, run the following once fixed.")
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
 
   def testInitializeFromTFConfig(self):
@@ -1201,6 +1202,24 @@ class MultiWorkerMirroredStrategyTestWithChief(
         cross_device_ops=self._make_cross_device_ops())
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_summary_for_replica_zero_only(strategy)
+
+
+class MirroredVariableStopGradientTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_one_gpu,
+          ],
+          mode=["graph"]))
+  def testMirroredVariableAsStopGradient(self, distribution):
+    with distribution.scope():
+      inp = constant_op.constant(1.0)
+      x = variables.Variable(1.0)
+      y = inp*x
+      grads = gradients.gradients(x, y, stop_gradients=x)
+      self.assertIsNone(grads[0])
 
 
 def _replica_id():

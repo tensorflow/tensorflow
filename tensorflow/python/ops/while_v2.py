@@ -107,8 +107,7 @@ def while_loop(cond,
     # Add loop counter needed for computing gradients.
     loop_vars = [loop_counter, maximum_iterations_loop_var] + loop_vars
 
-    shape_invariants = (
-        [tensor_shape.scalar(), tensor_shape.scalar()] + shape_invariants)
+    shape_invariants = [tensor_shape.TensorShape([])] * 2 + shape_invariants
     signature = (
         [tensor_spec.TensorSpec.from_tensor(loop_counter),
          tensor_spec.TensorSpec.from_tensor(maximum_iterations_loop_var)] +
@@ -204,7 +203,7 @@ def while_loop(cond,
       assert (cond_graph.external_captures ==
               body_graph.external_captures[:num_cond_captures])
       for body_capture in body_graph.external_captures[num_cond_captures:]:
-        assert body_capture not in cond_graph.captures
+        assert body_capture not in cond_graph.external_captures
         cond_graph.capture(body_capture)
 
     # Make sure that the shapes of the loop outputs are compatible with the
@@ -498,7 +497,7 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
   #    `popped_tensor_lists` by `_WhileBodyGradFuncGraph`.
   # 2. Resources, which are output as is.
   # 3. Forward graph loop invariants, which are output as is.
-  for external_capture, internal_capture in grad_func_graph.captures.items():
+  for external_capture, internal_capture in grad_func_graph.captures:
     if internal_capture in grad_func_graph.popped_tensor_lists:
       new_output = grad_func_graph.popped_tensor_lists[internal_capture]
     elif (internal_capture.dtype == dtypes.resource or _is_loop_invariant(

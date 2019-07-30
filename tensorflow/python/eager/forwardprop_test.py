@@ -20,6 +20,7 @@ from __future__ import print_function
 import functools
 import weakref
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
@@ -36,6 +37,13 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
+
+
+_X11_35_DERIVATIVES = [
+    1.1 ** 3.5,
+    3.5 * 1.1 ** 2.5,
+    3.5 * 2.5 * 1.1 ** 1.5,
+    3.5 * 2.5 * 1.5 * 1.1 ** 0.5]
 
 
 # TODO(allenl): Move this somewhere useful once forward gradients are stable.
@@ -120,7 +128,7 @@ def _test_gradients(testcase,
   testcase.assertAllClose(sym_jac_back, sym_jac_fwd)
 
 
-class ForwardpropTest(test.TestCase):
+class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   def testForwardGradientFunction(self):
     add_outputs = (constant_op.constant(4.),)
@@ -250,8 +258,11 @@ class ForwardpropTest(test.TestCase):
 
     _test_gradients(self, f, [constant_op.constant([1.])], order=3)
 
+  @parameterized.named_parameters(
+      [("Order{}".format(order), order, expected)
+       for order, expected in enumerate(_X11_35_DERIVATIVES)])
   @test_util.assert_no_new_pyobjects_executing_eagerly
-  def testHigherOrderPureForward(self):
+  def testHigherOrderPureForward(self, order, expected):
 
     def _forwardgrad(f):
       def _compute_forwardgrad(primal):
@@ -267,13 +278,9 @@ class ForwardpropTest(test.TestCase):
 
     f = _forward
     primal = constant_op.constant(1.1)
-    for expected in [1.1 ** 3.5,
-                     3.5 * 1.1 ** 2.5,
-                     3.5 * 2.5 * 1.1 ** 1.5,
-                     3.5 * 2.5 * 1.5 * 1.1 ** 0.5,
-                     3.5 * 2.5 * 1.5 * 0.5 * 1.1 ** -0.5]:
-      self.assertAllClose(expected, f(primal))
+    for _ in range(order):
       f = _forwardgrad(f)
+    self.assertAllClose(expected, f(primal))
 
   def testFunctionGradPureForward(self):
 
@@ -293,6 +300,30 @@ class ForwardpropTest(test.TestCase):
     self.assertAllClose(3.5 * 1.1 ** 2.5, inner_jvp)
     self.assertAllClose(3.5 * 2.5 * 1.1 ** 1.5, outer_jvp)
     self.assertIsNone(acc.jvp(outer_acc.jvp(primal_out)))
+
+  def testFunctionGradInFunctionPureForward(self):
+
+    @def_function.function
+    def take_gradients():
+      @def_function.function
+      def f(x):
+        return x ** 3.5
+
+      primal = constant_op.constant(1.1)
+      with forwardprop.ForwardGradientAccumulator() as outer_acc:
+        outer_acc.watch(primal, constant_op.constant(1.))
+        with forwardprop.ForwardGradientAccumulator() as acc:
+          acc.watch(primal, constant_op.constant(1.))
+          primal_out = f(primal)
+      inner_jvp = acc.jvp(primal_out)
+      outer_jvp = outer_acc.jvp(inner_jvp)
+      self.assertIsNone(acc.jvp(outer_acc.jvp(primal_out)))
+      return primal_out, inner_jvp, outer_jvp
+
+    primal_out, inner_jvp, outer_jvp = take_gradients()
+    self.assertAllClose(1.1 ** 3.5, primal_out)
+    self.assertAllClose(3.5 * 1.1 ** 2.5, inner_jvp)
+    self.assertAllClose(3.5 * 2.5 * 1.1 ** 1.5, outer_jvp)
 
   def testFunctionGrad(self):
 

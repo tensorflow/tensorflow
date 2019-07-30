@@ -54,6 +54,15 @@ Shape MergeDimensions(absl::Span<const size_t> segs, const Shape& shape) {
                                                   dimensions);
 }
 
+std::array<int64, 3> ElementWiseCeilOfRatio(std::array<int64, 3> dividends,
+                                            std::array<int64, 3> divisors) {
+  std::array<int64, 3> out;
+  for (int i = 0; i < 3; i++) {
+    out[i] = CeilOfRatio<int64>(dividends.at(i), divisors.at(i));
+  }
+  return out;
+}
+
 }  // namespace
 
 absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
@@ -99,26 +108,20 @@ KernelMappingScheme::KernelMappingScheme(
     absl::Span<const int64> req_block_sizes, int64 num_threads_y,
     int64 num_threads_x, llvm::IRBuilder<>* b)
     : b_(b),
-      dims_in_elems_(dims_in_elems.begin(), dims_in_elems.end()),
+      dims_in_elems_{dims_in_elems.at(0), dims_in_elems.at(1),
+                     dims_in_elems.at(2)},
       tile_sizes_{1, tile_size_y, tile_size_x},
+      dims_in_tiles_(ElementWiseCeilOfRatio(dims_in_elems_, tile_sizes_)),
+      block_sizes_{std::min(req_block_sizes.at(0), dims_in_tiles_.at(0)),
+                   std::min(req_block_sizes.at(1), dims_in_tiles_.at(1)),
+                   std::min(req_block_sizes.at(2), dims_in_tiles_.at(2))},
+      dims_in_blocks_(ElementWiseCeilOfRatio(dims_in_tiles_, block_sizes_)),
       num_threads_x_(num_threads_x),
       num_threads_y_(num_threads_y),
       dilated_x_(true) {
-  DCHECK_EQ(dims_in_elems_.size(), 3);
   DCHECK_EQ(req_block_sizes.size(), 3);
-
   DCHECK_EQ(tile_size_y % num_threads_y_, 0);
   DCHECK_EQ(tile_size_x % num_threads_x_, 0);
-
-  dims_in_tiles_ = ElementWiseCeilOfRatio<int64>(dims_in_elems_, tile_sizes_);
-  block_sizes_.reserve(req_block_sizes.size());
-  absl::c_transform(req_block_sizes, dims_in_tiles_,
-                    std::back_inserter(block_sizes_),
-                    [](const int64 requested_size, const int64 max_size) {
-                      return std::min(requested_size, max_size);
-                    });
-  dims_in_blocks_ = ElementWiseCeilOfRatio<int64>(dims_in_tiles_, block_sizes_);
-
   VLOG(10) << "dims_in_elems_ = [" << absl::StrJoin(dims_in_elems_, ",") << "]";
   VLOG(10) << "dims_in_tiles_ = [" << absl::StrJoin(dims_in_tiles_, ",") << "]";
   VLOG(10) << "dims_in_blocks_ = [" << absl::StrJoin(dims_in_blocks_, ",")

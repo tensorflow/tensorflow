@@ -57,8 +57,6 @@ class InterleaveDatasetSerializationTest(
     self.run_core_tests(
         lambda: self._build_iterator_graph(
             input_values, cycle_length, block_length, num_parallel_calls),
-        lambda: self._build_iterator_graph(
-            input_values, cycle_length * 2, block_length, num_parallel_calls),
         num_outputs)
     # pylint: enable=g-long-lambda
 
@@ -76,7 +74,7 @@ class InterleaveDatasetSerializationTest(
       return dataset_ops.Dataset.range(10).map(_map_fn).interleave(
           _interleave_fn, cycle_length=1)
 
-    self.run_core_tests(_build_dataset, None, 20)
+    self.run_core_tests(_build_dataset, 20)
 
 
 if __name__ == "__main__":

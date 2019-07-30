@@ -432,6 +432,9 @@ void QuantizationDriver::QuantizeValue(Value *value, QuantParams params,
                                        Location loc) {
   Type expressed_type = value->getType();
   Type new_type = params.castFromExpressedType(expressed_type);
+  // This value isn't an expressed type (float), skip.
+  if (!new_type) return;
+
   TypeAttr type_attr = builder_.getTypeAttr(new_type);
   auto quantize =
       builder_.create<TFL::QuantizeOp>(loc, new_type, value, type_attr);
@@ -482,10 +485,15 @@ void QuantizationDriver::RequantizeValue(Value *value, RequantizeState *state,
   } else {
     Type expressed_type =
         quant::QuantizedType::castToExpressedType(value->getType());
+    if (!expressed_type) return;
+
     // The value needs to be requantized. A Quantize op will be created to use
     // it as the operand and replace its uses.
     new_type = state->params.castFromExpressedType(expressed_type);
   }
+  // This value isn't an expressed type (float), skip.
+  if (!new_type) return;
+
   TypeAttr type_attr = builder_.getTypeAttr(new_type);
   auto requantize_op =
       builder_.create<TFL::QuantizeOp>(loc, new_type, value, type_attr);
@@ -648,11 +656,13 @@ bool QuantizationDriver::PropagateParams() {
       for (int res = 0, e = op->getNumResults(); res != e; ++res)
         changed |= SetResultParams(op, res, params);
     }
+
     // TODO(fengliuai): make the bit width configurable.
     auto key = std::make_pair(8, is_signed_);
     auto &restricted_outputs = spec->restricted_output_params[key];
-    for (int i = 0, e = restricted_outputs.size(); i != e; ++i)
+    for (int i = 0, e = restricted_outputs.size(); i != e; ++i) {
       changed |= SetResultParams(op, i, restricted_outputs[i]);
+    }
 
     for (auto &it : spec->biases_params) {
       auto params =

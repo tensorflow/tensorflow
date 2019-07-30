@@ -29,6 +29,8 @@ import functools
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework.ops import composite_tensor
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_utils
@@ -70,15 +72,21 @@ def _make_execution_function(model, mode):
         strategy, outputs, with_loss_tensor=(mode != ModeKeys.PREDICT))
     return all_outputs
 
-  if model.run_eagerly:
-    execution_function = distributed_function
-  else:
-    distributed_function = def_function.function(distributed_function)
-    def execution_function(input_fn):
-      # `numpy` translates Tensors to values in Eager mode.
-      return [out.numpy() for out in distributed_function(input_fn)]
+  if not model.run_eagerly:
+    distributed_function = def_function.function(
+        distributed_function, autograph=False)
+
+  def execution_function(input_fn):
+    # `numpy` translates Tensors to values in Eager mode.
+    return [_non_none_constant_value(out)
+            for out in distributed_function(input_fn)]
 
   return execution_function
+
+
+def _non_none_constant_value(v):
+  constant_value = tensor_util.constant_value(v)
+  return constant_value if constant_value is not None else v
 
 
 def _prepare_feed_values(model, inputs, mode):
@@ -119,7 +127,8 @@ def _get_input_from_iterator(iterator):
   """Get elements from the iterator and verify the input shape and type."""
   next_element = next(iterator)
 
-  if tensor_util.is_tensor(next_element) or isinstance(next_element, dict):
+  if (tensor_util.is_tensor(next_element) or
+      isinstance(next_element, (dict, composite_tensor.CompositeTensor))):
     next_element = [next_element]
   if len(next_element) == 1:
     x, = next_element
@@ -176,11 +185,11 @@ def train_on_batch(
             (in case the model has multiple inputs).
         - A dict mapping input names to the corresponding array/tensors,
             if the model has named inputs.
-        - A `tf.data` dataset or a dataset iterator.
+        - A `tf.data` dataset.
       y: Target data. Like the input data `x`, it could be either Numpy
         array(s) or TensorFlow tensor(s). It should be consistent with `x`
         (you cannot have Numpy inputs and tensor targets, or inversely). If
-        `x` is a dataset or a dataset iterator, `y` should not be specified
+        `x` is a dataset `y` should not be specified
         (since targets will be obtained from the iterator).
       sample_weight: Optional array of the same length as x, containing
         weights to apply to the model's loss for each sample. In the case of
@@ -188,7 +197,7 @@ def train_on_batch(
         sequence_length), to apply a different weight to every timestep of
         every sample. In this case you should make sure to specify
         sample_weight_mode="temporal" in compile(). This argument is not
-        supported when `x` is a dataset or a dataset iterator.
+        supported when `x` is a dataset.
       class_weight: Optional dictionary mapping class indices (integers) to a
         weight (float) to apply to the model's loss for the samples from this
         class during training. This can be useful to tell the model to "pay
@@ -230,8 +239,6 @@ def train_on_batch(
   if reset_metrics:
     model.reset_metrics()
 
-  if len(outputs) == 1:
-    return outputs[0]
   return outputs
 
 
@@ -247,12 +254,12 @@ def test_on_batch(model, x, y=None, sample_weight=None, reset_metrics=True):
           (in case the model has multiple inputs).
         - A dict mapping input names to the corresponding array/tensors,
           if the model has named inputs.
-        - A `tf.data` dataset or a dataset iterator.
+        - A `tf.data` dataset.
       y: Target data. Like the input data `x`,
         it could be either Numpy array(s) or TensorFlow tensor(s).
         It should be consistent with `x` (you cannot have Numpy inputs and
-        tensor targets, or inversely). If `x` is a dataset or a
-        dataset iterator, `y` should not be specified
+        tensor targets, or inversely). If `x` is a dataset,
+        `y` should not be specified
         (since targets will be obtained from the iterator).
       sample_weight: Optional array of the same length as x, containing
           weights to apply to the model's loss for each sample.
@@ -261,7 +268,7 @@ def test_on_batch(model, x, y=None, sample_weight=None, reset_metrics=True):
           to apply a different weight to every timestep of every sample.
           In this case you should make sure to specify
           sample_weight_mode="temporal" in compile(). This argument is not
-          supported when `x` is a dataset or a dataset iterator.
+          supported when `x` is a dataset.
       reset_metrics: If `True`, the metrics returned will be only for this
         batch. If `False`, the metrics will be statefully accumulated across
         batches.
@@ -293,8 +300,6 @@ def test_on_batch(model, x, y=None, sample_weight=None, reset_metrics=True):
   if reset_metrics:
     model.reset_metrics()
 
-  if len(outputs) == 1:
-    return outputs[0]
   return outputs
 
 
@@ -308,7 +313,7 @@ def predict_on_batch(model, x):
           (in case the model has multiple inputs).
         - A TensorFlow tensor, or a list of tensors
           (in case the model has multiple inputs).
-        - A `tf.data` dataset or a dataset iterator.
+        - A `tf.data` dataset.
 
   Returns:
       Numpy array(s) of predictions.
@@ -331,4 +336,5 @@ def predict_on_batch(model, x):
     if len(inputs) == 1:
       inputs = inputs[0]
 
-  return model(inputs)  # pylint: disable=not-callable
+  with backend.eager_learning_phase_scope(0):
+    return model(inputs)  # pylint: disable=not-callable

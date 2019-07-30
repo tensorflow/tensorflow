@@ -211,8 +211,8 @@ def validate_callbacks(input_callbacks, optimizer):
   Raises:
     ValueError: If `LearningRateScheduler` or `ReduceLROnPlateau` is one of the
         callbacks passed.
-    ValueError: If `histogram_freq` or `write_grads` is one of the parameters
-        passed as part of the TensorBoard callback.
+    ValueError: If `write_grads` is one of the parameters passed as part of the
+        TensorBoard callback.
   """
   if input_callbacks:
     for callback in input_callbacks:
@@ -227,20 +227,13 @@ def validate_callbacks(input_callbacks, optimizer):
       # features of the callback that involve accessing model attributes and
       # running ops.
       if isinstance(callback, callbacks.TensorBoard):
-        if getattr(callback, 'histogram_freq', False):
-          logging.warning(
-              UserWarning(
-                  '`histogram_freq` in the TensorBoard callback is not '
-                  'supported when using DistributionStrategy. Setting '
-                  '`histogram_freq` to `0`.'))
-          callback.histogram_freq = 0
         if getattr(callback, 'write_grads', False):
           logging.warning(
               UserWarning(
                   '`write_grads` in the TensorBoard callback is not supported '
                   'when using DistributionStrategy. Setting `write_grads` '
                   'to `False`.'))
-          callback.histogram_freq = False
+          callback.write_grads = False
 
 
 def validate_distributed_dataset_inputs(distribution_strategy, x, y,
@@ -311,7 +304,7 @@ def validate_per_replica_inputs(distribution_strategy, x):
 
   """
   # Convert the inputs and targets into a list of PerReplica objects.
-  per_replica_list = nest.flatten(x)
+  per_replica_list = nest.flatten(x, expand_composites=True)
   x_values_list = []
   for x in per_replica_list:
     if not tensor_util.is_tensor(x):
@@ -638,9 +631,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
 def is_distributing_by_cloning(model):
   """Decide whether this model is going to be distributed via cloning.
 
-  We are going to distribute the model by cloning if the user has signaled
-  that intent by setting `cloning=True` in `Model.compile()` unless we are in
-  graph mode.
+  We are going to distribute the model by cloning in graph mode.
 
   Args:
     model: Keras model to distribute.
@@ -650,14 +641,11 @@ def is_distributing_by_cloning(model):
     otherwise.
   """
   if (is_tpu_strategy(model._distribution_strategy) and
-      context.executing_eagerly):
-    if model._cloning:
-      logging.warning(
-          'Model cloning is not supported in TPU Strategy in Eager mode.'
-          'cloning argument will be ignored.')
+      context.executing_eagerly):  # b/137580852
     return False
-  return (model._cloning or model._compile_distribution or
-          not ops.executing_eagerly_outside_functions())
+  elif ops.executing_eagerly_outside_functions():
+    return bool(model._compile_distribution)
+  return True
 
 
 def _custom_compile_for_predict(model):
@@ -1021,12 +1009,12 @@ def _copy_weights_to_original_model(model, mode):
     model.set_weights(updated_weights)
 
 
-def _per_replica_aggregate_batch(batch_outs, model, mode):
+def _per_replica_aggregate_batch(strategy, batch_outs, model, mode):
   """Aggregates the per-replica batch-level outputs from a distributed step."""
-  if model._distribution_strategy is not None and mode == ModeKeys.PREDICT:
+  if strategy is not None and mode == ModeKeys.PREDICT:
     total_batch_outs = []
     for i in range(len(model.outputs)):
-      num_replicas = model._distribution_strategy.num_replicas_in_sync
+      num_replicas = strategy.num_replicas_in_sync
       nested_outs = batch_outs[i * num_replicas:i * num_replicas + num_replicas]
       total_batch_outs.append(np.concatenate(nest.flatten(nested_outs)))
     return total_batch_outs

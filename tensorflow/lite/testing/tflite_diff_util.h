@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/string.h"
+#include "tensorflow/lite/testing/tflite_driver.h"
 
 namespace tflite {
 namespace testing {
@@ -44,9 +45,8 @@ struct DiffOptions {
   // each of the passes. The first pass has a single inference, while the
   // second pass does multiple inferences back to back.
   int num_runs_per_pass;
-  // Path to the delegate library to be loaded in order to execute ops. Must be
-  // `{"", FLEX}`.
-  string delegate;
+  // The type of delegate to apply during inference.
+  TfLiteDriver::DelegateType delegate;
 };
 
 // Run a single TensorFLow Lite diff test with a given options.
