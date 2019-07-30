@@ -27,6 +27,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/StringExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/bit.h"
 
@@ -79,6 +80,9 @@ private:
 
   /// Process SPIR-V OpName with `operands`
   LogicalResult processName(ArrayRef<uint32_t> operands);
+
+  /// Method to process an OpDecorate instruction.
+  LogicalResult processDecoration(ArrayRef<uint32_t> words);
 
   /// Processes the SPIR-V function at the current `offset` into `binary`.
   /// The operands to the OpFunction instruction is passed in as ``operands`.
@@ -196,6 +200,9 @@ private:
   // Result <id> to name mapping.
   DenseMap<uint32_t, StringRef> nameMap;
 
+  // Result <id> to decorations mapping.
+  DenseMap<uint32_t, NamedAttributeList> decorations;
+
   // List of instructions that are processed in a defered fashion (after an
   // initial processing of the entire binary). Some operations like
   // OpEntryPoint, and OpExecutionMode use forward references to function
@@ -282,6 +289,37 @@ LogicalResult Deserializer::processMemoryModel(ArrayRef<uint32_t> operands) {
       "memory_model",
       opBuilder.getI32IntegerAttr(llvm::bit_cast<int32_t>(operands.back())));
 
+  return success();
+}
+
+LogicalResult Deserializer::processDecoration(ArrayRef<uint32_t> words) {
+  // TODO : This function should also be auto-generated. For now, since only a
+  // few decorations are processed/handled in a meaningful manner, going with a
+  // manual implementation.
+  if (words.size() < 2) {
+    return emitError(
+        unknownLoc, "OpDecorate must have at least result <id> and Decoration");
+  }
+  auto decorationName =
+      stringifyDecoration(static_cast<spirv::Decoration>(words[1]));
+  if (decorationName.empty()) {
+    return emitError(unknownLoc, "invalid Decoration code : ") << words[1];
+  }
+  auto attrName = convertToSnakeCase(decorationName);
+  switch (static_cast<spirv::Decoration>(words[1])) {
+  case spirv::Decoration::DescriptorSet:
+  case spirv::Decoration::Binding:
+    if (words.size() != 3) {
+      return emitError(unknownLoc, "OpDecorate with ")
+             << decorationName << " needs a single integer literal";
+    }
+    decorations[words[0]].set(
+        opBuilder.getIdentifier(attrName),
+        opBuilder.getI32IntegerAttr(static_cast<int32_t>(words[2])));
+    break;
+  default:
+    return emitError(unknownLoc, "unhandled Decoration : '") << decorationName;
+  }
   return success();
 }
 
@@ -830,6 +868,8 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
     return processConstantBool(false, operands);
   case spirv::Opcode::OpConstantNull:
     return processConstantNull(operands);
+  case spirv::Opcode::OpDecorate:
+    return processDecoration(operands);
   case spirv::Opcode::OpFunction:
     return processFunction(operands);
   default:
@@ -839,6 +879,7 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
 }
 
 namespace {
+
 template <>
 LogicalResult
 Deserializer::processOp<spirv::EntryPointOp>(ArrayRef<uint32_t> words) {

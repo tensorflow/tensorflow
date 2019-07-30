@@ -409,6 +409,7 @@ cc_library(
         "include/mlir/Support/MathExtras.h",
         "include/mlir/Support/STLExtras.h",
         "include/mlir/Support/StorageUniquer.h",
+        "include/mlir/Support/StringExtras.h",
     ],
     includes = ["include"],
     deps = [

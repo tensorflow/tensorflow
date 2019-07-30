@@ -27,6 +27,7 @@
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/StringExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/raw_ostream.h"
@@ -126,6 +127,10 @@ private:
 
   /// Processes a SPIR-V function op.
   LogicalResult processFuncOp(FuncOp op);
+
+  /// Process attributes that translate to decorations on the result <id>
+  LogicalResult processDecoration(Location loc, uint32_t resultID,
+                                  NamedAttribute attr);
 
   //===--------------------------------------------------------------------===//
   // Types
@@ -317,6 +322,34 @@ LogicalResult Serializer::processConstantOp(spirv::ConstantOp op) {
     return success();
   }
   return failure();
+}
+
+LogicalResult Serializer::processDecoration(Location loc, uint32_t resultID,
+                                            NamedAttribute attr) {
+  auto attrName = attr.first.strref();
+  auto decorationName = mlir::convertToCamelCase(attrName, true);
+  auto decoration = spirv::symbolizeDecoration(decorationName);
+  if (!decoration) {
+    return emitError(
+               loc, "non-argument attributes expected to have snake-case-ified "
+                    "decoration name, unhandled attribute with name : ")
+           << attrName;
+  }
+  SmallVector<uint32_t, 1> args;
+  args.push_back(resultID);
+  args.push_back(static_cast<uint32_t>(decoration.getValue()));
+  switch (decoration.getValue()) {
+  case spirv::Decoration::DescriptorSet:
+  case spirv::Decoration::Binding:
+    if (auto intAttr = attr.second.dyn_cast<IntegerAttr>()) {
+      args.push_back(intAttr.getValue().getZExtValue());
+      break;
+    }
+    return emitError(loc, "expected integer attribute for ") << attrName;
+  default:
+    return emitError(loc, "unhandled decoration ") << decorationName;
+  }
+  return encodeInstructionInto(decorations, spirv::Opcode::OpDecorate, args);
 }
 
 LogicalResult Serializer::processFuncOp(FuncOp op) {
