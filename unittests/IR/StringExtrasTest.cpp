@@ -1,4 +1,4 @@
-//===- StringExtras.cpp - Tests for utility methods in StringExtras.h -----===//
+//===- StringExtrasTest.cpp - Tests for utility methods in StringExtras.h -===//
 //
 // Copyright 2019 The MLIR Authors.
 //
