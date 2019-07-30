@@ -12,6 +12,7 @@ package(
 
 package_group(
     name = "friends",
+    includes = ["//tensorflow:internal"],
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/contrib/tpu/...",

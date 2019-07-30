@@ -61,6 +61,77 @@ def eval_in_original_context(f, args, caller_level_delta):
   return f(*args)
 
 
+def super_in_original_context(f, args, caller_level_delta):
+  """Executes the super function with the correct implicit argument handling.
+
+  See https://docs.python.org/3/library/functions.html#super for the exact
+  details
+
+  Args:
+    f: super builtin function object.
+    args: Arguments that will be passed to super(...).  A valid call should have
+      0, 1, or 2 number of arguments
+    caller_level_delta: The number of nested frames to the original super(...)'s
+      context frame.
+
+  Returns:
+    The result of super(...) call.
+  """
+
+  # Python 2 doesn't support implicit argument super variants.
+  if six.PY2:
+    return overload_of(f)(*args)
+
+  if len(args) >= 1:
+    return overload_of(f)(*args)
+
+  ctx_frame = inspect.currentframe()
+  for _ in range(caller_level_delta + 1):
+    ctx_frame = ctx_frame.f_back
+
+  # When super(..) is called without arguments, it looks for __class__ cell
+  # variable and the first argument passed in the enclosing function according
+  # to the spec https://www.python.org/dev/peps/pep-3135/ .
+  #
+  # We couldn't verify if `inspect.currentframe().f_code.co_varnames[0]` is
+  # guaranteed to be the first argument from an official doc or PEP, however,
+  # it's fairly stable and well established:
+  # - An unofficial community doc mentions it.
+  #   https://python-reference.readthedocs.io/en/latest/docs/code/varnames.html
+  # - CPython has tests checking that order, which was merged in 2008, and
+  #   unchanged since then.
+  #   https://github.com/python/cpython/blame/2f224a077a83ac9de8a12bb7dcc516642b8176d8/Lib/lib2to3/tests/data/py2_test_grammar.py#L157
+  #   https://github.com/python/cpython/blame/2f224a077a83ac9de8a12bb7dcc516642b8176d8/Lib/lib2to3/tests/data/py3_test_grammar.py#L192
+  #
+  # TODO(kkimlabs): mdan@ had an idea to do it more correctly without relying
+  #                 on the co_varnames argument order assumption.
+  #                 1. Getting the caller function from the call stack.
+  #                 2. Getting its argspec.
+  #                 3. Get the name of the first argument from argspec.
+  #                 4. Retrieve its value from locals.
+  #
+  #                 Sample code snippet:
+  #
+  #                 def fn2():
+  #                   fr = inspect.currentframe()
+  #                   parent_fr = fr.f_back
+  #                   grandparent_fr = parent_fr.f_back
+  #                   f_name = parent_fr.f_code.co_name
+  #                   f = grandparent_fr.f_locals[f_name]
+  #
+  #                 def fn1():
+  #                   fn2()
+  #
+  #                 fn1()
+  #
+  #                 However, we also need to handle some edge cases like
+  #                 function in the closure or globals, etc,...
+
+  first_arg_name = ctx_frame.f_code.co_varnames[0]
+  first_arg = ctx_frame.f_locals[first_arg_name]
+  return f(ctx_frame.f_locals['__class__'], first_arg)
+
+
 def abs_(x):
   if tensor_util.is_tensor(x):
     return _tf_abs(x)

@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_RMA_LOCAL_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_RMA_LOCAL_H_
+
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 
 namespace tensorflow {
 
@@ -26,9 +28,10 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
  public:
   CollectiveRemoteAccessLocal(const DeviceMgr* dev_mgr,
                               DeviceResolverInterface* dev_resolver,
-                              int64 step_id)
+                              UnboundedWorkQueue* work_queue, int64 step_id)
       : dev_mgr_(dev_mgr),
         dev_resolver_(dev_resolver),
+        work_queue_(work_queue),
         buf_rendezvous_(step_id, dev_mgr),
         step_id_(step_id) {}
 
@@ -51,6 +54,10 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
                   const Tensor* from_tensor,
                   const DeviceLocality& client_locality,
                   const StatusCallback& done) override;
+
+  void RunClosure(std::function<void()> closure) override {
+    work_queue_->Schedule(std::move(closure));
+  }
 
   void GetAllDeviceAttributesAsync(const std::vector<string>& devices,
                                    const std::vector<string>& tasks,
@@ -88,6 +95,7 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
  protected:
   const DeviceMgr* dev_mgr_;               // not owned
   DeviceResolverInterface* dev_resolver_;  // not owned
+  UnboundedWorkQueue* work_queue_;         // not owned
   BufRendezvous buf_rendezvous_;
   int64 step_id_;
 };

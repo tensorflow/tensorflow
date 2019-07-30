@@ -77,21 +77,6 @@ void TensorFlowExecutorDialect::printType(Type type, raw_ostream &os) const {
 
 namespace {
 
-// Inserts `tf_executor.Terminator` at the end of the region's only block if it
-// does not have a terminator already. If the region is empty, insert a new
-// block first.
-template <typename Terminator>
-void EnsureExecutorTerminator(Region *region, Builder *builder, Location loc) {
-  if (region->empty()) region->push_back(new Block);
-
-  Block &block = region->back();
-  if (!block.empty() && block.back().isKnownTerminator()) return;
-
-  OperationState terminator_state(loc, Terminator::getOperationName());
-  Terminator::build(builder, &terminator_state, {});
-  block.push_back(Operation::create(terminator_state));
-}
-
 // Verifies that every control operands are at the end of the list.
 // Used by the constraint `ControlOperandsAfterAllData` in ODS.
 LogicalResult VerifyControlOperandsAfterAllData(Operation *op) {
@@ -123,6 +108,9 @@ LogicalResult Verify(GraphOp graph) {
   for (Operation &op : graph.GetBody()) {
     if (op.getDialect() != executorDialect)
       return op.emitOpError() << "unallowed inside a tf_executor.graph region";
+    if (isa<GraphOp>(op))
+      return op.emitOpError()
+             << "unallowed directly inside another tf_executor.graph";
   }
 
   Operation &fetch = graph.GetBody().back();
@@ -174,8 +162,7 @@ ParseResult ParseGraphOp(OpAsmParser *parser, OperationState *result) {
 
   // Ensure that the region is well formed: it contains at least a block with
   // a FetchOp terminator.
-  EnsureExecutorTerminator<FetchOp>(&body, &parser->getBuilder(),
-                                    result->location);
+  GraphOp::ensureTerminator(body, parser->getBuilder(), result->location);
 
   // Get the results type from the terminator type inside the graph.
   Operation &fetch = body.back().back();
@@ -281,8 +268,7 @@ ParseResult ParseIslandOp(OpAsmParser *parser, OperationState *result) {
   if (parser->parseOperandList(op_infos, OpAsmParser::Delimiter::OptionalParen))
     return failure();
   if (!op_infos.empty()) {
-    SmallVector<Type, 2> types;
-    types.push_back(control_type);
+    SmallVector<Type, 2> types(op_infos.size(), control_type);
     parser->resolveOperands(op_infos, types, loc, result->operands);
   }
 
@@ -301,8 +287,7 @@ ParseResult ParseIslandOp(OpAsmParser *parser, OperationState *result) {
 
   if (parser->parseRegion(body, llvm::None, llvm::None)) return failure();
 
-  EnsureExecutorTerminator<YieldOp>(&body, &parser->getBuilder(),
-                                    result->location);
+  IslandOp::ensureTerminator(body, parser->getBuilder(), result->location);
 
   // Get the results type for the island from the terminator operands.
   Operation &yield = body.back().back();

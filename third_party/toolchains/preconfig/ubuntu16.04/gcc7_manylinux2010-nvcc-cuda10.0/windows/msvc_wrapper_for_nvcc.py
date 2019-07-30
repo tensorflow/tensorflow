@@ -30,8 +30,8 @@ import sys
 import pipes
 
 # Template values set by cuda_autoconf.
-CPU_COMPILER = ('/usr/bin/gcc')
-GCC_HOST_COMPILER_PATH = ('/usr/bin/gcc')
+CPU_COMPILER = ('/dt7/usr/bin/gcc')
+GCC_HOST_COMPILER_PATH = ('/dt7/usr/bin/gcc')
 
 NVCC_PATH = '/usr/local/cuda-10.0/bin/nvcc'
 NVCC_VERSION = '10.0'

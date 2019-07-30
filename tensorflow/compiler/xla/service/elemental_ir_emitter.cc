@@ -786,22 +786,25 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
 // With the assumption that |a| >= |b|
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexAbs(
     PrimitiveType prim_type, llvm::Value* operand_value) {
-  auto real = EmitExtractReal(operand_value);
-  auto imag = EmitExtractImag(operand_value);
-  auto abs_real = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {real},
-                                               {real->getType()}, b_);
-  auto abs_imag = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {imag},
-                                               {imag->getType()}, b_);
-  auto max = EmitFloatMax(abs_real, abs_imag);
-  auto min = EmitFloatMin(abs_real, abs_imag);
+  llvm::Value* real = EmitExtractReal(operand_value);
+  llvm::Value* imag = EmitExtractImag(operand_value);
+  llvm::Value* abs_real = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::fabs, {real}, {real->getType()}, b_);
+  llvm::Value* abs_imag = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::fabs, {imag}, {imag->getType()}, b_);
+  llvm::Value* max = EmitFloatMax(abs_real, abs_imag);
+  llvm::Value* min = EmitFloatMin(abs_real, abs_imag);
 
-  auto div = FDiv(min, max);
-  auto div_sq = FMul(div, div);
-  auto one = llvm::ConstantFP::get(max->getType(), 1);
-  TF_ASSIGN_OR_RETURN(auto sqrt, EmitSqrt(prim_type, FAdd(one, div_sq)));
+  llvm::Value* div = FDiv(min, max);
+  llvm::Value* div_sq = FMul(div, div);
+  llvm::Value* one = llvm::ConstantFP::get(max->getType(), 1);
+  TF_ASSIGN_OR_RETURN(llvm::Value * sqrt,
+                      EmitSqrt(prim_type, FAdd(one, div_sq)));
 
-  auto zero = llvm::ConstantFP::get(max->getType(), 0);
-  return Select(FCmpOEQ(max, zero), zero, FMul(max, sqrt));
+  llvm::Value* result = FMul(max, sqrt);
+  // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), result is NaN.
+  // In such cases, we return min.
+  return Select(FCmpUNO(result, result), min, result);
 }
 
 // (a+bi)^(c+di) =

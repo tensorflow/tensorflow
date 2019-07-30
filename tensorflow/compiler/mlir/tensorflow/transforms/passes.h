@@ -22,19 +22,26 @@ namespace mlir {
 namespace TF {
 // Transforms functional control flow operations in the standard TensorFlow
 // dialect to MLIR Control Flow Graph (CFG) form.
-FunctionPassBase *CreateTFFunctionalControlFlowToCFG();
+FunctionPassBase* CreateTFFunctionalControlFlowToCFG();
 
 // Optimizes Tensorflow graph.
-FunctionPassBase *CreateTFOptimizePass();
+FunctionPassBase* CreateTFOptimizePass();
 
 }  // namespace TF
 
 namespace TFControlFlow {
 // Raises from the "TensorFlow Control Flow" dialect to the standard TensorFlow
 // dialect.
-FunctionPassBase *CreateRaiseTFControlFlowPass();
+FunctionPassBase* CreateRaiseTFControlFlowPass();
 
 }  // namespace TFControlFlow
+
+namespace TFExecutor {
+// Create a pass to merge IslandOps from TFExecutor dialect.
+FunctionPassBase* CreateTFExecutorIslandCoarseningPass();
+
+}  // namespace TFExecutor
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_

@@ -404,6 +404,10 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     return True
 
   @property
+  def experimental_between_graph(self):
+    return False
+
+  @property
   def should_checkpoint(self):
     return True
 

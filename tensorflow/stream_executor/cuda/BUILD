@@ -8,7 +8,6 @@ load(
     "tf_additional_cuda_driver_deps",
     "tf_additional_cuda_platform_deps",
     "tf_additional_cudnn_plugin_deps",
-    "tf_additional_cupti_stub_data",
 )
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load(
@@ -421,7 +420,7 @@ cc_library(
 cc_library(
     name = "cupti_stub",
     srcs = if_cuda_is_configured(["cupti_stub.cc"]),
-    data = if_cuda_is_configured(tf_additional_cupti_stub_data()),
+    data = if_cuda_is_configured(["@local_config_cuda//cuda:cupti_dsos"]),
     textual_hdrs = ["cupti_10_0.inc"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cupti_headers",

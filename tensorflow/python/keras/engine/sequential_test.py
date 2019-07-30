@@ -61,6 +61,11 @@ class TestSequential(keras_parameterized.TestCase):
     self.assertEqual(model.get_layer(name='dp').name, 'dp')
 
   @keras_parameterized.run_all_keras_modes
+  def test_single_layer_in_init(self):
+    model = keras.models.Sequential(keras.layers.Dense(1))
+    self.assertLen(model.layers, 1)
+
+  @keras_parameterized.run_all_keras_modes
   def test_sequential_pop(self):
     num_hidden = 5
     input_dim = 3
@@ -380,8 +385,6 @@ class TestSequential(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_string_input(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     seq = keras.Sequential([
         keras.layers.InputLayer(input_shape=(1,), dtype=dtypes.string),
         keras.layers.Lambda(lambda x: x[0])

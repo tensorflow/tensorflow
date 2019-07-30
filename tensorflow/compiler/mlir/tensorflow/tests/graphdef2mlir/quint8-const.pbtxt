@@ -27,6 +27,6 @@ versions {
   producer: 70
 }
 
-# CHECK: "_tf.Const"()
+# CHECK: tf.Const
 # CHECK-SAME: name = "Quantized_Constant"
 # CHECK-SAME: value = opaque<"tf", "{{0[xX][0-9a-fA-F]*}}"> : tensor<!tf.quint8>

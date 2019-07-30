@@ -12,6 +12,7 @@ visibility = [
     "//tensorflow_models:__subpackages__",
     "//tensorflow_model_optimization:__subpackages__",
     "//third_party/py/cleverhans:__subpackages__",
+    "//third_party/py/neural_structured_learning:__subpackages__",
     "//third_party/py/tensorflow_examples:__subpackages__",
     "//third_party/py/tf_slim:__subpackages__",
     # TODO(aselle): to pass open source test.
@@ -4800,6 +4801,7 @@ tf_py_wrap_cc(
         "util/py_checkpoint_reader.i",
         "util/stat_summarizer.i",
         "util/tfprof.i",
+        "util/traceme.i",
         "util/transform_graph.i",
         "util/util.i",
         "//tensorflow/lite/toco/python:toco.i",
@@ -4848,6 +4850,7 @@ tf_py_wrap_cc(
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/profiler/internal:print_model_analysis",
+        "//tensorflow/core/profiler/internal:python_traceme",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
@@ -6127,6 +6130,22 @@ cuda_py_test(
     ],
     main = "ops/batch_norm_benchmark.py",
     xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "collective_ops_benchmark",
+    srcs = ["ops/collective_ops_benchmark.py"],
+    additional_deps = [
+        ":array_ops",
+        ":client",
+        ":client_testlib",
+        ":collective_ops",
+        ":framework_for_generated_wrappers",
+        ":platform",
+        ":variables",
+        "//tensorflow/core:protos_all_py",
+    ],
+    main = "ops/collective_ops_benchmark.py",
 )
 
 cuda_py_test(

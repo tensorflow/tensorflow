@@ -1842,15 +1842,11 @@ INSTANTIATE_TEST_CASE_P(
                       Convolve1DTestParam{130, 1, 1, 1, 3},
                       Convolve1DTestParam{64, 1, 1, 1, 1},
                       Convolve1DTestParam{128, 1, 1, 1, 1},
-// TODO(b/72566306): The following five tests failed on CPU with unreasonable
-// relative errors.  Last ran on 2018-02-22.
-#if XLA_TEST_BACKEND_GPU
                       Convolve1DTestParam{139, 1, 1, 128, 1},
                       Convolve1DTestParam{640, 3, 3, 128, 1},
                       Convolve1DTestParam{900, 1, 1, 10, 1},
                       Convolve1DTestParam{1, 10, 10, 1, 10},
                       Convolve1DTestParam{1, 10, 130, 1, 1},
-#endif
                       Convolve1DTestParam{1, 10, 130, 1, 2},
                       Convolve1DTestParam{1, 64, 64, 1, 10},
                       Convolve1DTestParam{1, 65, 65, 1, 1},

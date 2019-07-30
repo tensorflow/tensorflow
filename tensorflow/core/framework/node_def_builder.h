@@ -93,6 +93,7 @@ class NodeDefBuilder {
   // Sets the attr, if not already set.  If already set with a different
   // value, an error will be returned from Finalize().
   NodeDefBuilder& Attr(StringPiece name, const AttrValue& value);
+  NodeDefBuilder& Attr(StringPiece name, AttrValue&& value);
   NodeDefBuilder& Attr(StringPiece name, StringPiece value);
   NodeDefBuilder& Attr(StringPiece name, const char* value);
   NodeDefBuilder& Attr(StringPiece name, int32 value);
@@ -171,6 +172,11 @@ class NodeDefBuilder {
   DataType MaybeAddRef(const OpDef::ArgDef* input_arg, DataType dt) {
     return input_arg->is_ref() ? MakeRefType(dt) : dt;
   }
+
+  // Returns true if an attr named `name` is already present in the node_def_.
+  // If such an attr is already present and `value` is not equal to the present
+  // value, an error is generated.
+  bool AttrValueAlreadyPresent(StringPiece name, const AttrValue& value);
 
   const OpDef* op_def_;
   NodeDef node_def_;

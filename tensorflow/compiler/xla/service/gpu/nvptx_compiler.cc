@@ -92,6 +92,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
+#include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
@@ -334,12 +335,102 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
   return std::make_pair(cc_major, cc_minor);
 }
 
+<<<<<<< HEAD
 StatusOr<std::pair<std::string, std::vector<uint8>>>
 NVPTXCompiler::CompileTargetBinary(const HloModule* module,
                                    llvm::Module* llvm_module,
                                    GpuVersion gpu_version,
                                    se::StreamExecutor* stream_exec) {
   std::pair<int, int> compute_capability = absl::get<std::pair<int, int>>(gpu_version);
+=======
+StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
+    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+    se::DeviceMemoryAllocator* device_allocator) {
+  XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend");
+  auto slow_compile_alarm = SlowCompilationAlarm();
+
+  TF_RET_CHECK(stream_exec != nullptr);
+
+  llvm::LLVMContext llvm_context;
+  std::string buffer;
+  llvm::raw_string_ostream error(buffer);
+  llvm::DiagnosticPrinterRawOStream printer(error);
+  auto DiagnosticHandler = [](const llvm::DiagnosticInfo& diag_info,
+                              void* Context) {
+    auto printer = static_cast<llvm::DiagnosticPrinterRawOStream*>(Context);
+    diag_info.print(*printer);
+  };
+  llvm_context.setDiagnosticHandlerCallBack(DiagnosticHandler, &printer);
+
+  llvm::Module llvm_module(module->name().c_str(), llvm_context);
+  // Set the target triple and the data layout.
+  llvm_module.setTargetTriple(nvptx::kTargetTriple);
+  llvm_module.setDataLayout(nvptx::kDataLayout);
+
+  // Determine the HLO schedule, which is an ordering of HLO instructions.  This
+  // is used by buffer assignment to enable buffer reuse, and the same ordering
+  // must also be used to determine the thunk launch schedule.
+  std::unique_ptr<StreamAssignment> stream_assignment = AssignStreams(*module);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<GpuHloSchedule> hlo_schedule,
+      GpuHloSchedule::Build(*module, *stream_assignment, pointer_size_));
+
+  // Run buffer analysis on the HLO graph. This analysis figures out which
+  // temporary buffers are required to run the computation.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<BufferAssignment> buffer_assignment,
+      BufferAssigner::Run(
+          module.get(), hlo_schedule->ConsumeHloOrdering(),
+          BufferSizeBytesFunction(),
+          /*color_alignment=*/
+          [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
+          /*allocate_buffers_for_constants=*/true,
+          /*colorer=*/BufferAssigner::DefaultColorer(),
+          /*must_not_live_out=*/{}, &CanShareBufferHint));
+  DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
+
+  IrEmitterContext ir_emitter_context(
+      module.get(), buffer_assignment.get(), stream_exec->platform(),
+      &stream_exec->GetDeviceDescription(), &llvm_module);
+
+  HloComputation* entry_computation = module->entry_computation();
+  IrEmitterUnnested ir_emitter(module->config(), entry_computation,
+                               &ir_emitter_context);
+
+  TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
+
+  {
+    XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - IR emission");
+    TF_RETURN_IF_ERROR(entry_computation->Accept(&ir_emitter));
+  }
+
+  if (user_pre_optimization_hook_) {
+    user_pre_optimization_hook_(llvm_module);
+  }
+  string ir_module_string_before_opt;
+  const bool embed_ir_in_executable =
+      module->config().debug_options().xla_embed_ir_in_executable();
+  if (embed_ir_in_executable) {
+    ir_module_string_before_opt = llvm_ir::DumpModuleToString(llvm_module);
+  }
+
+  llvm_ir::DumpIrIfEnabled(*module, llvm_module, /*optimized=*/false);
+
+  {
+    XLA_SCOPED_LOGGING_TIMER(
+        "NVPTXCompiler::RunBackend - Running LLVM verifier");
+
+    std::string err;
+    llvm::raw_string_ostream err_stream(err);
+
+    // verifyModule() returns true if the module is broken.
+    TF_RET_CHECK(!llvm::verifyModule(llvm_module, &err_stream))
+        << "Invalid LLVM IR before optimizations:\n"
+        << err_stream.str()
+        << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
+           "Rerun with --xla_dump_to to get the IR. ";
+  }
+>>>>>>> upstream/master
 
   string libdevice_dir;
   {
@@ -357,10 +448,17 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
 
   string ptx;
   {
+<<<<<<< HEAD
     XLA_SCOPED_LOGGING_TIMER(
         "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
     TF_ASSIGN_OR_RETURN(
         ptx, nvptx::CompileToPtx(llvm_module, gpu_version,
+=======
+    XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - CompileToPtx");
+    TF_ASSIGN_OR_RETURN(
+        ptx, nvptx::CompileToPtx(&llvm_module,
+                                 std::pair<int, int>{cc_major, cc_minor},
+>>>>>>> upstream/master
                                  module->config(), libdevice_dir));
   }
 

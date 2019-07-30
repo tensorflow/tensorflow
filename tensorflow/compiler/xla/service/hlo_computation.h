@@ -288,7 +288,7 @@ class HloComputation {
 
   // Computes and returns the ProgramShape of this computation (shape of
   // parameters and result with layout).
-  ProgramShape ComputeProgramShape() const;
+  ProgramShape ComputeProgramShape(bool include_ids = true) const;
 
   // Return whether `*this` and `other` are functionally equivalent.
   bool Equal(const HloComputation& other, bool is_layout_sensitive) const;
@@ -314,6 +314,8 @@ class HloComputation {
   // Replace old instruction with new instruction.  Updates uses and root
   // instruction. Removes old instruction from computation. Precondition:
   // old_instruction and new_instruction must have the compatible shapes.
+  // If |new_instruction| doesn't have any sharding information it will
+  // recieve the sharding information of |old_instruction|.
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction);
 

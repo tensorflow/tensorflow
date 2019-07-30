@@ -653,8 +653,7 @@ Status DeviceTracer::CollectData(RunMetadata* run_metadata) {
 }  // namespace
 
 // Not in anonymous namespace for testing purposes.
-std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer(
-    const ProfilerContext*) {
+std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer() {
   auto status = cuInit(0);
   if (status != CUDA_SUCCESS) {
     LogIfError(ToStatus(status));

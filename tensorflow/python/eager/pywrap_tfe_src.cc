@@ -2698,25 +2698,15 @@ bool ConvertToTensor(
   // The hint comes from a supposedly similarly typed tensor.
   tensorflow::DataType dtype_hint = dtype_hint_getter();
 
-  tensorflow::Safe_TFE_TensorHandlePtr handle = tensorflow::make_safe(
-      tensorflow::ConvertToEagerTensor(op_exec_info.ctx, input, dtype_hint));
+  TFE_TensorHandle* handle = tensorflow::ConvertToEagerTensor(
+      op_exec_info.ctx, input, dtype_hint, op_exec_info.device_name);
   if (handle == nullptr) {
     return MaybeRaiseExceptionFromTFStatus(status, nullptr);
   }
 
-  auto output_dtype = TFE_TensorHandleDataType(handle.get());
-  if (output_dtype != TF_INT32) {
-    // Note that this is a shallow copy and will share the underlying buffer
-    // if copying to the same device.
-    handle = tensorflow::make_safe(TFE_TensorHandleCopyToDevice(
-        handle.get(), op_exec_info.ctx, op_exec_info.device_name, status));
-    if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
-      return false;
-    }
-  }
-
-  output_handle->reset(EagerTensorFromHandle(handle.release()));
-  dtype_setter(static_cast<tensorflow::DataType>(output_dtype));
+  output_handle->reset(EagerTensorFromHandle(handle));
+  dtype_setter(
+      static_cast<tensorflow::DataType>(TFE_TensorHandleDataType(handle)));
 
   return true;
 }
@@ -3498,4 +3488,32 @@ void TFE_Py_EnableInteractivePythonLogging() {
     enabled_interactive_logging = true;
     TF_RegisterLogListener(PrintToPythonStdout);
   }
+}
+
+namespace {
+// weak reference to Python Context object currently active
+PyObject* weak_eager_context = nullptr;
+}  // namespace
+
+PyObject* TFE_Py_SetEagerContext(PyObject* py_context) {
+  Py_XDECREF(weak_eager_context);
+  weak_eager_context = PyWeakref_NewRef(py_context, nullptr);
+  if (weak_eager_context == nullptr) {
+    return nullptr;
+  }
+  Py_RETURN_NONE;
+}
+
+PyObject* GetPyEagerContext() {
+  if (weak_eager_context == nullptr) {
+    PyErr_SetString(PyExc_RuntimeError, "Python eager context is not set");
+    return nullptr;
+  }
+  PyObject* py_context = PyWeakref_GET_OBJECT(weak_eager_context);
+  if (py_context == Py_None) {
+    PyErr_SetString(PyExc_RuntimeError, "Eager context has been destroyed");
+    return nullptr;
+  }
+  Py_INCREF(py_context);
+  return py_context;
 }

@@ -45,7 +45,7 @@ class TextLineDatasetSerializationTest(
       # pylint: disable=cell-var-from-loop
       self.run_core_tests(
           lambda: self._build_iterator_graph(test_filenames, compression_type),
-          lambda: self._build_iterator_graph(test_filenames), num_outputs)
+          num_outputs)
       # pylint: enable=cell-var-from-loop
 
 

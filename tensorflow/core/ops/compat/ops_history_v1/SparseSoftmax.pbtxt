@@ -1,0 +1,29 @@
+op {
+  name: "SparseSoftmax"
+  input_arg {
+    name: "sp_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sp_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sp_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}

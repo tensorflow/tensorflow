@@ -143,6 +143,20 @@ class BufferAssignmentTest : public HloTestBase {
         .ConsumeValueOrDie();
   }
 
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentWithPresetAssignments(
+      HloModule* module, std::unique_ptr<PresetAssignments> preset_assignments,
+      int64 alignment = 1) {
+    return BufferAssigner::Run(
+               module, absl::make_unique<DependencyHloOrdering>(module),
+               backend().compiler()->BufferSizeBytesFunction(),
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allocate_buffers_for_constants=*/true,
+               BufferAssigner::DefaultColorer(),
+               /*must_not_live_out=*/{},
+               /*can_share_buffer=*/nullptr, std::move(preset_assignments))
+        .ConsumeValueOrDie();
+  }
+
   // Builds an x+1.0 computation to use in a Map.
   std::unique_ptr<HloComputation> BuildMapComputationPlus1(const string& name) {
     auto builder = HloComputation::Builder(name);
@@ -663,6 +677,79 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
   // The add node can reuse the mul node's buffer.
   const BufferAllocation& add_buffer = GetTopLevelAllocation(*buffers, add);
   EXPECT_EQ(add_buffer.index(), mul_buffer.index());
+
+  // The sub node has a valid output buffer assigned.
+  GetAssignedOutputAllocation(*buffers, sub);
+}
+
+TEST_F(BufferAssignmentTest, PresetAssignments) {
+  // paramscalar ------- (mul) -- (add) -- (sub)
+  //                     /        /        /
+  // param0[100] -------/        /        /
+  //                            /        /
+  // param1[100] --------------/--------/
+  // Similar to BasicPartiallyColored, but the color is set in the layout.
+  // The output of the mul and the add have the color 1 and have preset
+  // assignments, and the other buffers have the color 0, which allows the mul
+  // and add to share buffers.
+  auto builder = HloComputation::Builder(TestName());
+  auto paramscalar =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p"));
+  auto broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(f32vec100_, paramscalar, {}));
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100_, "p1"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, f32vec100_, "p2"));
+  Shape f32vec100_color1 =
+      ShapeUtil::MakeShapeWithLayout(F32, {100}, {0}, {}, 0, 1);
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_color1, HloOpcode::kMultiply, broadcast, param0));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_color1, HloOpcode::kAdd, mul, param1));
+  auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kSubtract, add, param1));
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto preset_assignments = absl::make_unique<PresetAssignments>();
+  preset_assignments->add_chunk({mul, {}}, {/*offset=*/100, /*size=*/400});
+  preset_assignments->add_chunk({add, {}}, {/*offset=*/550, /*size=*/400});
+  preset_assignments->add_size(/*memory_space=*/1, /*size=*/950);
+
+  auto buffers = RunBufferAssignmentWithPresetAssignments(
+      module.get(), std::move(preset_assignments));
+
+  // Distinct input buffers were assigned for parameters.
+  BufferAllocation paramscalar_buffer =
+      GetAssignedInputAllocation(*buffers, paramscalar);
+  BufferAllocation param0_buffer = GetAssignedInputAllocation(*buffers, param0);
+  BufferAllocation param1_buffer = GetAssignedInputAllocation(*buffers, param1);
+  EXPECT_NE(paramscalar_buffer.index(), param0_buffer.index());
+  EXPECT_NE(paramscalar_buffer.index(), param1_buffer.index());
+  EXPECT_EQ(paramscalar_buffer.color(), LogicalBuffer::Color(0));
+  EXPECT_NE(param0_buffer.index(), param1_buffer.index());
+  EXPECT_EQ(param0_buffer.color(), LogicalBuffer::Color(0));
+
+  // The mul and add use the same preset buffer. Ensure it has the correct color
+  // and offsets.
+  const BufferAllocation& mul_buffer = GetTopLevelAllocation(*buffers, mul);
+  const BufferAllocation& add_buffer = GetTopLevelAllocation(*buffers, add);
+  EXPECT_EQ(mul_buffer, add_buffer);
+  EXPECT_NE(mul_buffer.index(), param0_buffer.index());
+  EXPECT_EQ(mul_buffer.color(), LogicalBuffer::Color(1));
+
+  EXPECT_EQ(mul_buffer.assigned_buffers().size(), 2);
+  for (const auto& value_and_offsetsize : mul_buffer.assigned_buffers()) {
+    if (value_and_offsetsize.first->instruction() == mul) {
+      EXPECT_EQ(value_and_offsetsize.second.offset, 100);
+      EXPECT_EQ(value_and_offsetsize.second.size, 400);
+    } else {
+      EXPECT_EQ(value_and_offsetsize.first->instruction(), add);
+      EXPECT_EQ(value_and_offsetsize.second.offset, 550);
+      EXPECT_EQ(value_and_offsetsize.second.size, 400);
+    }
+  }
 
   // The sub node has a valid output buffer assigned.
   GetAssignedOutputAllocation(*buffers, sub);

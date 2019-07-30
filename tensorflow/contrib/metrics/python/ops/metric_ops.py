@@ -1161,8 +1161,9 @@ def streaming_dynamic_auc(labels,
   and performing the final calculation using all of the concatenated values.
 
   Args:
-    labels: A `Tensor` of ground truth labels with the same shape as `labels`
-      and with values of 0 or 1 whose values are castable to `int64`.
+    labels:  A `Tensor` of ground truth labels with the same shape as 
+      `predictions` and with values of 0 or 1 whose values are castable to
+      `int64`.
     predictions: A `Tensor` of predictions whose values are castable to
       `float64`. Will be flattened into a 1-D `Tensor`.
     curve: The name of the curve for which to compute AUC, 'ROC' for the

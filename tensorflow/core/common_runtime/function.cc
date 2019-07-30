@@ -1246,7 +1246,7 @@ Status FunctionLibraryRuntimeImpl::Clone(
       env_, graph_def_version_, optimizer_.options(), custom_kernel_creator_,
       out_lib_def, out_pflr, skip_flib_def));
   *out_flr = (*out_pflr)->GetFLR(device_->name());
-  if (out_flr != nullptr) {
+  if (*out_flr != nullptr) {
     return Status::OK();
   } else {
     return errors::Internal("Cloning FunctionLibraryRuntime failed.");

@@ -350,6 +350,7 @@ Status DatasetOpsTestBase::CreateIteratorContext(
   params.resource_mgr = op_context->resource_manager();
   function_handle_cache_ = absl::make_unique<FunctionHandleCache>(flr_);
   params.function_handle_cache = function_handle_cache_.get();
+  params.cancellation_manager = cancellation_manager_.get();
   *iterator_context = absl::make_unique<IteratorContext>(params);
   return Status::OK();
 }

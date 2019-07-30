@@ -42,6 +42,7 @@ StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
                               const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path);
 }  // namespace nvptx
+<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h
 
 namespace amdgpu {
 // Compiles the argument module and returns it with LLVM AMDGPU backend.
@@ -51,6 +52,8 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
     llvm::Module* module, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config, const string& rocdl_dir_path);
 }  // namespace amdgpu
+=======
+>>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h
 
 }  // namespace gpu
 }  // namespace xla

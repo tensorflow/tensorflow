@@ -28,7 +28,6 @@ import re
 import sys
 import textwrap
 import traceback
-from enum import Enum
 
 # pylint:disable=g-bad-import-order
 import six
@@ -42,7 +41,6 @@ from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.utils import ag_logging as logging
-from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -100,7 +98,9 @@ class _ErrorMetadata(errors.ErrorMetadataBase):
           return t(
               node_def=self.cause.node_def, op=self.cause.op, message=message)
 
-    elif preferred_type in (AutoGraphError, ConversionError, StagingError):
+    elif preferred_type in (AutoGraphError, ConversionError, StagingError,
+                            errors_impl.InaccessibleTensorError,
+                            errors_impl.OperatorNotAllowedInGraphError):
       return preferred_type(self.get_message())
 
     exc = super(_ErrorMetadata, self).create_exception(preferred_type)
@@ -121,13 +121,30 @@ class StackTraceMapper(tf_stack.StackTraceMapper):
   def __init__(self, converted_fn):
     self._source_map = converted_fn.ag_source_map
 
-  def map(self, filename, lineno, name):
-    loc = origin_info.LineLocation(filename=filename, lineno=lineno)
-    if loc not in self._source_map:
-      return filename, lineno, name
+  def get_effective_source_map(self):
+    effective_source_map = self._effective_source_map
+    if effective_source_map is None:
+      if self.parent is not None:
+        parent_map = self.parent.get_effective_source_map()
+      else:
+        parent_map = {}
 
-    origin = self._source_map[loc]
-    return origin.loc.filename, origin.loc.lineno, origin.function_name
+      effective_source_map = {}
+      for loc, origin in self._source_map.items():
+        effective_source_map[(loc.filename, loc.lineno)] = (
+            origin.loc.filename, origin.loc.lineno, origin.function_name)
+
+      for key, value in parent_map.items():
+        filename, lineno, _ = value
+        value_loc = origin_info.LineLocation(filename=filename, lineno=lineno)
+        if value_loc in self._source_map:
+          origin = self._source_map[value_loc]
+          effective_source_map[key] = (
+              origin.loc.filename, origin.loc.lineno, origin.function_name)
+        else:
+          effective_source_map[key] = value
+      self._effective_source_map = effective_source_map
+    return effective_source_map
 
 
 def tf_convert(f, ctx, convert_by_default=True, force_conversion=False):
@@ -236,20 +253,6 @@ def convert(recursive=False, optional_features=None, force_conversion=True):
   return decorator
 
 
-class RunMode(Enum):
-  """Specifies the way a converted function or method should be executed in TF.
-
-  Attributes:
-   * GRAPH: Call this function directly, as-is. This is suitable for functions
-     that were already designed for TF graphs and contain ops.
-   * PY_FUNC: Wrap this function into a py_func op. This is suitable for code
-     that will only run correctly in Python, for example code that renders to
-     the display, reads keyboard input, etc.
-  """
-  GRAPH = 1
-  PY_FUNC = 2
-
-
 def call_with_unspecified_conversion_status(func):
   """Decorator that resets the conversion context to the unspecified status."""
   def wrapper(*args, **kwargs):
@@ -270,18 +273,11 @@ def do_not_convert_internal(f):
 
 
 @tf_export('autograph.experimental.do_not_convert')
-def do_not_convert(func=None, run_as=RunMode.GRAPH, return_dtypes=None):
+def do_not_convert(func=None):
   """Decorator that suppresses the conversion of a function.
-
-  See also: docs/pyfunc_dtypes.md
 
   Args:
     func: function to decorate.
-    run_as: RunMode, specifies how to use the function in TensorFlow.
-    return_dtypes: Optional[Iterable[ Union[tf.DType,
-      utils.py_func.MatchDType]]], the return data types of the converted
-      function, if run_as is RunMode.PY_FUNC. Ignored otherwise. May be set to
-      None if the function has no return values.
 
   Returns:
     If `func` is not None, returns a `Callable` which is equivalent to
@@ -291,28 +287,11 @@ def do_not_convert(func=None, run_as=RunMode.GRAPH, return_dtypes=None):
     above case.
   """
   if func is None:
-    return functools.partial(
-        do_not_convert,
-        run_as=run_as,
-        return_dtypes=return_dtypes)
+    return do_not_convert
 
-  def graph_wrapper(*args, **kwargs):
+  def wrapper(*args, **kwargs):
     with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED):
       return func(*args, **kwargs)
-
-  def py_func_wrapper(*args, **kwargs):
-    if kwargs:
-      raise NotImplementedError('RunMode.PY_FUNC does not yet support kwargs')
-    # TODO(mdan): Add support for kwargs.
-    return py_func.wrap_py_func(
-        func, return_dtypes, args, kwargs, use_dummy_return=not return_dtypes)
-
-  if run_as == RunMode.GRAPH:
-    wrapper = graph_wrapper
-  elif run_as == RunMode.PY_FUNC:
-    wrapper = py_func_wrapper
-  else:
-    raise ValueError('unknown value for run_as: %s' % run_as)
 
   if inspect.isfunction(func) or inspect.ismethod(func):
     wrapper = functools.update_wrapper(wrapper, func)
@@ -396,6 +375,8 @@ def converted_call(f, options, args, kwargs):
   if inspect_utils.isbuiltin(f):
     if f is eval:
       return py_builtins.eval_in_original_context(f, args, 1)
+    if f is super:
+      return py_builtins.super_in_original_context(f, args, 1)
     if kwargs:
       return py_builtins.overload_of(f)(*args, **kwargs)
     else:

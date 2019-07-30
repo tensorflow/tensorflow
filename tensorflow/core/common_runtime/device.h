@@ -103,12 +103,6 @@ class Device : public DeviceBase {
     }
   }
 
-  // If true, and tracing is enabled, the `tracing::ScopedAnnotation()` tracing
-  // mechanism will be used instead of `tracing::ScopedActivity()`. Some devices
-  // may override this method to use annotations, which enable child activities
-  // (such as GPU kernel launches) to be related to the OpKernel invocation.
-  virtual bool TraceUsingAnnotations() const { return false; }
-
   // Blocks until all operations queued on the device at the time of
   // the call have completed.  Returns any error pending on the device
   // at completion.

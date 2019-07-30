@@ -56,8 +56,6 @@ class KerasIntegrationTest(keras_parameterized.TestCase):
 class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
 
   def test_vector_classification(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
         train_samples=100,
@@ -195,9 +193,6 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   def test_timeseries_classification(self):
-    if testing_utils.should_run_distributed():
-      # Test timeout, seems to be a performance issue.
-      self.skipTest('b/137397816')
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
         train_samples=100,
@@ -228,9 +223,6 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
     self.assertEqual(predictions.shape, (x_train.shape[0], 2))
 
   def test_timeseries_classification_sequential_tf_rnn(self):
-    if testing_utils.should_run_distributed():
-      # Test timeout, seems to be a performance issue.
-      self.skipTest('b/137397816')
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
         train_samples=100,
@@ -266,8 +258,6 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
 class ImageClassificationIntegrationTest(keras_parameterized.TestCase):
 
   def test_image_classification(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
         train_samples=100,

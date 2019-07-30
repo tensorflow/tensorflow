@@ -26,6 +26,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
 from tensorflow.python.compat import compat as api_compat
 from tensorflow.python.compiler.xla import xla
+from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -754,6 +755,9 @@ def split_compile_and_replicate(computation,
       metadata_kwargs["computation_shape"] = [
           device_assignment.num_cores_per_replica
       ]
+
+  # This entry is used for enabling automatic outside compilation.
+  metadata_kwargs["allow_soft_placement"] = config.get_soft_device_placement()
 
   if ((not isinstance(inputs, list)) or
       any(not isinstance(inp, (list, tuple)) for inp in inputs)):

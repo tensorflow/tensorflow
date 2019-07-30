@@ -534,8 +534,8 @@ class _TPUSharedEmbeddingColumnV2(_TPUBaseEmbeddingColumn,
       return fc_lib.SharedEmbeddingColumn.get_sequence_dense_tensor(
           self, transformation_cache, state_manager)
 
-    tensor = fc_lib.SharedEmbeddingColumn._dense_tensor_internal(
-        self, transformation_cache, state_manager)
+    tensor = self._get_dense_tensor_internal(
+        transformation_cache, state_manager)
     tensor_lengths = transformation_cache.get(
         self.get_sequence_length_feature_key_name(),
         state_manager)

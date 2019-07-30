@@ -75,8 +75,8 @@ versions {
 }
 
 # Match partitioned call in main and capture the callee name.
-# CHECK: func @main
-# CHECK-NEXT: _tf.PartitionedCall
+# CHECK-LABEL: func @main
+# CHECK: tf.PartitionedCall
 # CHECK-SAME: f = @[[FUNCTION:[a-zA-Z0-9_]*]]
 
 # Verify that callee has the unit attribute tf._input_shapes.

@@ -866,7 +866,7 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
     *shapes_match = true;
     unique_factors->reserve(node->input_size());
 
-    for (int i = 0; i < node->input_size() && shapes_match; ++i) {
+    for (int i = 0; i < node->input_size() && *shapes_match; ++i) {
       const string& input = node->input(i);
       if (IsControlInput(input)) {
         break;
@@ -2759,7 +2759,6 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
         // input data type is not supported by expm1. Skip.
         return Status::OK();
       }
-      LOG(INFO) << "Got element = " << element;
       if (element != complex128(1)) {
         // current element is not 1. Skip.
         return Status::OK();

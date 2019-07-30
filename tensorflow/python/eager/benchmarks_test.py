@@ -25,6 +25,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import os
 import time
 
@@ -181,44 +182,46 @@ class MicroBenchmarks(test.Benchmark):
   def _benchmark_create_tensor(self, value, dtype, device):
     """Benchmark overheads of creating a Tensor object."""
     ctx = context.context()
-    handle = ctx._handle
     if device == GPU:
       # Warmup the GPU
-      ops.EagerTensor(value, context=handle, device=device)
+      ops.EagerTensor(value, device=device)
 
     def func():
-      ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
+      ops.EagerTensor(value, device=device, dtype=dtype)
 
     self._run(func, 30000)
 
   def _benchmark_create_constant(self, value, dtype):
     def func():
-      return constant_op.constant(value, dtype=dtype)
+      constant_op.constant(value, dtype=dtype)
 
-    for _ in range(1000):
-      func()  # Warmup.
-
-    self._run(func, 30000)
+    with ops.device("GPU:0" if context.num_gpus() else "CPU:0"):
+      for _ in range(1000):
+        func()  # Warmup.
+      self._run(func, 3000)
 
   def benchmark_create_float_constant(self):
     self._benchmark_create_constant(42.0, dtype=None)
 
   def benchmark_create_int32_constant(self):
+    if context.num_gpus():
+      return  # int32 constants are always allocated on CPU.
+
     self._benchmark_create_constant(42, dtype=dtypes.int32)
 
   def _benchmark_add_scalars(self, a, b):
     def func():
-      return math_ops.add(a, b)
+      return memoryview(math_ops.add(a, b))
 
-    for _ in range(1000):
-      func()  # Warmup.
-
-    self._run(func, 30000)
+    with ops.device("GPU:0" if context.num_gpus() else "CPU:0"):
+      for _ in range(1000):
+        func()  # Warmup.
+      self._run(func, 30000)
 
   def benchmark_add_float_scalars(self):
     self._benchmark_add_scalars(42.0, 24.0)
 
-  def benchmark_add_int_scalars(self):
+  def benchmark_add_int32_scalars(self):
     self._benchmark_add_scalars(42, 24)
 
   def benchmark_create_float_tensor_from_list_CPU(self):
@@ -1112,8 +1115,7 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
         wall_time=mean_us,
         extras={"examples_per_sec": num_iters / total_time})
 
-  # TODO(b/136184459): Re-enabled once crash is fixed
-  def _DISABLED_benchmark_send_mirroring_off(self):
+  def benchmark_send_mirroring_off(self):
     remote.connect_to_remote_host(self._cached_server_target1)
 
     x = random_ops.random_uniform((2, 2)).cpu()
@@ -1128,9 +1130,12 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
 
     context.context().mirroring_policy = context.MIRRORING_NONE
     self._run(lambda: func(x))
+    # NOTE(b/136184459): Force garbage collecting hanging resources before
+    # subsequent calls to set_server_def, to ensure the destroy resource ops are
+    # executed when their corresponding device and manager are still available.
+    gc.collect()
 
-  # TODO(b/136184459): Re-enabled once crash is fixed
-  def _DISABLED_benchmark_send_mirroring_on(self):
+  def benchmark_send_mirroring_on(self):
     remote.connect_to_remote_host(self._cached_server_target1)
 
     x = random_ops.random_uniform((2, 2)).cpu()
@@ -1145,9 +1150,12 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
 
     context.context().mirroring_policy = context.MIRRORING_ALL
     self._run(lambda: func(x))
+    # NOTE(b/136184459): Force garbage collecting hanging resources before
+    # subsequent calls to set_server_def, to ensure the destroy resource ops are
+    # executed when their corresponding device and manager are still available.
+    gc.collect()
 
-  # TODO(b/136184459): Re-enabled once crash is fixed
-  def _DISABLED_benchmark_worker_mirroring_off(self):
+  def benchmark_worker_mirroring_off(self):
     remote.connect_to_remote_host(
         [self._cached_server_target1, self._cached_server_target2])
 
@@ -1164,9 +1172,12 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
 
     context.context().mirroring_policy = context.MIRRORING_NONE
     self._run(func)
+    # NOTE(b/136184459): Force garbage collecting hanging resources before
+    # subsequent calls to set_server_def, to ensure the destroy resource ops are
+    # executed when their corresponding device and manager are still available.
+    gc.collect()
 
-  # TODO(b/136184459): Re-enabled once crash is fixed
-  def _DISABLED_benchmark_worker_mirroring_on(self):
+  def benchmark_worker_mirroring_on(self):
     remote.connect_to_remote_host(
         [self._cached_server_target1, self._cached_server_target2])
 
@@ -1183,6 +1194,10 @@ class RemoteWorkerMicroBenchmarks(test.Benchmark):
 
     context.context().mirroring_policy = context.MIRRORING_ALL
     self._run(func)
+    # NOTE(b/136184459): Force garbage collecting hanging resources before
+    # subsequent calls to set_server_def, to ensure the destroy resource ops are
+    # executed when their corresponding device and manager are still available.
+    gc.collect()
 
 
 if __name__ == "__main__":
