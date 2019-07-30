@@ -25,8 +25,6 @@ import os
 import threading
 import weakref
 
-import numpy as np
-
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.autograph.core import ag_ctx

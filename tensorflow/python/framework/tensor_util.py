@@ -333,7 +333,7 @@ def _AssertCompatible(values, dtype):
 
 def _is_array_like(obj):  # pylint: disable=invalid-name
   """Check if a given object is array-like."""
-  if isinstance(obj, ops.Tensor) and not isinstance(obj, ops._EagerTensorBase):
+  if isinstance(obj, ops.Tensor) and not isinstance(obj, ops._EagerTensorBase):  # pylint: disable=protected-access
     # Tensor implements __array__ only so it can inform the user that it is not
     # a valid array.
     return False
