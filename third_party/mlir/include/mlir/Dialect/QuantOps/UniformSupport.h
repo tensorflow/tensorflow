@@ -94,7 +94,7 @@ public:
     llvm::APSInt result(storageBitWidth, !isSigned);
     fixedpoint.convertToInteger(result, APFloat::rmNearestTiesToEven, &lossy);
 
-    return result;
+    return std::move(result);
   }
 
   int64_t quantizeFloatToInt64(APFloat expressedValue) const {
