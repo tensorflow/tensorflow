@@ -18,6 +18,10 @@ limitations under the License.
 
 #include <chrono>  // NOLINT(build/c++11)
 
+#ifdef __linux__
+#include <ctime>
+#endif
+
 namespace ruy {
 
 using Clock = std::chrono::steady_clock;
@@ -32,6 +36,21 @@ inline double ToSeconds(Duration d) {
 inline Duration DurationFromSeconds(double s) {
   return std::chrono::duration_cast<Duration>(std::chrono::duration<double>(s));
 }
+
+// Low-resolution clock (updated only on ticks) that's very cheap to query
+// (because it's just reading a value in memory, not an actual clock access).
+// Linux-specific, falling back to normal Clock outside of Linux.
+#ifdef __linux__
+struct CoarseClock {
+  static TimePoint now() {
+    timespec t;
+    clock_gettime(CLOCK_MONOTONIC_COARSE, &t);
+    return TimePoint(DurationFromSeconds(t.tv_sec + 1e-9 * t.tv_nsec));
+  }
+};
+#else
+using CoarseClock = Clock;
+#endif
 
 }  // namespace ruy
 

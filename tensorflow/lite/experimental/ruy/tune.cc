@@ -148,7 +148,7 @@ Tuning TuningResolver::Resolve() {
   if (unresolved_tuning_ != Tuning::kAuto) {
     return unresolved_tuning_;
   }
-  TimePoint new_timepoint = Clock::now();
+  TimePoint new_timepoint = CoarseClock::now();
   if (last_resolved_tuning_ != Tuning::kAuto &&
       (new_timepoint - last_resolved_timepoint_) < expiry_duration_) {
     return last_resolved_tuning_;
