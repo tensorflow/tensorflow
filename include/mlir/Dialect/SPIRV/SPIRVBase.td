@@ -99,7 +99,15 @@ def SPV_OC_OpStore             : I32EnumAttrCase<"OpStore", 62>;
 def SPV_OC_OpAccessChain       : I32EnumAttrCase<"OpAccessChain", 65>;
 def SPV_OC_OpDecorate          : I32EnumAttrCase<"OpDecorate", 71>;
 def SPV_OC_OpCompositeExtract  : I32EnumAttrCase<"OpCompositeExtract", 81>;
+def SPV_OC_OpIAdd              : I32EnumAttrCase<"OpIAdd", 128>;
+def SPV_OC_OpFAdd              : I32EnumAttrCase<"OpFAdd", 129>;
+def SPV_OC_OpISub              : I32EnumAttrCase<"OpISub", 130>;
+def SPV_OC_OpFSub              : I32EnumAttrCase<"OpFSub", 131>;
+def SPV_OC_OpIMul              : I32EnumAttrCase<"OpIMul", 132>;
 def SPV_OC_OpFMul              : I32EnumAttrCase<"OpFMul", 133>;
+def SPV_OC_OpFDiv              : I32EnumAttrCase<"OpFDiv", 136>;
+def SPV_OC_OpFRem              : I32EnumAttrCase<"OpFRem", 140>;
+def SPV_OC_OpFMod              : I32EnumAttrCase<"OpFMod", 141>;
 def SPV_OC_OpReturn            : I32EnumAttrCase<"OpReturn", 253>;
 
 def SPV_OpcodeAttr :
@@ -112,7 +120,8 @@ def SPV_OpcodeAttr :
       SPV_OC_OpConstantNull, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
       SPV_OC_OpFunctionEnd, SPV_OC_OpVariable, SPV_OC_OpLoad, SPV_OC_OpStore,
       SPV_OC_OpAccessChain, SPV_OC_OpDecorate, SPV_OC_OpCompositeExtract,
-      SPV_OC_OpFMul, SPV_OC_OpReturn
+      SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub, SPV_OC_OpIMul,
+      SPV_OC_OpFMul, SPV_OC_OpFDiv, SPV_OC_OpFRem, SPV_OC_OpFMod, SPV_OC_OpReturn
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
@@ -576,5 +585,23 @@ class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
   //    (de)serializing this op and its dispatch should be handled manually.
   bit autogenSerialization = 1;
 }
+
+class SPV_ArithmeticOp<string mnemonic, Type type,
+                       list<OpTrait> traits = []> :
+      SPV_Op<mnemonic,
+             !listconcat(traits, [NoSideEffect, SameOperandsAndResultType])> {
+  let arguments = (ins
+    SPV_ScalarOrVectorOf<type>:$operand1,
+    SPV_ScalarOrVectorOf<type>:$operand2
+  );
+  let results = (outs
+    SPV_ScalarOrVectorOf<type>:$result
+  );
+  let parser = [{ return impl::parseBinaryOp(parser, result); }];
+  let printer = [{ return impl::printBinaryOp(getOperation(), p); }];
+  // No additional verification needed in addition to the ODS-generated ones.
+  let verifier = [{ return success(); }];
+}
+
 
 #endif // SPIRV_BASE
