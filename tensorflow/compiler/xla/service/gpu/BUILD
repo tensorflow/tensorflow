@@ -618,6 +618,7 @@ cc_library(
         ":gpu_autotuning_proto",
         ":gpu_executable",
         ":ir_emission_utils",
+        ":scratch_allocator",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -639,8 +640,6 @@ cc_library(
         "@com_google_absl//absl/types:optional",
     ] + if_cuda_is_configured([
         "//tensorflow/stream_executor/cuda:redzone_allocator",
-    ]) + if_rocm_is_configured([
-        ":scratch_allocator",
     ]),
 )
 
