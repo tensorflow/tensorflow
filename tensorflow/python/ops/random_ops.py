@@ -65,7 +65,7 @@ def random_normal(shape,
   Returns:
     A tensor of the specified shape filled with random normal values.
   """
-  with tf.name_scope(name, "random_normal", [shape, mean, stddev]) as name:
+  with ops.name_scope(name, "random_normal", [shape, mean, stddev]) as name:
     shape_tensor = tensor_util.shape_tensor(shape)
     mean_tensor = tf.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = tf.convert_to_tensor(stddev, dtype=dtype, name="stddev")
