@@ -66,8 +66,12 @@ const char* PathName(Path path) {
   switch (path) {
     RUY_PATHNAME_CASE(kReference)
     RUY_PATHNAME_CASE(kStandardCpp)
+#if RUY_PLATFORM(NEON)
     RUY_PATHNAME_CASE(kNeon)
     RUY_PATHNAME_CASE(kNeonDotprod)
+#elif RUY_PLATFORM(AVX512)
+    RUY_PATHNAME_CASE(kAvx512)
+#endif
     default:
       RUY_CHECK(false);
       return nullptr;
@@ -245,7 +249,7 @@ struct RandomRangeBounds<Scalar, false> {
 inline std::default_random_engine& global_random_engine() {
   static std::default_random_engine engine;
   return engine;
-};
+}
 
 template <typename Scalar>
 struct UniformRandomDistribution {
@@ -660,7 +664,7 @@ void EvalGemmlowp(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
           LhsScalar, DstScalar, gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
           &GlobalGemmlowpContext(), gemmlowp_lhs, gemmlowp_rhs, &gemmlowp_dst,
           -lhs.zero_point, -rhs.zero_point, output_pipeline);
-    } else
+    } else  // NOLINT[readability/braces]
 #endif
     {
       const auto& output_pipeline =
@@ -680,7 +684,7 @@ void EvalGemmlowp(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
           LhsScalar, DstScalar, gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
           &GlobalGemmlowpContext(), gemmlowp_lhs, gemmlowp_rhs, &gemmlowp_dst,
           -lhs.zero_point, -rhs.zero_point, output_pipeline);
-    } else
+    } else  // NOLINT[readability/braces]
 #endif
     {
       const auto& output_pipeline = std::make_tuple(

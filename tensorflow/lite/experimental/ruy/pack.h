@@ -98,6 +98,7 @@ struct PackedTypeImpl {
   using Type = Scalar;
 };
 
+#if RUY_PLATFORM(NEON)
 template <>
 struct PackedTypeImpl<Path::kNeon, std::uint8_t> {
   using Type = std::int8_t;
@@ -106,6 +107,12 @@ template <>
 struct PackedTypeImpl<Path::kNeonDotprod, std::uint8_t> {
   using Type = std::int8_t;
 };
+#elif RUY_PLATFORM(AVX512)
+template <>
+struct PackedTypeImpl<Path::kAvx512, std::uint8_t> {
+  using Type = std::int8_t;
+};
+#endif
 
 template <Path ThePath, typename Scalar>
 using PackedType = typename PackedTypeImpl<ThePath, Scalar>::Type;
@@ -155,9 +162,13 @@ struct PackImpl<Path::kStandardCpp, FixedKernelLayout, Scalar, PackedScalar,
   }
 };
 
+#if RUY_PLATFORM(NEON)
 RUY_INHERIT_PACK(Path::kStandardCpp, Path::kNeon)
 #if RUY_PLATFORM(NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 RUY_INHERIT_PACK(Path::kNeon, Path::kNeonDotprod)
+#endif
+#elif RUY_PLATFORM(AVX512)
+RUY_INHERIT_PACK(Path::kStandardCpp, Path::kAvx512)
 #endif
 
 #if RUY_PLATFORM(NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
@@ -477,6 +488,92 @@ struct PackImpl<Path::kNeon, FixedKernelLayout<Order::kRowMajor, 1, 4>, float,
 #endif  // (RUY_PLATFORM(NEON_32))
 #endif  // (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32)) && \
         // RUY_OPT_ENABLED(RUY_OPT_ASM)
+
+#if RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+// Note that source and zero buffers can be uint8 type, but in the packing
+// function are reinterpreted as int8, and are XOR-ed with input_xor.
+void Pack8bitAvx512(const std::int8_t* src_ptr, std::int8_t input_xor,
+                    const std::int8_t* zerobuf, int src_stride,
+                    int remaining_src_cols, int src_rows,
+                    std::int8_t* packed_ptr, std::int32_t* sums_ptr);
+
+template <typename Scalar>
+struct PackImpl<Path::kAvx512, FixedKernelLayout<Order::kColMajor, 4, 16>,
+                Scalar, std::int8_t, std::int32_t> {
+  static_assert(std::is_same<Scalar, std::int8_t>::value ||
+                    std::is_same<Scalar, std::uint8_t>::value,
+                "");
+  using Layout = FixedKernelLayout<Order::kColMajor, 4, 16>;
+  static constexpr int kHalfLayoutCols =
+      8;  // Half the number of cols in a block.
+  static constexpr std::int8_t kInputXor =
+      std::is_same<Scalar, std::int8_t>::value ? 0 : 0x80;
+
+  static void Run(Tuning tuning, const Matrix<Scalar>& src_matrix,
+                  PackedMatrix<std::int8_t>* packed_matrix, int start_col,
+                  int end_col) {
+    gemmlowp::ScopedProfilingLabel label("Pack (AVX-512)");
+
+    RUY_DCHECK(IsColMajor(src_matrix.layout));
+    RUY_DCHECK(IsColMajor(packed_matrix->layout));
+    RUY_DCHECK_EQ((end_col - start_col) % Layout::kCols, 0);
+    RUY_DCHECK_EQ(start_col % Layout::kCols, 0);
+    RUY_DCHECK_EQ(kHalfLayoutCols * 2, Layout::kCols);
+    std::int32_t* sums = packed_matrix->sums;
+    Scalar zerobuf[kHalfLayoutCols * Layout::kRows];
+    memset(zerobuf, packed_matrix->zero_point ^ kInputXor,
+           kHalfLayoutCols * Layout::kRows * sizeof(Scalar));
+    for (int block_col = start_col; block_col < end_col;
+         block_col += Layout::kCols) {
+      std::int32_t* sums_ptr = sums ? sums + block_col : nullptr;
+      int src_stride = src_matrix.layout.stride;
+      const Scalar* src_ptr = src_matrix.data.get() + src_stride * block_col;
+      int remaining_src_cols = src_matrix.layout.cols - block_col;
+
+      static constexpr int block_col_mask = ~(Layout::kCols - 1);  // High bits.
+      std::int8_t* packed_ptr =
+          packed_matrix->data +
+          packed_matrix->layout.stride * (block_col & block_col_mask);
+      Pack8bitAvx512(reinterpret_cast<const std::int8_t*>(src_ptr), kInputXor,
+                     reinterpret_cast<const std::int8_t*>(zerobuf), src_stride,
+                     remaining_src_cols, src_matrix.layout.rows, packed_ptr,
+                     sums_ptr);
+    }
+  }
+};
+
+void PackFloatAvx512(const float* src_ptr, const float* zerobuf, int src_stride,
+                     int remaining_src_cols, int src_rows, float* packed_ptr);
+
+template <>
+struct PackImpl<Path::kAvx512, FixedKernelLayout<Order::kRowMajor, 1, 16>,
+                float, float, float> {
+  static void Run(Tuning, const Matrix<float>& src_matrix,
+                  PackedMatrix<float>* packed_matrix, int start_col,
+                  int end_col) {
+    using Layout = FixedKernelLayout<Order::kRowMajor, 1, 16>;
+    RUY_DCHECK(IsColMajor(src_matrix.layout));
+    RUY_DCHECK(IsColMajor(packed_matrix->layout));
+    RUY_DCHECK_EQ((end_col - start_col) % Layout::kCols, 0);
+    RUY_DCHECK_EQ(start_col % Layout::kCols, 0);
+    const float zerobuf[Layout::kCols] = {
+        0.0f};  // Remainder default inits to 0.0f.
+    for (int block_col = start_col; block_col < end_col;
+         block_col += Layout::kCols) {
+      int src_stride = src_matrix.layout.stride;
+      const float* src_ptr = src_matrix.data.get() + src_stride * block_col;
+      int remaining_src_cols = src_matrix.layout.cols - block_col;
+
+      static constexpr int block_col_mask = ~(Layout::kCols - 1);  // High bits.
+      float* packed_ptr =
+          packed_matrix->data +
+          packed_matrix->layout.stride * (block_col & block_col_mask);
+      PackFloatAvx512(src_ptr, zerobuf, src_stride, remaining_src_cols,
+                      src_matrix.layout.rows, packed_ptr);
+    }
+  }
+};
+#endif  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 // Main entry point for packing.
 template <Path ThePath, typename FixedKernelLayout, typename Scalar,
