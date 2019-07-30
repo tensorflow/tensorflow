@@ -648,7 +648,7 @@ Status DatasetOpsTestBase::CheckIteratorGetNext(
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::CheckIteratorSerialization(
+Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
     const DatasetBase& dataset, IteratorContext* iterator_context,
     const string& iterator_prefix, const std::vector<Tensor>& expected_outputs,
     const std::vector<int>& breakpoints) {

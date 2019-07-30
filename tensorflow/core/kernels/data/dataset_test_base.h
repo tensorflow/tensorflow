@@ -77,6 +77,91 @@ Status WriteDataToTFRecordFile(const string& filename,
                                const std::vector<absl::string_view>& records,
                                const CompressionParams& params);
 
+class DatasetParams {
+ public:
+  DatasetParams(DataTypeVector output_dtypes,
+                std::vector<PartialTensorShape> output_shapes)
+      : output_dtypes(std::move(output_dtypes)),
+        output_shapes(std::move(output_shapes)) {}
+
+  virtual Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) = 0;
+
+  DataTypeVector output_dtypes;
+  std::vector<PartialTensorShape> output_shapes;
+};
+
+template <typename T>
+struct GetNextTestCase {
+  T dataset_params;
+  std::vector<Tensor> expected_outputs;
+};
+
+template <typename T>
+struct DatasetNodeNameTestCase {
+  T dataset_params;
+  string expected_node_name;
+};
+
+template <typename T>
+struct DatasetTypeStringTestCase {
+  T dataset_params;
+  string expected_dataset_type_string;
+};
+
+template <typename T>
+struct DatasetOutputDtypesTestCase {
+  T dataset_params;
+  DataTypeVector expected_output_dtypes;
+};
+
+template <typename T>
+struct DatasetOutputShapesTestCase {
+  T dataset_params;
+  std::vector<PartialTensorShape> expected_output_shapes;
+};
+
+template <typename T>
+struct CardinalityTestCase {
+  T dataset_params;
+  int64 expected_cardinality;
+};
+
+template <typename T>
+struct DatasetSaveTestCase {
+  T dataset_params;
+};
+
+template <typename T>
+struct IsStatefulTestCase {
+  T dataset_params;
+  bool expected_stateful;
+};
+
+template <typename T>
+struct IteratorOutputDtypesTestCase {
+  T dataset_params;
+  DataTypeVector expected_output_dtypes;
+};
+
+template <typename T>
+struct IteratorOutputShapesTestCase {
+  T dataset_params;
+  std::vector<PartialTensorShape> expected_output_shapes;
+};
+
+template <typename T>
+struct IteratorOutputPrefixTestCase {
+  T dataset_params;
+  string expected_iterator_prefix;
+};
+
+template <typename T>
+struct IteratorSaveAndRestoreTestCase {
+  T dataset_params;
+  std::vector<int> breakpoints;
+  std::vector<Tensor> expected_outputs;
+};
+
 // Helpful functions to test Dataset op kernels.
 class DatasetOpsTestBase : public ::testing::Test {
  public:
@@ -244,11 +329,11 @@ class DatasetOpsTestBase : public ::testing::Test {
                               bool compare_order);
 
   // Checks `IteratorBase::Save()` and `IteratorBase::Restore()`.
-  Status CheckIteratorSerialization(const DatasetBase& dataset,
-                                    IteratorContext* iterator_context,
-                                    const string& iterator_prefix,
-                                    const std::vector<Tensor>& expected_outputs,
-                                    const std::vector<int>& breakpoints);
+  Status CheckIteratorSaveAndRestore(
+      const DatasetBase& dataset, IteratorContext* iterator_context,
+      const string& iterator_prefix,
+      const std::vector<Tensor>& expected_outputs,
+      const std::vector<int>& breakpoints);
 
  protected:
   // Creates a thread pool for parallel tasks.
