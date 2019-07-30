@@ -155,7 +155,7 @@ class Model(network.Network):
     self._compile_distribution = False
 
     self._run_eagerly = None
-    self._run_distributed = False
+    self._experimental_run_tf_function = False
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -244,20 +244,21 @@ class Model(network.Network):
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
     self._run_eagerly = kwargs.pop('run_eagerly', None)
-    self._run_distributed = kwargs.pop('run_distributed', False)
+    self._experimental_run_tf_function = kwargs.pop(
+        'experimental_run_tf_function', False)
 
     if ((sample_weight_mode is not None)
         or (target_tensors is not None)
         or (weighted_metrics is not None)
         or not context.executing_eagerly()):
       # Fallback out of things that aren't supported with v2 loops
-      self._run_distributed = False
+      self._experimental_run_tf_function = False
 
     self._compile_time_distribution_strategy = (
         distribution_strategy_context.get_strategy())
 
     if distribute is not None:
-      if tf2.enabled() or self._run_distributed:
+      if tf2.enabled() or self._experimental_run_tf_function:
         raise ValueError(
             'Distribute argument in compile is not available in TF 2.0 please '
             'create the model under the distribution strategy scope.')
@@ -275,7 +276,7 @@ class Model(network.Network):
           self._distribution_strategy = (
               distribution_strategy_context.get_strategy())
 
-    if not self._run_distributed:
+    if not self._experimental_run_tf_function:
       self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
                                                              sample_weight_mode,
                                                              target_tensors,
@@ -491,8 +492,7 @@ class Model(network.Network):
                        '`iter(dataset)`.')
 
     # Experiment training loop with default DS path.
-    if (context.executing_eagerly()
-        and self._run_distributed
+    if (context.executing_eagerly() and self._experimental_run_tf_function
         # TODO(scottzhu): Finish getting sequences working with the v2 loops.
         and not isinstance(inputs, (data_utils.Sequence))
         and not distributed_training_utils.is_tpu_strategy(
@@ -963,7 +963,7 @@ class Model(network.Network):
     """
     self._assert_compile_was_called()
     self._check_call_args('train_on_batch')
-    if self._run_distributed:
+    if self._experimental_run_tf_function:
       outputs = training_v2_utils.train_on_batch(
           self, x, y=y, sample_weight=sample_weight,
           class_weight=class_weight, reset_metrics=reset_metrics)
@@ -1056,7 +1056,7 @@ class Model(network.Network):
     """
     self._assert_compile_was_called()
     self._check_call_args('test_on_batch')
-    if self._run_distributed:
+    if self._experimental_run_tf_function:
       outputs = training_v2_utils.test_on_batch(
           self, x, y=y, sample_weight=sample_weight,
           reset_metrics=reset_metrics)
@@ -1119,7 +1119,7 @@ class Model(network.Network):
           expectations of the model.
     """
     self._check_call_args('predict_on_batch')
-    if self._run_distributed:
+    if self._experimental_run_tf_function:
       return training_v2_utils.predict_on_batch(self, x)
 
     if (self._distribution_strategy and
@@ -2608,7 +2608,7 @@ class Model(network.Network):
         target_tensors=target_tensors,
         sample_weight_mode=self.sample_weight_mode,
         run_eagerly=self.run_eagerly,
-        run_distributed=self._run_distributed)
+        experimental_run_tf_function=self._experimental_run_tf_function)
 
   # TODO(omalleyt): Consider changing to a more descriptive function name.
   def _set_inputs(self, inputs, outputs=None, training=None):

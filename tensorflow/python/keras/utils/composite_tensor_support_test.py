@@ -158,10 +158,13 @@ def get_test_mode_kwargs():
   # Certain things weren't supported correctly in the old path, therefore
   # with these changes, some tests now only pass in the single code path in V2.
   if run_eagerly or context.executing_eagerly():
-    run_distributed = True
+    experimental_run_tf_function = True
   else:
-    run_distributed = testing_utils.should_run_distributed()
-  return {"run_eagerly": run_eagerly, "run_distributed": run_distributed}
+    experimental_run_tf_function = testing_utils.should_run_tf_function()
+  return {
+      "run_eagerly": run_eagerly,
+      "experimental_run_tf_function": experimental_run_tf_function
+  }
 
 
 @keras_parameterized.run_with_all_model_types
@@ -220,7 +223,7 @@ class CompositeTensorOutputTest(keras_parameterized.TestCase):
     # converts the ragged tensor back to a dense tensor.
     layers = [ToRagged(padding=0)]
     model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
     model._run_eagerly = testing_utils.should_run_eagerly()
 
     # Define some input data with additional padding.
@@ -235,7 +238,7 @@ class CompositeTensorOutputTest(keras_parameterized.TestCase):
     # converts the ragged tensor back to a dense tensor.
     layers = [ToRagged(padding=0)]
     model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
     model._run_eagerly = testing_utils.should_run_eagerly()
 
     # Define some input data with additional padding.
@@ -250,7 +253,7 @@ class CompositeTensorOutputTest(keras_parameterized.TestCase):
     # converts the ragged tensor back to a dense tensor.
     layers = [ToSparse()]
     model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
     model._run_eagerly = testing_utils.should_run_eagerly()
 
     # Define some input data with additional padding.
@@ -270,7 +273,7 @@ class CompositeTensorOutputTest(keras_parameterized.TestCase):
     # converts the ragged tensor back to a dense tensor.
     layers = [ToSparse()]
     model = testing_utils.get_model_from_layers(layers, input_shape=(None,))
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
     model._run_eagerly = testing_utils.should_run_eagerly()
 
     # Define some input data with additional padding.
@@ -407,7 +410,7 @@ class ScipySparseTensorInputTest(keras_parameterized.TestCase,
         optimizer="sgd",
         loss="mse",
         metrics=["accuracy"],
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     input_data = scipy.sparse.coo_matrix(([1, 2, 3], ([0, 1, 1], [0, 0, 1])),
                                          shape=[2, 3])
@@ -469,7 +472,7 @@ class ScipySparseTensorInputTest(keras_parameterized.TestCase,
         optimizer="sgd",
         loss="mse",
         metrics=["accuracy"],
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     input_data = {
         input_name:

@@ -204,9 +204,10 @@ def run_all_keras_modes(test_or_class=None,
       optimizer = RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
       metrics = ['mae']
-      model.compile(optimizer, loss, metrics=metrics,
-                    run_eagerly=testing_utils.should_run_eagerly(),
-                    run_distributed=testing_utils.should_run_distributed())
+      model.compile(
+          optimizer, loss, metrics=metrics,
+          run_eagerly=testing_utils.should_run_eagerly(),
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
 
       inputs = np.zeros((10, 3))
       targets = np.zeros((10, 4))
@@ -243,12 +244,11 @@ def run_all_keras_modes(test_or_class=None,
       a target dependency.
   """
 
-  params = [('_v2_function', 'v2_function'),
-            ('_v2_distributed', 'v2_distributed')]
+  params = [('_v2_function', 'v2_function'), ('_v2_funcgraph', 'v2_funcgraph')]
   if not always_skip_eager:
     params.append(('_v2_eager', 'v2_eager'))
   if not (always_skip_v1 or tf2.enabled()):
-    params.append(('_v1_graph', 'v1_graph'))
+    params.append(('_v1_session', 'v1_session'))
 
   def single_method_decorator(f):
     """Decorator that constructs the test cases."""
@@ -258,14 +258,14 @@ def run_all_keras_modes(test_or_class=None,
     @functools.wraps(f)
     def decorated(self, run_mode, *args, **kwargs):
       """A run of a single test case w/ specified run mode."""
-      if run_mode == 'v1_graph':
-        _v1_graph_test(f, self, config, *args, **kwargs)
-      elif run_mode == 'v2_function':
+      if run_mode == 'v1_session':
+        _v1_session_test(f, self, config, *args, **kwargs)
+      elif run_mode == 'v2_funcgraph':
         _v2_graph_functions_test(f, self, *args, **kwargs)
       elif run_mode == 'v2_eager':
         _v2_eager_test(f, self, *args, **kwargs)
-      elif run_mode == 'v2_distributed':
-        _v2_distributed_test(f, self, *args, **kwargs)
+      elif run_mode == 'v2_function':
+        _v2_function_test(f, self, *args, **kwargs)
       else:
         return ValueError('Unknown run mode %s' % run_mode)
 
@@ -274,9 +274,9 @@ def run_all_keras_modes(test_or_class=None,
   return _test_or_class_decorator(test_or_class, single_method_decorator)
 
 
-def _v1_graph_test(f, test_or_class, config, *args, **kwargs):
+def _v1_session_test(f, test_or_class, config, *args, **kwargs):
   with context.graph_mode(), testing_utils.run_eagerly_scope(False):
-    with testing_utils.run_distributed_scope(False):
+    with testing_utils.experimental_run_tf_function_scope(False):
       with test_or_class.test_session(use_gpu=True, config=config):
         f(test_or_class, *args, **kwargs)
 
@@ -284,21 +284,21 @@ def _v1_graph_test(f, test_or_class, config, *args, **kwargs):
 def _v2_graph_functions_test(f, test_or_class, *args, **kwargs):
   with context.eager_mode():
     with testing_utils.run_eagerly_scope(False):
-      with testing_utils.run_distributed_scope(False):
+      with testing_utils.experimental_run_tf_function_scope(False):
         f(test_or_class, *args, **kwargs)
 
 
 def _v2_eager_test(f, test_or_class, *args, **kwargs):
   with context.eager_mode():
     with testing_utils.run_eagerly_scope(True):
-      with testing_utils.run_distributed_scope(False):
+      with testing_utils.experimental_run_tf_function_scope(True):
         f(test_or_class, *args, **kwargs)
 
 
-def _v2_distributed_test(f, test_or_class, *args, **kwargs):
+def _v2_function_test(f, test_or_class, *args, **kwargs):
   with context.eager_mode():
     with testing_utils.run_eagerly_scope(False):
-      with testing_utils.run_distributed_scope(True):
+      with testing_utils.experimental_run_tf_function_scope(True):
         f(test_or_class, *args, **kwargs)
 
 
