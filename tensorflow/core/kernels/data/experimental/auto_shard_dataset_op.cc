@@ -28,6 +28,7 @@ namespace experimental {
 /* static */ constexpr const char* const AutoShardDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const AutoShardDatasetOp::kOutputShapes;
 
+constexpr char kMakeStateless[] = "make_stateless";
 constexpr char kOptimizerName[] = "tf_auto_shard";
 
 AutoShardDatasetOp::AutoShardDatasetOp(OpKernelConstruction* ctx)
@@ -63,17 +64,21 @@ RewriterConfig AutoShardDatasetOp::CreateConfig(int64 num_workers,
                                                 int64 index) {
   RewriterConfig rewriter_config;
   rewriter_config.set_fail_on_optimizer_errors(true);
-  rewriter_config.add_optimizers(kOptimizerName);
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
+
+  rewriter_config.add_optimizers(kMakeStateless);
   auto custom_optimizer = rewriter_config.add_custom_optimizers();
-  custom_optimizer->set_name(kOptimizerName);
+  custom_optimizer->set_name(kMakeStateless);
+
+  rewriter_config.add_optimizers(kOptimizerName);
+  auto custom_optimizer2 = rewriter_config.add_custom_optimizers();
+  custom_optimizer2->set_name(kOptimizerName);
   AttrValue num_workers_attr;
   num_workers_attr.set_i(num_workers);
-  (*custom_optimizer->mutable_parameter_map())[kNumWorkers] = num_workers_attr;
-
+  (*custom_optimizer2->mutable_parameter_map())[kNumWorkers] = num_workers_attr;
   AttrValue index_attr;
   index_attr.set_i(index);
-  (*custom_optimizer->mutable_parameter_map())[kIndex] = index_attr;
+  (*custom_optimizer2->mutable_parameter_map())[kIndex] = index_attr;
 
   return rewriter_config;
 }

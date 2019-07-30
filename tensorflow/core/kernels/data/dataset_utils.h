@@ -15,12 +15,66 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_
 
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 namespace data {
+
+template <typename T>
+class AnonymousResourceOp : public OpKernel {
+ public:
+  static std::atomic<int64> resource_id_counter_;
+
+  explicit AnonymousResourceOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    FunctionLibraryRuntime* lib;
+    std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
+    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
+    OP_REQUIRES_OK(
+        ctx, ctx->function_library()->Clone(&flib_def, &pflr, &lib, true));
+    T* resource;
+    OP_REQUIRES_OK(ctx, CreateResource(ctx, std::move(flib_def),
+                                       std::move(pflr), lib, &resource));
+
+    string container_name = name();
+    string unique_name =
+        strings::StrCat(container_name, resource_id_counter_.fetch_add(1));
+    ResourceMgr* mgr = ctx->resource_manager();
+    OP_REQUIRES_OK(ctx, mgr->Create<T>(container_name, unique_name, resource));
+
+    Tensor* handle_t;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle_t));
+    ResourceHandle handle = MakeResourceHandle(ctx, container_name, unique_name,
+                                               MakeTypeIndex<T>());
+    handle_t->scalar<ResourceHandle>()() = handle;
+
+    if (create_deleter_) {
+      Tensor* deleter_t;
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(1, TensorShape({}), &deleter_t));
+      deleter_t->scalar<Variant>()() =
+          ResourceDeleter(handle, ctx->resource_manager());
+    }
+  }
+
+ protected:
+  virtual string name() = 0;
+
+  virtual Status CreateResource(
+      OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
+      std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+      FunctionLibraryRuntime* lib, T** resource) = 0;
+
+  bool create_deleter_ = true;
+};
+
+template <typename T>
+std::atomic<int64> AnonymousResourceOp<T>::resource_id_counter_;
 
 // Returns a GraphDef representation of the given dataset.
 Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
