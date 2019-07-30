@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
+from tensorflow.python.util import object_identity
 
 
 UnliftableError = op_selector.UnliftableError
@@ -238,10 +239,10 @@ def lift_to_graph(init_tensors,
       i, resource_variable_ops.ResourceVariable)}
   init_tensors = set(init_tensors).difference(variable_init_tensors)
   base_graph = base_graph or list(init_tensors)[0].graph
-  op_map = op_map or {}
+  op_map = op_map or object_identity.ObjectIdentityDictionary()
 
   # Check that the initializer does not depend on any placeholders.
-  sources = set(sources or [])
+  sources = object_identity.ObjectIdentitySet(sources or [])
   visited_ops = set([x.op for x in sources])
   op_outputs = collections.defaultdict(set)
 

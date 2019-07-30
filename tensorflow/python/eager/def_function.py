@@ -33,6 +33,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 
@@ -532,7 +533,7 @@ class Function(object):
     # Note: using defun here avoids an infinite recursion.
     @function_lib.defun
     def initialize_variables():
-      op_map = {}
+      op_map = object_identity.ObjectIdentityDictionary()
       for v, init in initializer_map.items():
         with ops.init_scope():
           if resource_variable_ops.var_is_initialized_op(v.handle):
