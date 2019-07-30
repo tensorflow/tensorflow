@@ -493,8 +493,6 @@ class Model(network.Network):
 
     # Experiment training loop with default DS path.
     if (context.executing_eagerly() and self._experimental_run_tf_function
-        # TODO(scottzhu): Finish getting sequences working with the v2 loops.
-        and not isinstance(inputs, (data_utils.Sequence))
         and not distributed_training_utils.is_tpu_strategy(
             self._distribution_strategy)):
       try:

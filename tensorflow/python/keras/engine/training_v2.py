@@ -529,14 +529,14 @@ def _process_inputs(model, x, y, batch_size=None, sample_weights=None,
         batch_size=batch_size,
         check_steps=True,
         steps=steps)
-    # TODO(scottzhu): The generator and keras.sequence does not work with
-    # model._standardize_user_data() so far. However that method is very
-    # important which contains on-fly model build/tensor align for dict input,
-    # etc. We should still call the _standardize_user_data with the peeked data
-    # from generator or sequence, and let model compile.
-  return adapter_cls(x, y, batch_size=batch_size, steps=steps,
-                     sample_weights=sample_weights, shuffle=shuffle,
-                     distribution_strategy=distribution_strategy)
+  adapter = adapter_cls(x, y, batch_size=batch_size, steps=steps,
+                        sample_weights=sample_weights, shuffle=shuffle,
+                        distribution_strategy=distribution_strategy)
+  # As a fallback for the data type that does not work with
+  # _standardize_user_data, use the _prepare_model_with_inputs.
+  if adapter_cls not in _ADAPTER_FOR_STANDARDIZE_USER_DATA:
+    training_v2_utils._prepare_model_with_inputs(model, adapter.get_dataset())
+  return adapter
 
 
 def _update_sample_weight_mode(model, mode, dataset):
