@@ -170,10 +170,17 @@ struct TrMulTask final : Task {
   }
 
   // Ensures that both the LHS and RHS blocks required by the specified block
-  // are packed.
+  // are packed. In the event that they are already being packed on another
+  // threads, this function may perform the packing of some other block while
+  // waiting for that other thread to finish packing the requested block.
   void EnsurePacked(const SidePair<bool*> local_packed,
                     const SidePair<int>& block, const SidePair<int>& start,
                     const SidePair<int>& end, Tuning tuning) {
+#if RUY_OPT_ENABLED(RUY_OPT_PACK_AHEAD)
+    SidePair<int> next_runahead_block{block[Side::kLhs] + 1,
+                                      block[Side::kRhs] + 1};
+    Side next_runahead_side = Side::kLhs;
+#endif
     while (true) {
       bool both_sides_packed = true;
       for (Side side : {Side::kLhs, Side::kRhs}) {
@@ -183,6 +190,21 @@ struct TrMulTask final : Task {
       if (both_sides_packed) {
         break;
       }
+#if RUY_OPT_ENABLED(RUY_OPT_PACK_AHEAD)
+      const Side runahead_side = next_runahead_side;
+      const int runahead_block = next_runahead_block[runahead_side];
+      next_runahead_side =
+          next_runahead_side == Side::kLhs ? Side::kRhs : Side::kLhs;
+      if (runahead_block >= NumBlocksPerSide(runahead_side, block_map)) {
+        continue;
+      }
+      int runahead_block_start, runahead_block_end;
+      GetBlockMatrixCoords(runahead_side, block_map, runahead_block,
+                           &runahead_block_start, &runahead_block_end);
+      TryPack(runahead_side, local_packed[runahead_side], runahead_block,
+              runahead_block_start, runahead_block_end, tuning);
+      next_runahead_block[runahead_side] = runahead_block + 1;
+#endif
     }
   }
 
