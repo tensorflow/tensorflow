@@ -77,6 +77,7 @@ cc_library(
         ":tensor",
         "//tensorflow/lite:context",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_fbs",

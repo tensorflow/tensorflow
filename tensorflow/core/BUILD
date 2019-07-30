@@ -179,6 +179,7 @@ package_group(
     name = "dependency_whitelist",
     packages = [
         "//learning/freud/topic_models/tensorflow/...",
+        "//perftools/accelerators/xprof/api/...",
         "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
     ],
 )
@@ -622,6 +623,20 @@ filegroup(
         "platform/subprocess.h",
     ] + tf_additional_monitoring_hdrs(),
     visibility = ["//visibility:private"],
+)
+
+tf_cc_test(
+    name = "platform_unbounded_work_queue_test",
+    srcs = ["platform/unbounded_work_queue_test.cc"],
+    deps = [
+        ":framework",
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":test",
+        ":test_main",
+        "@com_google_absl//absl/memory",
+    ],
 )
 
 # Headers that are not exported as part of ":lib".
@@ -2451,6 +2466,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "lib/strings/proto_serialization.h",
     "lib/strings/scanner.h",
     "lib/wav/wav_io.h",
+    "platform/annotation.h",
     "platform/demangle.h",
     "platform/denormal.h",
     "platform/host_info.h",
@@ -2461,8 +2477,22 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
     "platform/snappy.h",
     "platform/tensor_coding.h",
     "platform/tracing.h",
+    "platform/unbounded_work_queue.h",
     "util/env_var.h",
 ]
+
+cc_library(
+    name = "annotation",
+    srcs = [],
+    hdrs = [
+        "platform/annotation.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
 
 # Replicated for lib_internal and lib_internal_impl.
 LIB_INTERNAL_DEFINES = (
@@ -3411,6 +3441,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         ":shared_counter",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -3458,7 +3489,7 @@ tf_cuda_library(
         ":protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
-        "//tensorflow/core/profiler/lib:profiler_graph_lib",
+        "//tensorflow/core/profiler/lib:profiler_lib",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -3497,6 +3528,7 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":lib",
         ":protos_all_cc",
+        "@com_google_absl//absl/flags:flag",
         "//tensorflow/core/profiler/internal:profiler_interface",
     ] + tf_additional_device_tracer_deps(),
     alwayslink = True,
@@ -3631,11 +3663,15 @@ tf_cuda_library(
     srcs = [
         "common_runtime/gpu/gpu_id.h",
     ],
-    hdrs = ["common_runtime/gpu/gpu_mem_allocator.h"],
+    hdrs = [
+        "common_runtime/gpu/gpu_host_allocator.h",
+        "common_runtime/gpu/gpu_mem_allocator.h",
+    ],
     features = ["parse_headers"],
     visibility = ["//visibility:public"],
     deps = [
         ":allocator",
+        ":lib",
         ":lib_internal",
         ":stream_executor",
     ],

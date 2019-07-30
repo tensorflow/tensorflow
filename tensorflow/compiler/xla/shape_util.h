@@ -43,6 +43,8 @@ limitations under the License.
 
 namespace xla {
 
+class ShapeIndexView;
+
 // An index for specifying a particular nested subshape within a shape. Used in
 // ShapeUtil::GetSubshape and other interfaces. Shapes are recursive data
 // structures (trees) and ShapeIndex defines a path through the tree where each
@@ -68,6 +70,8 @@ class ShapeIndex {
   ShapeIndex(std::initializer_list<int64> init) : indices_(init) {}
   template <typename InputIt>
   ShapeIndex(InputIt start, InputIt end) : indices_(start, end) {}
+
+  explicit ShapeIndex(ShapeIndexView v);
 
   bool empty() const { return indices_.empty(); }
   size_t size() const { return indices_.size(); }
@@ -137,6 +141,10 @@ class ShapeIndexView {
     CHECK(!empty());
     return indices_.front();
   }
+  int64 back() const {
+    CHECK(!empty());
+    return indices_.back();
+  }
   ShapeIndexView ConsumeFront() const {
     ShapeIndexView result = *this;
     result.indices_.remove_prefix(1);
@@ -160,6 +168,9 @@ class ShapeIndexView {
  private:
   absl::Span<const int64> indices_;
 };
+
+inline ShapeIndex::ShapeIndex(ShapeIndexView v)
+    : ShapeIndex(v.begin(), v.end()) {}
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
 std::ostream& operator<<(std::ostream& out, const ShapeIndexView& shape_index);

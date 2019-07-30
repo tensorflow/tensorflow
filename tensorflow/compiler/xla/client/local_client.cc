@@ -189,22 +189,64 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::RunAsync(
     ExecutableRunOptions run_options) {
   TF_ASSIGN_OR_RETURN(auto options_and_stream,
                       RunHelper(arguments, run_options));
-  return executable_->ExecuteAsyncOnStream(&options_and_stream.first,
-                                           arguments);
+  se::Stream* stream = run_options.stream();
+
+  std::shared_ptr<HloSnapshot> snapshot;
+  if (executable_->dumping_snapshot()) {
+    snapshot = std::make_shared<HloSnapshot>();
+    snapshot->set_execution_platform(backend_->platform()->Name());
+    *snapshot->mutable_hlo() = *executable_->hlo_proto();
+    for (const ShapedBuffer* arg : arguments) {
+      auto literal = std::make_shared<Literal>(arg->on_host_shape());
+      backend_->transfer_manager()->TransferLiteralFromDevice(
+          stream, *arg, literal.get(), [snapshot, literal](Status status) {
+            if (!status.ok()) {
+              LOG(ERROR) << "TransferLiteralFromDevice for HLO snapshot inputs "
+                            "failed: "
+                         << status;
+              return;
+            }
+            *snapshot->add_arguments() = literal->ToProto();
+          });
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      ScopedShapedBuffer outputs,
+      executable_->ExecuteAsyncOnStream(&options_and_stream.first, arguments));
+
+  // Transfer the outputs and save the snapshot to disk.
+  if (snapshot) {
+    auto literal = std::make_shared<Literal>(outputs.on_host_shape());
+    backend_->transfer_manager()->TransferLiteralFromDevice(
+        stream, outputs, literal.get(), [snapshot, literal](Status status) {
+          if (status.ok()) {
+            *snapshot->mutable_result() = literal->ToProto();
+          } else {
+            LOG(ERROR)
+                << "TransferLiteralFromDevice for HLO snapshot outputs failed: "
+                << status;
+          }
+          DumpHloSnapshotIfEnabled(*snapshot, GetDebugOptionsFromFlags());
+        });
+  }
+
+  return std::move(outputs);
 }
 
 StatusOr<ScopedShapedBuffer> LocalExecutable::ExecuteAndDump(
     const ServiceExecutableRunOptions* run_options,
     const absl::Span<const ShapedBuffer* const> arguments) {
-  executable_->hlo_snapshot()->set_execution_platform(
-      backend_->platform()->Name());
-  TF_RETURN_IF_ERROR(RecordArguments(arguments, executable_->hlo_snapshot()));
+  HloSnapshot snapshot;
+  *snapshot.mutable_hlo() = *executable_->hlo_proto();
+  snapshot.set_execution_platform(backend_->platform()->Name());
+  TF_RETURN_IF_ERROR(RecordArguments(arguments, &snapshot));
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer result,
       executable_->ExecuteOnStream(run_options, arguments,
                                    /*hlo_execution_profile=*/nullptr));
-  TF_RETURN_IF_ERROR(RecordResult(&result, executable_->hlo_snapshot()));
-  DumpHloSnapshotIfEnabled(executable_->module(), *executable_->hlo_snapshot());
+  TF_RETURN_IF_ERROR(RecordResult(&result, &snapshot));
+  DumpHloSnapshotIfEnabled(executable_->module(), snapshot);
   return std::move(result);
 }
 

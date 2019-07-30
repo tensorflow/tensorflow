@@ -666,6 +666,19 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "matrix_diag_ops_test",
+    size = "medium",
+    timeout = "long",
+    srcs = ["matrix_diag_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "momentum_test",
     size = "small",
     srcs = ["momentum_test.py"],
@@ -942,7 +955,10 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["stateful_random_ops_test.py"],
     shard_count = 10,
-    tags = ["optonly"],
+    tags = [
+        "notap",  # TODO(b/138578268): times out on 2019-07-29.
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",
@@ -1142,9 +1158,9 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "permute_test",
+    name = "data_format_ops_test",
     size = "small",
-    srcs = ["permute_test.py"],
+    srcs = ["data_format_ops_test.py"],
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",

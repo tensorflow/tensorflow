@@ -45,6 +45,13 @@ _VARIABLE_OPS = {
     "VariableV2",
 }
 
+_CONTROL_FLOW_OP_NAMES_OR_IDENTITY = [
+    "Switch",
+    "Enter",
+    "Exit",
+    "Identity",
+]
+
 
 def _is_variable_op(op):
   """Returns true if 'op' refers to a Variable node."""
@@ -126,6 +133,12 @@ def _extract_graph_summary(graph_def):
     n = _node_name(node.name)
     name_to_node[n] = node
     name_to_input_name[n] = [_node_name(x) for x in node.input]
+    # Prevent colocated nodes from being lost.
+    if "_class" in node.attr:
+      for colocated_node_name in node.attr["_class"].list.s:
+        colocated_node_decoded = colocated_node_name.decode("utf-8")
+        if colocated_node_decoded.startswith("loc:@"):
+          name_to_input_name[n].append(colocated_node_decoded[5:])
     name_to_seq_num[n] = seq
     seq += 1
   return name_to_input_name, name_to_node, name_to_seq_num
@@ -243,15 +256,7 @@ def convert_variables_to_constants(sess,
     GraphDef containing a simplified version of the original.
   """
 
-  def get_input_name(node):
-    """Gets the name of the first input. Errors if suffix is not :0."""
-    details = node.input[0].split(":")
-    if len(details) == 1 or int(details[1]) == 0:
-      return details[0]
-    # While it is valid for input tensors to have a suffix that is not :0, this
-    # method is used to find the associated ops, not tensors, and therefore it
-    # is not valid.
-    raise ValueError("Tensor name '{0}' is invalid.".format(node.input[0]))
+  get_input_name = lambda node: node.input[0].split(":")[0]
 
   def create_const_op(node_name, dtype, data, data_shape=None):
     """Creates a Const op."""
@@ -277,7 +282,7 @@ def convert_variables_to_constants(sess,
   # Get list of variables.
   variable_names = []
   variable_dict_names = []
-  resource_identity_types = {}
+  resource_op_types = {}
   for node in inference_graph.node:
     if node.op in ["Variable", "VariableV2", "VarHandleOp"]:
       variable_name = node.name
@@ -292,11 +297,13 @@ def convert_variables_to_constants(sess,
       else:
         variable_names.append(variable_name + ":0")
     elif node.op in ["ReadVariableOp", "ResourceGather"]:
-      # There can be one or more Identity ops in between the ReadVariableOp and
-      # VarHandleOp.  Store the Identity ops with the associated dtypes.
+      # There can be one or more Identity or control flow ops in between the
+      # ReadVariableOp and VarHandleOp. Store the ops with the associated
+      # dtypes.
       source_op_name = get_input_name(node)
-      while map_name_to_node[source_op_name].op == "Identity":
-        resource_identity_types[source_op_name] = node.attr["dtype"]
+      while (map_name_to_node[source_op_name].op in
+             _CONTROL_FLOW_OP_NAMES_OR_IDENTITY):
+        resource_op_types[source_op_name] = node.attr["dtype"]
         source_op_name = get_input_name(map_name_to_node[source_op_name])
       if map_name_to_node[source_op_name].op != "VarHandleOp":
         raise ValueError("Cannot find the variable that is an input "
@@ -320,11 +327,12 @@ def convert_variables_to_constants(sess,
       output_node = create_const_op(input_node.name, input_node.attr["dtype"],
                                     data, data.shape)
       how_many_converted += 1
-    elif input_node.name in resource_identity_types:
-      # Converts the Identities of type RESOURCE_DT to the appropriate type
-      # based on the input they are referencing.
+    elif input_node.name in resource_op_types:
+      # Converts the type of the ops between the ReadVariableOp and VarHandleOp
+      # from RESOURCE_DT to the appropriate type based on the input they are
+      # referencing.
       output_node.CopyFrom(input_node)
-      output_node.attr["T"].CopyFrom(resource_identity_types[input_node.name])
+      output_node.attr["T"].CopyFrom(resource_op_types[input_node.name])
     elif input_node.op == "ReadVariableOp":
       # The first branch converts all VarHandleOps of ResourceVariables to
       # constants, so we need to convert the associated ReadVariableOps to

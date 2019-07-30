@@ -211,6 +211,8 @@ renames = {
         'tf.math.conj',
     'tf.container':
         'tf.compat.v1.container',
+    'tf.control_flow_v2_enabled':
+        'tf.compat.v1.control_flow_v2_enabled',
     'tf.convert_to_tensor_or_indexed_slices':
         'tf.compat.v1.convert_to_tensor_or_indexed_slices',
     'tf.convert_to_tensor_or_sparse_tensor':

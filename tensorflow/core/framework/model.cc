@@ -651,6 +651,10 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget) {
   switch (algorithm) {
     case AutotuneAlgorithm::HILL_CLIMB:
       OptimizeHillClimb(cpu_budget);
+      break;
+    case AutotuneAlgorithm::GRADIENT_DESCENT:
+      OptimizeGradientDescent(cpu_budget);
+      break;
   }
 }
 
@@ -715,13 +719,106 @@ std::map<string, std::shared_ptr<Parameter>> Model::CollectTunableParameters(
   return parameters;
 }
 
+void Model::OptimizeGradientDescent(int64 cpu_budget) {
+  std::shared_ptr<Node> snapshot;
+  {
+    tf_shared_lock lock(mu_);
+    snapshot = output_->Snapshot(nullptr);
+  }
+  VLOG(2) << "Starting optimization of tunable parameters with GradientDescent";
+  const double processing_time = TotalProcessingTime(snapshot);
+  auto parameters = CollectTunableParameters(snapshot);
+  for (auto& pair : parameters) {
+    pair.second->value = pair.second->min;
+  }
+  // Gradient descent step size.
+  constexpr double kDescentStep = 0.7L;
+
+  // Optimization is stopped once the `OutputTime` improvement is smaller than
+  // this value.
+  constexpr double kOptimizationPrecision = 100.0L;
+
+  // Penalizing step for the parameters after we overoptimize (output time <
+  // processing time / cpu budget) the objective.
+  constexpr double kParametersPenalty = 0.05L;
+
+  // Maximum number of iterations for optimization.
+  constexpr int64 kMaxIterations = 100;
+
+  double output_time = 0;
+  double new_output_time;
+  double new_value;
+  for (int i = 0; i < kMaxIterations; ++i) {
+    std::map<string, double> gradient;
+    new_output_time = OutputTime(snapshot, &gradient);
+    if (std::abs(output_time - new_output_time) < kOptimizationPrecision ||
+        new_output_time < processing_time / cpu_budget) {
+      break;
+    }
+    double max_abs_derivative = 1.0;
+    for (auto& pair : parameters) {
+      if (pair.second->value != pair.second->max) {
+        max_abs_derivative =
+            std::max(max_abs_derivative, std::abs(gradient[pair.first]));
+      }
+    }
+    // Maximizes parameters on early stages of the model.
+    if (max_abs_derivative < kOptimizationPrecision) {
+      for (auto& pair : parameters) {
+        pair.second->value = pair.second->max;
+      }
+      break;
+    }
+    for (auto& pair : parameters) {
+      new_value = pair.second->value -
+                  kDescentStep * gradient[pair.first] / max_abs_derivative;
+      // Projection on a feasible interval.
+      if (new_value > pair.second->max) {
+        pair.second->value = pair.second->max;
+      } else if (new_value < pair.second->min) {
+        pair.second->value = pair.second->min;
+      } else {
+        pair.second->value = new_value;
+      }
+    }
+    output_time = new_output_time;
+  }
+  // Penalize parameters if we overoptimized the objective.
+  for (int i = 0;
+       i < kMaxIterations && new_output_time < processing_time / cpu_budget;
+       ++i) {
+    for (auto& pair : parameters) {
+      new_value = pair.second->value - kParametersPenalty;
+      // Projection on a feasible interval.
+      if (new_value > pair.second->max) {
+        pair.second->value = pair.second->max;
+      } else if (new_value < pair.second->min) {
+        pair.second->value = pair.second->min;
+      } else {
+        pair.second->value = new_value;
+      }
+    }
+    new_output_time = OutputTime(snapshot, /*gradient=*/nullptr);
+  }
+  VLOG(2) << "Number of tunable parameters: " << parameters.size();
+  for (auto& pair : parameters) {
+    pair.second->value = std::round(pair.second->value);
+    auto& parameter = pair.second;
+    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
+            << parameter->value;
+    mutex_lock l(*parameter->state->mu);
+    parameter->state->value = parameter->value;
+    parameter->state->cond_var->notify_all();
+  }
+}
+
 void Model::OptimizeHillClimb(int64 cpu_budget) {
   std::shared_ptr<Node> snapshot;
   {
     tf_shared_lock lock(mu_);
     snapshot = output_->Snapshot(nullptr);
   }
-  VLOG(2) << "Starting optimization of tunable parameters";
+  VLOG(2) << "Starting optimization of tunable parameters with HillClimb";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
   for (auto& pair : parameters) {

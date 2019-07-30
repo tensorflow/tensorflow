@@ -43,6 +43,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -391,7 +392,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     b = control_flow_ops.cond(
         constant_op.constant(True), lambda: math_ops.square(x),
         lambda: math_ops.subtract(x, 1.))
-    self.assertEqual(b.shape, tensor_shape.scalar())
+    self.assertEqual(b.shape, tensor_shape.TensorShape([]))
 
   @test_util.run_v1_only("b/120545219")
   def testFetchable(self):
@@ -431,8 +432,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testCondIndexedSlices(self):
     with self.cached_session():
-      values = constant_op.constant(10)
-      indices = constant_op.constant(0)
+      values = constant_op.constant([10])
+      indices = constant_op.constant([0])
       x = ops.IndexedSlices(values, indices)
       pred = math_ops.less(1, 2)
       fn1 = lambda: ops.IndexedSlices(math_ops.add(x.values, 1), indices)
@@ -441,14 +442,14 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       val = r.values
       ind = r.indices
-    self.assertAllEqual(11, val)
-    self.assertAllEqual(0, ind)
+    self.assertAllEqual([11], val)
+    self.assertAllEqual([0], ind)
 
   def testCondMismatchedIndexedSlices(self):
     @def_function.function
     def foo():
-      values = constant_op.constant(10)
-      indices = constant_op.constant(0)
+      values = constant_op.constant([10])
+      indices = constant_op.constant([0])
       x = ops.IndexedSlices(values, indices)
       with self.assertRaisesRegexp(
           TypeError, "Cannot reconcile tf.cond 0-th outputs"):
@@ -517,9 +518,9 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testCondIndexedSlicesDifferentTypes(self):
     with self.cached_session():
-      values = constant_op.constant(10)
-      i_32 = ops.convert_to_tensor(0, name="one", dtype=dtypes.int32)
-      i_64 = ops.convert_to_tensor(0, name="one", dtype=dtypes.int64)
+      values = constant_op.constant([10])
+      i_32 = ops.convert_to_tensor([0], name="one", dtype=dtypes.int32)
+      i_64 = ops.convert_to_tensor([0], name="one", dtype=dtypes.int64)
       x = ops.IndexedSlices(values, i_32)
       pred = math_ops.less(1, 2)
       fn1 = lambda: ops.IndexedSlices(math_ops.add(x.values, 1), i_32)
@@ -528,8 +529,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       val = r.values
       ind = r.indices
-    self.assertAllEqual(11, val)
-    self.assertAllEqual(0, ind)
+    self.assertAllEqual([11], val)
+    self.assertAllEqual([0], ind)
     self.assertTrue(ind.dtype == np.int64)
 
   @test_util.run_v1_only("b/120545219")
@@ -2116,6 +2117,50 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(r.row_splits.shape.as_list(), [3])
     self.assertTrue(r.values.row_splits.shape.as_list() in ([6], [None]))
     self.assertTrue(r.values.values.shape.as_list() in ([49], [None]))
+
+  def testWhileShapeInvariantTensorSpec(self):
+    i = constant_op.constant(0)
+    x = constant_op.constant([1])
+    c = lambda i, _: i < 10
+    b = lambda i, x: (i + 1, array_ops.stack([x, x]))
+    shape_invariants = [
+        tensor_spec.TensorSpec([], dtype=dtypes.int32),
+        tensor_spec.TensorSpec(None, dtype=dtypes.int32)]
+    control_flow_ops.while_loop(c, b, [i, x], shape_invariants)
+
+  # TODO(b/131265085) Remove this decorator when bug is fixed.
+  @test_util.build_as_function_and_v1_graph
+  def testWhileShapeInvariantWrongTypeSpecType(self):
+    c = lambda i, _: i < 10
+    b = lambda i, x: (i + 1, x)
+    i = constant_op.constant(0)
+    x = sparse_tensor.SparseTensor([[0]], [1.0], [10])
+    shape_invariants = [
+        tensor_spec.TensorSpec([], dtype=dtypes.int32),
+        sparse_tensor.SparseTensorSpec([None])]
+    control_flow_ops.while_loop(c, b, [i, x], shape_invariants)
+
+    x2 = constant_op.constant([1])
+    with self.assertRaises(TypeError):
+      control_flow_ops.while_loop(c, b, [i, x2], shape_invariants)
+
+    x3 = ragged_factory_ops.constant([[1, 2], [3]])
+    with self.assertRaises(TypeError):
+      control_flow_ops.while_loop(c, b, [i, x3], shape_invariants)
+
+    i2 = constant_op.constant(0.0)
+    with self.assertRaises(TypeError):
+      control_flow_ops.while_loop(c, b, [i2, x], shape_invariants)
+
+  # TODO(b/131265085) Remove this decorator when bug is fixed.
+  @test_util.build_as_function_and_v1_graph
+  def testWhileShapeInvariantBadType(self):
+    i = constant_op.constant(0)
+    x = constant_op.constant([1])
+    c = lambda i, _: i < 10
+    b = lambda i, x: (i + 1, x)
+    with self.assertRaises((ValueError, TypeError)):
+      control_flow_ops.while_loop(c, b, [i, x], ["foo", "bar"])
 
   def _testNestedWhile_1(self, use_gpu):
     with self.cached_session(use_gpu=use_gpu):
@@ -4399,6 +4444,15 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           [tensor_shape.TensorShape([None])])
       self.assertAllEqual(while_output.shape.as_list(), [None])
     runTest()
+
+  def testFunctionInWhile(self):
+
+    @def_function.function
+    def body(x):
+      return x + 1
+
+    r = control_flow_ops.while_loop(lambda x: x < 5, body, [0])
+    self.assertAllEqual(r, 5.)
 
 
 class ControlFlowContextCheckTest(test.TestCase):

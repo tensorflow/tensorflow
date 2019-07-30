@@ -35,7 +35,6 @@ from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import parser
-from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
@@ -108,11 +107,11 @@ class ApiTest(test.TestCase):
       self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   @test_util.run_deprecated_v1
-  def test_convert_then_do_not_convert_graph(self):
+  def test_convert_then_do_not_convert(self):
 
     class TestClass(object):
 
-      @api.do_not_convert(run_as=api.RunMode.GRAPH)
+      @api.do_not_convert
       def called_member(self, a):
         return tf.negative(a)
 
@@ -120,32 +119,6 @@ class ApiTest(test.TestCase):
       def test_method(self, x, s, a):
         while tf.reduce_sum(x) > s:
           x //= self.called_member(a)
-        return x
-
-    tc = TestClass()
-    x = tc.test_method(
-        constant_op.constant((2, 4)), constant_op.constant(1),
-        constant_op.constant(-2))
-    self.assertAllEqual((0, 1), self.evaluate(x))
-
-  @test_util.run_deprecated_v1
-  def test_convert_then_do_not_convert_py_func(self):
-
-    class TestClass(object):
-
-      @api.do_not_convert(
-          run_as=api.RunMode.PY_FUNC, return_dtypes=py_func.MatchDType(1))
-      def called_member(self, a):
-        return np.negative(a)
-
-      @api.convert(recursive=True)
-      def test_method(self, x, s, a):
-        while tf.reduce_sum(x) > s:
-          y = self.called_member(a)
-          # set_shape works around while_loop's limitations.
-          # TODO(mdan): Allow specifying shapes (or ShapeLike) instead.
-          y.set_shape(a.shape)
-          x //= y
         return x
 
     tc = TestClass()
@@ -456,8 +429,7 @@ class ApiTest(test.TestCase):
     # tc is still a TestClass - constructors are whitelisted.
     # TODO(b/124016764): Support this use case.
     # The error below is specific to the `if` statement not being converted.
-    with self.assertRaisesRegex(TypeError,
-                                'Using a `tf.Tensor` as a Python `bool`'):
+    with self.assertRaises(TypeError):
       tc.test_method()
 
   def test_converted_call_mangled_properties(self):
@@ -630,6 +602,53 @@ class ApiTest(test.TestCase):
                            ('TestNamedtuple', ('a', 'b')), {})
 
     self.assertTrue(inspect_utils.isnamedtuple(x))
+
+  def test_converted_call_namedtuple_subclass_bound_method(self):
+
+    class TestClass(collections.namedtuple('TestNamedtuple', ('a', 'b'))):
+
+      def test_method(self, x):
+        while tf.reduce_sum(x) > self.a:
+          x //= self.b
+        return x
+
+    opts = converter.ConversionOptions(recursive=True)
+
+    obj = TestClass(5, 2)
+    x = api.converted_call(
+        obj.test_method, opts, (constant_op.constant([2, 4]),), {})
+
+    self.assertAllEqual(self.evaluate(x), [1, 2])
+
+  def test_converted_call_namedtuple_method(self):
+
+    class TestClass(collections.namedtuple('TestNamedtuple', ('a', 'b'))):
+      pass
+
+    opts = converter.ConversionOptions(recursive=True)
+
+    obj = TestClass(5, 2)
+    # _asdict is a documented method of namedtuple.
+    x = api.converted_call(obj._asdict, opts, (), {})
+
+    self.assertDictEqual(x, {'a': 5, 'b': 2})
+
+  def test_converted_call_namedtuple_subclass_unbound_method(self):
+
+    class TestClass(collections.namedtuple('TestNamedtuple', ('a', 'b'))):
+
+      def test_method(self, x):
+        while tf.reduce_sum(x) > self.a:
+          x //= self.b
+        return x
+
+    opts = converter.ConversionOptions(recursive=True)
+
+    obj = TestClass(5, 2)
+    x = api.converted_call(TestClass.test_method, opts,
+                           (obj, constant_op.constant([2, 4])), {})
+
+    self.assertAllEqual(self.evaluate(x), [1, 2])
 
   def test_converted_call_lambda(self):
 
@@ -964,6 +983,50 @@ class ApiTest(test.TestCase):
     with self.assertRaisesRegex(TypeError, 'tf.Tensor.*bool'):
       # The code in `f` is only valid with AutoGraph.
       test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED))
+
+  def test_super_with_one_arg(self):
+    test_case_self = self
+
+    class TestBase(object):
+
+      def plus_three(self, x):
+        return x + 3
+
+    class TestSubclass(TestBase):
+
+      def plus_three(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def one_arg(self, x):
+        test_base_unbound = super(TestSubclass)
+        test_base = test_base_unbound.__get__(self, TestSubclass)
+        return test_base.plus_three(x)
+
+    tc = api.converted_call(TestSubclass,
+                            converter.ConversionOptions(recursive=True), (), {})
+
+    self.assertEqual(5, tc.one_arg(2))
+
+  def test_super_with_two_args(self):
+    test_case_self = self
+
+    class TestBase(object):
+
+      def plus_three(self, x):
+        return x + 3
+
+    class TestSubclass(TestBase):
+
+      def plus_three(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def two_args(self, x):
+        return super(TestSubclass, self).plus_three(x)
+
+    tc = api.converted_call(TestSubclass,
+                            converter.ConversionOptions(recursive=True), (), {})
+
+    self.assertEqual(5, tc.two_args(2))
 
 
 if __name__ == '__main__':

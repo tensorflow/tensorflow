@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_SERVICE_IMPL_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_SERVICE_IMPL_H_
 
-
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
@@ -111,7 +110,9 @@ class EagerServiceImpl {
       RecordAccess();
     }
     ~ServerContext() {
-
+      ctx_->WaitForAndCloseRemoteContexts();
+      // ctx_->RefCountIsOne() should be true here.
+      // TODO(iga): Remove EagerContext refcounting.
       ctx_->Unref();
     }
 

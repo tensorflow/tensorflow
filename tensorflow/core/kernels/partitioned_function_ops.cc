@@ -145,7 +145,13 @@ Status PartitionedCallOp::FillOutputDevices(
     DataTypeVector dtypes;
     TF_RETURN_IF_ERROR(ArgNumType(attrs, ret_def, &is_type_list, &dtypes));
     for (DataType dtype : dtypes) {
-      if (MTypeFromDType(dtype) == HOST_MEMORY) {
+      if (dtype == DT_RESOURCE) {
+        // Resource memory type is HOST_MEMORY, however the actual resource
+        // might be allocated on a device. We leave output device for resource
+        // outputs empty, and rely on a Placer and colocation constraints to
+        // infer correct placement for the function output.
+        opts->output_devices.push_back("");
+      } else if (MTypeFromDType(dtype) == HOST_MEMORY) {
         opts->output_devices.push_back(cpu_device.name());
       } else {
         opts->output_devices.push_back(opts->target);

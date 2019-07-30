@@ -1,5 +1,5 @@
 load("@local_config_mlir//:tblgen.bzl", "gentbl")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_native_cc_binary")
 
 package(
     default_visibility = [":friends"],
@@ -13,6 +13,7 @@ package_group(
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/google/xla/...",
         "//tensorflow/compiler/mlir/...",
+        "//tensorflow/python/...",
     ],
 )
 
@@ -98,11 +99,14 @@ cc_library(
         "ir/tf_ops.cc",
         "ir/tf_ops.cc.inc",
         "ir/tf_ops.h.inc",
+        "transforms/executor_island_coarsening.cc",
         "transforms/functional_control_flow_to_cfg.cc",
         "transforms/generated_canonicalize.inc",
         "transforms/generated_optimize.inc",
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
+        "translate/control_to_executor_dialect.cc",
+        "translate/executor_to_control_dialect.cc",
     ],
     hdrs = [
         "ir/control_flow_ops.h",
@@ -129,7 +133,6 @@ cc_library(
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
         "@local_config_mlir//:TransformUtils",
-        "@local_config_mlir//:TypeUtilities",
     ],
     # TODO(jpienaar): Merge in the dialect registration.
     alwayslink = 1,
@@ -279,6 +282,7 @@ cc_library(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_proto_cc",
+        "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:StandardOps",
     ],
@@ -472,6 +476,7 @@ cc_library(
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Parser",
+        "@local_config_mlir//:Pass",
     ],
 )
 
@@ -506,24 +511,6 @@ cc_library(
         "@local_config_mlir//:Translation",
     ],
     alwayslink = 1,
-)
-
-tf_cc_binary(
-    name = "tf-mlir-translate",
-    deps = [
-        ":convert_graphdef",
-        ":mlir_roundtrip_flags",
-        ":translate_cl_options",
-        ":translate_lib",
-        ":translate_registration",
-        ":translate_tf_dialect_op",
-        "//tensorflow/core:protos_all_proto_cc",
-        "//tensorflow/stream_executor/lib",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Translation",
-        "@local_config_mlir//:tools/mlir-translate/mlir-translate",
-    ],
 )
 
 tf_cc_test(

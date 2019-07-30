@@ -172,8 +172,8 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
 }
 
 using ConvCacheKey =
-    std::tuple<se::StreamExecutor*, std::string, std::string, Shape,
-               std::vector<Shape>, std::string, std::string, int64>;
+    std::tuple<se::StreamExecutor*,
+               /* conv->ToString(HloPrintOptions::Canonical()) */ std::string>;
 
 struct ConvCacheStats {
   int64 cache_hits = 0;
@@ -185,20 +185,11 @@ struct ConvCacheStats {
   }
 };
 
-StatusOr<ConvCacheKey> AutotuneCacheKeyfromInstruction(
+ConvCacheKey AutotuneCacheKeyfromInstruction(
     const HloCustomCallInstruction* conv, se::StreamExecutor* se) {
-  TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
-                      conv->backend_config<CudnnConvBackendConfig>());
-  std::vector<Shape> operand_shapes;
-  absl::c_transform(conv->operands(), std::back_inserter(operand_shapes),
-                    [&](const HloInstruction* op) { return op->shape(); });
-
-  return std::make_tuple(
-      se, backend_config.SerializeAsString(), conv->custom_call_target(),
-      conv->shape(), std::move(operand_shapes),
-      conv->window().SerializeAsString(),
-      conv->convolution_dimension_numbers().SerializeAsString(),
-      conv->feature_group_count());
+  auto options = HloPrintOptions::Canonical();
+  options.set_print_backend_config(true);
+  return std::make_tuple(se, conv->ToString(options));
 }
 
 tensorflow::mutex autotune_cache_lock(tensorflow::LINKER_INITIALIZED);
@@ -225,8 +216,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   // which can greatly improve both stability (deterministic numeric results
   // within a process for a given input) and performance (2x speedup on some
   // models).
-  TF_ASSIGN_OR_RETURN(ConvCacheKey key,
-                      AutotuneCacheKeyfromInstruction(instr, stream_exec_));
+  ConvCacheKey key = AutotuneCacheKeyfromInstruction(instr, stream_exec_);
   {
     tensorflow::mutex_lock lock(autotune_cache_lock);
     auto it = autotune_cache.find(key);

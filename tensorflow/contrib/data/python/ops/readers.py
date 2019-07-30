@@ -21,9 +21,9 @@ from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util import deprecation
 
@@ -401,5 +401,5 @@ class LMDBDataset(dataset_ops.DatasetSource):
 
   @property
   def element_spec(self):
-    return (structure.TensorStructure(dtypes.string, []),
-            structure.TensorStructure(dtypes.string, []))
+    return (tensor_spec.TensorSpec([], dtypes.string),
+            tensor_spec.TensorSpec([], dtypes.string))

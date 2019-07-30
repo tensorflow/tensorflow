@@ -491,8 +491,12 @@ class _FetchHandler(object):
 
   def _assert_fetchable(self, graph, op):
     if not graph.is_fetchable(op):
-      raise ValueError('Operation %r has been marked as not fetchable.' %
-                       op.name)
+      raise errors.InaccessibleTensorError(
+          'Operation %r has been marked as not fetchable. Typically this'
+          ' happens when it is defined in another function or code block.'
+          ' Use return values,explicit Python locals or TensorFlow collections'
+          ' to access it.'
+          % op.name)
 
   def fetches(self):
     """Return the unique names of tensors to fetch.
@@ -648,6 +652,10 @@ class BaseSession(SessionInterface):
       try:
         self._target = compat.as_bytes(target)
       except TypeError:
+        if isinstance(target, config_pb2.ConfigProto):
+          raise TypeError('target must be a string, but got %s.'
+                          ' Did you do "Session(config)" instead of'
+                          ' "Session(config=config)"?' % type(target))
         raise TypeError('target must be a string, but got %s' % type(target))
     else:
       self._target = None

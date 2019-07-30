@@ -930,7 +930,7 @@ std::vector<string> HloReshapeInstruction::ExtraAttributesToStringImpl(
   if (inferred_dimension() == -1) {
     return {};
   }
-  return {StrCat("inferred_dimension={", inferred_dimension(), "}")};
+  return {StrCat("inferred_dimension=", inferred_dimension())};
 }
 
 bool HloReshapeInstruction::IdenticalSlowPath(
@@ -1737,7 +1737,7 @@ HloInstructionProto HloParameterInstruction::ToProto() const {
 }
 
 std::vector<string> HloParameterInstruction::ExtraAttributesToStringImpl(
-    const HloPrintOptions& /*options*/) const {
+    const HloPrintOptions& options) const {
   std::vector<string> result;
   if (!parameter_replicated_at_leaf_buffers_) {
     return result;
@@ -1746,8 +1746,10 @@ std::vector<string> HloParameterInstruction::ExtraAttributesToStringImpl(
   for (bool replicated : *parameter_replicated_at_leaf_buffers_) {
     buffers_replicated_strs.push_back(replicated ? "true" : "false");
   }
-  result.push_back(StrCat("parameter_replication={",
-                          StrJoin(buffers_replicated_strs, ","), "}"));
+  if (options.print_ids()) {
+    result.push_back(StrCat("parameter_replication={",
+                            StrJoin(buffers_replicated_strs, ","), "}"));
+  }
   return result;
 }
 

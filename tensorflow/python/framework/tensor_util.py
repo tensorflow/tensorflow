@@ -22,11 +22,13 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 # Fallback in case fast_tensor_util is not properly compiled.
@@ -239,129 +241,89 @@ _TENSOR_CONTENT_TYPES = frozenset([
 ])
 
 
-class _Message(object):
-
-  def __init__(self, message):
-    self._message = message
-
-  def __repr__(self):
-    return self._message
+# pylint: disable=invalid-name
+def _check_failed(v):
+  # NB. none of the _check_* functions could raise a ValueError, so
+  # it is safe to use here.
+  raise ValueError(v)
 
 
-def _FirstNotNone(l):
-  for x in l:
-    if x is not None:
-      if isinstance(x, ops.Tensor):
-        return _Message("list containing Tensors")
-      else:
-        return x
-  return None
-
-
-def _NotNone(v):
-  if v is None:
-    return _Message("None")
+def _check_quantized(values):
+  # Cannot rely on `nest` because the leaves are tuples.
+  if not isinstance(values, (list, tuple)):
+    _check_failed(values)
+  if isinstance(values, tuple):
+    _ = [_check_int(v) for v in values]
   else:
-    return v
+    _ = [_check_quantized(v) for v in values]
 
 
-def _FilterTuple(v):
-  if not isinstance(v, (list, tuple)):
-    return v
-  if isinstance(v, tuple):
-    if not any(isinstance(x, (list, tuple)) for x in v):
-      return None
-  if isinstance(v, list):
-    if not any(isinstance(x, (list, tuple)) for x in v):
-      return _FirstNotNone(
-          [None if isinstance(x, (list, tuple)) else x for x in v])
-  return _FirstNotNone([_FilterTuple(x) for x in v])
+def _generate_isinstance_check(expected_types):
+  def inner(values):
+    _ = [_check_failed(v) for v in nest.flatten(values)
+         if not isinstance(v, expected_types)]
+  return inner
+
+_check_int = _generate_isinstance_check(
+    (compat.integral_types, tensor_shape.Dimension))
+_check_float = _generate_isinstance_check(compat.real_types)
+_check_complex = _generate_isinstance_check(compat.complex_types)
+_check_str = _generate_isinstance_check(compat.bytes_or_text_types)
+_check_bool = _generate_isinstance_check(bool)
 
 
-def _FilterInt(v):
-  if isinstance(v, (list, tuple)):
-    return _FirstNotNone([_FilterInt(x) for x in v])
-  return None if isinstance(
-      v, (compat.integral_types, tensor_shape.Dimension)) else _NotNone(v)
-
-
-def _FilterFloat(v):
-  if isinstance(v, (list, tuple)):
-    return _FirstNotNone([_FilterFloat(x) for x in v])
-  return None if isinstance(v, compat.real_types) else _NotNone(v)
-
-
-def _FilterComplex(v):
-  if isinstance(v, (list, tuple)):
-    return _FirstNotNone([_FilterComplex(x) for x in v])
-  return None if isinstance(v, compat.complex_types) else _NotNone(v)
-
-
-def _FilterStr(v):
-  if isinstance(v, (list, tuple)):
-    return _FirstNotNone([_FilterStr(x) for x in v])
-  if isinstance(v, compat.bytes_or_text_types):
-    return None
-  else:
-    return _NotNone(v)
-
-
-def _FilterBool(v):
-  if isinstance(v, (list, tuple)):
-    return _FirstNotNone([_FilterBool(x) for x in v])
-  return None if isinstance(v, bool) else _NotNone(v)
-
-
-def _FilterNotTensor(v):
-  if isinstance(v, (list, tuple)):
-    return _FirstNotNone([_FilterNotTensor(x) for x in v])
-  return str(v) if isinstance(v, ops.Tensor) else None
-
+def _check_not_tensor(values):
+  _ = [_check_failed(v) for v in nest.flatten(values)
+       if isinstance(v, ops.Tensor)]
+# pylint: enable=invalid-name
 
 _TF_TO_IS_OK = {
-    dtypes.bool: [_FilterBool],
-    dtypes.complex128: [_FilterComplex],
-    dtypes.complex64: [_FilterComplex],
-    dtypes.float16: [_FilterFloat],
-    dtypes.float32: [_FilterFloat],
-    dtypes.float64: [_FilterFloat],
-    dtypes.int16: [_FilterInt],
-    dtypes.int32: [_FilterInt],
-    dtypes.int64: [_FilterInt],
-    dtypes.int8: [_FilterInt],
-    dtypes.qint16: [_FilterInt, _FilterTuple],
-    dtypes.qint32: [_FilterInt, _FilterTuple],
-    dtypes.qint8: [_FilterInt, _FilterTuple],
-    dtypes.quint16: [_FilterInt, _FilterTuple],
-    dtypes.quint8: [_FilterInt, _FilterTuple],
-    dtypes.string: [_FilterStr],
-    dtypes.uint16: [_FilterInt],
-    dtypes.uint8: [_FilterInt],
-    dtypes.uint32: [_FilterInt],
-    dtypes.uint64: [_FilterInt],
+    dtypes.bool: _check_bool,
+    dtypes.complex128: _check_complex,
+    dtypes.complex64: _check_complex,
+    dtypes.float16: _check_float,
+    dtypes.float32: _check_float,
+    dtypes.float64: _check_float,
+    dtypes.int16: _check_int,
+    dtypes.int32: _check_int,
+    dtypes.int64: _check_int,
+    dtypes.int8: _check_int,
+    dtypes.qint16: _check_quantized,
+    dtypes.qint32: _check_quantized,
+    dtypes.qint8: _check_quantized,
+    dtypes.quint16: _check_quantized,
+    dtypes.quint8: _check_quantized,
+    dtypes.string: _check_str,
+    dtypes.uint16: _check_int,
+    dtypes.uint8: _check_int,
+    dtypes.uint32: _check_int,
+    dtypes.uint64: _check_int,
 }
 
 
 def _AssertCompatible(values, dtype):
   if dtype is None:
-    fn_list = [_FilterNotTensor]
+    fn = _check_not_tensor
   else:
     try:
-      fn_list = _TF_TO_IS_OK[dtype]
+      fn = _TF_TO_IS_OK[dtype]
     except KeyError:
-      # There isn't a specific fn_list, so we try to do the best possible.
+      # There isn't a specific fn, so we try to do the best possible.
       if dtype.is_integer:
-        fn_list = [_FilterInt]
+        fn = _check_int
       elif dtype.is_floating:
-        fn_list = [_FilterFloat]
+        fn = _check_float
       elif dtype.is_complex:
-        fn_list = [_FilterComplex]
+        fn = _check_complex
       elif dtype.is_quantized:
-        fn_list = [_FilterInt, _FilterTuple]
+        fn = _check_quantized
       else:
-        fn_list = [_FilterNotTensor]
-  mismatch = _FirstNotNone([fn(values) for fn in fn_list])
-  if mismatch is not None:
+        fn = _check_not_tensor
+
+  try:
+    fn(values)
+  except ValueError as e:
+    [mismatch] = e.args
     if dtype is None:
       raise TypeError("List of Tensors when single Tensor expected")
     else:
@@ -872,11 +834,11 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
 
   shape = tensor.get_shape().with_rank(1)
   if shape == [0]:
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
   elif tensor.op.type == "Shape":
     return tensor.op.inputs[0].get_shape()
   elif tensor.op.type == "Pack":
-    ret = tensor_shape.scalar()  # Empty list.
+    ret = tensor_shape.TensorShape([])  # Empty list.
     # Since we expect rank 1 inputs, Pack's axis must be zero, otherwise it
     # would not be rank 1.
     assert tensor.op.get_attr("axis") == 0
@@ -894,7 +856,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     # We assume that `tensor.op.inputs[0]` evaluates to 0, as this is
     # the only legal value when concatenating vectors, and it will
     # have been checked by a previous shape function.
-    ret = tensor_shape.scalar()  # Empty list.
+    ret = tensor_shape.TensorShape([])  # Empty list.
     for concat_input in tensor.op.inputs[1:]:
       # `concat_input` must be a vector. Attempt to evaluate it as a shape,
       # and concatenate it with `ret`.
@@ -904,7 +866,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     # We assume that `tensor.op.inputs[-1]` evaluates to 0, as this is
     # the only legal value when concatenating vectors, and it will
     # have been checked by a previous shape function.
-    ret = tensor_shape.scalar()  # Empty list.
+    ret = tensor_shape.TensorShape([])  # Empty list.
     for concat_input in tensor.op.inputs[:-1]:
       # `concat_input` must be a vector. Attempt to evaluate it as a shape,
       # and concatenate it with `ret`.
@@ -942,6 +904,18 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     except ValueError:  # Could come from get_attr or slicing prev.
       pass
     except TypeError:  # Could come from slicing prev.
+      pass
+  elif tensor.op.type == "Placeholder" and tensor.op.graph.building_function:
+    # If we are inside a FuncGraph try to lookup the constant value of the
+    # corresponding external capture. Note that we only look at captures and
+    # not the fed inputs because those can be fed different values in different
+    # instantiations of the function call or different iterations of a
+    # tf.while_loop.
+    try:
+      external_capture = tensor.op.graph.external_captures[
+          tensor.op.graph.internal_captures.index(tensor)]
+      return constant_value_as_shape(external_capture)
+    except ValueError:  # `tensor` not in `internal_captures`.
       pass
 
   ret = tensor_shape.unknown_shape(shape.dims[0].value)
@@ -983,3 +957,12 @@ def shape_tensor(shape):  # pylint: disable=invalid-name
       # not convertible to Tensors becasue of mixed content.
       shape = tuple(map(tensor_shape.dimension_value, shape))
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
+
+
+def maybe_set_static_shape(tensor, shape):  # pylint: disable=invalid-name
+  if (not context.executing_eagerly() and
+      ops.get_default_graph().building_function and
+      not tensor.shape.is_fully_defined()):
+    shape = shape_tensor(shape)
+    const_shape = constant_value_as_shape(shape)
+    tensor.set_shape(const_shape)

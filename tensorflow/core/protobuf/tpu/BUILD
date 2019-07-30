@@ -3,6 +3,7 @@ load(
     "tf_additional_all_protos",
     "tf_proto_library",
     "tf_proto_library_py",
+    "tf_pyclif_proto_library",
 )
 
 package(
@@ -69,5 +70,12 @@ tf_proto_library_py(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
     ],
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "topology_pyclif",
+    proto_lib = ":topology_proto",
+    proto_srcfile = "topology.proto",
     visibility = ["//visibility:public"],
 )

@@ -1092,8 +1092,8 @@ class Barrier(object):
       else:
         batch_dim = tensor_shape.Dimension(
             tensor_util.constant_value(op.inputs[1]))
-      op.outputs[0].set_shape(tensor_shape.vector(batch_dim))  # indices
-      op.outputs[1].set_shape(tensor_shape.vector(batch_dim))  # keys
+      op.outputs[0].set_shape(tensor_shape.TensorShape([batch_dim]))  # indices
+      op.outputs[1].set_shape(tensor_shape.TensorShape([batch_dim]))  # keys
       for output, shape in zip(op.outputs[2:], self._shapes):  # value_list
         output.set_shape(
             tensor_shape.TensorShape([batch_dim]).concatenate(shape))

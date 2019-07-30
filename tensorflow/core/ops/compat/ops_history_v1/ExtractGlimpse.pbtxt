@@ -1,0 +1,87 @@
+op {
+  name: "ExtractGlimpse"
+  input_arg {
+    name: "input"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "offsets"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "glimpse"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "centered"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "normalized"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "uniform_noise"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
+  name: "ExtractGlimpse"
+  input_arg {
+    name: "input"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "offsets"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "glimpse"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "centered"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "normalized"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "uniform_noise"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "noise"
+    type: "string"
+    default_value {
+      s: "uniform"
+    }
+  }
+}

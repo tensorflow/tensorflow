@@ -144,8 +144,8 @@ class CholeskyOpGpu : public AsyncOpKernel {
     const int64 batch_size = input_reshaped.dimension(0);
     std::vector<DeviceLapackInfo> dev_info;
     dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "potrf"));
-    // TODO(rmlarsen): Parallelize over batches if it turns out to be
-    // an important use case.
+    // TODO(rmlarsen): Use PotrfBatched for factoring many small matrices in
+    // parallel.
     for (int batch = 0; batch < batch_size; ++batch) {
       OP_REQUIRES_OK_ASYNC(context,
                            solver->Potrf(CUBLAS_FILL_MODE_UPPER, n,

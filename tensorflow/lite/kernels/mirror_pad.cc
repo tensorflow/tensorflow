@@ -162,6 +162,7 @@ std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> GetPaddedOutputShape(
 }  // namespace
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  gemmlowp::ScopedProfilingLabel label("MirrorPad");
   const TfLiteTensor* input_tensor = GetInput(context, node, 0);
   const TfLiteTensor* padding_matrix = GetInput(context, node, 1);
   auto* params =

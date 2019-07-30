@@ -43,7 +43,7 @@ namespace TFL {
 //
 namespace {
 
-/// Applies quantization on the model in TFL dialect.
+// Applies quantization on the model in TFL dialect.
 struct QuantizePass : public FunctionPass<QuantizePass> {
   void runOnFunction() override;
 };

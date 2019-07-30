@@ -64,7 +64,6 @@ from tensorflow.python.ops import map_fn as map_fn_lib
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
@@ -775,7 +774,7 @@ def variable(value, dtype=None, name=None, constraint=None):
         indices=indices, values=sparse_coo.data, dense_shape=sparse_coo.shape)
     v._keras_shape = sparse_coo.shape
     return v
-  v = resource_variable_ops.ResourceVariable(
+  v = variables_module.Variable(
       value,
       dtype=dtypes_module.as_dtype(dtype),
       name=name,
@@ -3458,8 +3457,7 @@ class EagerExecutionFunction(object):
       with ops.control_dependencies(updates_ops):
         self.outputs[0] = array_ops.identity(self.outputs[0])
 
-      exec_graph.inputs = self._input_references + list(
-          exec_graph.captures.values())
+      exec_graph.inputs = self._input_references + exec_graph.internal_captures
       exec_graph.outputs = self.outputs
       graph_fn = eager_function.ConcreteFunction(exec_graph)
 

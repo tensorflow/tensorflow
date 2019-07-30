@@ -65,6 +65,7 @@ class FullyConnectedBuffers : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/std::move(objects),
+        /*shared_variables=*/{},
         /*workload=*/
         uint3(1, 1, IntegralDivideRoundUp(attr.weights.shape.o, 4)),
         /*workgroup=*/uint3(),

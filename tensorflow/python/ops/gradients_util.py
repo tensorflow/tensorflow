@@ -401,7 +401,7 @@ def _Captures(func_graph):
     return func_graph.captures
   else:
     assert isinstance(func_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
-    return func_graph._captured  # pylint: disable=protected-access
+    return func_graph._captured.items()  # pylint: disable=protected-access
 
 
 def _MaybeCaptured(t):
@@ -416,7 +416,7 @@ def _MaybeCaptured(t):
   # pylint: disable=protected-access
   if (not isinstance(t, ops.EagerTensor) and
       _IsFunction(t.op.graph) and t.op.type == "Placeholder"):
-    for input_t, placeholder_t in _Captures(t.op.graph).items():
+    for input_t, placeholder_t in _Captures(t.op.graph):
       if t == placeholder_t:
         return _MaybeCaptured(input_t)
   # pylint: enable=protected-access
@@ -482,7 +482,7 @@ def _Consumers(t, func_graphs):
   """
   consumers = t.consumers()
   for func in func_graphs:
-    for input_t, placeholder in _Captures(func).items():
+    for input_t, placeholder in _Captures(func):
       if input_t == t:
         consumers.extend(_Consumers(placeholder, func_graphs))
   return consumers

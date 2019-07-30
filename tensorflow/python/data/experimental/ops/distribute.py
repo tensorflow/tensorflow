@@ -76,7 +76,7 @@ def _AutoShardDatasetV1(input_dataset, num_workers, index):  # pylint: disable=i
 class _RebatchDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that divides the batch size by `num_workers`."""
 
-  def __init__(self, input_dataset, num_workers):
+  def __init__(self, input_dataset, num_workers, use_fallback=True):
     self._input_dataset = input_dataset
 
     def recalculate_output_shapes(output_shapes):
@@ -96,7 +96,13 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
 
     self._element_spec = structure.convert_legacy_structure(
         input_types, output_shapes, input_classes)
-    if compat.forward_compatible(2019, 8, 3):
+    if compat.forward_compatible(2019, 8, 13) or not use_fallback:
+      variant_tensor = ged_ops.rebatch_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          num_workers=num_workers,
+          use_fallback=use_fallback,
+          **self._flat_structure)
+    elif compat.forward_compatible(2019, 8, 3):
       variant_tensor = ged_ops.rebatch_dataset(
           self._input_dataset._variant_tensor,  # pylint: disable=protected-access
           num_workers=num_workers,

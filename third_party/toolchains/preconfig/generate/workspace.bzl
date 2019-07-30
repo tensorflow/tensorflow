@@ -47,6 +47,13 @@ def _remote_config_workspace():
     )
 
     container_pull(
+        name = "ubuntu16.04-manylinux2010",
+        registry = "gcr.io",
+        repository = "tensorflow-testing/nosla-ubuntu16.04-manylinux2010",
+        digest = container_digests["ubuntu16.04-manylinux2010"],
+    )
+
+    container_pull(
         name = "cuda10.0-cudnn7-ubuntu16.04-manylinux2010",
         registry = "gcr.io",
         repository = "tensorflow-testing/nosla-cuda10.0-cudnn7-ubuntu16.04-manylinux2010",

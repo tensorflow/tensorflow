@@ -1246,7 +1246,7 @@ Status FunctionLibraryRuntimeImpl::Clone(
       env_, graph_def_version_, optimizer_.options(), custom_kernel_creator_,
       out_lib_def, out_pflr, skip_flib_def));
   *out_flr = (*out_pflr)->GetFLR(device_->name());
-  if (out_flr != nullptr) {
+  if (*out_flr != nullptr) {
     return Status::OK();
   } else {
     return errors::Internal("Cloning FunctionLibraryRuntime failed.");
@@ -1696,7 +1696,8 @@ string InlineFunctionBodyOptions::DebugString() const {
       ", keep_caller_node=", keep_caller_node_str(), ", output_control_src=",
       output_control_src == OutputControlSrc::kDataOutputs ? "DataOutputs"
                                                            : "ControlOutputs",
-      ", inlined_function_body_placer=", inlined_function_body_placer.name);
+      ", inlined_function_body_placer=", inlined_function_body_placer.name,
+      ", uniquify_frame_names=", true_false(uniquify_frame_names));
 }
 
 Status ValidateInlining(const Node* node, const FunctionBody* fbody,
@@ -1934,7 +1935,8 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     //  2) to frame name to avoid multiple LoopCond nodes in one frame
     //  3) to colocation attribute
     const string prefix = strings::StrCat(caller->name(), "/");
-    TF_RETURN_IF_ERROR(AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &ndef));
+    TF_RETURN_IF_ERROR(AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &ndef,
+                                                options.uniquify_frame_names));
 
     Status added_node;
     Node* clone = g->AddNode(ndef, &added_node);

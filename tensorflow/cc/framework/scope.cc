@@ -318,7 +318,7 @@ Status Scope::ToGraph(Graph* g, GraphConstructorOptions opts) const {
   if (ok()) {
     GraphDef graph_def;
     graph()->ToGraphDef(&graph_def);
-    UpdateStatus(ConvertGraphDefToGraph(opts, graph_def, g));
+    UpdateStatus(ConvertGraphDefToGraph(opts, std::move(graph_def), g));
   }
   return *impl()->status_;
 }

@@ -590,7 +590,7 @@ Status DirectSession::RunInternal(
 
   std::unique_ptr<ProfilerSession> profiler_session;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    profiler_session = ProfilerSession::Create(/*ProfilerContext*/ nullptr);
+    profiler_session = ProfilerSession::Create();
   }
 
   if (run_options.inter_op_thread_pool() < -1 ||
@@ -1484,12 +1484,15 @@ Status DirectSession::GetOrCreateExecutors(
 
   // Reacquire the lock, try to insert into the map.
   mutex_lock l(executor_lock_);
-  functions_.push_back(std::move(func_info));
 
   // Another thread may have created the entry before us, in which case we will
   // reuse the already created one.
   auto insert_result = executors_.emplace(
       sorted_key, std::shared_ptr<ExecutorsAndKeys>(std::move(ek)));
+  if (insert_result.second) {
+    functions_.push_back(std::move(func_info));
+  }
+
   // Insert the value under the original key, so the fast path lookup will work
   // if the user uses the same order of inputs, outputs, and targets again.
   executors_.emplace(key, insert_result.first->second);
@@ -1611,15 +1614,15 @@ Status DirectSession::CreateGraphs(
     }
   }
 
-  for (const auto& partition : partitions) {
+  for (auto& partition : partitions) {
     std::unique_ptr<Graph> device_graph(
         new Graph(client_graph->flib_def.get()));
     GraphConstructorOptions device_opts;
     // There are internal operations (e.g., send/recv) that we now allow.
     device_opts.allow_internal_ops = true;
     device_opts.expect_device_spec = true;
-    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(device_opts, partition.second,
-                                              device_graph.get()));
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+        device_opts, std::move(partition.second), device_graph.get()));
     outputs->emplace(partition.first, std::move(device_graph));
   }
 

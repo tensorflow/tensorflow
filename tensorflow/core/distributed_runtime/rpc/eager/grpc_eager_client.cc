@@ -59,18 +59,24 @@ class GrpcEagerClient : public EagerClient {
         &stub_, cq_, "/tensorflow.eager.EagerService/CloseContext", *request,
         response, std::move(done), nullptr, nullptr);
 
-    if (enqueue_dispatchers_.find(request->context_id()) !=
-        enqueue_dispatchers_.end()) {
+    VLOG(1) << "Sending RPC to close remote eager context "
+            << request->DebugString();
+
+    mutex_lock l(mu_);
+    const auto& it = enqueue_dispatchers_.find(request->context_id());
+    if (it != enqueue_dispatchers_.end()) {
+      it->second.CancelCall();
       enqueue_dispatchers_.erase(request->context_id());
     } else {
       LOG(ERROR) << "Remote EagerContext with id " << request->context_id()
-                 << " does not seems to exist.";
+                 << " does not seem to exist.";
     }
   }
 
   void StreamingEnqueueAsync(const EnqueueRequest* request,
                              EnqueueResponse* response,
                              StatusCallback done) override {
+    tf_shared_lock l(mu_);
     auto it = enqueue_dispatchers_.find(request->context_id());
     if (enqueue_dispatchers_.find(request->context_id()) ==
         enqueue_dispatchers_.end()) {
@@ -88,8 +94,11 @@ class GrpcEagerClient : public EagerClient {
  private:
   ::grpc::GenericStub stub_;
   ::grpc::CompletionQueue* cq_;
+
+  mutable mutex mu_;
+
   std::unordered_map<uint64, StreamingRPCDispatcher<EnqueueResponse>>
-      enqueue_dispatchers_;
+      enqueue_dispatchers_ GUARDED_BY(mu_);
 };
 
 class GrpcEagerClientCache : public EagerClientCache {
@@ -147,10 +156,13 @@ class GrpcEagerClientCache : public EagerClientCache {
             void* tag;
             bool ok;
             while (completion_queue_.Next(&tag, &ok)) {
+              VLOG(4) << "GrpcEagerClientThread got next tag";
               GrpcClientCQTag* callback_tag =
                   static_cast<GrpcClientCQTag*>(tag);
               callback_tag->OnCompleted(ok);
+              VLOG(4) << "GrpcEagerClientThread blocking for next tag";
             }
+            VLOG(4) << "GrpcEagerClientThread exiting";
           }));
     }
 

@@ -17,17 +17,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_householder as householder
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
+CheckTapeSafeSkipOptions = linear_operator_test_util.CheckTapeSafeSkipOptions
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorHouseholderTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
@@ -42,7 +46,7 @@ class LinearOperatorHouseholderTest(
         shape_info((2, 1, 4, 4))]
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     # This linear operator is never positive definite.
     return ["cholesky"]
 
@@ -86,6 +90,19 @@ class LinearOperatorHouseholderTest(
     operator = householder.LinearOperatorHouseholder(reflection_axis)
     self.assertIsInstance(
         operator.inverse(), householder.LinearOperatorHouseholder)
+
+  def test_tape_safe(self):
+    reflection_axis = variables_module.Variable([1., 3., 5., 8.])
+    operator = householder.LinearOperatorHouseholder(reflection_axis)
+    self.check_tape_safe(
+        operator,
+        skip_options=[
+            # Determinant hard-coded as 1.
+            CheckTapeSafeSkipOptions.DETERMINANT,
+            CheckTapeSafeSkipOptions.LOG_ABS_DETERMINANT,
+            # Trace hard-coded.
+            CheckTapeSafeSkipOptions.TRACE,
+        ])
 
 
 if __name__ == "__main__":

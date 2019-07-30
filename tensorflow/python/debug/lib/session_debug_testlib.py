@@ -1462,14 +1462,14 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       # Lookup should work with node name input.
       traceback = dump.node_traceback("traceback/w")
-      self.assertIsInstance(traceback, list)
+      self.assertIsInstance(traceback, tuple)
       self.assertGreater(len(traceback), 0)
       for trace in traceback:
         self.assertIsInstance(trace, tuple)
 
       # Lookup should also work with tensor name input.
       traceback = dump.node_traceback("traceback/w:0")
-      self.assertIsInstance(traceback, list)
+      self.assertIsInstance(traceback, tuple)
       self.assertGreater(len(traceback), 0)
       for trace in traceback:
         self.assertIsInstance(trace, tuple)

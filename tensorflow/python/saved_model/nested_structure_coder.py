@@ -35,9 +35,17 @@ import functools
 import six
 
 from tensorflow.core.protobuf import struct_pb2
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import optional_ops
+from tensorflow.python.distribute import values
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import compat
 from tensorflow.python.util.compat import collections_abc
 
@@ -436,3 +444,61 @@ class _TensorSpecCodec(object):
 
 
 StructureCoder.register_codec(_TensorSpecCodec())
+
+
+class _TypeSpecCodec(object):
+  """Codec for `tf.TypeSpec`."""
+
+  # Mapping from enum value to type (TypeSpec subclass).
+  TYPE_SPEC_CLASS_FROM_PROTO = {
+      struct_pb2.TypeSpecProto.SPARSE_TENSOR_SPEC:
+          sparse_tensor.SparseTensorSpec,
+      struct_pb2.TypeSpecProto.INDEXED_SLICES_SPEC:
+          indexed_slices.IndexedSlicesSpec,
+      struct_pb2.TypeSpecProto.RAGGED_TENSOR_SPEC:
+          ragged_tensor.RaggedTensorSpec,
+      struct_pb2.TypeSpecProto.TENSOR_ARRAY_SPEC:
+          tensor_array_ops.TensorArraySpec,
+      struct_pb2.TypeSpecProto.DATA_DATASET_SPEC:
+          dataset_ops.DatasetSpec,
+      struct_pb2.TypeSpecProto.DATA_ITERATOR_SPEC:
+          iterator_ops.IteratorSpec,
+      struct_pb2.TypeSpecProto.OPTIONAL_SPEC:
+          optional_ops.OptionalSpec,
+      struct_pb2.TypeSpecProto.PER_REPLICA_SPEC:
+          values.PerReplicaSpec,
+  }
+
+  # Mapping from type (TypeSpec subclass) to enum value.
+  TYPE_SPEC_CLASS_TO_PROTO = dict(
+      (cls, enum) for (enum, cls) in TYPE_SPEC_CLASS_FROM_PROTO.items())
+
+  def can_encode(self, pyobj):
+    # pylint: disable=unidiomatic-typecheck
+    return type(pyobj) in self.TYPE_SPEC_CLASS_TO_PROTO
+
+  def do_encode(self, type_spec_value, encode_fn):
+    """Returns an encoded proto for the given `tf.TypeSpec`."""
+    type_spec_class = self.TYPE_SPEC_CLASS_TO_PROTO[type(type_spec_value)]
+    type_state = type_spec_value._serialize()  # pylint: disable=protected-access
+    encoded_type_spec = struct_pb2.StructuredValue()
+    encoded_type_spec.type_spec_value.CopyFrom(
+        struct_pb2.TypeSpecProto(
+            type_spec_class=type_spec_class, type_state=encode_fn(type_state)))
+    return encoded_type_spec
+
+  def can_decode(self, value):
+    return (
+        value.HasField("type_spec_value") and
+        value.type_spec_value.type_spec_class in self.TYPE_SPEC_CLASS_FROM_PROTO
+    )
+
+  def do_decode(self, value, decode_fn):
+    type_spec_proto = value.type_spec_value
+    type_spec_class_enum = type_spec_proto.type_spec_class
+    type_spec_class = self.TYPE_SPEC_CLASS_FROM_PROTO[type_spec_class_enum]
+    # pylint: disable=protected-access
+    return type_spec_class._deserialize(decode_fn(type_spec_proto.type_state))
+
+
+StructureCoder.register_codec(_TypeSpecCodec())

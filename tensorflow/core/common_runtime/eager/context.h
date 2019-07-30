@@ -124,15 +124,13 @@ class EagerContext : public core::RefCounted {
 
   ProcessFunctionLibraryRuntime* pflr() const { return pflr_.get(); }
 
-  // True if running in asynchronous mode.
-  bool Async() const;
-
-  EagerExecutor* Executor() { return &executor_; }
-
   std::function<void(std::function<void()>)>* runner() { return &runner_; }
 
-  // Sets whether this thread should run in synchronous or asynchronous mode.
-  Status SetAsyncForThread(bool async);
+  // Specify a executor for this thread.
+  void SetExecutorForThread(EagerExecutor* executor);
+
+  // Clear the executor for this thread.
+  void ClearExecutorForThread();
 
   // TODO(apassos) make this return a constant reference
   gtl::FlatMap<string, Device*, StringPieceHasher>* device_map() {
@@ -162,12 +160,6 @@ class EagerContext : public core::RefCounted {
 
   bool MirrorTensors() const;
 
-  Status AsyncWait() { return executor_.WaitForAllPendingNodes(); }
-
-  Status GetStatus() { return executor_.status(); }
-
-  void ClearAsyncError() { executor_.ClearError(); }
-
   bool FindFunctionByName(const string& name);
 
   Status FindFunctionOpData(const string& name,
@@ -178,12 +170,13 @@ class EagerContext : public core::RefCounted {
   Status FindDeviceByName(const string& name, Device** result) const;
 
   Device* HostCPU() const { return devices_[0]; }
+  Device* CanonicalDevice(Device* d) const {
+    return HostCPU() == d ? nullptr : d;
+  }
 
   GraphCollector* GetGraphCollector() { return &graph_collector_; }
 
-  Status ExecutorAdd(std::unique_ptr<EagerNode> node) {
-    return executor_.Add(std::move(node));
-  }
+  EagerExecutor* Executor();
 
   Status AddFunctionDef(const FunctionDef& fdef);
 
@@ -317,18 +310,26 @@ class EagerContext : public core::RefCounted {
   // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
   // instead (which in-turn use WorkerService.RecvTensor RPCs).
   bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
+
 #endif  // IS_MOBILE_PLATFORM
+
+  // Closes remote eager contexts, waits for all RPCs to finish, and
+  // destroys the EagerClientCache. No RPCs can be made through this context
+  // after this method has been called.
+  // This method exists to aid a clean shutdown. It causes all RPCs to finish
+  // and remote TensorHandles to release their references to this context.
+  // To avoid deadlocks, this method must not be called on the thread
+  // processing RPCs because it makes RPCs and waits for their completion.
+  //
+  // On mobile, it just cleans the caches.
+  void WaitForAndCloseRemoteContexts();
 
   bool PinSmallOpsToCPU() { return pin_small_ops_to_cpu_; }
 
   tensorflow::Env* TFEnv() const { return env_; }
 
-  // All child threads will be reset() when destructing EagerContext.
-  void AddChildThread(std::unique_ptr<Thread> thread);
-
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
-  bool IsLocal(const Device* d) const;
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
@@ -366,9 +367,7 @@ class EagerContext : public core::RefCounted {
   Rendezvous* rendezvous_;
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
 
-  mutex functions_mu_;
-  FunctionLibraryDefinition func_lib_def_ GUARDED_BY(functions_mu_){
-      OpRegistry::Global(), {}};
+  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
@@ -402,8 +401,6 @@ class EagerContext : public core::RefCounted {
   // TODO(fishx): Allow update following two bool after context creation.
   const bool log_device_placement_;
   const bool allow_soft_placement_;
-  // EagerExecutor for async execution.
-  EagerExecutor executor_;
 
   // Information related to step containers.
   std::atomic<int> num_active_steps_;
@@ -412,9 +409,12 @@ class EagerContext : public core::RefCounted {
   // True if the default value for execution mode is async. Note that this value
   // can be overridden per thread based on `thread_local_async` overrides.
   const bool async_default_;
-  mutable mutex async_map_mu_;
-  std::unordered_map<std::thread::id, bool> thread_local_async_
-      GUARDED_BY(async_map_mu_);
+
+  EagerExecutor default_executor_;
+  mutable mutex executor_map_mu_;
+  // Not owned.
+  std::unordered_map<std::thread::id, EagerExecutor*> thread_local_executor_
+      GUARDED_BY(executor_map_mu_);
 
   const bool log_memory_;
 
@@ -449,11 +449,11 @@ class EagerContext : public core::RefCounted {
 
   std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
       remote_mgr_;
+  bool is_master_ GUARDED_BY(remote_state_mu_);
 #endif  // IS_MOBILE_PLATFORM
 
   bool use_send_tensor_rpc_;
   const bool pin_small_ops_to_cpu_;
-  std::vector<std::unique_ptr<tensorflow::Thread>> child_threads_;
 };
 
 }  // namespace tensorflow

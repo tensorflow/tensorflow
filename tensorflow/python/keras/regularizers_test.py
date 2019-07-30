@@ -78,7 +78,8 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     model.compile(
         loss='categorical_crossentropy',
         optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     self.assertEqual(len(model.losses), 1)
     model.fit(x_train, y_train, batch_size=10, epochs=1, verbose=0)
 
@@ -95,7 +96,8 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     model.compile(
         loss='categorical_crossentropy',
         optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     self.assertEqual(len(model.losses), 1 if context.executing_eagerly() else 1)
     model.fit(x_train, y_train, batch_size=10, epochs=1, verbose=0)
 
@@ -107,7 +109,11 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     model = testing_utils.get_model_from_layers(
         [keras.layers.Dense(3, kernel_regularizer=keras.regularizers.l2(0))],
         input_shape=(10,))
-    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     model.fit(x, y, batch_size=5, epochs=1)
 
   def test_custom_regularizer_saving(self):
@@ -137,7 +143,8 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     model.compile(
         loss='categorical_crossentropy',
         optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     self.assertEqual(len(model.losses), 5)
 
   @keras_parameterized.run_all_keras_modes
@@ -159,7 +166,8 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     model.compile(
         loss='categorical_crossentropy',
         optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     self.assertEqual(len(model.losses), 6)
 
   @keras_parameterized.run_all_keras_modes
@@ -186,7 +194,8 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     model.compile(
         loss='categorical_crossentropy',
         optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     self.assertEqual(len(model.losses), 14)
 
 

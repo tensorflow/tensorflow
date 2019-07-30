@@ -208,12 +208,24 @@ class CudaSolver {
               const Scalar* B, int ldb, Scalar* C,
               int ldc) const TF_MUST_USE_RESULT;
 
-  // Computes the Cholesky factorization A = L * L^T for a single matrix.
+  // Computes the Cholesky factorization A = L * L^H for a single matrix.
   // Returns Status::OK() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-potrf
   template <typename Scalar>
   Status Potrf(cublasFillMode_t uplo, int n, Scalar* dev_A, int lda,
                int* dev_lapack_info) TF_MUST_USE_RESULT;
+
+#if CUDA_VERSION >= 9020
+  // Computes the Cholesky factorization A = L * L^H for a batch of small
+  // matrices.
+  // Returns Status::OK() if the kernel was launched successfully. See:
+  // http://docs.nvidia.com/cuda/cusolver/index.html#cuds-lt-t-gt-potrfBatched
+  template <typename Scalar>
+  Status PotrfBatched(cublasFillMode_t uplo, int n,
+                      const Scalar* const host_a_dev_ptrs[], int lda,
+                      DeviceLapackInfo* dev_lapack_info,
+                      int batch_size) TF_MUST_USE_RESULT;
+#endif  // CUDA_VERSION >= 9020
 
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
@@ -230,7 +242,7 @@ class CudaSolver {
                int* dev_lapack_info) const TF_MUST_USE_RESULT;
 
   // Computes partially pivoted LU factorizations for a batch of small matrices.
-  // Returns Status::OK() if the kernel was launched successfully.See:
+  // Returns Status::OK() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrfbatched
   template <typename Scalar>
   Status GetrfBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,

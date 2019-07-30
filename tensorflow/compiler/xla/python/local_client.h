@@ -23,18 +23,17 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
-#include "include/pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/python/device.h"
-#include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace xla {
@@ -69,14 +68,15 @@ class PyLocalClient {
       bool asynchronous, const AllocatorConfig& allocator_config);
 
   // `allocator` may null, in which case the platform default allocator is used.
-  explicit PyLocalClient(std::string platform_name, LocalClient* client,
-                         std::vector<std::unique_ptr<Device>> devices,
-                         std::unique_ptr<se::DeviceMemoryAllocator> allocator);
+  explicit PyLocalClient(
+      std::string platform_name, LocalClient* client,
+      std::vector<std::unique_ptr<Device>> devices,
+      std::unique_ptr<se::DeviceMemoryAllocator> allocator,
+      std::unique_ptr<tensorflow::Allocator> host_memory_allocator);
   virtual ~PyLocalClient() = default;
 
   Status TransferToInfeed(const LiteralSlice& literal, int device_ordinal);
-  StatusOr<pybind11::object> TransferFromOutfeed(const Shape& shape,
-                                                 int device_ordinal);
+  StatusOr<Literal> TransferFromOutfeed(const Shape& shape, int device_ordinal);
 
   int device_count() const { return client_->device_count(); }
   Device& device(int device_ordinal) const {
@@ -84,26 +84,26 @@ class PyLocalClient {
   }
   LocalClient* client() const { return client_; }
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
+  tensorflow::Allocator* host_memory_allocator() const {
+    return host_memory_allocator_.get();
+  }
 
   tensorflow::thread::ThreadPool* h2d_transfer_pool() {
     return &h2d_transfer_pool_;
   }
 
-  PythonRefManager& py_ref_manager() { return py_ref_manager_; }
-
  protected:
   std::string platform_name_;
   LocalClient* client_;
 
-  // py_ref_manager_ must come after devices_ in the class destruction order
-  // (i.e., appear first in the class.)
-  // Destruction of devices waits for them to quiesce; callbacks on device
-  // streams may refer to py_ref_manager_ and we must wait for them to complete.
-  PythonRefManager py_ref_manager_;
-
   std::vector<std::unique_ptr<Device>> devices_;
   se::DeviceMemoryAllocator* allocator_;
   std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
+
+  // Allocator to be used for staging memory transfers to devices. Optional;
+  // only used on GPU where it is more efficient to copy buffers to and from the
+  // device via a staging area of pinned memory.
+  std::unique_ptr<tensorflow::Allocator> host_memory_allocator_;
 
   tensorflow::thread::ThreadPool h2d_transfer_pool_;
 };
@@ -117,9 +117,10 @@ class PyLocalClient {
 // Thread-safe.
 class PyLocalBuffer {
  public:
-  static StatusOr<std::unique_ptr<PyLocalBuffer>> FromPython(
-      const pybind11::object& argument, std::shared_ptr<PyLocalClient> client,
-      int device_ordinal);
+  static StatusOr<std::unique_ptr<PyLocalBuffer>> FromLiterals(
+      std::vector<BorrowingLiteral> leaves_literals, const Shape& tuple_shape,
+      std::shared_ptr<void> leaves_reference,
+      std::shared_ptr<PyLocalClient> client, int device_ordinal);
 
   static StatusOr<std::unique_ptr<PyLocalBuffer>> MakeTuple(
       const std::vector<PyLocalBuffer*> buffers,
@@ -142,11 +143,11 @@ class PyLocalBuffer {
   // has previously been prefetched to the host, then returns the prefetched
   // version, otherwise copies the buffer to the host. Blocks until the
   // value is ready.
-  StatusOr<pybind11::object> ToPython();
+  StatusOr<std::shared_ptr<Literal>> ToLiteral();
 
   // Initiates a copy of the buffer to the host. Does not block waiting for
   // the transfer to complete. The value can be retrieved by a later call to
-  // ToPython().
+  // ToLiteral().
   Status CopyToHostAsync();
 
   // Returns the associated device buffer. Returns a nullptr if the buffer is
@@ -179,14 +180,14 @@ class PyLocalBuffer {
   std::shared_ptr<SharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
 
   // The cached value of the buffer on the host, produced either from a call to
-  // CopyToHost or from a call to ToPython. Once a value has been fetched to
+  // CopyToHost or from a call to ToLiteral. Once a value has been fetched to
   // the host, it persists Delete() is called or the PyLocalBuffer is destroyed.
   struct HostValue {
     absl::Notification ready;
     // status and value are valid for reading only after `ready` has been
     // notified.
     Status status;
-    std::shared_ptr<xla::Literal> value;
+    std::shared_ptr<Literal> value;
   };
   std::shared_ptr<HostValue> host_value_ GUARDED_BY(mu_);
 };

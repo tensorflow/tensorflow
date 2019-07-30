@@ -89,7 +89,8 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
         weighted_metrics=[
             metrics.MeanSquaredError(name='mean_squared_error_2')
         ],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     return model
 
   def setUp(self):
@@ -427,7 +428,8 @@ class TestMetricsCorrectnessSingleIO(keras_parameterized.TestCase):
         weighted_metrics=[
             metrics.MeanSquaredError(name='mean_squared_error_2')
         ],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     return model
 
   def _custom_generator(self, sample_weight=None):
@@ -637,7 +639,8 @@ class TestOutputLossMetrics(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss=loss,
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        run_distributed=testing_utils.should_run_distributed())
     return model
 
   def setUp(self):

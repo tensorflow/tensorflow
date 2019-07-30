@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/python/local_client.h"
+#include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/xrt.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -312,18 +313,77 @@ PYBIND11_MODULE(xla_extension, m) {
                   py::arg("xla_platform_id"), py::arg("asynchronous"),
                   py::arg("allocator_config") = AllocatorConfig())
       .def("DeviceCount", &PyLocalClient::device_count)
-      .def("TransferToInfeed", &PyLocalClient::TransferToInfeed)
-      .def("TransferFromOutfeed", &PyLocalClient::TransferFromOutfeed);
+      .def("TransferToInfeed",
+           [](PyLocalClient* client, const LiteralSlice& literal,
+              int device_ordinal) {
+             GlobalPyRefManager()->CollectGarbage();
+             py::gil_scoped_release gil_release;
+             return client->TransferToInfeed(literal, device_ordinal);
+           })
+      .def("TransferFromOutfeed",
+           [](PyLocalClient* client, const Shape& shape,
+              int device_ordinal) -> StatusOr<py::object> {
+             GlobalPyRefManager()->CollectGarbage();
+             std::shared_ptr<Literal> literal_shared;
+             {
+               py::gil_scoped_release gil_release;
+               TF_ASSIGN_OR_RETURN(Literal literal, client->TransferFromOutfeed(
+                                                        shape, device_ordinal));
+               literal_shared = std::make_shared<Literal>(std::move(literal));
+             }
+             return LiteralToPython(std::move(literal_shared));
+           });
 
   py::class_<PyLocalBuffer>(m, "PyLocalBuffer")
-      .def_static("from_python", &PyLocalBuffer::FromPython)
+      .def_static(
+          "from_python",
+          [](const pybind11::object& argument,
+             std::shared_ptr<PyLocalClient> client,
+             int device_ordinal) -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
+            GlobalPyRefManager()->CollectGarbage();
+            TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
+                                GetPythonBufferTree(argument));
+            std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
+                GlobalPyRefManager()->ManageReferences(
+                    absl::MakeSpan(tree.arrays));
+            tree.arrays.clear();
+
+            std::vector<BorrowingLiteral> leaves;
+            leaves.insert(leaves.end(),
+                          std::make_move_iterator(tree.leaves.begin()),
+                          std::make_move_iterator(tree.leaves.end()));
+
+            py::gil_scoped_release gil_release;
+            return PyLocalBuffer::FromLiterals(
+                std::move(leaves), tree.shape, std::move(py_buffer_ref),
+                std::move(client), device_ordinal);
+          })
       .def_static("make_tuple", &PyLocalBuffer::MakeTuple)
-      .def("copy_to_device", &PyLocalBuffer::CopyToDevice)
+      .def("copy_to_device",
+           [](PyLocalBuffer* buffer, int dst_device_ordinal) {
+             GlobalPyRefManager()->CollectGarbage();
+             py::gil_scoped_release gil_release;
+             return buffer->CopyToDevice(dst_device_ordinal);
+           })
       .def("delete", &PyLocalBuffer::Delete)
       .def("destructure", &PyLocalBuffer::DestructureTuple)
-      .def("block_host_until_ready", &PyLocalBuffer::BlockHostUntilReady)
+      .def("block_host_until_ready",
+           [](PyLocalBuffer* buffer) {
+             GlobalPyRefManager()->CollectGarbage();
+             py::gil_scoped_release gil_release;
+             return buffer->BlockHostUntilReady();
+           })
       .def("copy_to_host_async", &PyLocalBuffer::CopyToHostAsync)
-      .def("to_py", &PyLocalBuffer::ToPython)
+      .def("to_py",
+           [](PyLocalBuffer* buffer) -> StatusOr<py::object> {
+             GlobalPyRefManager()->CollectGarbage();
+             std::shared_ptr<Literal> literal;
+             {
+               py::gil_scoped_release gil_release;
+               TF_ASSIGN_OR_RETURN(literal, buffer->ToLiteral());
+             }
+             return LiteralToPython(std::move(literal));
+           })
       .def("shape", &PyLocalBuffer::on_host_shape)
       .def("device", &PyLocalBuffer::device_ordinal)
       .def("is_deleted",
@@ -365,7 +425,10 @@ PYBIND11_MODULE(xla_extension, m) {
                     &DebugOptions::set_xla_cpu_fast_math_honor_nans)
       .def_property("xla_cpu_fast_math_honor_division",
                     &DebugOptions::xla_cpu_fast_math_honor_division,
-                    &DebugOptions::set_xla_cpu_fast_math_honor_division);
+                    &DebugOptions::set_xla_cpu_fast_math_honor_division)
+      .def_property("xla_gpu_enable_fast_min_max",
+                    &DebugOptions::xla_gpu_enable_fast_min_max,
+                    &DebugOptions::set_xla_gpu_enable_fast_min_max);
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
@@ -640,6 +703,6 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<ChannelHandle>(m, "ChannelHandle");
 
   tensorflow::AddXrtSubmodule(&m);
-}
+}  // NOLINT(readability/fn_size)
 
 }  // namespace xla

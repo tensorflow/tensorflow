@@ -646,7 +646,7 @@ tf_module {
   }
   member_method {
     name: "function"
-    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'experimental_autograph_options\', \'experimental_relax_shapes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'False\'], "
+    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'experimental_autograph_options\', \'experimental_relax_shapes\', \'experimental_compile\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "gather"
@@ -663,6 +663,10 @@ tf_module {
   member_method {
     name: "get_static_value"
     argspec: "args=[\'tensor\', \'partial\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "grad_pass_through"
+    argspec: "args=[\'f\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "gradients"

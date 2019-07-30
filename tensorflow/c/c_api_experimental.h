@@ -343,6 +343,54 @@ TF_CAPI_EXPORT extern TFE_TensorHandle*
 TFE_ConsumeInputConcreteTensorFromTraceContext(TFE_TraceContext* trace_ctx,
                                                unsigned int idx);
 
+// Information about the shape of a Tensor and its type.
+struct TF_ShapeAndType {
+  // Number of dimensions. -1 indicates unknown rank.
+  int num_dims;
+  // Array of dimensions. -1 indicates unknown dim.
+  int64_t* dims;
+  // The data type. May be 0 to denote unknown type.
+  TF_DataType dtype;
+};
+
+typedef struct TF_ShapeAndType TF_ShapeAndType;
+
+// A list of TF_ShapeAndType elements..
+struct TF_ShapeAndTypeList {
+  int num_items;
+  TF_ShapeAndType* items;
+};
+typedef struct TF_ShapeAndTypeList TF_ShapeAndTypeList;
+
+// API for manipulating TF_ShapeAndTypeList objects.
+//
+TF_CAPI_EXPORT extern TF_ShapeAndTypeList* TF_NewShapeAndTypeList(
+    int num_shapes);
+TF_CAPI_EXPORT extern void TF_ShapeAndTypeListSetShape(
+    TF_ShapeAndTypeList* shape_list, int index, const int64_t* dims,
+    int num_dims);
+TF_CAPI_EXPORT extern void TF_ShapeAndTypeListSetUnknownShape(
+    TF_ShapeAndTypeList* shape_list, int index);
+TF_CAPI_EXPORT extern void TF_ShapeAndTypeListSetDtype(
+    TF_ShapeAndTypeList* shape_list, int index, TF_DataType dtype);
+TF_CAPI_EXPORT extern void TF_DeleteShapeAndTypeList(
+    TF_ShapeAndTypeList* shape_list);
+TF_CAPI_EXPORT extern void TF_DeleteShapeAndTypeListArray(
+    TF_ShapeAndTypeList** shape_list_array, int num_items);
+
+// Infer shapes for the given `node_def`. The arguments mimic the arguments of
+// the `shape_inference::InferenceContext` constructor. The types need not be
+// set in `input_shapes` as it is not used for shape inference.
+//
+// The results are returned in `output_shapes` and
+// `output_resource_shapes_and_types`. The caller is responsible for freeing the
+// memory in these buffers by calling `TF_DeleteShapeAndTypeList`.
+TF_CAPI_EXPORT extern void TFE_InferShapes(
+    TFE_Op* op, TF_ShapeAndTypeList* input_shapes, TF_Tensor** input_tensors,
+    int num_input_tensors, TF_ShapeAndTypeList* input_tensor_as_shapes,
+    TF_ShapeAndTypeList** input_resource_shapes_and_types,
+    TF_ShapeAndTypeList** output_shapes,
+    TF_ShapeAndTypeList*** output_resource_shapes_and_types, TF_Status* status);
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

@@ -63,8 +63,14 @@ struct GenericFullQuantizationPattern : public RewritePattern {
     inputs.reserve(quantized_op->getNumOperands());
     for (int i = 0, e = quantized_op->getNumOperands(); i != e; ++i) {
       auto* operand = quantized_op->getOperand(i);
+      auto operand_ele_type =
+          operand->getType().template cast<TensorType>().getElementType();
       if (auto op_inst = dyn_cast_or_null<DQ>(operand->getDefiningOp())) {
         inputs.push_back(op_inst.input());
+      } else if (operand_ele_type.template isa<IntegerType>()) {
+        // If the operand is an integer tensor, then it doesn't require the
+        // DQ op in the pattern.
+        inputs.push_back(operand);
       } else {
         return matchFailure();
       }
@@ -84,10 +90,13 @@ struct GenericFullQuantizationPattern : public RewritePattern {
 // QuantizedType, and then returns the attribute containing the QuantizedType.
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, FloatAttr min,
                               FloatAttr max, Type storage_type,
-                              bool narrow_range = false);
+                              bool narrow_range = false,
+                              bool is_signed = false);
 
 // Converts the min/max/num_bits/narrow_range information to a
 // QuantizedType, and then returns the attribute containing the QuantizedType.
+// Note that this method assumes an unsigned quantization type, which is
+// implicitly defined by FakeQuant* ops in TensorFlow.
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, IntegerAttr num_bits,
                               BoolAttr narrow_range);
@@ -103,7 +112,7 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type);
 // isn't straddling zero, an empty type is returned.
 Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
                                             unsigned storage_type_width,
-                                            bool narrow_range = false);
+                                            bool is_sign, bool narrow_range);
 
 // Returns the quantized type of a bias input, given the quantized types of
 // other operands which are multiply-accumulated (the bias is added to the
@@ -116,7 +125,7 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 // quantization parameters are stored as adjacent quantize and dequantize ops
 // and the propagation results are materialized by inserting pairs of quantize
 // and dequantize ops to this function.
-void ApplyQuantizationParamsPropagation(mlir::FuncOp func);
+void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed);
 
 }  // end namespace TFL
 }  // end namespace mlir

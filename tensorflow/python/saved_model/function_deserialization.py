@@ -22,6 +22,7 @@ import collections
 import re
 
 from tensorflow.core.framework import function_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.framework import func_graph as func_graph_lib
@@ -271,7 +272,7 @@ def recreate_function(saved_function, concrete_functions):
       decorator_argspec=function_spec.fullargspec)
 
 
-def load_function_def_library(library):
+def load_function_def_library(library, load_shared_name_suffix=None):
   """Load a set of functions as concrete functions without captured inputs.
 
   Functions names are manipulated during load such that they do not overlap
@@ -279,6 +280,8 @@ def load_function_def_library(library):
 
   Args:
     library: FunctionDefLibrary proto message.
+    load_shared_name_suffix: If specified, used to uniquify shared
+      names. Otherwise a unique name is generated.
 
   Returns:
     Map of original function names in the library to instances of
@@ -287,40 +290,45 @@ def load_function_def_library(library):
   Raises:
     ValueError: if functions dependencies have a cycle.
   """
+  library_function_names = set(fdef.signature.name for fdef in library.function)
   functions = {}
 
-  load_shared_name_suffix = "_load_{}".format(ops.uid())
-  for fdef in _sort_function_defs(library):
+  if load_shared_name_suffix is None:
+    load_shared_name_suffix = "_load_{}".format(ops.uid())
+  for fdef in _sort_function_defs(library, library_function_names):
     copy = _fix_fdef(fdef, functions, load_shared_name_suffix)
 
-    # There is no need to copy functions into the function def graph.
-    # It leads to a O(n^2) increase of memory when importing functions
-    # and the extra function definitions are a no-op since they already
-    # imported as a function before (due to the topologic sort import).
+    # There is no need to copy all functions into the function def graph. It
+    # leads to a O(n^2) increase of memory when importing functions and the
+    # extra function definitions are a no-op since they already imported as a
+    # function before and passed in explicitly (due to the topologic sort
+    # import).
     func_graph = function_def_lib.function_def_to_graph(
         copy, copy_functions=False)
 
-    for dep in _list_function_deps(fdef):
+    for dep in _list_function_deps(fdef, library_function_names):
       functions[dep].add_to_graph(func_graph)
     func = function_lib.ConcreteFunction(func_graph)
     func.add_to_graph()
+    if context.executing_eagerly():
+      func.add_to_graph(ops.get_default_graph())
 
     functions[fdef.signature.name] = func
 
     # Also register the gradients in the current root context.
     with ops.init_scope():
-      func._register_gradient()  # pylint: disable=protected-access
+      func._register_delayed_rewrite_gradient()  # pylint: disable=protected-access
 
   return functions
 
 
-def _sort_function_defs(library):
+def _sort_function_defs(library, library_function_names):
   """Return a topologic sort of FunctionDefs in a library."""
   edges = collections.defaultdict(list)
   in_count = collections.defaultdict(lambda: 0)
 
   for fdef in library.function:
-    for dep in _list_function_deps(fdef):
+    for dep in _list_function_deps(fdef, library_function_names):
       edges[dep].append(fdef.signature.name)
       in_count[fdef.signature.name] += 1
 
@@ -347,6 +355,48 @@ def _sort_function_defs(library):
   return [reverse[x] for x in output]
 
 
+def fix_node_def(node_def, functions, shared_name_suffix, debug_name):
+  """Replace functions calls and shared names in `node_def`."""
+  if "_gradient_op_type" in node_def.attr:
+    if node_def.op in ["StatefulPartitionedCall", "PartitionedCall"]:
+      # TODO(andresp): This code assumes that the gradient registered for this
+      # function call is the default gradient for the function and not a
+      # custom one.
+      fname = node_def.attr["f"].func.name
+      gradient_name = functions[fname]._register_delayed_rewrite_gradient()  # pylint: disable=protected-access
+      node_def.attr["_gradient_op_type"].s = compat.as_bytes(gradient_name)
+    else:
+      logging.warning("Importing a function (%s) with ops with custom "
+                      "gradients. Will likely fail if a gradient is "
+                      "requested.", debug_name)
+  if node_def.op in functions:
+    node_def.op = functions[node_def.op].name
+  for _, attr_value in node_def.attr.items():
+    if attr_value.func.name:
+      attr_value.func.name = functions[attr_value.func.name].name
+
+  # Fix old table creation bug.
+  if node_def.op == "HashTableV2":
+    if ("use_node_name_sharing" not in node_def.attr or
+        not node_def.attr["use_node_name_sharing"].b):
+      node_def.attr["use_node_name_sharing"].b = True
+      # We are turning on node mame sharing, so have to make sure we don't
+      # accidentally share a table resource.
+      shared_name_suffix += "_{}".format(ops.uid())
+
+  # TODO(b/124205571): Avoid accidental sharing and destruction of restored
+  # resources. For now uniquify "shared_name" when loading functions to avoid
+  # sharing.
+  if "shared_name" in node_def.attr:
+    if node_def.attr["shared_name"].s:
+      node_def.attr["shared_name"].s += compat.as_bytes(shared_name_suffix)
+    else:
+      # Blank shared_name attributes would use the node name, so we'll start
+      # with that when uniquifying.
+      node_def.attr["shared_name"].s = (
+          compat.as_bytes(node_def.name) + compat.as_bytes(shared_name_suffix))
+
+
 def _fix_fdef(orig_fdef, functions, shared_name_suffix):
   """Fixes a FunctionDef proto to be loaded in current context.
 
@@ -367,41 +417,25 @@ def _fix_fdef(orig_fdef, functions, shared_name_suffix):
   fdef = function_pb2.FunctionDef()
   fdef.CopyFrom(orig_fdef)
   for node_def in fdef.node_def:
-    if "_gradient_op_type" in node_def.attr:
-      if node_def.op in ["StatefulPartitionedCall", "PartitionedCall"]:
-        # TODO(andresp): This code assumes that the gradient registered for this
-        # function call is the default gradient for the function and not a
-        # custom one.
-        fname = node_def.attr["f"].func.name
-        node_def.attr["_gradient_op_type"].s = compat.as_bytes(
-            functions[fname]._gradient_name)  # pylint: disable=protected-access
-      else:
-        logging.warning("Importing a function (%s) with ops with custom "
-                        "gradients. Will likely fail if a gradient is "
-                        "requested.", fdef.signature.name)
-    for _, attr_value in node_def.attr.items():
-      if attr_value.func.name:
-        attr_value.func.name = functions[attr_value.func.name].name
-
-    # TODO(b/124205571): Avoid accidental sharing and destruction of restored
-    # resources. For now uniquify "shared_name" when loading functions to avoid
-    # sharing.
-    if "shared_name" in node_def.attr:
-      node_def.attr["shared_name"].s += compat.as_bytes(shared_name_suffix)
+    fix_node_def(node_def, functions, shared_name_suffix, fdef.signature.name)
 
   fdef.signature.name = _clean_function_name(fdef.signature.name)
   return fdef
 
 
-def _list_function_deps(fdef):
+def _list_function_deps(fdef, library_function_names):
+  """Find functions referenced in `fdef`."""
   # TODO(andresp): Recurse into list attributes and into NameAttrList attrs both
   # when listing deps and when fixing them. `function_def_to_graph` also
   # requires fixes.
   deps = set()
   for node_def in fdef.node_def:
-    for _, attr_value in node_def.attr.items():
-      if attr_value.WhichOneof("value") == "func":
-        deps.add(attr_value.func.name)
+    if node_def.op in library_function_names:
+      deps.add(node_def.op)
+    else:
+      for _, attr_value in node_def.attr.items():
+        if attr_value.WhichOneof("value") == "func":
+          deps.add(attr_value.func.name)
   return deps
 
 

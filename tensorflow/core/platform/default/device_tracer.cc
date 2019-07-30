@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/abi.h"
+#include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
@@ -105,12 +106,6 @@ Status CreateAndRecordEvent(CUevent* event, CUstream stream) {
   return ToStatus(cuEventRecord(*event, stream));
 }
 
-// Thread-local state recording the most recent annotation (if any).
-// When non-null, this points to a string in the active annotation
-// of the current thread.  The annotation is guaranteed to remain live
-// for the duration of the CUPTI API callback.
-static thread_local const char* tls_current_annotation;
-
 // Stores a series of kernel and memcpy records.
 class CudaEventRecorder {
  public:
@@ -121,8 +116,9 @@ class CudaEventRecorder {
     KernelRecord record = {kernel_name, context, stream};
     LogIfError(CreateAndRecordEvent(&record.start_event, stream));
     mutex_lock lock(mutex_);
-    if (tls_current_annotation) {
-      record.annotation = &*annotations_.emplace(tls_current_annotation).first;
+    if (tracing::ScopedAnnotation::IsEnabled()) {
+      record.annotation =
+          &*annotations_.emplace(Annotation::CurrentAnnotation()).first;
     }
     kernel_records_.push_back(record);
     return kernel_records_.size() - 1;
@@ -140,8 +136,9 @@ class CudaEventRecorder {
     MemcpyRecord record = {src_type, dst_type, size_bytes, context, stream};
     LogIfError(CreateAndRecordEvent(&record.start_event, stream));
     mutex_lock lock(mutex_);
-    if (tls_current_annotation) {
-      record.annotation = &*annotations_.emplace(tls_current_annotation).first;
+    if (tracing::ScopedAnnotation::IsEnabled()) {
+      record.annotation =
+          &*annotations_.emplace(Annotation::CurrentAnnotation()).first;
     }
     memcpy_records_.push_back(record);
     return memcpy_records_.size() - 1;
@@ -319,56 +316,6 @@ class CuptiCallbackHook {
   CUpti_SubscriberHandle subscriber_;
 };
 
-class TraceCollectorImpl : public tracing::TraceCollector {
- public:
-  TraceCollectorImpl() : active_trace_session_(false) {
-    tracing::SetTraceCollector(this);
-  }
-
-  ~TraceCollectorImpl() override {
-    DCHECK(!active_trace_session_)
-        << "Unexpected active trace session detected.";
-  }
-
-  // Note the method can be called after a call to Stop().
-  virtual std::unique_ptr<Handle> CreateAnnotationHandle(
-      StringPiece name_part1, StringPiece name_part2) const {
-    struct Impl : public tracing::TraceCollector::Handle {
-      std::string annotation;
-      explicit Impl(std::string&& name_scope) : annotation(name_scope) {
-        VLOG(2) << "CreateAnnotationHandle " << annotation;
-        // Remember the most recent ScopedAnnotation for each thread.
-        tls_current_annotation = annotation.c_str();
-      }
-      ~Impl() override { tls_current_annotation = nullptr; }
-    };
-    return absl::make_unique<Impl>(ConcatenateNames(name_part1, name_part2));
-  }
-
-  bool IsEnabledForAnnotations() const override {
-    return active_trace_session_.load(std::memory_order_relaxed);
-  }
-
-  void Start() {
-    DCHECK(!active_trace_session_)
-        << "Unexpected active trace session detected.";
-    active_trace_session_ = true;
-  }
-
-  void Stop() {
-    DCHECK(active_trace_session_) << "No active trace session detected. ";
-    active_trace_session_ = false;
-  }
-
- private:
-  std::atomic<bool> active_trace_session_;
-};
-
-TraceCollectorImpl* GlobalDefaultTraceCollector() {
-  static auto* instance = new TraceCollectorImpl();
-  return instance;
-}
-
 // 'DeviceTracer' is an interface for collecting low-level execution timings
 // of hardware accelerator (e.g. GPU) computation and DMA transfers.
 class DeviceTracer : public profiler::ProfilerInterface {
@@ -412,8 +359,7 @@ Status DeviceTracer::Start() {
   cupti_hook_.reset(new CuptiCallbackHook());
   TF_RETURN_IF_ERROR(cupti_hook_->Enable(recorder_.get()));
 
-  // Register as a TraceEngine to receive ScopedAnnotations.
-  GlobalDefaultTraceCollector()->Start();
+  tracing::ScopedAnnotation::Enable(true);
 
   enabled_ = true;
   return Status::OK();
@@ -426,7 +372,7 @@ Status DeviceTracer::Stop() {
     return Status::OK();
   }
   cupti_hook_.reset();
-  GlobalDefaultTraceCollector()->Stop();
+  tracing::ScopedAnnotation::Enable(false);
 
   enabled_ = false;
   return Status::OK();
@@ -707,8 +653,7 @@ Status DeviceTracer::CollectData(RunMetadata* run_metadata) {
 }  // namespace
 
 // Not in anonymous namespace for testing purposes.
-std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer(
-    const ProfilerContext*) {
+std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer() {
   auto status = cuInit(0);
   if (status != CUDA_SUCCESS) {
     LogIfError(ToStatus(status));

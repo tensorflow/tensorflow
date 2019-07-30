@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import argparse
 import sys
-from tensorflow.lite.toco.python import tensorflow_wrap_toco
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.platform import app
 
 FLAGS = None
@@ -43,7 +43,7 @@ def execute(unused_args):
 
   enable_mlir_converter = FLAGS.enable_mlir_converter
 
-  output_str = tensorflow_wrap_toco.TocoConvert(
+  output_str = pywrap_tensorflow.TocoConvert(
       model_str,
       toco_str,
       input_str,

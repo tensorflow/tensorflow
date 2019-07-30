@@ -36,6 +36,7 @@ from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -873,14 +874,15 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     root = Root()
     self.assertIn(root.v.handle,
-                  root.use_v.get_concrete_function().graph.captures)
+                  root.use_v.get_concrete_function().graph.external_captures)
     for _ in range(cycles):
       root = self.cycle(root, 1, signatures=root.use_v.get_concrete_function())
-    func_captures = root.use_v.get_concrete_function().graph.captures
+    func_captures = root.use_v.get_concrete_function().graph.external_captures
     self.assertLen(func_captures, 2)
     self.assertIn(root.v.handle, func_captures)
     self.assertIn(root.v1.handle, func_captures)
-    signature_captures = root.signatures["serving_default"].graph.captures
+    signature_captures = root.signatures[
+        "serving_default"].graph.external_captures
     self.assertLen(signature_captures, 2)
     self.assertIn(root.v.handle, signature_captures)
     self.assertIn(root.v1.handle, signature_captures)
@@ -1741,6 +1743,22 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                                  r"Resource .* does not exist."):
       gen_resource_variable_ops.destroy_resource_op(
           handle, ignore_lookup_error=False)
+
+  def test_function_called_as_operation(self, cycles):
+
+    @framework_function.Defun(dtypes.float32)
+    def inner(x):
+      return x + 1.
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.float32)])
+    def outer(x):
+      return inner(x)
+
+    root = module.Module()
+    root.f = outer
+    imported = self.cycle(root, cycles)
+    self.assertAllClose(2., imported.f(constant_op.constant(1.)))
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):

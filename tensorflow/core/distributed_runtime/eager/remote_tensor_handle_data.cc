@@ -27,8 +27,6 @@ void DestoryRemoteTensorHandle(EagerContext* ctx,
                                eager::EagerClient* eager_client,
                                uint64 context_id, uint64 op_id,
                                int output_num) {
-  auto cleanup = gtl::MakeCleanup([ctx]() { ctx->Unref(); });
-
   if (ctx->GetContextId() != context_id) {
     // This means that this tensor was pointing to a remote device, which
     // has been changed out from under us. Simply return since there is
@@ -46,7 +44,8 @@ void DestoryRemoteTensorHandle(EagerContext* ctx,
   std::unique_ptr<EagerNode> node(
       absl::make_unique<eager::DestroyTensorHandleNode>(std::move(request),
                                                         eager_client));
-  Status s = ctx->Async() ? ctx->ExecutorAdd(std::move(node)) : node->Run();
+  auto* executor = ctx->Executor();
+  Status s = executor->Async() ? executor->Add(std::move(node)) : node->Run();
   if (!s.ok()) {
     LOG(ERROR) << "Unable to destroy remote tensor handles: "
                << s.error_message();
@@ -75,6 +74,7 @@ RemoteTensorHandleData::RemoteTensorHandleData(int64 op_id, int output_num,
 RemoteTensorHandleData::~RemoteTensorHandleData() {
   DestoryRemoteTensorHandle(ctx_, eager_client_, context_id_, op_id_,
                             output_num_);
+  ctx_->Unref();
 }
 
 Status RemoteTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
@@ -137,9 +137,8 @@ UnshapedRemoteTensorHandleData::~UnshapedRemoteTensorHandleData() {
   if (delete_remote_tensor_) {
     DestoryRemoteTensorHandle(ctx_, eager_client_, context_id_, op_id_,
                               output_num_);
-  } else {
-    ctx_->Unref();
   }
+  ctx_->Unref();
 }
 
 Status UnshapedRemoteTensorHandleData::Tensor(

@@ -786,6 +786,36 @@ op {
   is_stateful: true
 }
 op {
+  name: "AnonymousMultiDeviceIterator"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "devices"
+    type: "list(string)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "Any"
   input_arg {
     name: "input"
@@ -5042,6 +5072,24 @@ op {
   attr {
     name: "logits_dimension"
     type: "int"
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesFlushQuantileSummaries"
+  input_arg {
+    name: "quantile_stream_resource_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "summaries"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
   }
   is_stateful: true
 }
@@ -9469,6 +9517,59 @@ op {
   }
 }
 op {
+  name: "CumulativeLogsumexp"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "axis"
+    type_attr: "Tidx"
+  }
+  output_arg {
+    name: "out"
+    type_attr: "T"
+  }
+  attr {
+    name: "exclusive"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "reverse"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "DataFormatDimMap"
   input_arg {
     name: "x"
@@ -10280,6 +10381,28 @@ op {
   input_arg {
     name: "deleter"
     type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
+  name: "DeleteMultiDeviceIterator"
+  input_arg {
+    name: "multi_device_iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "iterators"
+    type: DT_RESOURCE
+    number_attr: "N"
+  }
+  input_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
   }
   is_stateful: true
 }
@@ -13039,6 +13162,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "use_fallback"
+    type: "bool"
+    default_value {
+      b: true
+    }
   }
 }
 op {
@@ -30979,6 +31109,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "use_fallback"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
 }
 op {
   name: "Reciprocal"
@@ -38725,6 +38862,34 @@ op {
       i: 86400
     }
   }
+  attr {
+    name: "num_reader_threads"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "reader_buffer_size"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "num_writer_threads"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "writer_buffer_size"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
 }
 op {
   name: "Softmax"
@@ -43529,6 +43694,63 @@ op {
   }
 }
 op {
+  name: "StringNGrams"
+  input_arg {
+    name: "data"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "data_splits"
+    type_attr: "Tsplits"
+  }
+  output_arg {
+    name: "ngrams"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "ngrams_splits"
+    type_attr: "Tsplits"
+  }
+  attr {
+    name: "separator"
+    type: "string"
+  }
+  attr {
+    name: "ngram_widths"
+    type: "list(int)"
+    has_minimum: true
+  }
+  attr {
+    name: "left_pad"
+    type: "string"
+  }
+  attr {
+    name: "right_pad"
+    type: "string"
+  }
+  attr {
+    name: "pad_width"
+    type: "int"
+  }
+  attr {
+    name: "preserve_short_sequences"
+    type: "bool"
+  }
+  attr {
+    name: "Tsplits"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "StringSplit"
   input_arg {
     name: "input"
@@ -44170,6 +44392,13 @@ op {
     type: "string"
     default_value {
       s: "STEP_MARK_AT_ENTRY"
+    }
+  }
+  attr {
+    name: "allow_soft_placement"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }

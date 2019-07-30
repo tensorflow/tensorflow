@@ -170,7 +170,7 @@ class FakeCache : public TestWorkerCache {
 
 class CollRMADistTest : public ::testing::Test {
  protected:
-  CollRMADistTest() {}
+  CollRMADistTest() : work_queue_(Env::Default(), "test") {}
 
   ~CollRMADistTest() override {
     for (DeviceMgr* dm : device_mgrs_) {
@@ -198,7 +198,8 @@ class CollRMADistTest : public ::testing::Test {
     }
     // All tests simulate requests from worker 0 to worker 1.
     rma_.reset(new CollectiveRemoteAccessDistributed(
-        device_mgrs_[0], dev_resolvers_[dev0_worker_name], &wc_, kStepId));
+        device_mgrs_[0], dev_resolvers_[dev0_worker_name], &work_queue_, &wc_,
+        kStepId));
 
     const int kNumElts = 8;
     expected_value_ = Tensor(DT_FLOAT, {kNumElts});
@@ -257,6 +258,7 @@ class CollRMADistTest : public ::testing::Test {
   std::vector<DeviceMgr*> device_mgrs_;
   std::unordered_map<string, DeviceResolverDistributed*> dev_resolvers_;
   std::unordered_map<string, std::vector<string>> dev_by_task_;
+  UnboundedWorkQueue work_queue_;
   std::vector<FakeWorker*> workers_;
   std::unique_ptr<CollectiveRemoteAccessDistributed> rma_;
   mutex mu_;
