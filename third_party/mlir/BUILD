@@ -577,6 +577,23 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "GPUToSPIRVTransforms",
+    srcs = [
+        "lib/Conversion/GPUToSPIRV/GPUToSPIRV.cpp",
+    ],
+    includes = ["include"],
+    deps = [
+        ":GPUDialect",
+        ":IR",
+        ":Pass",
+        ":SPIRVConversions",
+        ":SPIRVDialect",
+        ":StandardOps",
+    ],
+    alwayslink = 1,
+)
+
 gentbl(
     name = "LLVMOpsIncGen",
     tbl_outs = [
@@ -728,15 +745,15 @@ gentbl(
 )
 
 gentbl(
-    name = "StdOpsToSPIRVConversionIncGen",
+    name = "StandardToSPIRVGen",
     tbl_outs = [
         (
             "-gen-rewriters",
-            "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp.inc",
+            "lib/Conversion/StandardToSPIRV/StandardToSPIRV.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.td",
+    td_file = "lib/Conversion/StandardToSPIRV/StandardToSPIRV.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
         ":StdOpsTdFiles",
@@ -805,11 +822,12 @@ cc_library(
 cc_library(
     name = "SPIRVConversions",
     srcs = [
-        "include/mlir/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.h",
-        "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp",
-        "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp.inc",
+        "lib/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.cpp",
+        "lib/Conversion/StandardToSPIRV/ConvertStandardToSPIRVPass.cpp",
+        "lib/Conversion/StandardToSPIRV/StandardToSPIRV.cpp.inc",
     ],
     hdrs = [
+        "include/mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.h",
         "include/mlir/Dialect/SPIRV/Passes.h",
     ],
     includes = [
@@ -821,8 +839,9 @@ cc_library(
         ":Pass",
         ":SPIRVDialect",
         ":StandardOps",
-        ":StdOpsToSPIRVConversionIncGen",
+        ":StandardToSPIRVGen",
         ":Support",
+        ":Transforms",
         "@llvm//:support",
     ],
     alwayslink = 1,
@@ -1235,6 +1254,7 @@ cc_library(
     deps = [
         ":Analysis",
         ":GPUToNVVMTransforms",
+        ":GPUToSPIRVTransforms",
         ":GPUTransforms",
         ":IR",
         ":LLVMDialect",
