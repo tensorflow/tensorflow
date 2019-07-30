@@ -559,17 +559,6 @@ class FuncGraph(ops.Graph):
     # makes sure that any tensor needed by a custom_gradient is correctly
     # captured.
 
-    # TODO(b/134097853): figure out a better way to check distributed variables
-    if hasattr(tensor, "_distribute_strategy") and hasattr(tensor, "_values"):
-      # This checks if the 'tensor' is a DistributedVariable. When it is a
-      # DistributedVariable, we do not want to check its "graph" attr as the
-      # following if branch does, because "graph" is not an attr for the
-      # container DistributedVariable object, and the underlying components may
-      # not have been initialized yet.
-      # The reason we do not use isinstance() is due to cyclic dependency issue.
-      if name is None:
-        name = str("distributed_variable")
-      return self._capture_helper(tensor, name)
     if (getattr(tensor, "graph", None) is not self and
         hasattr(self, "_forward_func_graph") and
         isinstance(self._forward_func_graph, FuncGraph)):
@@ -604,6 +593,12 @@ class FuncGraph(ops.Graph):
     tape.record_operation("captured_value", [captured_tensor], [tensor],
                           lambda x: [x])
     return captured_tensor
+
+  def capture_distributed_variable(self, variable, placeholder):
+    """Add given distributed variable to captures with given placeholder."""
+    self.captures[variable] = placeholder
+    tape.record_operation("captured_value", [placeholder], [variable],
+                          lambda x: [x])
 
   @property
   def external_captures(self):
