@@ -1652,8 +1652,10 @@ def prune_unconnected_ops_from_xla(prune_graph):
   """
   # Scan over the top level graph and all function graphs.
   for graph in [prune_graph] + [
-      f for f in prune_graph._functions.values() if isinstance(f, ops.Graph)  # pylint: disable=protected-access
+      f for f in prune_graph._functions.values()  # pylint: disable=protected-access
   ]:
+    if not isinstance(graph, ops.Graph):
+      continue
     for op in graph.get_operations():
       if op.type not in _UNCONNECTED_OPS_TO_PRUNE:
         continue
