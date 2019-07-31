@@ -1990,9 +1990,9 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
 // dimensions.
 def TFL_TransposeOp : TFL_Op<"transpose",
   [NoSideEffect,
+   TFL_OperandHasRank<1,1>,
    // TODO(jpienaar): these are only true dynamically, change so that it works
    // with unknowns.
-   // TFL_OperandHasRank<1,1>,
    // TFL_OperandRankEquals1DimOfOperand<0, 1>,
    TFL_SameOperandsAndResultsScale]> {
   let summary = "Transpose operator";
