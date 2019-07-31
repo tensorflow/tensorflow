@@ -41,6 +41,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import compat
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -188,7 +189,7 @@ class FuncGraph(ops.Graph):
     self.structured_input_signature = None
     self.structured_outputs = None
     self._weak_variables = []
-    self._watched_variables = weakref.WeakSet()
+    self._watched_variables = object_identity.ObjectIdentityWeakSet()
     self.outer_graph = ops.get_default_graph()
     self._captures = py_collections.OrderedDict()
     # If not None, records the names of output args of this function. Used to

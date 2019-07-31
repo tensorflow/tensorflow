@@ -1786,7 +1786,7 @@ class Layer(module.Module):
     # If the layer returns tensors from its inputs, unmodified,
     # we copy them to avoid loss of tensor metadata.
     output_ls = nest.flatten(outputs)
-    inputs_ls = nest.flatten(inputs)
+    inputs_ls = object_identity.ObjectIdentitySet(nest.flatten(inputs))
     output_ls_copy = []
     for x in output_ls:
       if x in inputs_ls:

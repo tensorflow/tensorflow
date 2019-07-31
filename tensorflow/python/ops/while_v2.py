@@ -43,6 +43,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import while_v2_indexed_slices_rewriter
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 
 # pylint: disable=protected-access
 
@@ -202,8 +203,10 @@ def while_loop(cond,
       num_cond_captures = len(cond_graph.external_captures)
       assert (cond_graph.external_captures ==
               body_graph.external_captures[:num_cond_captures])
+      cond_graph_captures = object_identity.ObjectIdentitySet(
+          cond_graph.external_captures)
       for body_capture in body_graph.external_captures[num_cond_captures:]:
-        assert body_capture not in cond_graph.external_captures
+        assert body_capture not in cond_graph_captures
         cond_graph.capture(body_capture)
 
     # Make sure that the shapes of the loop outputs are compatible with the
@@ -476,8 +479,8 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
   # the output of `_is_loop_invariant`. Also we would never attempt to capture
   # those accumulators so `_is_loop_invariant` should never receive those new
   # tensors as args.
-  body_graph_inputs = frozenset(body_graph.inputs)
-  body_graph_outputs = frozenset(body_graph.outputs)
+  body_graph_inputs = object_identity.ObjectIdentitySet(body_graph.inputs)
+  body_graph_outputs = object_identity.ObjectIdentitySet(body_graph.outputs)
 
   args = [counter, maximum_iterations, total_iters] + list(grads)
   # Note: The returned function does not have `args` in the list of

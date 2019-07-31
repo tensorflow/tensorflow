@@ -308,21 +308,24 @@ def uses_keras_history(tensors):
   tensors_to_check = nest.flatten(tensors)
 
   while tensors_to_check:
-    new_tensors_to_check = set()
+    new_tensors_to_check = []
     for tensor in tensors_to_check:
+      checked_tensors.add(id(tensor))
+
       if getattr(tensor, '_keras_history_checked', None) is not None:
         continue
       if getattr(tensor, '_keras_history', None) is not None:
         return True
 
       try:
-        new_tensors_to_check.update(tensor.op.inputs)
+        for t in tensor.op.inputs:
+          if id(t) not in checked_tensors:
+            new_tensors_to_check.append(t)
       except AttributeError:
         # In case `tensor` is a Variable created in an Eager context.
         pass
 
-    checked_tensors.update(tensors_to_check)
-    tensors_to_check = list(new_tensors_to_check - checked_tensors)
+    tensors_to_check = new_tensors_to_check
 
   # Mark that these Tensors have been checked once for `_keras_history`,
   # and should not be checked again for performance reasons.

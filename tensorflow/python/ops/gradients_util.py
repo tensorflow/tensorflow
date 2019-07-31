@@ -43,6 +43,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import object_identity
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
@@ -453,6 +454,7 @@ def _Inputs(op, xs):
     A list of tensors. The tensors may be from multiple Graph/FuncGraphs if op
     is in a FuncGraph and has captured inputs.
   """
+  tensors = object_identity.ObjectIdentitySet(xs)
   if _IsFunction(op.graph):  # pylint: disable=protected-access
     inputs = []
     for t in op.inputs:
@@ -461,7 +463,7 @@ def _Inputs(op, xs):
       # even if it's a function input for a captured value, whereas usually we'd
       # like to traverse through these closures as if the captured value was the
       # direct input to op.
-      if t not in xs:
+      if t not in tensors:
         t = _MaybeCaptured(t)
       inputs.append(t)
     return inputs
@@ -483,7 +485,7 @@ def _Consumers(t, func_graphs):
   consumers = t.consumers()
   for func in func_graphs:
     for input_t, placeholder in _Captures(func):
-      if input_t == t:
+      if input_t is t:
         consumers.extend(_Consumers(placeholder, func_graphs))
   return consumers
 

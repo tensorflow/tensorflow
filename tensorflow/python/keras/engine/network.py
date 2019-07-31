@@ -54,6 +54,7 @@ from tensorflow.python.training.tracking import layer_utils as trackable_layer_u
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
 
@@ -1448,7 +1449,7 @@ class Network(base_layer.Layer):
   def _validate_graph_inputs_and_outputs(self):
     """Validates the inputs and outputs of a Graph Network."""
     # Check for redundancy in inputs.
-    if len(set(self.inputs)) != len(self.inputs):
+    if len(object_identity.ObjectIdentitySet(self.inputs)) != len(self.inputs):
       raise ValueError('The list of inputs passed to the model '
                        'is redundant. '
                        'All inputs should only appear once.'
@@ -1786,9 +1787,9 @@ def _map_graph_network(inputs, outputs):
   # Check that all tensors required are computable.
   # computable_tensors: all tensors in the graph
   # that can be computed from the inputs provided.
-  computable_tensors = []
+  computable_tensors = object_identity.ObjectIdentitySet()
   for x in inputs:
-    computable_tensors.append(x)
+    computable_tensors.add(x)
 
   layers_with_complete_input = []  # To provide a better error msg.
   for depth in depth_keys:
@@ -1804,7 +1805,7 @@ def _map_graph_network(inputs, outputs):
                              'were accessed without issue: ' +
                              str(layers_with_complete_input))
         for x in nest.flatten(node.output_tensors):
-          computable_tensors.append(x)
+          computable_tensors.add(x)
         layers_with_complete_input.append(layer.name)
 
   # Ensure name unicity, which will be crucial for serialization
