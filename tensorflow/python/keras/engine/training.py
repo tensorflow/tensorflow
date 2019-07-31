@@ -503,12 +503,17 @@ class Model(network.Network):
         logging.warning('Falling back from v2 loop because of error: '
                         '%s' % data_failure_exception)
       if valid_adapter:
-        return training_v2.Loop()
+        if multi_worker_util.in_multi_worker_mode():
+          return training_distributed.DistributionMultiWorkerTrainingLoop(
+              training_v2.Loop())
+        else:
+          return training_v2.Loop()
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
       if multi_worker_util.in_multi_worker_mode():
-        return training_distributed.DistributionMultiWorkerTrainingLoop()
+        return training_distributed.DistributionMultiWorkerTrainingLoop(
+            training_distributed.DistributionSingleWorkerTrainingLoop())
       else:
         return training_distributed.DistributionSingleWorkerTrainingLoop()
 

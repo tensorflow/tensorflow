@@ -756,16 +756,15 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
         callbacks=callbacks)
 
 
-def train_with_multi_worker(fn):
+def train_with_multi_worker(method):
   """Decorator that handles multi worker training with distribution strategy."""
 
-  def wrapper(instance, model, **kwargs):
-
+  def wrapper(model, **kwargs):
     def _worker_fn(_):
       callbacks = kwargs.pop('callbacks', None)
       filtered_callbacks = dist_utils.filter_distributed_callbacks(callbacks)
       kwargs['callbacks'] = filtered_callbacks
-      return fn(instance, model, **kwargs)
+      return method(model, **kwargs)
 
     return dc.run_distribute_coordinator(
         _worker_fn,
@@ -775,10 +774,20 @@ def train_with_multi_worker(fn):
   return wrapper
 
 
-class DistributionMultiWorkerTrainingLoop(DistributionSingleWorkerTrainingLoop):
+class DistributionMultiWorkerTrainingLoop(training_utils.TrainingLoop):
   """Training loop for distribution strategy with multiple worker."""
 
-  fit = train_with_multi_worker(DistributionSingleWorkerTrainingLoop.fit)
-  evaluate = train_with_multi_worker(
-      DistributionSingleWorkerTrainingLoop.evaluate)
-  # Currently predict is still using the single worker implementation.
+  def __init__(self, single_worker_loop):
+    self._single_worker_loop = single_worker_loop
+
+  def fit(self, *args, **kwargs):
+    return train_with_multi_worker(self._single_worker_loop.fit)(
+        *args, **kwargs)
+
+  def evaluate(self, *args, **kwargs):
+    return train_with_multi_worker(self._single_worker_loop.evaluate)(
+        *args, **kwargs)
+
+  def predict(self, *args, **kwargs):
+    # Currently predict is still using the single worker implementation.
+    return self._single_worker_loop.predict(*args, **kwargs)
