@@ -875,7 +875,7 @@ def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False, axis=-1):
 def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
   """Computes the binary cross-entropy between `y_true` and `y_pred`.
 
-  `binary_crossentropy = - y_true*log(y_pred) - (1 - y_true)*log(1 - y_pred)`
+  `loss = - y_true*log(y_pred) - (1 - y_true)*log(1 - y_pred)`
   """
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
