@@ -46,6 +46,7 @@ class BaseDenseAttention(Layer):
     causal: Boolean. Set to `True` for decoder self-attention. Adds a mask such
       that position `i` cannot attend to positions `j > i`. This prevents the
       flow of information from the future towards the past.
+    dropout: Float between 0 and 1. Fraction of the units to drop for the attention scores.
 
   Call Arguments:
 
@@ -59,6 +60,7 @@ class BaseDenseAttention(Layer):
       * query_mask: A boolean mask `Tensor` of shape `[batch_size, Tq]`.
         If given, the output will be zero at the positions where
         `mask==False`.
+      * training: Whether the layer is training or not. Used to apply dropout.
       * value_mask: A boolean mask `Tensor` of shape `[batch_size, Tv]`.
         If given, will apply the mask such that values at positions where
         `mask==False` do not contribute to the result.
