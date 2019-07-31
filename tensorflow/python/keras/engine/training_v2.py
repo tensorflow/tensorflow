@@ -235,7 +235,6 @@ class Loop(training_utils.TrainingLoop):
       training_dataset = strategy.experimental_distribute_dataset(
           training_dataset)
 
-      _update_sample_weight_mode(model, ModeKeys.TRAIN, training_dataset)
       training_function = training_v2_utils._get_or_make_execution_function(
           model, ModeKeys.TRAIN)
 
@@ -382,7 +381,6 @@ class Loop(training_utils.TrainingLoop):
           dataset, steps, steps_name='steps', epochs=0)
       dataset = strategy.experimental_distribute_dataset(dataset)
 
-      _update_sample_weight_mode(model, mode, dataset)
       execution_function = training_v2_utils._get_or_make_execution_function(
           model, mode)
 
@@ -537,30 +535,6 @@ def _process_inputs(model, x, y, batch_size=None, sample_weights=None,
   if adapter_cls not in _ADAPTER_FOR_STANDARDIZE_USER_DATA:
     training_v2_utils._prepare_model_with_inputs(model, adapter.get_dataset())
   return adapter
-
-
-def _update_sample_weight_mode(model, mode, dataset):
-  """Updates the sample_weight_mode of a given model."""
-  # TODO(kaftan): This won't actually do anything right now because
-  ## dist_utils._update_sample_weight_modes only does things when the model
-  ## is distributed by cloning. We will need to revisit if a method here
-  ## is needed at all, and if so how it should look.
-  # Add a quick return to prevent us from calling model._feed_targets that
-  # accesses certain model properties that may not be set in the `PREDICT` mode.
-  if mode == ModeKeys.PREDICT:
-    return
-
-  # Get some sample inputs from the data_adapter
-  iterator = iter(dataset)
-  _, _, sample_weights = training_v2_utils._prepare_feed_values(
-      model, iterator, mode)
-
-  # Call the DistributionStrategy specific function to update the
-  # sample_weight_mode on the model.
-  dist_utils._update_sample_weight_modes(model, mode, sample_weights)
-
-  # Force delete the iterator.
-  del iterator
 
 
 def _get_total_number_of_samples(adapter):
