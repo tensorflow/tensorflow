@@ -43,6 +43,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -728,7 +729,7 @@ def _HasAnyNotNoneGrads(grads, op):
   for out_grad in out_grads:
     if isinstance(out_grad, (ops.Tensor, ops.IndexedSlices)):
       return True
-    if out_grad and isinstance(out_grad, collections.Sequence):
+    if out_grad and isinstance(out_grad, collections_abc.Sequence):
       if any(g is not None for g in out_grad):
         return True
   return False
@@ -953,11 +954,10 @@ def _AggregatedGrads(grads,
         assert control_flow_util.IsLoopSwitch(op)
         continue
     # Grads have to be Tensors or IndexedSlices
-    if (isinstance(out_grad, collections.Sequence) and not all(
+    if (isinstance(out_grad, collections_abc.Sequence) and not all(
         isinstance(g, (ops.Tensor, ops.IndexedSlices))
         for g in out_grad
-        if g is not None
-    )):
+        if g is not None)):
       raise TypeError("gradients have to be either all Tensors "
                       "or all IndexedSlices")
     # Aggregate multiple gradients, and convert [] to None.

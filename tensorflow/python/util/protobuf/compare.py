@@ -62,7 +62,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import difflib
 
 import six
@@ -71,6 +70,8 @@ from google.protobuf import descriptor
 from google.protobuf import descriptor_pool
 from google.protobuf import message
 from google.protobuf import text_format
+
+from ..compat import collections_abc
 
 
 def assertProtoEqual(self, a, b, check_initialized=True,  # pylint: disable=invalid-name
@@ -186,7 +187,7 @@ def NormalizeNumberFields(pb):
 
 
 def _IsMap(value):
-  return isinstance(value, collections.Mapping)
+  return isinstance(value, collections_abc.Mapping)
 
 
 def _IsRepeatedContainer(value):

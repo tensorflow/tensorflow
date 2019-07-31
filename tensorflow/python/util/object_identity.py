@@ -17,8 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import weakref
+
+from tensorflow.python.util.compat import collections_abc
 
 
 class _ObjectIdentityWrapper(object):
@@ -58,7 +59,7 @@ class _WeakObjectIdentityWrapper(_ObjectIdentityWrapper):
     return self._wrapped()
 
 
-class ObjectIdentityDictionary(collections.MutableMapping):
+class ObjectIdentityDictionary(collections_abc.MutableMapping):
   """A mutable mapping data structure which compares using "is".
 
   This is necessary because we have trackable objects (_ListWrapper) which
@@ -109,7 +110,7 @@ class ObjectIdentityWeakKeyDictionary(ObjectIdentityDictionary):
         yield unwrapped
 
 
-class ObjectIdentitySet(collections.MutableSet):
+class ObjectIdentitySet(collections_abc.MutableSet):
   """Like the built-in set, but compares objects with "is"."""
 
   def __init__(self, *args):

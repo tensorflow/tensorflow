@@ -19,8 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import numpy as np
 
 from tensorflow.python.eager.backprop import GradientTape
@@ -33,6 +31,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 
 
 def _eager_loss_fn(outputs, targets, loss_fn, output_name):
@@ -288,7 +287,7 @@ def train_on_batch(model,
   Returns:
       total loss and the loss associated with each output.
   """
-  if isinstance(inputs, collections.Sequence):
+  if isinstance(inputs, collections_abc.Sequence):
     inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
     if targets:
       targets = training_utils.cast_if_floating_dtype(targets)
@@ -334,7 +333,7 @@ def test_on_batch(model,
   Returns:
       total loss, loss and metrics associated with each output.
   """
-  if isinstance(inputs, collections.Sequence):
+  if isinstance(inputs, collections_abc.Sequence):
     inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
     if targets:
       targets = training_utils.cast_if_floating_dtype(targets)
