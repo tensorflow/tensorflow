@@ -41,7 +41,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_constants",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
-        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler",
+        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/core:lib",
         "@local_config_mlir//:IR",

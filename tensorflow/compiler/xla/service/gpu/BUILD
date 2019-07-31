@@ -993,9 +993,17 @@ cc_library(
 cc_library(
     name = "nvptx_compiler",
     srcs = if_cuda_is_configured([
+        "nvptx_compiler_registration.cc",
+    ]),
+    deps = [":nvptx_compiler_impl"],
+    alwayslink = True,  # Contains compiler registration
+)
+
+cc_library(
+    name = "nvptx_compiler_impl",
+    srcs = if_cuda_is_configured([
         "gpu_compiler.cc",
         "nvptx_compiler.cc",
-        "nvptx_compiler_registration.cc",
     ]),
     hdrs = if_cuda_is_configured([
         "gpu_compiler.h",
@@ -1091,16 +1099,23 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm//:core",
     ]),
-    alwayslink = True,  # Contains compiler registration
 )
 
 cc_library(
     name = "amdgpu_compiler",
     srcs = if_rocm_is_configured([
+        "amdgpu_compiler_registration.cc",
+    ]),
+    deps = [":amdgpu_compiler_impl"],
+    alwayslink = True,  # Contains compiler registration
+)
+
+cc_library(
+    name = "amdgpu_compiler_impl",
+    srcs = if_rocm_is_configured([
         # TODO(whchung@gmail.com) : enable in the subsequent PR.
         #"gpu_compiler.cc",
         #"amdgpu_compiler.cc",
-        #"amdgpu_compiler_registration.cc",
     ]),
     hdrs = if_rocm_is_configured([
         # TODO(whchung@gmail.com): enable in the subsequent PR.
@@ -1192,7 +1207,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm//:core",
     ]),
-    alwayslink = True,  # Contains compiler registration
 )
 
 cc_library(
