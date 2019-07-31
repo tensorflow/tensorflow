@@ -625,11 +625,8 @@ cc_library(
         ":freebsd": [
             ":sse_tensor_utils",
         ],
-        "//tensorflow:windows": [
-            ":portable_tensor_utils",
-        ],
         "//conditions:default": [
-            ":neon_tensor_utils",
+            ":portable_tensor_utils",
         ],
     }),
 )
