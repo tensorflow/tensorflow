@@ -360,11 +360,12 @@ def MultiResultOpKind2: I64EnumAttrCase<"kind2", 2>;
 def MultiResultOpKind3: I64EnumAttrCase<"kind3", 3>;
 def MultiResultOpKind4: I64EnumAttrCase<"kind4", 4>;
 def MultiResultOpKind5: I64EnumAttrCase<"kind5", 5>;
+def MultiResultOpKind6: I64EnumAttrCase<"kind6", 6>;
 
 def MultiResultOpEnum: I64EnumAttr<
   "Multi-result op kinds", "", [
     MultiResultOpKind1, MultiResultOpKind2, MultiResultOpKind3,
-    MultiResultOpKind4, MultiResultOpKind5
+    MultiResultOpKind4, MultiResultOpKind5, MultiResultOpKind6
   ]>;
 
 def ThreeResultOp : TEST_Op<"three_result"> {
@@ -398,13 +399,18 @@ def AnotherTwoResultOp : TEST_Op<"another_two_result"> {
   let results = (outs F32:$result1, F32:$result2);
 }
 
-def OneResultOp : TEST_Op<"one_result"> {
+def OneResultOp1 : TEST_Op<"one_result1"> {
   let arguments = (ins MultiResultOpEnum:$kind);
   let results = (outs F32:$result1);
 }
 
-def AnotherOneResultOp : TEST_Op<"another_one_result"> {
+def OneResultOp2 : TEST_Op<"one_result2"> {
   let arguments = (ins MultiResultOpEnum:$kind);
+  let results = (outs I32:$result1);
+}
+
+def OneResultOp3 : TEST_Op<"one_result3"> {
+  let arguments = (ins F32:$input);
   let results = (outs I32:$result1);
 }
 
@@ -415,15 +421,15 @@ def : Pat<(ThreeResultOp MultiResultOpKind1),
 // Test using multi-result op as a whole for partial replacement
 def : Pattern<(ThreeResultOp MultiResultOpKind2),
               [(TwoResultOp MultiResultOpKind2),
-               (OneResultOp MultiResultOpKind2)]>;
+               (OneResultOp1 MultiResultOpKind2)]>;
 def : Pattern<(ThreeResultOp MultiResultOpKind3),
-              [(AnotherOneResultOp MultiResultOpKind3),
+              [(OneResultOp2 MultiResultOpKind3),
                (AnotherTwoResultOp MultiResultOpKind3)]>;
 
 // Test using results separately in a multi-result op
 def : Pattern<(ThreeResultOp MultiResultOpKind4),
               [(TwoResultOp:$res1__0 MultiResultOpKind4),
-               (OneResultOp MultiResultOpKind4),
+               (OneResultOp1 MultiResultOpKind4),
                (TwoResultOp:$res2__1 MultiResultOpKind4)]>;
 
 // Test referencing a single value in the value pack
@@ -431,9 +437,20 @@ def HasNoUse: Constraint<
     CPred<"$0->use_begin() == $0->use_end()">, "has no use">;
 // This rule only matches TwoResultOp if its second result has no use.
 def : Pattern<(TwoResultOp:$res MultiResultOpKind5),
-              [(AnotherOneResultOp MultiResultOpKind5),
-               (OneResultOp MultiResultOpKind5)],
+              [(OneResultOp2 MultiResultOpKind5),
+               (OneResultOp1 MultiResultOpKind5)],
               [(HasNoUse $res__1)]>;
+
+// Test using auxiliary ops for replacing multi-result op
+def : Pattern<
+    (ThreeResultOp MultiResultOpKind6), [
+        // Auxiliary op generated to help building the final result but not
+        // directly used to replace the source op's results.
+        (TwoResultOp:$interm MultiResultOpKind6),
+
+        (OneResultOp3 $interm__1),
+        (AnotherTwoResultOp MultiResultOpKind6)
+    ]>;
 
 //===----------------------------------------------------------------------===//
 // Test Directives

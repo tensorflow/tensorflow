@@ -105,7 +105,7 @@ llvm::StringRef tblgen::DagNode::getNativeCodeTemplate() const {
       ->getValueAsString("expression");
 }
 
-llvm::StringRef tblgen::DagNode::getOpName() const {
+llvm::StringRef tblgen::DagNode::getSymbol() const {
   return node->getNameStr();
 }
 
@@ -158,14 +158,17 @@ bool tblgen::DagNode::isVerifyUnusedValue() const {
 
 tblgen::Pattern::Pattern(const llvm::Record *def, RecordOperatorMap *mapper)
     : def(*def), recordOpMap(mapper) {
-  collectBoundArguments(getSourcePattern());
+  collectBoundSymbols(getSourcePattern(), srcBoundOps, /*isSrcPattern=*/true);
+  for (int i = 0, e = getNumResultPatterns(); i < e; ++i)
+    collectBoundSymbols(getResultPattern(i), resBoundOps,
+                        /*isSrcPattern=*/false);
 }
 
 tblgen::DagNode tblgen::Pattern::getSourcePattern() const {
   return tblgen::DagNode(def.getValueAsDag("sourcePattern"));
 }
 
-int tblgen::Pattern::getNumResults() const {
+int tblgen::Pattern::getNumResultPatterns() const {
   auto *results = def.getValueAsListInit("resultPatterns");
   return results->size();
 }
@@ -176,20 +179,25 @@ tblgen::DagNode tblgen::Pattern::getResultPattern(unsigned index) const {
 }
 
 void tblgen::Pattern::ensureBoundInSourcePattern(llvm::StringRef name) const {
-  if (boundArguments.find(name) == boundArguments.end() &&
-      boundOps.find(name) == boundOps.end())
+  if (srcBoundArguments.find(name) == srcBoundArguments.end() &&
+      srcBoundOps.find(name) == srcBoundOps.end())
     PrintFatalError(def.getLoc(),
                     Twine("referencing unbound variable '") + name + "'");
 }
 
 llvm::StringMap<tblgen::Argument> &
 tblgen::Pattern::getSourcePatternBoundArgs() {
-  return boundArguments;
+  return srcBoundArguments;
 }
 
 llvm::StringMap<const tblgen::Operator *> &
 tblgen::Pattern::getSourcePatternBoundOps() {
-  return boundOps;
+  return srcBoundOps;
+}
+
+llvm::StringMap<const tblgen::Operator *> &
+tblgen::Pattern::getResultPatternBoundOps() {
+  return resBoundOps;
 }
 
 const tblgen::Operator &tblgen::Pattern::getSourceRootOp() {
@@ -248,7 +256,20 @@ tblgen::Pattern::getLocation() const {
   return result;
 }
 
-void tblgen::Pattern::collectBoundArguments(DagNode tree) {
+void tblgen::Pattern::collectBoundSymbols(DagNode tree,
+                                          SymbolOperatorMap &symOpMap,
+                                          bool isSrcPattern) {
+  auto treeName = tree.getSymbol();
+  if (!tree.isOperation()) {
+    if (!treeName.empty()) {
+      PrintFatalError(
+          def.getLoc(),
+          formatv("binding symbol '{0}' to non-operation unsupported right now",
+                  treeName));
+    }
+    return;
+  }
+
   auto &op = getDialectOp(tree);
   auto numOpArgs = op.getNumArgs();
   auto numTreeArgs = tree.getNumArgs();
@@ -262,19 +283,19 @@ void tblgen::Pattern::collectBoundArguments(DagNode tree) {
 
   // The name attached to the DAG node's operator is for representing the
   // results generated from this op. It should be remembered as bound results.
-  auto treeName = tree.getOpName();
   if (!treeName.empty())
-    boundOps.try_emplace(treeName, &op);
+    symOpMap.try_emplace(treeName, &op);
 
-  // TODO(jpienaar): Expand to multiple matches.
   for (int i = 0; i != numTreeArgs; ++i) {
     if (auto treeArg = tree.getArgAsNestedDag(i)) {
       // This DAG node argument is a DAG node itself. Go inside recursively.
-      collectBoundArguments(treeArg);
-    } else {
+      collectBoundSymbols(treeArg, symOpMap, isSrcPattern);
+    } else if (isSrcPattern) {
+      // We can only bind symbols to op arguments in source pattern. Those
+      // symbols are referenced in result patterns.
       auto treeArgName = tree.getArgName(i);
       if (!treeArgName.empty())
-        boundArguments.try_emplace(treeArgName, op.getArg(i));
+        srcBoundArguments.try_emplace(treeArgName, op.getArg(i));
     }
   }
 }

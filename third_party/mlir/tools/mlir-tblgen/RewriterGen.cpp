@@ -153,6 +153,13 @@ public:
   // values separated via comma.
   std::string query(StringRef symbol) const;
 
+  // Returns how many static values the given `symbol` correspond to. Returns a
+  // negative value if the given symbol is not bound.
+  //
+  // Normally a symbol would correspond to just one value; for symbols bound to
+  // multi-result ops, it can be more than one.
+  int getValueCount(StringRef symbol) const;
+
 private:
   // Symbols bound to arguments in source pattern.
   const StringMap<Argument> &sourceArguments;
@@ -175,27 +182,42 @@ bool PatternSymbolResolver::add(StringRef symbol, int numValues) {
 }
 
 std::string PatternSymbolResolver::query(StringRef symbol) const {
-  {
-    StringRef name = getValuePackName(symbol);
-    auto it = resultOps.find(name);
-    if (it != resultOps.end())
-      return formatValuePack("{0}.getOperation()->getResult({1})", symbol,
-                             it->second, /*offset=*/0);
-  }
-  {
-    auto it = sourceArguments.find(symbol);
-    if (it != sourceArguments.end())
-      return getBoundSymbol(symbol).str();
-  }
-  {
-    StringRef name = getValuePackName(symbol);
-    auto it = sourceOps.find(name);
-    if (it != sourceOps.end())
-      return formatValuePack("{0}->getResult({1})",
-                             getBoundSymbol(symbol).str(),
-                             it->second->getNumResults(), /*offset=*/0);
-  }
+  StringRef name = getValuePackName(symbol);
+  // Handle symbols bound to generated ops
+  auto resOpIt = resultOps.find(name);
+  if (resOpIt != resultOps.end())
+    return formatValuePack("{0}.getOperation()->getResult({1})", symbol,
+                           resOpIt->second, /*offset=*/0);
+
+  // Handle symbols bound to matched op arguments
+  auto srcArgIt = sourceArguments.find(symbol);
+  if (srcArgIt != sourceArguments.end())
+    return getBoundSymbol(symbol).str();
+
+  // Handle symbols bound to matched op results
+  auto srcOpIt = sourceOps.find(name);
+  if (srcOpIt != sourceOps.end())
+    return formatValuePack("{0}->getResult({1})", getBoundSymbol(symbol).str(),
+                           srcOpIt->second->getNumResults(), /*offset=*/0);
   return {};
+}
+
+int PatternSymbolResolver::getValueCount(StringRef symbol) const {
+  StringRef name = getValuePackName(symbol);
+  // Handle symbols bound to generated ops
+  auto resOpIt = resultOps.find(name);
+  if (resOpIt != resultOps.end())
+    return name == symbol ? resOpIt->second : 1;
+
+  // Handle symbols bound to matched op arguments
+  if (sourceArguments.count(symbol))
+    return 1;
+
+  // Handle symbols bound to matched op results
+  auto srcOpIt = sourceOps.find(name);
+  if (srcOpIt != sourceOps.end())
+    return name == symbol ? srcOpIt->second->getNumResults() : 1;
+  return -1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -269,14 +291,17 @@ private:
 
   // Returns the C++ expression to build an argument from the given DAG `leaf`.
   // `patArgName` is used to bound the argument to the source pattern.
-  std::string handleOpArgument(DagLeaf leaf, llvm::StringRef patArgName);
+  std::string handleOpArgument(DagLeaf leaf, StringRef patArgName);
 
   // Marks the symbol attached to DagNode `node` as bound. Aborts if the symbol
   // is already bound.
-  void addSymbol(DagNode node);
+  void addSymbol(StringRef symbol, int numValues);
 
   // Gets the substitution for `symbol`. Aborts if `symbol` is not bound.
   std::string resolveSymbol(StringRef symbol);
+
+  // Returns how many static values the given DAG `node` correspond to.
+  int getNodeValueCount(DagNode node);
 
 private:
   // Pattern instantiation location followed by the location of multiclass
@@ -349,7 +374,7 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
   }
 
   // If the operand's name is set, set to that variable.
-  auto name = tree.getOpName();
+  auto name = tree.getSymbol();
   if (!name.empty())
     os.indent(indent) << formatv("{0} = op{1};\n", getBoundSymbol(name), depth);
 
@@ -479,7 +504,7 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
 
   // The rewrite pattern may specify that certain outputs should be unused in
   // the source IR. Check it here.
-  for (int i = 0, e = pattern.getNumResults(); i < e; ++i) {
+  for (int i = 0, e = pattern.getNumResultPatterns(); i < e; ++i) {
     DagNode resultTree = pattern.getResultPattern(i);
     if (resultTree.isVerifyUnusedValue()) {
       handleVerifyUnusedValue(resultTree, i);
@@ -543,7 +568,7 @@ void PatternEmitter::emit(StringRef rewriteName) {
 
   // Collect the set of result operations.
   llvm::SmallPtrSet<const Operator *, 4> results;
-  for (unsigned i = 0, e = pattern.getNumResults(); i != e; ++i)
+  for (unsigned i = 0, e = pattern.getNumResultPatterns(); i != e; ++i)
     collectOps(pattern.getResultPattern(i), results);
 
   // Emit RewritePattern for Pattern.
@@ -587,7 +612,36 @@ void PatternEmitter::emit(StringRef rewriteName) {
 void PatternEmitter::emitRewriteMethod() {
   const Operator &rootOp = pattern.getSourceRootOp();
   int numExpectedResults = rootOp.getNumResults();
-  int numProvidedResults = pattern.getNumResults();
+  int numResultPatterns = pattern.getNumResultPatterns();
+
+  // First register all symbols bound to ops generated in result patterns.
+  for (const auto &boundOp : pattern.getResultPatternBoundOps()) {
+    addSymbol(boundOp.getKey(), boundOp.getValue()->getNumResults());
+  }
+
+  // Only the last N static values generated are used to replace the matched
+  // root N-result op. We need to calculate the starting index (of the results
+  // of the matched op) each result pattern is to replace.
+  SmallVector<int, 4> offsets(numResultPatterns + 1, numExpectedResults);
+  int replStartIndex = -1;
+  for (int i = numResultPatterns - 1; i >= 0; --i) {
+    auto numValues = getNodeValueCount(pattern.getResultPattern(i));
+    offsets[i] = offsets[i + 1] - numValues;
+    if (offsets[i] == 0) {
+      replStartIndex = i;
+    } else if (offsets[i] < 0 && offsets[i + 1] > 0) {
+      auto error = formatv(
+          "cannot use the same multi-result op '{0}' to generate both "
+          "auxiliary values and values to be used for replacing the matched op",
+          pattern.getResultPattern(i).getSymbol());
+      PrintFatalError(loc, error);
+    }
+  }
+
+  if (offsets.front() > 0) {
+    const char error[] = "no enough values generated to replace the matched op";
+    PrintFatalError(loc, error);
+  }
 
   os << R"(
   void rewrite(Operation *op, std::unique_ptr<PatternState> state,
@@ -602,18 +656,15 @@ void PatternEmitter::emitRewriteMethod() {
 
   // Collect the replacement value for each result
   llvm::SmallVector<std::string, 2> resultValues;
-  for (int i = 0; i < numProvidedResults; ++i) {
+  for (int i = 0; i < numResultPatterns; ++i) {
     DagNode resultTree = pattern.getResultPattern(i);
-    resultValues.push_back(handleRewritePattern(resultTree, i, 0));
-    // Keep track of bound symbols at the top-level DAG nodes
-    addSymbol(resultTree);
+    resultValues.push_back(handleRewritePattern(resultTree, offsets[i], 0));
   }
 
   // Emit the final replaceOp() statement
   os.indent(4) << "rewriter.replaceOp(op, {";
   interleave(
-      // We only use the last numExpectedResults ones to replace the root op.
-      ArrayRef<std::string>(resultValues).take_back(numExpectedResults),
+      ArrayRef<std::string>(resultValues).drop_front(replStartIndex),
       [&](const std::string &name) { os << name; }, [&]() { os << ", "; });
   os << "});\n  }\n";
 }
@@ -635,7 +686,7 @@ std::string PatternEmitter::handleRewritePattern(DagNode resultTree,
                            "verify top-level result");
     }
 
-    if (!resultTree.getOpName().empty()) {
+    if (!resultTree.getSymbol().empty()) {
       PrintFatalError(loc, "cannot bind symbol to verifyUnusedValue");
     }
 
@@ -666,7 +717,7 @@ std::string PatternEmitter::handleReplaceWithValue(DagNode tree) {
         loc, "replaceWithValue directive must take exactly one argument");
   }
 
-  if (!tree.getOpName().empty()) {
+  if (!tree.getSymbol().empty()) {
     PrintFatalError(loc, "cannot bind symbol to verifyUnusedValue");
   }
 
@@ -680,8 +731,7 @@ void PatternEmitter::handleVerifyUnusedValue(DagNode tree, int index) {
                << ")->use_empty()) return matchFailure();\n";
 }
 
-std::string PatternEmitter::handleOpArgument(DagLeaf leaf,
-                                             llvm::StringRef argName) {
+std::string PatternEmitter::handleOpArgument(DagLeaf leaf, StringRef argName) {
   if (leaf.isConstantAttr()) {
     auto constAttr = leaf.getAsConstantAttr();
     return handleConstantAttr(constAttr.getAttribute(),
@@ -722,12 +772,8 @@ std::string PatternEmitter::emitReplaceWithNativeCodeCall(DagNode tree) {
                attrs[4], attrs[5], attrs[6], attrs[7]);
 }
 
-void PatternEmitter::addSymbol(DagNode node) {
-  StringRef symbol = node.getOpName();
-  // Skip empty-named symbols, which happen for unbound ops in result patterns.
-  if (symbol.empty())
-    return;
-  if (!symbolResolver.add(symbol, pattern.getDialectOp(node).getNumResults()))
+void PatternEmitter::addSymbol(StringRef symbol, int numValues) {
+  if (!symbolResolver.add(symbol, numValues))
     PrintFatalError(loc, formatv("symbol '{0}' bound more than once", symbol));
 }
 
@@ -736,6 +782,22 @@ std::string PatternEmitter::resolveSymbol(StringRef symbol) {
   if (subst.empty())
     PrintFatalError(loc, formatv("referencing unbound symbol '{0}'", symbol));
   return subst;
+}
+
+int PatternEmitter::getNodeValueCount(DagNode node) {
+  if (node.isOperation()) {
+    // First to see whether this op is bound and we just want a specific result
+    // of it with `__N` suffix in symbol.
+    int count = symbolResolver.getValueCount(node.getSymbol());
+    if (count >= 0)
+      return count;
+
+    // No symbol. Then we are using all the results.
+    return pattern.getDialectOp(node).getNumResults();
+  }
+  // TODO(antiagainst): This considers all NativeCodeCall as returning one
+  // value. Enhance if multi-value ones are needed.
+  return 1;
 }
 
 std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
@@ -769,13 +831,11 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
   for (int i = 0, e = resultOp.getNumOperands(); i != e; ++i) {
     if (auto child = tree.getArgAsNestedDag(i)) {
       childNodeNames[i] = handleRewritePattern(child, i, depth + 1);
-      // Keep track of bound symbols at the middle-level DAG nodes
-      addSymbol(child);
     }
   }
 
   // Use the specified name for this op if available. Generate one otherwise.
-  std::string resultValue = tree.getOpName();
+  std::string resultValue = tree.getSymbol();
   if (resultValue.empty())
     resultValue = getUniqueValueName(&resultOp);
   // Strip the index to get the name for the value pack. This will be used to
@@ -794,12 +854,14 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
   bool usePartialResults = valuePackName != resultValue;
 
   if (isSameOperandsAndResultType || isBroadcastable || useFirstAttr ||
-      usePartialResults || depth > 0) {
+      usePartialResults || depth > 0 || resultIndex < 0) {
     os.indent(4) << formatv("auto {0} = rewriter.create<{1}>(loc",
                             valuePackName, resultOp.getQualCppClassName());
   } else {
-    // If depth == 0 we can use the equivalence of the source and target root
-    // ops in the pattern to determine the return type.
+    // If depth == 0 and resultIndex >= 0, it means we are replacing the values
+    // generated from the source pattern root op. Then we can use the source
+    // pattern's value types to determine the value type of the generated op
+    // here.
 
     // We need to specify the types for all results.
     auto resultTypes =
