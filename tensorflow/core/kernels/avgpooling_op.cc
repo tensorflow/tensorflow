@@ -36,8 +36,11 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
+#endif  // GOOGLE_CUDA
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
