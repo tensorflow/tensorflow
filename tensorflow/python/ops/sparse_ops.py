@@ -2388,6 +2388,31 @@ def sparse_tensor_dense_matmul(sp_a,
         adjoint_a=adjoint_a,
         adjoint_b=adjoint_b)
 
+@tf_export("sparse.dense_sparse_matmul",
+           v1=["sparse.dense_sparse_matmul"])
+def dense_sparse_matmul(dense_a,
+                               sp_b,
+                               name=None):
+  """
+  ```
+  This function returns 
+
+  Args:
+    dense_a: A dense Matrix, a.
+    sp_b: A SparseTensor, b, of rank 2.
+    name: A name prefix for the returned tensors (optional)
+
+  Returns:
+    A dense matrix (pseudo-code in dense np.matrix notation):
+  """
+  # pylint: enable=line-too-long
+  sp_b = _convert_to_sparse_tensor(sp_b)
+  with ops.name_scope(name, "DenseSparseTensorMatMul",
+                      [a, sp_b.indices, sp_b.values]) as name:
+    a = ops.convert_to_tensor(a, name="a")
+    return array_ops.transpose(sparse_dense_matmul(sp_b, a, 
+                                adjoint_a=True,
+                                adjoint_b=True))
 
 @tf_export("sparse.softmax", v1=["sparse.softmax", "sparse_softmax"])
 @deprecation.deprecated_endpoints("sparse_softmax")
