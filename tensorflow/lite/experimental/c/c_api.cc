@@ -172,6 +172,10 @@ const TFL_Tensor* TFL_InterpreterGetOutputTensor(
     const TFL_Interpreter* interpreter, int32_t output_index) {
   return interpreter->impl->tensor(interpreter->impl->outputs()[output_index]);
 }
+    
+void TFL_InterpreterSetAllowFp16PrecisionForFp32(TFL_Interpreter* interpreter, bool allow_fp16) {
+    interpreter->impl->SetAllowFp16PrecisionForFp32(allow_fp16);
+}
 
 TFL_Type TFL_TensorType(const TFL_Tensor* tensor) { return tensor->type; }
 
