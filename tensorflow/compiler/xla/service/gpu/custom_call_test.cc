@@ -165,7 +165,7 @@ TEST_F(CustomCallTest, SubBuffers) {
   EXPECT_THAT(result.data<float>({2}), ::testing::Each(3));
 }
 
-void Callback_TupleSelect(CUstream stream, void** buffers,
+void Callback_TupleSelect(se::gpu::GpuStreamHandle stream, void** buffers,
                           const char* /*opaque*/, size_t /*opaque_len*/) {
   // Set the two output leaf buffers equal to the two input leaf buffers.
   gpuMemcpyAsync(buffers[2], buffers[0], 10 * sizeof(float),
