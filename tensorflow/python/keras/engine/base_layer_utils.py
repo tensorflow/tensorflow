@@ -310,6 +310,9 @@ def uses_keras_history(tensors):
   while tensors_to_check:
     new_tensors_to_check = []
     for tensor in tensors_to_check:
+      if id(tensor) in checked_tensors:
+        continue
+
       checked_tensors.add(id(tensor))
 
       if getattr(tensor, '_keras_history_checked', None) is not None:
@@ -318,9 +321,7 @@ def uses_keras_history(tensors):
         return True
 
       try:
-        for t in tensor.op.inputs:
-          if id(t) not in checked_tensors:
-            new_tensors_to_check.append(t)
+        new_tensors_to_check.extend(tensor.op.inputs)
       except AttributeError:
         # In case `tensor` is a Variable created in an Eager context.
         pass
