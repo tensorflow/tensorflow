@@ -43303,6 +43303,21 @@ op {
     name: "body"
     type: "func"
   }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "parallel_iterations"
+    type: "int"
+    default_value {
+      i: 10
+    }
+  }
 }
 op {
   name: "StaticRegexFullMatch"
