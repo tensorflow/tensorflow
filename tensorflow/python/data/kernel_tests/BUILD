@@ -468,6 +468,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
     ],
     tags = [
+        "no_oss",
         "no_windows_gpu",
     ],
     xla_enable_strict_auto_jit = True,
