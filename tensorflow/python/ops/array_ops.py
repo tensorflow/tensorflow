@@ -704,13 +704,15 @@ def _slice_helper(tensor, slice_spec, var=None):
       # python doesn't always use None when constructing ranges
       # for example a[:] gives slice(None,sys.maxsize,None)
       # whereas a[::1] gives slice(None,None,None)
-      if s.start is not None and s.start is not sys.maxsize:
+      if s.start is not None and (isinstance(s.start, ops.Tensor) or
+                                  s.start != sys.maxsize):
         _check_index(s.start)
         begin.append(s.start)
       else:
         begin.append(0)
         begin_mask |= (1 << index)
-      if s.stop is not None and s.stop != sys.maxsize:
+      if s.stop is not None and (isinstance(s.stop, ops.Tensor) or
+                                 s.stop != sys.maxsize):
         _check_index(s.stop)
         end.append(s.stop)
       else:
