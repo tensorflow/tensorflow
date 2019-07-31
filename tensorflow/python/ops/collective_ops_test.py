@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import constant_op
@@ -32,25 +34,45 @@ from tensorflow.python.platform import test
 
 class CollectiveOpTest(test.TestCase):
 
-  def _testCollectiveReduce(self, t0, t1, expected, set_graph_key):
+  def _testCollectiveReduce(self, inputs, expected, set_graph_key, use_nccl):
     group_key = 1
+    group_size = len(inputs)
     instance_key = 1
-    with self.session(
-        config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
-      with ops.device('/CPU:0'):
-        in0 = constant_op.constant(t0)
-        colred0 = collective_ops.all_reduce(in0, 2, group_key, instance_key,
-                                            'Add', 'Div')
-      with ops.device('/CPU:1'):
-        in1 = constant_op.constant(t1)
-        colred1 = collective_ops.all_reduce(in1, 2, group_key, instance_key,
-                                            'Add', 'Div')
+    if use_nccl:
+      # Configure virtual GPU devices
+      device_type = 'GPU'
+      virtual_devices = [config_pb2.GPUOptions.Experimental.VirtualDevices(
+          memory_limit_mb=([1 << 10] * group_size))]  # 1 GB per virtual GPU
+      gpu_options = config_pb2.GPUOptions(
+          visible_device_list='0',
+          experimental=config_pb2.GPUOptions.Experimental(
+              virtual_devices=virtual_devices))
+      # Configure NCCL
+      experimental = config_pb2.ConfigProto.Experimental(collective_nccl=True)
+      os.environ['NCCL_DEBUG'] = 'INFO'
+      os.environ['NCCL_LAUNCH_MODE'] = 'PARALLEL'
+      config = config_pb2.ConfigProto(gpu_options=gpu_options,
+                                      experimental=experimental)
+    else:
+      device_type = 'CPU'
+      config = config_pb2.ConfigProto(device_count={device_type: group_size})
+    devices = ['/{}:{}'.format(device_type, i) for i in range(group_size)]
+
+    with self.session(config=config) as sess:
+      if use_nccl and not test_util.is_gpu_available(cuda_only=True):
+        self.skipTest('No GPU available')
+      colred = []
+      for i in range(group_size):
+        with ops.device(devices[i]):
+          tensor = constant_op.constant(inputs[i])
+          colred.append(collective_ops.all_reduce(tensor, group_size, group_key,
+                                                  instance_key, 'Add', 'Div'))
       run_options = config_pb2.RunOptions()
       if set_graph_key:
         run_options.experimental.collective_graph_key = 1
-      results = sess.run([colred0, colred1], options=run_options)
-    self.assertAllClose(results[0], expected, rtol=1e-5, atol=1e-5)
-    self.assertAllClose(results[1], expected, rtol=1e-5, atol=1e-5)
+      results = sess.run(colred, options=run_options)
+    for i in range(group_size):
+      self.assertAllClose(results[i], expected, rtol=1e-5, atol=1e-5)
 
   def _testMultipleConcurrentCollectiveReduce(self, t0, t1, expected):
     group_key = 1
@@ -72,15 +94,30 @@ class CollectiveOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testCollectiveReduce(self):
-    self._testCollectiveReduce([0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-                               [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
-                               [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2], True)
+    self._testCollectiveReduce(
+        inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
+        expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
+        set_graph_key=True,
+        use_nccl=False)
 
   @test_util.run_deprecated_v1
   def testCollectiveAutoGraphKey(self):
-    self._testCollectiveReduce([0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-                               [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
-                               [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2], False)
+    self._testCollectiveReduce(
+        inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
+        expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
+        set_graph_key=False,
+        use_nccl=False)
+
+  @test_util.run_deprecated_v1
+  def testCollectiveReduceNccl(self):
+    self._testCollectiveReduce(
+        inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
+        expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
+        set_graph_key=False,
+        use_nccl=True)
 
   @test_util.run_deprecated_v1
   def testCollectiveMultipleConcurrentReduce(self):
@@ -122,7 +159,8 @@ class CollectiveOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testCollectiveReduceScalar(self):
-    self._testCollectiveReduce(0.1, 0.3, 0.2, True)
+    self._testCollectiveReduce(inputs=[0.1, 0.3], expected=0.2,
+                               set_graph_key=True, use_nccl=False)
 
   def _testCollectiveBroadcast(self, t0):
     group_key = 1

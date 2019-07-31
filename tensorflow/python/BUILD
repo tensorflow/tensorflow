@@ -2476,7 +2476,7 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "collective_ops_test",
     size = "small",
     srcs = ["ops/collective_ops_test.py"],
