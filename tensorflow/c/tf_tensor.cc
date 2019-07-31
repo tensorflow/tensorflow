@@ -31,6 +31,37 @@ using tensorflow::TensorBuffer;
 using tensorflow::errors::FailedPrecondition;
 using tensorflow::errors::InvalidArgument;
 
+namespace tensorflow {
+void* allocate_tensor(const char* operation, size_t len, Allocator* allocator) {
+  void* data = allocator->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len);
+  if (LogMemory::IsEnabled() && data != nullptr) {
+    LogMemory::RecordRawAllocation(
+        operation, LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, len, data,
+        allocator);
+  }
+  return data;
+}
+
+void* allocate_tensor(const char* operation, size_t len) {
+  return allocate_tensor(operation, len, cpu_allocator());
+}
+
+void deallocate_buffer(void* data, size_t len, void* arg) {
+  Allocator* allocator = nullptr;
+  if (arg == nullptr) {
+    allocator = cpu_allocator();
+  } else {
+    allocator = reinterpret_cast<Allocator*>(arg);
+  }
+  if (LogMemory::IsEnabled() && data != nullptr) {
+    LogMemory::RecordRawDeallocation(
+        "TensorFlow C Api", LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, data,
+        allocator, false);
+  }
+  allocator->DeallocateRaw(data);
+}
+}  // namespace tensorflow
+
 namespace {
 class TF_ManagedBuffer : public TensorBuffer {
  public:
@@ -63,36 +94,17 @@ class TF_ManagedBuffer : public TensorBuffer {
   bool OwnsMemory() const override { return false; }
 };
 
-void* allocate_tensor(const char* operation, size_t len) {
-  void* data =
-      tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len);
-  if (tensorflow::LogMemory::IsEnabled() && data != nullptr) {
-    tensorflow::LogMemory::RecordRawAllocation(
-        operation, tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID,
-        len, data, tensorflow::cpu_allocator());
-  }
-  return data;
-}
-
-void deallocate_buffer(void* data, size_t len, void* arg) {
-  if (tensorflow::LogMemory::IsEnabled() && data != nullptr) {
-    tensorflow::LogMemory::RecordRawDeallocation(
-        "TensorFlow C Api",
-        tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, data,
-        tensorflow::cpu_allocator(), false);
-  }
-  tensorflow::cpu_allocator()->DeallocateRaw(data);
-}
-
 }  // namespace
 
 TF_Tensor::~TF_Tensor() { buffer->Unref(); }
 
 TF_Tensor* TF_AllocateTensor(TF_DataType dtype, const int64_t* dims,
                              int num_dims, size_t len) {
-  void* data = allocate_tensor("TF_AllocateTensor", len);
-  return TF_NewTensor(dtype, dims, num_dims, data, len, deallocate_buffer,
-                      nullptr);
+  void* data = tensorflow::allocate_tensor("TF_AllocateTensor", len,
+                                           tensorflow::cpu_allocator());
+  return TF_NewTensor(dtype, dims, num_dims, data, len,
+                      tensorflow::deallocate_buffer,
+                      tensorflow::cpu_allocator());
 }
 
 TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
@@ -117,8 +129,8 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
     //
     // Other types have the same representation, so copy only if it is safe to
     // do so.
-    buf = new TF_ManagedBuffer(allocate_tensor("TF_NewTensor", len), len,
-                               deallocate_buffer, nullptr);
+    buf = new TF_ManagedBuffer(tensorflow::allocate_tensor("TF_NewTensor", len),
+                               len, tensorflow::deallocate_buffer, nullptr);
     std::memcpy(buf->data(), data, len);
     // Free the original buffer.
     deallocator(data, len, deallocator_arg);
