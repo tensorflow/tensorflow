@@ -3736,13 +3736,13 @@ def rnn(step_function,
         else:
           prev_output = successive_outputs[-1]
 
-        output = array_ops.where(tiled_mask_t, output, prev_output)
+        output = array_ops.where_v2(tiled_mask_t, output, prev_output)
 
         return_states = []
         for state, new_state in zip(states, new_states):
           # (see earlier comment for tile explanation)
           tiled_mask_t = _expand_mask(mask_t, new_state)
-          return_states.append(array_ops.where(tiled_mask_t, new_state, state))
+          return_states.append(array_ops.where_v2(tiled_mask_t, new_state, state))
         states = return_states
         successive_outputs.append(output)
         successive_states.append(states)
@@ -3751,11 +3751,11 @@ def rnn(step_function,
       outputs = array_ops.stack(successive_outputs)
 
       if zero_output_for_mask:
-        last_output = array_ops.where(
+        last_output = array_ops.where_v2(
             _expand_mask(mask_list[-1], last_output),
             last_output,
             zeros_like(last_output))
-        outputs = array_ops.where(
+        outputs = array_ops.where_v2(
             _expand_mask(mask, outputs, fixed_dim=2),
             outputs,
             zeros_like(outputs))
@@ -3858,7 +3858,7 @@ def rnn(step_function,
                             else nest.flatten(prev_output))
         tiled_mask_t = tuple(_expand_mask(mask_t, o) for o in flat_output)
         flat_new_output = tuple(
-            array_ops.where(m, o, zo) for m, o, zo in zip(
+            array_ops.where_v2(m, o, zo) for m, o, zo in zip(
                 tiled_mask_t, flat_output, flat_mask_output))
 
         # mask states
@@ -3869,7 +3869,7 @@ def rnn(step_function,
             new_state.set_shape(state.shape)
         tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_state)
         flat_final_state = tuple(
-            array_ops.where(m, s, ps)
+            array_ops.where_v2(m, s, ps)
             for m, s, ps in zip(tiled_mask_t, flat_new_state, flat_state))
         new_states = nest.pack_sequence_as(new_states, flat_final_state)
 
@@ -4001,10 +4001,10 @@ def switch(condition, then_expression, else_expression):
       condition = array_ops.reshape(condition, cond_shape)
       expr_shape = array_ops.shape(then_expression)
       shape_diff = expr_shape - cond_shape
-      tile_shape = array_ops.where(shape_diff > 0, expr_shape,
+      tile_shape = array_ops.where_v2(shape_diff > 0, expr_shape,
                                    array_ops.ones_like(expr_shape))
       condition = array_ops.tile(condition, tile_shape)
-    x = array_ops.where(condition, then_expression, else_expression)
+    x = array_ops.where_v2(condition, then_expression, else_expression)
   return x
 
 
@@ -4139,7 +4139,7 @@ def elu(x, alpha=1.):
   if alpha == 1:
     return res
   else:
-    return array_ops.where(x > 0, res, alpha * res)
+    return array_ops.where_v2(x > 0, res, alpha * res)
 
 
 @keras_export('keras.backend.softmax')
@@ -5380,7 +5380,7 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
     dtype = floatx()
   if seed is None:
     seed = np.random.randint(10e6)
-  return array_ops.where(
+  return array_ops.where_v2(
       random_ops.random_uniform(shape, dtype=dtype, seed=seed) <= p,
       array_ops.ones(shape, dtype=dtype), array_ops.zeros(shape, dtype=dtype))
 
