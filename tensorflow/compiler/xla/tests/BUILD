@@ -748,6 +748,10 @@ xla_test(
 xla_test(
     name = "exhaustive_unary_test_complex",
     srcs = ["exhaustive_unary_test.cc"],
+    backends = [
+        "gpu",
+        "cpu",
+    ],
     copts = ["-DUNARY_TEST_TARGET_COMPLEX"],
     real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,

@@ -835,7 +835,7 @@ class ExhaustiveComplexUnaryTestBase : public ExhaustiveOpTestBase {
   // T is the component type of the complex number.
   template <typename T>
   void Run(std::function<XlaOp(XlaOp)> enqueue_op,
-           std::complex<T> (*evaluate_op)(std::complex<T>),
+           std::complex<T> (*evaluate_op)(const std::complex<T>&),
            FpValues* values_real, FpValues* values_imag,
            std::function<ErrorSpec(float)> error_spec_gen) {
     Literal input_literal = CreateInputLiteral();
@@ -883,7 +883,7 @@ class ExhaustiveComplexUnaryTestBase : public ExhaustiveOpTestBase {
   template <typename T>
   void ExpectNearComplex(const Literal& input_literal,
                          const Literal& result_literal,
-                         std::complex<T> (*evaluate_op)(std::complex<T>),
+                         std::complex<T> (*evaluate_op)(const std::complex<T>&),
                          std::function<ErrorSpec(float)> error_spec_gen) {
     absl::Span<const std::complex<T>> input_arr =
         input_literal.data<std::complex<T>>();
@@ -938,7 +938,7 @@ class ExhaustiveC64UnaryTest
       public ::testing::WithParamInterface<
           std::tuple<PrimitiveType, FpValues, FpValues>> {
  public:
-  typedef complex64 (*C64EvaluateOp)(complex64);
+  typedef complex64 (*C64EvaluateOp)(const complex64&);
 
   ExhaustiveC64UnaryTest()
       : ExhaustiveComplexUnaryTestBase(std::get<0>(GetParam())) {}
@@ -962,6 +962,11 @@ class ExhaustiveC64UnaryTest
   }
 };
 
+// TODO(b/138578594): Enable the test for the CPU backend after fixing the bug.
+XLA_TEST_P(ExhaustiveC64UnaryTest, DISABLED_ON_CPU(Log)) {
+  Run(Log, std::log<float>);
+}
+
 #if defined(UNARY_TEST_TARGET_COMPLEX)
 INSTANTIATE_TEST_SUITE_P(
     F32SpecialValues, ExhaustiveC64UnaryTest,
@@ -969,7 +974,6 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Values(C64),
         ::testing::ValuesIn(CreateFpValuesForBoundaryTest<float>()),
         ::testing::ValuesIn(CreateFpValuesForBoundaryTest<float>())));
-
 INSTANTIATE_TEST_SUITE_P(
     F32SpecialAndNormalValues, ExhaustiveC64UnaryTest,
     ::testing::Combine(
@@ -1013,7 +1017,7 @@ class ExhaustiveC128UnaryTest
       public ::testing::WithParamInterface<
           std::tuple<PrimitiveType, FpValues, FpValues>> {
  public:
-  typedef complex128 (*C128EvaluateOp)(complex128);
+  typedef complex128 (*C128EvaluateOp)(const complex128&);
 
   ExhaustiveC128UnaryTest()
       : ExhaustiveComplexUnaryTestBase(std::get<0>(GetParam())) {}
@@ -1038,14 +1042,13 @@ class ExhaustiveC128UnaryTest
 };
 
 XLA_TEST_P(ExhaustiveC128UnaryTest, Log) {
-  // TODO(bixia): only test values that are not too big and not too small
-  //             for now and will work on fixing the implementation of XLA
-  //             operations to enable test for other values.
+  // TODO(b/138578313): Enable the test for all values after fixing the bug.
   known_incorrect_fn_ = [&](int64 v) {
     double f = ConvertValue<double>(v);
-    return std::fpclassify(f) == FP_NAN || std::abs(f) > 5 || std::abs(f) < 1;
+    return std::fpclassify(f) == FP_NAN || std::abs(f) > 1.0e+300 ||
+           std::abs(f) < 1.0e-300;
   };
-  Run(Log, [](complex128 x) { return std::log(x); });
+  Run(Log, std::log<double>);
 }
 
 #if defined(UNARY_TEST_TARGET_COMPLEX)

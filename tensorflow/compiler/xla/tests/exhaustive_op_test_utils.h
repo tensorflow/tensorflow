@@ -198,6 +198,8 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     return ConvertValue<T>(bits);
   }
 
+  static string StringifyNum(double x);
+
   static string StringifyNum(float x);
 
   static string StringifyNum(half x);

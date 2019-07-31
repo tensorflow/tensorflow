@@ -17,8 +17,8 @@ limitations under the License.
 
 namespace xla {
 
-// For f32, f16, and bf16, we need 9, 5, and 4 decimal places of precision to be
-// guaranteed that we're printing the full number.
+// For f64, f32, f16, and bf16, we need 17, 9, 5, and 4 decimal places of
+// precision to be guaranteed that we're printing the full number.
 //
 // (The general formula is, given a floating-point number with S significand
 // bits, the number of decimal digits needed to print it to full precision is
@@ -26,6 +26,11 @@ namespace xla {
 //   ceil(1 + S * log_10(2)) ~= ceil(1 + S * 0.30103).
 //
 // See https://people.eecs.berkeley.edu/~wkahan/Math128/BinDecBin.pdf.)
+/*static*/
+string ExhaustiveOpTestBase::StringifyNum(double x) {
+  return absl::StrFormat("%0.17g (0x%016x)", x, BitCast<uint64>(x));
+}
+
 /*static*/
 string ExhaustiveOpTestBase::StringifyNum(float x) {
   return absl::StrFormat("%0.9g (0x%08x)", x, BitCast<uint32>(x));
