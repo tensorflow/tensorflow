@@ -155,6 +155,26 @@ func @testSinWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 
 // -----
 
+// test invalid Sqrt input
+func @testSqrtWithWrongInputType(tensor<? x i32>) -> tensor<? x i32> {
+^bb0(%arg0: tensor<? x i32>):
+  // expected-error @+1 {{tfl.sqrt' op operand #0 must be tensor of floating-point values}}
+  %0 = "tfl.sqrt"(%arg0): (tensor<? x i32>) -> tensor<? x i32>
+  return %0#0 : tensor<? x i32>
+}
+
+// -----
+
+// test invalid Square input
+func @testSquareWithWrongInputType(tensor<? x i32>) -> tensor<? x i32> {
+^bb0(%arg0: tensor<? x i32>):
+  // expected-error @+1 {{tfl.square' op operand #0 must be tensor of floating-point values}}
+  %0 = "tfl.square"(%arg0): (tensor<? x i32>) -> tensor<? x i32>
+  return %0#0 : tensor<? x i32>
+}
+
+// -----
+
 // CHECK-LABEL: testSqrt
 func @testSqrt(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):

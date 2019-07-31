@@ -1845,9 +1845,9 @@ def TFL_SqrtOp: TFL_Op<"sqrt", [NoSideEffect, SameOperandsAndResultType]> {
     Computes element-wise Square root of input
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  let arguments = (ins TFL_FpTensor:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TFL_FpTensor:$y);
 
   let hasFolder = 1;
 }
@@ -1859,9 +1859,9 @@ def TFL_SquareOp: TFL_Op<"square", [NoSideEffect, SameOperandsAndResultType]> {
     Computes element-wise Square of input
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  let arguments = (ins TFL_FpTensor:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TFL_FpTensor:$y);
 
   let hasOptions = 0b1;
 
