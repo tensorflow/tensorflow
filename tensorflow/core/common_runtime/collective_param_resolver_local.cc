@@ -56,10 +56,14 @@ void CollectiveParamResolverLocal::CompleteGroupAsync(
 }
 
 namespace {
-string GetCollectiveName(const CollectiveParams* cp, bool nccl) {
+const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
   switch (cp->instance.type) {
     case BROADCAST_COLLECTIVE:
-      return "HierarchicalTreeBroadcast";
+      if (nccl) {
+        return "NcclBroadcast";
+      } else {
+        return "HierarchicalTreeBroadcast";
+      }
 
     case REDUCTION_COLLECTIVE: {
       if (nccl) {
@@ -96,8 +100,8 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
 
       // Initialize group runtime details.
       CollectiveImplementationInterface* col_impl;
-      // TODO(b/128853131,b/132707282): Remove NCCL special case when we have
-      // NCCL implementations for all collectives.
+      // TODO(b/128853131): Remove NCCL special case when we have NCCL
+      // implementations for all collectives.
       status = CollectiveRegistry::LookupParamResolverInstance(
           nccl_ ? "NcclReduce" : GetCollectiveName(cp, /*nccl=*/false),
           &col_impl);
