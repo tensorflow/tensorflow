@@ -39,6 +39,10 @@ class IteratorCheckpointingTest(test_base.DatasetTestBase):
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6]).map(
         math_ops.square).batch(2)
+    # TODO(b/138399725): Re-enable default optimizations.
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     iterator = iter(dataset) if context.executing_eagerly(
     ) else dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next if context.executing_eagerly(
@@ -60,6 +64,10 @@ class IteratorCheckpointingTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.from_tensor_slices(
         [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
     dataset = dataset.map(math_ops.square).batch(2)
+    # TODO(b/138399725): Re-enable default optimizations.
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     iterator_1 = iter(dataset) if context.executing_eagerly(
     ) else dataset_ops.make_one_shot_iterator(dataset)
     get_next_1 = iterator_1.get_next if context.executing_eagerly(

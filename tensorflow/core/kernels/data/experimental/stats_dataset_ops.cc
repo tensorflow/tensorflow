@@ -20,6 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 // This op defines a `Dataset` that passes through its input elements and
@@ -271,5 +272,6 @@ REGISTER_KERNEL_BUILDER(
     LatencyStatsDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

@@ -191,7 +191,7 @@ adb push ${MODEL_LABELS_TXT} /data/local/tmp/model_output_labels.txt
 (8) Run the binary.
 
 ```
-adb shell /data/local/tmp/imagenet_accuracy_eval \
+adb shell /data/local/tmp/run_eval \
   --model_file=/data/local/tmp/mobilenet_quant_v1_224.tflite \
   --ground_truth_images_path=/data/local/tmp/ilsvrc_images \
   --ground_truth_labels=/data/local/tmp/ilsvrc_validation_labels.txt \

@@ -2035,8 +2035,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       int64 index_vector_dim = dim_numbers_.index_vector_dim();
       for (int64 i = 0, e = index_vector_.size(); i < e; i++) {
         index_vector_index_[index_vector_dim] = i;
-        TF_ASSIGN_OR_RETURN(index_vector_[i], scatter_indices_.GetIntegralAsS64(
-                                                  index_vector_index_));
+        index_vector_[i] =
+            *scatter_indices_.GetIntegralAsS64(index_vector_index_);
       }
       return Status::OK();
     }

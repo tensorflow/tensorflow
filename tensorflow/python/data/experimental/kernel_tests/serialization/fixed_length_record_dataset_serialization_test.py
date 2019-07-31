@@ -37,7 +37,6 @@ class FixedLengthRecordDatasetSerializationTest(
     num_epochs = 5
     num_outputs = num_epochs * self._num_files * self._num_records
     self.run_core_tests(lambda: self._build_iterator_graph(num_epochs),
-                        lambda: self._build_iterator_graph(num_epochs * 2),
                         num_outputs)
 
 

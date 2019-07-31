@@ -204,11 +204,7 @@ class Layer(module.Module):
     self._inbound_nodes = []
     self._outbound_nodes = []
 
-    call_fn_args = self._call_fn_args
-    self._expects_training_arg = ('training' in call_fn_args or
-                                  self._call_accepts_kwargs)
-    self._expects_mask_arg = ('mask' in call_fn_args or
-                              self._call_accepts_kwargs)
+    self._init_call_fn_args()
 
     # Whether the `call` method can be used to build a TF graph without issues.
     self._dynamic = dynamic
@@ -689,7 +685,8 @@ class Layer(module.Module):
           # subclassed layers and models.
           # tf_convert will respect the value of autograph setting in the
           # enclosing tf.function, if any.
-          if base_layer_utils.is_subclassed(self):
+          if (base_layer_utils.is_subclassed(self) and
+              not base_layer_utils.from_saved_model(self)):
             call_fn = autograph.tf_convert(
                 self.call, ag_ctx.control_status_ctx())
           else:
@@ -1789,7 +1786,7 @@ class Layer(module.Module):
     # If the layer returns tensors from its inputs, unmodified,
     # we copy them to avoid loss of tensor metadata.
     output_ls = nest.flatten(outputs)
-    inputs_ls = nest.flatten(inputs)
+    inputs_ls = object_identity.ObjectIdentitySet(nest.flatten(inputs))
     output_ls_copy = []
     for x in output_ls:
       if x in inputs_ls:
@@ -2109,6 +2106,17 @@ class Layer(module.Module):
   def _is_layer(self):
     return True
 
+  def _init_call_fn_args(self):
+    # Clear cached call function arguments.
+    self.__class__._call_fn_args.fget.cache.pop(self, None)
+    self.__class__._call_accepts_kwargs.fget.cache.pop(self, None)
+
+    call_fn_args = self._call_fn_args
+    self._expects_training_arg = ('training' in call_fn_args or
+                                  self._call_accepts_kwargs)
+    self._expects_mask_arg = ('mask' in call_fn_args or
+                              self._call_accepts_kwargs)
+
   @property
   @tracking.cached_per_instance
   def _call_fn_args(self):
@@ -2282,11 +2290,11 @@ class TensorFlowOpLayer(Layer):
 
   Attributes:
     node_def: String, the serialized NodeDef of the Op this layer will wrap.
+    name: String, the name of the Layer.
     constants: Dict of NumPy arrays, the values of any Tensors needed for this
       Operation that do not originate from a Keras `Input` Layer. Since all
       placeholders must come from Keras `Input` Layers, these Tensors must be
       treated as constant in the Functional API.
-    name: String, the name of the Layer.
     trainable: Bool, whether this Layer is trainable. Currently Variables are
       not supported, and so this parameter has no effect.
     dtype: The default dtype of this Layer. Inherited from `Layer` and has no
@@ -2295,8 +2303,8 @@ class TensorFlowOpLayer(Layer):
 
   def __init__(self,
                node_def,
+               name,
                constants=None,
-               name=None,
                trainable=True,
                dtype=None):
     super(TensorFlowOpLayer, self).__init__(
@@ -2304,7 +2312,10 @@ class TensorFlowOpLayer(Layer):
     if not isinstance(node_def, bytes):
       node_def = node_def.encode('utf-8')
     self.node_def = node_def_pb2.NodeDef.FromString(node_def)
-    self.constants = constants or {}
+    # JSON serialization stringifies keys which are integer input indices.
+    self.constants = ({
+        int(index): constant for index, constant in constants.items()
+    } if constants is not None else {})
     # Layer uses original op unless it is called on new inputs.
     # This means `built` is not set in `__call__`.
     self.built = True
@@ -2362,6 +2373,8 @@ class TensorFlowOpLayer(Layer):
   def get_config(self):
     config = super(TensorFlowOpLayer, self).get_config()
     config.update({
+        # `__init__` prefixes the name. Revert to the constructor argument.
+        'name': config['name'][len(_TF_OP_LAYER_NAME_PREFIX):],
         'node_def': self.node_def.SerializeToString().decode('utf-8'),
         'constants': {
             i: backend.get_value(c) for i, c in self.constants.items()

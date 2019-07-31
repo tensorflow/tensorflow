@@ -368,13 +368,13 @@ class KerasModelTest(keras_parameterized.TestCase):
       }, {
           'testcase_name': 'norun_distributed',
           'strategy_fn': create_mirrored_strategy,
-          'run_distributed': False
+          'experimental_run_tf_function': False
       })
   def test_model(self,
                  strategy_fn,
                  use_operator=False,
                  use_regularizer=False,
-                 run_distributed=True):
+                 experimental_run_tf_function=True):
     if not self._is_strategy_supported(strategy_fn, check_model_type=True):
       return
     regularizer = IdentityRegularizer() if use_regularizer else None
@@ -410,7 +410,7 @@ class KerasModelTest(keras_parameterized.TestCase):
             opt,
             loss=loss_fn,
             run_eagerly=testing_utils.should_run_eagerly(),
-            run_distributed=testing_utils.should_run_distributed())
+            experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     x = np.ones((2, 1))
     y = np.ones((2, 1))
@@ -435,9 +435,11 @@ class KerasModelTest(keras_parameterized.TestCase):
       }, {
           'testcase_name': 'norun_distributed',
           'strategy_fn': create_mirrored_strategy,
-          'run_distributed': False,
+          'experimental_run_tf_function': False,
       })
-  def test_fixed_loss_scaling(self, strategy_fn, run_distributed=True):
+  def test_fixed_loss_scaling(self,
+                              strategy_fn,
+                              experimental_run_tf_function=True):
     # Note: We do not test mixed precision in this method, only loss scaling.
     if not self._is_strategy_supported(strategy_fn):
       return
@@ -467,7 +469,7 @@ class KerasModelTest(keras_parameterized.TestCase):
           opt,
           loss=loss_fn,
           run_eagerly=testing_utils.should_run_eagerly(),
-          run_distributed=testing_utils.should_run_distributed())
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     self.assertEqual(backend.eval(layer.v), 1)
     x = np.ones((batch_size, 1))
@@ -549,7 +551,7 @@ class KerasModelTest(keras_parameterized.TestCase):
             opt,
             loss=loss_fn,
             run_eagerly=testing_utils.should_run_eagerly(),
-            run_distributed=testing_utils.should_run_distributed())
+            experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     x = np.ones((2, 1))
     y = np.ones((2, 1))
@@ -574,9 +576,11 @@ class KerasModelTest(keras_parameterized.TestCase):
       }, {
           'testcase_name': 'norun_distributed',
           'strategy_fn': create_mirrored_strategy,
-          'run_distributed': False,
+          'experimental_run_tf_function': False,
       })
-  def test_dynamic_loss_scaling(self, strategy_fn, run_distributed=True):
+  def test_dynamic_loss_scaling(self,
+                                strategy_fn,
+                                experimental_run_tf_function=True):
     if not self._is_strategy_supported(strategy_fn):
       return
     strategy = strategy_fn()
@@ -616,7 +620,7 @@ class KerasModelTest(keras_parameterized.TestCase):
             opt,
             loss=loss_fn,
             run_eagerly=testing_utils.should_run_eagerly(),
-            run_distributed=testing_utils.should_run_distributed())
+            experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     self.assertEqual(backend.eval(layer.v), 1)
     x = np.ones((batch_size, 1))
@@ -727,7 +731,7 @@ class KerasModelTest(keras_parameterized.TestCase):
           optimizer=opt,
           loss='mse',
           run_eagerly=testing_utils.should_run_eagerly(),
-          run_distributed=testing_utils.should_run_distributed())
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     model.fit(np.zeros((2, 2)), np.zeros((2, 2)), batch_size=2)
     weights_file = os.path.join(self.get_temp_dir(), 'weights')
@@ -767,7 +771,7 @@ class KerasModelTest(keras_parameterized.TestCase):
           optimizer=opt,
           loss='mse',
           run_eagerly=testing_utils.should_run_eagerly(),
-          run_distributed=testing_utils.should_run_distributed())
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
     # Run for 3 steps (6 examples with a batch size of 2)
     model.fit(np.zeros((6, 2)), np.zeros((6, 2)), batch_size=2)
     self.assertEqual(backend.get_value(loss_scale()), 2)

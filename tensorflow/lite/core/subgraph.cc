@@ -156,12 +156,14 @@ class InterpreterInfo : public GraphInfo {
 
 Subgraph::Subgraph(ErrorReporter* error_reporter,
                    TfLiteExternalContext** external_contexts,
-                   std::vector<std::unique_ptr<Subgraph>>* subgraphs)
+                   std::vector<std::unique_ptr<Subgraph>>* subgraphs,
+                   ResourceVariableMap* resource_variables)
     : external_contexts_(external_contexts),
       error_reporter_(error_reporter),
       next_execution_plan_index_to_prepare_(0),
       next_execution_plan_index_to_plan_allocation_(0),
-      subgraphs_(subgraphs) {
+      subgraphs_(subgraphs),
+      resource_variables_(resource_variables) {
   context_.impl_ = static_cast<void*>(this);
   context_.ResizeTensor = ResizeTensor;
   context_.ReportError = ReportErrorC;

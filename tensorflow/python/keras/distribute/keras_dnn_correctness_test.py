@@ -34,14 +34,14 @@ def all_strategy_combinations_with_eager_and_graph_modes():
   return (combinations.combine(
       distribution=keras_correctness_test_base.all_strategies,
       mode=['graph', 'eager'],
-      run_distributed=[True, False]))
+      experimental_run_tf_function=[True, False]))
 
 
 def all_strategy_combinations_with_graph_mode():
   return (combinations.combine(
       distribution=keras_correctness_test_base.all_strategies,
       mode=['graph'],
-      run_distributed=[True, False]))
+      experimental_run_tf_function=[True, False]))
 
 
 def is_default_strategy(strategy):
@@ -53,7 +53,7 @@ class TestDistributionStrategyDnnCorrectness(
     keras_correctness_test_base.TestDistributionStrategyCorrectnessBase):
 
   def get_model(self,
-                run_distributed,
+                experimental_run_tf_function,
                 initial_weights=None,
                 distribution=None,
                 input_shapes=None):
@@ -76,7 +76,7 @@ class TestDistributionStrategyDnnCorrectness(
           loss=keras.losses.mean_squared_error,
           optimizer=gradient_descent_keras.SGD(0.05),
           metrics=['mse'],
-          run_distributed=run_distributed)
+          experimental_run_tf_function=experimental_run_tf_function)
       return model
 
   def get_data(self):
@@ -104,9 +104,9 @@ class TestDistributionStrategyDnnCorrectness(
   @combinations.generate(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
   def test_dnn_correctness(self, distribution, use_numpy, use_validation_data,
-                           run_distributed):
+                           experimental_run_tf_function):
     self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                              run_distributed)
+                              experimental_run_tf_function)
 
   @combinations.generate(
       keras_correctness_test_base.test_combinations_with_tpu_strategies())
@@ -131,14 +131,18 @@ class TestDistributionStrategyDnnCorrectness(
         training_epochs=1)
 
   @combinations.generate(all_strategy_combinations_with_graph_mode())
-  def test_dnn_with_dynamic_learning_rate(self, distribution, run_distributed):
-    self.run_dynamic_lr_test(distribution, run_distributed)
+  def test_dnn_with_dynamic_learning_rate(self, distribution,
+                                          experimental_run_tf_function):
+    self.run_dynamic_lr_test(distribution, experimental_run_tf_function)
 
 
 class TestDistributionStrategyDnnMetricCorrectness(
     keras_correctness_test_base.TestDistributionStrategyCorrectnessBase):
 
-  def get_model(self, run_distributed, distribution=None, input_shapes=None):
+  def get_model(self,
+                experimental_run_tf_function,
+                distribution=None,
+                input_shapes=None):
     with distribution.scope():
       model = keras.Sequential()
       model.add(
@@ -147,16 +151,19 @@ class TestDistributionStrategyDnnMetricCorrectness(
           loss=keras.losses.mean_squared_error,
           optimizer=gradient_descent_keras.SGD(0.05),
           metrics=[keras.metrics.BinaryAccuracy()],
-          run_distributed=run_distributed)
+          experimental_run_tf_function=experimental_run_tf_function)
     return model
 
-  def run_metric_correctness_test(self, distribution, run_distributed):
+  def run_metric_correctness_test(self, distribution,
+                                  experimental_run_tf_function):
     with self.cached_session():
       self.set_up_test_config()
-      self.skip_unsupported_test_configuration(distribution, run_distributed)
+      self.skip_unsupported_test_configuration(distribution,
+                                               experimental_run_tf_function)
 
       x_train, y_train, _ = self.get_data()
-      model = self.get_model(run_distributed, distribution=distribution)
+      model = self.get_model(
+          experimental_run_tf_function, distribution=distribution)
 
       batch_size = 64
       batch_size = (
@@ -169,14 +176,18 @@ class TestDistributionStrategyDnnMetricCorrectness(
       self.assertEqual(history.history['binary_accuracy'], [1.0, 1.0])
 
   @combinations.generate(all_strategy_combinations_with_eager_and_graph_modes())
-  def test_simple_dnn_metric_correctness(self, distribution, run_distributed):
-    self.run_metric_correctness_test(distribution, run_distributed)
+  def test_simple_dnn_metric_correctness(self, distribution,
+                                         experimental_run_tf_function):
+    self.run_metric_correctness_test(distribution, experimental_run_tf_function)
 
 
 class TestDistributionStrategyDnnMetricEvalCorrectness(
     keras_correctness_test_base.TestDistributionStrategyCorrectnessBase):
 
-  def get_model(self, run_distributed, distribution=None, input_shapes=None):
+  def get_model(self,
+                experimental_run_tf_function,
+                distribution=None,
+                input_shapes=None):
     with distribution.scope():
       model = keras.Sequential()
       model.add(
@@ -189,15 +200,18 @@ class TestDistributionStrategyDnnMetricEvalCorrectness(
           loss='mae',
           metrics=['accuracy', keras.metrics.BinaryAccuracy()],
           optimizer=gradient_descent.GradientDescentOptimizer(0.001),
-          run_distributed=run_distributed)
+          experimental_run_tf_function=experimental_run_tf_function)
     return model
 
-  def run_eval_metrics_correctness_test(self, distribution, run_distributed):
+  def run_eval_metrics_correctness_test(self, distribution,
+                                        experimental_run_tf_function):
     with self.cached_session():
       self.set_up_test_config()
-      self.skip_unsupported_test_configuration(distribution, run_distributed)
+      self.skip_unsupported_test_configuration(distribution,
+                                               experimental_run_tf_function)
 
-      model = self.get_model(run_distributed, distribution=distribution)
+      model = self.get_model(
+          experimental_run_tf_function, distribution=distribution)
 
       # verify correctness of stateful and stateless metrics.
       x = np.ones((100, 4)).astype('float32')
@@ -217,8 +231,9 @@ class TestDistributionStrategyDnnMetricEvalCorrectness(
 
   @combinations.generate(all_strategy_combinations_with_eager_and_graph_modes())
   def test_identity_model_metric_eval_correctness(self, distribution,
-                                                  run_distributed):
-    self.run_eval_metrics_correctness_test(distribution, run_distributed)
+                                                  experimental_run_tf_function):
+    self.run_eval_metrics_correctness_test(distribution,
+                                           experimental_run_tf_function)
 
 
 class SubclassedModel(keras.Model):
@@ -249,7 +264,7 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
     TestDistributionStrategyDnnCorrectness):
 
   def get_model(self,
-                run_distributed,
+                experimental_run_tf_function,
                 initial_weights=None,
                 distribution=None,
                 input_shapes=None):
@@ -260,23 +275,23 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
           loss=keras.losses.mean_squared_error,
           optimizer=gradient_descent_keras.SGD(0.05),
           metrics=['mse'],
-          run_distributed=run_distributed)
+          experimental_run_tf_function=experimental_run_tf_function)
       return model
 
   @combinations.generate(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
   def test_dnn_correctness(self, distribution, use_numpy, use_validation_data,
-                           run_distributed):
+                           experimental_run_tf_function):
     if (context.executing_eagerly()) or is_default_strategy(distribution):
       self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                                run_distributed)
+                                experimental_run_tf_function)
     elif K.is_tpu_strategy(distribution) and not context.executing_eagerly():
       with self.assertRaisesRegexp(
           ValueError,
           'Expected `model` argument to be a functional `Model` instance, '
           'but got a subclass model instead.'):
         self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                                  run_distributed)
+                                  experimental_run_tf_function)
     else:
       with self.assertRaisesRegexp(
           ValueError,
@@ -284,27 +299,28 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
           '`Sequential` model that is created without `input_shape`/'
           '`input_dim` set in its first layer or a subclassed model.'):
         self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                                  run_distributed)
+                                  experimental_run_tf_function)
 
   @combinations.generate(all_strategy_combinations_with_graph_mode())
-  def test_dnn_with_dynamic_learning_rate(self, distribution, run_distributed):
-    if ((not run_distributed and context.executing_eagerly() and
+  def test_dnn_with_dynamic_learning_rate(self, distribution,
+                                          experimental_run_tf_function):
+    if ((not experimental_run_tf_function and context.executing_eagerly() and
          not K.is_tpu_strategy(distribution)) or
         is_default_strategy(distribution)):
-      self.run_dynamic_lr_test(distribution, run_distributed)
+      self.run_dynamic_lr_test(distribution, experimental_run_tf_function)
     elif K.is_tpu_strategy(distribution):
       with self.assertRaisesRegexp(
           ValueError,
           'Expected `model` argument to be a functional `Model` instance, '
           'but got a subclass model instead.'):
-        self.run_dynamic_lr_test(distribution, run_distributed)
+        self.run_dynamic_lr_test(distribution, experimental_run_tf_function)
     else:
       with self.assertRaisesRegexp(
           ValueError,
           'We currently do not support distribution strategy with a '
           '`Sequential` model that is created without `input_shape`/'
           '`input_dim` set in its first layer or a subclassed model.'):
-        self.run_dynamic_lr_test(distribution, run_distributed)
+        self.run_dynamic_lr_test(distribution, experimental_run_tf_function)
 
   @combinations.generate(
       keras_correctness_test_base.test_combinations_with_tpu_strategies())

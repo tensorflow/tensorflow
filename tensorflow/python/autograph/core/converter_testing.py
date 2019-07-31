@@ -27,7 +27,7 @@ import six
 from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import function_wrapping
+from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import compiler
@@ -78,7 +78,7 @@ class TestCase(test.TestCase):
       fake_ag.ConversionOptions = converter.ConversionOptions
       fake_ag.Feature = converter.Feature
       fake_ag.utils = utils
-      fake_ag.function_scope = function_wrapping.function_scope
+      fake_ag.FunctionScope = function_wrappers.FunctionScope
       result.ag__ = fake_ag
       result.ag_source_map__ = source_map
       for k, v in namespace.items():

@@ -113,7 +113,7 @@ For more information about object detection, see
 The object detection model we currently host is
 **coco_ssd_mobilenet_v1_1.0_quant_2018_06_29**.
 
-<a class="button button-primary" href="http://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download
+<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download
 model and labels</a>
 
 ## Pose estimation

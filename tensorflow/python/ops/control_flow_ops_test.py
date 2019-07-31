@@ -1367,6 +1367,12 @@ class AssertTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testAssertInFunction(self):
+    # TODO(fishx): Re-enable this test for GPU.
+    # NOTE(fishx): Disable this test for now because, in GPU, multiple errors
+    # will be thrown. But since the root cause error is marked as "derived"
+    # error. So it might be ignored.
+    if test_util.is_gpu_available():
+      self.skipTest("Skip GPU Test")
 
     @def_function.function
     def whiny(value):

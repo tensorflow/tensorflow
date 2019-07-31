@@ -26,6 +26,8 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_v2_toggles
+from tensorflow.python.ops import random_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -258,18 +260,17 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
   def testPruningV2(self):
     self._testPruning()
 
-  @parameterized.named_parameters(
-      ("V1", control_flow_ops.while_loop, "StackPushV2"),
-      ("V2", while_loop_v2, "TensorListPushBack"),
-  )
-  @test_util.run_deprecated_v1
-  def testDoNotAccumulateInvariants(self, while_loop_fn, push_op):
+  def _testDoNotAccumulateInvariants(self):
+    push_op = ("TensorListPushBack"
+               if control_flow_v2_toggles.control_flow_v2_enabled() else
+               "StackPushV2")
+
     # Tests that loop invariants, i.e., tensors that are "captured" by the
     # while loop and not passed as loop variables are not accumulated in
     # gradient computation.
     v = constant_op.constant(5.0, name="v")
 
-    r = while_loop_fn(
+    r = control_flow_ops.while_loop(
         lambda _: True, lambda x: v * x, [1.0], maximum_iterations=5)
 
     output = gradients_impl.gradients(r, v)[0]
@@ -281,6 +282,15 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # loop invariant it is not accumulated so we have just one accumulator for
     # x.
     self.assertLen([n for n in g.node if n.op == push_op], 1)
+
+  @test_util.run_deprecated_v1
+  def testDoNotAccumulateInvariantsV1(self):
+    self._testDoNotAccumulateInvariants()
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_control_flow_v2
+  def testDoNotAccumulateInvariantsV2(self):
+    self._testDoNotAccumulateInvariants()
 
   @test_util.run_deprecated_v1
   def testCaptureExternalTensorInCond(self):
@@ -531,6 +541,57 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     gradients_impl.gradients(output, x)
     # Computing the gradient again shouldn't rewrite while_op again.
     self.assertLen(while_op.outputs, 5)
+
+  @test_util.run_deprecated_v1
+  def testRandomUniformShape(self):
+    shape = constant_op.constant([3])
+
+    def Body(i, u):
+      shape_extended = array_ops.concat([[5], shape], axis=0)
+      u = random_ops.random_uniform(shape_extended)
+      self.assertAllEqual(u.shape.as_list(), [5, 3])
+      return i + 1, u
+
+    _, _ = while_loop_v2(
+        cond=lambda i, _: i < 3,
+        body=Body,
+        loop_vars=[
+            0,
+            array_ops.zeros([5, 3], dtype=dtypes.float32),
+        ])
+
+  @test_util.run_deprecated_v1
+  def testReshapeShape(self):
+    shape = constant_op.constant([3, 4])
+
+    def Body(i, u):
+      shape_extended = array_ops.concat([[5], shape], axis=0)
+      u = array_ops.reshape(u, [-1])
+      u = array_ops.reshape(u, shape_extended)
+      assert u.shape.as_list() == [5, 3, 4], str(u.shape.as_list())
+      return i + 1, u
+
+    _, _ = while_loop_v2(
+        cond=lambda i, _: i < 3,
+        body=Body,
+        loop_vars=[
+            0,
+            array_ops.zeros([5, 3, 4], dtype=dtypes.float32),
+        ])
+
+  @test_util.run_deprecated_v1
+  def testExternalColocationGrad(self):
+    external_t = constant_op.constant(2.)
+    v0 = constant_op.constant(2.)
+
+    def Body(v):
+      with ops.colocate_with(external_t):
+        return v * v
+
+    ret = while_loop_v2(lambda v: v < 8., Body, [v0])[0]
+    grad = gradients_impl.gradients(ret, [v0])[0]
+    self.assertAllEqual(ret, 16.)
+    self.assertAllEqual(grad, 32.)
 
 
 def ScalarShape():

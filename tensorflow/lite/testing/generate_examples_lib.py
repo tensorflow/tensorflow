@@ -79,7 +79,7 @@ KNOWN_BUGS = {
     # Div will use floordiv.
     r"div.*int32": "72051395",
     # Strided slice cannot handle new_axis_mask.
-    r"strided_slice.*new_axis_num=1|2": "137470173",
+    r"strided_slice.*new_axis_num=(1|2)": "137470173",
 }
 
 

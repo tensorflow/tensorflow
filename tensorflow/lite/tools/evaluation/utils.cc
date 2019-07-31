@@ -73,6 +73,7 @@ TfLiteStatus GetSortedFileNames(const std::string& directory,
   return kTfLiteOk;
 }
 
+// TODO(b/138448769): Migrate delegate helper APIs to lite/testing.
 Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
 #if defined(__ANDROID__)
   return Interpreter::TfLiteDelegatePtr(
@@ -108,7 +109,8 @@ Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
     tflite::FlatBufferModel* model) {
 #if defined(__ANDROID__)
   TfLiteGpuDelegateOptions options;
-  options.metadata = TfLiteGpuDelegateGetModelMetadata(model->GetModel());
+  options.metadata =
+      model ? TfLiteGpuDelegateGetModelMetadata(model->GetModel()) : nullptr;
   options.compile_options.precision_loss_allowed = 1;
   options.compile_options.preferred_gl_object_type =
       TFLITE_GL_OBJECT_TYPE_FASTEST;

@@ -99,6 +99,7 @@ $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
+tensorflow/lite/experimental/resource_variable/*.cc \
 tensorflow/lite/experimental/ruy/allocator.cc \
 tensorflow/lite/experimental/ruy/block_map.cc \
 tensorflow/lite/experimental/ruy/blocking_counter.cc \
@@ -106,7 +107,7 @@ tensorflow/lite/experimental/ruy/context.cc \
 tensorflow/lite/experimental/ruy/detect_dotprod.cc \
 tensorflow/lite/experimental/ruy/kernel_arm32.cc \
 tensorflow/lite/experimental/ruy/kernel_arm64.cc \
-tensorflow/lite/experimental/ruy/pack.cc \
+tensorflow/lite/experimental/ruy/pack_arm.cc \
 tensorflow/lite/experimental/ruy/pmu.cc \
 tensorflow/lite/experimental/ruy/thread_pool.cc \
 tensorflow/lite/experimental/ruy/trace.cc \

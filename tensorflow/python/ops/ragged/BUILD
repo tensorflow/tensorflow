@@ -1070,3 +1070,15 @@ py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+py_test(
+    name = "string_ngrams_op_test",
+    size = "small",
+    srcs = ["string_ngrams_op_test.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_string_ops",
+        "//tensorflow/python:client_testlib",
+    ],
+)

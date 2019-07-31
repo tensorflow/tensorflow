@@ -31,7 +31,8 @@ class EagerOperation {
         attrs_(op),
         attr_types_(t),
         device_(nullptr),
-        is_function_(is_function) {}
+        is_function_(is_function),
+        executor_(ctx ? ctx->Executor() : nullptr) {}
 
   ~EagerOperation() {
     for (tensorflow::TensorHandle* h : inputs_) {
@@ -81,6 +82,8 @@ class EagerOperation {
     cancellation_manager_ = cancellation_manager;
   }
 
+  EagerExecutor* Executor() { return executor_; }
+
   string DebugString() const;
 
  private:
@@ -94,6 +97,7 @@ class EagerOperation {
   bool use_xla_ = false;
   const bool is_function_;
   CancellationManager* cancellation_manager_ = nullptr;  // Not owned.
+  EagerExecutor* const executor_;                        // Not owned.
 };
 }  // namespace tensorflow
 

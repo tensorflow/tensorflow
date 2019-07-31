@@ -202,6 +202,8 @@ class XlaDevice : public LocalDevice {
   const DeviceType jit_device_name_;
   // The platform for this device.
   se::Platform* const platform_;  // Not owned.
+  // Intra-op threads to spawn (from SessionOptions).
+  const int intra_op_parallelism_threads_;
   // Memory allocator associated with this device.
   Allocator* xla_allocator_ GUARDED_BY(mu_) = nullptr;  // Not owned.
 

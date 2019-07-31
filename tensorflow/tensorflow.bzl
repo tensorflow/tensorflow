@@ -2431,8 +2431,8 @@ def tf_pybind_extension(
     )
     native.cc_binary(
         name = so_file,
-        srcs = srcs + hdrs + tf_binary_additional_srcs() + tf_binary_pybind_deps(),
-        data = data + tf_binary_pybind_deps(),
+        srcs = srcs + hdrs,
+        data = data,
         copts = copts,
         nocopts = nocopts,
         linkopts = linkopts + _rpath_linkopts(name) + select({

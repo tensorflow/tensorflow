@@ -37,12 +37,14 @@ struct ParameterValueGetter {
     data.add_data(offset);
     return data.Finish().Union();
   }
+
   Offset<void> operator()(const int2& value) {
     auto offset = builder->CreateVector(std::vector<int32_t>{value.x, value.y});
     data::DataInt32Builder data(*builder);
     data.add_data(offset);
     return data.Finish().Union();
   }
+
   Offset<void> operator()(const int4& value) {
     auto offset = builder->CreateVector(
         std::vector<int32_t>{value.x, value.y, value.z, value.w});
@@ -50,6 +52,7 @@ struct ParameterValueGetter {
     data.add_data(offset);
     return data.Finish().Union();
   }
+
   Offset<void> operator()(const std::vector<int2>& value) {
     std::vector<int32_t> d(value.size() * 2);
     for (size_t i = 0; i < value.size(); ++i) {
@@ -61,12 +64,14 @@ struct ParameterValueGetter {
     data.add_data(offset);
     return data.Finish().Union();
   }
+
   Offset<void> operator()(uint32_t value) {
     auto offset = builder->CreateVector(std::vector<uint32_t>{value});
     data::DataUint32Builder data(*builder);
     data.add_data(offset);
     return data.Finish().Union();
   }
+
   Offset<void> operator()(const uint4& value) {
     auto offset = builder->CreateVector(
         std::vector<uint32_t>{value.x, value.y, value.z, value.w});
@@ -74,21 +79,38 @@ struct ParameterValueGetter {
     data.add_data(offset);
     return data.Finish().Union();
   }
+
   Offset<void> operator()(float value) {
     auto offset = builder->CreateVector(std::vector<float>{value});
     data::DataFloatBuilder data(*builder);
     data.add_data(offset);
     return data.Finish().Union();
   }
+
   Offset<void> operator()(const float2& value) {
     auto offset = builder->CreateVector(std::vector<float>{value.x, value.y});
     data::DataFloatBuilder data(*builder);
     data.add_data(offset);
     return data.Finish().Union();
   }
+
   Offset<void> operator()(const float4& value) {
     auto offset = builder->CreateVector(
         std::vector<float>{value.x, value.y, value.z, value.w});
+    data::DataFloatBuilder data(*builder);
+    data.add_data(offset);
+    return data.Finish().Union();
+  }
+
+  Offset<void> operator()(const std::vector<float4>& value) {
+    std::vector<float> d(value.size() * 4);
+    for (size_t i = 0; i < value.size(); ++i) {
+      d[i * 4] = value[i].x;
+      d[i * 4 + 1] = value[i].y;
+      d[i * 4 + 2] = value[i].z;
+      d[i * 4 + 3] = value[i].w;
+    }
+    auto offset = builder->CreateVector(d);
     data::DataFloatBuilder data(*builder);
     data.add_data(offset);
     return data.Finish().Union();
@@ -101,28 +123,40 @@ struct DataVariantTypeGetter {
   data::DataVariant operator()(int32_t) const {
     return data::DataVariant::DataInt32;
   }
+
   data::DataVariant operator()(const int2&) const {
     return data::DataVariant::DataInt32;
   }
+
   data::DataVariant operator()(const int4&) const {
     return data::DataVariant::DataInt32;
   }
+
   data::DataVariant operator()(const std::vector<int2>&) const {
     return data::DataVariant::DataInt32;
   }
+
   data::DataVariant operator()(uint32_t) const {
     return data::DataVariant::DataUint32;
   }
+
   data::DataVariant operator()(const uint4&) const {
     return data::DataVariant::DataUint32;
   }
+
   data::DataVariant operator()(float) const {
     return data::DataVariant::DataFloat;
   }
+
   data::DataVariant operator()(const float2&) const {
     return data::DataVariant::DataFloat;
   }
+
   data::DataVariant operator()(const float4&) const {
+    return data::DataVariant::DataFloat;
+  }
+
+  data::DataVariant operator()(const std::vector<float4>&) const {
     return data::DataVariant::DataFloat;
   }
 };
@@ -131,28 +165,40 @@ struct ParameterTypeGetter {
   data::ParameterType operator()(int32_t) const {
     return data::ParameterType::INT32;
   }
+
   data::ParameterType operator()(const int2&) const {
     return data::ParameterType::INT32;
   }
+
   data::ParameterType operator()(const int4&) const {
     return data::ParameterType::INT32;
   }
+
   data::ParameterType operator()(const std::vector<int2>&) const {
     return data::ParameterType::INT32_2;
   }
+
   data::ParameterType operator()(uint32_t) const {
     return data::ParameterType::UINT32;
   }
+
   data::ParameterType operator()(const uint4&) const {
     return data::ParameterType::UINT32;
   }
+
   data::ParameterType operator()(float) const {
     return data::ParameterType::FLOAT32;
   }
+
   data::ParameterType operator()(const float2&) const {
     return data::ParameterType::FLOAT32;
   }
+
   data::ParameterType operator()(const float4&) const {
+    return data::ParameterType::FLOAT32;
+  }
+
+  data::ParameterType operator()(const std::vector<float4>&) const {
     return data::ParameterType::FLOAT32;
   }
 };

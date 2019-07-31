@@ -273,24 +273,23 @@ class OpsTest(test_util.TensorFlowTestCase):
   def testSilentCopy(self):
     # Temporarily replace the context
     # pylint: disable=protected-access
-    del context._context
-    context._context = context.Context()
+    old_context = context.context()
+    context._set_context(context.Context())
     try:
       config.set_device_policy('silent')
       cpu_tensor = constant_op.constant(1.0)
       gpu_tensor = cpu_tensor.gpu()
       self.assertAllEqual(cpu_tensor + gpu_tensor, 2.0)
     finally:
-      del context._context
-      context._context = context.Context()
+      context._set_context(old_context)
     # pylint: enable=protected-access
 
   @test_util.run_gpu_only
   def testSoftPlacement(self):
     # Temporarily replace the context
     # pylint: disable=protected-access
-    del context._context
-    context._context = context.Context()
+    old_context = context.context()
+    context._set_context(context.Context())
     try:
       config.set_device_policy('silent')
       config.set_soft_device_placement(True)
@@ -299,8 +298,7 @@ class OpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(result.device,
                        '/job:localhost/replica:0/task:0/device:GPU:0')
     finally:
-      del context._context
-      context._context = context.Context()
+      context._set_context(old_context)
     # pylint: enable=protected-access
 
   def testRandomUniform(self):

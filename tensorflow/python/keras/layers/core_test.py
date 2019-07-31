@@ -289,7 +289,7 @@ class TestStatefulLambda(keras_parameterized.TestCase):
         keras.optimizer_v2.gradient_descent.SGD(0.1),
         'mae',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     x, y = np.ones((10, 10), 'float32'), 2 * np.ones((10, 10), 'float32')
     model.fit(x, y, batch_size=2, epochs=2, validation_data=(x, y))
     self.assertLen(model.trainable_weights, 1)

@@ -1199,26 +1199,22 @@ void PackFloatNeonOutOfOrder(const float* src_ptr0, const float* src_ptr1,
           "beq 3f\n"
 #define RUY_LOAD_FOUR_BY_FOUR()               \
   /* Load q0 */                               \
-  "vldr d0, [%[src_ptr0], #0]\n"              \
-  "vldr d1, [%[src_ptr0], #8]\n"              \
+  "vld1.32 {d0, d1}, [%[src_ptr0]]\n"         \
   /* if src_inc0 != 0, add 16 to src_ptr0 */  \
   "and r3, %[src_inc], #1\n"                  \
   "add %[src_ptr0], %[src_ptr0], r3, lsl #4\n"\
   /* Load q1 */                               \
-  "vldr d2, [%[src_ptr1], #0]\n"              \
-  "vldr d3, [%[src_ptr1], #8]\n"              \
+  "vld1.32 {d2, d3}, [%[src_ptr1]]\n"         \
   /* if src_inc1 != 0, add 16 to src_ptr0 */  \
   "and r3, %[src_inc], #2\n"                  \
   "add %[src_ptr1], %[src_ptr1], r3, lsl #3\n"\
   /* Load q2 */                               \
-  "vldr d4, [%[src_ptr2], #0]\n"              \
-  "vldr d5, [%[src_ptr2], #8]\n"              \
+  "vld1.32 {d4, d5}, [%[src_ptr2]]\n"         \
   /* if src_inc2 != 0, add 16 to src_ptr0 */  \
   "and r3, %[src_inc], #4\n"                  \
   "add %[src_ptr2], %[src_ptr2], r3, lsl #2\n"\
   /* Load q3 */                               \
-  "vldr d6, [%[src_ptr3], #0]\n"              \
-  "vldr d7, [%[src_ptr3], #8]\n"              \
+  "vld1.32 {d6, d7}, [%[src_ptr3]]\n"         \
   /* if src_inc3 != 0, add 16 to src_ptr0 */  \
   "and r3, %[src_inc], #8\n"                  \
   "add %[src_ptr3], %[src_ptr3], r3, lsl #1\n"\
@@ -1253,20 +1249,16 @@ void PackFloatNeonOutOfOrder(const float* src_ptr0, const float* src_ptr1,
 #define RUY_STORE_FOUR_BY_FOUR()                  \
   /* Store q8, q10, q9, q11 */                    \
   /* q8 = d16, d17 */                             \
-  "vstr d16, [%[packed_ptr], #0]\n"               \
-  "vstr d17, [%[packed_ptr], #8]\n"               \
+  "vst1.32 {d16, d17}, [%[packed_ptr]]\n"         \
   /* q10 = d20, d21 */                            \
   "add %[packed_ptr], %[packed_ptr], %[stride]\n" \
-  "vstr d20, [%[packed_ptr], #0]\n"               \
-  "vstr d21, [%[packed_ptr], #8]\n"               \
+  "vst1.32 {d20, d21}, [%[packed_ptr]]\n"         \
   /* q9 = d18, d19 */                             \
   "add %[packed_ptr], %[packed_ptr], %[stride]\n" \
-  "vstr d18, [%[packed_ptr], #0]\n"               \
-  "vstr d19, [%[packed_ptr], #8]\n"               \
+  "vst1.32 {d18, d19}, [%[packed_ptr]]\n"         \
   /* q11 = d22, d23 */                            \
   "add %[packed_ptr], %[packed_ptr], %[stride]\n" \
-  "vstr d22, [%[packed_ptr], #0]\n"               \
-  "vstr d23, [%[packed_ptr], #8]\n"               \
+  "vst1.32 {d22, d23}, [%[packed_ptr]]\n"         \
   "add %[packed_ptr], %[packed_ptr], %[stride]\n" \
 
           RUY_STORE_FOUR_BY_FOUR()
@@ -1342,21 +1334,20 @@ void PackFloatNeonOutOfOrder(const float* src_ptr0, const float* src_ptr1,
 
           "mov r1, #32\n"
 
-#define RUY_STORE_ONE_ROW(ROW, REGISTER1, REGISTER2)      \
+#define RUY_STORE_ONE_ROW(ROW, REGISTER)      \
           "cmp r2, #" #ROW "\n"                           \
           "beq 4f\n"                                      \
-          "vstr " #REGISTER1 ", [%[packed_ptr]]\n"    \
-          "vstr " #REGISTER2 ", [%[packed_ptr], #8]\n"    \
+          "vst1.32 {" #REGISTER "}, [%[packed_ptr]]\n"    \
           "add %[packed_ptr], %[packed_ptr], %[stride]\n"
 
           // Store q8
-          RUY_STORE_ONE_ROW(0, d16, d17)
+          RUY_STORE_ONE_ROW(0, q8)
           // Store q10
-          RUY_STORE_ONE_ROW(1, d20, d21)
+          RUY_STORE_ONE_ROW(1, q10)
           // Store q9
-          RUY_STORE_ONE_ROW(2, d18, d19)
+          RUY_STORE_ONE_ROW(2, q9)
           // Store q11
-          RUY_STORE_ONE_ROW(3, d22, d23)
+          RUY_STORE_ONE_ROW(3, q11)
 
 #undef RUY_STORE_ONE_ROW
 

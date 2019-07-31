@@ -235,11 +235,17 @@ def random_uniform(shape,
     maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
     seed1, seed2 = random_seed.get_seed(seed)
     if dtype.is_integer:
-      return gen_random_ops.random_uniform_int(
+      result = gen_random_ops.random_uniform_int(
           shape, minval, maxval, seed=seed1, seed2=seed2, name=name)
     else:
       rnd = gen_random_ops.random_uniform(shape, dtype, seed=seed1, seed2=seed2)
-      return math_ops.add(rnd * (maxval - minval), minval, name=name)
+      result = math_ops.add(rnd * (maxval - minval), minval, name=name)
+    # TODO(b/132092188): C++ shape inference inside functional ops does not
+    # cross FuncGraph boundaries since that information is only available in
+    # python. So we manually get the static shape using
+    # `constant_value_as_shape` which *does* cross function boundaries.
+    tensor_util.maybe_set_static_shape(result, shape)
+    return result
 
 
 ops.NotDifferentiable("RandomUniform")
@@ -332,7 +338,7 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
   ```python
   # samples has shape [1, 5], where each value is either 0 or 1 with equal
   # probability.
-  samples = tf.random.categorical(tf.math.log([[10., 10.]]), 5)
+  samples = tf.random.categorical(tf.math.log([[0.5, 0.5]]), 5)
   ```
 
   Args:
@@ -360,7 +366,7 @@ def categorical(logits, num_samples, dtype=None, seed=None, name=None):
   ```python
   # samples has shape [1, 5], where each value is either 0 or 1 with equal
   # probability.
-  samples = tf.random.categorical(tf.math.log([[10., 10.]]), 5)
+  samples = tf.random.categorical(tf.math.log([[0.5, 0.5]]), 5)
   ```
 
   Args:

@@ -38,8 +38,14 @@ versions {
 
 # CHECK: func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32>
 # CHECK: attributes {tf.entry_function = {inputs = "input0, input1", outputs = "Add"}} {
-# CHECK:   %0:2 = "_tf.Placeholder.input"(%arg0) {device = "", dtype = "tfdtype$DT_INT32", name = "input0", shape = "tfshape$dim { size: 10 }"} : (tensor<10xi32>) -> (tensor<10xi32>, !_tf.control)
-# CHECK:   %1:2 = "_tf.Placeholder.input"(%arg1) {device = "", dtype = "tfdtype$DT_INT32", name = "input1", shape = "tfshape$dim { size: 10 }"} : (tensor<10xi32>) -> (tensor<10xi32>, !_tf.control)
-# CHECK:   %2:2 = "_tf.Add"(%0#0, %1#0) {T = "tfdtype$DT_INT32", device = "", name = "Add"} : (tensor<10xi32>, tensor<10xi32>) -> (tensor<10xi32>, !_tf.control)
-# CHECK:   return %2#0 : tensor<10xi32>
-# CHECK: }
+
+# CHECK:   %[[INPUT0:[0-9]+]]:2 = tf_executor.island
+# CHECK-NEXT: "tf.Placeholder.input"(%arg0)
+
+# CHECK:   %[[INPUT1:[0-9]+]]:2 = tf_executor.island
+# CHECK-NEXT: "tf.Placeholder.input"(%arg1)
+
+# CHECK:   %[[add:[0-9]+]]:2 = tf_executor.island
+# CHECK-NEXT: "tf.Add"(%[[INPUT0]]#0, %[[INPUT1]]#0)
+
+# CHECK:   fetch %[[add]]#0

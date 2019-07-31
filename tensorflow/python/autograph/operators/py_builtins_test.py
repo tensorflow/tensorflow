@@ -139,14 +139,14 @@ class PyBuiltinsTest(test.TestCase):
       self.assertAllEqual(self.evaluate(r), [])
 
   def test_enumerate(self):
-    self.assertListEqual(list(py_builtins.enumerate_([3, 2, 1])),
-                         [(0, 3), (1, 2), (2, 1)])
-    self.assertListEqual(list(py_builtins.enumerate_([3, 2, 1], 5)),
-                         [(5, 3), (6, 2), (7, 1)])
+    self.assertListEqual(
+        list(py_builtins.enumerate_([3, 2, 1])), [(0, 3), (1, 2), (2, 1)])
+    self.assertListEqual(
+        list(py_builtins.enumerate_([3, 2, 1], 5)), [(5, 3), (6, 2), (7, 1)])
     self.assertListEqual(list(py_builtins.enumerate_([-8], -3)), [(-3, -8)])
 
   def test_enumerate_dataset(self):
-    dataset = dataset_ops.DatasetV2.from_tensor_slices(["a", "c"])
+    dataset = dataset_ops.DatasetV2.from_tensor_slices(['a', 'c'])
     start = constant_op.constant(20, dtype=dtypes.int64)
     dataset = py_builtins.enumerate_(dataset, start)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
@@ -172,6 +172,49 @@ class PyBuiltinsTest(test.TestCase):
     self.assertEqual(caller_3(0), 1)
     self.assertEqual(caller_3(1), 2)
     self.assertEqual(caller_3(2), 3)
+
+  def test_super_with_one_arg_in_original_context(self):
+    test_case_self = self
+
+    class TestBase(object):
+
+      def plus_twenty(self, x):
+        return x + 20
+
+    class TestSubclass(TestBase):
+
+      def plus_twenty(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def one_arg(self):
+        test_base_unbound = py_builtins.super_in_original_context(
+            super, (TestSubclass,), 0)
+        test_base = test_base_unbound.__get__(self, TestSubclass)
+        return test_base.plus_twenty(1)
+
+    tc = TestSubclass()
+    self.assertEqual(tc.one_arg(), 21)
+
+  def test_super_with_two_args_in_original_context(self):
+    test_case_self = self
+
+    class TestBase(object):
+
+      def plus_twenty(self, x):
+        return x + 20
+
+    class TestSubclass(TestBase):
+
+      def plus_twenty(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def two_args(self):
+        test_base = py_builtins.super_in_original_context(
+            super, (TestSubclass, self), 0)
+        return test_base.plus_twenty(1)
+
+    tc = TestSubclass()
+    self.assertEqual(tc.two_args(), 21)
 
 
 if __name__ == '__main__':

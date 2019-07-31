@@ -36,6 +36,11 @@ namespace TFL {
 class TensorFlowLiteDialect : public Dialect {
  public:
   explicit TensorFlowLiteDialect(MLIRContext *context);
+
+  // Registered hook to materialize a constant operation from a given attribute
+  // value with the desired resultant type.
+  Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
+                                 Location loc) override;
 };
 
 #define GET_OP_CLASSES

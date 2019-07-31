@@ -209,6 +209,9 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
   std::sort(collective->participants.begin(), collective->participants.end(),
             [](const std::unique_ptr<Participant>& a,
                const std::unique_ptr<Participant>& b) {
+              if (a->executor == b->executor) {
+                return a->global_rank < b->global_rank;
+              }
               return a->executor < b->executor;
             });
 

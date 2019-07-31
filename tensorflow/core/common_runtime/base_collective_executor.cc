@@ -262,11 +262,9 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
     delete col_impl;
     return;
   }
-  // Run in an I/O thread, so as not to starve the executor threads.
-  // TODO(b/80529858): Instead of forking every per-device Collective
-  // Op off into its own thread, consider queuing them on a
-  // fixed-size thread-pool dedicated to running CollectiveOps.
-  SchedClosure([col_impl, col_ctx, done_safe, ctx]() {
+  // Run on an unbounded work queue that can handle blocking work so as to not
+  // starve executor threads.
+  remote_access_->RunClosure([col_impl, col_ctx, done_safe, ctx]() {
     profiler::TraceMe activity(
         [&] {
           return strings::StrCat(ctx->op_kernel().name(), ":",

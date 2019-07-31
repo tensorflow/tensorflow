@@ -190,6 +190,7 @@ cc_library(
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:custom_ops",
         "//tensorflow/lite/kernels:reference_ops",
+        "//tensorflow/lite/tools/evaluation:utils",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -368,6 +369,7 @@ cc_library(
     deps = [
         ":split",
         ":tflite_diff_util",
+        ":tflite_driver",
     ] + select({
         "//conditions:default": [
             "//tensorflow/core:framework_internal",

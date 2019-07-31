@@ -447,3 +447,12 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
 }
 
 }  // namespace tensorflow
+
+bool TF_TensorIsAligned(const TF_Tensor* tensor) {
+  if (EIGEN_MAX_ALIGN_BYTES == 0) {
+    return true;
+  }
+  void* ptr = TF_TensorData(tensor);
+  return tensor->dtype == TF_STRING ||
+         (reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0);
+}

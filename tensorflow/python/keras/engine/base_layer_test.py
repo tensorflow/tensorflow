@@ -221,7 +221,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
         'sgd',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
     self.assertEqual(loss, 2 * 3)
 
@@ -313,7 +313,8 @@ class BaseLayerTest(keras_parameterized.TestCase):
     def get_learning_phase_value():
       model = keras.models.Sequential([LearningPhaseLayer(input_shape=(1,))])
       model._run_eagerly = testing_utils.should_run_eagerly()
-      model._run_distributed = testing_utils.should_run_distributed()
+      model._experimental_run_tf_function = (
+          testing_utils.should_run_tf_function())
       return np.sum(model(np.ones((1, 1))))
 
     self.assertEqual(get_learning_phase_value(), 0)
@@ -334,7 +335,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_learning_phase_freezing_for_layers_in_predict(self):
     if not (testing_utils.should_run_eagerly() or
-            testing_utils.should_run_distributed()):
+            testing_utils.should_run_tf_function()):
       self.skipTest('Predict fails to override the outer learning phase in'
                     'the FuncGraph path.')
 
@@ -348,7 +349,8 @@ class BaseLayerTest(keras_parameterized.TestCase):
     def get_learning_phase_value():
       model = keras.models.Sequential([LearningPhaseLayer(input_shape=(1,))])
       model._run_eagerly = testing_utils.should_run_eagerly()
-      model._run_distributed = testing_utils.should_run_distributed()
+      model._experimental_run_tf_function = (
+          testing_utils.should_run_tf_function())
       return np.sum(model.predict(np.ones((1, 1))))
 
     self.assertEqual(get_learning_phase_value(), 0)
@@ -447,7 +449,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
         'sgd',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     x, y = np.ones((10, 10)), np.ones((10, 10))
     # Checks that variables get initialized.
     model.fit(x, y, batch_size=2, epochs=2)
@@ -494,7 +496,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
         'sgd',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     inputs = np.random.random((3, 10))
     out = model.predict(inputs)
     self.assertAllClose(model.layers[-1].get_weights()[0], kernel_value)
@@ -916,7 +918,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
         'sgd',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     train_loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
     self.assertEqual(train_loss, 0.)
     test_loss = model.test_on_batch(np.ones((2, 3)), np.ones((2, 3)))
@@ -941,7 +943,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
         'sgd',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     train_loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
     self.assertEqual(train_loss, 2 * 3)
     test_loss = model.test_on_batch(np.ones((2, 3)), np.ones((2, 3)))
@@ -966,7 +968,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
         'sgd',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     _, train_metric = model.train_on_batch(np.ones((2, 3)),
                                            np.ones((2, 3)))
     self.assertEqual(train_metric, 2 * 3)
@@ -998,7 +1000,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
         'sgd',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
     self.assertEqual(keras.backend.get_value(layer.counter), 1.)
 
@@ -1032,7 +1034,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
           'sgd',
           'mse',
           run_eagerly=testing_utils.should_run_eagerly(),
-          run_distributed=testing_utils.should_run_distributed())
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
       model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
       self.assertEqual(keras.backend.get_value(layer.counter), 6.)
     else:
@@ -1068,7 +1070,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
           'sgd',
           'mse',
           run_eagerly=testing_utils.should_run_eagerly(),
-          run_distributed=testing_utils.should_run_distributed())
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
       loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
       self.assertEqual(loss, 2 * 3)
     else:
@@ -1082,7 +1084,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
             1, kernel_regularizer=keras.regularizers.l2(1e-4), input_shape=(1,))
     ])
     model._run_eagerly = testing_utils.should_run_eagerly()
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     def assert_graph(t):
       if not context.executing_eagerly():
@@ -1125,7 +1127,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
           'sgd',
           'mse',
           run_eagerly=testing_utils.should_run_eagerly(),
-          run_distributed=testing_utils.should_run_distributed())
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
       history = model.fit(np.ones((2, 3)), np.ones((2, 3)))
       self.assertEqual(history.history['sum'][-1], 2 * 3)
     else:
@@ -1154,7 +1156,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
         loss='mse',
         optimizer='sgd',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     x = np.ones(shape=(10, 1))
     y = np.ones(shape=(10, 2))
@@ -1188,7 +1190,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
         loss='mse',
         optimizer='sgd',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     x = np.ones(shape=(10, 3, 4))
     y = np.ones(shape=(10, 3, 2))

@@ -15,6 +15,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 constexpr char kNodeName[] = "assert_next_dataset";
@@ -663,5 +664,6 @@ TEST_F(AssertNextDatasetOpTest, InvalidArguments) {
 }
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

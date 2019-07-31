@@ -29,6 +29,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 
 
@@ -107,10 +108,9 @@ def get_reachable_from_inputs(inputs, targets=None):
     A set of tensors reachable from the inputs (includes the inputs themselves).
   """
   inputs = nest.flatten(inputs, expand_composites=True)
-  reachable = set(inputs)
-  if targets and not isinstance(targets, set):
-    targets = nest.flatten(targets)
-    targets = set(targets)
+  reachable = object_identity.ObjectIdentitySet(inputs)
+  if targets:
+    remaining_targets = object_identity.ObjectIdentitySet(nest.flatten(targets))
   queue = inputs[:]
 
   while queue:
@@ -136,10 +136,13 @@ def get_reachable_from_inputs(inputs, targets=None):
     for y in outputs:
       if y not in reachable:
         reachable.add(y)
+        if targets:
+          remaining_targets.discard(y)
         queue.insert(0, y)
 
-    if targets and targets.issubset(reachable):
+    if targets and not remaining_targets:
       return reachable
+
   return reachable
 
 

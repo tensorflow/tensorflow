@@ -598,7 +598,10 @@ struct TF_CheckpointReader : public tensorflow::checkpoint::CheckpointReader {
 TF_CheckpointReader* TF_NewCheckpointReader(const char* filename,
                                             TF_Status* status) {
   TF_CheckpointReader* reader = new TF_CheckpointReader(filename, status);
-  if (!status->status.ok()) return nullptr;
+  if (!status->status.ok()) {
+    TF_DeleteCheckpointReader(reader);
+    return nullptr;
+  }
   const auto& m = reader->GetVariableToDataTypeMap();
   for (auto it = m.begin(); it != m.end(); ++it)
     reader->variable_list.push_back(it->first);
@@ -1135,4 +1138,9 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
   if (output_shapes != nullptr) *output_shapes = output_shapes_result;
 
   // TODO(bgogul): Set output_resource_shapes_and_types.
+}
+
+void TF_ImportGraphDefOptionsSetValidateColocationConstraints(
+    TF_ImportGraphDefOptions* opts, unsigned char enable) {
+  opts->opts.validate_colocation_constraints = enable;
 }

@@ -44,7 +44,8 @@ void DestoryRemoteTensorHandle(EagerContext* ctx,
   std::unique_ptr<EagerNode> node(
       absl::make_unique<eager::DestroyTensorHandleNode>(std::move(request),
                                                         eager_client));
-  Status s = ctx->Async() ? ctx->ExecutorAdd(std::move(node)) : node->Run();
+  auto* executor = ctx->Executor();
+  Status s = executor->Async() ? executor->Add(std::move(node)) : node->Run();
   if (!s.ok()) {
     LOG(ERROR) << "Unable to destroy remote tensor handles: "
                << s.error_message();
