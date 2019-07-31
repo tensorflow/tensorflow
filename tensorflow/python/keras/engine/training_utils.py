@@ -475,9 +475,14 @@ def standardize_input_data(data,
   Raises:
       ValueError: in case of improperly formatted user-provided data.
   """
+  try:
+    data_len = len(data)
+  except TypeError:
+    # For instance if data is `None` or a symbolic Tensor.
+    data_len = None
+
   if not names:
-    if (data is not None and hasattr(data, '__len__') and len(data) and
-        not isinstance(data, dict)):
+    if data_len and not isinstance(data, dict):
       raise ValueError(
           'Error when checking model ' + exception_prefix + ': '
           'expected no data, but got:', data)
