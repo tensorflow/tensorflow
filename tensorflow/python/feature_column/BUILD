@@ -123,6 +123,7 @@ tf_py_test(
     additional_deps = [
         ":feature_column_test_main_lib",
     ],
+    tags = ["no_pip"],
 )
 
 py_library(
@@ -172,6 +173,7 @@ tf_py_test(
     additional_deps = [
         ":feature_column_v2_test_main_lib",
     ],
+    tags = ["no_pip"],
 )
 
 py_library(
