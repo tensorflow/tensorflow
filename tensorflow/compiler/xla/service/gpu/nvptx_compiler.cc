@@ -391,7 +391,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
   VLOG(2) << "Libdevice dir = " << libdevice_dir << "\n";
 
   string ptx;
-  if (!MaybeLoadPtxFromFile(module.get(), &ptx)) {
+  if (!MaybeLoadPtxFromFile(module, &ptx)) {
     XLA_SCOPED_LOGGING_TIMER(
         "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
     TF_ASSIGN_OR_RETURN(
