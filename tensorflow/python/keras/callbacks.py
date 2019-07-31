@@ -788,14 +788,14 @@ class History(Callback):
 
 @keras_export('keras.callbacks.ModelCheckpoint')
 class ModelCheckpoint(Callback):
-  """Save the model checkpoints during and at the end of training.
+  """Save the model checkpoints during and at the end of training after an epoch or a number of samples.
   
-  This callback allows to use the trained model without having to retrain it or 
-  pick up training where you left off in the event of, for example, an interrupted 
-  training process.
+  The current weights of the model are saved continuously during training. 
+  These checkpoint(s) can be loaded later into a new model, for example.
+  Optionally, use the `save_best_only=True` argument to save the model with the best performance.
 
   A path to save the model path - `filepath` - can contain named formatting options, 
-  which will be filled the value of `epoch` andkeys in `logs` (passed in `on_epoch_end`).
+  which will be filled the value of `epoch` and keys in `logs` (passed in `on_epoch_end`).
 
   For example: if `filepath` is `weights.{epoch:02d}-{val_loss:.2f}.hdf5`,
   then the model checkpoints will be saved with the epoch number and
@@ -815,9 +815,7 @@ class ModelCheckpoint(Callback):
 
   cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path, 
                                                    save_weights_only=True, 
-                                                   verbose=1,
-                                                   save_freq='epoch'
-                                                   )
+                                                   verbose=1, save_freq='epoch')
 
   model.fit(data, labels, 
             epochs=10, validation_data=(val_data, val_labels),
