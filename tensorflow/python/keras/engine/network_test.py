@@ -1625,5 +1625,36 @@ class WeightAccessTest(keras_parameterized.TestCase):
     self.assertEqual(len(model.weights), 1)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class DTypeTest(keras_parameterized.TestCase):
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_graph_network_dtype(self):
+    inputs = keras.Input((10,))
+    outputs = keras.layers.Dense(10)(inputs)
+    network = network_lib.Network(inputs, outputs)
+    self.assertEqual(network.dtype, 'float32')
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_subclassed_network_dtype(self):
+
+    class IdentityNetwork(network_lib.Network):
+
+      def call(self, inputs):
+        return inputs
+
+    network = IdentityNetwork()
+    self.assertEqual(network.dtype, 'float32')
+    self.assertEqual(network(array_ops.constant(1, 'float64')).dtype, 'float32')
+
+    network = IdentityNetwork(dtype='float16')
+    self.assertEqual(network.dtype, 'float16')
+    self.assertEqual(network(array_ops.constant(1, 'float64')).dtype, 'float16')
+
+    network = IdentityNetwork(experimental_autocast=False)
+    self.assertEqual(network.dtype, 'float32')
+    self.assertEqual(network(array_ops.constant(1, 'float64')).dtype, 'float64')
+
+
 if __name__ == '__main__':
   test.main()

@@ -35,9 +35,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.layers import core as legacy_core
@@ -49,7 +51,9 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.summary import summary_iterator
+from tensorflow.python.util import nest
 
 
 class DynamicLayer(base_layer.Layer):
@@ -119,7 +123,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
         return inputs
 
     with context.eager_mode():
-      layer = BuildCounter()
+      layer = BuildCounter(dtype=dtypes.float64)
       output_shape = layer.compute_output_shape((None, 10))
       self.assertEqual(layer.build_counter, 1)
       self.assertEqual(output_shape.as_list(), [None, 10])
@@ -1203,6 +1207,219 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
         model.fit(x, y, epochs=2, batch_size=5)
 
 
+class AddLayer(keras.layers.Layer):
+  """A layer which adds it's input to a variable.
+
+  Useful for testing a layer with a variable
+  """
+
+  def build(self, _):
+    self.v = self.add_weight('v', (), initializer='ones')
+    self.built = True
+
+  def call(self, inputs):
+    return inputs + self.v
+
+
+class IdentityLayer(keras.layers.Layer):
+  """A layer that returns it's input.
+
+  Useful for testing a layer without a variable.
+  """
+
+  def call(self, inputs):
+    return inputs
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class DTypeTest(keras_parameterized.TestCase):
+
+  # This class only have tests relating to layer.dtype. Tests for dtype policies
+  # are in mixed_precision/experimental/keras_test.py
+
+  def _const(self, dtype):
+    return array_ops.constant(1, dtype=dtype)
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_dtype_defaults_to_floatx(self):
+    layer = AddLayer()
+    self.assertEqual(layer.dtype, 'float32')
+    layer(self._const('float64'))
+    self.assertEqual(layer.dtype, 'float32')  # dtype should not change
+
+    try:
+      backend.set_floatx('float64')
+      layer = AddLayer()
+      self.assertEqual(layer.dtype, 'float64')
+    finally:
+      backend.set_floatx('float32')
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_passing_dtype_to_constructor(self):
+    layer = IdentityLayer(dtype='float64')
+    layer(self._const('float32'))
+    self.assertEqual(layer.dtype, 'float64')
+
+    layer = IdentityLayer(dtype='int32')
+    layer(self._const('float32'))
+    self.assertEqual(layer.dtype, 'int32')
+
+    layer = IdentityLayer(dtype=dtypes.float64)
+    layer(self._const('float32'))
+    self.assertEqual(layer.dtype, 'float64')
+
+  @testing_utils.enable_v2_dtype_behavior
+  def input_cast_to_dtype(self):
+    layer = AddLayer()
+
+    # Input should be cast to layer.dtype, so output should also be layer.dtype
+    self.assertEqual(layer(self._const('float64')).dtype, 'float32')
+
+    layer = AddLayer(dtype='float64')
+    self.assertEqual(layer(self._const('float32')).dtype, 'float64')
+
+    # Test inputs are not casted if layer.dtype is not floating-point
+    layer = IdentityLayer(dtype='int32')
+    self.assertEqual(layer(self._const('float64')).dtype, 'float64')
+
+    # Test inputs are not casted if the inputs are not floating-point
+    layer = IdentityLayer(dtype='float32')
+    self.assertEqual(layer(self._const('int32')).dtype, 'int32')
+
+    # Test Numpy arrays are casted
+    layer = IdentityLayer(dtype='float64')
+    self.assertEqual(layer(np.array(1, dtype='float32')).dtype, 'float64')
+
+    # Test Python floats are casted
+    layer = IdentityLayer(dtype='float64')
+    self.assertEqual(layer(1.).dtype, 'float64')
+
+  @testing_utils.enable_v2_dtype_behavior
+  def multiple_inputs_cast_to_dtype(self):
+
+    class MultiIdentityLayer(keras.layers.Layer):
+
+      def call(self, inputs):
+        return [array_ops.identity(x) for x in inputs]
+
+    # Testing layer with default dtype of float32
+    layer = MultiIdentityLayer()
+    x, y = layer([self._const('float16'), self._const('float32')])
+    self.assertEqual(x.dtype, 'float32')
+    self.assertEqual(y.dtype, 'float32')
+
+    # Test passing dtype to the constructor
+    layer = MultiIdentityLayer(dtype='float64')
+    x, y = layer([self._const('float16'), self._const('float32')])
+    self.assertEqual(x.dtype, 'float64')
+    self.assertEqual(y.dtype, 'float64')
+
+    # Test several non-floating point types
+    layer = MultiIdentityLayer(dtype='float64')
+    x, y, z, w = layer([self._const('float16'), self._const('bool'),
+                        self._const('float64'), self._constant('complex64')])
+    self.assertEqual(x.dtype, 'float64')
+    self.assertEqual(y.dtype, 'bool')
+    self.assertEqual(z.dtype, 'float64')
+    self.assertEqual(w.dtype, 'complex64')
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_extra_args_and_kwargs_not_casted(self):
+
+    class IdentityLayerWithArgs(keras.layers.Layer):
+
+      def call(self, inputs, *args, **kwargs):
+        return nest.flatten([inputs, args, kwargs])
+
+    layer = IdentityLayerWithArgs(dtype='float64')
+    x, y, z = layer(self._const('float16'), self._const('float16'),
+                    kwarg=self._const('float16'))
+    self.assertEqual(x.dtype, 'float64')
+    self.assertEqual(y.dtype, 'float16')
+    self.assertEqual(z.dtype, 'float16')
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_layer_without_autocast(self):
+
+    class IdentityLayerWithoutAutocast(IdentityLayer):
+
+      def __init__(self, *args, **kwargs):
+        kwargs['experimental_autocast'] = False
+        super(IdentityLayerWithoutAutocast, self).__init__(*args, **kwargs)
+
+    layer = IdentityLayerWithoutAutocast(dtype='float64')
+    self.assertEqual(layer(self._const('float32')).dtype, 'float32')
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_dtype_warnings(self):
+    # Test a layer warns when it casts inputs.
+    layer = IdentityLayer()
+    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+      layer(self._const('float64'))
+      self.assertRegexpMatches(
+          str(mock_warn.call_args),
+          ".*from dtype float64 to the layer's dtype of float32.*"
+          "The layer has dtype float32 because.*")
+
+    # Test a layer does not warn a second time
+    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+      layer(self._const('float64'))
+      mock_warn.assert_not_called()
+
+    # Test a new layer can warn even if a different layer already warned
+    layer = IdentityLayer()
+    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+      layer(self._const('float64'))
+      self.assertRegexpMatches(
+          str(mock_warn.call_args),
+          ".*from dtype float64 to the layer's dtype of float32.*"
+          "The layer has dtype float32 because.*")
+
+    # Test a layer does not warn if a dtype is passed
+    layer = IdentityLayer(dtype='float32')
+    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+      layer(self._const('float64'))
+      mock_warn.assert_not_called()
+
+    # Test a layer does not warn if a Policy is set:
+    with policy.policy_scope('float32'):
+      layer = IdentityLayer()
+      with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+        layer(self._const('float64'))
+        mock_warn.assert_not_called()
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_compute_output_signature(self):
+
+    class IdentityLayerWithOutputShape(IdentityLayer):
+
+      def compute_output_shape(self, input_shape):
+        return input_shape
+
+    layer = IdentityLayerWithOutputShape(dtype='float64')
+    output_signature = layer.compute_output_signature(
+        tensor_spec.TensorSpec(shape=(), dtype='float32'))
+    self.assertEqual(output_signature.shape, ())
+    self.assertEqual(output_signature.dtype, 'float64')
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_passing_non_tensor(self):
+    layer = IdentityLayer()
+    x = object()
+    y = layer(x)  # Layer should not cast 'x', as it's not a tensor
+    self.assertIs(x, y)
+
+  @testing_utils.disable_v2_dtype_behavior
+  def test_v1_behavior(self):
+    # Test dtype defaults to None and inferred from input
+    layer = IdentityLayer()
+    self.assertIsNone(layer.dtype)
+    layer(self._const('float64'))
+    self.assertEqual(layer.dtype, 'float64')
+
+    # Test layer does not cast to dtype
+    self.assertEqual(layer(self._const('float32')).dtype, 'float32')
+
 _LAYERS_TO_TEST = [
     (keras.layers.Dense, (1,), collections.OrderedDict(units=[1])),
     (keras.layers.Activation, (2, 2),
@@ -1230,11 +1447,11 @@ _LAYERS_TO_TEST = [
 OUTPUT_TEST_CASES = []
 for layer_type, inp_shape, arg_dict in _LAYERS_TO_TEST:
   arg_combinations = [[(k, i) for i in v] for k, v in arg_dict.items()]  # pylint: disable=g-complex-comprehension
-  for args in it.product(*arg_combinations):
-    name = '_{}_{}'.format(
-        layer_type.__name__, '_'.join('{}_{}'.format(k, v) for k, v in args))
+  for arguments in it.product(*arg_combinations):
+    name = '_{}_{}'.format(layer_type.__name__,
+                           '_'.join('{}_{}'.format(k, v) for k, v in arguments))
     OUTPUT_TEST_CASES.append(
-        (name, layer_type, inp_shape, {k: v for k, v in args}))
+        (name, layer_type, inp_shape, {k: v for k, v in arguments}))
 
 
 class OutputTypeTest(keras_parameterized.TestCase):
