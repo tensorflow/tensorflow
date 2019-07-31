@@ -80,14 +80,16 @@ Status WriteDataToTFRecordFile(const string& filename,
 class DatasetParams {
  public:
   DatasetParams(DataTypeVector output_dtypes,
-                std::vector<PartialTensorShape> output_shapes)
+                std::vector<PartialTensorShape> output_shapes, string node_name)
       : output_dtypes(std::move(output_dtypes)),
-        output_shapes(std::move(output_shapes)) {}
+        output_shapes(std::move(output_shapes)),
+        node_name(std::move(node_name)) {}
 
   virtual Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) = 0;
 
   DataTypeVector output_dtypes;
   std::vector<PartialTensorShape> output_shapes;
+  string node_name;
 };
 
 template <typename T>
@@ -162,6 +164,27 @@ struct IteratorSaveAndRestoreTestCase {
   std::vector<Tensor> expected_outputs;
 };
 
+// Creates a tensor with the specified dtype, shape, and value.
+template <typename T>
+static Tensor CreateTensor(const TensorShape& input_shape,
+                           const gtl::ArraySlice<T>& input_data) {
+  Tensor tensor(DataTypeToEnum<T>::value, input_shape);
+  test::FillValues<T>(&tensor, input_data);
+  return tensor;
+}
+
+// Creates a vector of tensors with the specified dtype, shape, and values.
+template <typename T>
+std::vector<Tensor> CreateTensors(
+    const TensorShape& shape, const std::vector<gtl::ArraySlice<T>>& values) {
+  std::vector<Tensor> result;
+  result.reserve(values.size());
+  for (auto& value : values) {
+    result.emplace_back(CreateTensor<T>(shape, value));
+  }
+  return result;
+}
+
 // Helpful functions to test Dataset op kernels.
 class DatasetOpsTestBase : public ::testing::Test {
  public:
@@ -183,15 +206,6 @@ class DatasetOpsTestBase : public ::testing::Test {
   static Status ExpectEqual(std::vector<Tensor> produced_tensors,
                             std::vector<Tensor> expected_tensors,
                             bool compare_order);
-
-  // Creates a tensor with the specified dtype, shape, and value.
-  template <typename T>
-  static Tensor CreateTensor(TensorShape input_shape,
-                             const gtl::ArraySlice<T>& input_data) {
-    Tensor tensor(DataTypeToEnum<T>::value, input_shape);
-    test::FillValues<T>(&tensor, input_data);
-    return tensor;
-  }
 
   // Creates a new op kernel based on the node definition.
   Status CreateOpKernel(const NodeDef& node_def,
