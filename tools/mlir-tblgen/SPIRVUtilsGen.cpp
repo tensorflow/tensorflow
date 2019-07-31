@@ -130,7 +130,7 @@ static void emitSerializationFunction(const Record *attrClass,
     auto argument = op.getArg(i);
     os << "  {\n";
     if (argument.is<NamedTypeConstraint *>()) {
-      os << "    for (auto arg : op.getODSOperands(" << i << ")) {\n";
+      os << "    for (auto arg : op.getODSOperands(" << operandNum << ")) {\n";
       os << "      auto argID = findValueID(arg);\n";
       os << "      if (!argID) {\n";
       os << "        emitError(op.getLoc(), \"operand " << operandNum
