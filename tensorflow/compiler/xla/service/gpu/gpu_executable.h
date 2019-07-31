@@ -61,6 +61,8 @@ class GpuExecutable : public Executable {
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~GpuExecutable() override;
 
+  int64 SizeInBytes() override;
+
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
 

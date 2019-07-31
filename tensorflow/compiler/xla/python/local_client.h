@@ -212,6 +212,8 @@ class PyLocalExecutable {
     return executable_->build_options().num_replicas();
   }
 
+  int64 SizeInBytes() const { return executable_->executable()->SizeInBytes(); }
+
   // Returns the device ordinals to which each replica is assigned.
   std::vector<int> DeviceOrdinals() const;
 

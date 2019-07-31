@@ -221,6 +221,8 @@ class Executable {
 
   // Returns the size of the executable in bytes. Returns -1 by default if the
   // method is not overridden to support this kind of query.
+  //
+  // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
   virtual int64 SizeInBytes();
 
   // Dumping helpers.

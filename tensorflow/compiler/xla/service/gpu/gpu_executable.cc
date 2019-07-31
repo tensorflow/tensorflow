@@ -428,5 +428,14 @@ const InstructionValueSet& GpuExecutable::GetRootValueSet() const {
       module().entry_computation()->root_instruction());
 }
 
+int64 GpuExecutable::SizeInBytes() {
+  // Non-empty PTX but empty cubin: compilation must have failed, return
+  // "unknown".
+  if (binary().empty() && !text_.empty()) {
+    return -1;
+  }
+  return binary().size();
+}
+
 }  // namespace gpu
 }  // namespace xla
