@@ -167,7 +167,6 @@ from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.util.compat import collections_abc
 
@@ -319,6 +318,31 @@ class _StateManagerImpl(StateManager):
     raise ValueError('Resource does not exist.')
 
 
+class _StateManagerImplV2(_StateManagerImpl):
+  """Manages the state of DenseFeatures."""
+
+  def create_variable(self,
+                      feature_column,
+                      name,
+                      shape,
+                      dtype=None,
+                      trainable=True,
+                      use_resource=True,
+                      initializer=None):
+    if name in self._cols_to_vars_map[feature_column]:
+      raise ValueError('Variable already exists.')
+
+    var = self._layer.add_variable(
+        name=name,
+        shape=shape,
+        dtype=dtype,
+        initializer=initializer,
+        trainable=self._trainable and trainable,
+        use_resource=use_resource)
+    self._cols_to_vars_map[feature_column][name] = var
+    return var
+
+
 class _BaseFeaturesLayer(Layer):
   """Base class for DenseFeatures and SequenceFeatures.
 
@@ -414,104 +438,6 @@ class _BaseFeaturesLayer(Layer):
         config['feature_columns'], custom_objects=custom_objects)
 
     return cls(**config_cp)
-
-
-@keras_export('keras.layers.DenseFeatures')
-class DenseFeatures(_BaseFeaturesLayer):
-  """A layer that produces a dense `Tensor` based on given `feature_columns`.
-
-  Generally a single example in training data is described with FeatureColumns.
-  At the first layer of the model, this column oriented data should be converted
-  to a single `Tensor`.
-
-  This layer can be called multiple times with different features.
-
-  Example:
-
-  ```python
-  price = numeric_column('price')
-  keywords_embedded = embedding_column(
-      categorical_column_with_hash_bucket("keywords", 10K), dimensions=16)
-  columns = [price, keywords_embedded, ...]
-  feature_layer = DenseFeatures(columns)
-
-  features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
-  dense_tensor = feature_layer(features)
-  for units in [128, 64, 32]:
-    dense_tensor = tf.keras.layers.Dense(units, activation='relu')(dense_tensor)
-  prediction = tf.keras.layers.Dense(1)(dense_tensor)
-  ```
-  """
-
-  def __init__(self,
-               feature_columns,
-               trainable=True,
-               name=None,
-               **kwargs):
-    """Constructs a DenseFeatures.
-
-    Args:
-      feature_columns: An iterable containing the FeatureColumns to use as
-        inputs to your model. All items should be instances of classes derived
-        from `DenseColumn` such as `numeric_column`, `embedding_column`,
-        `bucketized_column`, `indicator_column`. If you have categorical
-        features, you can wrap them with an `embedding_column` or
-        `indicator_column`.
-      trainable:  Boolean, whether the layer's variables will be updated via
-        gradient descent during training.
-      name: Name to give to the DenseFeatures.
-      **kwargs: Keyword arguments to construct a layer.
-
-    Raises:
-      ValueError: if an item in `feature_columns` is not a `DenseColumn`.
-    """
-    super(DenseFeatures, self).__init__(
-        feature_columns=feature_columns,
-        trainable=trainable,
-        name=name,
-        expected_column_type=DenseColumn,
-        **kwargs)
-
-  @property
-  def _is_feature_layer(self):
-    return True
-
-  def _target_shape(self, input_shape, total_elements):
-    return (input_shape[0], total_elements)
-
-  def call(self, features, cols_to_output_tensors=None):
-    """Returns a dense tensor corresponding to the `feature_columns`.
-
-    Args:
-      features: A mapping from key to tensors. `FeatureColumn`s look up via
-        these keys. For example `numeric_column('price')` will look at 'price'
-        key in this dict. Values can be a `SparseTensor` or a `Tensor` depends
-        on corresponding `FeatureColumn`.
-      cols_to_output_tensors: If not `None`, this will be filled with a dict
-        mapping feature columns to output tensors created.
-
-    Returns:
-      A `Tensor` which represents input layer of a model. Its shape
-      is (batch_size, first_layer_dimension) and its dtype is `float32`.
-      first_layer_dimension is determined based on given `feature_columns`.
-
-    Raises:
-      ValueError: If features are not a dictionary.
-    """
-    if not isinstance(features, dict):
-      raise ValueError('We expected a dictionary here. Instead we got: ',
-                       features)
-    transformation_cache = FeatureTransformationCache(features)
-    output_tensors = []
-    for column in self._feature_columns:
-      with ops.name_scope(column.name):
-        tensor = column.get_dense_tensor(transformation_cache,
-                                         self._state_manager)
-        processed_tensors = self._process_dense_tensor(column, tensor)
-        if cols_to_output_tensors is not None:
-          cols_to_output_tensors[column] = processed_tensors
-        output_tensors.append(processed_tensors)
-    return self._verify_and_concat_tensors(output_tensors)
 
 
 class _LinearModelLayer(Layer):

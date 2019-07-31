@@ -32,7 +32,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.eager import wrap_function
-from tensorflow.python.feature_column import feature_column_v2
+from tensorflow.python.feature_column import feature_column_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1585,9 +1585,11 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_dense_features_layer(self, cycles):
-    columns = [feature_column_v2.numeric_column("x"),
-               feature_column_v2.numeric_column("y")]
-    layer = feature_column_v2.DenseFeatures(columns)
+    columns = [
+        feature_column_lib.numeric_column("x"),
+        feature_column_lib.numeric_column("y")
+    ]
+    layer = feature_column_lib.DenseFeatures(columns)
     model = sequential.Sequential([layer])
     model_input = {"x": constant_op.constant([[1.]]),
                    "y": constant_op.constant([[2.]])}
@@ -1600,9 +1602,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose([[1., 2.]], signature_output)
 
   def test_dense_features_layer_fit(self, cycles):
-    columns = [feature_column_v2.numeric_column("x")]
+    columns = [feature_column_lib.numeric_column("x")]
     model = sequential.Sequential(
-        [feature_column_v2.DenseFeatures(columns),
+        [feature_column_lib.DenseFeatures(columns),
          core.Dense(1)])
     model_input = {"x": constant_op.constant([[1.]])}
     model.compile(optimizer="adam", loss="mse")

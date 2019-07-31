@@ -29,7 +29,7 @@ from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.feature_column import feature_column_v2
+from tensorflow.python.feature_column import feature_column_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -147,18 +147,18 @@ class TraceModelCallTest(keras_parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_trace_features_layer(self):
-    columns = [feature_column_v2.numeric_column('x')]
-    model = sequential.Sequential(
-        [feature_column_v2.DenseFeatures(columns)])
+    columns = [feature_column_lib.numeric_column('x')]
+    model = sequential.Sequential([feature_column_lib.DenseFeatures(columns)])
     model_input = {'x': constant_op.constant([[1.]])}
     model.predict(model_input, steps=1)
     fn = saving_utils.trace_model_call(model)
     self.assertAllClose({'output_1': [[1.]]}, fn({'x': [[1.]]}))
 
-    columns = [feature_column_v2.numeric_column('x'),
-               feature_column_v2.numeric_column('y')]
-    model = sequential.Sequential(
-        [feature_column_v2.DenseFeatures(columns)])
+    columns = [
+        feature_column_lib.numeric_column('x'),
+        feature_column_lib.numeric_column('y')
+    ]
+    model = sequential.Sequential([feature_column_lib.DenseFeatures(columns)])
     model_input = {'x': constant_op.constant([[1.]]),
                    'y': constant_op.constant([[2.]])}
     model.predict(model_input, steps=1)
