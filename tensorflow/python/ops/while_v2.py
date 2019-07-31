@@ -519,8 +519,9 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
   # 2. Resources, which are output as is.
   # 3. Forward graph loop invariants, which are output as is.
   for external_capture, internal_capture in grad_func_graph.captures:
-    if internal_capture in grad_func_graph.popped_tensor_lists:
-      new_output = grad_func_graph.popped_tensor_lists[internal_capture]
+    if ops.tensor_id(internal_capture) in grad_func_graph.popped_tensor_lists:
+      new_output = grad_func_graph.popped_tensor_lists[ops.tensor_id(
+          internal_capture)]
     elif (internal_capture.dtype == dtypes.resource or _is_loop_invariant(
         external_capture, body_graph_inputs, body_graph_outputs)):
       new_output = internal_capture
@@ -603,7 +604,11 @@ def _resolve_grad_captures(body_graph, body_grad_graph, while_op):
     # regular non-captured inputs).
     if t.graph == body_graph:
       # Captured accumulator or loop invariant.
-      t = while_op.outputs[t.graph.outputs.index(t)]
+      for i, output in enumerate(t.graph.outputs):
+        if output is t:
+          t = while_op.outputs[i]
+          break
+
       # Note: We rely on the capturing logic of the gradient While op graph to
       # correctly capture the tensors in `body_graph.outer_graph`. Both cond_v2
       # and while_v2 handle this while building their gradient functions.
@@ -819,7 +824,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       # the input of the Identity node instead.
       tensor = tensor.op.inputs[0]
 
-    captured_tensor = self._indirect_captures.get(tensor)
+    captured_tensor = self._indirect_captures.get(ops.tensor_id(tensor))
     if captured_tensor is not None:
       return captured_tensor
 
@@ -886,8 +891,9 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     new_tensor_list, captured_tensor = list_ops.tensor_list_pop_back(
         captured_accumulator, element_dtype=tensor.dtype)
 
-    self._indirect_captures[tensor] = captured_tensor
-    self.popped_tensor_lists[captured_accumulator] = new_tensor_list
+    self._indirect_captures[ops.tensor_id(tensor)] = captured_tensor
+    self.popped_tensor_lists[ops.tensor_id(
+        captured_accumulator)] = new_tensor_list
     return captured_tensor
 
   def _resource_capture_helper(self, tensor):
@@ -920,9 +926,9 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
         "Resource tensors must be loop invariants %s." %
         tensor_in_outer_graph)
 
-    self._indirect_captures[tensor] = self.capture(
+    self._indirect_captures[ops.tensor_id(tensor)] = self.capture(
         tensor_in_outer_graph, whitelisted=True)
-    return self._indirect_captures[tensor]
+    return self._indirect_captures[ops.tensor_id(tensor)]
 
 
 def _check_shapes_compat(output_tensors, shape_invariants, input_tensors):
