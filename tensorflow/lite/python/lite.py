@@ -28,6 +28,7 @@ from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.experimental.examples.lstm.rnn import dynamic_rnn  # pylint: disable=unused-import
 from tensorflow.lite.experimental.examples.lstm.rnn_cell import TFLiteLSTMCell  # pylint: disable=unused-import
 from tensorflow.lite.experimental.examples.lstm.rnn_cell import TfLiteRNNCell  # pylint: disable=unused-import
+from tensorflow.lite.experimental.microfrontend.python.ops import audio_microfrontend_op  # pylint: disable=unused-import
 from tensorflow.lite.experimental.tensorboard.ops_util import get_potentially_supported_ops  # pylint: disable=unused-import
 from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
@@ -139,12 +140,19 @@ class TargetSpec(object):
   Attributes:
     supported_ops: Experimental flag, subject to change. Set of OpsSet options
       supported by the device. (default set([OpsSet.TFLITE_BUILTINS]))
+    supported_types: List of types for constant values on the target device.
+      Supported values are types exported by lite.constants. Frequently, an
+      optimization choice is driven by the most compact (i.e. smallest)
+      type in this list (default [constants.FLOAT])
   """
 
-  def __init__(self, supported_ops=None):
+  def __init__(self, supported_ops=None, supported_types=None):
     if supported_ops is None:
       supported_ops = set([OpsSet.TFLITE_BUILTINS])
     self.supported_ops = supported_ops
+    if supported_types is None:
+      supported_types = []
+    self.supported_types = supported_types
 
 
 class TFLiteConverterBase(object):
@@ -173,34 +181,76 @@ class TFLiteConverterBase(object):
       if self.representative_dataset.input_gen is None:
         raise ValueError(
             "Provide an input generator for representative_dataset")
-    elif self._int8_target_required():
+    elif self._is_int8_target_required():
       raise ValueError("representative_dataset is required when specifying "
-                       "TFLITE_BUILTINS_INT8 target.")
+                       "TFLITE_BUILTINS_INT8 or INT8 supported types.")
 
-  def _int8_target_required(self):
-    return set([OpsSet.TFLITE_BUILTINS_INT8]) == set(self._target_ops)
+  def _validate_quantization(self):
+    if self._is_int8_target_required():
+      if self.target_spec.supported_types and (self._smallest_supported_type()
+                                               != constants.INT8):
+        raise ValueError("TFLITE_BUILTINS_INT8 requires smallest supported "
+                         "type to be INT8.")
 
-  def _is_post_training_optimize(self):
-    return (self._int8_target_required() or bool(
+  def _is_int8_target_required(self):
+    return (set([OpsSet.TFLITE_BUILTINS_INT8]) == set(self._target_ops) or
+            self._smallest_supported_type() == constants.INT8)
+
+  def _smallest_supported_type(self):
+    if self.target_spec.supported_types:
+      return min(self.target_spec.supported_types, key=lambda x: x.size)
+    else:
+      return None
+
+  def _any_optimization_enabled(self):
+    return bool(
         set(self.optimizations).intersection([
             Optimize.OPTIMIZE_FOR_LATENCY, Optimize.OPTIMIZE_FOR_SIZE,
             Optimize.DEFAULT
-        ])))
+        ]))
 
-  def _is_weight_only_quantize(self):
+  def _is_post_training_optimize(self):
+    return self._is_int8_target_required() or self._any_optimization_enabled()
+
+  def _is_int8_weight_only_quantize(self):
     return (self._is_post_training_optimize() and
             (self.representative_dataset is None))
 
+  def _is_float16_quantize(self):
+    return self._any_optimization_enabled() and (
+        self._smallest_supported_type() == constants.FLOAT16)
+
   def _is_calibration_quantize(self):
-    return self._is_post_training_optimize() and self.representative_dataset
+    return (self._is_post_training_optimize() and
+            self.representative_dataset and
+            self._smallest_supported_type() != constants.FLOAT16)
 
   def _calibrate_quantize_model(self, result, inference_input_type,
                                 inference_output_type):
-    allow_float = not self._int8_target_required()
+    allow_float = not self._is_int8_target_required()
     calibrate_quantize = _calibrator.Calibrator(result)
     return calibrate_quantize.calibrate_and_quantize(
         self.representative_dataset.input_gen, inference_input_type,
         inference_output_type, allow_float)
+
+  def _get_base_converter_args(self):
+    """Returns the base converter args.
+
+    Returns:
+      {key str: val}
+    """
+    float16_quantize = self._is_float16_quantize()
+    args = {
+        "input_format": constants.TENSORFLOW_GRAPHDEF,
+        "allow_custom_ops": self.allow_custom_ops,
+        "post_training_quantize": (self._is_int8_weight_only_quantize() or
+                                   float16_quantize),
+        "quantize_to_float16": float16_quantize,
+        "debug_info": self._debug_info,
+        "target_ops": self._target_ops,
+        "enable_mlir_converter": self.experimental_enable_mlir_converter,
+    }
+    return args
 
 
 @_tf_export("lite.TFLiteConverter", v1=[])
@@ -220,6 +270,8 @@ class TFLiteConverterV2(TFLiteConverterBase):
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
       dataset to evaluate different optimizations.
+    experimental_enable_mlir_converter: Experimental flag, subject to change.
+      Enables the MLIR converter instead of the TOCO converter.
 
   Example usage:
 
@@ -256,6 +308,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
     self.allow_custom_ops = False
     self.target_spec = TargetSpec()
     self._debug_info = None
+    self.experimental_enable_mlir_converter = False
 
   @classmethod
   def from_concrete_functions(cls, funcs):
@@ -349,7 +402,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
                        "under development.")
 
     frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
-        self._funcs[0])
+        self._funcs[0], lower_control_flow=False)
     input_tensors = [
         tensor for tensor in frozen_func.inputs
         if tensor.dtype != _dtypes.resource
@@ -379,17 +432,11 @@ class TFLiteConverterV2(TFLiteConverterBase):
         shape[0] = 1
         tensor.set_shape(shape)
 
+    self._validate_quantization()
     self._validate_representative_dataset()
     self._debug_info = _get_debug_info(
         _build_debug_info_func(self._funcs[0].graph), graph_def)
-
-    converter_kwargs = {
-        "input_format": constants.TENSORFLOW_GRAPHDEF,
-        "allow_custom_ops": self.allow_custom_ops,
-        "post_training_quantize": self._is_weight_only_quantize(),
-        "target_ops": self.target_spec.supported_ops,
-        "debug_info": self._debug_info
-    }
+    converter_kwargs = self._get_base_converter_args()
 
     # Converts model.
     result = _toco_convert_impl(
@@ -481,6 +528,8 @@ class TFLiteConverter(TFLiteConverterBase):
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use
       the dataset to evaluate different optimizations.
+    experimental_enable_mlir_converter: Experimental flag, subject to change.
+      Enables the MLIR converter instead of the TOCO converter.
 
   Example usage:
 
@@ -556,6 +605,7 @@ class TFLiteConverter(TFLiteConverterBase):
     self.target_spec = TargetSpec()
     self._debug_info_func = experimental_debug_info_func
     self._debug_info = None
+    self.experimental_enable_mlir_converter = False
 
     # Attributes are used by models that cannot be loaded into TensorFlow.
     if not self._has_valid_tensors():
@@ -759,7 +809,7 @@ class TFLiteConverter(TFLiteConverterBase):
       concrete_func = function.get_concrete_function()
 
       frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
-          concrete_func)
+          concrete_func, lower_control_flow=False)
       _set_tensor_shapes(frozen_func.inputs, input_shapes)
       return cls(
           frozen_func.graph.as_graph_def(),
@@ -870,6 +920,7 @@ class TFLiteConverter(TFLiteConverterBase):
     else:
       quantized_stats = None
 
+    self._validate_quantization()
     self._validate_representative_dataset()
 
     toco_inference_input_type = self.inference_input_type
@@ -888,7 +939,7 @@ class TFLiteConverter(TFLiteConverterBase):
       if inference_output_type is None:
         inference_output_type = constants.FLOAT
 
-    weight_only_quantize = self._is_weight_only_quantize()
+    weight_only_quantize = self._is_int8_weight_only_quantize()
     if weight_only_quantize:
       # Currently, weight only quantization requires float inputs and outputs.
       if (inference_input_type != constants.FLOAT or
@@ -901,23 +952,6 @@ class TFLiteConverter(TFLiteConverterBase):
       raise ValueError(
           "inference_output_type is currently not supported if optimizations "
           "are not enabled.")
-
-    converter_kwargs = {
-        "inference_type": self.inference_type,
-        "inference_input_type": toco_inference_input_type,
-        "input_format": constants.TENSORFLOW_GRAPHDEF,
-        "output_format": self.output_format,
-        "quantized_input_stats": quantized_stats,
-        "default_ranges_stats": self.default_ranges_stats,
-        "drop_control_dependency": self.drop_control_dependency,
-        "reorder_across_fake_quant": self.reorder_across_fake_quant,
-        "change_concat_input_ranges": self.change_concat_input_ranges,
-        "allow_custom_ops": self.allow_custom_ops,
-        "post_training_quantize": weight_only_quantize,
-        "target_ops": self._target_ops,
-        "dump_graphviz_dir": self.dump_graphviz_dir,
-        "dump_graphviz_video": self.dump_graphviz_video
-    }
 
     optimized_graph = self._graph_def
     if self.inference_type != constants.QUANTIZED_UINT8:
@@ -932,13 +966,26 @@ class TFLiteConverter(TFLiteConverterBase):
 
     self._debug_info = _get_debug_info(self._debug_info_func, optimized_graph)
 
+    converter_kwargs = self._get_base_converter_args()
+    converter_kwargs.update({
+        "inference_type": self.inference_type,
+        "inference_input_type": toco_inference_input_type,
+        "output_format": self.output_format,
+        "quantized_input_stats": quantized_stats,
+        "default_ranges_stats": self.default_ranges_stats,
+        "drop_control_dependency": self.drop_control_dependency,
+        "reorder_across_fake_quant": self.reorder_across_fake_quant,
+        "change_concat_input_ranges": self.change_concat_input_ranges,
+        "dump_graphviz_dir": self.dump_graphviz_dir,
+        "dump_graphviz_video": self.dump_graphviz_video
+    })
+
     # Converts model.
     if self._has_valid_tensors():
       result = _toco_convert_impl(
           input_data=optimized_graph,
           input_tensors=self._input_tensors,
           output_tensors=self._output_tensors,
-          debug_info=self._debug_info,
           **converter_kwargs)
     else:
       result = _toco_convert_graph_def(

@@ -473,7 +473,7 @@ Status Transposer::UpdateEdge(
   return Status::OK();
 }
 
-bool Transposer::IsFanoutPortDimsN(const utils::MutableNodeView& node, int port,
+bool Transposer::IsFanoutPortRankN(const utils::MutableNodeView& node, int port,
                                    int n) const {
   const auto* output_shape_attr = node.GetAttr(kAttrOutputShape);
   if (output_shape_attr == nullptr ||
@@ -484,24 +484,66 @@ bool Transposer::IsFanoutPortDimsN(const utils::MutableNodeView& node, int port,
   return !shape.unknown_rank() && shape.dim_size() == n;
 }
 
-bool Transposer::IsFanoutPortsDimsN(const utils::MutableNodeView& node,
+bool Transposer::IsFanoutPortsRankN(const utils::MutableNodeView& node,
                                     absl::Span<const int> ports, int n) const {
-  for (auto port : ports) {
-    if (!IsFanoutPortDimsN(node, port, n)) {
+  for (const auto& port : ports) {
+    if (!IsFanoutPortRankN(node, port, n)) {
       return false;
     }
   }
   return true;
 }
 
-bool Transposer::IsFaninPortDimsN(const utils::MutableNodeView& node, int port,
+bool Transposer::IsFaninPortRankN(const utils::MutableNodeView& node, int port,
                                   int n) const {
   if (port < node.NumRegularFanins() && port >= 0) {
     const auto& regular_fanin = node.GetRegularFanin(port);
-    return IsFanoutPortDimsN(*regular_fanin.node_view(), regular_fanin.index(),
+    return IsFanoutPortRankN(*regular_fanin.node_view(), regular_fanin.index(),
                              n);
   }
   return false;
+}
+
+bool Transposer::IsFaninPortDimsNIfConst(const utils::MutableNodeView& node,
+                                         int port,
+                                         absl::Span<const int> dims) const {
+  if (port < node.NumRegularFanins() && port >= 0) {
+    const auto& regular_fanin = node.GetRegularFanin(port);
+    const auto* fanin_node_view = regular_fanin.node_view();
+    if (!IsConstant(*fanin_node_view->node())) {
+      return true;
+    }
+    // If fanin is a Const, check tensor to see if dimensions match.
+    const auto* value_attr = fanin_node_view->GetAttr(kAttrValue);
+    if (value_attr == nullptr) {
+      return false;
+    }
+    Tensor tensor;
+    if (!tensor.FromProto(value_attr->tensor())) {
+      return false;
+    }
+    if (tensor.dims() != dims.size()) {
+      return false;
+    }
+    for (int i = 0; i < dims.size(); ++i) {
+      if (tensor.dim_size(i) != dims[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+bool Transposer::IsFaninPortsDimsNIfConst(const utils::MutableNodeView& node,
+                                          absl::Span<const int> ports,
+                                          absl::Span<const int> dims) const {
+  for (const auto& port : ports) {
+    if (!IsFaninPortDimsNIfConst(node, port, dims)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool Transposer::CanProcessNode(const TransposeContext& context,
@@ -637,7 +679,7 @@ bool LayoutSensitiveOpTransposer::ShouldNotProcess(
 Status DefaultLayoutSensitiveOpTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsDefaultLayoutSensitiveOp(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4)) {
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4)) {
     return Status::OK();
   }
   const NodeDef* node_def = node->node();
@@ -654,7 +696,7 @@ Status DefaultLayoutSensitiveOpTransposer::TransposeNode(
 Status BiasAddGradTransposer::TransposeNode(TransposeContext* context,
                                             utils::MutableNodeView* node) {
   DCHECK(IsBiasAddGrad(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFaninPortDimsN(*node, 0, 4)) {
+  if (!ShouldProcess(*context, *node) || !IsFaninPortRankN(*node, 0, 4)) {
     return Status::OK();
   }
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
@@ -668,7 +710,7 @@ Status BiasAddGradTransposer::TransposeNode(TransposeContext* context,
 Status Conv2DBackpropFilterTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsConv2DBackpropFilter(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
       ShouldNotProcess(*context, *node)) {
     return Status::OK();
   }
@@ -684,7 +726,7 @@ Status Conv2DBackpropFilterTransposer::TransposeNode(
 Status Conv2DBackpropInputTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsConv2DBackpropInput(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
       ShouldNotProcess(*context, *node)) {
     return Status::OK();
   }
@@ -708,7 +750,7 @@ bool FusedBatchNormGradTransposer::IsTraining(
 Status FusedBatchNormGradTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsFusedBatchNormGrad(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
       !IsTraining(*node) || ShouldNotProcess(*context, *node)) {
     return Status::OK();
   }
@@ -728,7 +770,7 @@ Status MaxPoolV2Transposer::TransposeNode(TransposeContext* context,
   const auto& data_fanin = node->GetRegularFanin(0);
   auto* data_fanin_node = data_fanin.node_view();
   if (!ShouldProcess(*context, *node) ||
-      !IsFanoutPortDimsN(*data_fanin_node, data_fanin.index(), 4)) {
+      !IsFanoutPortRankN(*data_fanin_node, data_fanin.index(), 4)) {
     return Status::OK();
   }
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
@@ -742,7 +784,7 @@ Status MaxPoolV2Transposer::TransposeNode(TransposeContext* context,
 Status MaxPoolGradTransposer::TransposeNode(TransposeContext* context,
                                             utils::MutableNodeView* node) {
   DCHECK(IsMaxPoolGrad(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4)) {
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4)) {
     return Status::OK();
   }
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
@@ -755,7 +797,7 @@ Status MaxPoolGradTransposer::TransposeNode(TransposeContext* context,
 Status MaxPoolGradV2Transposer::TransposeNode(TransposeContext* context,
                                               utils::MutableNodeView* node) {
   DCHECK(IsMaxPoolGradV2(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4)) {
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4)) {
     return Status::OK();
   }
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
@@ -862,7 +904,7 @@ std::vector<int> LayoutAgnosticOpTransposer::GetVariadic4DFaninPorts(
     const auto& regular_fanin = node.GetRegularFanin(i);
     auto* regular_fanin_node = regular_fanin.node_view();
     int regular_fanin_port = regular_fanin.index();
-    if (IsFanoutPortDimsN(*regular_fanin_node, regular_fanin_port, 4) &&
+    if (IsFanoutPortRankN(*regular_fanin_node, regular_fanin_port, 4) &&
         ((IsAfterDstToSrcTransform(context, *regular_fanin_node) &&
           IsLayoutAgnosticOp(*regular_fanin_node->node())) ||
          IsLayoutOptimizerAddedDstToSrcTranspose(context,
@@ -876,7 +918,7 @@ std::vector<int> LayoutAgnosticOpTransposer::GetVariadic4DFaninPorts(
 Status DefaultLayoutAgnosticOpTransposer::TransposeNode(
     TransposeContext* context, utils::MutableNodeView* node) {
   DCHECK(IsDefaultLayoutAgnosticOp(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -888,7 +930,7 @@ Status DefaultLayoutAgnosticOpTransposer::TransposeNode(
 Status AddNTransposer::TransposeNode(TransposeContext* context,
                                      utils::MutableNodeView* node) {
   DCHECK(IsAddN(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -900,7 +942,7 @@ Status AddNTransposer::TransposeNode(TransposeContext* context,
 
 bool BinaryOpTransposer::IsNDOperateWithMD(const utils::MutableNodeView& node,
                                            int n, int m) {
-  return IsFaninPortDimsN(node, 0, n) && IsFaninPortDimsN(node, 1, m);
+  return IsFaninPortRankN(node, 0, n) && IsFaninPortRankN(node, 1, m);
 }
 
 bool BinaryOpTransposer::IsFaninShapeSupported(
@@ -913,10 +955,10 @@ bool BinaryOpTransposer::IsFaninShapeSupported(
 std::vector<int> BinaryOpTransposer::Get4DDataFaninPorts(
     const utils::MutableNodeView& node) {
   std::vector<int> values;
-  if (IsFaninPortDimsN(node, 0, 4)) {
+  if (IsFaninPortRankN(node, 0, 4)) {
     values.push_back(0);
   }
-  if (IsFaninPortDimsN(node, 1, 4)) {
+  if (IsFaninPortRankN(node, 1, 4)) {
     values.push_back(1);
   }
   return values;
@@ -1039,7 +1081,7 @@ Status BinaryOpTransposer::TransposeNode(TransposeContext* context,
 Status ConcatOpTransposer::TransposeNode(TransposeContext* context,
                                          utils::MutableNodeView* node) {
   DCHECK(IsConcat(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1061,7 +1103,8 @@ Status ConcatOpTransposer::TransposeNode(TransposeContext* context,
 Status FillOpTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsFill(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
+      !IsFaninPortDimsNIfConst(*node, 0, {4}) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1089,7 +1132,7 @@ bool MergeTransposer::IsEveryFaninAfterDstToSrcTransform(
     const TransposeContext& context, const utils::MutableNodeView& node) const {
   for (const auto& regular_fanin : node.GetRegularFanins()) {
     auto* regular_fanin_node = regular_fanin.node_view();
-    if (IsFanoutPortDimsN(*regular_fanin_node, regular_fanin.index(), 4) &&
+    if (IsFanoutPortRankN(*regular_fanin_node, regular_fanin.index(), 4) &&
         ((IsAfterDstToSrcTransform(context, *regular_fanin_node) &&
           IsLayoutAgnosticOp(*regular_fanin_node->node())) ||
          IsLayoutOptimizerAddedDstToSrcTranspose(context,
@@ -1104,7 +1147,7 @@ bool MergeTransposer::IsEveryFaninAfterDstToSrcTransform(
 Status MergeTransposer::TransposeNode(TransposeContext* context,
                                       utils::MutableNodeView* node) {
   DCHECK(IsMerge(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
       !IsEveryFaninAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1118,7 +1161,8 @@ Status PadTransposer::TransposeNode(TransposeContext* context,
                                     utils::MutableNodeView* node) {
   DCHECK(IsMirrorPad(*node->node()) || IsMirrorPadGrad(*node->node()) ||
          IsPad(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
+      !IsFaninPortDimsNIfConst(*node, 1, {4, 2}) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1175,7 +1219,7 @@ bool ReduceTransposer::IsReduceAxisSupported(
 Status ReduceTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsReduceOp(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFaninPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFaninPortRankN(*node, 0, 4) ||
       !IsReduceAxisSupported(*context, *node) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
@@ -1193,7 +1237,7 @@ Status ReduceTransposer::TransposeNode(TransposeContext* context,
 Status ReverseV2Transposer::TransposeNode(TransposeContext* context,
                                           utils::MutableNodeView* node) {
   DCHECK(IsReverseV2(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1206,15 +1250,15 @@ Status ReverseV2Transposer::TransposeNode(TransposeContext* context,
 
 bool SelectTransposer::IsFaninScalarVector4D(
     const utils::MutableNodeView& fanin, int port) {
-  return IsFanoutPortDimsN(fanin, port, 0) ||
-         IsFanoutPortDimsN(fanin, port, 1) || IsFanoutPortDimsN(fanin, port, 4);
+  return IsFanoutPortRankN(fanin, port, 0) ||
+         IsFanoutPortRankN(fanin, port, 1) || IsFanoutPortRankN(fanin, port, 4);
 }
 
 std::vector<int> SelectTransposer::GetFaninPorts(
     const utils::MutableNodeView& fanin, int port) {
   // Input 0 could be a scalar, a vector with size matching the first dimension
   // of input 1 and 2, or must have the same shape as input 1 and 2.
-  if (IsFanoutPortDimsN(fanin, port, 4)) {
+  if (IsFanoutPortRankN(fanin, port, 4)) {
     return {0, 1, 2};
   }
   return {1, 2};
@@ -1225,7 +1269,7 @@ Status SelectTransposer::TransposeNode(TransposeContext* context,
   DCHECK(IsSelect(*node->node()));
   const auto& regular_fanin_0 = node->GetRegularFanin(0);
   auto* regular_fanin_0_node = regular_fanin_0.node_view();
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
       !IsFaninScalarVector4D(*regular_fanin_0_node, regular_fanin_0.index()) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
@@ -1240,7 +1284,7 @@ Status SelectTransposer::TransposeNode(TransposeContext* context,
 Status ShapeTransposer::TransposeNode(TransposeContext* context,
                                       utils::MutableNodeView* node) {
   DCHECK(IsShape(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFaninPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFaninPortRankN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1267,7 +1311,8 @@ Status ShapeNTransposer::TransposeNode(TransposeContext* context,
 Status SliceTransposer::TransposeNode(TransposeContext* context,
                                       utils::MutableNodeView* node) {
   DCHECK(IsSlice(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
+      !IsFaninPortsDimsNIfConst(*node, {1, 2}, {4}) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1282,7 +1327,7 @@ Status SplitTransposer::TransposeNode(TransposeContext* context,
                                       utils::MutableNodeView* node) {
   DCHECK(IsSplit(*node->node()));
   const auto ports = GetDataFanoutPorts(*node);
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortsDimsN(*node, ports, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortsRankN(*node, ports, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1298,7 +1343,7 @@ Status SplitVTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsSplitV(*node->node()));
   const auto ports = GetDataFanoutPorts(*node);
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortsDimsN(*node, ports, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortsRankN(*node, ports, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1356,8 +1401,8 @@ bool SqueezeTransposer::IsAlongNHW(const utils::MutableNodeView& node) const {
 
 bool SqueezeTransposer::IsDimsSupported(
     const utils::MutableNodeView& node) const {
-  return (IsFanoutPortDimsN(node, 0, 2) && IsAlongHW(node)) ||
-         (IsFanoutPortDimsN(node, 0, 1) && IsAlongNHW(node));
+  return (IsFanoutPortRankN(node, 0, 2) && IsAlongHW(node)) ||
+         (IsFanoutPortRankN(node, 0, 1) && IsAlongNHW(node));
 }
 
 Status SqueezeTransposer::UpdateSqueezeDims(TransposeContext* context,
@@ -1444,7 +1489,8 @@ Status StridedSliceTransposer::PermuteMask(TransposeContext* context,
 Status StridedSliceTransposer::TransposeNode(TransposeContext* context,
                                              utils::MutableNodeView* node) {
   DCHECK(IsStridedSlice(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
+      !IsFaninPortsDimsNIfConst(*node, {1, 2, 3}, {4}) ||
       !HasOnlyBeginEndMask(*node) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
@@ -1461,7 +1507,7 @@ Status StridedSliceTransposer::TransposeNode(TransposeContext* context,
 Status SwitchTransposer::TransposeNode(TransposeContext* context,
                                        utils::MutableNodeView* node) {
   DCHECK(IsSwitch(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFaninPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFaninPortRankN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1474,7 +1520,7 @@ Status SwitchTransposer::TransposeNode(TransposeContext* context,
 Status TernaryOpTransposer::TransposeNode(TransposeContext* context,
                                           utils::MutableNodeView* node) {
   DCHECK(IsTernaryOp(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1487,7 +1533,8 @@ Status TernaryOpTransposer::TransposeNode(TransposeContext* context,
 Status TileTransposer::TransposeNode(TransposeContext* context,
                                      utils::MutableNodeView* node) {
   DCHECK(IsTile(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
+      !IsFaninPortDimsNIfConst(*node, 1, {4}) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1501,7 +1548,7 @@ Status TileTransposer::TransposeNode(TransposeContext* context,
 Status UnaryGradTransposer::TransposeNode(TransposeContext* context,
                                           utils::MutableNodeView* node) {
   DCHECK(IsUnaryGrad(*node->node()));
-  if (!ShouldProcess(*context, *node) || !IsFanoutPortDimsN(*node, 0, 4) ||
+  if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4) ||
       !IsAfterDstToSrcTransform(*context, *node)) {
     return Status::OK();
   }
@@ -1514,15 +1561,12 @@ Status UnaryGradTransposer::TransposeNode(TransposeContext* context,
 // Utils.
 
 bool IsDefaultLayoutSensitiveOp(const NodeDef& node) {
-  std::set<string> default_layout_sensitive_ops = {"AvgPool",
-                                                   "BiasAdd",
-                                                   "Conv2D",
-                                                   "DepthToSpace",
-                                                   "FusedBatchNorm",
-                                                   "FusedBatchNormV2",
-                                                   "FusedConv2DBiasActivation",
-                                                   "MaxPool",
-                                                   "SpaceToDepth"};
+  std::set<string> default_layout_sensitive_ops = {
+      "AvgPool",          "BiasAdd",
+      "Conv2D",           "DepthToSpace",
+      "FusedBatchNorm",   "FusedBatchNormV2",
+      "FusedBatchNormV3", "FusedConv2DBiasActivation",
+      "MaxPool",          "SpaceToDepth"};
   return default_layout_sensitive_ops.find(node.op()) !=
          default_layout_sensitive_ops.end();
 }

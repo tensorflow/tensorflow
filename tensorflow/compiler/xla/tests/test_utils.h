@@ -54,6 +54,29 @@ class PseudorandomGenerator {
   std::mt19937 generator_;
 };
 
+// Populates a floating point literal with random floating points sampled from a
+// uniform-log distribution spanning approximately the entire range of the
+// representable floating point.
+template <typename FloatT>
+void PopulateWithRandomFullRangeFloatingPointData(Literal* literal,
+                                                  std::minstd_rand0* engine) {
+  // Generates floating points with a log-uniform distribution. This causes the
+  // exponent of the floating point to have a uniform distribution.
+  int min_exp, max_exp;
+  if (std::is_same<FloatT, bfloat16>()) {
+    min_exp = std::numeric_limits<float>::min_exponent;
+    max_exp = std::numeric_limits<float>::max_exponent;
+  } else {
+    min_exp = std::numeric_limits<FloatT>::min_exponent;
+    max_exp = std::numeric_limits<FloatT>::max_exponent;
+  }
+  std::uniform_real_distribution<double> generator(min_exp - 1, max_exp - 1);
+  for (FloatT& value : literal->data<FloatT>()) {
+    float sign = ((*engine)() % 2 == 0) ? 1 : -1;
+    value = static_cast<FloatT>(pow(2, generator(*engine)) * sign);
+  }
+}
+
 // Generates fake data in a literal of the given shape, or returns an error
 // status if the element type is currently unhandled for fake data
 // generation. See below for documentation of pseudo_random.

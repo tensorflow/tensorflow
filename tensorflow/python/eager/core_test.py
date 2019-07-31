@@ -31,6 +31,7 @@ from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute as execute_lib
 from tensorflow.python.eager import test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -62,7 +63,20 @@ def current_device():
   return constant_op.constant(1.).device
 
 
+def configure_virtual_cpus():
+  cpus = config.list_physical_devices('CPU')
+  # Set 2 virtual CPUs
+  config.set_virtual_device_configuration(cpus[0], [
+      context.VirtualDeviceConfiguration(),
+      context.VirtualDeviceConfiguration()
+  ])
+
+
 class TFETest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(TFETest, self).setUp()
+    configure_virtual_cpus()
 
   def testContext(self):
     ctx = context.Context()
@@ -129,6 +143,13 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
                      cpu_stats.device)
     self.assertGreaterEqual(len(cpu_stats.node_stats), 1)
+
+  def testMultiCpuPlacement(self):
+    with ops.device('cpu:1'):
+      x = constant_op.constant(1.0)
+    y = array_ops.identity(x)
+    self.assertEqual(x.device, '/job:localhost/replica:0/task:0/device:CPU:1')
+    self.assertEqual(y.device, '/job:localhost/replica:0/task:0/device:CPU:0')
 
   @test_util.run_gpu_only
   def testShouldCopy(self):
@@ -758,6 +779,10 @@ class SendRecvTest(test_util.TensorFlowTestCase):
                'recv_device', device_name,
                'client_terminated', False))[0]
 
+  def setUp(self):
+    super(SendRecvTest, self).setUp()
+    configure_virtual_cpus()
+
   def testBasic(self):
     t0 = constant_op.constant(1.0)
     t1 = constant_op.constant(2.0)
@@ -788,6 +813,10 @@ class SendRecvTest(test_util.TensorFlowTestCase):
 
 
 class EagerTensorCacheTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(EagerTensorCacheTest, self).setUp()
+    configure_virtual_cpus()
 
   def testCacheSkipsTensorsTooLarge(self):
     cache = context._EagerTensorCache(max_items=100, max_tensor_size=3)

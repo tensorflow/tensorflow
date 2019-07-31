@@ -212,6 +212,7 @@ tensorflow/third_party/nccl/BUILD
 tensorflow/third_party/boringssl/BUILD
 tensorflow/third_party/mpi/.gitignore
 tensorflow/third_party/mpi/BUILD
+tensorflow/third_party/functools32.BUILD
 tensorflow/third_party/tensorrt/LICENSE
 tensorflow/third_party/tensorrt/BUILD
 tensorflow/third_party/tensorrt/build_defs.bzl.tpl

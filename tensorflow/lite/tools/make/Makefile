@@ -79,7 +79,7 @@ BENCHMARK_BINARY_NAME := benchmark_model
 
 # A small example program that shows how to link against the library.
 MINIMAL_SRCS := \
-tensorflow/lite/examples/minimal/minimal.cc
+	tensorflow/lite/examples/minimal/minimal.cc
 
 # What sources we want to compile, must be kept in sync with the main Bazel
 # build files.
@@ -91,7 +91,7 @@ PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/core/util/stats_calculator.cc
 
 CMD_LINE_TOOLS_SRCS := \
-  tensorflow/lite/tools/command_line_flags.cc
+	tensorflow/lite/tools/command_line_flags.cc
 
 CORE_CC_ALL_SRCS := \
 $(wildcard tensorflow/lite/*.cc) \
@@ -99,19 +99,19 @@ $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/allocator.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/block_map.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/blocking_counter.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/context.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/detect_dotprod.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/kernel.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/pack.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/pmu.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/thread_pool.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/trace.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/trmul.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/tune.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/wait.cc)
+tensorflow/lite/experimental/ruy/allocator.cc \
+tensorflow/lite/experimental/ruy/block_map.cc \
+tensorflow/lite/experimental/ruy/blocking_counter.cc \
+tensorflow/lite/experimental/ruy/context.cc \
+tensorflow/lite/experimental/ruy/detect_dotprod.cc \
+tensorflow/lite/experimental/ruy/kernel.cc \
+tensorflow/lite/experimental/ruy/pack.cc \
+tensorflow/lite/experimental/ruy/pmu.cc \
+tensorflow/lite/experimental/ruy/thread_pool.cc \
+tensorflow/lite/experimental/ruy/trace.cc \
+tensorflow/lite/experimental/ruy/trmul.cc \
+tensorflow/lite/experimental/ruy/tune.cc \
+tensorflow/lite/experimental/ruy/wait.cc
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/kernels/*.cc) \
@@ -119,12 +119,9 @@ $(wildcard tensorflow/lite/kernels/internal/*.cc) \
 $(wildcard tensorflow/lite/kernels/internal/optimized/*.cc) \
 $(wildcard tensorflow/lite/kernels/internal/reference/*.cc) \
 $(PROFILER_SRCS) \
-$(wildcard tensorflow/lite/kernels/*.c) \
-$(wildcard tensorflow/lite/kernels/internal/*.c) \
-$(wildcard tensorflow/lite/kernels/internal/optimized/*.c) \
-$(wildcard tensorflow/lite/kernels/internal/reference/*.c) \
-$(wildcard tensorflow/lite/tools/make/downloads/farmhash/src/farmhash.cc) \
-$(wildcard tensorflow/lite/tools/make/downloads/fft2d/fftsg.c)
+tensorflow/lite/tools/make/downloads/farmhash/src/farmhash.cc \
+tensorflow/lite/tools/make/downloads/fft2d/fftsg.c \
+tensorflow/lite/tools/make/downloads/flatbuffers/src/util.cpp
 endif
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
@@ -137,7 +134,7 @@ $(wildcard tensorflow/lite/kernels/*test_main.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util.cc) \
 $(MINIMAL_SRCS)
 
-BUILD_WITH_MMAP=true
+BUILD_WITH_MMAP ?= true
 ifeq ($(BUILD_TYPE),micro)
 	BUILD_WITH_MMAP=false
 endif
@@ -150,7 +147,7 @@ else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
 endif
 
-BUILD_WITH_NNAPI=true
+BUILD_WITH_NNAPI ?= true
 ifeq ($(BUILD_TYPE),micro)
 	BUILD_WITH_NNAPI=false
 endif
@@ -190,7 +187,7 @@ EVALUATION_UTILS_SRCS := \
 BENCHMARK_ALL_SRCS := $(TF_LITE_CC_SRCS) \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*.cc) \
 	$(PROFILE_SUMMARIZER_SRCS) \
-  $(CMD_LINE_TOOLS_SRCS) \
+	$(CMD_LINE_TOOLS_SRCS) \
 	$(EVALUATION_UTILS_SRCS)
 
 BENCHMARK_SRCS := $(filter-out \
@@ -231,10 +228,10 @@ MINIMAL_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MINIMAL_SRCS))))
 
 LIB_OBJS := $(addprefix $(OBJDIR), \
-$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(TF_LITE_CC_SRCS))))
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(TF_LITE_CC_SRCS)))))
 
 BENCHMARK_OBJS := $(addprefix $(OBJDIR), \
-$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(BENCHMARK_SRCS))))
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(BENCHMARK_SRCS)))))
 
 # For normal manually-created TensorFlow Lite C++ source files.
 $(OBJDIR)%.o: %.cc
@@ -244,6 +241,9 @@ $(OBJDIR)%.o: %.cc
 $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+$(OBJDIR)%.o: %.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
 all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY)

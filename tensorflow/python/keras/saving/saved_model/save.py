@@ -28,6 +28,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.saving import saving_utils
+from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.saving.saved_model import serialized_attributes
 from tensorflow.python.keras.saving.saved_model import utils
@@ -38,6 +39,7 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.lazy_loader import LazyLoader
 
 # To avoid circular dependencies between keras/engine and keras/saving,
@@ -86,23 +88,18 @@ def save(model, filepath, overwrite, include_optimizer):
     model.optimizer = orig_optimizer
 
 
-# Keys for the serialization cache.
-# Maps to the keras serialization dict {Layer --> SerializedAttributes object}
-_KERAS_CACHE_KEY = 'keras_serialized_attributes'
-
-
 def serialize_all_attributes(layer, serialization_cache):
   """Serialize all attributes in the layer."""
   save_model_default_signature = False
-  if _KERAS_CACHE_KEY not in serialization_cache:
-    keras_cache = serialization_cache[_KERAS_CACHE_KEY] = {}
+  if constants.KERAS_CACHE_KEY not in serialization_cache:
+    keras_cache = serialization_cache[constants.KERAS_CACHE_KEY] = {}
     if isinstance(layer, training_lib.Model):
       # Only trace default signature if the root object is a Model. Since the
       # keras cache key is only created in this method, we know that the object
       # is root if the key does not yet exist in the cache.
       save_model_default_signature = True
   else:
-    keras_cache = serialization_cache[_KERAS_CACHE_KEY]
+    keras_cache = serialization_cache[constants.KERAS_CACHE_KEY]
 
   if layer in keras_cache:
     return keras_cache[layer]
@@ -255,7 +252,8 @@ def _wrap_layer_functions(layer, serialization_cache):
     fns['activity_regularizer_fn'] = _wrap_activity_regularizer(layer)
     fns['call_and_return_all_conditional_losses'] = (
         call_collection.add_function(
-            _append_activity_regularizer_loss(call_fn_with_losses,
+            _append_activity_regularizer_loss(layer,
+                                              call_fn_with_losses,
                                               fns['activity_regularizer_fn']),
             '{}_layer_call_and_return_all_conditional_losses'.format(layer.name)
             ))
@@ -320,11 +318,12 @@ def _replace_child_layer_functions(layer, serialization_cache):
   # pylint: disable=protected-access
   original_fns = {}
   for child_layer in _list_all_layers(layer):
-    if child_layer not in serialization_cache[_KERAS_CACHE_KEY]:
+    if child_layer not in serialization_cache[constants.KERAS_CACHE_KEY]:
       layer_fns = (serialize_all_attributes(child_layer, serialization_cache)
                    .functions)
     else:
-      layer_fns = serialization_cache[_KERAS_CACHE_KEY][child_layer].functions
+      layer_fns = (
+          serialization_cache[constants.KERAS_CACHE_KEY][child_layer].functions)
     if not layer_fns:
       # This indicates either:
       #   - circular dependency, which means the current layer's functions
@@ -393,8 +392,10 @@ class LayerCallCollection(object):
   """
 
   def __init__(self, layer):
-    self._layer = layer
+    self.layer = layer
     self._expects_training_arg = layer._expects_training_arg  # pylint: disable=protected-access
+    self._training_arg_index = utils.get_training_arg_index(layer)
+
     self._input_signature = self._generate_input_signature(layer)
     self._functions = weakref.WeakValueDictionary()
     # Bool indicating whether this object is currently tracing the layer call
@@ -442,18 +443,21 @@ class LayerCallCollection(object):
       *args: Positional args passed to the original function.
       **kwargs: Keyword args passed to the original function.
     """
+    args = list(args)
     kwargs = kwargs.copy()
     self.tracing = True
     for fn in self._functions.values():
       # TODO(kathywu): Replace arguments with broader shapes defined in the
       # input signature.
       if self._expects_training_arg:
-        kwargs['training'] = False
-        fn.original_get_concrete_function(*args, **kwargs)
-        kwargs['training'] = True
-        fn.original_get_concrete_function(*args, **kwargs)
+        args, kwargs = utils.set_training_arg(False, self._training_arg_index,
+                                              args, kwargs)
+        fn.get_concrete_function(*args, **kwargs)
+        args, kwargs = utils.set_training_arg(True, self._training_arg_index,
+                                              args, kwargs)
+        fn.get_concrete_function(*args, **kwargs)
       else:
-        fn.original_get_concrete_function(*args, **kwargs)
+        fn.get_concrete_function(*args, **kwargs)
     self.tracing = False
 
   @property
@@ -483,6 +487,18 @@ class LayerCallCollection(object):
     return fn
 
 
+def maintain_losses(method):
+  """Ensures layer losses are kept the same, and runs method in call context."""
+  def wrapper(self, *args, **kwargs):
+    layer = self.call_collection.layer
+    original_losses = _reset_layer_losses(layer)
+    with base_layer_utils.call_context().enter(layer, None, True, None):
+      ret = method(self, *args, **kwargs)
+    _restore_layer_losses(original_losses)
+    return ret
+  return tf_decorator.make_decorator(target=method, decorator_func=wrapper)
+
+
 class LayerCall(def_function.Function):
   """Function that triggers traces of other functions in the same collection."""
 
@@ -490,17 +506,16 @@ class LayerCall(def_function.Function):
     super(LayerCall, self).__init__(*args, **kwargs)
     self.call_collection = call_collection
 
+  @maintain_losses
   def __call__(self, *args, **kwargs):
     if not self.call_collection.tracing:
       self.call_collection.add_trace(*args, **kwargs)
     return super(LayerCall, self).__call__(*args, **kwargs)
 
+  @maintain_losses
   def get_concrete_function(self, *args, **kwargs):
     if not self.call_collection.tracing:
       self.call_collection.add_trace(*args, **kwargs)
-    return super(LayerCall, self).get_concrete_function(*args, **kwargs)
-
-  def original_get_concrete_function(self, *args, **kwargs):
     return super(LayerCall, self).get_concrete_function(*args, **kwargs)
 
 
@@ -519,37 +534,32 @@ def _wrap_call_and_conditional_losses(layer):
   """
   # Create function that generates both outputs and losses
   layer_call = layer.call
-  if layer._expects_training_arg:  # pylint: disable=protected-access
-    def call_and_return_conditional_losses(inputs, training=False):
-      return layer_call(inputs, training=training), layer.get_losses_for(inputs)
-  else:
-    def call_and_return_conditional_losses(inputs):
-      K.set_learning_phase(0)
-      return layer_call(inputs), layer.get_losses_for(inputs)
-  return call_and_return_conditional_losses
+
+  def call_and_return_conditional_losses(inputs, *args, **kwargs):
+    return layer_call(inputs, *args, **kwargs), layer.get_losses_for(inputs)
+  return tf_decorator.make_decorator(
+      layer_call, call_and_return_conditional_losses)
 
 
 def _extract_outputs_from_fn(layer, call_and_return_conditional_losses):
   """Returns a function that returns only call function outputs."""
   if isinstance(layer, keras_load.RevivedLayer):
     return layer.keras_api.__call__  # pylint: disable=protected-access
-  if layer._expects_training_arg:  # pylint: disable=protected-access
-    def call(inputs, training=False):
-      return call_and_return_conditional_losses(inputs, training=training)[0]
-  else:
-    def call(inputs):
-      return call_and_return_conditional_losses(inputs)[0]
-  return call
+  def call(inputs, *args, **kwargs):
+    return call_and_return_conditional_losses(inputs, *args, **kwargs)[0]
+  layer_call = layer.call
+  return tf_decorator.make_decorator(layer_call, call)
 
 
 def _append_activity_regularizer_loss(
-    call_fn_with_losses, activity_regularizer_fn):
+    layer, call_fn_with_losses, activity_regularizer_fn):
   """Appends activity regularizer loss to losses returned by the wrapped fn."""
-  def fn(*args, **kwargs):
-    outputs, losses = call_fn_with_losses(*args, **kwargs)
+  def fn(inputs, *args, **kwargs):
+    outputs, losses = call_fn_with_losses(inputs, *args, **kwargs)
     losses.append(activity_regularizer_fn(outputs))
     return outputs, losses
-  return fn
+  layer_call = layer.call
+  return tf_decorator.make_decorator(target=layer_call, decorator_func=fn)
 
 
 def _wrap_unconditional_loss(loss_fn, index):

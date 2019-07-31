@@ -46,3 +46,8 @@ def is_tensor_list(t):
   # construct.
   return (tensor_util.is_tensor(t) and t.dtype == dtypes.variant and
           not t.shape.ndims)
+
+
+def is_range_tensor(t):
+  """Returns True if a tensor is the result of a tf.range op. Best effort."""
+  return tensor_util.is_tensor(t) and hasattr(t, 'op') and t.op.type == 'Range'

@@ -159,6 +159,10 @@ limitations under the License.
 %rename("%s") TFE_MonitoringNewSampler2;
 %rename("%s") TFE_MonitoringDeleteSampler2;
 %rename("%s") TFE_MonitoringGetCellSampler2;
+%rename("%s") TFE_NewCancellationManager;
+%rename("%s") TFE_CancellationManagerIsCancelled;
+%rename("%s") TFE_CancellationManagerStartCancel;
+%rename("%s") TFE_DeleteCancellationManager;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"

@@ -76,6 +76,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:context",
     ],
 )
 

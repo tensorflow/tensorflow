@@ -694,7 +694,7 @@ void Print(NextIterationSinkOp next_iteration, OpAsmPrinter *p) {
   *p << next_iteration.getOperationName() << " [";
   p->printOperand(next_iteration.getOperand(0));
   *p << "] ";
-  p->printOperand(next_iteration.getOperand(1));
+  p->printOperands(llvm::drop_begin(next_iteration.getOperands(), 1));
   *p << " : " << next_iteration.getOperand(1)->getType();
   p->printOptionalAttrDict(next_iteration.getAttrs());
 }

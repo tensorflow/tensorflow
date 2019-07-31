@@ -91,12 +91,7 @@ class SnapshotWriter {
 
     TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
 
-    // TODO(frankchn): Remove after ZlibOutputBuffer Cord support is added.
-    if (compression_type_.empty()) {
-      return dest_->Append(data);
-    } else {
-      return dest_->Append(data.ToString());
-    }
+    return dest_->Append(data);
   }
 #endif  // PLATFORM_GOOGLE
 

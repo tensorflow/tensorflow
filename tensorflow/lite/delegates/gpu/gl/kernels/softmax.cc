@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -53,7 +54,7 @@ class SoftMax : public NodeShader {
     for (int i = 0; i < reminder; ++i) {
       mask[i] = 1.0f;
     }
-    std::vector<UniformParameter> parameters = {
+    std::vector<Variable> parameters = {
         {"src_depth", IntegralDivideRoundUp(output->tensor.shape.c, 4)},
         {"mask", mask},
     };

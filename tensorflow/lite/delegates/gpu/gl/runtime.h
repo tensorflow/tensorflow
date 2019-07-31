@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/runtime/shared_buffer.h"
 #include "tensorflow/lite/delegates/gpu/gl/runtime_options.h"
 #include "tensorflow/lite/delegates/gpu/gl/stats.h"
-#include "tensorflow/lite/delegates/gpu/gl/uniform_parameter.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -45,7 +45,7 @@ class Runtime {
 
   // Takes parameters and objects and prepares GL program.
   Status AddProgram(const GlShader& shader,
-                    const std::vector<UniformParameter>& parameters,
+                    const std::vector<Variable>& parameters,
                     const std::vector<Object>& objects,
                     const uint3& num_workgroups);
 

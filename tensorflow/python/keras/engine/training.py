@@ -61,6 +61,7 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 try:
@@ -1414,14 +1415,19 @@ class Model(network.Network):
   def _update_sample_weight_modes(self, sample_weights=None):
     """Updates sample weight modes based on training/eval inputs.
 
+    Sample weight placeholders will be created for all or no outputs
+    based on whether sample_weight is provided for any output.
+
     If model contains `_sample_weight_modes` we check if the input
     `sample_weights` corresponds to the sample weight modes.
-      1. If sample weight mode for output i is 'temporal', we do not
-        change it as the `temporal` mode has been set by the user.
-      2. Set sample weight mode to be 'samplewise' for output i if sample
-        weight mode was not set before and sample weight inputs are given.
+      1. Set sample weight mode to be 'temporal' for output i, if `compile`
+        sample_weight_mode was set to `temporal` and sample weight inputs
+        are given for one or more outputs.
+      2. Set sample weight mode to be 'samplewise' for output i, if `compile`
+        sample_weight_mode was not set and sample weight inputs are given for
+        one or more outputs.
       3. Reset sample weight mode to None for output i if sample weight mode
-        was set to 'samplewise' but there is no sample weight input.
+        was set but there is no sample weight input.
 
     Args:
       sample_weights: List of sample weights of the same length as model outputs
@@ -1429,21 +1435,11 @@ class Model(network.Network):
     """
     if not self._is_compiled:
       return
-    if not sample_weights:
-      sample_weights = [None] * len(self._training_endpoints)
-    for endpoint, sample_weight in zip(self._training_endpoints,
-                                       sample_weights):
-      if endpoint.sample_weight_mode == 'temporal':
-        # If sample weight mode for endpoint is 'temporal', do nothing.
-        continue
-      if endpoint.sample_weight_mode is None and sample_weight is not None:
-        # Set sample weight mode to be 'samplewise' for output i if sample
-        # weight mode was not set before and sample weight inputs are given.
-        endpoint.sample_weight_mode = 'samplewise'
-      elif (endpoint.sample_weight_mode == 'samplewise' and
-            sample_weight is None):
-        # Reset sample weight mode to None for output i if sample weight mode
-        # was set to 'samplewise' but there is no sample weight input.
+    if sample_weights and any([s is not None for s in sample_weights]):
+      for endpoint in self._training_endpoints:
+        endpoint.sample_weight_mode = self.sample_weight_mode or 'samplewise'
+    else:
+      for endpoint in self._training_endpoints:
         endpoint.sample_weight_mode = None
 
   def _recompile_weights_loss_and_weighted_metrics(self):
@@ -1703,7 +1699,13 @@ class Model(network.Network):
         if steps is None:
           batch_size = static_batch_size
 
-    if batch_size is None and steps is None:
+    if (batch_size is None
+        and steps is None
+        and not isinstance(x, (dataset_ops.DatasetV2,
+                               iterator_ops.Iterator,
+                               iterator_ops.IteratorV2,
+                               data_utils.Sequence))
+        and not tf_inspect.isgenerator(x)):
       # Backwards compatibility
       batch_size = 32
     return batch_size
@@ -2104,12 +2106,11 @@ class Model(network.Network):
 
       first_x_value = nest.flatten(x)[0]
       if isinstance(first_x_value, np.ndarray):
-        x = distributed_training_utils.list_to_tuple(x)
+        x = training_utils.list_to_tuple(x)
         if y is not None:
-          y = distributed_training_utils.list_to_tuple(y)
+          y = training_utils.list_to_tuple(y)
           if sample_weight is not None:
-            sample_weight = distributed_training_utils.list_to_tuple(
-                sample_weight)
+            sample_weight = training_utils.list_to_tuple(sample_weight)
             in_tuple = (x, y, sample_weight)
           else:
             in_tuple = (x, y)

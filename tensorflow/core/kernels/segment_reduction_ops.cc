@@ -16,9 +16,9 @@ limitations under the License.
 // See docs in ../ops/math_ops.cc.
 
 #define EIGEN_USE_THREADS
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 
@@ -37,12 +37,19 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/util.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if GOOGLE_CUDA
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/platform/cuda.h"
 
 using stream_executor::cuda::ScopedActivateExecutorContext;
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/platform/rocm.h"
+using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -196,7 +203,7 @@ class SegmentReductionOp : public OpKernel {
   }
 };
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 //  SegmentSumGPUOp is a segment sum operator implemented for GPU only.
 //  TODO: This implementation of SegmentSumGPUOp is sometimes slower than
 //  its unsorted counterpart (mostly when problem size is small).
@@ -295,7 +302,7 @@ class SegmentSumGPUOp : public AsyncOpKernel {
         stream, create_and_check_output);
   }
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_CPU_KERNEL_SEGMENT(name, functor, type, index_type, \
                                     default_value)                   \
@@ -343,7 +350,7 @@ REGISTER_COMPLEX_CPU_KERNELS_ALL(complex128);
 #undef REGISTER_REAL_CPU_KERNELS_ALL
 #undef REGISTER_COMPLEX_CPU_KERNELS_ALL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_SORTED_KERNELS(type, index_type)                  \
   REGISTER_KERNEL_BUILDER(Name("SegmentSum")                           \
                               .Device(DEVICE_GPU)                      \
@@ -358,7 +365,7 @@ REGISTER_COMPLEX_CPU_KERNELS_ALL(complex128);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SORTED_KERNELS_ALL);
 #undef REGISTER_GPU_SORTED_KERNELS
 #undef REGISTER_GPU_SORTED_KERNELS_ALL
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // ____________________________________________________________________________
 // Unsorted segment reduction ops.
@@ -369,18 +376,17 @@ namespace functor {
 template <typename T, typename Index, typename InitialValueF,
           typename ReductionF>
 struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
-  void operator()(OpKernelContext* ctx, const Index num_segments,
-                  const TensorShape& segment_ids_shape,
+  void operator()(OpKernelContext* ctx, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
-                  const Index data_size, const T* data,
+                  typename TTypes<T, 2>::ConstTensor data,
                   typename TTypes<T, 2>::Tensor output) {
     output.setConstant(InitialValueF()());
-    if (data_size == 0) {
+    if (data.size() == 0) {
       return;
     }
     const int64 N = segment_ids.dimension(0);
+    const int64 num_segments = output.dimension(0);
     ReductionF reduction;
-    auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, data_size / N);
     for (int64 i = 0; i < N; ++i) {
       Index j = internal::SubtleMustCopy(segment_ids(i));
       if (j < 0) {
@@ -390,7 +396,7 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
                   errors::InvalidArgument(
                       "segment_ids", SliceDebugString(segment_ids_shape, i),
                       " = ", j, " is out of range [0, ", num_segments, ")"));
-      reduction(data_flat.template chip<0>(i), output.template chip<0>(j));
+      reduction(data.template chip<0>(i), output.template chip<0>(j));
     }
   }
 };
@@ -478,7 +484,7 @@ class UnsortedSegmentReductionOp : public OpKernel {
       return;
     }
     const auto segment_flat = segment_ids.flat<Index>();
-    const Index output_rows = internal::SubtleMustCopy(static_cast<Index>(
+    const int64 output_rows = internal::SubtleMustCopy(static_cast<int64>(
         num_segments.dtype() == DT_INT32 ? num_segments.scalar<int32>()()
                                          : num_segments.scalar<int64>()()));
     OP_REQUIRES(context, output_rows >= 0,
@@ -492,9 +498,9 @@ class UnsortedSegmentReductionOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     auto output_flat = output->flat_outer_dims<T>();
-    auto data_ptr = data.template flat<T>().data();
-    reduction_functor_(context, output_rows, segment_ids.shape(), segment_flat,
-                       data.NumElements(), data_ptr, output_flat);
+    auto data_flat = data.flat_inner_outer_dims<T, 2>(segment_ids.dims() - 1);
+    reduction_functor_(context, segment_ids.shape(), segment_flat, data_flat,
+                       output_flat);
   }
 
  protected:
@@ -554,7 +560,7 @@ REGISTER_COMPLEX_CPU_UNSORTED_KERNELS_ALL(complex128);
 #undef REGISTER_COMPLEX_CPU_UNSORTED_KERNELS_ALL
 #undef REGISTER_REAL_CPU_UNSORTED_KERNELS_ALL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_KERNEL_UNSORTEDSEGMENT(                                 \
     name, type, index_type, initial_value_functor, reduction_kernel_functor) \
   REGISTER_KERNEL_BUILDER(                                                   \
@@ -599,8 +605,11 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL);
 TF_CALL_int32(REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
 TF_CALL_int32(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
+// TODO(rocm): support atomicAdd for complex numbers on ROCm
+#if GOOGLE_CUDA
 TF_CALL_complex64(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
 TF_CALL_complex128(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
+#endif
 
 #undef REGISTER_GPU_KERNEL_UNSORTEDSEGMENT
 #undef REGISTER_REAL_GPU_UNSORTED_KERNELS
@@ -608,7 +617,7 @@ TF_CALL_complex128(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
 #undef REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL
 #undef REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // ____________________________________________________________________________
 // Sparse segment reduction ops.

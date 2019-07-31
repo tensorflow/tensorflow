@@ -240,16 +240,28 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
         "prefetch_input_elements",
         prefetch_input_elements,
         argument_default=2 * cycle_length)
-    variant_tensor = ged_ops.experimental_parallel_interleave_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._map_func.function.captured_inputs,
-        self._cycle_length,
-        self._block_length,
-        self._sloppy,
-        self._buffer_output_elements,
-        self._prefetch_input_elements,
-        f=self._map_func.function,
-        **self._flat_structure)
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = ged_ops.parallel_interleave_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          self._map_func.function.captured_inputs,
+          self._cycle_length,
+          self._block_length,
+          self._sloppy,
+          self._buffer_output_elements,
+          self._prefetch_input_elements,
+          f=self._map_func.function,
+          **self._flat_structure)
+    else:
+      variant_tensor = ged_ops.experimental_parallel_interleave_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          self._map_func.function.captured_inputs,
+          self._cycle_length,
+          self._block_length,
+          self._sloppy,
+          self._buffer_output_elements,
+          self._prefetch_input_elements,
+          f=self._map_func.function,
+          **self._flat_structure)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)
 

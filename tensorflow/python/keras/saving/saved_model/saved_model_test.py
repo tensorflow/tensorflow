@@ -30,7 +30,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.saving.saved_model import load as saved_model_load
+from tensorflow.python.keras.saving.saved_model import load as keras_load
+from tensorflow.python.keras.saving.saved_model import save as keras_save
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -60,6 +61,13 @@ class LayerWithLearningPhase(keras.engine.base_layer.Layer):
     return input_shape
 
 
+class LayerWithLoss(keras.layers.Layer):
+
+  def call(self, inputs):
+    self.add_loss(math_ops.reduce_sum(inputs), inputs)
+    return inputs
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
@@ -87,7 +95,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     saved_model_dir = self._save_model_dir()
     tf_save.save(model, saved_model_dir)
 
-    loaded = saved_model_load.load(saved_model_dir)
+    loaded = keras_load.load(saved_model_dir)
     self.evaluate(variables.variables_initializer(loaded.variables))
     self.assertAllClose(self.evaluate(model.weights),
                         self.evaluate(loaded.weights))
@@ -123,7 +131,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     saved_model_dir = self._save_model_dir()
     self.evaluate(variables.variables_initializer(layer.variables))
     tf_save.save(layer, saved_model_dir)
-    loaded = saved_model_load.load(saved_model_dir)
+    loaded = keras_load.load(saved_model_dir)
     self.evaluate(variables.variables_initializer(loaded.variables))
 
     equal_attrs = ['name', '_expects_training_arg', 'trainable']
@@ -137,13 +145,6 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
   def test_maintains_losses(self):
     """Tests that the layer losses do not change before and after export."""
-
-    class LayerWithLoss(keras.layers.Layer):
-
-      def call(self, inputs):
-        self.add_loss(math_ops.reduce_sum(inputs), inputs)
-        return inputs
-
     model = keras.models.Sequential([LayerWithLoss()])
     model.compile(
         loss='mse',
@@ -172,7 +173,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     layer.build([None, None])
     saved_model_dir = self._save_model_dir()
     tf_save.save(layer, saved_model_dir)
-    loaded = saved_model_load.load(saved_model_dir)
+    loaded = keras_load.load(saved_model_dir)
     input_arr = array_ops.ones((4, 3))
 
     # Run the layer, and use the keras backend learing phase
@@ -214,7 +215,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertEqual(expected_layers, len(loaded.keras_api.layers))
     input_arr = array_ops.ones((4, 3))
     self.assertAllClose(self.evaluate(model(input_arr)),
-                        self.evaluate(loaded(input_arr)))
+                        self.evaluate(loaded(input_arr, training=False)))
 
   @keras_parameterized.run_with_all_model_types
   def test_compiled_model(self):
@@ -232,7 +233,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     # TODO(b/134519980): Issue with model.fit if the model call function uses
     # a tf.function (Graph mode only).
     with context.eager_mode():
-      loaded = saved_model_load.load(saved_model_dir)
+      loaded = keras_load.load(saved_model_dir)
       actual_predict = loaded.predict(input_arr)
       self.assertAllClose(expected_predict, actual_predict)
 
@@ -261,7 +262,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     layer = LayerWithNestedSpec()
     saved_model_dir = self._save_model_dir()
     tf_save.save(layer, saved_model_dir)
-    loaded = saved_model_load.load(saved_model_dir)
+    loaded = keras_load.load(saved_model_dir)
     self.assertEqual(3, loaded.input_spec['a'].max_ndim)
     self.assertEqual({-1: 2}, loaded.input_spec['a'].axes)
     self.assertAllEqual([None, 2, 3], loaded.input_spec['b'].shape)
@@ -274,7 +275,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     saved_model_dir = self._save_model_dir()
 
     model.save(saved_model_dir, save_format='tf')
-    loaded = saved_model_load.load(saved_model_dir)
+    loaded = keras_load.load(saved_model_dir)
     input_arr_1 = np.random.random((1, 3)).astype('float32')
     input_arr_2 = np.random.random((1, 5)).astype('float32')
 
@@ -292,7 +293,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
     saved_model_dir = self._save_model_dir()
     model.save(saved_model_dir, save_format='tf')
-    loaded = saved_model_load.load(saved_model_dir)
+    loaded = keras_load.load(saved_model_dir)
 
     self.assertLen(loaded.layers, 2)
     self.assertLen(loaded.losses, 2)
@@ -306,6 +307,82 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
     self.assertLen(loaded.layers, 2)
     self.assertLen(loaded.losses, 2)
+
+
+class TestLayerCallTracing(test.TestCase):
+
+  def test_functions_have_same_trace(self):
+
+    class Layer(keras.engine.base_layer.Layer):
+
+      def call(self, inputs):
+        return inputs
+
+      def call2(self, inputs):
+        return inputs * 2
+
+    layer = Layer()
+    call_collection = keras_save.LayerCallCollection(layer)
+    fn = call_collection.add_function(layer.call, 'call')
+    fn2 = call_collection.add_function(layer.call2, 'call2')
+
+    fn(np.ones((2, 3)))
+    fn(np.ones((4, 5)))
+
+    self.assertLen(fn._list_all_concrete_functions_for_serialization(), 2)
+    self.assertLen(fn2._list_all_concrete_functions_for_serialization(), 2)
+
+    # Check that the shapes are correct
+    self.assertEqual(
+        {(2, 3), (4, 5)},
+        set(tuple(c.structured_input_signature[0][0].shape.as_list())
+            for c in fn2._list_all_concrete_functions_for_serialization()))
+
+  def test_training_arg_replacement(self):
+
+    def assert_num_traces(layer_cls, training_keyword):
+      layer = layer_cls()
+      call_collection = keras_save.LayerCallCollection(layer)
+      fn = call_collection.add_function(layer.call, 'call')
+
+      fn(np.ones((2, 3)), training=True)
+      self.assertLen(fn._list_all_concrete_functions_for_serialization(), 2)
+
+      fn(np.ones((2, 4)), training=False)
+      self.assertLen(fn._list_all_concrete_functions_for_serialization(), 4)
+
+      if training_keyword:
+        fn(np.ones((2, 5)), True)
+        self.assertLen(fn._list_all_concrete_functions_for_serialization(), 6)
+        fn(np.ones((2, 6)))
+        self.assertLen(fn._list_all_concrete_functions_for_serialization(), 8)
+
+    class LayerWithTrainingKeyword(keras.engine.base_layer.Layer):
+
+      def call(self, inputs, training=False):
+        return inputs * training
+
+    assert_num_traces(LayerWithTrainingKeyword, training_keyword=True)
+
+    class LayerWithKwargs(keras.engine.base_layer.Layer):
+
+      def call(self, inputs, **kwargs):
+        return inputs * kwargs['training']
+
+    assert_num_traces(LayerWithKwargs, training_keyword=False)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_maintains_losses(self):
+    layer = LayerWithLoss()
+    layer(np.ones((2, 3)))
+    previous_losses = layer.losses[:]
+
+    call_collection = keras_save.LayerCallCollection(layer)
+    fn = call_collection.add_function(layer.call, 'call')
+    fn(np.ones((2, 3)))
+
+    self.assertAllEqual(previous_losses, layer.losses)
+
 
 if __name__ == '__main__':
   test.main()

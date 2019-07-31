@@ -311,7 +311,6 @@ py_library(
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:graph_view",
-        "//tensorflow/python/training/tracking:object_identity",
         "//tensorflow/python/training/tracking:util",
     ],
 )

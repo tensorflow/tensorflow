@@ -79,6 +79,7 @@ py_library(
         ":op_hint",
         ":util",
         "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
+        "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//tensorflow/lite/experimental/tensorboard:ops_util",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
@@ -148,6 +149,7 @@ py_library(
         ":lite_constants",
         ":op_hint",
         "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/eager:wrap_function",
     ],
 )
 

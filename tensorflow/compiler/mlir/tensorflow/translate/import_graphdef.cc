@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -80,9 +82,12 @@ class Importer {
       const FunctionLibraryDefinition& flib_def, const NodeSpecs& specs);
 
  private:
+  // Most types with subtypes have only one subtype.
+  using ElementSubtypes = llvm::SmallVector<mlir::TensorType, 1>;
+
   explicit Importer(
       const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
-      const NodeSpecs& specs, mlir::Module module,
+      const NodeSpecs& specs, mlir::ModuleOp module,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name)
       : module_(module),
         context_(module.getContext()),
@@ -122,34 +127,40 @@ class Importer {
   // data type and shape information is maintained by the shape_refiner_.
   Status AddNodesToShapeRefiner();
 
-  // Gets the inferred type for the i-th input of the node in the context.
-  StatusOr<mlir::Type> InferInputType(ExtendedInferenceContext* shape_context,
-                                      int i, mlir::Builder builder);
+  // Returns the inferred input type at index `idx` of the node in the context.
+  StatusOr<mlir::TensorType> InferInputType(
+      ExtendedInferenceContext* shape_context, int idx, mlir::Builder builder);
 
-  // Gets the inferred type for the i-th output of the node in the context.
-  StatusOr<mlir::Type> InferOutputType(ExtendedInferenceContext* shape_context,
-                                       int i, mlir::Builder builder);
-
-  // Converts the TF DataType dtype into an MLIR (scalar) type.
-  Status ConvertDataType(const DataType& dtype, mlir::Builder builder,
-                         mlir::Type* type) {
-    return ::tensorflow::ConvertDataType(dtype, builder, type);
-  }
+  // Returns the inferred output type at index `idx` of the node in the context.
+  StatusOr<mlir::TensorType> InferOutputType(
+      ExtendedInferenceContext* shape_context, int idx, mlir::Builder builder);
 
   // Converts the inferred shape referred to by 'handle' in 'context', with
-  // given element type, and return an MLIR type.
-  StatusOr<mlir::Type> ConvertShapeAndDataType(
-      const shape_inference::ShapeHandle& handle,
-      shape_inference::InferenceContext* context, DataType dtype,
-      mlir::Builder builder);
+  // given element type, and returns an MLIR tensor type.
+  StatusOr<mlir::TensorType> ConvertDataTypeAndShape(
+      DataType dtype, const shape_inference::ShapeHandle& handle,
+      const std::vector<shape_inference::ShapeAndType>* handle_subtypes,
+      shape_inference::InferenceContext* context, mlir::Builder builder);
+
+  // Converts the inferred shape referred to by 'handle' in 'context', with
+  // given element type, and returns an MLIR tensor type.
+  StatusOr<mlir::TensorType> ConvertElementTypeAndShape(
+      mlir::Type element_type, const shape_inference::ShapeHandle& handle,
+      shape_inference::InferenceContext* context, mlir::Builder builder);
+
+  // Converts the inferred subtypes for an element type to corresponding MLIR
+  // types in 'context'.
+  StatusOr<ElementSubtypes> ConvertSubtypes(
+      const std::vector<shape_inference::ShapeAndType>* handle_subtypes,
+      shape_inference::InferenceContext* context, mlir::Builder builder);
 
   // Converts the tensor proto into an MLIR elements attribute.
   StatusOr<mlir::ElementsAttr> ConvertTensorProto(const TensorProto& value) {
     return ::tensorflow::ConvertTensorProto(value, builder_.get());
   }
 
-  // Converts func name in graphdef to mlir::FunctionAttribute.
-  StatusOr<mlir::FunctionAttr> ConvertFunctionCallName(
+  // Converts func name in graphdef to mlir::SymbolRefAttribute.
+  StatusOr<mlir::SymbolRefAttr> ConvertFunctionCallName(
       const std::string& func_name);
 
   // Converts the given non-function-call AttrValue to an MLIR Attribute.
@@ -252,7 +263,7 @@ class Importer {
   using NodeValueMap = absl::flat_hash_map<int, mlir::Operation*>;
 
   std::unique_ptr<mlir::OpBuilder> builder_;
-  mlir::Module module_;
+  mlir::ModuleOp module_;
   mlir::MLIRContext* context_;
   std::unordered_map<std::string, std::string>* tf_name_to_mlir_name_;
   const FunctionLibraryDefinition& graph_flib_;
@@ -503,32 +514,46 @@ Status Importer::AddNodesToShapeRefiner() {
   return Status::OK();
 }
 
-StatusOr<mlir::Type> Importer::InferInputType(
-    ExtendedInferenceContext* shape_context, int i, mlir::Builder builder) {
-  DataType dtype = shape_context->input_type(i);
-  shape_inference::ShapeHandle input_shape_handle =
-      shape_context->get_context()->input(i);
-  return ConvertShapeAndDataType(input_shape_handle,
-                                 shape_context->get_context(), dtype, builder);
+StatusOr<mlir::TensorType> Importer::InferInputType(
+    ExtendedInferenceContext* shape_context, int idx, mlir::Builder builder) {
+  DataType dtype = shape_context->input_type(idx);
+  auto* context = shape_context->get_context();
+  return ConvertDataTypeAndShape(dtype, context->input(idx),
+                                 context->input_handle_shapes_and_types(idx),
+                                 context, builder);
 }
 
-StatusOr<mlir::Type> Importer::InferOutputType(
-    ExtendedInferenceContext* shape_context, int i, mlir::Builder builder) {
-  DataType dtype = shape_context->output_type(i);
-  shape_inference::ShapeHandle output_shape_handle =
-      shape_context->get_context()->output(i);
-  return ConvertShapeAndDataType(output_shape_handle,
-                                 shape_context->get_context(), dtype, builder);
+StatusOr<mlir::TensorType> Importer::InferOutputType(
+    ExtendedInferenceContext* shape_context, int idx, mlir::Builder builder) {
+  DataType dtype = shape_context->output_type(idx);
+  auto* context = shape_context->get_context();
+  return ConvertDataTypeAndShape(dtype, context->output(idx),
+                                 context->output_handle_shapes_and_types(idx),
+                                 context, builder);
 }
 
-StatusOr<mlir::Type> Importer::ConvertShapeAndDataType(
-    const shape_inference::ShapeHandle& handle,
-    shape_inference::InferenceContext* context, DataType dtype,
-    mlir::Builder builder) {
-  mlir::Type output_type;
+StatusOr<mlir::TensorType> Importer::ConvertDataTypeAndShape(
+    DataType dtype, const shape_inference::ShapeHandle& handle,
+    const std::vector<shape_inference::ShapeAndType>* handle_subtypes,
+    shape_inference::InferenceContext* context, mlir::Builder builder) {
+  TF_ASSIGN_OR_RETURN(auto subtypes,
+                      ConvertSubtypes(handle_subtypes, context, builder));
+
+  // TODO(hinsu): Store subtypes information for DT_RESOURCE element type as
+  // well.
   mlir::Type element_type;
-  TF_RETURN_IF_ERROR(ConvertDataType(dtype, builder, &element_type));
+  if (dtype == DT_VARIANT) {
+    element_type = mlir::TF::VariantType::get(subtypes, context_);
+  } else {
+    TF_RETURN_IF_ERROR(
+        ::tensorflow::ConvertDataType(dtype, builder, &element_type));
+  }
+  return ConvertElementTypeAndShape(element_type, handle, context, builder);
+}
 
+StatusOr<mlir::TensorType> Importer::ConvertElementTypeAndShape(
+    mlir::Type element_type, const shape_inference::ShapeHandle& handle,
+    shape_inference::InferenceContext* context, mlir::Builder builder) {
   if (!context->RankKnown(handle)) {
     return builder.getTensorType(element_type);
   }
@@ -553,6 +578,25 @@ StatusOr<mlir::Type> Importer::ConvertShapeAndDataType(
       llvm::makeArrayRef(dimensions.begin(), dimensions.end()), element_type);
 }
 
+StatusOr<Importer::ElementSubtypes> Importer::ConvertSubtypes(
+    const std::vector<shape_inference::ShapeAndType>* handle_subtypes,
+    shape_inference::InferenceContext* context, mlir::Builder builder) {
+  ElementSubtypes subtypes;
+  if (!handle_subtypes) return subtypes;
+
+  subtypes.reserve(handle_subtypes->size());
+  for (const auto& subtype : *handle_subtypes) {
+    mlir::Type element_type;
+    TF_RETURN_IF_ERROR(
+        ::tensorflow::ConvertDataType(subtype.dtype, builder, &element_type));
+    TF_ASSIGN_OR_RETURN(mlir::TensorType type,
+                        ConvertElementTypeAndShape(element_type, subtype.shape,
+                                                   context, builder));
+    subtypes.push_back(type);
+  }
+  return subtypes;
+}
+
 Status Importer::ConvertFunctionCallAttribute(
     const std::string& base_name, const AttrValue& value,
     llvm::SmallVector<mlir::NamedAttribute, 4>* attributes) {
@@ -568,12 +612,12 @@ Status Importer::ConvertFunctionCallAttribute(
   return Status::OK();
 }
 
-StatusOr<mlir::FunctionAttr> Importer::ConvertFunctionCallName(
+StatusOr<mlir::SymbolRefAttr> Importer::ConvertFunctionCallName(
     const std::string& func_name) {
   TF_RETURN_IF_ERROR(ConvertLibFunction(func_name));
   auto mlir_func_name = (*tf_name_to_mlir_name_)[func_name];
-  auto func = module_.getNamedFunction(mlir_func_name);
-  return builder_->getFunctionAttr(func);
+  auto func = module_.lookupSymbol<mlir::FuncOp>(mlir_func_name);
+  return builder_->getSymbolRefAttr(func);
 }
 
 StatusOr<mlir::Attribute> Importer::ConvertAttributeValue(
@@ -628,6 +672,8 @@ StatusOr<mlir::Attribute> Importer::ConvertAttributeValue(
     }
     case AttrValue::kFunc:
       return errors::Unknown("kFunc type should be handled separately!");
+    case AttrValue::VALUE_NOT_SET:
+      return builder_->getUnitAttr();
     // kPlaceholder is not implemented.
     default:
       return errors::Unimplemented(
@@ -676,8 +722,8 @@ Status Importer::ConvertLibFunction(const std::string& func_name) {
   if (!grad_func_name.empty()) {
     TF_RETURN_IF_ERROR(ConvertLibFunction(grad_func_name));
     auto mlir_grad_func_name = (*tf_name_to_mlir_name_)[grad_func_name];
-    auto grad_func = module_.getNamedFunction(mlir_grad_func_name);
-    auto gradient_attr = builder_->getFunctionAttr(grad_func);
+    auto grad_func = module_.lookupSymbol<mlir::FuncOp>(mlir_grad_func_name);
+    auto gradient_attr = builder_->getSymbolRefAttr(grad_func);
     auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
     attributes.push_back(builder_->getNamedAttr(grad_string, gradient_attr));
   }
@@ -750,7 +796,8 @@ Status Importer::ConvertFunctionArgAndRets(
               "max", builder_->getF32FloatAttr(input_spec.max_value)));
           state.attributes.push_back(builder_->getNamedAttr(
               "type", builder_->getTypeAttr(final_type)));
-          bb->getFunction().setAttr("tf.quantize", builder_->getUnitAttr());
+          inst->getParentOfType<mlir::FuncOp>().setAttr(
+              "tf.quantize", builder_->getUnitAttr());
         }
       }
 
@@ -924,13 +971,7 @@ Status Importer::ConvertNode(const Node& node) {
         back_edge_node_output_[&node] == i) {
       continue;
     }
-    DataType dtype = context->output_type(i);
-    shape_inference::ShapeHandle output_shape_handle =
-        context->get_context()->output(i);
-    TF_ASSIGN_OR_RETURN(
-        auto type,
-        ConvertShapeAndDataType(output_shape_handle, context->get_context(),
-                                dtype, *builder_));
+    TF_ASSIGN_OR_RETURN(auto type, InferOutputType(context, i, *builder_));
     result.types.push_back(type);
   }
   result.types.push_back(
@@ -1111,8 +1152,8 @@ Status Importer::Convert(llvm::StringRef func_name,
                          const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
                          llvm::ArrayRef<mlir::NamedAttribute> attrs) {
   // TODO(b/122040776): Uses debug info for FunctionDef.
-  auto function = mlir::Function::create(mlir::UnknownLoc::get(context_),
-                                         func_name, func_type, attrs);
+  auto function = mlir::FuncOp::create(mlir::UnknownLoc::get(context_),
+                                       func_name, func_type, attrs);
 
   module_.push_back(function);
   builder_ = absl::make_unique<mlir::OpBuilder>(function.getBody());
@@ -1221,7 +1262,8 @@ StatusOr<mlir::FunctionType> Importer::InferLibFunctionType(
   arg_types.reserve(fbody.arg_types.size());
   for (auto dataType : fbody.arg_types) {
     mlir::Type element_type;
-    TF_RETURN_IF_ERROR(ConvertDataType(dataType, builder, &element_type));
+    TF_RETURN_IF_ERROR(
+        ::tensorflow::ConvertDataType(dataType, builder, &element_type));
     // TODO(hinsu): Derive shape of function arguments based on shapes available
     // at call sites of this function. That way it is possible to have a
     // partially known shape in some cases instead of unranked tensor types.
@@ -1239,7 +1281,7 @@ StatusOr<mlir::FunctionType> Importer::InferLibFunctionType(
     // Return type of the function is type of the only input of the respective
     // return node in the function.
     TF_ASSIGN_OR_RETURN(auto type,
-                        InferInputType(shape_context, /*i=*/0, builder));
+                        InferInputType(shape_context, /*idx=*/0, builder));
     ret_types.push_back(type);
   }
 
@@ -1250,7 +1292,8 @@ StatusOr<mlir::OwningModuleRef> Importer::Convert(
     mlir::MLIRContext* context, const Graph& graph,
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
     const NodeSpecs& specs) {
-  mlir::OwningModuleRef module = mlir::Module::create(context);
+  mlir::OwningModuleRef module =
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
   Importer importer(flib_def, debug_info, specs, module.get(),
                     &tf_name_to_mlir_name);

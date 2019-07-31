@@ -374,7 +374,7 @@ def experimental_tpu_test_loop(model,
   if steps is not None:
     target_steps = steps
   else:
-    raise ValueError('Number of steps could not be infered from the data, '
+    raise ValueError('Number of steps could not be inferred from the data, '
                      'please pass the steps argument.')
 
   current_step = 0
@@ -519,7 +519,7 @@ def experimental_tpu_predict_loop(model,
   if steps is not None:
     target_steps = steps
   else:
-    raise ValueError('Number of steps could not be infered from the data, '
+    raise ValueError('Number of steps could not be inferred from the data, '
                      'please pass the steps argument.')
 
   current_step = 0
@@ -647,7 +647,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
       steps_per_epoch = training_utils.infer_steps_for_dataset(
           dataset, steps_per_epoch, epochs, steps_name='steps_per_epoch')
       if steps_per_epoch is None:
-        raise ValueError('Number of steps could not be infered from the data, '
+        raise ValueError('Number of steps could not be inferred from the data, '
                          'please pass the steps_per_epoch argument.')
 
       if not context.executing_eagerly():
@@ -704,7 +704,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
       steps = training_utils.infer_steps_for_dataset(
           dataset, steps, steps_name='steps')
       if steps is None:
-        raise ValueError('Number of steps could not be infered from the data, '
+        raise ValueError('Number of steps could not be inferred from the data, '
                          'please pass the steps argument.')
 
       if not context.executing_eagerly():
@@ -741,7 +741,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
       steps = training_utils.infer_steps_for_dataset(
           dataset, steps, steps_name='steps')
       if steps is None:
-        raise ValueError('Number of steps could not be infered from the data, '
+        raise ValueError('Number of steps could not be inferred from the data, '
                          'please pass the steps argument.')
       if not context.executing_eagerly():
         return experimental_tpu_predict_loop(

@@ -86,21 +86,33 @@ namespace wrap {
 
 #endif
 
-#define ROCFFT_ROUTINE_EACH(__macro)                                           \
-  __macro(hipfftDestroy) __macro(hipfftSetStream) __macro(hipfftPlan1d)        \
-      __macro(hipfftPlan2d) __macro(hipfftPlan3d) __macro(hipfftPlanMany)      \
-          __macro(hipfftCreate) __macro(hipfftSetAutoAllocation)               \
-              __macro(hipfftSetWorkArea) __macro(hipfftGetSize1d)              \
-                  __macro(hipfftMakePlan1d) __macro(hipfftGetSize2d)           \
-                      __macro(hipfftMakePlan2d) __macro(hipfftGetSize3d)       \
-                          __macro(hipfftMakePlan3d) __macro(hipfftGetSizeMany) \
-                              __macro(hipfftMakePlanMany)                      \
-                                  __macro(hipfftExecD2Z)                       \
-                                      __macro(hipfftExecZ2D)                   \
-                                          __macro(hipfftExecC2C)               \
-                                              __macro(hipfftExecC2R)           \
-                                                  __macro(hipfftExecZ2Z)       \
-                                                      __macro(hipfftExecR2C)
+// clang-format off
+#define ROCFFT_ROUTINE_EACH(__macro) \
+  __macro(hipfftDestroy)             \
+  __macro(hipfftSetStream)           \
+  __macro(hipfftPlan1d)              \
+  __macro(hipfftPlan2d)              \
+  __macro(hipfftPlan3d)              \
+  __macro(hipfftPlanMany)            \
+  __macro(hipfftCreate)              \
+  __macro(hipfftSetAutoAllocation)   \
+  __macro(hipfftSetWorkArea)         \
+  __macro(hipfftGetSize1d)           \
+  __macro(hipfftMakePlan1d)          \
+  __macro(hipfftGetSize2d)           \
+  __macro(hipfftMakePlan2d)          \
+  __macro(hipfftGetSize3d)           \
+  __macro(hipfftMakePlan3d)          \
+  __macro(hipfftGetSizeMany)         \
+  __macro(hipfftMakePlanMany)        \
+  __macro(hipfftExecD2Z)             \
+  __macro(hipfftExecZ2D)             \
+  __macro(hipfftExecC2C)             \
+  __macro(hipfftExecC2R)             \
+  __macro(hipfftExecZ2Z)             \
+  __macro(hipfftExecR2C)
+
+// clang-format on
 
 ROCFFT_ROUTINE_EACH(STREAM_EXECUTOR_ROCFFT_WRAP)
 

@@ -18,14 +18,16 @@ cc_library(
 cc_library(
     name = "fft",
     srcs = [
-        "fft.c",
-        "fft_util.c",
+        "fft.cc",
+        "fft_util.cc",
     ],
     hdrs = [
         "fft.h",
         "fft_util.h",
     ],
-    deps = ["@kissfft//:kiss_fftr_16"],
+    deps = [
+        "@kissfft//:kiss_fftr_16",
+    ],
 )
 
 cc_library(

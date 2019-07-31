@@ -154,7 +154,7 @@ class ConcatAggregator(Aggregator):
       self.results = np.concatenate(self.results, axis=0)
 
     if isinstance(self.results, ops.EagerTensor):
-      self.results = self.results._cpu_nograd()._numpy()  # pylint: disable=protected-access
+      self.results = self.results._numpy()  # pylint: disable=protected-access
 
 
 _COPY_THREADS = 4
@@ -1721,6 +1721,13 @@ def convert_eager_tensors_to_numpy(structure):
     return element
 
   return nest.map_structure(_convert, structure)
+
+
+def list_to_tuple(maybe_list):
+  """Datasets will stack the list of tensor, so switch them to tuples."""
+  if isinstance(maybe_list, list):
+    return tuple(maybe_list)
+  return maybe_list
 
 
 def should_run_validation(validation_freq, epoch):

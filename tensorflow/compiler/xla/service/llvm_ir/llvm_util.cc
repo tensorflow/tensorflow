@@ -503,22 +503,16 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
 
 llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config) {
   llvm::FastMathFlags flags;
-  if (!module_config.debug_options().xla_cpu_enable_fast_math()) {
+  const auto& options = module_config.debug_options();
+  if (!options.xla_cpu_enable_fast_math()) {
     return flags;
   }
-
   // Fast implies AllowReassoc, NoInfs, NoNaNs, NoSignedZeros, AllowReciprocal,
   // AllowContract, and ApproxFunc.
   flags.setFast();
-
-  if (module_config.debug_options().xla_cpu_fast_math_honor_nans()) {
-    flags.setNoNaNs(false);
-  }
-
-  if (module_config.debug_options().xla_cpu_fast_math_honor_infs()) {
-    flags.setNoInfs(false);
-  }
-
+  flags.setNoNaNs(!options.xla_cpu_fast_math_honor_nans());
+  flags.setNoInfs(!options.xla_cpu_fast_math_honor_infs());
+  flags.setAllowReciprocal(!options.xla_cpu_fast_math_honor_division());
   return flags;
 }
 
@@ -623,13 +617,14 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   if (module_config.debug_options().xla_cpu_enable_fast_math()) {
     function->addFnAttr("unsafe-fp-math", "true");
     function->addFnAttr("no-signed-zeros-fp-math", "true");
-
     if (!module_config.debug_options().xla_cpu_fast_math_honor_nans()) {
       function->addFnAttr("no-nans-fp-math", "true");
     }
-
     if (!module_config.debug_options().xla_cpu_fast_math_honor_infs()) {
       function->addFnAttr("no-infs-fp-math", "true");
+    }
+    if (module_config.debug_options().xla_cpu_fast_math_honor_division()) {
+      function->addFnAttr("reciprocal-estimates", "none");
     }
   }
 

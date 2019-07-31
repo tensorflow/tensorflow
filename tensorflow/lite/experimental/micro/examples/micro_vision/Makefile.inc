@@ -28,12 +28,21 @@ IMAGE_PROVIDER_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.h \
 tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.h
 
+DETECTION_RESPONDER_TEST_SRCS := \
+tensorflow/lite/experimental/micro/examples/micro_vision/detection_responder.cc \
+tensorflow/lite/experimental/micro/examples/micro_vision/detection_responder_test.cc
+
+DETECTION_RESPONDER_TEST_HDRS := \
+tensorflow/lite/experimental/micro/examples/micro_vision/detection_responder.h
+
 MICRO_VISION_SRCS := \
+tensorflow/lite/experimental/micro/examples/micro_vision/detection_responder.cc \
 tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.cc \
 tensorflow/lite/experimental/micro/examples/micro_vision/main.cc \
 $(MICRO_VISION_MODEL_SRCS)
 
 MICRO_VISION_HDRS := \
+tensorflow/lite/experimental/micro/examples/micro_vision/detection_responder.h \
 tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.h \
 $(MICRO_VISION_MODEL_HDRS)
 
@@ -47,6 +56,10 @@ $(MICRO_VISION_TEST_SRCS),$(MICRO_VISION_TEST_HDRS)))
 # Tests the image provider module.
 $(eval $(call microlite_test,image_provider_test,\
 $(IMAGE_PROVIDER_TEST_SRCS),$(IMAGE_PROVIDER_TEST_HDRS)))
+
+# Tests the detection responder module.
+$(eval $(call microlite_test,detection_responder_test,\
+$(DETECTION_RESPONDER_TEST_SRCS),$(DETECTION_RESPONDER_TEST_HDRS)))
 
 # Builds a standalone object recognition binary.
 $(eval $(call microlite_test,micro_vision,\

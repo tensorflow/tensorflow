@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
@@ -121,7 +122,7 @@ struct RequantizeState {
 //
 class QuantizationDriver {
  public:
-  explicit QuantizationDriver(Function fn) : builder_(fn.getBody()) {}
+  explicit QuantizationDriver(FuncOp fn) : builder_(fn.getBody()) {}
 
   // The entry point of the quantization parameters propagation.
   void Run();
@@ -706,7 +707,7 @@ void QuantizationDriver::Run() {
   }
 }
 
-void ApplyQuantizationParamsPropagation(mlir::Function func) {
+void ApplyQuantizationParamsPropagation(mlir::FuncOp func) {
   QuantizationDriver(func).Run();
 }
 

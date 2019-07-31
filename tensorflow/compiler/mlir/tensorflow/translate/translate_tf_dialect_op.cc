@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
@@ -22,8 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
 namespace mlir {
-static mlir::Operation* ExtractOnlyOp(mlir::Module module) {
-  mlir::Function fn = module.getNamedFunction("main");
+static mlir::Operation* ExtractOnlyOp(mlir::ModuleOp module) {
+  mlir::FuncOp fn = module.lookupSymbol<mlir::FuncOp>("main");
   if (!fn) return nullptr;
 
   if (fn.getBlocks().size() != 1) return nullptr;
@@ -38,14 +39,15 @@ static mlir::Operation* ExtractOnlyOp(mlir::Module module) {
   return &block.front();
 }
 
-static bool MlirToTfNodeDef(Module module, llvm::StringRef filename) {
+static LogicalResult MlirToTfNodeDef(ModuleOp module,
+                                     llvm::StringRef filename) {
   auto* context = module.getContext();
 
   auto file = openOutputFile(filename);
   if (!file) {
     emitError(UnknownLoc::get(context))
         << "failed to open output file " << filename;
-    return true;
+    return failure();
   }
 
   Operation* op = ExtractOnlyOp(module);
@@ -54,19 +56,19 @@ static bool MlirToTfNodeDef(Module module, llvm::StringRef filename) {
               "modules with exactly one op other than terminator in a "
               "'main' function's "
               "only block are supported");
-    return true;
+    return failure();
   }
 
   auto node_def_or = tensorflow::ConvertTFDialectOpToNodeDef(op, "node_name");
   if (!node_def_or.ok()) {
     op->emitError("failed to convert to TF NodeDef:")
         << node_def_or.status().ToString();
-    return true;
+    return failure();
   }
 
   file->os() << node_def_or.ValueOrDie()->DebugString();
   file->keep();
-  return false;
+  return success();
 }
 
 // Test only translation to convert a simple MLIR module with a single TF

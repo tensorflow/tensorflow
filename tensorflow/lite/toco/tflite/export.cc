@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -604,6 +604,13 @@ tensorflow::Status Export(
   auto subgraph = CreateSubGraph(builder, tensors, inputs, outputs, ops,
                                  /* name */ 0);
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs = {subgraph};
+
+  // TODO(wangtz): offline memory planning for activation Tensors.
+  if (!params.allow_dynamic_tensors) {
+    return tensorflow::errors::Unimplemented(
+        "Unsupported flag: allow_dynamic_tensors. Offline memory planning is "
+        "not implemented yet.");
+  }
 
   auto buffers = ExportBuffers(model, buffers_to_write, &builder);
   auto description = builder.CreateString("TOCO Converted.");

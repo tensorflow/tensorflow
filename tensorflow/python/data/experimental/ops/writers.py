@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import structure
@@ -83,5 +84,9 @@ class TFRecordWriter(object):
           "produces shape {0} and types {1}".format(
               dataset_ops.get_legacy_output_shapes(dataset),
               dataset_ops.get_legacy_output_types(dataset)))
-    return gen_experimental_dataset_ops.experimental_dataset_to_tf_record(
-        dataset._variant_tensor, self._filename, self._compression_type)  # pylint: disable=protected-access
+    if compat.forward_compatible(2019, 8, 3):
+      return gen_experimental_dataset_ops.dataset_to_tf_record(
+          dataset._variant_tensor, self._filename, self._compression_type)  # pylint: disable=protected-access
+    else:
+      return gen_experimental_dataset_ops.experimental_dataset_to_tf_record(
+          dataset._variant_tensor, self._filename, self._compression_type)  # pylint: disable=protected-access

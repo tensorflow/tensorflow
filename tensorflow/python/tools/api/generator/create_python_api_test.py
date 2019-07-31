@@ -67,15 +67,16 @@ class CreatePythonApiTest(test.TestCase):
         output_package='tensorflow',
         api_name='tensorflow',
         api_version=1)
-    expected_import = (
-        'from tensorflow.python.test_module '
-        'import test_op as test_op1')
+    expected_import = ('\'test_op1\': '
+                       '(\'tensorflow.python.test_module\','
+                       ' \'test_op\')')
     self.assertTrue(
         expected_import in str(imports),
         msg='%s not in %s' % (expected_import, str(imports)))
 
-    expected_import = ('from tensorflow.python.test_module '
-                       'import test_op')
+    expected_import = ('\'test_op\': '
+                       '(\'tensorflow.python.test_module\','
+                       ' \'test_op\')')
     self.assertTrue(
         expected_import in str(imports),
         msg='%s not in %s' % (expected_import, str(imports)))
@@ -89,8 +90,10 @@ class CreatePythonApiTest(test.TestCase):
         output_package='tensorflow',
         api_name='tensorflow',
         api_version=2)
-    expected_import = ('from tensorflow.python.test_module '
-                       'import TestClass')
+    expected_import = (
+        '\'NewTestClass\':'
+        ' (\'tensorflow.python.test_module\','
+        ' \'TestClass\')')
     self.assertTrue(
         'TestClass' in str(imports),
         msg='%s not in %s' % (expected_import, str(imports)))
@@ -101,8 +104,9 @@ class CreatePythonApiTest(test.TestCase):
         output_package='tensorflow',
         api_name='tensorflow',
         api_version=1)
-    expected = ('from tensorflow.python.test_module '
-                'import _TEST_CONSTANT')
+    expected = ('\'_TEST_CONSTANT\':'
+                ' (\'tensorflow.python.test_module\','
+                ' \'_TEST_CONSTANT\')')
     self.assertTrue(expected in str(imports),
                     msg='%s not in %s' % (expected, str(imports)))
 

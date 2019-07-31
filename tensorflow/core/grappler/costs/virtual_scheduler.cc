@@ -807,6 +807,12 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   // Update graph_costs_ and per-op costs.
   const NodeDef* node = ready_nodes_->GetCurrNode();
   auto& node_state = node_map_[node];
+  // TODO(dyoon, andiryxu): Consider to revisit node execution w.r.t. Switch and
+  // Merge -- it can create a loop which may include loop-carried dependency,
+  // diverge-merge, and other complex execution patterns.
+  bool previously_executed_merge =
+      IsMerge(*node) && (node_state.time_finished != Costs::Duration::max());
+
   // If there is annotation in the graph about execution times, we use that
   // number, otherwise, we assume the node is executed once.
   node_state.execution_count = node->attr().count(kExecutionCount) == 0
@@ -876,8 +882,15 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
           << ", scheduled: " << node_state.time_scheduled.count()
           << ", finished: " << node_state.time_finished.count();
 
-  // Checks outputs, and adds ready nodes to queue.
-  AddOutputNodesToReadyQueue(node, curr_time);
+  if (previously_executed_merge) {
+    // Skip AddOutputNodesToReadyQueue; this is due to Switch-Merge.
+    VLOG(1) << "node [ " << node->name() << ", " << node->op() << " ] "
+            << "is executed more than once. "
+            << "Skip scheduling its output nodes.";
+  } else {
+    // Checks outputs, and adds ready nodes to queue.
+    AddOutputNodesToReadyQueue(node, curr_time);
+  }
 
   // Increment num_outputs_executed of the input nodes and maybe update memory.
   for (const auto& input_port : node_state.inputs) {

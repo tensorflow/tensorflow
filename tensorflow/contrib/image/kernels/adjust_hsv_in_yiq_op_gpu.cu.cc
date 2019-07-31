@@ -55,10 +55,10 @@ void AdjustHsvInYiqGPU::operator()(OpKernelContext* ctx, int channel_count,
                           &tranformation_matrix));
   // TODO(huangyp): It takes about 3.5 us to compute tranformation_matrix
   // with one thread. Improve its performance if necessary.
-  TF_CHECK_OK(CudaLaunchKernel(internal::compute_tranformation_matrix_cuda, 1,
-                               1, 0, cu_stream, delta_h, scale_s, scale_v,
-                               tranformation_matrix.flat<float>().data(),
-                               tranformation_matrix.flat<float>().size()));
+  TF_CHECK_OK(GpuLaunchKernel(internal::compute_tranformation_matrix_cuda, 1, 1,
+                              0, cu_stream, delta_h, scale_s, scale_v,
+                              tranformation_matrix.flat<float>().data(),
+                              tranformation_matrix.flat<float>().size()));
   // Call cuBlas C = A * B directly.
   auto no_transpose = se::blas::Transpose::kNoTranspose;
   auto a_ptr =

@@ -18,22 +18,39 @@ limitations under the License.
 // Asynchronous execution:
 // -----------------------
 //
-// If 'asynchronous' is set when constructing the client, computations and
-// host-to-device transfers do not block the host waiting for the operation to
-// complete but instead return control to the host immediately. This allows
-// Python logic to overlap with device-side computation.
+// Computations and host-to-device transfers do not need to block the host
+// waiting for the operation to complete but instead return control to the host
+// immediately. This allows Python logic to overlap with device-side
+// computation.
 //
 // For a good user experience, we must be careful only to enqueue operations
 // that are unlikely to fail; as a rule error checking must be done eagerly
 // before returning control to the client.
 //
+// The degree to which the client can enqueue operations ahead of the client
+// is limited by a semaphore. There are at two modes: asynchronous, where we
+// allow the client to enqueue up to 32 executions ahead of the device, and
+// synchronous, where we limit the client to having one enqueued operation at
+// a time. The value of 32 is arbitrary.
+//
+// Even in asynchronous mode, it is important that we do not permit
+// unbounded queue-ahead. Firstly it is problematic when the user does something
+// like the following in Python:
+// %timeit run_computation()
+// To the timeit logic, op() appears to be extremely cheap since it is deferring
+// all of its real work and not blocking, and so the %timeit will run op() many
+// (e.g., 10000) times to get better timing resolution, even though in reality
+// it may be expensive. Secondly, on CPU the allocator is synchronized with the
+// head of the compute stream, and we allocate buffers for all of the enqueued
+// programs without any reuse (unlike GPU). This means that the memory usage
+// is proportional to the queue size.
+//
 // Multi-stream execution:
 // -----------------------
 //
-// On certain platforms (e.g., TPU), we use a multistream execution design,
-// where different Streams are used for host-to-device transfers,
-// device-to-host transfers, and compute. This allows us to overlap transfers on
-// and off the device with computation.
+// We use a multistream execution design, where different Streams are used for
+// host-to-device transfers, device-to-host transfers, and compute. This allows
+// us to overlap transfers on and off the device with computation.
 //
 // Synchronization between streams occurs via BufferDefinitionEvents that
 // describe when the contents of a logical buffer are known to be valid on
@@ -66,9 +83,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -78,12 +93,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/python/types.h"
-#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_host_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_mem_allocator.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -92,98 +107,6 @@ limitations under the License.
 namespace xla {
 
 namespace py = pybind11;
-
-// Registers a 'fn_capsule' as a CPU custom call target.
-// 'fn_capsule' is a void* pointer encapsulated in a PyCapsule object, with name
-// "xla._CPU_CUSTOM_CALL_TARGET".
-Status RegisterCpuCustomCallTarget(const std::string& fn_name,
-                                   py::capsule capsule) {
-  static const char* const kName = "xla._CPU_CUSTOM_CALL_TARGET";
-  if (absl::string_view(capsule.name()) != kName) {
-    return InvalidArgument(
-        "Argument to RegisterCpuCustomCallTargetRegistry was not a "
-        "xla._CPU_CUSTOM_CALL_TARGET capsule.");
-  }
-  CustomCallTargetRegistry::Global()->Register(
-      fn_name, static_cast<void*>(capsule), "Host");
-  return Status::OK();
-}
-
-Device::Device(se::StreamExecutor* executor, bool use_multiple_streams,
-               bool synchronous_deallocation, bool asynchronous)
-    : use_multiple_streams_(use_multiple_streams),
-      synchronous_deallocation_(synchronous_deallocation),
-      asynchronous_(asynchronous) {
-  compute_stream_ = std::make_shared<se::Stream>(executor);
-  compute_stream_->Init();
-  if (use_multiple_streams) {
-    host_to_device_stream_ = std::make_shared<se::Stream>(executor);
-    device_to_host_stream_ = std::make_shared<se::Stream>(executor);
-    callback_stream_ = std::make_shared<se::Stream>(executor);
-    host_to_device_stream_->Init();
-    device_to_host_stream_->Init();
-    callback_stream_->Init();
-    device_to_device_streams_.reserve(kNumDeviceToDeviceStreams);
-    for (int i = 0; i < kNumDeviceToDeviceStreams; ++i) {
-      auto stream = std::make_shared<se::Stream>(executor);
-      stream->Init();
-      device_to_device_streams_.push_back(std::move(stream));
-    }
-  } else {
-    callback_stream_ = host_to_device_stream_ = device_to_host_stream_ =
-        compute_stream_;
-    device_to_device_streams_.push_back(compute_stream_);
-  }
-  worker_thread_ = absl::make_unique<WorkerThread>(tensorflow::Env::Default(),
-                                                   "py_xla_execute");
-}
-
-Device::~Device() {
-  Status status = SynchronizeAllActivity();
-  if (!status.ok()) {
-    LOG(ERROR) << "Error when closing device: " << status;
-  }
-}
-
-Status Device::SynchronizeAllActivity() {
-  Status status;
-  // TODO(phawkins): in theory the call to SynchronizeAllActivity below should
-  // suffice. However on the Host platform SynchronizeAllActivity is a dummy
-  // implementation that doesn't actually block. To make sure activity has
-  // stopped, also block on the compute stream. If SynchronizeAllActivity is
-  // fixed, we could remove the BlockHostUntilDone call.
-  status.Update(compute_stream_->BlockHostUntilDone());
-  bool ok = compute_stream_->parent()->SynchronizeAllActivity();
-  if (!ok) {
-    status.Update(Unknown("SynchronizeAllActivity failed."));
-  }
-  return status;
-}
-
-Status Device::ThenMemcpyDeviceToDevice(se::Stream* src_stream,
-                                        se::Stream* dst_stream,
-                                        se::DeviceMemoryBase src_buffer,
-                                        se::DeviceMemoryBase dst_buffer) {
-  // The default implementation simply calls ThenMemcpyD2D, and assumes that
-  // the buffer addresses identify the devices. This does not work
-  // on all platforms; this method is virtual so it can be overridden.
-  src_stream->ThenMemcpyD2D(&dst_buffer, src_buffer, dst_buffer.size());
-  return Status::OK();
-}
-
-void Device::ThenExecuteOnWorkerThread(se::Stream* stream,
-                                       std::function<void()> callback) const {
-  stream->ThenDoHostCallback(
-      [this, callback]() { worker_thread_->Schedule(std::move(callback)); });
-}
-
-se::Stream* Device::GetDeviceToDeviceStream() {
-  absl::MutexLock lock(&mu_);
-  int i = next_device_to_device_stream_;
-  next_device_to_device_stream_ =
-      (next_device_to_device_stream_ + 1) % device_to_device_streams_.size();
-  return device_to_device_streams_.at(i).get();
-}
 
 static StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
     se::Platform* platform, LocalClient* client, double memory_fraction,
@@ -237,44 +160,57 @@ StatusOr<std::shared_ptr<PyLocalClient>> PyLocalClient::Get(
   options.set_platform(platform);
   TF_ASSIGN_OR_RETURN(LocalClient * client,
                       ClientLibrary::GetOrCreateLocalClient(options));
+
+  bool gpu_platform = platform_name == "gpu";
   std::unique_ptr<se::DeviceMemoryAllocator> allocator;
-  if (allocator_config.kind == AllocatorConfig::Kind::kBFC ||
-      (platform_name == "gpu" &&
-       allocator_config.kind == AllocatorConfig::Kind::kDefault)) {
-    if (platform_name != "gpu") {
-      return Unimplemented("BFCAllocator only available for GPU.");
+  std::unique_ptr<tensorflow::Allocator> host_memory_allocator;
+  if (gpu_platform) {
+    if (allocator_config.kind != AllocatorConfig::Kind::kPlatform) {
+      TF_ASSIGN_OR_RETURN(
+          allocator,
+          CreateBFCAllocator(platform, client, allocator_config.memory_fraction,
+                             allocator_config.preallocate));
     }
-    TF_ASSIGN_OR_RETURN(
-        auto bfc_allocator,
-        CreateBFCAllocator(platform, client, allocator_config.memory_fraction,
-                           allocator_config.preallocate));
-    allocator = std::move(bfc_allocator);
+
+    tensorflow::SubAllocator* sub_allocator = new tensorflow::GpuHostAllocator(
+        client->backend().stream_executor(0).ValueOrDie(), /*numa_node=*/0,
+        /*alloc_visitors=*/{},
+        /*free_visitors=*/{});
+    // TODO(phawkins): allow the user to tune this.
+    const int64 kGpuHostMemoryLimitBytes = 64 * (1LL << 30);
+    host_memory_allocator = absl::make_unique<tensorflow::BFCAllocator>(
+        sub_allocator, kGpuHostMemoryLimitBytes, /*allow_growth=*/true,
+        /*name=*/"xla_gpu_host_bfc");
+
+  } else if (allocator_config.kind == AllocatorConfig::Kind::kBFC) {
+    return Unimplemented("BFCAllocator only available for GPU.");
   }
 
   std::vector<std::unique_ptr<Device>> devices;
   devices.reserve(client->device_count());
-  bool use_multiple_streams = (platform_name != "cpu");
-  bool synchronous_deallocation = !use_multiple_streams;
+  bool synchronous_deallocation = platform_name == "cpu";
   for (int i = 0; i < client->device_count(); ++i) {
     se::StreamExecutor* executor =
         client->backend().stream_executor(i).ValueOrDie();
-    devices.push_back(absl::make_unique<Device>(executor, use_multiple_streams,
-                                                synchronous_deallocation,
-                                                asynchronous));
+    devices.push_back(absl::make_unique<Device>(
+        executor, synchronous_deallocation, asynchronous,
+        /*allow_event_reuse=*/gpu_platform));
   }
-  return std::make_shared<PyLocalClient>(platform_name, client,
-                                         std::move(devices),
-                                         std::move(allocator), asynchronous);
+  return std::make_shared<PyLocalClient>(
+      platform_name, client, std::move(devices), std::move(allocator),
+      std::move(host_memory_allocator));
 }
 
 PyLocalClient::PyLocalClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<Device>> devices,
-    std::unique_ptr<se::DeviceMemoryAllocator> allocator, bool asynchronous)
+    std::unique_ptr<se::DeviceMemoryAllocator> allocator,
+    std::unique_ptr<tensorflow::Allocator> host_memory_allocator)
     : platform_name_(std::move(platform_name)),
       client_(client),
       devices_(std::move(devices)),
       owned_allocator_(std::move(allocator)),
+      host_memory_allocator_(std::move(host_memory_allocator)),
       h2d_transfer_pool_(tensorflow::Env::Default(), "py_xla_h2d_transfer",
                          client->device_count()) {
   if (owned_allocator_ != nullptr) {
@@ -303,145 +239,115 @@ StatusOr<pybind11::object> PyLocalClient::TransferFromOutfeed(
   return LiteralToPython(std::make_shared<Literal>(std::move(literal)));
 }
 
-static StatusOr<std::unique_ptr<PyLocalBuffer>> TransferHostToDeviceAsync(
-    const PythonBufferTree& tree, int device_ordinal,
-    std::shared_ptr<PyLocalClient> client, const Device& device) {
-  se::DeviceMemoryAllocator* allocator = client->allocator();
-  TransferManager* transfer_manager =
-      client->client()->backend().transfer_manager();
-  TF_ASSIGN_OR_RETURN(
-      Shape shape, transfer_manager->ChooseCompactLayoutForShape(tree.shape));
-  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer buffer,
-                      transfer_manager->AllocateScopedShapedBuffer(
-                          shape, allocator, device_ordinal));
-  TF_RETURN_IF_ERROR(transfer_manager->WriteTupleIndexTablesAsync(
-      device.host_to_device_stream(), buffer));
-
-  auto it = tree.leaves.begin();
-  for (const ShapeUtil::IndexedShape& indexed_shape :
-       ShapeUtil::GetLeafShapes(shape)) {
-    TF_RET_CHECK(it != tree.leaves.end());
-    ShapedBuffer leaf(
-        indexed_shape.shape,
-        transfer_manager->HostShapeToDeviceShape(indexed_shape.shape),
-        client->client()->platform(), device_ordinal);
-    leaf.buffers().CopySubtreeFrom(buffer.buffers(), indexed_shape.index, {});
-    if (device.use_multiple_streams() &&
-        !transfer_manager->CanShapedBufferBeAccessedNow(
-            device.host_to_device_stream()->parent(), leaf)) {
-      device.host_to_device_stream()->ThenWaitFor(device.compute_stream());
-    }
-    TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDeviceAsync(
-        device.host_to_device_stream(), *it, leaf));
-    ++it;
-  }
-  std::shared_ptr<BufferDefinitionEvent> definition_event;
-  if (device.use_multiple_streams()) {
-    TF_ASSIGN_OR_RETURN(definition_event,
-                        BufferDefinitionEvent::Create(
-                            device.host_to_device_stream()->parent()));
-    definition_event->RecordOnStream(device.host_to_device_stream());
-  }
-  std::shared_ptr<SharedDeviceBuffer> device_buffer =
-      SharedDeviceBuffer::FromScopedShapedBuffer(std::move(buffer),
-                                                 definition_event);
-  if (device.synchronous_deallocation()) {
-    device.ThenReleaseOnWorkerThread(device.host_to_device_stream(),
-                                     device_buffer);
-  }
-  return absl::make_unique<PyLocalBuffer>(shape, std::move(device_buffer),
-                                          std::move(client));
-}
-
 /* static */
 StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
     const py::object& argument, std::shared_ptr<PyLocalClient> client,
     int device_ordinal) {
   tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromPython");
-  TF_ASSIGN_OR_RETURN(PythonBufferTree tree, GetPythonBufferTree(argument));
+  struct H2DTransfer {
+    PythonBufferTree tree;
+    std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref;
+  };
+  auto transfer = std::make_shared<H2DTransfer>();
+  TF_ASSIGN_OR_RETURN(transfer->tree, GetPythonBufferTree(argument));
 
   client->py_ref_manager().CollectGarbage();
 
   // Take a reference to the buffer to ensure that the inputs in host memory
   // remain live until the transfer is complete.
-  auto py_buffer_ref =
-      client->py_ref_manager().ManageReferences(absl::MakeSpan(tree.arrays));
+  transfer->py_buffer_ref = client->py_ref_manager().ManageReferences(
+      absl::MakeSpan(transfer->tree.arrays));
+  transfer->tree.arrays.clear();
 
   // We are done manipulating Python objects; release the GIL.
   py::gil_scoped_release gil_release;
-  VLOG(1) << "PyLocalBuffer::FromPython: shape: " << tree.shape.ToString()
+  VLOG(1) << "PyLocalBuffer::FromPython: shape: "
+          << transfer->tree.shape.ToString()
           << " device ordinal: " << device_ordinal;
 
-  const Device& device = client->device(device_ordinal);
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PyLocalBuffer> buffer,
-                      TransferHostToDeviceAsync(tree, device_ordinal,
-                                                std::move(client), device));
+  Device* device = &client->device(device_ordinal);
+  TransferManager* transfer_manager =
+      client->client()->backend().transfer_manager();
+  se::DeviceMemoryAllocator* allocator = client->allocator();
+  TF_ASSIGN_OR_RETURN(
+      transfer->tree.shape,
+      transfer_manager->ChooseCompactLayoutForShape(transfer->tree.shape));
+  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer scoped_buffer,
+                      transfer_manager->AllocateScopedShapedBuffer(
+                          transfer->tree.shape, allocator, device_ordinal));
 
-  device.ThenRelease(device.host_to_device_stream(), std::move(py_buffer_ref));
-  return buffer;
-}
+  std::shared_ptr<BufferDefinitionEvent> definition_event =
+      std::make_shared<BufferDefinitionEvent>();
+  std::shared_ptr<SharedDeviceBuffer> device_buffer =
+      SharedDeviceBuffer::FromScopedShapedBuffer(std::move(scoped_buffer),
+                                                 definition_event);
 
-/*static */ StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
-PyLocalBuffer::FromPythonValues(
-    const std::vector<std::pair<py::object, int>>& arguments,
-    std::shared_ptr<PyLocalClient> client) {
-  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromPythonValues");
-  int num_arguments = static_cast<int>(arguments.size());
-  std::vector<std::unique_ptr<PyLocalBuffer>> outputs(num_arguments);
-  if (num_arguments == 0) {
-    return outputs;
-  }
+  auto transfer_h2d = [client, transfer_manager, device, device_ordinal,
+                       device_buffer, transfer]() {
+    // This function uses TF_CHECK_OK and ValueOrDie() since we have no way to
+    // report failures from a callback. However, the operations here are
+    // unlikely to fail and not recoverable even if we were to fail: DMAs to
+    // memory that has already been allocated, and a possible Event allocation.
+    ShapedBuffer buffer = device_buffer->AsShapedBuffer(transfer->tree.shape);
+    TF_CHECK_OK(transfer_manager->WriteTupleIndexTablesAsync(
+        device->host_to_device_stream(), buffer));
+    std::vector<std::shared_ptr<void>> staging_buffers;
+    staging_buffers.reserve(transfer->tree.leaves.size());
+    auto it = transfer->tree.leaves.begin();
+    for (const ShapeUtil::IndexedShape& indexed_shape :
+         ShapeUtil::GetLeafShapes(transfer->tree.shape)) {
+      CHECK(it != transfer->tree.leaves.end());
+      ShapedBuffer leaf(
+          indexed_shape.shape,
+          transfer_manager->HostShapeToDeviceShape(indexed_shape.shape),
+          client->client()->platform(), device_ordinal);
+      leaf.buffers().CopySubtreeFrom(buffer.buffers(), indexed_shape.index, {});
+      if (!transfer_manager->CanShapedBufferBeAccessedNow(
+              device->host_to_device_stream()->parent(), leaf)) {
+        device->host_to_device_stream()->ThenWaitFor(device->compute_stream());
+      }
 
-  struct H2DTransfer {
-    PythonBufferTree tree;
-    StatusOr<std::unique_ptr<PyLocalBuffer>> buffer;
-    PythonRefManager::ManagedPyObjects py_buffer_refs;
-  };
-
-  std::vector<H2DTransfer> transfers(num_arguments);
-  for (int i = 0; i < num_arguments; ++i) {
-    TF_ASSIGN_OR_RETURN(transfers[i].tree,
-                        GetPythonBufferTree(arguments[i].first));
-    transfers[i].py_buffer_refs = client->py_ref_manager().ManageReferences(
-        absl::MakeSpan(transfers[i].tree.arrays));
-  }
-  client->py_ref_manager().CollectGarbage();
-  // We are done manipulating Python objects; release the GIL.
-  py::gil_scoped_release gil_release;
-
-  auto transfer_h2d = [&](int i) -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
-    int device_ordinal = arguments[i].second;
-    return TransferHostToDeviceAsync(transfers[i].tree, device_ordinal, client,
-                                     client->device(device_ordinal));
-  };
-
-  // We perform the transfers on a thread pool in case XLA needs to do any
-  // host-side preprocessing of the input data.
-  if (num_arguments == 1) {
-    transfers[0].buffer = transfer_h2d(0);
-  } else {
-    absl::BlockingCounter counter(num_arguments);
-    for (int i = 0; i < num_arguments; ++i) {
-      client->h2d_transfer_pool()->Schedule([&, i]() {
-        transfers[i].buffer = transfer_h2d(i);
-        counter.DecrementCount();
-      });
+      // If applicable on the backend, stage the transfer via host memory
+      // allocated via the host_memory_allocator. On GPU, this is pinned memory.
+      if (client->host_memory_allocator()) {
+        int64 size = it->size_bytes({});
+        void* ptr = client->host_memory_allocator()->AllocateRaw(
+            tensorflow::Allocator::kAllocatorAlignment, size);
+        std::shared_ptr<void> staging_buffer(ptr, [client](void* ptr) {
+          client->host_memory_allocator()->DeallocateRaw(ptr);
+        });
+        std::memcpy(ptr, it->untyped_data({}), size);
+        BorrowingLiteral literal(static_cast<const char*>(staging_buffer.get()),
+                                 it->shape());
+        TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+            device->host_to_device_stream(), literal, leaf));
+        staging_buffers.push_back(std::move(staging_buffer));
+      } else {
+        // Otherwise, just transfer the literal.
+        TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+            device->host_to_device_stream(), *it, leaf));
+      }
+      ++it;
     }
-    counter.Wait();
-  }
 
-  // Release our references once the transfers have completed.
-  for (int i = 0; i < num_arguments; ++i) {
-    int device_ordinal = arguments[i].second;
-    const Device& device = client->device(device_ordinal);
-    device.ThenRelease(device.host_to_device_stream(),
-                       std::move(transfers[i].py_buffer_refs));
-  }
+    EventPool::Handle event =
+        device->event_pool()
+            .ThenAllocateAndRecordEvent(device->host_to_device_stream())
+            .ValueOrDie();
+    device_buffer->definition_event()->SetDefinitionEvent(
+        std::move(event), device->host_to_device_stream());
 
-  for (int i = 0; i < num_arguments; ++i) {
-    TF_ASSIGN_OR_RETURN(outputs[i], std::move(transfers[i].buffer));
-  }
-  return outputs;
+    if (device->synchronous_deallocation()) {
+      device->ThenRelease(device->host_to_device_stream(), device_buffer);
+    }
+
+    device->ThenRelease(device->host_to_device_stream(),
+                        std::make_pair(std::move(transfer->py_buffer_ref),
+                                       std::move(staging_buffers)));
+  };
+  client->h2d_transfer_pool()->Schedule(transfer_h2d);
+  return absl::make_unique<PyLocalBuffer>(
+      transfer->tree.shape, std::move(device_buffer), std::move(client));
 }
 
 /* static */ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::MakeTuple(
@@ -465,13 +371,9 @@ PyLocalBuffer::FromPythonValues(
   se::DeviceMemoryAllocator* allocator = client->allocator();
   TransferManager* transfer_manager =
       client->client()->backend().transfer_manager();
-  const Device& device = client->device(device_ordinal);
-  std::shared_ptr<BufferDefinitionEvent> definition_event;
-  if (device.use_multiple_streams()) {
-    TF_ASSIGN_OR_RETURN(definition_event,
-                        BufferDefinitionEvent::Create(
-                            device.host_to_device_stream()->parent()));
-  }
+  Device& device = client->device(device_ordinal);
+
+  auto definition_event = std::make_shared<BufferDefinitionEvent>();
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<SharedDeviceBuffer> tuple_buffer,
       SharedDeviceBuffer::MakeTuple(device_buffers, transfer_manager, allocator,
@@ -482,21 +384,22 @@ PyLocalBuffer::FromPythonValues(
   // TODO(phawkins): extend TransferManager so we do not need to form a full
   // ShapedBuffer just to write the root tuple index table.
   TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer, buffer->AsShapedBuffer());
-  if (device.use_multiple_streams() &&
-      !transfer_manager->CanShapedBufferBeAccessedNow(
+  if (!transfer_manager->CanShapedBufferBeAccessedNow(
           device.host_to_device_stream()->parent(), shaped_buffer)) {
     // Wait for the compute stream so that memory allocations are synchronized.
     device.host_to_device_stream()->ThenWaitFor(device.compute_stream());
   }
   TF_RETURN_IF_ERROR(transfer_manager->WriteRootTupleIndexTable(
       device.host_to_device_stream(), shaped_buffer));
-  if (definition_event) {
-    definition_event->RecordOnStream(device.host_to_device_stream());
-  }
+
+  TF_ASSIGN_OR_RETURN(EventPool::Handle event,
+                      device.event_pool().ThenAllocateAndRecordEvent(
+                          device.host_to_device_stream()));
+  definition_event->SetDefinitionEvent(std::move(event),
+                                       device.host_to_device_stream());
 
   if (device.synchronous_deallocation()) {
-    device.ThenReleaseOnWorkerThread(device.host_to_device_stream(),
-                                     std::move(tuple_buffer));
+    device.ThenRelease(device.host_to_device_stream(), std::move(tuple_buffer));
   }
   return buffer;
 }
@@ -629,8 +532,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
       ScopedShapedBuffer dst_buffer,
       transfer_manager->AllocateScopedShapedBuffer(
           on_host_shape_, client_->allocator(), dst_device_ordinal));
-  if (dst_device.use_multiple_streams() &&
-      !transfer_manager->CanShapedBufferBeAccessedNow(
+  if (!transfer_manager->CanShapedBufferBeAccessedNow(
           dst_device.compute_stream()->parent(), dst_buffer)) {
     src_device_to_device_stream->ThenWaitFor(dst_device.compute_stream());
   }
@@ -652,6 +554,10 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
         output_buffer));
   }
 
+  // We hold on to the `src_device_buffer` until the transfer is finished.
+  src_device.ThenRelease(src_device_to_device_stream,
+                         std::move(src_device_buffer));
+
   // Write new tuple buffers. The destination buffers have different addresses,
   // so we must construct tuple buffers from scratch instead of copying them.
   if (dst_buffer.on_device_shape().IsTuple()) {
@@ -665,13 +571,12 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
         dst_device.host_to_device_stream());
   }
 
-  std::shared_ptr<BufferDefinitionEvent> definition_event;
-  if (dst_device.use_multiple_streams()) {
-    TF_ASSIGN_OR_RETURN(
-        definition_event,
-        BufferDefinitionEvent::Create(src_device_to_device_stream->parent()));
-    definition_event->RecordOnStream(src_device_to_device_stream);
-  }
+  auto definition_event = std::make_shared<BufferDefinitionEvent>();
+  TF_ASSIGN_OR_RETURN(EventPool::Handle event,
+                      src_device.event_pool().ThenAllocateAndRecordEvent(
+                          src_device_to_device_stream));
+  definition_event->SetDefinitionEvent(std::move(event),
+                                       src_device_to_device_stream);
 
   std::shared_ptr<SharedDeviceBuffer> dst_device_buffer =
       SharedDeviceBuffer::FromScopedShapedBuffer(std::move(dst_buffer),
@@ -756,21 +661,21 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
             << " buffer: " << argument_buffers.back().ToString();
   }
 
-  const Device& device = client_->device(device_ordinal);
-  // The choice of where we wait in "synchronous" mode is arbitrary; the reason
-  // for the wait is pacing to avoid problems such as memory fragmentation, not
-  // for correctness.
-  if (!device.asynchronous()) {
-    TF_RETURN_IF_ERROR(device.compute_stream()->BlockHostUntilDone());
-  }
+  Device* device = &client_->device(device_ordinal);
+  // The choice of where we wait is arbitrary; the reason for the wait is pacing
+  // to avoid problems such as memory fragmentation and running ahead too far,
+  // not for correctness. Placing it before the executable launch allows the
+  // inputs for the next executable to be fetched even if the launch is delayed.
+  auto compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
+      device->compute_semaphore().ScopedAcquire(1));
 
   for (BufferDefinitionEvent* event : events) {
-    event->WaitForEventOnStream(device.compute_stream());
+    event->WaitForEventOnStream(device->compute_stream());
   }
 
   ExecutableRunOptions options;
-  options.set_stream(device.compute_stream());
-  options.set_host_to_device_stream(device.host_to_device_stream());
+  options.set_stream(device->compute_stream());
+  options.set_host_to_device_stream(device->host_to_device_stream());
   options.set_allocator(client_->allocator());
   options.set_intra_op_thread_pool(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
@@ -787,24 +692,25 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
     return result_buffer.status();
   }
 
-  std::shared_ptr<BufferDefinitionEvent> definition_event;
-  if (device.use_multiple_streams()) {
-    TF_ASSIGN_OR_RETURN(
-        definition_event,
-        BufferDefinitionEvent::Create(device.compute_stream()->parent()));
-    definition_event->RecordOnStream(device.compute_stream());
-  }
+  auto definition_event = std::make_shared<BufferDefinitionEvent>();
+  TF_ASSIGN_OR_RETURN(EventPool::Handle event,
+                      device->event_pool().ThenAllocateAndRecordEvent(
+                          device->compute_stream()));
+  definition_event->SetDefinitionEvent(std::move(event),
+                                       device->compute_stream());
+
   Shape on_host_shape = result_buffer.ValueOrDie().on_host_shape();
   std::shared_ptr<SharedDeviceBuffer> out_buffer =
       SharedDeviceBuffer::FromScopedShapedBuffer(
           std::move(result_buffer.ValueOrDie()), definition_event);
 
-  if (device.synchronous_deallocation()) {
+  if (device->synchronous_deallocation()) {
     device_buffers.push_back(out_buffer);
-    device.ThenReleaseOnWorkerThread(device.compute_stream(),
-                                     std::move(device_buffers));
+    device->ThenRelease(device->compute_stream(), std::move(device_buffers));
   }
-  device.ThenReleaseOnWorkerThread(device.compute_stream(), executable_);
+
+  device->ThenRelease(device->compute_stream(),
+                      std::make_pair(executable_, compute_reservation));
   return absl::make_unique<PyLocalBuffer>(on_host_shape, std::move(out_buffer),
                                           client_);
 }
@@ -853,7 +759,7 @@ PyLocalExecutable::ExecutePerReplica(
     for (int replica = 0; replica < num_replicas(); ++replica) {
       const int device_ordinal = device_assignment_(replica, 0);
       const Device& device = client_->device(device_ordinal);
-      device.worker_thread()->Schedule([&, replica] {
+      device.execute_thread()->Schedule([&, replica] {
         results[replica] =
             ExecuteHelper(argument_handles[replica], replica, run_id);
 

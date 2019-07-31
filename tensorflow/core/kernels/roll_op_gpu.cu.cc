@@ -71,7 +71,7 @@ struct Roll<GPUDevice, T> {
     d.memcpyHostToDevice(thres_buf, threshold.data(), thres_bytes);
     d.memcpyHostToDevice(range_buf, dim_range.data(), range_bytes);
 
-    CudaLaunchConfig cfg = GetCudaLaunchConfig(num_elements, d);
+    CudaLaunchConfig cfg = GetGpuLaunchConfig(num_elements, d);
 
     TF_CHECK_OK(GpuLaunchKernel(RollKernel<T>, cfg.block_count,
                                 cfg.thread_per_block, 0, d.stream(),
