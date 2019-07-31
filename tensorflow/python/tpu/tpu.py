@@ -415,7 +415,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       for index in xrange(len(op.inputs)):
         x = op.inputs[index]
         real_x = self.AddValue(x)
-        if real_x != x:
+        if real_x is not x:
           op._update_input(index, real_x)  # pylint: disable=protected-access
 
     if external_control_inputs:
