@@ -325,6 +325,30 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
       ::testing::ContainsRegex(R"(custom-call.*metadata=\{op_type="foo"\})"));
 }
 
+TEST_F(CudnnFusedConvRewriterTest, TestPreservesFeatureGroupCount) {
+  // The convolution below would crash if feature_count is not preserved.
+  const char* kHloString = R"(
+    HloModule jaxpr_computation__6.19
+
+    primitive_computation__1.4 {
+      parameter.5 = f32[] parameter(0)
+      parameter.6 = f32[] parameter(1)
+      ROOT add.7 = f32[] add(parameter.5, parameter.6)
+    }
+
+    ENTRY jaxpr_computation__7.8 {
+      parameter.11 = f32[2,64,64,53]{3,2,1,0} parameter(1)
+      parameter.10 = f32[3,3,1,53]{3,2,1,0} parameter(0)
+      convolution.12 = f32[2,64,64,53]{3,2,1,0} convolution(parameter.11, parameter.10), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, feature_group_count=53
+      constant.13 = f32[] constant(0)
+      broadcast.14 = f32[2,64,64,53]{3,2,1,0} broadcast(constant.13), dimensions={}
+      maximum.15 = f32[2,64,64,53]{3,2,1,0} maximum(convolution.12, broadcast.14)
+      ROOT reduce.17 = f32[] reduce(maximum.15, constant.13), dimensions={0,1,2,3}, to_apply=primitive_computation__1.4
+    }
+  )";
+  EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{0.01}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
