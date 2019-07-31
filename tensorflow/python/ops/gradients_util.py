@@ -418,7 +418,7 @@ def _MaybeCaptured(t):
   if (not isinstance(t, ops.EagerTensor) and
       _IsFunction(t.op.graph) and t.op.type == "Placeholder"):
     for input_t, placeholder_t in _Captures(t.op.graph):
-      if t == placeholder_t:
+      if t is placeholder_t:
         return _MaybeCaptured(input_t)
   # pylint: enable=protected-access
   return t
