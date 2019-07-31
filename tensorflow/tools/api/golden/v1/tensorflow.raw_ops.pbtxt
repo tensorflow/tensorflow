@@ -709,6 +709,10 @@ tf_module {
     argspec: "args=[\'embedding_config\', \'tpu_embedding_config\', \'is_global_init\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'False\', \'None\'], "
   }
   member_method {
+    name: "ConfigureTPUEmbedding"
+    argspec: "args=[\'config\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Conj"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
