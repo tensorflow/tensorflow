@@ -68,9 +68,10 @@ class BaseDenseAttention(Layer):
     Attention outputs of shape `[batch_size, Tq, dim]`.
   """
 
-  def __init__(self, causal=False, **kwargs):
+  def __init__(self, causal=False, dropout=0.0, **kwargs):
     super(BaseDenseAttention, self).__init__(**kwargs)
     self.causal = causal
+    self.dropout = dropout
     self.supports_masking = True
 
   def _calculate_scores(self, query, key):
@@ -84,7 +85,7 @@ class BaseDenseAttention(Layer):
     """
     return NotImplementedError
 
-  def _apply_scores(self, scores, value, scores_mask=None):
+  def _apply_scores(self, scores, value, training, scores_mask=None):
     """Applies attention scores to the given value tensor.
 
     To use this method in your attention layer, follow the steps:
@@ -112,10 +113,12 @@ class BaseDenseAttention(Layer):
       # Bias so padding positions do not contribute to attention distribution.
       scores -= 1.e9 * math_ops.cast(padding_mask, dtype=K.floatx())
     attention_distribution = nn.softmax(scores)
+    if training is True:
+	    weights = tf.nn.dropout(weights, rate=self.dropout)
     return math_ops.matmul(attention_distribution, value)
 
   # TODO(b/125916026): Consider exposing a __call__ method with named args.
-  def call(self, inputs, mask=None):
+  def call(self, inputs, training, mask=None):
     self._validate_call_args(inputs=inputs, mask=mask)
     q = inputs[0]
     v = inputs[1]
@@ -139,7 +142,7 @@ class BaseDenseAttention(Layer):
     else:
       causal_mask = None
     scores_mask = _merge_masks(v_mask, causal_mask)
-    result = self._apply_scores(scores=scores, value=v, scores_mask=scores_mask)
+    result = self._apply_scores(scores=scores, value=v, training, scores_mask=scores_mask)
     if q_mask is not None:
       # Mask of shape [batch_size, Tq, 1].
       q_mask = array_ops.expand_dims(q_mask, axis=-1)
