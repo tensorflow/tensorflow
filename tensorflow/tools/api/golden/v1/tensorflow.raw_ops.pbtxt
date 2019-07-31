@@ -4062,7 +4062,7 @@ tf_module {
   }
   member_method {
     name: "StatelessWhile"
-    argspec: "args=[\'input\', \'cond\', \'body\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'cond\', \'body\', \'output_shapes\', \'parallel_iterations\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'10\', \'None\'], "
   }
   member_method {
     name: "StaticRegexFullMatch"

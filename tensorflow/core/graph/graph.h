@@ -177,6 +177,7 @@ class Node {
   bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
   bool IsPartitionedCall() const { return class_ == NC_PARTITIONED_CALL; }
   bool IsIfNode() const { return class_ == NC_IF; }
+  bool IsWhileNode() const { return class_ == NC_WHILE; }
   // Is this node a function input
   bool IsArg() const { return class_ == NC_ARG; }
   // Is this node a function output
@@ -264,6 +265,7 @@ class Node {
     NC_FAKE_PARAM,
     NC_PARTITIONED_CALL,
     NC_IF,
+    NC_WHILE,
     NC_ARG,
     NC_RETVAL,
     NC_OTHER  // Not a special kind of node
