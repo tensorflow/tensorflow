@@ -65,6 +65,7 @@ struct VariableTypeGetter {
   std::string operator()(float) const { return "float"; }
   std::string operator()(const float2&) const { return "vec2"; }
   std::string operator()(const float4&) const { return "vec4"; }
+  std::string operator()(const std::vector<float4>&) const { return "vec4"; }
 };
 
 // Returns GLSL uniform type of the given variable.
