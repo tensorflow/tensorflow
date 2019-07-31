@@ -353,9 +353,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mul = "Mul";
     csinfo_.squared_difference = "SquaredDifference";
     csinfo_.sub = "Sub";
-    // End - element-wise ops. See note above.
+// End - element-wise ops. See note above.
 
-    // NOTE: names are alphabetically sorted.
+// NOTE: names are alphabetically sorted.
+#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
@@ -389,10 +390,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.conjugate_transpose,
          mkl_op_registry::GetMklOpName(csinfo_.conjugate_transpose),
          CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
+#endif  // !ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d),
                       CopyAttrsConvCheckConstFilter, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
+#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.conv2d_with_bias, csinfo_.mkl_conv2d_with_bias,
                       CopyAttrsConvCheckConstFilter, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
@@ -641,6 +644,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back(
         {csinfo_.requantize, mkl_op_registry::GetMklOpName(csinfo_.requantize),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+#endif  // !ENABLE_MKLDNN_V1
     // Disable these two MKL operators for now due to some test failures caused
     // by these two ops
     /*
@@ -653,6 +657,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
     */
+#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back(
         {csinfo_.reshape, mkl_op_registry::GetMklOpName(csinfo_.reshape),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
@@ -753,6 +758,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          // CheckForMklOp
          FuseConv3D,
          CopyAttrsConv});
+#endif  // !ENABLE_MKLDNN_V1
   }
 
   // Standard interface to run pass
