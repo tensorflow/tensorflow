@@ -131,6 +131,9 @@ class ObjectIdentitySet(collections_abc.MutableSet):
   def update(self, items):
     self._storage.update([self._wrap_key(item) for item in items])
 
+  def intersection(self, items):
+    return self._storage.intersection([self._wrap_key(item) for item in items])
+
   def __len__(self):
     return len(self._storage)
 
