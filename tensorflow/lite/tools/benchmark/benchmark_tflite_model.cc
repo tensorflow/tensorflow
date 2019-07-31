@@ -428,6 +428,7 @@ void BenchmarkTfLiteModel::Init() {
   }
 
   interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
+  interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   delegates_ = GetDelegates();
   for (const auto& delegate : delegates_) {
@@ -439,7 +440,6 @@ void BenchmarkTfLiteModel::Init() {
     }
   }
 
-  interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   auto interpreter_inputs = interpreter_->inputs();
 
