@@ -371,10 +371,7 @@ class Network(base_layer.Layer):
   def _init_subclassed_network(self, name=None, **kwargs):
     self._base_init(name=name, **kwargs)
     self._is_graph_network = False
-    self._expects_training_arg = ('training' in self._call_fn_args or
-                                  self._call_accepts_kwargs)
-    self._expects_mask_arg = ('mask' in self._call_fn_args or
-                              self._call_accepts_kwargs)
+    self._init_call_fn_args()
     self.outputs = []
     self.inputs = []
     self.built = False

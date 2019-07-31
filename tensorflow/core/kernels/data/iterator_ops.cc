@@ -52,7 +52,11 @@ namespace {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following ops.
 
+const char kAnonymousIterator[] = "AnonymousIterator";
+const char kAnonymousIteratorV2[] = "AnonymousIteratorV2";
 const char kIteratorVariantTypeName[] = "tensorflow::Iterator";
+const char kOutputShapes[] = "output_shapes";
+const char kOutputTypes[] = "output_types";
 
 }  // namespace
 
@@ -259,8 +263,8 @@ REGISTER_UNARY_VARIANT_DECODE_FUNCTION(IteratorStateVariant,
 // resource containers with AnonymousIteratorHandleOp instead.
 IteratorHandleOp::IteratorHandleOp(OpKernelConstruction* ctx)
     : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_dtypes_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_dtypes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shared_name", &name_));
 }
 
@@ -367,19 +371,14 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
 // running them.
 AnonymousIteratorHandleOp::AnonymousIteratorHandleOp(
     OpKernelConstruction* context)
-    : AnonymousIteratorResourceOp<IteratorResource>(context),
+    : AnonymousResourceOp<IteratorResource>(context),
       graph_def_version_(context->graph_def_version()) {
-  create_deleter_ = context->def().op() == "AnonymousIteratorV2";
+  OP_REQUIRES_OK(context, context->GetAttr(kOutputTypes, &output_dtypes_));
+  OP_REQUIRES_OK(context, context->GetAttr(kOutputShapes, &output_shapes_));
+  create_deleter_ = context->def().op() == kAnonymousIteratorV2;
 }
 
-static std::atomic<int64> current_iterator_id_;
-
-void AnonymousIteratorHandleOp::GenerateContainerNames(string* unique_name,
-                                                       string* container_name) {
-  *unique_name =
-      strings::StrCat("AnonymousIterator", current_iterator_id_.fetch_add(1));
-  *container_name = "AnonymousIterator";
-}
+string AnonymousIteratorHandleOp::name() { return kAnonymousIterator; }
 
 Status AnonymousIteratorHandleOp::CreateResource(
     OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
@@ -539,8 +538,8 @@ class ReduceDatasetOp : public AsyncOpKernel {
     params.is_multi_device_function = true;
     OP_REQUIRES_OK(ctx,
                    FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
@@ -714,8 +713,8 @@ class OneShotIteratorOp : public AsyncOpKernel {
                                         "support the 'shared_name' attr."));
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr("dataset_factory", &dataset_factory_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_dtypes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_dtypes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
   }
 
   ~OneShotIteratorOp() override {
@@ -1007,8 +1006,8 @@ void IteratorToStringHandleOp::Compute(OpKernelContext* ctx) {
 IteratorFromStringHandleOp::IteratorFromStringHandleOp(
     OpKernelConstruction* ctx)
     : OpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_dtypes_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_dtypes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
   OP_REQUIRES(
       ctx,
       output_dtypes_.empty() || output_shapes_.empty() ||

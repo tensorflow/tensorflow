@@ -391,6 +391,11 @@ TF_CAPI_EXPORT extern void TFE_InferShapes(
     TF_ShapeAndTypeList** input_resource_shapes_and_types,
     TF_ShapeAndTypeList** output_shapes,
     TF_ShapeAndTypeList*** output_resource_shapes_and_types, TF_Status* status);
+
+TF_CAPI_EXPORT extern void
+TF_ImportGraphDefOptionsSetValidateColocationConstraints(
+    TF_ImportGraphDefOptions* opts, unsigned char enable);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

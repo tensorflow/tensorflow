@@ -163,6 +163,26 @@ TEST_F(CudnnFusedConvRewriterTest, TestScaledConv) {
     })");
 }
 
+TEST_F(CudnnFusedConvRewriterTest, TestNoCrashOnInf) {
+  EXPECT_TRUE(RunAndCompare(R"(
+    HloModule Test
+
+    ENTRY Test {
+      zero = f32[] constant(inf)
+      zeros = f32[1,32,9,9] broadcast(zero), dimensions={}
+      alpha_conv_scalar = f32[] constant(0.999994934)
+
+      input = f32[1,17,9,9] parameter(0)
+      filter = f32[3,3,17,32] parameter(1)
+
+      conv = f32[1,32,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1
+      alpha_conv = f32[1,32,9,9] broadcast(alpha_conv_scalar), dimensions={}
+      scaled_conv = f32[1,32,9,9] multiply(conv, alpha_conv)
+      ROOT relu = f32[1,32,9,9] maximum(zeros, scaled_conv)
+    })",
+                            ErrorSpec{0.01}));
+}
+
 TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndSideInput) {
   // max(0, conv(x, w) + 0.899994934 * side_input);
   TestMatchWithAllTypes(R"(

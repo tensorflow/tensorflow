@@ -60,7 +60,7 @@ class ValidationDatasetNoLimitTest(keras_parameterized.TestCase):
     # from the fit history should be equal to the final element in the output
     # of evaluating the model on the same eval dataset.
     self.assertAlmostEqual(history.history["val_mean_absolute_error"][-1],
-                           evaluation[-1])
+                           evaluation[-1], places=5)
 
 
 class PrintTrainingInfoTest(parameterized.TestCase):

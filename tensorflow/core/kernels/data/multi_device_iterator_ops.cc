@@ -36,6 +36,11 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+const char kAnonymousMultiDeviceIterator[] = "AnonymousMultiDeviceIterator";
+const char kDevices[] = "devices";
+const char kOutputShapes[] = "output_shapes";
+const char kOutputTypes[] = "output_types";
+
 struct HostBufferElement {
   Status status;
   bool end_of_sequence;
@@ -399,11 +404,11 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
  public:
   explicit MultiDeviceIteratorHandleOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shared_name", &name_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("container", &container_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("devices", &devices_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kDevices, &devices_));
   }
 
   // The resource is deleted from the resource manager only when it is private
@@ -443,7 +448,7 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         if (name_ == ResourceHandle::ANONYMOUS_NAME) {
           unique_name = strings::StrCat("_AnonymousMultiDeviceIterator",
                                         current_id_.fetch_add(1));
-          container_name = "AnonymousMultiDeviceIterator";
+          container_name = kAnonymousMultiDeviceIterator;
           resource = new MultiDeviceIterator(
               context->env(), output_types_, output_shapes_, devices_,
               std::move(flib_def), std::move(pflr), flr,
@@ -511,26 +516,18 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("MultiDeviceIterator").Device(DEVICE_CPU),
                         MultiDeviceIteratorHandleOp);
 
-// This atomic is used to ensure that each new AnonymousMultiDeviceIterator
-// handle is unique.
-static std::atomic<int64> current_multi_device_iterator_id_;
-
 class AnonymousMultiDeviceIteratorOp
-    : public AnonymousIteratorResourceOp<MultiDeviceIterator> {
+    : public AnonymousResourceOp<MultiDeviceIterator> {
  public:
   explicit AnonymousMultiDeviceIteratorOp(OpKernelConstruction* ctx)
-      : AnonymousIteratorResourceOp<MultiDeviceIterator>(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("devices", &devices_));
+      : AnonymousResourceOp<MultiDeviceIterator>(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kDevices, &devices_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_dtypes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
   }
 
  private:
-  void GenerateContainerNames(string* unique_name,
-                              string* container_name) override {
-    *unique_name =
-        strings::StrCat("_AnonymousMultiDeviceIterator",
-                        current_multi_device_iterator_id_.fetch_add(1));
-    *container_name = "AnonymousMultiDeviceIterator";
-  }
+  string name() override { return kAnonymousMultiDeviceIterator; }
 
   Status CreateResource(OpKernelContext* ctx,
                         std::unique_ptr<FunctionLibraryDefinition> flib_def,
@@ -546,9 +543,11 @@ class AnonymousMultiDeviceIteratorOp
   }
 
   std::vector<string> devices_;
+  DataTypeVector output_dtypes_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("AnonymousMultiDeviceIterator").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name(kAnonymousMultiDeviceIterator).Device(DEVICE_CPU),
                         AnonymousMultiDeviceIteratorOp);
 
 // Calls init on the MultiDeviceIterator.
@@ -657,8 +656,8 @@ class MultiDeviceIteratorFromStringHandleOp : public OpKernel {
  public:
   explicit MultiDeviceIteratorFromStringHandleOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
     OP_REQUIRES(
         ctx,
         output_types_.empty() || output_shapes_.empty() ||

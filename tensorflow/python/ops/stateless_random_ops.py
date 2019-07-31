@@ -202,7 +202,7 @@ def stateless_multinomial(logits,
   # samples has shape [1, 5], where each value is either 0 or 1 with equal
   # probability.
   samples = tf.random.stateless_categorical(
-      tf.math.log([[10., 10.]]), 5, seed=[7, 17])
+      tf.math.log([[0.5, 0.5]]), 5, seed=[7, 17])
   ```
 
   Args:
@@ -241,7 +241,7 @@ def stateless_categorical(logits,
   # samples has shape [1, 5], where each value is either 0 or 1 with equal
   # probability.
   samples = tf.random.stateless_categorical(
-      tf.math.log([[10., 10.]]), 5, seed=[7, 17])
+      tf.math.log([[0.5, 0.5]]), 5, seed=[7, 17])
   ```
 
   Args:

@@ -402,7 +402,7 @@ Status MemorySpaceAssignment::Process() {
     }
   }
 
-  if (preset_assignments_->chunks().empty()) {
+  if (!preset_assignments_->chunks().empty()) {
     preset_assignments_->add_size(alternate_memory_space_,
                                   alternate_memory_size);
   }
@@ -412,6 +412,10 @@ Status MemorySpaceAssignment::Process() {
     for (auto& pair : preset_assignments_->chunks()) {
       VLOG(3) << " [" << pair.second.offset << ", " << pair.second.size
               << "] : " << pair.first.ToString();
+    }
+    VLOG(3) << "Exported alternate memory sizes:";
+    for (auto& pair : preset_assignments_->sizes()) {
+      VLOG(3) << "  space: " << pair.first << ", size: " << pair.second;
     }
   }
   return Status::OK();
@@ -427,7 +431,9 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopy(
 Status MemorySpaceAssignment::FixSchedule() {
   CHECK(module_->has_schedule());
   HloSchedule& schedule = module_->schedule();
-  for (const HloComputation* computation : module_->computations()) {
+  for (const HloComputation* computation :
+       module_->MakeNonfusionComputations()) {
+    CHECK(schedule.is_computation_scheduled(computation));
     const HloInstructionSequence& sequence = schedule.sequence(computation);
     HloInstructionSequence new_sequence;
 

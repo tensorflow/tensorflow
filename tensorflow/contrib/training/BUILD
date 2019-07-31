@@ -174,7 +174,7 @@ py_test(
 
 py_test(
     name = "sampling_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/training/sampling_ops_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",

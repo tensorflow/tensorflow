@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import hashlib
 import threading
 
@@ -41,6 +40,7 @@ from tensorflow.python.ops import resource_variable_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: enable=wildcard-import
@@ -64,7 +64,7 @@ def _as_shape_list(shapes,
   """Convert shapes to a list of tuples of int (or None)."""
   del dtypes
   if unknown_dim_allowed:
-    if (not isinstance(shapes, collections.Sequence) or not shapes or
+    if (not isinstance(shapes, collections_abc.Sequence) or not shapes or
         any(shape is None or isinstance(shape, int) for shape in shapes)):
       raise ValueError(
           "When providing partial shapes, a list of shapes must be provided.")

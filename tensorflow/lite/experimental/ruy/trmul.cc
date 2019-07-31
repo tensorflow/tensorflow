@@ -106,22 +106,59 @@ struct TrMulTask final : Task {
   }
 
  private:
-  bool TryEnsurePacked(Side side, bool* local_packed, int block, int start,
-                       int end, Tuning tuning) {
+  // Tries to pack a block, without blocking.
+  // If the block was already packed, returns true.
+  // If the block was not started packing, packs it and returns true.
+  // If the block was being packed by another thread, returns false.
+  bool TryPack(Side side, bool* local_packed, int block, int start, int end,
+               Tuning tuning) {
     if (local_packed && !local_packed[block]) {
-      PackingStatus not_started = PackingStatus::kNotStarted;
+      // Explanation of this compare_exchange_strong operation:
+      // This atomically performs all of the following:
+      // 1. Read `status` with "acquire" memory order.
+      //    * That this read uses "acquire" is because both memory orders
+      //      specified have "acquire" as their read-component.
+      // 2. Compare (bitwise) with `exchanged_status`.
+      // 3. If equal, stores the value kInProgress to `status` with "release"
+      //    memory order, and returns true, so we take this 'if' branch.
+      //    * That this store uses "release" is because of the _rel part in
+      //      memory_order_acq_rel passed as the first memory order argument.
+      // 4. If not equal, stores the loaded value of `status` to
+      //    `exchanged_status` with "relaxed" semantics, and returns false,
+      //    so we take the 'else' branch.
+      //    * That this store uses "relaxed" is because the second memory
+      //      order argument, memory_order_acquire, implies no particular store
+      //      semantics. "relaxed" is acceptable here because this stores to
+      //      a local stack variable.
+      //
+      // Rationale for compare_exchange_strong as opposed to
+      // compare_exchange_weak:
+      // The spurious-failure case with compare_exchange_weak will actually
+      // happen a lot here, because the atomic 'status' bytes are stored
+      // contiguously in arrays and neighboring values will be accessed
+      // by multiple threads concurrently. On a typical ARM CPU, an exclusives
+      // reservation granule is 64 bytes, so a lot of false-sharing may happen.
+      // Using compare_exchange_weak would thus result in often having TryPack
+      // return 'false' when it could instead have done the packing work and
+      // returned 'true'. Heuristically, that is not a good thing. Moreover,
+      // this changes the TryPack contract, loosening it and making it harder
+      // for the caller to reason about. Finally, the overhead of atomic
+      // operations is mitigated by the enclosing check on local_packed, so
+      // maybe the overhead of compare_exchange_strong isn't such a problem.
+      // But we don't really know for sure, that would be interesting to
+      // experiment more with.
+      PackingStatus exchanged_status = PackingStatus::kNotStarted;
       std::atomic<PackingStatus>& status = packing_status[side][block];
-      if (status.compare_exchange_strong(not_started,
-                                         PackingStatus::kInProgress,
-                                         std::memory_order_acquire)) {
+      if (status.compare_exchange_strong(
+              exchanged_status, PackingStatus::kInProgress,
+              std::memory_order_acq_rel, std::memory_order_acquire)) {
         // In this branch, the status was kNotStarted and we just atomically
         // changed it to kInProgress as we are about to handle the packing
         // ourselves.
         params->RunPack(side, tuning, start, end);
         TraceRecordBlockPacked(thread_id, side, block, trace);
         status.store(PackingStatus::kFinished, std::memory_order_release);
-      } else if (status.load(std::memory_order_acquire) ==
-                 PackingStatus::kInProgress) {
+      } else if (exchanged_status == PackingStatus::kInProgress) {
         // Another thread is currently packing this block.
         return false;
       }
@@ -132,19 +169,42 @@ struct TrMulTask final : Task {
     return true;
   }
 
+  // Ensures that both the LHS and RHS blocks required by the specified block
+  // are packed. In the event that they are already being packed on another
+  // threads, this function may perform the packing of some other block while
+  // waiting for that other thread to finish packing the requested block.
   void EnsurePacked(const SidePair<bool*> local_packed,
                     const SidePair<int>& block, const SidePair<int>& start,
                     const SidePair<int>& end, Tuning tuning) {
+#if RUY_OPT_ENABLED(RUY_OPT_PACK_AHEAD)
+    SidePair<int> next_runahead_block{block[Side::kLhs] + 1,
+                                      block[Side::kRhs] + 1};
+    Side next_runahead_side = Side::kLhs;
+#endif
     while (true) {
       bool both_sides_packed = true;
       for (Side side : {Side::kLhs, Side::kRhs}) {
-        both_sides_packed &=
-            TryEnsurePacked(side, local_packed[side], block[side], start[side],
-                            end[side], tuning);
+        both_sides_packed &= TryPack(side, local_packed[side], block[side],
+                                     start[side], end[side], tuning);
       }
       if (both_sides_packed) {
         break;
       }
+#if RUY_OPT_ENABLED(RUY_OPT_PACK_AHEAD)
+      const Side runahead_side = next_runahead_side;
+      const int runahead_block = next_runahead_block[runahead_side];
+      next_runahead_side =
+          next_runahead_side == Side::kLhs ? Side::kRhs : Side::kLhs;
+      if (runahead_block >= NumBlocksPerSide(runahead_side, block_map)) {
+        continue;
+      }
+      int runahead_block_start, runahead_block_end;
+      GetBlockMatrixCoords(runahead_side, block_map, runahead_block,
+                           &runahead_block_start, &runahead_block_end);
+      TryPack(runahead_side, local_packed[runahead_side], runahead_block,
+              runahead_block_start, runahead_block_end, tuning);
+      next_runahead_block[runahead_side] = runahead_block + 1;
+#endif
     }
   }
 

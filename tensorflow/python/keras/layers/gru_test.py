@@ -55,7 +55,7 @@ class GRULayerTest(keras_parameterized.TestCase):
         'rmsprop',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     x = np.random.random((num_samples, timesteps, embedding_dim))
     y = np.random.random((num_samples, units))
     model.train_on_batch(x, y)
@@ -106,7 +106,7 @@ class GRULayerTest(keras_parameterized.TestCase):
         'rmsprop',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     gru_model.fit(x_train, y_train)
     gru_model.predict(x_train)
 
@@ -122,7 +122,7 @@ class GRULayerTest(keras_parameterized.TestCase):
         loss='categorical_crossentropy',
         optimizer='rmsprop',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
   def test_statefulness_GRU(self):
@@ -147,7 +147,7 @@ class GRULayerTest(keras_parameterized.TestCase):
         optimizer='sgd',
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 

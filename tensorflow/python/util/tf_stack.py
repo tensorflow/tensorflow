@@ -50,14 +50,21 @@ class StackTraceMapper(object):
   """Allows remapping traceback information to different source code."""
 
   def __enter__(self):
-    _source_mappers().append(self)
+    self._effective_source_map = None
+    mappers_stack = _source_mappers()
+    if mappers_stack:
+      self.parent = mappers_stack[-1]
+    else:
+      self.parent = None
+    mappers_stack.append(self)
     return self
 
   def __exit__(self, unused_type, unused_value, unused_traceback):
     assert _source_mappers()[-1] is self, 'Concurrent access?'
     _source_mappers().pop()
 
-  def map(self, filename, lineno, name):
+  def get_effective_source_map(self):
+    """Returns a map (filename, lineno) -> (filename, lineno, function_name)."""
     raise NotImplementedError('subclasses need to override this')
 
 
@@ -65,14 +72,20 @@ class StackTraceFilter(object):
   """Allows filtering traceback information by removing superfluous frames."""
 
   def __enter__(self):
-    _source_filters().append(self)
+    self._filtered_filenames = None
+    filters_stack = _source_filters()
+    if filters_stack:
+      self.parent = filters_stack[-1]
+    else:
+      self.parent = None
+    filters_stack.append(self)
     return self
 
   def __exit__(self, unused_type, unused_value, unused_traceback):
     assert _source_filters()[-1] is self, 'Concurrent access?'
     _source_filters().pop()
 
-  def filter(self, filename, lineno, name):
+  def get_filtered_filenames(self):
     raise NotImplementedError('subclasses need to override this')
 
 
@@ -97,9 +110,16 @@ class CurrentModuleFilter(StackTraceFilter):
       del f
       del outer_f
 
-  def should_remove(self, filename, lineno, name):
-    del lineno, name
-    return filename == self._filename
+  def get_filtered_filenames(self):
+    if self._filtered_filenames is None:
+      self._filtered_filenames = frozenset((self._filename,))
+      if self.parent is not None:
+        self._filtered_filenames |= self.parent.get_filtered_filenames()
+    return self._filtered_filenames
+
+
+EMPTY_FROZEN_MAP = {}
+EMPTY_FROZEN_SET = frozenset()
 
 
 def extract_stack(limit=None):
@@ -127,6 +147,20 @@ def extract_stack(limit=None):
     f = sys.exc_info()[2].tb_frame.f_back
   ret = []
   length = 0
+
+  source_mappers = _source_mappers()
+  # TODO(mdan): Use sentinels instead.
+  if source_mappers:
+    source_map = source_mappers[-1].get_effective_source_map()
+  else:
+    source_map = EMPTY_FROZEN_MAP
+
+  source_filters = _source_filters()
+  if source_filters:
+    filtered_filenames = source_filters[-1].get_filtered_filenames()
+  else:
+    filtered_filenames = EMPTY_FROZEN_SET
+
   while f is not None and (limit is None or length < limit):
     lineno = f.f_lineno
     co = f.f_code
@@ -135,21 +169,16 @@ def extract_stack(limit=None):
     frame_globals = f.f_globals
     func_start_lineno = co.co_firstlineno
 
-    for mapper in _source_mappers():
-      # TODO(mdan): Show some indication that the frame was translated.
-      filename, lineno, name = mapper.map(filename, lineno, name)
+    # TODO(mdan): Show some indication that the frame was translated.
+    filename, lineno, name = source_map.get(
+        (filename, lineno), (filename, lineno, name))
 
-    keep = True
-    if ret:  # Never filter the innermost frame.
-      keep = not any(
-          f.should_remove(filename, lineno, name) for f in _source_filters())
-    if keep:
+    # Note: we never filter the innermost frame.
+    if not (ret and filename in filtered_filenames):
       ret.append((filename, lineno, name, frame_globals, func_start_lineno))
       length += 1
 
     f = f.f_back
-
-  # TODO(mdan): Also add a truncation mechanism.
 
   ret.reverse()
   return ret

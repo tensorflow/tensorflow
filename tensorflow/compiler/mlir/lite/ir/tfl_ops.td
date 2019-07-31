@@ -545,6 +545,8 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
   let arguments = (ins ElementsAttr:$value);
 
   let results = (outs AnyTensor:$output);
+
+  let hasFolder = 1;
 }
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution">;
@@ -1589,6 +1591,8 @@ def TFL_RankOp: TFL_Op<"rank", [NoSideEffect]> {
   let arguments = (ins AnyTensor:$input);
 
   let results = (outs TFL_IntTensor:$output);
+
+  let hasFolder = 1;
 }
 
 def TFL_ReluOp: TFL_Op<"relu", [NoSideEffect, SameOperandsAndResultType]> {
@@ -1704,7 +1708,11 @@ def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect, TFL_NoQuantizableResult]> {
 }
 
 // TODO(jpienaar): Flesh this out.
-def TFL_RangeOp: TFL_Op<"range", [NoSideEffect]> {
+def TFL_RangeOp: TFL_Op<"range", [NoSideEffect, TFL_OperandHasRank<0, 0>,
+    TFL_OperandHasRank<1, 0>, TFL_OperandHasRank<2, 0>,
+    PredOpTrait<"operands and output must have same element type",
+      And<[TCresVTEtIsSameAsOp<0, 0>, TCresVTEtIsSameAsOp<0, 1>,
+           TCresVTEtIsSameAsOp<0, 2>]>>]> {
   let summary = "Range operator";
 
   let description = [{
@@ -1718,6 +1726,8 @@ def TFL_RangeOp: TFL_Op<"range", [NoSideEffect]> {
     AnyTensor:$delta);
 
   let results = (outs AnyTensor:$result);
+
+  let hasFolder = 1;
 }
 
 def TFL_ReverseV2Op: TFL_Op<"reverse_v2",
@@ -2514,7 +2524,7 @@ Ba et al. “Layer Normalization”
   let verifier = [{ return Verify(*this); }];
 }
 
-// UnidirectionalSequenceLstm op .
+// UnidirectionalSequenceLstm op.
 // TODO(ashwinm): Add constraint to validate the combination of operands
 // that are valid for hybrid vs fully quantized vs float only semantics
 def TFL_UnidirectionalSequenceLSTMOp :
@@ -2590,6 +2600,59 @@ def TFL_UnidirectionalSequenceLSTMOp :
   let results = (outs AnyTensor:$output);
 
   let hasOptions = 1;
+
+  let verifier = [{ return Verify(*this); }];
+}
+
+def RnnResultConstraint : PredOpTrait<
+  "the input and result tensor elemental types must be same",
+  TCresVTEtIsSameAsOp<0, 0>>;
+
+// UnidirectionalSequenceRNN op.
+def TFL_UnidirectionalSequenceRNNOp :
+  TFL_Op<"unidirectional_sequence_rnn",
+         [RnnResultConstraint, StatefulOperands<[4]>]> {
+
+  let summary = "Unidirectional sequence rnn operator";
+
+  let description = [{
+    A recurrent neural network specified by an RNN cell. This Op takes in input
+    in a format {batch_size, seq_len, input_size} or
+    {seq_len, batch_size, input_size} if it's time-majored.
+
+    It implements the following operation for
+    each element in the sequence s = 1...sequence_length:
+      outputs[s] = state = activation(RNNOp(inputs[s]))
+
+    where RNNOp is RNNOp TF Lite Op and the “activation” is the function passed
+    as the “fused_activation_function” argument (if not “NONE”).
+  }];
+
+  let arguments = (
+    ins TensorOf<[F32, I8]>:$input,
+
+    // Weights
+    TFL_TensorOfOrNone<[F32, I8]>:$input_to_input_weights,
+
+    // Recurrent weights
+    TFL_TensorOfOrNone<[F32, I8]>:$recurrent_to_input_weights,
+
+    // Bias
+    TFL_TensorOfOrNone<[F32]>:$input_gate_bias,
+
+    // Hidden state.
+    TFL_StatefulTensor:$hidden_state,
+
+    // Attributes
+    BoolAttr:$time_major,
+    TFL_AFAttr:$fused_activation_function
+  );
+
+  let results = (outs AnyTensor:$output);
+
+  let hasOptions = 1;
+
+  let customOption = "SequenceRNNOptions";
 
   let verifier = [{ return Verify(*this); }];
 }

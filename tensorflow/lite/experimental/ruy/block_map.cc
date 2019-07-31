@@ -183,11 +183,11 @@ void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
   const int smallc =
       round_down_pot(cols >> num_blocks_of_cols_log2, kernel_cols);
   const int missr =
-      round_up_pot(rows - (smallr << num_blocks_of_rows_log2), kernel_rows) /
-      kernel_rows;
+      round_up_pot(rows - (smallr << num_blocks_of_rows_log2), kernel_rows) >>
+      floor_log2(kernel_rows);
   const int missc =
-      round_up_pot(cols - (smallc << num_blocks_of_cols_log2), kernel_cols) /
-      kernel_cols;
+      round_up_pot(cols - (smallc << num_blocks_of_cols_log2), kernel_cols) >>
+      floor_log2(kernel_cols);
 
   block_map->dims[Side::kLhs] = rows;
   block_map->dims[Side::kRhs] = cols;

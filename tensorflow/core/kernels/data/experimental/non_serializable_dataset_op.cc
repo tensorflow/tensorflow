@@ -20,6 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
@@ -132,5 +133,6 @@ REGISTER_KERNEL_BUILDER(
     NonSerializableDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

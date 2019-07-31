@@ -152,7 +152,7 @@ class TestGeneratorMethods(ForkRobustTestCase):
         optimizer=rmsprop.RMSprop(1e-3),
         metrics=['mae', metrics_module.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     self._sleep_at_end = True
     model.evaluate_generator(custom_generator(),
@@ -180,7 +180,7 @@ class TestGeneratorMethods(ForkRobustTestCase):
     model = testing_utils.get_small_mlp(
         num_hidden=3, num_classes=4, input_dim=2)
     model.run_eagerly = testing_utils.should_run_eagerly()
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     self._sleep_at_end = True
     model.predict_generator(custom_generator(),
@@ -221,7 +221,7 @@ class TestGeneratorMethods(ForkRobustTestCase):
         optimizer=rmsprop.RMSprop(1e-3),
         metrics=['mae', metrics_module.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     model.fit_generator(custom_generator(mode=3),
                         steps_per_epoch=5,
@@ -259,7 +259,7 @@ class TestGeneratorMethods(ForkRobustTestCase):
         loss='mse',
         optimizer=rmsprop.RMSprop(1e-3),
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     err_msg = 'Output of generator should be a tuple of 1 or 2 or 3 elements'
     with self.assertRaisesRegex(ValueError, err_msg):
@@ -305,7 +305,7 @@ class TestGeneratorMethods(ForkRobustTestCase):
         rmsprop.RMSprop(0.001),
         'binary_crossentropy',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(
         ones_generator(),
         steps_per_epoch=2,

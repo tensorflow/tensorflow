@@ -62,7 +62,7 @@ def function_def_to_graph(fdef, input_shapes=None, copy_functions=True):
 
   with func_graph.as_default():
     # Add all function nodes to the graph.
-    importer.import_graph_def(graph_def, name="")
+    importer.import_graph_def_for_function(graph_def, name="")
 
     # Initialize fields specific to FuncGraph.
 

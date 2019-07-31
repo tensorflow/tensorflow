@@ -49,7 +49,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         loss='mse',
         metrics=[],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     wide_deep_model.fit(inputs, output, epochs=5)
     self.assertTrue(wide_deep_model.built)
 
@@ -70,7 +70,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
           loss='mse',
           metrics=[],
           run_eagerly=testing_utils.should_run_eagerly(),
-          run_distributed=testing_utils.should_run_distributed())
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
       self.evaluate(variables.global_variables_initializer())
       wide_deep_model.fit(inputs, output, epochs=1)
       self.assertAllClose(
@@ -91,7 +91,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         loss='mse',
         metrics=[],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     wide_deep_model.fit(inputs, output, epochs=5)
 
   def test_wide_deep_model_with_single_optimizer(self):
@@ -107,7 +107,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         loss='mse',
         metrics=[],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     wide_deep_model.fit(inputs, output, epochs=5)
     self.assertTrue(wide_deep_model.built)
 
@@ -132,7 +132,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         loss='mse',
         metrics=[],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit([linear_input_np, dnn_input_np, input_b_np], output_np, epochs=5)
 
   def test_wide_deep_model_with_sub_model_trained(self):
@@ -150,13 +150,13 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         loss='mse',
         metrics=[],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     dnn_model.compile(
         optimizer='adam',
         loss='mse',
         metrics=[],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     linear_model.fit(linear_inp, output, epochs=50)
     dnn_model.fit(dnn_inp, output, epochs=50)
     wide_deep_model.compile(
@@ -164,7 +164,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         loss='mse',
         metrics=[],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     wide_deep_model.fit(inputs, output, epochs=50)
 
 

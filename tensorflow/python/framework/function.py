@@ -1186,6 +1186,15 @@ def _get_experimental_kwarg_as_attr(attr_name, value):
                      (attr_name, type(value)))
 
 
+def _get_kwarg_as_str_attr(attr_name, value):
+  """Creates an AttrValue for a python object."""
+  if isinstance(value, str):
+    return attr_value_pb2.AttrValue(s=compat.as_bytes(value))
+  else:
+    raise ValueError("Unsupported attribute type for %s with type %s" %
+                     (attr_name, type(value)))
+
+
 def _parse_kwargs_as_attrs(func_name, **kwargs):
   """Parses **kwargs into a node's attributes."""
   attrs = {}
@@ -1218,7 +1227,10 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
     if key.startswith("experimental_"):
       attrs[key] = _get_experimental_kwarg_as_attr(key, kwargs[key])
       del kwargs[key]
-
+    # Support for https://github.com/tensorflow/community/pull/113/files.
+    elif key == "_implements" or key == "_reference":
+      attrs[key] = _get_kwarg_as_str_attr(key, kwargs[key])
+      del kwargs[key]
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
   return attrs

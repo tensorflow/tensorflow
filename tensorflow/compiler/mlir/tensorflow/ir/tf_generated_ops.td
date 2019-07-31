@@ -136,7 +136,7 @@ Usage:
   import tensorflow as tf
   a = [1, 10, 26.9, 2.8, 166.32, 62.3]
   b = tf.math.argmax(input = a)
-  c = tf.keras.backend.eval(b)  
+  c = tf.keras.backend.eval(b)
   # c = 4
   # here a[4] = 166.32 which is the largest element of a across axis 0
   ```
@@ -169,7 +169,7 @@ Usage:
   import tensorflow as tf
   a = [1, 10, 26.9, 2.8, 166.32, 62.3]
   b = tf.math.argmin(input = a)
-  c = tf.keras.backend.eval(b)  
+  c = tf.keras.backend.eval(b)
   # c = 0
   # here a[0] = 1 which is the smallest element of a across axis 0
   ```
@@ -187,6 +187,28 @@ Usage:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultTypeAttr output_type = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_AssertOp : TF_Op<"Assert", []> {
+  let summary = "Asserts that the given condition is true.";
+
+  let description = [{
+If `condition` evaluates to false, print the list of tensors in `data`.
+`summarize` determines how many entries of the tensors to print.
+  }];
+
+  let arguments = (ins
+    I1Tensor:$condition,
+    Variadic<TF_Tensor>:$data,
+
+    DefaultValuedAttr<I64Attr, "3">:$summarize
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<1>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_AvgPoolOp : TF_Op<"AvgPool", [NoSideEffect]> {
@@ -3210,6 +3232,31 @@ def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   );
 
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_TensorListPushBackOp : TF_Op<"TensorListPushBack", [NoSideEffect]> {
+  let summary = [{
+Returns a list which has the passed-in `Tensor` as last element and the other elements of the given list in `input_handle`.
+  }];
+
+  let description = [{
+tensor: The tensor to put on the list.
+input_handle: The old list.
+output_handle: A list with the elements of the old list followed by tensor.
+element_dtype: the type of elements in the list.
+element_shape: a shape compatible with that of elements in the list.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    TF_Tensor:$tensor
+  );
+
+  let results = (outs
+    TF_VariantTensor:$output_handle
+  );
+
+  TF_DerivedOperandTypeAttr element_dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [NoSideEffect]> {

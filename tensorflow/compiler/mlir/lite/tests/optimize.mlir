@@ -148,6 +148,17 @@ func @FuseFullyConnectedAdd(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) 
   // CHECK: %2 = "tfl.fully_connected"(%0, %1, %cst)
 }
 
+// CHECK-LABEL: @FuseFullyConnectedRelu
+func @FuseFullyConnectedRelu(%arg0: tensor<1x256xf32>, %arg1: tensor<128x256xf32>, %arg2: tensor<128xf32>) -> tensor<1x128xf32> {
+  %0 = "tfl.fully_connected" (%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x256xf32>, tensor<128x256xf32>, tensor<128xf32>) -> tensor<1x128xf32>
+  %1 = "tfl.relu"(%0) : (tensor<1x128xf32>) -> tensor<1x128xf32>
+  return %1 : tensor<1x128xf32>
+
+  // CHECK: %[[RES:[0-9].*]] = "tfl.fully_connected"
+  // CHECK-SAME: fused_activation_function = "RELU"
+  // CHECK: return %[[RES]]
+}
+
 // CHECK-LABEL: @NoPadStridedSliceNonNewAxisMask
 func @NoPadStridedSliceNonNewAxisMask(%arg0: tensor<1x2x3x1xf32>) -> tensor<1x2x3x1xf32> {
   %cst = constant dense<0> : tensor<4xi32>

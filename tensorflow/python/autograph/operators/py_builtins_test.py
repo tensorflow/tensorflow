@@ -24,6 +24,7 @@ import six
 
 from tensorflow.python.autograph.operators import data_structures
 from tensorflow.python.autograph.operators import py_builtins
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -136,6 +137,23 @@ class PyBuiltinsTest(test.TestCase):
       self.assertAllEqual(self.evaluate(r), [])
       r = py_builtins.range_(5, constant_op.constant(2))
       self.assertAllEqual(self.evaluate(r), [])
+
+  def test_enumerate(self):
+    self.assertListEqual(
+        list(py_builtins.enumerate_([3, 2, 1])), [(0, 3), (1, 2), (2, 1)])
+    self.assertListEqual(
+        list(py_builtins.enumerate_([3, 2, 1], 5)), [(5, 3), (6, 2), (7, 1)])
+    self.assertListEqual(list(py_builtins.enumerate_([-8], -3)), [(-3, -8)])
+
+  def test_enumerate_dataset(self):
+    dataset = dataset_ops.DatasetV2.from_tensor_slices(['a', 'c'])
+    start = constant_op.constant(20, dtype=dtypes.int64)
+    dataset = py_builtins.enumerate_(dataset, start)
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+
+    with self.cached_session() as sess:
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (20, b'a'))
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (21, b'c'))
 
   def test_eval_in_original_context(self):
 

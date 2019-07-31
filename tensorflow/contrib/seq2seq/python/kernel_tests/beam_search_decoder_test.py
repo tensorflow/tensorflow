@@ -407,8 +407,8 @@ class TestLargeBeamStep(test.TestCase):
       log_prob_neg_inf = array_ops.ones(
           [self.batch_size, self.beam_width], dtype=dtypes.float32) * -np.Inf
 
-      log_probs = array_ops.where(log_prob_mask, log_prob_zeros,
-                                  log_prob_neg_inf)
+      log_probs = array_ops.where_v2(log_prob_mask, log_prob_zeros,
+                                     log_prob_neg_inf)
       return log_probs
 
     log_probs = get_probs()

@@ -71,25 +71,42 @@ RemoteCopyNode::RemoteCopyNode(EagerContext* ctx, EagerExecutor* executor,
                                Device* recv_device, uint64 recv_op_id)
     : EagerNode(),
       src_(src),
-      dst_(dst),
       ctx_(ctx),
       executor_(executor),
       send_device_(src->DeviceOrHostCPU(ctx)),
       recv_device_(recv_device),
       wire_id_(GetUniqueWireID()),
-      recv_op_id_(recv_op_id) {
+      recv_op_id_(recv_op_id),
+      captured_state_(std::make_shared<CapturedSharedState>(dst)) {
   DCHECK(!send_device_->IsLocal() || !recv_device_->IsLocal());
   src_->Ref();
-  dst_->Ref();
   ctx_->Ref();
 }
 
-Status RemoteCopyNode::RunSend() {
+Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
+  TF_RETURN_IF_ERROR(executor_->status());
+
+  op->AddInput(src_);
+
+  core::RefCountPtr<KernelAndDevice> kernel;
+  TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
+
+  gtl::InlinedVector<TensorValue, 4> input_vector(1);
+  TF_RETURN_IF_ERROR(src_->TensorValue(&input_vector[0]));
+
+  return kernel->Run(input_vector, nullptr, nullptr, nullptr, nullptr, nullptr);
+}
+
+Status RemoteCopyNode::StartSend() {
   // TODO(gjn): We should consider just using the low-level SendOp::Compute()
   // functionality here instead of constructing an Op.
   const AttrTypeMap* types;
   bool is_function = false;
-  TF_RETURN_IF_ERROR(AttrTypeMapForOp("_Send", &types, &is_function));
+  Status status = AttrTypeMapForOp("_Send", &types, &is_function);
+  if (!status.ok()) {
+    captured_state_->SetSendStatus(status);
+    return status;
+  }
   DCHECK(!is_function);
   EagerOperation op(ctx_, "_Send", /*is_function=*/false, types);
 
@@ -108,52 +125,119 @@ Status RemoteCopyNode::RunSend() {
   DCHECK(send_device_ != nullptr);
 
   if (send_device_->IsLocal()) {
-    TF_RETURN_IF_ERROR(executor_->status());
-
-    op.AddInput(src_);
-
-    core::RefCountPtr<KernelAndDevice> kernel;
-    TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(&op, &kernel));
-
-    gtl::InlinedVector<TensorValue, 4> input_vector(1);
-    TF_RETURN_IF_ERROR(src_->TensorValue(&input_vector[0]));
-
-    TF_RETURN_IF_ERROR(
-        kernel->Run(input_vector, nullptr, nullptr, nullptr, nullptr, nullptr));
+    status = RunLocalSend(&op);
+    captured_state_->SetSendStatus(status);
+    return status;
   } else {
-    eager::EagerClient* eager_client;
-    uint64 context_id = ctx_->GetContextId();
-    TF_RETURN_IF_ERROR(ctx_->GetClient(send_device_, &eager_client));
-
-    std::unique_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
-    request->set_context_id(context_id);
-
-    auto* remote_op = request->add_queue()->mutable_operation();
-    TF_RETURN_IF_ERROR(ctx_->RemoteMgr()->SerializeRemoteTensorHandle(
-        src_, remote_op->add_inputs(), src_->device()));
+    // Prepare the request
+    EnqueueRequest request;
+    request.set_context_id(ctx_->GetContextId());
+    auto* remote_op = request.add_queue()->mutable_operation();
+    status = ctx_->RemoteMgr()->SerializeRemoteTensorHandle(
+        src_, remote_op->add_inputs(), src_->device());
+    if (!status.ok()) {
+      captured_state_->SetSendStatus(status);
+      return status;
+    }
 
     PrepareRemoteOp(remote_op, &op);
     remote_op->set_id(ctx_->RemoteMgr()->NextOpId());
 
-    auto* response = new EnqueueResponse;
-    eager_client->EnqueueAsync(request.get(), response,
-                               [this, response](const Status& s) {
-                                 send_status_.Update(s);
-                                 if (!s.ok()) {
-                                   recv_cancellation_.StartCancel();
-                                 }
-                                 delete response;
-                               });
+    // Issue the RPC
+    eager::EagerClient* eager_client;
+    status = ctx_->GetClient(send_device_, &eager_client);
+    if (!status.ok()) {
+      captured_state_->SetSendStatus(status);
+      return status;
+    }
+
+    const std::shared_ptr<CapturedSharedState>& captured_state =
+        captured_state_;
+    EnqueueResponse* response = new EnqueueResponse;
+    // If StartRecv fails very quickly, `this` can be destroyed before the
+    // callback below is executed. So, we can't capture `this`.
+    eager_client->EnqueueAsync(
+        &request, response, [response, captured_state](const Status& s) {
+          captured_state->SetSendStatus(s);
+          if (!s.ok()) {
+            captured_state->recv_cancellation()->StartCancel();
+          }
+          delete response;
+        });
+    return Status::OK();
   }
-  return Status::OK();
 }
 
-Status RemoteCopyNode::RunRecv() {
+Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
+                                    std::vector<Tensor>* outputs) {
+  TF_RETURN_IF_ERROR(executor_->status());
+
+  core::RefCountPtr<KernelAndDevice> kernel;
+  TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
+
+  gtl::InlinedVector<TensorValue, 4> input_vector;
+  return kernel->Run(input_vector, outputs, nullptr, nullptr, nullptr,
+                     captured_state_->recv_cancellation());
+}
+
+Status RemoteCopyNode::RunRemoteRecv(EagerOperation* op) {
+  EnqueueRequest request;
+  uint64 context_id = ctx_->GetContextId();
+  request.set_context_id(context_id);
+  auto* remote_op = request.add_queue()->mutable_operation();
+  PrepareRemoteOp(remote_op, op);
+  remote_op->set_id(recv_op_id_);
+
+  eager::EagerClient* eager_client;
+  Status status = ctx_->GetClient(recv_device_, &eager_client);
+  if (!status.ok()) {
+    captured_state_->dst()->Poison(status);
+    return status;
+  }
+
+  // Don't issue the recv until send has completed.
+  //  - local send will complete very quickly.
+  //  - remote send will take some time, but remote->remote copy is
+  //    probably rare enough that we don't care much.
+  // Blocks until send has completed.
+  Status send_status = captured_state_->GetSendStatus();
+  if (!send_status.ok()) {
+    captured_state_->dst()->Poison(send_status);
+    return send_status;
+  }
+
+  EnqueueResponse* response = new EnqueueResponse;
+  const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
+  Device* recv_device = recv_device_;
+  Notification n;
+  eager_client->EnqueueAsync(
+      &request, response,
+      [captured_state, response, recv_device, &n, &status](const Status& s) {
+        status.Update(s);
+        if (status.ok()) {
+          status = captured_state->dst()->SetRemoteShape(
+              response->queue_response(0).shape(0), recv_device);
+        } else {
+          captured_state->dst()->Poison(status);
+        }
+        delete response;
+        n.Notify();
+      });
+  n.WaitForNotification();
+
+  return status;
+}
+
+Status RemoteCopyNode::StartRecv() {
   // TODO(gjn): We should consider just using the low-level RecvOp::Compute()
   // functionality here instead of constructing an Op.
   const AttrTypeMap* types;
   bool is_function = false;
-  TF_RETURN_IF_ERROR(AttrTypeMapForOp("_Recv", &types, &is_function));
+  Status status = AttrTypeMapForOp("_Recv", &types, &is_function);
+  if (!status.ok()) {
+    captured_state_->dst()->Poison(status);
+    return status;
+  }
   DCHECK(!is_function);
   EagerOperation op(ctx_, "_Recv", /*is_function=*/false, types);
 
@@ -170,93 +254,46 @@ Status RemoteCopyNode::RunRecv() {
   op.MutableAttrs()->Set("tensor_type", src_->dtype);
 
   if (recv_device_->IsLocal()) {
-    TF_RETURN_IF_ERROR(executor_->status());
-
-    core::RefCountPtr<KernelAndDevice> kernel;
-    TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(&op, &kernel));
-
-    std::vector<Tensor> outputs;
-    gtl::InlinedVector<TensorValue, 4> input_vector;
-    TF_RETURN_IF_ERROR(kernel->Run(input_vector, &outputs, nullptr, nullptr,
-                                   nullptr, &recv_cancellation_));
-    return dst_->SetTensor(outputs[0]);
-  } else {
-    eager::EagerClient* eager_client;
-    uint64 context_id = ctx_->GetContextId();
-    TF_RETURN_IF_ERROR(ctx_->GetClient(recv_device_, &eager_client));
-
-    std::unique_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
-
-    request->set_context_id(context_id);
-
-    auto* remote_op = request->add_queue()->mutable_operation();
-    PrepareRemoteOp(remote_op, &op);
-    remote_op->set_id(recv_op_id_);
-
-    EnqueueResponse response;
-    Status status;
-    Notification n;
-
-    CancellationToken token = recv_cancellation_.get_cancellation_token();
-    bool already_cancelled =
-        !recv_cancellation_.RegisterCallback(token, [&n, &status] {
-          status.Update(errors::Cancelled(
-              "Recv op is cancelled due to an error in Send op."));
-          n.Notify();
-        });
-
-    if (already_cancelled) {
-      status =
-          errors::Cancelled("Recv op is cancelled due to an error in Send op.");
-    } else {
-      // Note(fishx): When the recv op is cancelled, we doesn't clean up the
-      // state on remote server. So the recv op may ran successfully on the
-      // remote server even though we cancel it on client.
-      eager_client->EnqueueAsync(request.get(), &response,
-                                 [this, &n, &status](const Status& s) {
-                                   if (recv_cancellation_.IsCancelled()) return;
-                                   status.Update(s);
-                                   n.Notify();
-                                 });
-      n.WaitForNotification();
-      recv_cancellation_.DeregisterCallback(token);
+    std::vector<Tensor> outputs(1);
+    status = RunLocalRecv(&op, &outputs);
+    if (!status.ok()) {
+      captured_state_->dst()->Poison(status);
+      return status;
     }
-
-    TF_RETURN_IF_ERROR(status);
-
-    return dst_->SetRemoteShape(response.queue_response(0).shape(0),
-                                recv_device_);
+    return captured_state_->dst()->SetTensor(outputs[0]);
+  } else {
+    // Handles captured_state_->dst_ internally.
+    return RunRemoteRecv(&op);
   }
 }
 
 Status RemoteCopyNode::Run() {
-  Status s = RunSend();
+  Status s = StartSend();
   if (!s.ok()) {
     Abort(s);
     return s;
   }
 
-  s = RunRecv();
-  if (!s.ok() && errors::IsCancelled(s) && !send_status_.ok()) {
-    // In this case, Recv is cancel because Send op failed. Return the status of
-    // send op instead.
-    Abort(send_status_);
-    return send_status_;
-  }
-  if (!s.ok()) {
-    Abort(s);
+  // StartRecv() takes care of doing the right thing to dst handle.
+  // No need to poison it after this point.
+  s = StartRecv();
+  if (!s.ok() && errors::IsCancelled(s)) {
+    Status send_status = captured_state_->GetSendStatus();
+    if (!send_status.ok()) {
+      // In this case, Recv is cancelled because the Send op failed. Return the
+      // status of the Send op instead.
+      s = send_status;
+    }
   }
 
   src_->Unref();
-  dst_->Unref();
   ctx_->Unref();
   return s;
 }
 
 void RemoteCopyNode::Abort(Status status) {
-  dst_->Poison(status);
+  captured_state_->dst()->Poison(status);
   src_->Unref();
-  dst_->Unref();
   ctx_->Unref();
 }
 

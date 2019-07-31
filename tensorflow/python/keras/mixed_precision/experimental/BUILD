@@ -115,6 +115,7 @@ cuda_py_test(
         ":loss_scale_optimizer",
         ":test_util",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",

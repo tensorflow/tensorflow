@@ -24,6 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class ThreadPoolResource : public ResourceBase {
@@ -461,5 +462,6 @@ REGISTER_KERNEL_BUILDER(
     ThreadPoolDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

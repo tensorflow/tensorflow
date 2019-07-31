@@ -121,16 +121,33 @@ class StackTraceMapper(tf_stack.StackTraceMapper):
   def __init__(self, converted_fn):
     self._source_map = converted_fn.ag_source_map
 
-  def map(self, filename, lineno, name):
-    loc = origin_info.LineLocation(filename=filename, lineno=lineno)
-    if loc not in self._source_map:
-      return filename, lineno, name
+  def get_effective_source_map(self):
+    effective_source_map = self._effective_source_map
+    if effective_source_map is None:
+      if self.parent is not None:
+        parent_map = self.parent.get_effective_source_map()
+      else:
+        parent_map = {}
 
-    origin = self._source_map[loc]
-    return origin.loc.filename, origin.loc.lineno, origin.function_name
+      effective_source_map = {}
+      for loc, origin in self._source_map.items():
+        effective_source_map[(loc.filename, loc.lineno)] = (
+            origin.loc.filename, origin.loc.lineno, origin.function_name)
+
+      for key, value in parent_map.items():
+        filename, lineno, _ = value
+        value_loc = origin_info.LineLocation(filename=filename, lineno=lineno)
+        if value_loc in self._source_map:
+          origin = self._source_map[value_loc]
+          effective_source_map[key] = (
+              origin.loc.filename, origin.loc.lineno, origin.function_name)
+        else:
+          effective_source_map[key] = value
+      self._effective_source_map = effective_source_map
+    return effective_source_map
 
 
-def tf_convert(f, ctx, convert_by_default=True, force_conversion=False):
+def tf_convert(f, ctx, convert_by_default=True, user_requested=False):
   """Decorator that applies AutoGraph to a function.
 
   Use in internal APIs.
@@ -147,8 +164,8 @@ def tf_convert(f, ctx, convert_by_default=True, force_conversion=False):
     ctx: ag_ctx.ControlStatusCtx, the Autograph context in which `f` is used.
     convert_by_default: bool, whether to use AutoGraph when the context doesn't
       specify.
-    force_conversion: bool, whether to ignore the conversion whitelist. See
-      ConversionOptions.force_conversion.
+    user_requested: bool, whether to ignore the conversion whitelist. See
+      ConversionOptions.user_requested.
 
   Returns:
     Either `f or the converted version of `f`.
@@ -161,12 +178,12 @@ def tf_convert(f, ctx, convert_by_default=True, force_conversion=False):
 
   # TODO(mdan): Grab features from context.
   if ctx.status == ag_ctx.Status.ENABLED:
-    wrapper = convert(recursive=True, force_conversion=force_conversion)(f)
+    wrapper = convert(recursive=True, user_requested=user_requested)(f)
   elif ctx.status == ag_ctx.Status.DISABLED:
     wrapper = do_not_convert(f)
   elif ctx.status == ag_ctx.Status.UNSPECIFIED:
     if convert_by_default:
-      wrapper = convert(recursive=True, force_conversion=force_conversion)(f)
+      wrapper = convert(recursive=True, user_requested=user_requested)(f)
     else:
       wrapper = call_with_unspecified_conversion_status(f)
   else:
@@ -180,7 +197,7 @@ def tf_convert(f, ctx, convert_by_default=True, force_conversion=False):
 
 
 # TODO(mdan): Make private.
-def convert(recursive=False, optional_features=None, force_conversion=True):
+def convert(recursive=False, optional_features=None, user_requested=True):
   """Decorator that compiles a function to use TensorFlow ops.
 
   The decorator is dynamic - it recompiles the target whenever the decorated
@@ -194,8 +211,8 @@ def convert(recursive=False, optional_features=None, force_conversion=True):
     optional_features: converted.Feature, allows toggling optional or
       experimental features. When set to None, only the core features are
       enabled.
-    force_conversion: bool, whether to ignore the conversion whitelist. See
-      ConversionOptions.force_conversion.
+    user_requested: bool, whether to ignore the conversion whitelist. See
+      ConversionOptions.user_requested.
 
   Returns:
     Callable, a decorator that converts the given function into an equivalent
@@ -207,21 +224,17 @@ def convert(recursive=False, optional_features=None, force_conversion=True):
 
     def wrapper(*args, **kwargs):
       """Wrapper that calls the converted version of f."""
-      with ag_ctx.ControlStatusCtx(
-          status=ag_ctx.Status.ENABLED, options=optional_features):
-        try:
-          return converted_call(
-              f,
-              converter.ConversionOptions(
-                  recursive=recursive,
-                  force_conversion=force_conversion,
-                  optional_features=optional_features,
-              ), args, kwargs)
-        except Exception as e:  # pylint:disable=broad-except
-          if hasattr(e, 'ag_error_metadata'):
-            raise e.ag_error_metadata.to_exception(type(e))
-          else:
-            raise
+      options = converter.ConversionOptions(
+          recursive=recursive,
+          user_requested=user_requested,
+          optional_features=optional_features)
+      try:
+        return converted_call(f, options, args, kwargs)
+      except Exception as e:  # pylint:disable=broad-except
+        if hasattr(e, 'ag_error_metadata'):
+          raise e.ag_error_metadata.to_exception(type(e))
+        else:
+          raise
 
     if inspect.isfunction(f) or inspect.ismethod(f):
       wrapper = functools.update_wrapper(wrapper, f)
@@ -405,7 +418,7 @@ def converted_call(f, options, args, kwargs):
     logging.log(2, 'Permanently whitelisted: %s: TensorFlow plugin', f)
     return _call_unconverted(f, args, kwargs, options)
 
-  if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
+  if not options.user_requested and conversion.is_whitelisted_for_graph(f):
     return _call_unconverted(f, args, kwargs, options)
 
   # internal_convert_user_code is for example turned off when issuing a dynamic
@@ -471,10 +484,9 @@ def converted_call(f, options, args, kwargs):
                     target_entity)
         return _call_unconverted(f, args, kwargs, options)
 
-    converted_f = to_graph(
-        target_entity,
-        recursive=options.recursive,
-        experimental_optional_features=options.optional_features)
+    program_ctx = converter.ProgramContext(
+        options=options, autograph_module=tf_inspect.getmodule(converted_call))
+    converted_f = conversion.convert(target_entity, program_ctx)
 
     if logging.has_verbosity(2):
       logging.log(2, 'Defaults of %s : %s', converted_f,
@@ -579,6 +591,7 @@ def to_graph(entity, recursive=True, experimental_optional_features=None):
     program_ctx = converter.ProgramContext(
         options=converter.ConversionOptions(
             recursive=recursive,
+            user_requested=True,
             optional_features=experimental_optional_features),
         autograph_module=tf_inspect.getmodule(to_graph))
     return conversion.convert(entity, program_ctx)

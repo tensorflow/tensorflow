@@ -89,7 +89,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
         optimizer='sgd',
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(x=np.random.random((8, 5)),
               y=np.random.random((8, 3)), epochs=2)
 
@@ -130,7 +130,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
         optimizer='sgd',
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(x=[np.random.random((8, input_dim)).astype(np.float32),
                  np.random.random((8, input_dim)).astype(np.float32)],
               y=[np.random.random((8, num_classes)).astype(np.float32),
@@ -310,7 +310,7 @@ class ExtractModelMetricsTest(keras_parameterized.TestCase):
         ],
         optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01),
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     extract_metrics = saving_utils.extract_model_metrics(model)
     self.assertEqual(set(model_metric_names), set(model.metrics_names))
     self.assertEqual(set(extract_metric_names), set(extract_metrics.keys()))

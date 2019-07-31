@@ -27,6 +27,7 @@ import six
 
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.autograph.utils import tensors
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -210,7 +211,7 @@ def _tf_tensor_len(s):
     return s.shape.dims[0].value
 
   # Static shape of unknown dimensions: use dynamic shape but statically
-  # chech that it's a scalar.
+  # check that it's a scalar.
   shape = array_ops.shape(s)
 
   assert shape.shape, 'shape tensor of zero size? {}'.format(shape)
@@ -313,7 +314,21 @@ def _py_range(start_or_stop, stop, step):
   return range(start_or_stop)
 
 
-SUPPORTED_BUILTINS = (abs, float, int, len, print, range)
+def enumerate_(s, start=0):
+  if isinstance(s, dataset_ops.DatasetV2):
+    return _tf_dataset_enumerate(s, start)
+  return _py_enumerate(s, start)
+
+
+def _tf_dataset_enumerate(s, start=0):
+  return s.enumerate(start)
+
+
+def _py_enumerate(s, start=0):
+  return enumerate(s, start)
+
+
+SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate)
 
 if six.PY2:
   SUPPORTED_BUILTINS += (xrange,)
@@ -327,4 +342,5 @@ BUILTIN_FUINCTIONS_MAP = {
     'range': range_,
     # TODO(mdan): This might make more sense as tf.data.range.
     'xrange': range_,
+    'enumerate': enumerate_,
 }

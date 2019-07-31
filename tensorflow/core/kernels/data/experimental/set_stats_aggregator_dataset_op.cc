@@ -25,6 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
@@ -220,5 +221,6 @@ REGISTER_KERNEL_BUILDER(
     SetStatsAggregatorDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

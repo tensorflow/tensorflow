@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -140,8 +138,9 @@ class TestIsSymbolicTensor(test.TestCase):
       del y_obs
       obtained_prediction_box[0] = y_pred
       return y_pred
+    # Apparently `compile` calls the loss function enough to trigger the
+    # side-effect.
     model.compile('SGD', loss=custom_loss)
-    model.fit(np.ones((10,)), np.ones((10,)))
     self.assertIsInstance(obtained_prediction_box[0], Foo)
 
 

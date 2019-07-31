@@ -65,6 +65,7 @@ from tensorflow.python.util import lock_util
 from tensorflow.python.util import memory
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_stack
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
@@ -525,7 +526,7 @@ class Tensor(_TensorLike):
       self._disallow_when_autograph_disabled(
           "using a `tf.Tensor` as a Python `bool`")
     elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
-      self._disallow_when_autograph_disabled(
+      self._disallow_when_autograph_enabled(
           "using a `tf.Tensor` as a Python `bool`")
     else:
       # Default: V1-style Graph execution.
@@ -533,7 +534,7 @@ class Tensor(_TensorLike):
 
   def _disallow_iteration(self):
     if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
-      self._disallow_when_autograph_enabled("iterating over `tf.Tensor`")
+      self._disallow_when_autograph_disabled("iterating over `tf.Tensor`")
     elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
       self._disallow_when_autograph_enabled("iterating over `tf.Tensor`")
     else:
@@ -921,7 +922,7 @@ class _EagerTensorBase(Tensor):
     """
     raise NotImplementedError()
 
-  def _copy_to_device(self, context, device):  # pylint: disable=redefined-outer-name
+  def _copy_to_device(self, device_name):  # pylint: disable=redefined-outer-name
     raise NotImplementedError()
 
   @staticmethod
@@ -938,7 +939,7 @@ class _EagerTensorBase(Tensor):
     # pylint: disable=protected-access
     try:
       ctx.ensure_initialized()
-      new_tensor = self._copy_to_device(context=ctx._handle, device=device_name)
+      new_tensor = self._copy_to_device(device_name)
     except core._NotOkStatusException as e:
       six.raise_from(core._status_to_exception(e.code, e.message), None)
     return new_tensor
@@ -1281,7 +1282,7 @@ def internal_convert_n_to_tensor(values,
     RuntimeError: If a registered conversion function returns an invalid
       value.
   """
-  if not isinstance(values, collections.Sequence):
+  if not isinstance(values, collections_abc.Sequence):
     raise TypeError("values must be a sequence.")
   ret = []
   if ctx is None:
@@ -1418,7 +1419,7 @@ def internal_convert_n_to_tensor_or_composite(values,
     RuntimeError: If a registered conversion function returns an invalid
       value.
   """
-  if not isinstance(values, collections.Sequence):
+  if not isinstance(values, collections_abc.Sequence):
     raise TypeError("values must be a sequence.")
   ret = []
   for i, value in enumerate(values):
@@ -2843,6 +2844,10 @@ class Graph(object):
     # tuples of fully-defined shapes: (x_shape_tuple, y_shape_tuple), and the
     # values are tuples of reduction indices: (rx, ry).
     self._bcast_grad_args_cache = {}
+    # Cache for constant results of `reduced_shape()`. The keys are pairs of
+    # tuples: (input_shape_tuple, reduction_indices_tuple), and the values
+    # are pairs of tuples: (output_shape_kept_dims, tile_scaling).
+    self._reduced_shape_cache = {}
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
