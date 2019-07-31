@@ -271,7 +271,6 @@ tf_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
-    tags = ["nofwdcompat"],  # b/137641346
 )
 
 tf_py_test(
@@ -984,7 +983,6 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
-    tags = ["nofwdcompat"],  # b/137641346
 )
 
 tf_py_test(

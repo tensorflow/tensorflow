@@ -5116,7 +5116,6 @@ tf_py_test(
     grpc_enabled = True,
     tags = [
         "no_oss",  # Test flaky due to port collisions.
-        "nofwdcompat",  # b/137641346
         "notsan",  # data race due to b/62910646
         "oss_serial",
     ],
