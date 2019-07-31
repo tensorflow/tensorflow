@@ -337,8 +337,8 @@ inline void HalfPackFloatAvx512(const float* src_ptr, const float* zerobuf,
       // available_src_rows = std::max(0, std::min(8, src_rows - k - 8 * m));
       // but treat each case separately.
       if (available_src_rows > 7) {
-        __m512i t0, t1, t2, t3;
-        __m512i r0, r1, r2, r3;
+        __m512 t0, t1, t2, t3;
+        __m512 r0, r1, r2, r3;
 
         t0 = LoaduTwo(src_ptr0, src_ptr4);
         t1 = LoaduTwo(src_ptr1, src_ptr5);
@@ -376,8 +376,8 @@ inline void HalfPackFloatAvx512(const float* src_ptr, const float* zerobuf,
         const __mmask8 row_mask =
             (static_cast<std::uint32_t>(1) << available_src_rows) - 1;
 
-        __m512i t0, t1, t2, t3;
-        __m512i r0, r1, r2, r3;
+        __m512 t0, t1, t2, t3;
+        __m512 r0, r1, r2, r3;
 
         t0 = MaskLoaduTwo(row_mask, src_ptr0, src_ptr4);
         t1 = MaskLoaduTwo(row_mask, src_ptr1, src_ptr5);
