@@ -19,7 +19,7 @@ def OpA : NS_Op<"one_normal_operand_op", []> {
 
 // CHECK:      void OpA::build
 // CHECK-SAME:   Value *input
-// CHECK:        tblgen_state->operands.push_back(input);
+// CHECK:        tblgen_state->addOperands(input);
 
 // CHECK:      void OpA::build
 // CHECK-SAME:   ArrayRef<Value *> operands
@@ -56,5 +56,5 @@ def OpD : NS_Op<"mix_variadic_and_normal_inputs_op", [SameVariadicOperandSize]> 
 
 // CHECK-LABEL: OpD::build
 // CHECK-NEXT: tblgen_state->addOperands(input1);
-// CHECK-NEXT: tblgen_state->operands.push_back(input2);
+// CHECK-NEXT: tblgen_state->addOperands(input2);
 // CHECK-NEXT: tblgen_state->addOperands(input3);
