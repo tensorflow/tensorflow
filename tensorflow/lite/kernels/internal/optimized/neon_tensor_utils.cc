@@ -33,6 +33,9 @@ limitations under the License.
 
 #define kFloatWeightsPerNeonLane 4
 
+// TODO(justin1121): clang supports std::align_alloc on Linux but the function
+// does not exist when using MacOS. Some bug reports have been filed related
+// to this issue but there is no response (https://forums.developer.apple.com/thread/81413).
 #if (__cplusplus >= 201703L || __STDC_VERSION__ >= 201112L) && !defined(__clang__)
 #if !defined(__ANDROID__) || __ANDROID_API__ >= 28
 #define TFLITE_USE_STD_ALIGN
