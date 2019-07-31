@@ -43,7 +43,7 @@ namespace {
 
 // IslandType is an enum representing if an island is the island (parent)
 // merging another island or is the island (child) being being merged.
-enum class IslandType : bool { kParentIsland, kChildIsland };
+enum IslandType { kParentIsland, kChildIsland };
 
 // Output is a helper struct holding a result index and island type (parent or
 // child).
