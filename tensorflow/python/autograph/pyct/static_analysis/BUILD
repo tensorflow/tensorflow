@@ -64,7 +64,11 @@ py_test(
     srcs = ["activity_py3_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["no_oss_py2"],
+    tags = [
+        "no_oss_py2",
+        "no_cuda",
+        "no_rocm",
+    ],
     deps = [
         ":activity_test_lib",
         ":static_analysis",
