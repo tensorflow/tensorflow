@@ -696,7 +696,7 @@ class _DelayedRewriteGradientFunctions(object):
     def _backward_function(*args):
       call_op = outputs[0].op
       return self._rewrite_forward_and_call_backward(call_op, *args)
-    return _backward_function
+    return _backward_function, outputs
 
 
 class _TapeGradientFunctions(object):
@@ -830,9 +830,15 @@ class _TapeGradientFunctions(object):
     variant_zeros_like = {}
     backward_function_inputs = (
         len(self._backward.inputs) - len(self._backward.captured_inputs))
+    recorded_outputs = []
+    trainable_recorded_outputs = 0
     skip_positions = []
     for output_index, output in enumerate(outputs):
-      if not gradients_util.IsTrainable(output):
+      if trainable_recorded_outputs < backward_function_inputs:
+        recorded_outputs.append(output)
+      if gradients_util.IsTrainable(output):
+        trainable_recorded_outputs += 1
+      else:
         skip_positions.append(output_index)
       if output.dtype == dtypes.variant:
         variant_zeros_like[output_index] = default_gradient.zeros_like(output)
@@ -864,7 +870,7 @@ class _TapeGradientFunctions(object):
       return self._backward._call_flat(  # pylint: disable=protected-access
           processed_args, remapped_captures)
 
-    return _backward_function_wrapper
+    return _backward_function_wrapper, recorded_outputs
 
 
 class _FirstOrderTapeGradientFunctions(_TapeGradientFunctions):
@@ -1180,9 +1186,9 @@ class ConcreteFunction(object):
     if isinstance(flat_outputs, ops.Operation) or flat_outputs is None:
       # We only record function calls which have outputs.
       return self._build_call_outputs(flat_outputs)
-    backward_function = forward_backward.backward(flat_outputs)
+    backward_function, to_record = forward_backward.backward(flat_outputs)
     tape.record_operation(forward_function.signature.name,
-                          flat_outputs, args, backward_function)
+                          to_record, args, backward_function)
     return self._build_call_outputs(flat_outputs)
 
   def _experimental_with_cancellation_manager(self, cancellation_manager):
