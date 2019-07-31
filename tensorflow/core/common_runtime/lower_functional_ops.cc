@@ -145,7 +145,7 @@ Status LowerFunctionalOpsPass::Run(
             RewriteCaseNode(n, g, *flib_def, keep_lowered_nodes_fetchable));
       } else if (n->IsWhileNode()) {
         TF_RETURN_IF_ERROR(
-            RewriteWhileNode(n, g, *flib_def, keep_lowered_nodes_fetchable));
+            RewriteWhileNode(n, g, keep_lowered_nodes_fetchable));
       } else {
         return errors::Internal(
             "Node ", FormatNodeForError(*n), " of type ", n->type_string(),
