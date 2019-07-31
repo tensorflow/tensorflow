@@ -262,6 +262,12 @@ class ForwardAccumulator {
       const std::function<BackwardFunction*()>& backward_function_getter,
       const std::function<void(BackwardFunction*)>& backward_function_deleter);
 
+  // Returns true if `Accumulate` is active somewhere above on the stack. This
+  // is useful for ordering ForwardAccumulators, where more deeply nested
+  // accumulators should not see computations from less deeply nested
+  // accumulators.
+  bool BusyAccumulating() const { return this->accumulating_; }
+
   // Fetches the current Jacobian-vector product associated with `tensor_id`, or
   // a nullptr if none is available.
   //
