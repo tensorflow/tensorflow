@@ -47,6 +47,31 @@ func @spirv_bin_ops() -> () {
       %0 = spv.IMul %arg0, %arg1 : vector<4xi32>
       spv.Return
     }
+    func @udiv(%arg0 : vector<4xi32>, %arg1 : vector<4xi32>) {
+      // CHECK: {{%.*}} = spv.UDiv {{%.*}}, {{%.*}} : vector<4xi32>
+      %0 = spv.UDiv %arg0, %arg1 : vector<4xi32>
+      spv.Return
+    }
+    func @umod(%arg0 : vector<4xi32>, %arg1 : vector<4xi32>) {
+      // CHECK: {{%.*}} = spv.UMod {{%.*}}, {{%.*}} : vector<4xi32>
+      %0 = spv.UMod %arg0, %arg1 : vector<4xi32>
+      spv.Return
+    }
+    func @sdiv(%arg0 : vector<4xi32>, %arg1 : vector<4xi32>) {
+      // CHECK: {{%.*}} = spv.SDiv {{%.*}}, {{%.*}} : vector<4xi32>
+      %0 = spv.SDiv %arg0, %arg1 : vector<4xi32>
+      spv.Return
+    }
+    func @smod(%arg0 : vector<4xi32>, %arg1 : vector<4xi32>) {
+      // CHECK: {{%.*}} = spv.SMod {{%.*}}, {{%.*}} : vector<4xi32>
+      %0 = spv.SMod %arg0, %arg1 : vector<4xi32>
+      spv.Return
+    }
+    func @srem(%arg0 : vector<4xi32>, %arg1 : vector<4xi32>) {
+      // CHECK: {{%.*}} = spv.SRem {{%.*}}, {{%.*}} : vector<4xi32>
+      %0 = spv.SRem %arg0, %arg1 : vector<4xi32>
+      spv.Return
+    }
   }
   return
 }
