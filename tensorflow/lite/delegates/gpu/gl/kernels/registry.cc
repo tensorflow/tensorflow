@@ -86,7 +86,7 @@ class Registry : public NodeShader {
     insert_op(Type::RELU, NewReLUNodeShader);
     insert_op(Type::RESHAPE, NewReshapeNodeShader);
     insert_op(Type::SLICE, NewSliceNodeShader);
-    insert_op(Type::SOFT_MAX, NewSoftMaxNodeShader);
+    insert_op(Type::SOFTMAX, NewSoftmaxNodeShader);
     insert_op(Type::UPSAMPLE_2D, NewUpsamplingNodeShader);
 
     insert_elementwise_op(Type::ABS);
