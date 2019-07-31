@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -1047,8 +1048,6 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    TfLiteSubParams* tf_options;
-    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     if (IsOneArgumentOperation()) {
       RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node, /*inputs=*/1,
                                          /*outputs=*/1));
@@ -1058,7 +1057,9 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
     } else {
       return InvalidArgumentError("Op can only handle 1 or 2 operand(s).");
     }
-    return IsActivationSupported(tf_options->activation);
+    TfLiteFusedActivation activation;
+    RETURN_IF_ERROR(GetActivation(tflite_node, &activation));
+    return IsActivationSupported(activation);
   }
 
   Status Parse(const TfLiteNode* tflite_node,
@@ -1111,6 +1112,27 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   }
 
  private:
+  Status GetActivation(const TfLiteNode* tflite_node,
+                       TfLiteFusedActivation* activation) const {
+    if (operation_type_ == OperationType::DIV) {
+      TfLiteDivParams* tf_options;
+      RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+      *activation = tf_options ? tf_options->activation : kTfLiteActNone;
+      return OkStatus();
+    }
+    if (operation_type_ == OperationType::SUB) {
+      TfLiteSubParams* tf_options;
+      RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+      *activation = tf_options ? tf_options->activation : kTfLiteActNone;
+      return OkStatus();
+    }
+
+    // Return kTfLiteActNone as other ops either do not have TfLiteXxxParams or
+    // TfLiteXxxParams.activation.
+    *activation = kTfLiteActNone;
+    return OkStatus();
+  }
+
   bool IsOneArgumentOperation() const {
     switch (operation_type_) {
       case OperationType::ABS:
