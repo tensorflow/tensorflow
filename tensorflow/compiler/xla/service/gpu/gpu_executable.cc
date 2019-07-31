@@ -428,7 +428,7 @@ const InstructionValueSet& GpuExecutable::GetRootValueSet() const {
       module().entry_computation()->root_instruction());
 }
 
-int64 GpuExecutable::SizeInBytes() {
+int64 GpuExecutable::SizeOfGeneratedCodeInBytes() {
   // Non-empty PTX but empty cubin: compilation must have failed, return
   // "unknown".
   if (binary().empty() && !text_.empty()) {

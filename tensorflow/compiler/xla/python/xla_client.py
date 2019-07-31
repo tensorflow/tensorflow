@@ -545,7 +545,7 @@ class Computation(object):
 #   def Execute(self, arguments : [Buffer]) -> Buffer:
 #     """Execute on one replica with Buffer arguments and return value."""
 #
-#   def SizeInBytes(self) -> int:
+#   def SizeOfGeneratedCodeInBytes(self) -> int:
 #     """Return generated binary size, or -1 if not known."""
 #
 #   def ExecutePerReplica(self, arguments: [[Buffer]]) -> [Buffer]:

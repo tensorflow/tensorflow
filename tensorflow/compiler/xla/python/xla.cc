@@ -407,7 +407,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static("Compile", &PyLocalExecutable::Compile,
                   py::call_guard<py::gil_scoped_release>())
       .def("DeviceOrdinals", &PyLocalExecutable::DeviceOrdinals)
-      .def("SizeInBytes", &PyLocalExecutable::SizeInBytes)
+      .def("SizeOfGeneratedCodeInBytes",
+           &PyLocalExecutable::SizeOfGeneratedCodeInBytes)
       .def("Delete", &PyLocalExecutable::Delete)
       .def("Execute", &PyLocalExecutable::Execute,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
