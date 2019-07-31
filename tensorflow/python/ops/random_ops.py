@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import tensorflow as tf
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -313,6 +314,23 @@ def random_crop(value, size, seed=None, name=None):
     value = ops.convert_to_tensor(value, name="value")
     size = ops.convert_to_tensor(size, dtype=dtypes.int32, name="size")
     shape = array_ops.shape(value)
+
+    with tf.Session():
+        size_dim = size.eval()
+    value_dim = value.shape
+    value_dim = value_dim.as_list()
+
+    def pad_up_to(t, max_in_dims, constant_values):
+        s = tf.shape(t)
+        paddings = [[0, m - s[i]] for (i, m) in enumerate(max_in_dims)]
+        return tf.pad(t, paddings, 'CONSTANT', constant_values=constant_values)
+
+    v0 = pad_up_to(value[:, :, 0], [size_dim[0], size_dim[1]], 0)
+    v1 = pad_up_to(value[:, :, 1], [size_dim[0], size_dim[1]], 0)
+    v2 = pad_up_to(value[:, :, 2], [size_dim[0], size_dim[1]], 0)
+    value = tf.stack([v0, v1, v2], axis=2)
+    print(value.shape)
+
     check = control_flow_ops.Assert(
         math_ops.reduce_all(shape >= size),
         ["Need value.shape >= size, got ", shape, size],
