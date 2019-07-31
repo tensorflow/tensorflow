@@ -450,7 +450,8 @@ class _EagerDefinedFunction(object):
     """
     if len(args) != len(self.signature.input_arg):
       raise ValueError(
-          "Arguments and signature arguments do not match: %s %s " %
+          "Arguments and signature arguments do not match. "
+          "got: %s, expected: %s " %
           (len(args), len(list(self.signature.input_arg))))
 
     function_call_options = ctx.function_call_options
