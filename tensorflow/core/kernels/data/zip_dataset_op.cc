@@ -103,6 +103,15 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     return Status::OK();
   }
 
+  bool IsStateful() const override {
+    for (const auto& input : inputs_) {
+      if (input->IsStateful()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
  private:
   class Iterator : public DatasetIterator<Dataset> {
    public:

@@ -134,8 +134,8 @@ void Interpreter::AddSubgraphs(int subgraphs_to_add,
 
   subgraphs_.reserve(base_index + subgraphs_to_add);
   for (int i = 0; i < subgraphs_to_add; ++i) {
-    Subgraph* subgraph =
-        new Subgraph(error_reporter_, external_contexts_, &subgraphs_);
+    Subgraph* subgraph = new Subgraph(error_reporter_, external_contexts_,
+                                      &subgraphs_, &resource_variables_);
     subgraphs_.emplace_back(subgraph);
   }
 }

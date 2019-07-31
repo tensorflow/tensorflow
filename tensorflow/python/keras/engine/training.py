@@ -143,9 +143,11 @@ class Model(network.Network):
 
   def __init__(self, *args, **kwargs):
     super(Model, self).__init__(*args, **kwargs)
+    _keras_api_gauge.get_cell('model').set(True)
     # initializing _distribution_strategy here since it is possible to call
     # predict on a model without compiling it.
     self._distribution_strategy = None
+    self._compile_time_distribution_strategy = None
 
     # This flag is used to track if the user is using the deprecated path of
     # passing distribution strategy to compile rather than creating the model
@@ -161,8 +163,10 @@ class Model(network.Network):
     Returns:
         A flat list of Numpy arrays.
     """
-    if self._distribution_strategy:
-      with self._distribution_strategy.scope():
+    strategy = (self._distribution_strategy or
+                self._compile_time_distribution_strategy)
+    if strategy:
+      with strategy.scope():
         return super(Model, self).get_weights()
     return super(Model, self).get_weights()
 
@@ -177,7 +181,7 @@ class Model(network.Network):
 
   @trackable.no_automatic_dependency_tracking
   def compile(self,
-              optimizer,
+              optimizer='rmsprop',
               loss=None,
               metrics=None,
               loss_weights=None,
@@ -239,7 +243,6 @@ class Model(network.Network):
         ValueError: In case of invalid arguments for
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
-    _keras_api_gauge.get_cell('compile').set(True)
     self._run_eagerly = kwargs.pop('run_eagerly', None)
     self._run_distributed = kwargs.pop('run_distributed', False)
 
@@ -249,6 +252,9 @@ class Model(network.Network):
         or not context.executing_eagerly()):
       # Fallback out of things that aren't supported with v2 loops
       self._run_distributed = False
+
+    self._compile_time_distribution_strategy = (
+        distribution_strategy_context.get_strategy())
 
     if distribute is not None:
       if tf2.enabled() or self._run_distributed:
@@ -274,7 +280,10 @@ class Model(network.Network):
                                                              sample_weight_mode,
                                                              target_tensors,
                                                              weighted_metrics)
-    self.optimizer = optimizers.get(optimizer)
+    if isinstance(optimizer, (list, tuple)):
+      self.optimizer = [optimizers.get(opt) for opt in optimizer]
+    else:
+      self.optimizer = optimizers.get(optimizer)
     # We've disabled automatic dependency tracking for this method, but do want
     # to add a checkpoint dependency on the optimizer if it's trackable.
     if isinstance(self.optimizer, trackable.Trackable):
@@ -314,6 +323,7 @@ class Model(network.Network):
       # time the model gets called on training data.
       return
     self._is_compiled = True
+    _keras_api_gauge.get_cell('compile').set(True)
 
     # Prepare list of loss functions, same size of model outputs.
     self.loss_functions = training_utils.prepare_loss_functions(
@@ -342,16 +352,34 @@ class Model(network.Network):
       # Set metric attributes on model.
       self._set_metric_attributes()
 
+      # Prepare sample weight modes. List with the same length as model outputs.
+      training_utils.prepare_sample_weight_modes(self._training_endpoints,
+                                                 sample_weight_mode)
+
+      # Validate all variables were correctly created in distribution scope.
+      if self._distribution_strategy and not self._compile_distribution:
+        for v in self.variables:
+          strategy = self._distribution_strategy
+          if not strategy.extended.variable_created_in_scope(v):
+            raise ValueError(
+                'Variable (%s) was not created in the distribution strategy '
+                'scope of (%s). It is most likely due to not all layers or '
+                'the model or optimizer being created outside the distribution '
+                'strategy scope. Try to make sure your code looks similar '
+                'to the following.\n'
+                'with strategy.scope():\n'
+                '  model=_create_model()\n'
+                '  model.compile(...)' % (v, strategy))
+
+      if self._run_distributed:
+        return
+
       # Invoke metric functions (unweighted) for all the outputs.
       self._handle_metrics(
           self.outputs,
           targets=self._targets,
           skip_target_masks=self._prepare_skip_target_masks(),
           masks=self._prepare_output_masks())
-
-      # Prepare sample weight modes. List with the same length as model outputs.
-      training_utils.prepare_sample_weight_modes(
-          self._training_endpoints, sample_weight_mode)
 
       # Creates the model loss and weighted metrics sub-graphs.
       self._compile_weights_loss_and_weighted_metrics()
@@ -367,21 +395,6 @@ class Model(network.Network):
 
       # Collected trainable weights, sorted in topological order.
       self._collected_trainable_weights = self._unique_trainable_weights
-
-      # Validate all variables were correctly created in distribution scope.
-      if self._distribution_strategy and not self._compile_distribution:
-        for v in self.variables:
-          strategy = self._distribution_strategy
-          if not strategy.extended.variable_created_in_scope(v):
-            raise ValueError(
-                'Variable (%s) was not created in the distribution strategy '
-                'scope of (%s). It is most likely due to not all layers or '
-                'the model or optimizer being created outside the distribution '
-                'strategy scope. Try to make sure your code looks similar '
-                'to the following.\n'
-                'with strategy.scope():\n'
-                '  model=_create_model()\n'
-                '  model.compile(...)'% (v, strategy))
 
   @trackable.no_automatic_dependency_tracking
   def _init_distributed_function_cache_if_not_compiled(self):
@@ -492,6 +505,22 @@ class Model(network.Network):
                         '%s' % data_failure_exception)
       if valid_adapter:
         return training_v2.Loop()
+
+    # If the model has already been compiled (fit/eval for graph networks),
+    # we compile again here with `run_distributed` flag forced to False
+    # before running the v1 train/eval loop, in case the previous compile
+    # was executed with `run_distributed` flag enabled.
+    if (context.executing_eagerly() and self._run_distributed and
+        self._is_compiled):
+      self.compile(
+          optimizer=self.optimizer,
+          loss=self.loss,
+          metrics=self._compile_metrics,
+          weighted_metrics=self._compile_weighted_metrics,
+          loss_weights=self.loss_weights,
+          sample_weight_mode=self.sample_weight_mode,
+          run_eagerly=self.run_eagerly,
+          run_distributed=False)
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
@@ -677,7 +706,7 @@ class Model(network.Network):
         ValueError: In case of mismatch between the provided input data
             and what the model expects.
     """
-    _keras_api_gauge.get_cell('train').set(True)
+    _keras_api_gauge.get_cell('fit').set(True)
     # Legacy support
     if 'nb_epoch' in kwargs:
       logging.warning(
@@ -948,6 +977,8 @@ class Model(network.Network):
     Raises:
       ValueError: In case of invalid user-provided arguments.
     """
+    self._assert_compile_was_called()
+    self._check_call_args('train_on_batch')
     if self._run_distributed:
       outputs = training_v2_utils.train_on_batch(
           self, x, y=y, sample_weight=sample_weight,
@@ -958,8 +989,6 @@ class Model(network.Network):
         outputs = outputs[0]
       return outputs
 
-    self._assert_compile_was_called()
-    self._check_call_args('train_on_batch')
     # If at this point we are in the replica context, then it is okay to execute
     # the Eager code path.  The expected way to get here is to call `fit` that
     # calls `train_on_batch` on each replica.
@@ -1041,6 +1070,8 @@ class Model(network.Network):
     Raises:
         ValueError: In case of invalid user-provided arguments.
     """
+    self._assert_compile_was_called()
+    self._check_call_args('test_on_batch')
     if self._run_distributed:
       outputs = training_v2_utils.test_on_batch(
           self, x, y=y, sample_weight=sample_weight,
@@ -1051,8 +1082,6 @@ class Model(network.Network):
         outputs = outputs[0]
       return outputs
 
-    self._assert_compile_was_called()
-    self._check_call_args('test_on_batch')
     if (self._distribution_strategy and
         distribution_strategy_context.in_cross_replica_context()):
       raise NotImplementedError('`test_on_batch` is not supported for models '
@@ -1251,7 +1280,7 @@ class Model(network.Network):
     if self._distribution_strategy:
       raise NotImplementedError('`fit_generator` is not supported for '
                                 'models compiled with tf.distribute.Strategy.')
-    _keras_api_gauge.get_cell('train').set(True)
+    _keras_api_gauge.get_cell('fit_generator').set(True)
     self._check_call_args('fit_generator')
     return training_generator.fit_generator(
         self,
@@ -1325,8 +1354,9 @@ class Model(network.Network):
     if self._distribution_strategy:
       raise NotImplementedError('`evaluate_generator` is not supported for '
                                 'models compiled with tf.distribute.Strategy.')
-    _keras_api_gauge.get_cell('evaluate').set(True)
+    _keras_api_gauge.get_cell('evaluate_generator').set(True)
     self._check_call_args('evaluate_generator')
+
     return training_generator.evaluate_generator(
         self,
         generator,
@@ -1383,8 +1413,7 @@ class Model(network.Network):
     if self._distribution_strategy:
       raise NotImplementedError('`predict_generator` is not supported for '
                                 'models compiled with tf.distribute.Strategy.')
-    _keras_api_gauge.get_cell('predict').set(True)
-    self._check_call_args('predict_generator')
+    _keras_api_gauge.get_cell('predict_generator').set(True)
     return training_generator.predict_generator(
         self,
         generator,
@@ -2023,6 +2052,9 @@ class Model(network.Network):
   def _make_train_function(self):
     has_recompiled = self._recompile_weights_loss_and_weighted_metrics()
     self._check_trainable_weights_consistency()
+    if isinstance(self.optimizer, list):
+      raise ValueError('The `optimizer` in `compile` should be a single '
+                       'optimizer.')
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # train function even if one exists already. This is because
     # `_feed_sample_weights` list has been updated on re-copmpile.

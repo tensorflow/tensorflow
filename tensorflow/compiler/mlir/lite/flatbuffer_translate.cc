@@ -414,6 +414,10 @@ class Translator {
   // mapping.
   void InitializeNamesFromAttribute(FuncOp fn);
 
+  // Determines if the specified operation op's operand at operand_index
+  // is marked as a stateful operand.
+  bool IsStatefulOperand(mlir::Operation* op, int operand_index);
+
   // Returns a unique name for `op`.
   std::string UniqueName(mlir::Operation* op);
 
@@ -559,10 +563,19 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
   } else {
     q_params = tflite::CreateQuantizationParameters(builder_);
   }
-
+  // Check if the value's uses includes an op and usage at an operand index
+  // marked as a stateful. If so, set the tensor's is_variable as true
+  // This is v1 ref variable semantics in the TFLite runtime.
+  bool is_variable = false;
+  for (auto& use : value->getUses()) {
+    is_variable = IsStatefulOperand(use.getOwner(), use.getOperandNumber());
+    if (is_variable) {
+      break;
+    }
+  }
   return tflite::CreateTensor(
       builder_, builder_.CreateVector(shape), tflite_element_type, buffer_idx,
-      builder_.CreateString(name), q_params, /*is_variable=*/false);
+      builder_.CreateString(name), q_params, /*is_variable=*/is_variable);
 }
 
 BufferOffset<tflite::Operator> Translator::BuildIfOperator(
@@ -857,6 +870,22 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn) {
       }
     }
   }
+}
+
+bool Translator::IsStatefulOperand(mlir::Operation* op, int operand_index) {
+  std::vector<int> operand_indices;
+  // TODO(b/138254427): When the bug is addressed, we'll be able to inspect
+  // for the presence of a specific OpTrait using mlir::Operation, without
+  // having to cast it to specific ops like below.
+  // Until then, when a new RNN/LSTM op is added to TFLite and has stateful
+  // tensors as operands, they will need to be added here as well.
+  if (auto tfl = llvm::dyn_cast<mlir::TFL::LSTMOp>(op)) {
+    operand_indices = tfl.GetStatefulOperands();
+  } else if (auto tfl =
+                 llvm::dyn_cast<mlir::TFL::UnidirectionalSequenceLSTMOp>(op)) {
+    operand_indices = tfl.GetStatefulOperands();
+  }
+  return absl::c_find(operand_indices, operand_index) != operand_indices.end();
 }
 
 Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {

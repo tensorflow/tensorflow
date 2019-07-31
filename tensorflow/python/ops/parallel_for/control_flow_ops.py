@@ -99,7 +99,12 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
 
   output = [None if is_none else ta.concat()
             for ta, is_none in zip(ta_list, is_none_list)]
-  return nest.pack_sequence_as(loop_fn_dtypes, output)
+  assert len(output) in (0, len(flat_loop_fn_dtypes))
+  if not output:
+    # This may happen for the case where iters == 0.
+    return None
+  else:
+    return nest.pack_sequence_as(loop_fn_dtypes, output)
 
 
 def _flatten_first_two_dims(x):

@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -708,7 +709,6 @@ class AddOperationParser : public TFLiteOperationParser {
       }
     }
     node->operation.attributes = std::move(attr);
-
     const auto* tf_options =
         reinterpret_cast<const TfLiteAddParams*>(tflite_node->builtin_data);
     if (!tf_options) {
@@ -2226,6 +2226,108 @@ Status GetNodeAndRegistration(TfLiteContext* context, int node_id,
   return OkStatus();
 }
 
+TfLiteIntArray* GetOpsToReplaceFromGraphWithDequantize(TfLiteContext* context) {
+  TfLiteIntArray* execution_plan = nullptr;
+  if (context->GetExecutionPlan(context, &execution_plan) != kTfLiteOk) {
+    context->ReportError(context, "Unable to get graph execution plan.");
+    return nullptr;
+  }
+  std::set<std::string> errors;
+  std::unordered_map<int, int> dequant_nodes;
+  std::vector<int> ops_to_replace;
+  std::vector<int> dequant_nodes_to_save;
+
+  // Map the output tensor of a Dequantize nodes to its input tensor.
+  std::unordered_map<int, int> node_map;
+  for (int i = 0; i < execution_plan->size; ++i) {
+    bool replace_node = false;
+    // Keep track of any inputs from a Dequantize node.
+    std::vector<int> inputs_from_dequant;
+    std::vector<int> orig_inputs;
+
+    const int node_id = execution_plan->data[i];
+    TfLiteNode* node = nullptr;
+    TfLiteRegistration* registration = nullptr;
+    auto status =
+        GetNodeAndRegistration(context, node_id, &node, &registration);
+    if (!status.ok()) {
+      context->ReportError(context, status.error_message().c_str());
+      return nullptr;
+    }
+    if (registration->builtin_code == kTfLiteBuiltinDequantize &&
+        context->tensors[node->inputs->data[0]].type ==
+            TfLiteType::kTfLiteFloat16) {
+      // Record the output->input mapping for the op.
+      node_map[node->outputs->data[0]] = node->inputs->data[0];
+      // For now, add the node to the list of ops to replace.
+      ops_to_replace.push_back(node_id);
+      // Record the dequant node id, indexed by output id.
+      dequant_nodes[node->outputs->data[0]] = node_id;
+      continue;
+    }
+    TfLiteIntArray* inputs = node->inputs;
+    // Fix the node's inputs (i.e. prune out the preceding dequantize node)
+    // in order to test if it is supported on the GPU.
+    for (int j = 0; j < inputs->size; ++j) {
+      orig_inputs.push_back(inputs->data[j]);
+      if (node_map.find(inputs->data[j]) != node_map.end()) {
+        inputs_from_dequant.push_back(dequant_nodes[inputs->data[j]]);
+        // Remap inputs of this node to the inputs of the preceding dequant.
+        inputs->data[j] = node_map[inputs->data[j]];
+      }
+    }
+    status = IsSupported(context, node, registration);
+    if (status.ok() &&
+        // TODO(eignasheva): resolve sub operation support for metal delegate
+        // registration->builtin_code != kTfLiteBuiltinSub &&
+        IsAllFloatTensors(context, node->inputs) &&
+        IsAllFloatTensors(context, node->outputs)) {
+      if (errors.empty()) {
+        replace_node = true;
+        ops_to_replace.push_back(i);
+      }
+    } else {
+      // Unable to replace this node. Restore the inputs to the original
+      // if they were modified.
+      if (!inputs_from_dequant.empty()) {
+        TfLiteIntArray* inputs = node->inputs;
+        for (int j = 0; j < inputs->size; ++j) {
+          inputs->data[j] = orig_inputs[j];
+        }
+      }
+      errors.insert(GetOpNameByRegistration(registration) + ": " +
+                    status.error_message());
+    }
+    // if any input is the output of a dequantize node AND we failed to
+    // replace this op, mark the corresponding dequantize node as a node to
+    // save.
+    if (!replace_node && !inputs_from_dequant.empty()) {
+      dequant_nodes_to_save.insert(dequant_nodes_to_save.end(),
+                                   inputs_from_dequant.begin(),
+                                   inputs_from_dequant.end());
+    }
+  }
+  if (!errors.empty()) {
+    std::string unsupported = absl::StrJoin(errors, "\n");
+    std::string error_message =
+        "Next operations are not supported by GPU delegate:\n" + unsupported +
+        "\nFirst " + std::to_string(ops_to_replace.size()) +
+        " operations will run on the GPU, and the remaining " +
+        std::to_string(execution_plan->size - ops_to_replace.size()) +
+        " on the CPU.";
+    context->ReportError(context, error_message.c_str());
+  }
+  // Pop all dequantize nodes that must be preserved.
+  for (int i = 0; i < dequant_nodes_to_save.size(); ++i) {
+    auto it = std::find(ops_to_replace.begin(), ops_to_replace.end(),
+                        dequant_nodes_to_save[i]);
+    if (it != ops_to_replace.end()) {
+      ops_to_replace.erase(it);
+    }
+  }
+  return ConvertVectorToTfLiteIntArray(ops_to_replace);
+}
+
 // TODO(impjdi): Check number of input/output tensors and their dimensions.
 // TODO(impjdi): Check ops' parameters.
 TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
@@ -2234,27 +2336,38 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
     context->ReportError(context, "Unable to get graph execution plan.");
     return nullptr;
   }
-  TfLiteIntArray* subgraph = TfLiteIntArrayCreate(execution_plan->size);
-  subgraph->size = 0;
-  std::set<std::string> errors;
 
-  // Map the output tensor of a Dequantize nodes to its input tensor.
-  std::unordered_map<int, int> node_map;
+  // Dispatch to another function if graph has Dequantize nodes.
   for (int i = 0; i < execution_plan->size; ++i) {
+    const int node_id = execution_plan->data[i];
     TfLiteNode* node = nullptr;
     TfLiteRegistration* registration = nullptr;
-    auto status = GetNodeAndRegistration(context, i, &node, &registration);
+    auto status =
+        GetNodeAndRegistration(context, node_id, &node, &registration);
     if (!status.ok()) {
       context->ReportError(context, status.error_message().c_str());
-      TfLiteIntArrayFree(subgraph);
       return nullptr;
     }
     if (registration->builtin_code == kTfLiteBuiltinDequantize &&
         context->tensors[node->inputs->data[0]].type ==
             TfLiteType::kTfLiteFloat16) {
-      // Record the output->input mapping for the op.
-      node_map[node->outputs->data[0]] = node->inputs->data[0];
-      continue;
+      return GetOpsToReplaceFromGraphWithDequantize(context);
+    }
+  }
+
+  // No Dequantize nodes. Iterate through graph and find ops to replace.
+  TfLiteIntArray* subgraph = TfLiteIntArrayCreate(execution_plan->size);
+  subgraph->size = 0;
+  std::set<std::string> errors;
+  for (int i = 0; i < execution_plan->size; ++i) {
+    const int node_id = execution_plan->data[i];
+    TfLiteNode* node = nullptr;
+    TfLiteRegistration* registration = nullptr;
+    auto status =
+        GetNodeAndRegistration(context, node_id, &node, &registration);
+    if (!status.ok()) {
+      context->ReportError(context, status.error_message().c_str());
+      return nullptr;
     }
     status = IsSupported(context, node, registration);
     if (status.ok() &&
@@ -2262,15 +2375,7 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
         // registration->builtin_code != kTfLiteBuiltinSub &&
         IsAllFloatTensors(context, node->inputs) &&
         IsAllFloatTensors(context, node->outputs)) {
-      // Fix the node's inputs (i.e. prune out the preceding dequantize node)
-      // if the op is supported.
-      TfLiteIntArray* inputs = node->inputs;
-      for (int j = 0; j < inputs->size; ++j) {
-        if (node_map.find(inputs->data[j]) != node_map.end()) {
-          inputs->data[j] = node_map[inputs->data[j]];
-        }
-      }
-      if (errors.empty()) subgraph->data[subgraph->size++] = i;
+      if (errors.empty()) subgraph->data[subgraph->size++] = node_id;
     } else {
       errors.insert(GetOpNameByRegistration(registration) + ": " +
                     status.error_message());
@@ -2292,12 +2397,17 @@ Status BuildModel(TfLiteContext* context,
                   const TfLiteDelegateParams* delegate_params,
                   GraphFloat32* graph) {
   std::vector<std::unique_ptr<TFLiteOperationParser>> operations;
+  std::vector<int> tflite_nodes;
   for (int i = 0; i < delegate_params->nodes_to_replace->size; ++i) {
     TfLiteNode* tflite_node = nullptr;
     TfLiteRegistration* registration = nullptr;
     RETURN_IF_ERROR(GetNodeAndRegistration(
         context, delegate_params->nodes_to_replace->data[i], &tflite_node,
         &registration));
+    if (registration->builtin_code == kTfLiteBuiltinDequantize) {
+      // Ignore Dequantize nodes.
+      continue;
+    }
     auto op_parser = NewOperationParser(registration);
     if (!op_parser) {
       return UnimplementedError(
@@ -2306,15 +2416,16 @@ Status BuildModel(TfLiteContext* context,
                  ") is not supported by TFLite GPU Delegate."));
     }
     operations.push_back(std::move(op_parser));
+    tflite_nodes.push_back(i);
   }
   std::vector<Value<TensorRef<BHWC>>*> tensor_to_value(context->tensors_size,
                                                        nullptr);
-  for (int i = 0; i < delegate_params->nodes_to_replace->size; ++i) {
+  for (int i = 0; i < operations.size(); ++i) {
     TfLiteNode* tflite_node = nullptr;
     TfLiteRegistration* registration = nullptr;
     RETURN_IF_ERROR(GetNodeAndRegistration(
-        context, delegate_params->nodes_to_replace->data[i], &tflite_node,
-        &registration));
+        context, delegate_params->nodes_to_replace->data[tflite_nodes[i]],
+        &tflite_node, &registration));
     ObjectReader reader(graph, context, tflite_node, &tensor_to_value);
     RETURN_IF_ERROR(
         operations[i]->Parse(tflite_node, registration, graph, &reader));

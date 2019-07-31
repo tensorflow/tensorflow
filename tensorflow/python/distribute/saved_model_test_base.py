@@ -118,7 +118,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
     raise NotImplementedError('must be implemented in descendants')
 
   def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
-                          output_name):
+                          output_name, run_distributed):
     """Load the model and run 1 step of predict with it.
 
     This method must be implemented by the subclasses.
@@ -131,6 +131,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
         cross_replica context.
       output_name: the string representing the name of the output layer of the
         model.
+      run_distributed: Whether to use the v2 execution path for models.
     """
 
     raise NotImplementedError('must be implemented in descendants')
@@ -154,8 +155,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
                                                  distribution, run_distributed):
     """Save a model without DS, and restore it with DS."""
 
-    saved_dir = os.path.join(self.get_temp_dir(), self._root_dir,
-                             'test_save_no_dist_restore_dist')
+    saved_dir = os.path.join(self.get_temp_dir(), '0')
 
     model, output_name = model_and_input.get_model(
         run_distributed=run_distributed)
@@ -173,7 +173,8 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
           distribution=distribution,
           saved_dir=saved_dir,
           predict_dataset=predict_dataset,
-          output_name=output_name)
+          output_name=output_name,
+          run_distributed=run_distributed)
 
     self.assertAllClose(result_before_save, result_after_save, atol=_TOLERANCE)
 
@@ -182,8 +183,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
                                                  run_distributed):
     """Save a model with DS, and restore it without DS."""
 
-    saved_dir = os.path.join(self.get_temp_dir(), self._root_dir,
-                             'test_save_no_dist_restore_dist')
+    saved_dir = os.path.join(self.get_temp_dir(), '1')
 
     with distribution.scope():
       model, output_name = model_and_input.get_model(
@@ -205,7 +205,8 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
         distribution=None,
         saved_dir=saved_dir,
         predict_dataset=predict_dataset,
-        output_name=output_name)
+        output_name=output_name,
+        run_distributed=run_distributed)
 
     self.assertAllClose(result_before_save, load_result, atol=_TOLERANCE)
 
@@ -215,8 +216,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
                                               save_in_scope, run_distributed):
     """Save a model with DS, and restore it with potentially different DS."""
 
-    saved_dir = os.path.join(self.get_temp_dir(), self._root_dir,
-                             'test_save_dist_restore_dist')
+    saved_dir = os.path.join(self.get_temp_dir(), '2')
 
     with distribution_for_saving.scope():
       model, output_name = model_and_input.get_model(
@@ -240,6 +240,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
           distribution=distribution_for_restoring,
           saved_dir=saved_dir,
           predict_dataset=predict_dataset,
-          output_name=output_name)
+          output_name=output_name,
+          run_distributed=run_distributed)
 
     self.assertAllClose(result_before_save, load_result, atol=_TOLERANCE)

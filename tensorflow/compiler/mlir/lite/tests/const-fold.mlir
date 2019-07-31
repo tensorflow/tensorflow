@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -test-constant-fold | FileCheck %s
+// RUN: tf-opt %s -test-constant-fold | FileCheck %s --dump-input-on-failure
 
 // CHECK-LABEL: @add_float
 func @add_float() -> (tensor<f32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) {
@@ -107,6 +107,36 @@ func @mul_float() -> (tensor<f32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) 
   %8 = "tfl.mul"(%2, %3) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
 
   return %5, %6, %7, %8 : tensor<f32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: @elementwise_unary_ops
+func @elementwise_unary_ops() -> (tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) {
+  %0 = constant dense<-1.0> : tensor<f32>
+  %1 = constant dense<1.0> : tensor<f32>
+  %2 = constant dense<1.0> : tensor<f32>
+  %3 = constant dense<1.0> : tensor<f32>
+  %4 = constant dense<4.0> : tensor<f32>
+  %5 = constant dense<4.0> : tensor<f32>
+  %6 = constant dense<2.0> : tensor<f32>
+
+  // CHECK-DAG: [[cst0:%.*]] = constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-DAG: [[cst1:%.*]] = constant dense<0.841470957> : tensor<f32>
+  // CHECK-DAG: [[cst2:%.*]] = constant dense<0.540302277> : tensor<f32>
+  // CHECK-DAG: [[cst3:%.*]] = constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: [[cst4:%.*]] = constant dense<2.000000e+00> : tensor<f32>
+  // CHECK-DAG: [[cst5:%.*]] = constant dense<5.000000e-01> : tensor<f32>
+  // CHECK-DAG: [[cst6:%.*]] = constant dense<4.000000e+00> : tensor<f32>
+  // CHECK: return [[cst0]], [[cst1]], [[cst2]], [[cst3]], [[cst4]], [[cst5]], [[cst6]]
+
+  %7 = "tfl.abs"(%0) : (tensor<f32>) -> tensor<f32>
+  %8 = "tfl.sin"(%1) : (tensor<f32>) -> tensor<f32>
+  %9 = "tfl.cos"(%2) : (tensor<f32>) -> tensor<f32>
+  %10 = "tfl.log"(%3) : (tensor<f32>) -> tensor<f32>
+  %11 = "tfl.sqrt"(%4) : (tensor<f32>) -> tensor<f32>
+  %12 = "tfl.rsqrt"(%5) : (tensor<f32>) -> tensor<f32>
+  %13 = "tfl.square"(%6) : (tensor<f32>) -> tensor<f32>
+
+  return %7, %8, %9, %10, %11, %12, %13 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
 }
 
 // CHECK-LABEL: @mul_int
@@ -272,4 +302,25 @@ func @add_dense_dense_float_mixfng_1_n() -> tensor<2x2xf32> {
 // We don't support this case yet.
 // CHECK:  %0 = "tfl.add"
 // CHECK:  return %0
+}
+
+
+// CHECK-LABEL: @rank
+func @rank() -> tensor<1xi32> {
+  %cst = constant dense<[[1], [2]]> : tensor<2x1xi32>
+
+  // CHECK: [[cst:%.*]] = constant dense<2> : tensor<1xi32>
+  // CHECK: return [[cst]]
+  %0 = "tfl.rank"(%cst) : (tensor<2x1xi32>) -> tensor<1xi32>
+  return %0 : tensor<1xi32>
+}
+
+// CHECK-LABEL: @reshape
+func @reshape() -> tensor<1x2xi32> {
+  %cst = constant dense<[1, 2]> : tensor<2xi32>
+
+  // CHECK: [[cst:%.*]] = constant dense<{{\[\[}}1, 2]]> : tensor<1x2xi32>
+  // CHECK: return [[cst]]
+  %0 = "tfl.reshape"(%cst) : (tensor<2xi32>) -> tensor<1x2xi32>
+  return %0 : tensor<1x2xi32>
 }

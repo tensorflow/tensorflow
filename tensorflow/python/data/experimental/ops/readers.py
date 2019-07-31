@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import collections
 import csv
+import gzip
 import functools
 
 import numpy as np
@@ -26,6 +27,7 @@ import numpy as np
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import error_ops
+from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.experimental.ops import shuffle_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -36,6 +38,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import io_ops
@@ -107,10 +110,11 @@ def _infer_type(str_val, na_value, prev_type):
       return type_list[i]
 
 
-def _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header):
+def _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header,
+                  file_io_fn):
   """Generator that yields rows of CSV file(s) in order."""
   for fn in filenames:
-    with file_io.FileIO(fn, "r") as f:
+    with file_io_fn(fn) as f:
       rdr = csv.reader(
           f,
           delimiter=field_delim,
@@ -128,14 +132,15 @@ def _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header):
 
 def _infer_column_defaults(filenames, num_cols, field_delim, use_quote_delim,
                            na_value, header, num_rows_for_inference,
-                           select_columns):
+                           select_columns, file_io_fn):
   """Infers column types from the first N valid CSV records of files."""
   if select_columns is None:
     select_columns = range(num_cols)
   inferred_types = [None] * len(select_columns)
 
   for i, csv_row in enumerate(
-      _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header)):
+      _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header,
+                    file_io_fn)):
     if num_rows_for_inference is not None and i >= num_rows_for_inference:
       break
 
@@ -152,13 +157,13 @@ def _infer_column_defaults(filenames, num_cols, field_delim, use_quote_delim,
   ]
 
 
-def _infer_column_names(filenames, field_delim, use_quote_delim):
+def _infer_column_names(filenames, field_delim, use_quote_delim, file_io_fn):
   """Infers column names from first rows of files."""
   csv_kwargs = {
       "delimiter": field_delim,
       "quoting": csv.QUOTE_MINIMAL if use_quote_delim else csv.QUOTE_NONE
   }
-  with file_io.FileIO(filenames[0], "r") as f:
+  with file_io_fn(filenames[0]) as f:
     try:
       column_names = next(csv.reader(f, **csv_kwargs))
     except StopIteration:
@@ -166,7 +171,7 @@ def _infer_column_names(filenames, field_delim, use_quote_delim):
                         "of %s.  Empty file?") % filenames[0])
 
   for name in filenames[1:]:
-    with file_io.FileIO(name, "r") as f:
+    with file_io_fn(name) as f:
       try:
         if next(csv.reader(f, **csv_kwargs)) != column_names:
           raise ValueError(
@@ -425,12 +430,28 @@ def make_csv_dataset_v2(
     dataset = dataset.shuffle(len(filenames), shuffle_seed)
 
   # Clean arguments; figure out column names and defaults
-
+  if column_names is None or column_defaults is None:
+    # Find out which io function to open the file
+    file_io_fn = lambda filename: file_io.FileIO(filename, "r")
+    if compression_type is not None:
+      compression_type_value = tensor_util.constant_value(compression_type)
+      if compression_type_value is None:
+        raise ValueError("Received unkown compression_type")
+      if compression_type_value == "GZIP":
+        file_io_fn = lambda filename: gzip.open(filename, "rt")
+      elif compression_type_value == "ZLIB":
+        raise ValueError(
+            "compression_type (%s) is not supported for probing columns" %
+            compression_type)
+      elif compression_type_value != "":
+        raise ValueError("compression_type (%s) is not supported" %
+                         compression_type)
   if column_names is None:
     if not header:
       raise ValueError("Cannot infer column names without a header line.")
     # If column names are not provided, infer from the header lines
-    column_names = _infer_column_names(filenames, field_delim, use_quote_delim)
+    column_names = _infer_column_names(filenames, field_delim, use_quote_delim,
+                                       file_io_fn)
   if len(column_names) != len(set(column_names)):
     raise ValueError("Cannot have duplicate column names.")
 
@@ -445,9 +466,11 @@ def make_csv_dataset_v2(
   else:
     # If column defaults are not provided, infer from records at graph
     # construction time
-    column_defaults = _infer_column_defaults(
-        filenames, len(column_names), field_delim, use_quote_delim, na_value,
-        header, num_rows_for_inference, select_columns)
+    column_defaults = _infer_column_defaults(filenames, len(column_names),
+                                             field_delim, use_quote_delim,
+                                             na_value, header,
+                                             num_rows_for_inference,
+                                             select_columns, file_io_fn)
 
   if select_columns is not None and len(column_defaults) != len(select_columns):
     raise ValueError(
@@ -493,18 +516,9 @@ def make_csv_dataset_v2(
     return features
 
   # Read files sequentially (if num_parallel_reads=1) or in parallel
-  cycle_length = num_parallel_reads
-  if num_parallel_reads == dataset_ops.AUTOTUNE:
-    cycle_length = core_readers.DEFAULT_CYCLE_LENGTH
-  dataset = dataset.interleave(
-      filename_to_dataset,
-      cycle_length,
-      num_parallel_calls=num_parallel_reads)
-
-  if sloppy:
-    options = dataset_ops.Options()
-    options.experimental_deterministic = False
-    dataset = dataset.with_options(options)
+  dataset = dataset.apply(
+      interleave_ops.parallel_interleave(
+          filename_to_dataset, cycle_length=num_parallel_reads, sloppy=sloppy))
 
   dataset = _maybe_shuffle_and_repeat(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
@@ -846,18 +860,11 @@ def make_batched_features_dataset_v2(file_pattern,
     reader_args = []
 
   # Read files sequentially (if reader_num_threads=1) or in parallel
-  cycle_length = reader_num_threads
-  if reader_num_threads == dataset_ops.AUTOTUNE:
-    cycle_length = core_readers.DEFAULT_CYCLE_LENGTH
-  dataset = dataset.interleave(
-      lambda filename: reader(filename, *reader_args),
-      cycle_length,
-      num_parallel_calls=reader_num_threads)
-
-  if sloppy_ordering:
-    options = dataset_ops.Options()
-    options.experimental_deterministic = False
-    dataset = dataset.with_options(options)
+  dataset = dataset.apply(
+      interleave_ops.parallel_interleave(
+          lambda filename: reader(filename, *reader_args),
+          cycle_length=reader_num_threads,
+          sloppy=sloppy_ordering))
 
   # Extract values if the `Example` tensors are stored as key-value tuples.
   if dataset_ops.get_legacy_output_types(dataset) == (

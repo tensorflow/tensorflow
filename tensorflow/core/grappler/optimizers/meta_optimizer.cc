@@ -802,8 +802,6 @@ Status OptimizeGraph(
 
   std::unique_ptr<tensorflow::Graph> optimized_graph(
       new tensorflow::Graph(OpRegistry::Global()));
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(GraphConstructorOptions(),
-                                            out_graph, optimized_graph.get()));
 
   // Copy optimized functions back to the overlay lib.
   if (flib) {
@@ -817,25 +815,28 @@ Status OptimizeGraph(
     }
   }
 
-  *g = std::move(optimized_graph);
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+      GraphConstructorOptions(), std::move(out_graph), optimized_graph.get()));
 
   // The graph conversion sets the requested device names but not the
   // assigned device names. However, since at this point the graph is
   // placed TF expects an assigned device name for every node. Therefore
   // we copy the requested device into the assigned device field.
-  for (Node* node : (*g)->nodes()) {
+  for (Node* node : optimized_graph->nodes()) {
     if (node->IsOp() && node->assigned_device_name().empty()) {
       if (node->requested_device().empty()) {
         return errors::Internal(
             "Either placer did not place the node or Grappler did not "
             "copy the assigned device. Contact Grappler team since latter "
             "is more likely. Node=",
-            node->name(), " Graph: ", (*g)->ToGraphDefDebug().DebugString());
+            node->name(),
+            " Graph: ", optimized_graph->ToGraphDefDebug().DebugString());
       }
       node->set_assigned_device_name(node->requested_device());
     }
   }
 
+  *g = std::move(optimized_graph);
   return Status::OK();
 }
 

@@ -269,6 +269,7 @@ cc_library(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
+            "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
         ],
     }) + if_mkl([":mkl_eager_op_rewrite"]),
 )

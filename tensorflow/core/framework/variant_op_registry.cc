@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/variant_op_registry.h"
+
 #include <string>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -56,6 +58,18 @@ void UnaryVariantOpRegistry::RegisterDecodeFn(
 }
 
 bool DecodeUnaryVariant(Variant* variant) {
+  CHECK_NOTNULL(variant);
+  if (variant->TypeName().empty()) {
+    VariantTensorDataProto* t = variant->get<VariantTensorDataProto>();
+    if (t == nullptr || !t->metadata().empty() || !t->tensors().empty()) {
+      // Malformed variant.
+      return false;
+    } else {
+      // Serialization of an empty Variant.
+      variant->clear();
+      return true;
+    }
+  }
   UnaryVariantOpRegistry::VariantDecodeFn* decode_fn =
       UnaryVariantOpRegistry::Global()->GetDecodeFn(variant->TypeName());
   if (decode_fn == nullptr) {

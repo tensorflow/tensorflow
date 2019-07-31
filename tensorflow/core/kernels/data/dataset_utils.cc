@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
@@ -153,6 +154,23 @@ Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
                    .WithAttr("T", DT_VARIANT)
                    .WithAttr("index", 0));
   TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));
+  return Status::OK();
+}
+
+Status ConnectCancellationManagers(CancellationManager* parent,
+                                   CancellationManager* child,
+                                   std::function<void()>* deregister_fn) {
+  if (parent) {
+    CancellationToken token = parent->get_cancellation_token();
+    if (!parent->RegisterCallback(token, [child]() { child->StartCancel(); })) {
+      return errors::Cancelled("Operation was cancelled");
+    }
+    *deregister_fn = [parent, token]() { parent->DeregisterCallback(token); };
+  } else {
+    VLOG(1) << "Parent cancellation manager is not set. Cancellation will "
+               "not be propagated to the child cancellation manager.";
+    *deregister_fn = []() {};
+  }
   return Status::OK();
 }
 

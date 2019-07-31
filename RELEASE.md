@@ -43,6 +43,11 @@
 *   Transitive dependencies on :pooling_ops were removed. Some users may need to
     add explicit dependencies on :pooling_ops if they reference the operators
     from that library.
+*   tf.keras.optimizers default learning rate changes:
+    *   Adadelta: 1.000 to 0.001
+    *   Adagrad: 0.01 to 0.001
+    *   Adamax: 0.002 to 0.001
+    *   NAdam: 0.002 to 0.001
 
 ## Bug Fixes and Other Changes
 

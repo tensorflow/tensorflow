@@ -74,6 +74,7 @@ typedef protobuf::Map<string, AttrValue> AttrValueMap;
 // Adds an attr with name <name> and value <value> to *node_def.
 // The type of the attr is based on the type of value.
 void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, AttrValue&& value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, StringPiece value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, const char* value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, int32 value, NodeDef* node_def);

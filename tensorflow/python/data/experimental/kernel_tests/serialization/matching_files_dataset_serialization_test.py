@@ -55,7 +55,6 @@ class MatchingFilesDatasetSerializationTest(
 
     num_outputs = width * len(patterns)
     self.run_core_tests(lambda: self._build_iterator_graph(patterns),
-                        lambda: self._build_iterator_graph(patterns[0:1]),
                         num_outputs)
 
     shutil.rmtree(tmp_dir, ignore_errors=True)

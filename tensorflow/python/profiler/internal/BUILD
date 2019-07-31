@@ -67,6 +67,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
     ],
     tags = [
+        "no_gpu",  # b/138442728
         "no_pip",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit

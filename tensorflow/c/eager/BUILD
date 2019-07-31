@@ -238,6 +238,7 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
+        ":c_api",
         ":c_api_experimental",
         ":c_api_test_util",
         "//tensorflow/c:c_test_util",

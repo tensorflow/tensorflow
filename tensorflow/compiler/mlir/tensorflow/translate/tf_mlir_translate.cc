@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Parser.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -35,14 +34,6 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
-
-namespace mlir {
-/// Create a pass to convert from the TF control to the TFExecutor dialect.
-FunctionPassBase* CreateTFControlToExecutorDialectConversion();
-
-/// Create a pass to convert from the TFExecutor to the TF control dialect.
-FunctionPassBase* CreateTFExecutorToControlDialectConversion();
-}  // namespace mlir
 
 namespace tensorflow {
 
@@ -88,19 +79,6 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;
-  }
-
-  // Round-trip to the tf_executor dialect, this is temporary while bringing up
-  // the new dialect.
-  {
-    mlir::PassManager pm;
-    pm.addPass(mlir::CreateTFControlToExecutorDialectConversion());
-    pm.addPass(mlir::CreateTFExecutorToControlDialectConversion());
-    if (failed(pm.run(module_or.ValueOrDie().get()))) {
-      module_or.ValueOrDie()->emitOpError()
-          << "Round-trip to tf_executor dialect failed";
-      return nullptr;
-    }
   }
 
   return module_or.ConsumeValueOrDie();

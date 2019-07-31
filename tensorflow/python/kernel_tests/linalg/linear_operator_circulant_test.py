@@ -246,7 +246,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
   # Skip Cholesky since we are explicitly testing non-hermitian
   # spectra.
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     return ["cholesky"]
 
   def operator_and_matrix(
@@ -533,7 +533,7 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
     return [dtypes.complex64, dtypes.complex128]
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     return ["cholesky"]
 
   def operator_and_matrix(

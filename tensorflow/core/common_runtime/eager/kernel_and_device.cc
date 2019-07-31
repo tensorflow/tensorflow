@@ -313,32 +313,18 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     done.WaitForNotification();
   } else {
     const string& op_name = kernel_->name();
-    // If tracing if off, the overheads of ScopedAnnotation and TraceMe
-    // are negligible.
-    if (device_->TraceUsingAnnotations()) {
-      // 'ScopedActivity' will trace the OpKernel scheduling time on host.
-      profiler::TraceMe activity(
-          [&] {
-            return absl::StrCat(op_name, ":", kernel_->type_string(), "#id=",
-                                step_container ? step_container->step_id() : 0,
-                                ",device=", device_->name(), ",async=false#");
-          },
-          profiler::TraceMeLevel::kInfo);
-      // 'ScopedAnnotation' will trace the OpKernel execution time on device.
-      tracing::ScopedAnnotation annotation(
-          [&]() { return absl::StrCat(op_name, ":", kernel_->type_string()); });
-      device_->Compute(kernel_.get(), &context);
-    } else {
-      profiler::TraceMe activity(
-          [&] {
-            return strings::StrCat(
-                op_name, ":", kernel_->type_string(),
-                "#id=", step_container ? step_container->step_id() : 0,
-                ",device=", device_->name(), ",async=false#");
-          },
-          profiler::TraceMeLevel::kInfo);
-      device_->Compute(kernel_.get(), &context);
-    }
+    // 'ScopedActivity' will trace the OpKernel scheduling time on host.
+    profiler::TraceMe activity(
+        [&] {
+          return absl::StrCat(op_name, ":", kernel_->type_string(), "#id=",
+                              step_container ? step_container->step_id() : 0,
+                              ",device=", device_->name(), ",async=false#");
+        },
+        profiler::TraceMeLevel::kInfo);
+    // 'ScopedAnnotation' will trace the OpKernel execution time on device.
+    tracing::ScopedAnnotation annotation(
+        [&]() { return absl::StrCat(op_name, ":", kernel_->type_string()); });
+    device_->Compute(kernel_.get(), &context);
   }
 
   // Clean up execution op_execution_state if deferred ops aren't running.

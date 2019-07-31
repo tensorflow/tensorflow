@@ -201,8 +201,6 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
       self.assertAllClose(history.history[key], value, 1e-3)
 
   def test_fit_with_sample_weight(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = self._get_compiled_multi_io_model()
     history = model.fit([self.x, self.x], [self.y1, self.y2],
                         sample_weight={
@@ -226,8 +224,6 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
       self.assertAllClose(history.history[key], value, 1e-3)
 
   def test_fit_with_class_weight(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = self._get_compiled_multi_io_model()
     history = model.fit([self.x, self.x], [self.y1, self.y2],
                         class_weight={
@@ -257,8 +253,6 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     self.assertAllClose(eval_result, self.expected_batch_result, 1e-3)
 
   def test_eval_with_sample_weight(self):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = self._get_compiled_multi_io_model()
     eval_result = model.evaluate([self.x, self.x], [self.y1, self.y2],
                                  batch_size=2,
@@ -764,8 +758,6 @@ class TestOutputLossMetrics(keras_parameterized.TestCase):
     self.assertAllClose(result, expected_values)
 
   def test_fit_generator(self, reduction):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = self._get_compiled_multi_io_model(
         loss=losses.MeanSquaredError(reduction=reduction))
     history = model.fit_generator(
@@ -777,8 +769,6 @@ class TestOutputLossMetrics(keras_parameterized.TestCase):
       self.assertAllClose(history.history[key], value)
 
   def test_eval_generator(self, reduction):
-    if testing_utils.should_run_distributed():
-      self.skipTest('b/137397816')
     model = self._get_compiled_multi_io_model(
         loss=losses.MeanSquaredError(reduction=reduction))
     eval_result = model.evaluate_generator(
