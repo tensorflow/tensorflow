@@ -2476,7 +2476,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+tf_py_test(
     name = "collective_ops_test",
     size = "small",
     srcs = ["ops/collective_ops_test.py"],
@@ -2485,6 +2485,22 @@ cuda_py_test(
         ":collective_ops",
         ":framework_for_generated_wrappers",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "collective_ops_gpu_test",
+    size = "small",
+    srcs = ["ops/collective_ops_gpu_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":collective_ops",
+        ":framework_for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
     ],
 )
 
