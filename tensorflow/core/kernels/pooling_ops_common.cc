@@ -383,6 +383,7 @@ void DnnPoolingGradOp<T>::Compute(
         context->eigen_device<Device>(), out_backprop.tensor<T, 4>(),
         transformed_output_backprop.tensor<T, 4>());
   }
+  se::dnn::DataLayout data_layout = se::dnn::DataLayout::kBatchDepthYX;
 #else
   Tensor transformed_input;
   if (!tensor_in) {

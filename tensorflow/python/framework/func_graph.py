@@ -41,6 +41,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import compat
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -152,9 +153,6 @@ class FuncGraph(ops.Graph):
       or the global default Graph.
     captures: Maps external tensor -> internal tensor (i.e. input placeholder).
       The entries are in the order they were captured.
-    deferred_captures: Maps arbitrary key -> (closure, nest of placeholders),
-      where at function call time the value of closure() will be used to feed
-      the nest of placeholders.
     control_captures: Set of external ops on which this graph has a control
       dependency.
     seed: The graph-level random seed.
@@ -191,14 +189,17 @@ class FuncGraph(ops.Graph):
     self.structured_input_signature = None
     self.structured_outputs = None
     self._weak_variables = []
-    self._watched_variables = weakref.WeakSet()
+    self._watched_variables = object_identity.ObjectIdentityWeakSet()
     self.outer_graph = ops.get_default_graph()
-    self.captures = py_collections.OrderedDict()
+    self._captures = py_collections.OrderedDict()
     # If not None, records the names of output args of this function. Used to
     # preserve the output names in the signature of a serialized+deserialized
     # function. Private at the moment mostly because it's often out of date.
     self._output_names = None
-    self.deferred_captures = py_collections.OrderedDict()
+    # Maps arbitrary key -> (closure, nest of placeholders), where at function
+    # call time the value of closure() will be used to feed the nest of
+    # placeholders.
+    self._deferred_captures = py_collections.OrderedDict()
     # Inherit capture-by-value from outer graph.
     if capture_by_value is not None:
       self.capture_by_value = capture_by_value
@@ -273,7 +274,7 @@ class FuncGraph(ops.Graph):
     """
     if key is None:
       key = object()
-    if key not in self.deferred_captures:
+    if key not in self._deferred_captures:
 
       def convert_to_placeholder(s):
         if not isinstance(s, tensor_spec.TensorSpec):
@@ -296,8 +297,8 @@ class FuncGraph(ops.Graph):
         # pylint: enable=protected-access
         return nest.flatten(y, expand_composites=True)
 
-      self.deferred_captures[key] = (wrapped_closure, placeholder)
-    return self.deferred_captures[key][1]
+      self._deferred_captures[key] = (wrapped_closure, placeholder)
+    return self._deferred_captures[key][1]
 
   def control_dependencies(self, control_inputs):
     """Handles control dependencies.
@@ -439,7 +440,7 @@ class FuncGraph(ops.Graph):
       op_def=None,
       compute_device=True):
     # When capturing by value, do the read outside
-    reverse_captures = dict((v, k) for k, v in self.captures.items())
+    reverse_captures = dict((v, k) for k, v in self.captures)
     uncaptured_inputs = [reverse_captures.get(t, t) for t in inputs]
     with ops.init_scope():
       if context.executing_eagerly():
@@ -559,17 +560,6 @@ class FuncGraph(ops.Graph):
     # makes sure that any tensor needed by a custom_gradient is correctly
     # captured.
 
-    # TODO(b/134097853): figure out a better way to check distributed variables
-    if hasattr(tensor, "_distribute_strategy") and hasattr(tensor, "_values"):
-      # This checks if the 'tensor' is a DistributedVariable. When it is a
-      # DistributedVariable, we do not want to check its "graph" attr as the
-      # following if branch does, because "graph" is not an attr for the
-      # container DistributedVariable object, and the underlying components may
-      # not have been initialized yet.
-      # The reason we do not use isinstance() is due to cyclic dependency issue.
-      if name is None:
-        name = str("distributed_variable")
-      return self._capture_helper(tensor, name)
     if (getattr(tensor, "graph", None) is not self and
         hasattr(self, "_forward_func_graph") and
         isinstance(self._forward_func_graph, FuncGraph)):
@@ -595,25 +585,90 @@ class FuncGraph(ops.Graph):
     return tensor
 
   def _capture_helper(self, tensor, name):
-    captured_tensor = self.captures.get(tensor, None)
-    if captured_tensor is None:
-      captured_tensor = _create_substitute_placeholder(tensor, name=name,
-                                                       dtype=tensor.dtype)
-      self.captures[tensor] = captured_tensor
-      self.inputs.append(captured_tensor)
-    tape.record_operation("captured_value", [captured_tensor], [tensor],
+    capture = self._captures.get(ops.tensor_id(tensor))
+    if capture is None:
+      placeholder = _create_substitute_placeholder(
+          tensor, name=name, dtype=tensor.dtype)
+      self.add_capture(tensor, placeholder)
+    else:
+      placeholder = capture[1]
+    tape.record_operation("captured_value", [placeholder], [tensor],
                           lambda x: [x])
-    return captured_tensor
+    return placeholder
+
+  @property
+  def captures(self):
+    """Order list of tuples containing external and internal captures."""
+    return self._captures.values()
+
+  def add_capture(self, tensor, placeholder):
+    """Capture a specific tensor and utilize the provided placeholder.
+
+    Args:
+      tensor: Tensor to captures.
+      placeholder: Provided placeholder for the tensor.
+    """
+    self._captures[ops.tensor_id(tensor)] = (tensor, placeholder)
+    self.inputs.append(placeholder)
+
+  def reset_captures(self, capture_list):
+    """Set the captures with the provided list of captures & placeholder."""
+    self._captures = py_collections.OrderedDict()
+    for tensor, placeholder in capture_list:
+      self._captures[ops.tensor_id(tensor)] = (tensor, placeholder)
+
+  def pop_capture(self, tensor):
+    """Remove the capture and return the generated placeholder."""
+    capture = self._captures.pop(ops.tensor_id(tensor), None)
+    if capture is None:
+      return None
+
+    return capture[1]
+
+  def clear_captures(self):
+    # TODO(b/115366440): Delete this method when a custom OrderedDict is added.
+    # Clearing captures using clear() leaves some cycles around.
+    while self._captures:
+      self._captures.popitem()
+    memory.dismantle_ordered_dict(self._captures)
+    while self._deferred_captures:
+      self._deferred_captures.popitem()
+    memory.dismantle_ordered_dict(self._deferred_captures)
+
+  def capture_distributed_variable(self, variable, placeholder):
+    """Add given distributed variable to captures with given placeholder."""
+    self._captures[variable] = (variable, placeholder)
+    tape.record_operation("captured_value", [placeholder], [variable],
+                          lambda x: [x])
 
   @property
   def external_captures(self):
     """External tensors captured by this function."""
-    return list(self.captures.keys())
+    return [c[0] for c in self._captures.values()]
 
   @property
   def internal_captures(self):
     """Placeholders in this function corresponding captured tensors."""
-    return list(self.captures.values())
+    return [c[1] for c in self._captures.values()]
+
+  @property
+  def deferred_external_captures(self):
+    """Ordered nest of tensors whose placeholders will be fed at call time."""
+    return [c[0] for c in self._deferred_captures.values()]
+
+  @property
+  def deferred_internal_captures(self):
+    """List of nest of placeholders which at call time will be fed."""
+    return [c[1] for c in self._deferred_captures.values()]
+
+  @property
+  def variable_captures(self):
+    """Map of variable handles to variables that as in the list of captures."""
+    return {
+        self._captures[ops.tensor_id(v.handle)][1]: v
+        for v in self.variables
+        if ops.tensor_id(v.handle) in self._captures
+    }
 
 
 def func_graph_from_py_func(name,
@@ -781,7 +836,7 @@ def func_graph_from_py_func(name,
                 autograph.ConversionOptions(
                     recursive=True,
                     optional_features=autograph_options,
-                    force_conversion=True,
+                    user_requested=True,
                 ), args, kwargs)
           except Exception as e:  # pylint:disable=broad-except
             if hasattr(e, "ag_error_metadata"):
@@ -818,7 +873,7 @@ def func_graph_from_py_func(name,
         # Even if an argument variable was not used in the function, we've
         # already manually captured the resource Tensor when creating argument
         # placeholders.
-        resource_placeholder = func_graph.captures.pop(arg.handle, None)
+        resource_placeholder = func_graph.pop_capture(arg.handle)
         if resource_placeholder is None:
           continue
         arg_variables.add(arg)
@@ -827,12 +882,8 @@ def func_graph_from_py_func(name,
         inputs.append(arg)
     variables = [v for v in graph_variables if v not in arg_variables]
     func_graph.inputs = (
-        inputs +
-        list(func_graph.captures.values()) +
-        nest.flatten(
-            [x[1] for x in func_graph.deferred_captures.values()],
-            expand_composites=True))
-
+        inputs + func_graph.internal_captures + nest.flatten(
+            func_graph.deferred_internal_captures, expand_composites=True))
     func_graph.structured_outputs = func_outputs
     # Returning a closed-over tensor does not trigger convert_to_tensor.
     func_graph.outputs.extend(
@@ -859,7 +910,7 @@ def maybe_captured(tensor):
   """
   if (not isinstance(tensor, ops.EagerTensor) and
       tensor.op.graph.building_function and tensor.op.type == "Placeholder"):
-    for input_t, placeholder_t in tensor.op.graph.captures.items():
+    for input_t, placeholder_t in tensor.op.graph.captures:
       if tensor == placeholder_t:
         return maybe_captured(input_t)
   # pylint: enable=protected-access
@@ -1069,12 +1120,5 @@ def dismantle_func_graph(func_graph):
     func_graph: A `FuncGraph` object to destroy. `func_graph` is unusable
       after this function.
   """
-  # TODO(b/115366440): Delete this method when a custom OrderedDict is added.
-  # Clearing captures using clear() leaves some cycles around.
-  while func_graph.captures:
-    func_graph.captures.popitem()
-  memory.dismantle_ordered_dict(func_graph.captures)
-  while func_graph.deferred_captures:
-    func_graph.deferred_captures.popitem()
-  memory.dismantle_ordered_dict(func_graph.deferred_captures)
+  func_graph.clear_captures()
   ops.dismantle_graph(func_graph)

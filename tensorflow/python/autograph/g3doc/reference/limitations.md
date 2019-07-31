@@ -10,6 +10,12 @@ However, when applied to TensorFlow control flow (for example, an if statement
 with a `tf.Tensor` condition), there are certain limitations. This section
 describes these limitations and practices that will allow you to avoid them.
 
+Key Term: Python variables refer to Python symbols (or symbols for short) and
+should not be confused with TensorFlow variables.
+
+Key Term: A TensorFlow loop variable (or loop variable for short) refers to a
+value (typically a `tf.Tensor`) modified by a loop. See `tf.while_loop`.
+
 ### Indirect modifications and hidden side effects in TensorFlow control flow
 
 <!-- TODO(mdan) Refine this paragraph well - it's important -->
@@ -22,12 +28,10 @@ flow statements into equivalent TensorFlow ops. This process requires "wiring"
 variables in the Python code whose values are affected these statements control
 flow into the respective ops.
 
-Note: Python variables should not be confused with TensorFlow variables.
-
 The examples below use a `while` loop, but the same notions extend to all
 control flow: `if` and `for` statements.
 
-In the example below, `x` needs to become a _loop variable_ of the
+In the example below, `x` needs to become a loop variable of the
 corresponding `tf.while_loop':
 
 ```
@@ -254,6 +258,156 @@ d = {'a': tf.constant(3)}
 for i in tf.range(10):
   d = {key: value + i for key, value in d.items()}  # Okay
 ```
+
+### Shape and dtype consistency in TensorFlow control flow
+
+Unlike Python, TensorFlow has limited support for dynamic typing. This means
+that tensors must maintain consistent shapes and dtypes across control flow
+paths.
+
+Note: In general, these restrictions do not apply in control flow in Eager
+execution, because Eager execution uses Python control flow, rather than
+TensorFlow control flow ops.
+
+#### Consistency of dtype
+
+The dtypes across all code paths must be consistent in conditionals and loops.
+
+For example, if a `tf.cond` (and correspondingly, an AutoGraph `if`) sets a
+tensor value conditionally, then that tensor must have the same shape and dtype
+in both branches of the conditional.
+
+Example of illegal dtype change in a conditional:
+
+```
+x = tf.cond(
+    tf.random.uniform(()) > 0.5,
+    lambda: tf.constant(1, dtype=tf.int32),
+    lambda: tf.constant(1, dtype=tf.float32))  # Error -- inconsistent dtypes: int32, float32
+```
+
+The same restriction in AutoGraph code:
+
+```
+if tf.random.uniform(()) > 0.5:
+  x = tf.constant(1, dtype=tf.int32)
+else:
+  x = tf.constant(1, dtype=tf.float32)  # Error -- inconsistent dtypes: int32, float32
+```
+
+Example of illegal dtype change in a loop:
+
+```
+# This won't work - "x" changes dtype inside the loop.
+x = tf.while_loop(
+    lambda _: tf.random.uniform(()) > 0.5,
+    lambda x: tf.constant(1, dtype=tf.float32),
+    loop_vars=(tf.constant(1, dtype=tf.int32),))  # Error -- inconsistent dtypes: int32, float32
+```
+
+The same restriction in AutoGraph code:
+
+```
+x = tf.constant(0, dtype=tf.int32)
+while tf.random.uniform(()) > 0.5:
+  x = tf.constant(0, dtype=tf.float32)   # Error -- inconsistent dtypes: int32, float32
+```
+
+#### Consistency of shape
+
+The shapes across all code paths must be consistent in loops only. When tensors
+do need to change shape across iterations, use `shape_invariants`.
+
+Note: Shapes are allowed to be inconsistent in conditionals. The result will be
+a partially dynamic shape.
+
+In a `tf.while_loop` (and correspondingly, an AutoGraph `while` or `for` loop)
+all loop variables must maintain consistent shape and dtype across iterations.
+That is, every loop variable must have the same shape at the end of the loop
+body as the shape that it had at the beginning of the loop body.
+
+Example of illegal shape change in a loop:
+
+```
+def loop_body(x):  # x.shape is ()
+  return tf.constant((1, 2, 3))  # Error -- inconsistent shapes: (), (3,)
+
+x = tf.while_loop(
+    lambda _: tf.random.uniform(()) > 0.5,
+    loop_body,
+    loop_vars=(tf.constant(1,))
+```
+
+The same restriction in AutoGraph code:
+
+```
+x = tf.constant(0, dtype=tf.int32)
+while tf.random.uniform(()) > 0.5:
+  x = tf.constant(0, dtype=tf.float32)  # Error -- inconsistent shapes: (), (3,)
+```
+
+### Undefined and None values in TensorFlow
+
+TensorFlow does not support undefined and `None` values. All tensors must have
+a value.
+
+Example:
+
+```
+x = tf.cond(
+    tf.random.uniform(()) > 0.5,
+    lambda: tf.constant(1),
+    lambda: None)  # Error -- a Tensor cannot be None
+```
+
+The same restriction carries over in AutoGraph, but only if the symbol is used
+after the conditional (otherwise AutoGraph avoids making it a return value
+of the `tf.cond`):
+
+```
+if tf.random.uniform(()) > 0.5:
+  x = tf.constant(1)
+else:
+  x = None
+tf.print(x)  # Error -- x may be None here
+```
+
+A related but less obvious restriction in AutoGraph forbids symbols to be
+defined in only one branch of TensorFlow control flow, if the symbol is
+used afterwards:
+
+```
+del x
+if tf.random.uniform(()) > 0.5:
+  x = tf.constant(1)
+else:
+  pass
+tf.print(x)  # Error -- x may be undefined here
+```
+
+Similarly, variables defined in a loop may not be used outside the loop, again
+if the symbol is used afterwards:
+
+```
+del x
+if tf.random.uniform(()) > 0.5:
+  x = tf.constant(1)
+tf.print(x)  # Error -- x may be undefined here
+```
+
+Avoid these limitations by defining a default value before the control flow
+statement:
+
+```
+x = tf.constant()
+if tf.random.uniform(()) > 0.5:
+  x = tf.constant(1)
+tf.print(x)  # Okay -- x is either 0 or 1
+```
+
+Note: `None` values and undefined symbols are allowed in Eager control flow,
+because Eager execution uses Python control flow, rather than TensorFlow
+control flow ops.
 
 ### Access to source code
 

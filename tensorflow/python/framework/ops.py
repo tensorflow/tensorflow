@@ -63,8 +63,10 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lock_util
 from tensorflow.python.util import memory
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_stack
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
@@ -1281,7 +1283,7 @@ def internal_convert_n_to_tensor(values,
     RuntimeError: If a registered conversion function returns an invalid
       value.
   """
-  if not isinstance(values, collections.Sequence):
+  if not isinstance(values, collections_abc.Sequence):
     raise TypeError("values must be a sequence.")
   ret = []
   if ctx is None:
@@ -1418,7 +1420,7 @@ def internal_convert_n_to_tensor_or_composite(values,
     RuntimeError: If a registered conversion function returns an invalid
       value.
   """
-  if not isinstance(values, collections.Sequence):
+  if not isinstance(values, collections_abc.Sequence):
     raise TypeError("values must be a sequence.")
   ret = []
   for i, value in enumerate(values):
@@ -2807,7 +2809,7 @@ class Graph(object):
     # self._thread_local._colocation_stack is used instead.
     self._graph_colocation_stack = traceable_stack.TraceableStack()
     # Set of tensors that are dangerous to feed!
-    self._unfeedable_tensors = set()
+    self._unfeedable_tensors = object_identity.ObjectIdentitySet()
     # Set of operations that are dangerous to fetch!
     self._unfetchable_ops = set()
     # A map of tensor handle placeholder to tensor dtype.
@@ -2843,6 +2845,10 @@ class Graph(object):
     # tuples of fully-defined shapes: (x_shape_tuple, y_shape_tuple), and the
     # values are tuples of reduction indices: (rx, ry).
     self._bcast_grad_args_cache = {}
+    # Cache for constant results of `reduced_shape()`. The keys are pairs of
+    # tuples: (input_shape_tuple, reduction_indices_tuple), and the values
+    # are pairs of tuples: (output_shape_kept_dims, tile_scaling).
+    self._reduced_shape_cache = {}
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation

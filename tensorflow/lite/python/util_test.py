@@ -80,7 +80,7 @@ class UtilTest(test_util.TensorFlowTestCase):
         sess.graph_def)
     lower_using_switch_merge_is_removed = False
     for node in new_graph_def.node:
-      if node.op == "While":
+      if node.op == "While" or node.op == "StatelessWhile":
         if not node.attr["_lower_using_switch_merge"].b:
           lower_using_switch_merge_is_removed = True
     self.assertEqual(lower_using_switch_merge_is_removed, True)

@@ -1927,7 +1927,7 @@ tensorflow::Status ConvertTransposeConvOperator(
         << "Dilation unsupported in TransposeConv. TensorFlow op \""
         << node.name() << "\" had dilations";
     CHECK((dilations.i(0) == 1) && (dilations.i(1) == 1) &&
-          (dilations.i(1) == 1) && (dilations.i(3) == 1))
+          (dilations.i(2) == 1) && (dilations.i(3) == 1))
         << "Dilation unsupported in TransposeConv. TensorFlow op \""
         << node.name() << "\" had dilations:[ " << dilations.i(0) << ", "
         << dilations.i(1) << ", " << dilations.i(2) << ", " << dilations.i(3)

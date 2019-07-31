@@ -22,6 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
@@ -406,5 +407,6 @@ REGISTER_KERNEL_BUILDER(
     ParseExampleDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

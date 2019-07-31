@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -414,6 +415,30 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
         expected = expected.numpy()
       else:
         expected = expected.c.numpy()
+      np.testing.assert_almost_equal(expected, actual)
+
+  @test_util.run_v2_only
+  def testKerasLSTM(self):
+    self.skipTest('b/138237023')
+    input_data = constant_op.constant(
+        np.array(np.random.random_sample((10, 10, 10)), dtype=np.float32))
+
+    model = keras.models.Sequential(
+        [keras.layers.LSTM(units=10, input_shape=(10, 10))])
+
+    run_model = def_function.function(model.__call__)
+    concrete_func = run_model.get_concrete_function(
+        tensor_spec.TensorSpec((10, 10, 10)))
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter.experimental_enable_mlir_converter = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = concrete_func(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    for expected, actual in zip(expected_value, actual_value):
       np.testing.assert_almost_equal(expected, actual)
 
 

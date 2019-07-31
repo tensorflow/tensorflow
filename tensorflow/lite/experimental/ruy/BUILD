@@ -264,11 +264,13 @@ cc_library(
     srcs = [
         "kernel_arm32.cc",
         "kernel_arm64.cc",
+        "kernel_avx512.cc",
     ],
     hdrs = [
         "kernel.h",
     ],
     deps = [
+        ":check_macros",
         ":common",
         ":internal_matrix",
         ":opt_set",
@@ -287,6 +289,7 @@ cc_library(
     name = "pack",
     srcs = [
         "pack_arm.cc",
+        "pack_avx512.cc",
     ],
     hdrs = [
         "pack.h",

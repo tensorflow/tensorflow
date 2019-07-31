@@ -795,6 +795,7 @@ tf_kernel_library(
     hdrs = ["shuffle_dataset_op.h"],
     deps = [
         ":name_utils",
+        ":random_seed_ops",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1317,5 +1318,19 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
+    ],
+)
+
+tf_kernel_library(
+    name = "random_seed_ops",
+    srcs = ["random_seed_ops.cc"],
+    hdrs = ["random_seed_ops.h"],
+    deps = [
+        ":dataset_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )

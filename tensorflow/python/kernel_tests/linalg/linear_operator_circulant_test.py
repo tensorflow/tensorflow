@@ -682,7 +682,7 @@ class LinearOperatorCirculant3DTest(test.TestCase):
       self.assertEqual(operator.dtype, dtypes.complex64)
       matrix = operator.to_dense().eval()
       self.assertAllEqual((2, 2 * 3 * 5, 2 * 3 * 5), matrix.shape)
-      np.testing.assert_allclose(0, np.imag(matrix), atol=1e-6)
+      np.testing.assert_allclose(0, np.imag(matrix), atol=1e-5)
 
   @test_util.run_deprecated_v1
   def test_defining_spd_operator_by_taking_real_part(self):

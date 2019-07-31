@@ -159,7 +159,7 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
         optimizer=gradient_descent.GradientDescentOptimizer(0.01),
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 

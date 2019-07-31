@@ -218,7 +218,7 @@ class FunctionDefToGraphDefTest(test.TestCase):
     # `function_def_to_graph` can find it.
     fn2_defun()
 
-    fdef = fn2_defun._inference_function.definition
+    fdef = fn2_defun.function_def
     func_graph = function_def_to_graph.function_def_to_graph(fdef)
     with func_graph.as_default():
       x_ph, y_ph = func_graph.inputs

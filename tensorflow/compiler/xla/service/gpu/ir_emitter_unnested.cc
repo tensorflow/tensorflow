@@ -3105,7 +3105,6 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
       Shape reduced_shape = ShapeUtil::MakeShapeWithDescendingLayout(
           param->shape().element_type(),
           Permute({0, 2, 1}, reduced_output_dims));
-      LOG(ERROR) << "Generated shape: " << reduced_shape.ToString(true);
       param_in_reduced_shape_arrays.push_back(
           param_arrays[id].CastToShape(reduced_shape, &b_));
     } else {
@@ -3361,6 +3360,10 @@ bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
       params_012.resize(i);
       break;
     }
+  }
+
+  if (params_012.empty()) {
+    return false;
   }
 
   VLOG(3) << "EmitHlo021Tile Emitting hlo tile 0-2-1" << hlo->ToString();

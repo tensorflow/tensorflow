@@ -613,6 +613,7 @@ def _add_self_references(namespace, autograph_module):
     ag_internal.Feature = converter.Feature
     ag_internal.utils = utils
     ag_internal.FunctionScope = function_wrappers.FunctionScope
+    ag_internal.with_function_scope = function_wrappers.with_function_scope
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>

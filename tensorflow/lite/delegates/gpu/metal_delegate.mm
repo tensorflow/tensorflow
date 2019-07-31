@@ -107,10 +107,12 @@ class GpuAlarmClock {
       total_alarms_ = 1;
       NSString* error;
       id<MTLComputePipelineState> program;
+      // TODO(impjdi): Properly handle returned status.
       CreateComputeProgram(device_,
                            @"kernel void ComputeFunction(device int* output_buffer [[buffer(0)]]) "
                            @"{ output_buffer[0] = 0; }",
-                           @"ComputeFunction", nullptr, &program);
+                           @"ComputeFunction", nullptr, &program)
+          .IgnoreError();
       stub_program_ = program;
       stub_buffer_ = [device_ newBufferWithLength:sizeof(int) * 4
                                           options:MTLResourceHazardTrackingModeUntracked];
@@ -185,7 +187,9 @@ class Delegate {
         )";
       NSString* error;
       id<MTLComputePipelineState> signal_program;
-      CreateComputeProgram(metal_device_, code, @"ComputeFunction", nullptr, &signal_program);
+      // TODO(impjdi): Properly handle returned status.
+      CreateComputeProgram(metal_device_, code, @"ComputeFunction", nullptr, &signal_program)
+          .IgnoreError();
       signal_program_ = signal_program;
       signal_buffer_ = [metal_device_ newBufferWithLength:sizeof(int) * 4
                                                   options:MTLResourceStorageModeShared |

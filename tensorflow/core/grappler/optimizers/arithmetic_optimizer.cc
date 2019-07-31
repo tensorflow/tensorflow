@@ -866,7 +866,7 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
     *shapes_match = true;
     unique_factors->reserve(node->input_size());
 
-    for (int i = 0; i < node->input_size() && shapes_match; ++i) {
+    for (int i = 0; i < node->input_size() && *shapes_match; ++i) {
       const string& input = node->input(i);
       if (IsControlInput(input)) {
         break;

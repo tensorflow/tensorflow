@@ -45,9 +45,15 @@ struct ExecutorToControlDialectConversion
 }  // end anonymous namespace
 
 static bool HasSingleGraph(FuncOp function) {
+  // We expect the function has only one region with one block,
   if (function.getBlocks().size() != 1) return false;
-  if (!std::next(function.begin()->begin())->isKnownTerminator()) return false;
-  if (!isa<tf_executor::GraphOp>(function.begin()->begin())) return false;
+  auto &block = function.front();
+  // and the block contains two ops,
+  if (std::next(block.begin()) == block.end()) return false;
+  // one GraphOp,
+  if (!isa<tf_executor::GraphOp>(block.begin())) return false;
+  // followed by a terminator.
+  if (!std::next(block.begin())->isKnownTerminator()) return false;
   return true;
 }
 

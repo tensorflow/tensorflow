@@ -16,7 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_performance_options.h"
 
 #include <algorithm>
+#include <iomanip>
+#include <memory>
+#include <sstream>
+#include <utility>
 
+#include "tensorflow/core/util/stats_calculator.h"
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
@@ -25,6 +30,62 @@ limitations under the License.
 namespace tflite {
 namespace benchmark {
 
+void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
+  current_run_name_.clear();
+
+  if (params.Get<bool>("use_nnapi")) {
+    current_run_name_ = "nnapi";
+    return;
+  }
+
+  if (params.Get<bool>("use_gpu")) {
+    current_run_name_ = "gpu";
+    return;
+  }
+
+  // Handle cases run on CPU
+  // Note: could use std::to_string to convert an integer to string but it
+  // requires C++11.
+  std::stringstream sstm;
+  sstm << "cpu w/ " << params.Get<int32_t>("num_threads") << " threads";
+  current_run_name_ = sstm.str();
+}
+
+void MultiRunStatsRecorder::OnBenchmarkEnd(const BenchmarkResults& results) {
+  each_run_stats_.emplace_back(std::make_pair(current_run_name_, results));
+}
+
+void MultiRunStatsRecorder::OutputStats() {
+  // Make a 80-character-long header.
+  TFLITE_LOG(INFO) << "\n==============Summary of All Runs w/ Different "
+                      "Performance Options==============";
+  std::sort(each_run_stats_.begin(), each_run_stats_.end(),
+            EachRunStatsEntryComparator());
+
+  for (const auto& run_stats : each_run_stats_) {
+    std::stringstream stream;
+    // Output the name of this run first.
+    stream << std::setw(26) << run_stats.first << ": ";
+    run_stats.second.inference_time_us().OutputToStream(&stream);
+    TFLITE_LOG(INFO) << stream.str();
+  }
+}
+
+BenchmarkPerformanceOptions::BenchmarkPerformanceOptions(
+    BenchmarkModel* single_option_run)
+    : BenchmarkPerformanceOptions(DefaultParams(), single_option_run,
+                                  DefaultRunStatsRecorder()) {}
+
+BenchmarkPerformanceOptions::BenchmarkPerformanceOptions(
+    BenchmarkParams params, BenchmarkModel* single_option_run,
+    std::unique_ptr<MultiRunStatsRecorder> all_run_stats)
+    : params_(std::move(params)),
+      single_option_run_(single_option_run),
+      single_option_run_params_(single_option_run->mutable_params()),
+      all_run_stats_(std::move(all_run_stats)) {
+  single_option_run_->AddListener(all_run_stats_.get());
+}
+
 BenchmarkParams BenchmarkPerformanceOptions::DefaultParams() {
   BenchmarkParams params;
   params.AddParam("perf_options_list",
@@ -32,6 +93,11 @@ BenchmarkParams BenchmarkPerformanceOptions::DefaultParams() {
   params.AddParam("option_benchmark_run_delay",
                   BenchmarkParam::Create<float>(-1.0f));
   return params;
+}
+
+std::unique_ptr<MultiRunStatsRecorder>
+BenchmarkPerformanceOptions::DefaultRunStatsRecorder() {
+  return std::unique_ptr<MultiRunStatsRecorder>(new MultiRunStatsRecorder());
 }
 
 std::vector<Flag> BenchmarkPerformanceOptions::GetFlags() {
@@ -101,7 +167,7 @@ std::vector<std::string> BenchmarkPerformanceOptions::GetValidPerfOptions()
   return {"all", "cpu", "gpu", "nnapi"};
 }
 
-bool BenchmarkPerformanceOptions::HasOption(const string& option) const {
+bool BenchmarkPerformanceOptions::HasOption(const std::string& option) const {
   return std::find(perf_options_.begin(), perf_options_.end(), option) !=
          perf_options_.end();
 }
@@ -154,6 +220,12 @@ void BenchmarkPerformanceOptions::Run(int argc, char** argv) {
     return;
   }
 
+  Run();
+
+  all_run_stats_->OutputStats();
+}
+
+void BenchmarkPerformanceOptions::Run() {
   TFLITE_LOG(INFO) << "The list of TFLite runtime options to be benchmarked: ["
                    << params_.Get<std::string>("perf_options_list") << "]";
 

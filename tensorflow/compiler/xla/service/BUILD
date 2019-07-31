@@ -292,6 +292,64 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_live_range",
+    srcs = [
+        "hlo_live_range.cc",
+    ],
+    hdrs = [
+        "hlo_live_range.h",
+    ],
+    deps = [
+        ":hlo",
+        ":hlo_alias_analysis",
+        ":hlo_buffer",
+        ":hlo_dataflow_analysis",
+        ":hlo_ordering",
+        ":logical_buffer",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_live_range_test",
+    srcs = ["hlo_live_range_test.cc"],
+    deps = [
+        ":call_graph",
+        ":hlo",
+        ":hlo_alias_analysis",
+        ":hlo_live_range",
+        ":hlo_memory_scheduler",
+        ":hlo_ordering",
+        ":hlo_parser",
+        ":hlo_value",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
 tf_cc_test(
     name = "hlo_evaluator_test",
     srcs = ["hlo_evaluator_test.cc"],
@@ -1118,6 +1176,7 @@ cc_library(
         ":hlo_alias_analysis",
         ":hlo_buffer",
         ":hlo_dataflow_analysis",
+        ":hlo_live_range",
         ":hlo_proto",
         ":logical_buffer",
         ":memory_space_assignment",
@@ -1221,6 +1280,7 @@ cc_library(
         ":hlo_alias_analysis",
         ":hlo_buffer",
         ":hlo_dataflow_analysis",
+        ":hlo_live_range",
         ":hlo_ordering",
         ":hlo_proto",
         ":tuple_points_to_analysis",

@@ -28,6 +28,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import object_identity
 
 
 # Op names which identify variable reads which should be saved.
@@ -335,7 +336,7 @@ def validate_and_slice_inputs(names_to_saveables):
     names_to_saveables = op_list_to_dict(names_to_saveables)
 
   saveables = []
-  seen_ops = set()
+  seen_ops = object_identity.ObjectIdentitySet()
   for name, op in sorted(names_to_saveables.items(),
                          # Avoid comparing ops, sort only by name.
                          key=lambda x: x[0]):
