@@ -694,7 +694,7 @@ class NNAPIOpBuilder {
   template <typename T>
   TfLiteStatus AddNewInputConstantTensor(
       int32_t nn_type, TfLiteType type, const TfLiteIntArray* dims,
-      const std::function<TfLiteStatus(TfLitePtrUnion, int64_t)>& init_fn,
+      const std::vector<T>& tensor_value,
       const TfLiteQuantizationParams& quant_params, int* tensor_index) {
     TF_LITE_ENSURE_OK(context_,
                       context_->AddTensors(context_, 1, tensor_index));
@@ -713,8 +713,9 @@ class NNAPIOpBuilder {
             // Resize Tensor takes ownership of the dims array passed as param
             TfLiteIntArrayCopy(dims)));
 
-    const int64_t out_size = NumElements(dims);
-    TF_LITE_ENSURE_OK(context_, init_fn(new_tensor->data, out_size));
+    memcpy(new_tensor->data.raw,
+           reinterpret_cast<const char*>(tensor_value.data()),
+           tensor_value.size() * sizeof(T));
 
     const uint32_t tensor_rank = static_cast<uint32_t>(dims->size);
     const uint32_t* tensor_dims = reinterpret_cast<const uint32_t*>(dims->data);
@@ -742,11 +743,11 @@ class NNAPIOpBuilder {
   template <typename T>
   TfLiteStatus AddNewInputConstantTensor(
       int32_t nn_type, TfLiteType type, std::initializer_list<int> dims,
-      const std::function<TfLiteStatus(TfLitePtrUnion, int64_t)>& init_fn,
+      const std::vector<T>& tensor_value,
       const TfLiteQuantizationParams& quant_params, int* tensor_index) {
     TfLiteIntArray* dim_array = TfLiteIntArrayCreate(dims.size());
-    const auto result = AddNewInputConstantTensor<T>(
-        nn_type, type, dim_array, init_fn, quant_params, tensor_index);
+    const auto result = AddNewInputConstantTensor(
+        nn_type, type, dim_array, tensor_value, quant_params, tensor_index);
     TfLiteIntArrayFree(dim_array);
     return result;
   }
@@ -2080,13 +2081,6 @@ class NNAPIDelegateKernel {
                   &input_to_cell, &recurrent_to_forget, &input_to_forget,
                   &recurrent_to_output, &input_to_output);
 
-              const auto ui8_fill_with =
-                  [](const std::vector<uint8_t>& read_from,
-                     TfLitePtrUnion write_to, int64_t size) -> TfLiteStatus {
-                std::copy(read_from.begin(), read_from.end(), write_to.uint8);
-                return kTfLiteOk;
-              };
-
               TfLiteIntArray* recurrent_weight_dims = TfLiteIntArrayCreate(2);
               TfLiteIntArray* input_weight_dims = TfLiteIntArrayCreate(2);
               tflite::delegate::nnapi::SetWeightSubmatrixDims(
@@ -2096,71 +2090,48 @@ class NNAPIDelegateKernel {
 
               mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
                   ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  input_weight_dims,
-                  std::bind(ui8_fill_with, input_to_input,
-                            std::placeholders::_1, std::placeholders::_2),
+                  input_weight_dims, input_to_input, weight_tensor.params,
+                  &new_tensor_index);
+
+              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
+                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
+                  input_weight_dims, input_to_forget, weight_tensor.params,
+                  &new_tensor_index);
+
+              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
+                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
+                  input_weight_dims, input_to_cell, weight_tensor.params,
+                  &new_tensor_index);
+
+              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
+                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
+                  input_weight_dims, input_to_output, weight_tensor.params,
+                  &new_tensor_index);
+
+              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
+                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
+                  recurrent_weight_dims, recurrent_to_input,
                   weight_tensor.params, &new_tensor_index);
 
               mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
                   ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  input_weight_dims,
-                  std::bind(ui8_fill_with, input_to_forget,
-                            std::placeholders::_1, std::placeholders::_2),
+                  recurrent_weight_dims, recurrent_to_forget,
                   weight_tensor.params, &new_tensor_index);
 
               mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
                   ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  input_weight_dims,
-                  std::bind(ui8_fill_with, input_to_cell, std::placeholders::_1,
-                            std::placeholders::_2),
+                  recurrent_weight_dims, recurrent_to_cell,
                   weight_tensor.params, &new_tensor_index);
 
               mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
                   ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  input_weight_dims,
-                  std::bind(ui8_fill_with, input_to_output,
-                            std::placeholders::_1, std::placeholders::_2),
-                  weight_tensor.params, &new_tensor_index);
-
-              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
-                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  recurrent_weight_dims,
-                  std::bind(ui8_fill_with, recurrent_to_input,
-                            std::placeholders::_1, std::placeholders::_2),
-                  weight_tensor.params, &new_tensor_index);
-
-              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
-                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  recurrent_weight_dims,
-                  std::bind(ui8_fill_with, recurrent_to_forget,
-                            std::placeholders::_1, std::placeholders::_2),
-                  weight_tensor.params, &new_tensor_index);
-
-              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
-                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  recurrent_weight_dims,
-                  std::bind(ui8_fill_with, recurrent_to_cell,
-                            std::placeholders::_1, std::placeholders::_2),
-                  weight_tensor.params, &new_tensor_index);
-
-              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
-                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  recurrent_weight_dims,
-                  std::bind(ui8_fill_with, recurrent_to_output,
-                            std::placeholders::_1, std::placeholders::_2),
+                  recurrent_weight_dims, recurrent_to_output,
                   weight_tensor.params, &new_tensor_index);
 
               TfLiteIntArrayFree(input_weight_dims);
               TfLiteIntArrayFree(recurrent_weight_dims);
 
               // Biases have to be split in four
-              const auto i32_fill_with =
-                  [](const std::vector<int32_t>& read_from,
-                     TfLitePtrUnion write_to, int64_t size) -> TfLiteStatus {
-                std::copy(read_from.begin(), read_from.end(), write_to.i32);
-                return kTfLiteOk;
-              };
-
               const auto bias_size = output_dims->data[1];
               const TfLiteTensor& biases_tensor =
                   mapping_args.context->tensors
@@ -2177,30 +2148,19 @@ class NNAPIDelegateKernel {
               int input_bias_tensor = -1;
               mapping_args.builder->AddNewInputConstantTensor<int32_t>(
                   ANEURALNETWORKS_TENSOR_INT32, kTfLiteInt32, {bias_size},
-                  std::bind(i32_fill_with, input_bias, std::placeholders::_1,
-                            std::placeholders::_2),
-                  biases_tensor.params, &input_bias_tensor);
-              // kForgetGateBiasTensor
+                  input_bias, biases_tensor.params, &input_bias_tensor);
               int forget_bias_tensor = -1;
-              mapping_args.builder->AddNewInputConstantTensor<int32_t>(
+              mapping_args.builder->AddNewInputConstantTensor(
                   ANEURALNETWORKS_TENSOR_INT32, kTfLiteInt32, {bias_size},
-                  std::bind(i32_fill_with, forget_bias, std::placeholders::_1,
-                            std::placeholders::_2),
-                  biases_tensor.params, &forget_bias_tensor);
-              // kCellGateBiasTensor
+                  forget_bias, biases_tensor.params, &forget_bias_tensor);
               int cell_gate_bias_tensor = -1;
-              mapping_args.builder->AddNewInputConstantTensor<int32_t>(
+              mapping_args.builder->AddNewInputConstantTensor(
                   ANEURALNETWORKS_TENSOR_INT32, kTfLiteInt32, {bias_size},
-                  std::bind(i32_fill_with, cell_bias, std::placeholders::_1,
-                            std::placeholders::_2),
-                  biases_tensor.params, &cell_gate_bias_tensor);
-              // kOutputGateBiasTensor
+                  cell_bias, biases_tensor.params, &cell_gate_bias_tensor);
               int output_gate_bias_tensor = -1;
-              mapping_args.builder->AddNewInputConstantTensor<int32_t>(
+              mapping_args.builder->AddNewInputConstantTensor(
                   ANEURALNETWORKS_TENSOR_INT32, kTfLiteInt32, {bias_size},
-                  std::bind(i32_fill_with, output_bias, std::placeholders::_1,
-                            std::placeholders::_2),
-                  biases_tensor.params, &output_gate_bias_tensor);
+                  output_bias, biases_tensor.params, &output_gate_bias_tensor);
 
               mapping_args.builder->AddTensorInput(
                   mapping_args.node->inputs->data[4 /* kInputPrevState */],
