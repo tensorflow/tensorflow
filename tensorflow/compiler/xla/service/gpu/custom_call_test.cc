@@ -174,6 +174,7 @@ void Callback_TupleSelect(se::gpu::GpuStreamHandle stream, void** buffers,
                  gpuMemcpyDeviceToDevice, stream);
 }
 XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_TupleSelect, "CUDA");
+XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_TupleSelect, "ROCM");
 // Tuple-shaped select is a case where XLA can't know all buffer assignments
 // statically ahead of time and has to walk the on-device tuple sub-buffers.
 TEST_F(CustomCallTest, TupleSelect) {
