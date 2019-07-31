@@ -1226,6 +1226,7 @@ Status FunctionLibraryDefinition::AddLibrary(
   // the duration of the function could lead to deadlock).
   FunctionLibraryDefinition clone(other);
   mutex_lock l(mu_);
+  mutex_lock l2(clone.mu_);
   // Remember the funcs and grads that we added successfully so that
   // we can roll them back on error.
   std::vector<string> funcs;
