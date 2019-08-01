@@ -32,6 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.framework.auto_control_deps import AutomaticControlDependencies
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
@@ -108,6 +109,7 @@ def convert_structure_to_signature(structure, arg_names=None):
         type(None),
         dtypes.DType,
         tensor_spec.TensorSpec,
+        type_spec.TypeSpec,
     )):
       return arg
     return UnknownArgument()
