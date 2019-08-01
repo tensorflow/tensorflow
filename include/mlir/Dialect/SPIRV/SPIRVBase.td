@@ -113,6 +113,16 @@ def SPV_OC_OpSRem              : I32EnumAttrCase<"OpSRem", 138>;
 def SPV_OC_OpSMod              : I32EnumAttrCase<"OpSMod", 139>;
 def SPV_OC_OpFRem              : I32EnumAttrCase<"OpFRem", 140>;
 def SPV_OC_OpFMod              : I32EnumAttrCase<"OpFMod", 141>;
+def SPV_OC_OpIEqual            : I32EnumAttrCase<"OpIEqual", 170>;
+def SPV_OC_OpINotEqual         : I32EnumAttrCase<"OpINotEqual", 171>;
+def SPV_OC_OpUGreaterThan      : I32EnumAttrCase<"OpUGreaterThan", 172>;
+def SPV_OC_OpSGreaterThan      : I32EnumAttrCase<"OpSGreaterThan", 173>;
+def SPV_OC_OpUGreaterThanEqual : I32EnumAttrCase<"OpUGreaterThanEqual", 174>;
+def SPV_OC_OpSGreaterThanEqual : I32EnumAttrCase<"OpSGreaterThanEqual", 175>;
+def SPV_OC_OpULessThan         : I32EnumAttrCase<"OpULessThan", 176>;
+def SPV_OC_OpSLessThan         : I32EnumAttrCase<"OpSLessThan", 177>;
+def SPV_OC_OpULessThanEqual    : I32EnumAttrCase<"OpULessThanEqual", 178>;
+def SPV_OC_OpSLessThanEqual    : I32EnumAttrCase<"OpSLessThanEqual", 179>;
 def SPV_OC_OpReturn            : I32EnumAttrCase<"OpReturn", 253>;
 
 def SPV_OpcodeAttr :
@@ -127,7 +137,11 @@ def SPV_OpcodeAttr :
       SPV_OC_OpAccessChain, SPV_OC_OpDecorate, SPV_OC_OpCompositeExtract,
       SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub, SPV_OC_OpIMul,
       SPV_OC_OpFMul, SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv, SPV_OC_OpUMod,
-      SPV_OC_OpSRem, SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod, SPV_OC_OpReturn
+      SPV_OC_OpSRem, SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod, SPV_OC_OpIEqual,
+      SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan, SPV_OC_OpSGreaterThan,
+      SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual,
+      SPV_OC_OpULessThan, SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual,
+      SPV_OC_OpSLessThanEqual, SPV_OC_OpReturn
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
@@ -683,21 +697,39 @@ class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
   bit autogenSerialization = 1;
 }
 
-class SPV_ArithmeticOp<string mnemonic, Type type,
-                       list<OpTrait> traits = []> :
-      SPV_Op<mnemonic,
-             !listconcat(traits, [NoSideEffect, SameOperandsAndResultType])> {
+class SPV_BinaryOp<string mnemonic, Type resultType, Type operandsType,
+                   list<OpTrait> traits = []> :
+      SPV_Op<mnemonic, traits> {
   let arguments = (ins
-    SPV_ScalarOrVectorOf<type>:$operand1,
-    SPV_ScalarOrVectorOf<type>:$operand2
+    SPV_ScalarOrVectorOf<operandsType>:$operand1,
+    SPV_ScalarOrVectorOf<operandsType>:$operand2
   );
   let results = (outs
-    SPV_ScalarOrVectorOf<type>:$result
+    SPV_ScalarOrVectorOf<resultType>:$result
   );
   let parser = [{ return impl::parseBinaryOp(parser, result); }];
   let printer = [{ return impl::printBinaryOp(getOperation(), p); }];
   // No additional verification needed in addition to the ODS-generated ones.
   let verifier = [{ return success(); }];
+}
+
+class SPV_ArithmeticOp<string mnemonic, Type type,
+                       list<OpTrait> traits = []> :
+      // Operands type same as result type.
+      SPV_BinaryOp<mnemonic, type, type,
+                   !listconcat(traits,
+                               [NoSideEffect, SameOperandsAndResultType])> {
+}
+
+class SPV_LogicalOp<string mnemonic, Type operandsType,
+                    list<OpTrait> traits = []> :
+      // Result type is SPV_Bool.
+      SPV_BinaryOp<mnemonic, SPV_Bool, operandsType,
+                   !listconcat(traits,
+                               [NoSideEffect, SameTypeOperands,
+                                SameOperandsAndResultShape])> {
+  let parser = [{ return ::parseBinaryLogicalOp(parser, result); }];
+  let printer = [{ return ::printBinaryLogicalOp(getOperation(), p); }];
 }
 
 
