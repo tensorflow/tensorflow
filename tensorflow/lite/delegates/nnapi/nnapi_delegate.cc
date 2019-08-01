@@ -1055,7 +1055,7 @@ class NNAPIDelegateKernel {
   // (i.e. if the returned MappingFn is null, then the node is not supported).
   static MappingFn Map(const TfLiteContext* context, int builtin_code,
                        int version, int android_sdk_version,
-                       const TfLiteNode* node) {
+                       const TfLiteNode* node, bool is_accelerator_specified) {
     switch (builtin_code) {
       case kTfLiteBuiltinAdd:
         if (version <= 2) {
@@ -1137,8 +1137,10 @@ class NNAPIDelegateKernel {
           }
           auto builtin =
               reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
-          // Large filter window would overflow.
-          if (builtin->filter_width * builtin->filter_height > 256) {
+          // TODO(b/138756912): Large filter window would overflow on the
+          // reference CPU path.
+          if (!is_accelerator_specified &&
+              (builtin->filter_width * builtin->filter_height > 256)) {
             return nullptr;
           }
           return [](const NNAPIOpMappingArgs& mapping_args)
@@ -3283,8 +3285,9 @@ class NNAPIDelegateKernel {
       // Get op type and operands
       int nn_op_type = Map(
           context, reg->builtin_code, reg->version, nnapi_->android_sdk_version,
-          node)({context, &builder, node, &model_state_outputs_,
-                 &model_state_tfl_inputs_, &feedback_loops_});
+          node, /*is_accelerator_specified=*/nnapi_device_ !=
+                    nullptr)({context, &builder, node, &model_state_outputs_,
+                              &model_state_tfl_inputs_, &feedback_loops_});
       // Map outputs to NN API tensor indices.
       int output_tensor_flags = 0;
       if (need_int8_conversion) {
@@ -3508,6 +3511,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
       !nnapi->nnapi_exists) {
     return kTfLiteOk;
   }
+  bool is_accelerator_specified = false;
   // For NNAPI 1.2+, check if there is any accelerator available.
   // If not, don't delegate to NNAPI's CPU reference implementation.
   if (nnapi->android_sdk_version >= kMinSdkVersionForNNAPI12) {
@@ -3517,6 +3521,10 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
       if (!GetDeviceHandle(context, device_name_ptr)) {
         // If the selected accelerator cannot be found, NNAPI will not be used.
         return kTfLiteOk;
+      } else {
+        // also check if the selected device is not CPU reference impl.
+        const string kNnapiReferenceImplName = "nnapi-reference";
+        is_accelerator_specified = kNnapiReferenceImplName != device_name_ptr;
       }
     } else {
       // If no accelerator is specified, only use NNAPI if an accelerator is
@@ -3548,7 +3556,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
         context, node_index, &node, &registration));
     if (NNAPIDelegateKernel::Map(context, registration->builtin_code,
                                  registration->version, android_sdk_version,
-                                 node)) {
+                                 node, is_accelerator_specified)) {
       supported_nodes.push_back(node_index);
     }
   }
