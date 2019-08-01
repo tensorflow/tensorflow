@@ -79,7 +79,7 @@ template struct DiagFunctor<GPUDevice, complex128>;
 
 template <typename T>
 __global__ void DiagPartGpuKernel(const int num_threads, const int64 size,
-                                  const T* in, T* out) {
+                                  const T* __restrict__ in, T* __restrict__ out) {
   GPU_1D_KERNEL_LOOP(index, num_threads) {
     out[index] = in[(1 + size) * index];
   }

@@ -32,7 +32,7 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace functor {
 
 template <typename T>
-__global__ void CompareAndBitpackKernel(const int size, const T* threshold,
+__global__ void CompareAndBitpackKernel(const int size, const T* __restrict__ threshold,
                                         const T* __restrict__ input, uint8* __restrict__ output) {
   // TODO(ebrevdo): Erich said: to get a better memory access pattern
   // you could have 8 threads load this data and do a comparison, then

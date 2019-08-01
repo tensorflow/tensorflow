@@ -494,7 +494,7 @@ __device__ __inline__ T ComputeSum(IN_T in_, const int plane,
 }
 
 template <typename IN_T, typename Op>
-__global__ void ColumnReduceInToTempKernel(void* temp, int temp_in_offset,
+__global__ void ColumnReduceInToTempKernel(void* __restrict__ temp, int temp_in_offset,
                                            int temp_out_offset, IN_T in,
                                            int num_planes, int num_rows,
                                            int num_cols, Op op) {
@@ -524,7 +524,7 @@ __global__ void ColumnReduceInToTempKernel(void* temp, int temp_in_offset,
 }
 
 template <typename T, typename OUT_T, typename Op>
-__global__ void ColumnReduceTempToOutKernel(void* temp, int temp_in_offset,
+__global__ void ColumnReduceTempToOutKernel(void* __restrict__ temp, int temp_in_offset,
                                             T in, OUT_T out, int num_planes,
                                             int num_rows, int num_cols, Op op) {
   typedef typename std::iterator_traits<T>::value_type value_type;
