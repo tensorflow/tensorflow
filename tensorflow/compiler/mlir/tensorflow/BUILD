@@ -99,6 +99,7 @@ cc_library(
         "ir/tf_ops.cc",
         "ir/tf_ops.cc.inc",
         "ir/tf_ops.h.inc",
+        "transforms/executor_island_coarsening.cc",
         "transforms/functional_control_flow_to_cfg.cc",
         "transforms/generated_canonicalize.inc",
         "transforms/generated_optimize.inc",

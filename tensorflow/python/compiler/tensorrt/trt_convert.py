@@ -51,6 +51,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.util import nest
 from tensorflow.python.util.lazy_loader import LazyLoader
 
 # Lazily load the op, since it's not available in cpu-only builds. Importing
@@ -94,8 +95,10 @@ class TrtPrecisionMode(object):
 
   @staticmethod
   def supported_precision_modes():
-    return [TrtPrecisionMode.FP32, TrtPrecisionMode.FP16, TrtPrecisionMode.INT8]
-
+    precisions = [
+        TrtPrecisionMode.FP32, TrtPrecisionMode.FP16, TrtPrecisionMode.INT8
+    ]
+    return precisions + [p.lower() for p in precisions]
 
 # Use a large enough number as the default max_workspace_size for TRT engines,
 # so it can produce reasonable performance results with the default.
@@ -911,6 +914,10 @@ class TrtGraphConverterV2(object):
         self._converted_graph_def,
         [tensor.name for tensor in frozen_func.inputs],
         [tensor.name for tensor in frozen_func.outputs])
+    # Reconstruct the output signatures using the ones from original model.
+    self._converted_func.graph.structured_outputs = nest.pack_sequence_as(
+        func.graph.structured_outputs,
+        self._converted_func.graph.structured_outputs)
 
     self._converted = True
 

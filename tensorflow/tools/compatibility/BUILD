@@ -138,7 +138,7 @@ py_binary(
     name = "tf_upgrade_v2",
     srcs = ["tf_upgrade_v2_main.py"],
     main = "tf_upgrade_v2_main.py",
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":ast_edits",
@@ -153,6 +153,10 @@ py_test(
     srcs = ["tf_upgrade_v2_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        "v1only",
+        "no_rocm_v2",
+    ],
     deps = [
         ":tf_upgrade_v2_lib",
         "//tensorflow:tensorflow_py",
@@ -163,7 +167,6 @@ py_test(
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
-    tags = ["no_rocm_v2"],
 )
 
 py_test(
@@ -226,7 +229,8 @@ genrule(
     cmd = ("$(location :tf_upgrade_v2)" +
            " --infile $(location testdata/test_file_v1_12.py)" +
            " --outfile $(location test_file_v2_0.py)" +
-           " --reportfile $(location report_v2.txt)"),
+           " --reportfile $(location report_v2.txt) && " +
+           "sed -i 's/_TEST_VERSION = 1/_TEST_VERSION = 2/g' $(location test_file_v2_0.py)"),
     tools = [":tf_upgrade_v2"],
 )
 
@@ -236,10 +240,13 @@ py_test(
     srcs = ["testdata/test_file_v1_12.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        "v1only",
+        "no_rocm_v2",
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
-    tags = ["no_rocm_v2"],
 )
 
 py_test(

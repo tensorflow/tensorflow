@@ -63,12 +63,12 @@ void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
                                 bool lower_tensor_list_ops,
                                 mlir::PassManager* pass_manager);
 
-// Taking a MLIR module in TF control flow dialect and a set of parameters,
+// Taking a MLIR module in TF executor dialect and a set of parameters,
 // applies a set of passes to convert the module to TF Lite dialect and
 // serializes the result to a string. Depending on an attribute in the module
 // main function, Quantization is applied. If `export_to_mlir` is true, the
 // result is exported in MLIR text format, otherwise exported in flat buffer.
-Status ConvertTFControlFlowToTFLOrFlatbuffer(
+Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
     bool lower_tensor_list_ops, std::string* result);

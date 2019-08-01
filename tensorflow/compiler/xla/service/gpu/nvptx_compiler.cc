@@ -92,6 +92,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
+#include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
@@ -357,11 +358,10 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
 
   string ptx;
   {
-    XLA_SCOPED_LOGGING_TIMER(
-        "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
+    XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - CompileToPtx");
     TF_ASSIGN_OR_RETURN(
-        ptx, nvptx::CompileToPtx(llvm_module, gpu_version,
-                                 module->config(), libdevice_dir));
+        ptx, nvptx::CompileToPtx(llvm_module, gpu_version, module->config(),
+                                 libdevice_dir));
   }
 
   llvm_ir::DumpIrIfEnabled(*module, *llvm_module, /*optimized=*/true);

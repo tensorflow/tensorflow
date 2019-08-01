@@ -715,6 +715,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "temporal_sample_weights_correctness_test",
+    size = "medium",
+    srcs = ["temporal_sample_weights_correctness_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 12,
+)
+
+tf_py_test(
     name = "applications_test",
     size = "medium",
     srcs = ["applications/applications_test.py"],
@@ -743,6 +755,7 @@ tf_py_test(
     srcs = ["layers/tensorflow_op_layer_test.py"],
     additional_deps = [
         ":keras",
+        ":saving",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:backprop",
@@ -1560,7 +1573,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
-    tags = ["notsan"],
+    tags = [
+        "no_windows",
+        "notsan",
+    ],
 )
 
 tf_py_test(
@@ -1607,6 +1623,7 @@ tf_py_test(
     shard_count = 8,
     tags = [
         "no_cuda",
+        "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
 )
@@ -1638,6 +1655,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
+    tags = [
+        "no_windows",
+    ],
 )
 
 tf_py_test(

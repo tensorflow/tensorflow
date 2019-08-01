@@ -19,21 +19,8 @@ limitations under the License.
 #include <sstream>
 
 #include "tensorflow/lite/profiling/time.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
-
-namespace {
-void SleepForSeconds(double sleep_seconds) {
-  if (sleep_seconds <= 0.0) {
-    return;
-  }
-  // If requested, sleep between runs for an arbitrary amount of time.
-  // This can be helpful to determine the effect of mobile processor
-  // scaling and thermal throttling.
-  return tflite::profiling::time::SleepForMicros(
-      static_cast<uint64_t>(sleep_seconds * 1e6));
-}
-
-}  // namespace
 
 namespace tflite {
 namespace benchmark {
@@ -55,7 +42,7 @@ BenchmarkParams BenchmarkModel::DefaultParams() {
 
 BenchmarkModel::BenchmarkModel() : params_(DefaultParams()) {}
 
-void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults &results) {
+void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
   auto inference_us = results.inference_time_us();
   auto init_us = results.startup_latency_us();
   auto warmup_us = results.warmup_time_us();
@@ -143,7 +130,7 @@ Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
     listeners_.OnSingleRunEnd();
 
     run_stats.UpdateStat(end_us - start_us);
-    SleepForSeconds(params_.Get<float>("run_delay"));
+    util::SleepForSeconds(params_.Get<float>("run_delay"));
     now_us = profiling::time::NowMicros();
   }
 
@@ -156,7 +143,7 @@ Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
 
 bool BenchmarkModel::ValidateParams() { return true; }
 
-void BenchmarkModel::Run(int argc, char **argv) {
+void BenchmarkModel::Run(int argc, char** argv) {
   if (!ParseFlags(argc, argv)) {
     return;
   }
@@ -187,10 +174,10 @@ void BenchmarkModel::Run() {
       {startup_latency_us, input_bytes, warmup_time_us, inference_time_us});
 }
 
-bool BenchmarkModel::ParseFlags(int argc, char **argv) {
+bool BenchmarkModel::ParseFlags(int* argc, char** argv) {
   auto flag_list = GetFlags();
   const bool parse_result =
-      Flags::Parse(&argc, const_cast<const char **>(argv), flag_list);
+      Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
   if (!parse_result) {
     std::string usage = Flags::Usage(argv[0], flag_list);
     TFLITE_LOG(ERROR) << usage;

@@ -147,10 +147,10 @@ struct PackImpl<Path::kStandardCpp, FixedKernelLayout, Scalar, PackedScalar,
           packed_val = packed_matrix->zero_point;
         }
         accum += packed_val;
-        relaxed_atomic_store(ElementPtr(packed_matrix, row, col), packed_val);
+        *ElementPtr(packed_matrix, row, col) = packed_val;
       }
       if (sums) {
-        relaxed_atomic_store(sums + col, accum);
+        sums[col] = accum;
       }
     }
   }
@@ -491,11 +491,6 @@ void RunPack(Tuning tuning, const DMatrix& src_matrix, PMatrix* packed_matrix,
   PackImpl<ThePath, FixedKernelLayout, Scalar, PackedScalar, SumsType>::Run(
       tuning, src, &packed, start_col, end_col);
 }
-
-// The signature of RunPack is the same, regardless of its template parameters.
-using RunPackFn = decltype(
-    RunPack<Path::kStandardCpp, FixedKernelLayout<Order::kColMajor, 1, 1>,
-            std::int8_t, std::int8_t>);
 
 }  // namespace ruy
 

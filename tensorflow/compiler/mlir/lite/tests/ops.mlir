@@ -489,9 +489,18 @@ func @testLogistic(tensor<1x2x3x4x5xbf16>) -> tensor<1x2x3x4x5xbf16> {
 // test invalid Logistic input
 func @testLogisticWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 ^bb0(%arg0: tensor<?xi32>):
-  // expected-error @+1 {{tfl.logistic' op operand #0 must be tensor of floating-point values}}
+  // expected-error @+1 {{tfl.logistic' op operand #0 must be tensor of floating-point or QI8 type or QUI8 type values}}
   %0 = "tfl.logistic"(%arg0): (tensor<?xi32>) -> tensor<?xi32>
   return %0#0 : tensor<?xi32>
+}
+
+// -----
+
+// CHECK-LABEL: testUnidirectionalSequenceRnn
+func @testUnidirectionalSequenceRnn(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>, %arg2: tensor<? x f32>, %arg3: tensor<? x f32>, %arg4: tensor<? x f32>) -> tensor<? x f32> {
+  // CHECK: "tfl.unidirectional_sequence_rnn"(%arg0, %arg1, %arg2, %arg3, %arg4) {fused_activation_function = "NONE", time_major = false} : (tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  %0 = "tfl.unidirectional_sequence_rnn"(%arg0, %arg1, %arg2, %arg3, %arg4) {fused_activation_function = "NONE", time_major = false} : (tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
 }
 
 // -----
@@ -879,7 +888,7 @@ func @testResizeBilinear(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>)
 // -----
 
 func @testResizeBilinearInvalidOutputType(%arg0 : tensor<1x100x100x3xf32>, %arg1 : tensor<4xi32>) -> tensor<?xi32> {
-  // expected-error @+1 {{'tfl.resize_bilinear' op result #0 must be tensor of 32-bit float values}}
+  // expected-error @+1 {{'tfl.resize_bilinear' op result #0 must be tensor of 32-bit float or QI8 type or QUI8 type values}}
   %0 = "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xi32>
   return %0 : tensor<?xi32>
 }
@@ -916,4 +925,61 @@ func @testOneHotWithInvalidOutputType(%arg0: tensor<3xi32>, %arg1: tensor<i32>, 
   // expected-error @+1 {{'tfl.one_hot' op result #0 must be tensor of 32-bit float or 32-bit integer or 64-bit integer or 1-bit integer values}}
   %0 = "tfl.one_hot"(%arg0, %arg1, %arg2, %arg3) {axis = -1 : i32} : (tensor<3xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<*xi8>
   return %0 : tensor<*xi8>
+}
+
+// -----
+
+func @testArgMax(%arg0: tensor<3xi32>, %arg1: tensor<i32>) -> tensor<i32> {
+  // CHECK: "tfl.arg_max"(%arg0, %arg1) {output_type = 2 : i32} : (tensor<3xi32>, tensor<i32>) -> tensor<i32>
+  %0 = "tfl.arg_max"(%arg0, %arg1) {output_type = 2 : i32} : (tensor<3xi32>, tensor<i32>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @testArgMin(%arg0: tensor<3xi32>, %arg1: tensor<i32>) -> tensor<i32> {
+  // CHECK: "tfl.arg_min"(%arg0, %arg1) {output_type = 2 : i32} : (tensor<3xi32>, tensor<i32>) -> tensor<i32>
+  %0 = "tfl.arg_min"(%arg0, %arg1) {output_type = 2 : i32} : (tensor<3xi32>, tensor<i32>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// -----
+
+// CHECK-LABEL: testSpaceToDepth
+func @testSpaceToDepthF32(%arg0: tensor<1x2x2x1xf32>) -> tensor<1x1x1x4xf32> {
+  // CHECK: %[[ARG:.*]]: tensor<1x2x2x1xf32>
+  // CHECK: "tfl.space_to_depth"(%[[ARG]]) {block_size = 2 : i32} : (tensor<1x2x2x1xf32>) -> tensor<1x1x1x4xf32>
+  %0 = "tfl.space_to_depth"(%arg0) {block_size = 2: i32} : (tensor<1x2x2x1xf32>) -> tensor<1x1x1x4xf32>
+  return %0 : tensor<1x1x1x4xf32>
+}
+
+// -----
+
+func @testSpaceToDepthInvalidOutputType(%arg0: tensor<1x2x2x1xf32>) -> tensor<1x1x1x4xi32> {
+  // expected-error @+1 {{'tfl.space_to_depth' op failed to verify that input and output must have same element type}}
+  %0 = "tfl.space_to_depth"(%arg0) {block_size = 2: i32} : (tensor<1x2x2x1xf32>) -> tensor<1x1x1x4xi32>
+  return %0 : tensor<1x1x1x4xi32>
+}
+
+// -----
+
+func @testRange(%arg0 : tensor<i32>, %arg1 : tensor<i32>, %arg2 : tensor<i32>) -> tensor<?xi32> {
+  %0 = "tfl.range"(%arg0, %arg1, %arg2) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}
+
+// -----
+
+func @testRangeNonScalarTensorInput(%arg0 : tensor<1xi32>, %arg1 : tensor<i32>, %arg2 : tensor<i32>) -> tensor<?xi32> {
+  // expected-error @+1 {{op failed to verify that operand 0 is 0-D}}
+  %0 = "tfl.range"(%arg0, %arg1, %arg2) : (tensor<1xi32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}
+
+// -----
+
+func @testRangeOutputTypeMismatch(%arg0 : tensor<i32>, %arg1 : tensor<i32>, %arg2 : tensor<i32>) -> tensor<?xf32> {
+  // expected-error @+1 {{op failed to verify that operands and output must have same element type}}
+  %0 = "tfl.range"(%arg0, %arg1, %arg2) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
 }

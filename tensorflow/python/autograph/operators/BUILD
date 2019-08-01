@@ -96,7 +96,18 @@ py_test(
     name = "py_builtins_test",
     srcs = ["py_builtins_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    deps = [
+        ":operators",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "py_builtins_py3_test",
+    srcs = ["py_builtins_py3_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = ["no_oss_py2"],
     deps = [
         ":operators",
         "//tensorflow/python:client_testlib",

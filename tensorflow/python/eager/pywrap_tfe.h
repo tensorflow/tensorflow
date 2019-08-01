@@ -280,4 +280,20 @@ PyObject* TFE_Py_EncodeArg(PyObject*, bool include_tensor_ranks_only);
 
 void TFE_Py_EnableInteractivePythonLogging();
 
+// Sets `python_context` as the current eager Context object (defined
+// in eager/context.py). This function must be called at least once before
+// eager tensors are created.
+// If an error is encountered, sets python error and returns NULL. Else, returns
+// Py_None.
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_SetEagerContext(PyObject* python_context);
+
+// Returns the current eager Context object (defined in eager/context.py)
+// that was last set using TFE_Py_SetEagerContext.
+// If an error is encountered, sets python error and returns NULL.
+// The returned PyObject is "new", i.e. the caller must call Py_DECREF on it at
+// some point.
+PyObject* GetPyEagerContext();
+
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

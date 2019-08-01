@@ -30,6 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 static mutex* get_counters_map_lock() {
@@ -316,5 +317,6 @@ REGISTER_KERNEL_BUILDER(
     StatsAggregatorSetSummaryWriterOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

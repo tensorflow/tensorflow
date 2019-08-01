@@ -123,6 +123,39 @@ def TF_AddV2Op : TF_Op<"AddV2", [Broadcastable, Commutative, NoSideEffect]>,
   let hasCanonicalizer = 1;
 }
 
+def TF_ArgMaxOp : TF_Op<"ArgMax", [NoSideEffect]> {
+  let summary = [{
+Returns the index with the largest value across dimensions of a tensor.
+  }];
+
+  let description = [{
+Note that in case of ties the identity of the return value is not guaranteed.
+
+Usage:
+  ```python
+  import tensorflow as tf
+  a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+  b = tf.math.argmax(input = a)
+  c = tf.keras.backend.eval(b)  
+  # c = 4
+  # here a[4] = 166.32 which is the largest element of a across axis 0
+  ```
+  }];
+
+  let arguments = (ins
+    TF_NumberTensor:$input,
+    TF_I32OrI64Tensor:$dimension
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr output_type = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_ArgMinOp : TF_Op<"ArgMin", [NoSideEffect]> {
   let summary = [{
 Returns the index with the smallest value across dimensions of a tensor.
@@ -154,6 +187,28 @@ Usage:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultTypeAttr output_type = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_AssertOp : TF_Op<"Assert", []> {
+  let summary = "Asserts that the given condition is true.";
+
+  let description = [{
+If `condition` evaluates to false, print the list of tensors in `data`.
+`summarize` determines how many entries of the tensors to print.
+  }];
+
+  let arguments = (ins
+    I1Tensor:$condition,
+    Variadic<TF_Tensor>:$data,
+
+    DefaultValuedAttr<I64Attr, "3">:$summarize
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<1>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_AvgPoolOp : TF_Op<"AvgPool", [NoSideEffect]> {
@@ -1224,10 +1279,8 @@ for dtype in dtype_list:
                                       input_tensor, bitwise_ops.invert(input_tensor)),
                                     bitwise_ops.invert(
                                       tf.constant(0, dtype=dtype))]
-  
   expected = tf.constant([0, 0, 0, 0], dtype=tf.float32)
   tf.assert_equal(tf.cast(not_a_and_a, tf.float32), expected)
-  
   expected = tf.cast([not_0] * 4, tf.float32)
   tf.assert_equal(tf.cast(not_a_or_a, tf.float32), expected)
 
@@ -2770,6 +2823,44 @@ precise description.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<2>;
   TF_DerivedOperandTypeAttr Tblock_shape = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_SpaceToDepthOp : TF_Op<"SpaceToDepth", [NoSideEffect]> {
+  let summary = "SpaceToDepth for tensors of type T.";
+
+  let description = [{
+Rearranges blocks of spatial data, into depth. More specifically,
+this op outputs a copy of the input tensor where values from the `height`
+and `width` dimensions are moved to the `depth` dimension.
+The attr `block_size` indicates the input block size.
+
+  * Non-overlapping blocks of size `block_size x block size` are rearranged
+    into depth at each location.
+  * The depth of the output tensor is `block_size * block_size * input_depth`.
+  * The Y, X coordinates within each block of the input become the high order
+    component of the output channel index.
+  * The input tensor's height and width must be divisible by block_size.
+
+The `data_format` attr specifies the layout of the input and output tensors
+with the following options:
+  "NHWC": `[ batch, height, width, channels ]`
+  "NCHW": `[ batch, channels, height, width ]`
+  "NCHW_VECT_C":
+      `qint8 [ batch, channels / 4, height, width, 4 ]`
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    Confined<I64Attr, [IntMinValue<2>]>:$block_size,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "NHWC">:$data_format
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_SplitOp : TF_Op<"Split", [NoSideEffect]> {

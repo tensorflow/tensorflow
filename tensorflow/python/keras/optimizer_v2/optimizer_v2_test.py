@@ -609,10 +609,15 @@ class OptimizerTest(test.TestCase):
       self.assertEqual('outter/Adam/var_2/m:0', opt_vars[3].name)
 
 
-@keras_parameterized.run_with_all_model_types
+@keras_parameterized.run_all_keras_modes
 class OptimizersCompatibilityTest(keras_parameterized.TestCase):
 
+  # After run_distributed is turned on, optimizer v1 can no longer work in
+  # eager mode, skipping the test if so.
   def _testOptimizersCompatibility(self, opt_v1, opt_v2, test_weights=True):
+    if testing_utils.should_run_distributed() or context.executing_eagerly():
+      self.skipTest('v1 optimizer does not run in run_distributed mode or '
+                    'eager mode')
     np.random.seed(1331)
     with self.cached_session():
       train_samples = 20
@@ -628,13 +633,23 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
       num_hidden = 5
       model_v1 = testing_utils.get_small_sequential_mlp(
           num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
-      model_v1.compile(opt_v1, loss='categorical_crossentropy', metrics=[])
+      model_v1.compile(
+          opt_v1,
+          loss='categorical_crossentropy',
+          metrics=[],
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
       model_v1.fit(x, y, batch_size=5, epochs=1)
 
       model_v2 = testing_utils.get_small_sequential_mlp(
           num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
       model_v2.set_weights(model_v1.get_weights())
-      model_v2.compile(opt_v2, loss='categorical_crossentropy', metrics=[])
+      model_v2.compile(
+          opt_v2,
+          loss='categorical_crossentropy',
+          metrics=[],
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
       model_v2._make_train_function()
       if test_weights:
         opt_v2.set_weights(opt_v1.get_weights())
@@ -687,6 +702,9 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
     self._testOptimizersCompatibility(opt_v1, opt_v2, False)
 
   def testNumericEquivalenceForNesterovMomentum(self):
+    if testing_utils.should_run_distributed() or context.executing_eagerly():
+      self.skipTest('v1 optimizer does not run in run_distributed mode or '
+                    'eager mode')
     np.random.seed(1331)
     with self.cached_session():
       train_samples = 20
@@ -714,9 +732,24 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
       opt_tf = momentum.MomentumOptimizer(
           learning_rate=0.01, momentum=0.9, use_nesterov=True)
 
-      model_k_v1.compile(opt_k_v1, loss='categorical_crossentropy', metrics=[])
-      model_k_v2.compile(opt_k_v2, loss='categorical_crossentropy', metrics=[])
-      model_tf.compile(opt_tf, loss='categorical_crossentropy', metrics=[])
+      model_k_v1.compile(
+          opt_k_v1,
+          loss='categorical_crossentropy',
+          metrics=[],
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
+      model_k_v2.compile(
+          opt_k_v2,
+          loss='categorical_crossentropy',
+          metrics=[],
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
+      model_tf.compile(
+          opt_tf,
+          loss='categorical_crossentropy',
+          metrics=[],
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
       hist_k_v1 = model_k_v1.fit(x, y, batch_size=5, epochs=10, shuffle=False)
       hist_k_v2 = model_k_v2.fit(x, y, batch_size=5, epochs=10, shuffle=False)
@@ -729,6 +762,9 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
       self.assertAllClose(hist_k_v1.history['loss'], hist_k_v2.history['loss'])
 
   def testNumericEquivalenceForAmsgrad(self):
+    if testing_utils.should_run_distributed() or context.executing_eagerly():
+      self.skipTest('v1 optimizer does not run in run_distributed mode or '
+                    'eager mode')
     np.random.seed(1331)
     with self.cached_session():
       train_samples = 20
@@ -751,8 +787,18 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
       opt_k_v1 = optimizers.Adam(amsgrad=True)
       opt_k_v2 = adam.Adam(amsgrad=True)
 
-      model_k_v1.compile(opt_k_v1, loss='categorical_crossentropy', metrics=[])
-      model_k_v2.compile(opt_k_v2, loss='categorical_crossentropy', metrics=[])
+      model_k_v1.compile(
+          opt_k_v1,
+          loss='categorical_crossentropy',
+          metrics=[],
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
+      model_k_v2.compile(
+          opt_k_v2,
+          loss='categorical_crossentropy',
+          metrics=[],
+          run_eagerly=testing_utils.should_run_eagerly(),
+          run_distributed=testing_utils.should_run_distributed())
 
       hist_k_v1 = model_k_v1.fit(x, y, batch_size=5, epochs=10, shuffle=False)
       hist_k_v2 = model_k_v2.fit(x, y, batch_size=5, epochs=10, shuffle=False)

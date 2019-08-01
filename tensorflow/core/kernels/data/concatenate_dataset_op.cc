@@ -85,6 +85,10 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     return n1 + n2;
   }
 
+  bool IsStateful() const override {
+    return input_->IsStateful() || to_concatenate_->IsStateful();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

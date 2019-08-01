@@ -43,6 +43,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
@@ -372,6 +373,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override { return "SnapshotDatasetOp::Dataset"; }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    bool IsStateful() const override { return input_->IsStateful(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -1086,5 +1089,6 @@ REGISTER_KERNEL_BUILDER(Name("SnapshotDataset").Device(DEVICE_CPU),
                         SnapshotDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

@@ -560,9 +560,9 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
 
   // Add AMDGPU version-specific bitcodes.
   result.push_back(tensorflow::io::JoinPath(
-      rocdl_dir_path, tensorflow::strings::StrCat(
-                          "oclc_isa_version_", amdgpu_version, ".amdgcn.bc")));
-  return std::move(result);
+      rocdl_dir_path,
+      absl::StrCat("oclc_isa_version_", amdgpu_version, ".amdgcn.bc")));
+  return result;
 }
 
 // Emits the given module to HSA Code Object. target_machine is an initialized
@@ -658,7 +658,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
 Status LinkROCDLIfNecessary(llvm::Module* module, int amdgpu_version,
                             const string& rocdl_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
   return LinkWithBitcodeVector(module,
@@ -683,9 +683,8 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, int amdgpu_version,
     const HloModuleConfig& hlo_module_config) {
-  return std::move(GetTargetMachine(target_triple,
-                                    absl::StrCat("gfx", amdgpu_version),
-                                    hlo_module_config, "-code-object-v3"));
+  return GetTargetMachine(target_triple, absl::StrCat("gfx", amdgpu_version),
+                          hlo_module_config, "-code-object-v3");
 }
 
 void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {

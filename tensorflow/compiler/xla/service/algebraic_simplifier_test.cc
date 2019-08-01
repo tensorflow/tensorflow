@@ -5543,5 +5543,67 @@ TEST_F(AlgebraicSimplifierTest, RepeatedRemainder) {
               GmockMatch(m::Remainder(m::Parameter(), m::Parameter())));
 }
 
+TEST_F(AlgebraicSimplifierTest, SlicePadLayout) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      %param.0 = f32[128,9,9,1024]{0,3,2,1} parameter(0)
+      %param.1 = f32[] parameter(1)
+      %slice = f32[128,9,9,1024]{0,3,2,1} slice(%param.0),
+        slice={[0:128], [0:9], [0:9], [0:1024]}
+      ROOT %pad = f32[128,8,9,1024]{0,3,2,1} pad(%slice, %param.1),
+        padding=0_0x-1_0x0_0x0_0
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  const Shape root_shape = m->entry_computation()->root_instruction()->shape();
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Slice().WithShapeEqualTo(&root_shape)));
+}
+
+TEST_F(AlgebraicSimplifierTest, MinOfMaxToClamp) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c0 = f32[] constant(3.0)
+      c1 = f32[] constant(4.0)
+      b0 = f32[4] broadcast(c0), dimensions={}
+      b1 = f32[4] broadcast(c1), dimensions={}
+      m0 = f32[4] maximum(b0, p0)
+      ROOT m1 = f32[4] minimum(m0, b1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Clamp(m::Broadcast(m::ConstantScalar(3.0)), m::Parameter(0),
+                          m::Broadcast(m::ConstantScalar(4.0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MaxOfMinToClamp) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      c0 = f32[] constant(3.0)
+      c1 = f32[] constant(4.0)
+      b0 = f32[4] broadcast(c0), dimensions={}
+      b1 = f32[4] broadcast(c1), dimensions={}
+      m0 = f32[4] minimum(p0, b1)
+      ROOT m1 = f32[4] maximum(b0, m0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Clamp(m::Broadcast(m::ConstantScalar(3.0)), m::Parameter(0),
+                          m::Broadcast(m::ConstantScalar(4.0)))));
+}
+
 }  // namespace
 }  // namespace xla

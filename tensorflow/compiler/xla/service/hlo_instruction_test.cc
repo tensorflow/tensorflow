@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -1954,6 +1956,27 @@ TEST_F(HloInstructionTest, GatherDoesNotReuseElements) {
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_FALSE(root->ReusesOperandElements(0));
   EXPECT_FALSE(root->ReusesOperandElements(1));
+}
+
+TEST_F(HloInstructionTest, BackendConfigCanContainNonFiniteFloats) {
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto p0 = b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot = b.AddInstruction(HloInstruction::CreateDot(
+      shape, p0, p0, dot_dnums, DefaultPrecisionConfig(2)));
+
+  gpu::GemmBackendConfig orig_config;
+  orig_config.set_alpha_real(std::numeric_limits<double>::infinity());
+  orig_config.set_alpha_imag(std::numeric_limits<double>::quiet_NaN());
+  TF_ASSERT_OK(dot->set_backend_config(orig_config));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto new_config,
+                          dot->backend_config<gpu::GemmBackendConfig>());
+  EXPECT_GT(new_config.alpha_real(), std::numeric_limits<double>::max());
+  EXPECT_NE(new_config.alpha_imag(), new_config.alpha_imag());
 }
 
 }  // namespace

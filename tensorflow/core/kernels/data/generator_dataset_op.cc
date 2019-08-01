@@ -74,6 +74,11 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
+  bool IsStateful() const override {
+    return init_func_->IsStateful() || next_func_->IsStateful() ||
+           finalize_func_->IsStateful();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

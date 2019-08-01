@@ -103,7 +103,10 @@ else_branch: A function that takes 'inputs' and returns a list of
 
     SymbolRefAttr:$then_branch,
     SymbolRefAttr:$else_branch,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes
+    DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
+
+    // Used to map StatelessIf and If op defined in TensorFlow to a common op.
+    BoolAttr:$is_stateless
   );
 
   let results = (outs

@@ -27,8 +27,9 @@ py_extension(
     features = ["-use_header_modules"],
     module_name = "pybind",
     deps = [
-        "@llvm//:ir",
-        "@llvm//:support",
+        "//third_party/llvm/llvm:ir",
+        "//third_party/llvm/llvm:support",
+        "//third_party/pybind11",
         "@local_config_mlir//:EDSC",
         "@local_config_mlir//:ExecutionEngine",
         "@local_config_mlir//:IR",
@@ -37,6 +38,5 @@ py_extension(
         "@local_config_mlir//:StandardDialectRegistration",
         "@local_config_mlir//:TargetLLVMIR",
         "@local_config_mlir//:Transforms",
-        "@pybind11",
     ],
 )

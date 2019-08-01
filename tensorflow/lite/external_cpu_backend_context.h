@@ -27,27 +27,13 @@ namespace tflite {
 // generally a collection of utilities (i.e. a thread pool etc.) for TF Lite to
 // use certain keneral libraries, such as Gemmlowp, RUY, etc., to implement TF
 // Lite operators.
-// TODO(b/130950871): Make this class as a interface-only abstract class.
 class TfLiteInternalBackendContext {
  public:
   virtual ~TfLiteInternalBackendContext() {}
 
-  int max_num_threads() const { return max_num_threads_; }
-
-  virtual void set_max_num_threads(int max_num_threads) {
-    max_num_threads_ = max_num_threads;
-  }
-
- protected:
-  TfLiteInternalBackendContext() {}
-
-  // The maximum number of threads used for parallelizing TfLite computation.
-  int max_num_threads_;
-
- private:
-  TfLiteInternalBackendContext(const TfLiteInternalBackendContext&) = delete;
-  TfLiteInternalBackendContext& operator=(const TfLiteInternalBackendContext&) =
-      delete;
+  // Set the maximum number of threads that could be used for parallelizing
+  // TfLite computation.
+  virtual void SetMaxNumThreads(int max_num_threads) = 0;
 };
 
 // This TfLiteExternalContext-derived class is the default

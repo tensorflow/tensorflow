@@ -19,8 +19,6 @@ from __future__ import print_function
 
 import threading
 
-import enum
-
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -37,20 +35,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 
 _call_context = threading.local()
-
-
-class CallConvention(enum.Enum):
-  """Calling conventions for passing `Layer` inputs to `Layer.call`."""
-  # The Layer takes inputs as its first argument, named "inputs" for
-  # compatibility with the signature of Layer.__call__. This is the mode assumed
-  # for Layers which are not subclassed Models.
-  EXPLICIT_INPUTS_ARGUMENT = 1
-  # The Layer takes a single positional argument, not named "inputs". It's
-  # treated like an "inputs" argument.
-  SINGLE_POSITIONAL_ARGUMENT = 2
-  # The Layer has multiple positional arguments to which its inputs should be
-  # bound.
-  POSITIONAL_ARGUMENTS_ARE_INPUTS = 3
 
 
 def create_mean_metric(value, name=None):

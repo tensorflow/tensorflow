@@ -244,7 +244,7 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
     self._batch_size = batch_size
     self._row_shape = row_shape
     self._element_spec = sparse_tensor.SparseTensorSpec(
-        tensor_shape.vector(None).concatenate(self._row_shape),
+        tensor_shape.TensorShape([None]).concatenate(self._row_shape),
         dataset_ops.get_legacy_output_types(input_dataset))
 
     if compat.forward_compatible(2019, 8, 3):

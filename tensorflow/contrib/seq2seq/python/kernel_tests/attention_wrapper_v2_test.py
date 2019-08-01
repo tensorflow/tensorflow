@@ -149,7 +149,8 @@ class AttentionMechanismTest(test.TestCase, parameterized.TestCase):
     x_test = np.random.randint(vocab, size=(self.batch, self.timestep))
     y = np.random.randn(self.batch, self.timestep)
     model = keras.models.Model([inputs, query, state], score)
-    model.compile("rmsprop", "mse")
+    # TODO(b/138592586): Run with single-execution-path
+    model.compile("rmsprop", "mse", run_distributed=False)
     model.fit([x, self.query, self.state], (y, y))
     y_ref = model.predict_on_batch([x_test, self.query, self.state])
 

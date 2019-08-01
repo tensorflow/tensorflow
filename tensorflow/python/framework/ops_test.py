@@ -18,13 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import gc
+import numpy as np
 import os
 import threading
 import weakref
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -38,9 +41,11 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
@@ -99,13 +104,47 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual([1, 2, 3], t.get_shape())
 
   def testIterable(self):
+    if not context.executing_eagerly():
+      self.skipTest("Eager-mode test")
     op = ops.Operation(
         ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
     t = op.outputs[0]
-    self.assertTrue(isinstance(t, ops.Tensor))
-    with self.assertRaisesRegexp(TypeError, "iter"):
-      for _ in t:
-        pass
+    with self.assertRaisesRegexp(TypeError, "Cannot iterate"):
+      next(iter(t))
+
+  def testIterableGraph(self):
+    if context.executing_eagerly():
+      self.skipTest("Graph-mode test")
+
+    op = ops.Operation(
+        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
+    t = op.outputs[0]
+    with self.assertRaisesRegexp(TypeError, "iterating.*not allowed in Graph"):
+      next(iter(t))
+    with self.assertRaisesRegexp(
+        TypeError, "iterating.*AutoGraph did not convert"):
+      with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
+        next(iter(t))
+    with self.assertRaisesRegexp(
+        TypeError, "iterating.*AutoGraph is disabled"):
+      with ag_ctx.ControlStatusCtx(ag_ctx.Status.DISABLED):
+        next(iter(t))
+
+  def testImplicitBool(self):
+    op = ops.Operation(
+        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.bool])
+    t = op.outputs[0]
+    with self.assertRaisesRegexp(
+        TypeError, "using.*as a.*bool.*not allowed in Graph"):
+      bool(t)
+    with self.assertRaisesRegexp(
+        TypeError, "using.*as a.*bool.*AutoGraph did not convert"):
+      with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
+        bool(t)
+    with self.assertRaisesRegexp(
+        TypeError, "using.*as a.*bool.*AutoGraph is disabled"):
+      with ag_ctx.ControlStatusCtx(ag_ctx.Status.DISABLED):
+        bool(t)
 
   def testAddShape(self):
     with self.cached_session():
@@ -136,7 +175,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
       a = array_ops.placeholder(dtype=dtypes.float32, shape=[])
       b = array_ops.ones([])
       c = a + b
-      self.assertEqual(tensor_shape.scalar(), c.shape)
+      self.assertEqual(tensor_shape.TensorShape([]), c.shape)
 
   @test_util.run_deprecated_v1
   def testShapeFunctionError(self):
@@ -189,6 +228,136 @@ class IndexedSlicesTest(test_util.TensorFlowTestCase):
       x = math_ops.scalar_mul(-2, ops.IndexedSlices(values, indices))
       self.assertAllEqual(x.values.eval(), [[-4, -6], [-10, -14]])
       self.assertAllEqual(x.indices.eval(), [0, 2])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class IndexedSlicesSpecTest(test_util.TensorFlowTestCase,
+                            parameterized.TestCase):
+
+  def assertAllTensorsEqual(self, list1, list2):
+    self.assertLen(list1, len(list2))
+    for (t1, t2) in zip(list1, list2):
+      self.assertAllEqual(t1, t2)
+
+  def testConstruction(self):
+    spec1 = indexed_slices.IndexedSlicesSpec()
+    self.assertEqual(spec1._shape.rank, None)
+    self.assertEqual(spec1._values_dtype, dtypes.float32)
+    self.assertEqual(spec1._indices_dtype, dtypes.int64)
+    self.assertEqual(spec1._dense_shape_dtype, None)
+    self.assertEqual(spec1._indices_shape.as_list(), [None])
+
+    spec2 = indexed_slices.IndexedSlicesSpec([None, None], dtypes.string,
+                                             dtypes.int32, dtypes.int64, [10])
+    self.assertEqual(spec2._shape.as_list(), [None, None])
+    self.assertEqual(spec2._values_dtype, dtypes.string)
+    self.assertEqual(spec2._indices_dtype, dtypes.int32)
+    self.assertEqual(spec2._dense_shape_dtype, dtypes.int64)
+    self.assertEqual(spec2._indices_shape.as_list(), [10])
+
+  def testValueType(self):
+    spec1 = indexed_slices.IndexedSlicesSpec()
+    self.assertEqual(spec1.value_type, ops.IndexedSlices)
+
+  @parameterized.parameters([
+      (indexed_slices.IndexedSlicesSpec(),
+       (tensor_shape.TensorShape(None), dtypes.float32, dtypes.int64, None,
+        tensor_shape.TensorShape([None]))),
+      (indexed_slices.IndexedSlicesSpec(shape=[5, None, None]),
+       (tensor_shape.TensorShape([5, None, None]), dtypes.float32,
+        dtypes.int64, None, tensor_shape.TensorShape([None]))),
+      (indexed_slices.IndexedSlicesSpec(
+          dtype=dtypes.int32, dense_shape_dtype=dtypes.int64),
+       (tensor_shape.TensorShape(None), dtypes.int32, dtypes.int64,
+        dtypes.int64, tensor_shape.TensorShape([None]))),
+      (indexed_slices.IndexedSlicesSpec(indices_shape=[100]),
+       (tensor_shape.TensorShape(None), dtypes.float32, dtypes.int64, None,
+        tensor_shape.TensorShape([100]))),
+  ])  # pyformat: disable
+  def testSerialize(self, spec, expected):
+    serialization = spec._serialize()
+    # TensorShape has an unconventional definition of equality, so we can't use
+    # assertEqual directly here.  But repr() is deterministic and lossless for
+    # the expected values, so we can use that instead.
+    self.assertEqual(repr(serialization), repr(expected))
+
+  @parameterized.parameters([
+      (indexed_slices.IndexedSlicesSpec(dtype=dtypes.string), (
+          tensor_spec.TensorSpec(None, dtypes.string),
+          tensor_spec.TensorSpec([None], dtypes.int64),
+      )),
+      (indexed_slices.IndexedSlicesSpec(
+          dtype=dtypes.string, dense_shape_dtype=dtypes.int32), (
+              tensor_spec.TensorSpec(None, dtypes.string),
+              tensor_spec.TensorSpec([None], dtypes.int64),
+              tensor_spec.TensorSpec([None], dtypes.int32),
+          )),
+      (indexed_slices.IndexedSlicesSpec(
+          shape=[5, 10, 15], dense_shape_dtype=dtypes.int32), (
+              tensor_spec.TensorSpec([None, 10, 15], dtypes.float32),
+              tensor_spec.TensorSpec([None], dtypes.int64),
+              tensor_spec.TensorSpec([3], dtypes.int32),
+          )),
+      (indexed_slices.IndexedSlicesSpec(
+          shape=[5, 10, 15], dense_shape_dtype=dtypes.int32,
+          indices_shape=[20]), (
+              tensor_spec.TensorSpec([20, 10, 15], dtypes.float32),
+              tensor_spec.TensorSpec([20], dtypes.int64),
+              tensor_spec.TensorSpec([3], dtypes.int32),
+          )),
+  ])
+  def testComponentSpecs(self, spec, expected):
+    self.assertEqual(spec._component_specs, expected)
+
+  @parameterized.parameters([
+      {
+          "spec": indexed_slices.IndexedSlicesSpec(),
+          "values": [3.0, 5.0],
+          "indices": [5, 10]
+      },
+      {
+          "spec":
+              indexed_slices.IndexedSlicesSpec(dense_shape_dtype=dtypes.int32),
+          "values": [3.0, 5.0],
+          "indices": [5, 10],
+          "dense_shape": [100]
+      },
+  ])
+  def testToFromComponents(self, spec, indices, values, dense_shape=None):
+    x = ops.IndexedSlices(indices, values, dense_shape)
+    actual_components = spec._to_components(x)
+    if dense_shape is None:
+      self.assertAllTensorsEqual(actual_components, [indices, values])
+    else:
+      self.assertAllTensorsEqual(actual_components,
+                                 [indices, values, dense_shape])
+    st_reconstructed = spec._from_components(actual_components)
+    self.assertAllEqual(x.indices, st_reconstructed.indices)
+    self.assertAllEqual(x.values, st_reconstructed.values)
+    if dense_shape is None:
+      self.assertIs(st_reconstructed.dense_shape, None)
+    else:
+      self.assertAllEqual(x.dense_shape, st_reconstructed.dense_shape)
+
+  @test_util.run_v1_only("IndexedSlicesValue is deprecated in v2")
+  def testFromNumpyComponents(self):
+    indices = np.array([3, 8])
+    values = np.array([1.0, 9.0])
+    dense_shape = np.array([100])
+
+    spec1 = indexed_slices.IndexedSlicesSpec(dense_shape_dtype=dtypes.int32)
+    st1 = spec1._from_components((values, indices, dense_shape))
+    self.assertIsInstance(st1, indexed_slices.IndexedSlicesValue)
+    self.assertAllEqual(st1.indices, indices)
+    self.assertAllEqual(st1.values, values)
+    self.assertAllEqual(st1.dense_shape, dense_shape)
+
+    spec2 = indexed_slices.IndexedSlicesSpec()
+    st2 = spec2._from_components((values, indices))
+    self.assertIsInstance(st2, indexed_slices.IndexedSlicesValue)
+    self.assertAllEqual(st2.indices, indices)
+    self.assertAllEqual(st2.values, values)
+    self.assertIs(st2.dense_shape, None)
 
 
 class NodeDefConstructorTest(test_util.TensorFlowTestCase):
@@ -783,7 +952,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(op.name, "myop")
     self.assertEqual(op.type, "Identity")
     self.assertEqual(len(op.outputs), 1)
-    self.assertEqual(op.outputs[0].shape, tensor_shape.matrix(2, 3))
+    self.assertEqual(op.outputs[0].shape, tensor_shape.TensorShape([2, 3]))
 
   def testUniqueName(self):
     g = ops.Graph()

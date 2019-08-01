@@ -304,7 +304,7 @@ def validate_per_replica_inputs(distribution_strategy, x):
 
   """
   # Convert the inputs and targets into a list of PerReplica objects.
-  per_replica_list = nest.flatten(x)
+  per_replica_list = nest.flatten(x, expand_composites=True)
   x_values_list = []
   for x in per_replica_list:
     if not tensor_util.is_tensor(x):
@@ -1009,12 +1009,12 @@ def _copy_weights_to_original_model(model, mode):
     model.set_weights(updated_weights)
 
 
-def _per_replica_aggregate_batch(batch_outs, model, mode):
+def _per_replica_aggregate_batch(strategy, batch_outs, model, mode):
   """Aggregates the per-replica batch-level outputs from a distributed step."""
-  if model._distribution_strategy is not None and mode == ModeKeys.PREDICT:
+  if strategy is not None and mode == ModeKeys.PREDICT:
     total_batch_outs = []
     for i in range(len(model.outputs)):
-      num_replicas = model._distribution_strategy.num_replicas_in_sync
+      num_replicas = strategy.num_replicas_in_sync
       nested_outs = batch_outs[i * num_replicas:i * num_replicas + num_replicas]
       total_batch_outs.append(np.concatenate(nest.flatten(nested_outs)))
     return total_batch_outs

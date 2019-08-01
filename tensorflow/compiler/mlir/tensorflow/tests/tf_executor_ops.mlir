@@ -68,6 +68,30 @@ func @simpleIsland_with_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: func @simpleIsland_with_multiple_control_inputs(%arg0: tensor<*xf32>)
+func @simpleIsland_with_multiple_control_inputs(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1 = tf_executor.island {
+      tf_executor.yield
+    }
+    %2 = tf_executor.island {
+      tf_executor.yield
+    }
+    %3:2 = tf_executor.island(%1, %2) {
+      tf_executor.yield %arg0 : tensor<*xf32>
+    }
+    tf_executor.fetch %3#0 : tensor<*xf32>
+  }
+// CHECK:      %[[ISLAND0:[0-9]*]] = tf_executor.island {
+// CHECK-NEXT:   tf_executor.yield
+// CHECK:      %[[ISLAND1:[0-9]*]] = tf_executor.island {
+// CHECK-NEXT:   tf_executor.yield
+// CHECK:      %[[ISLAND2:[0-9]*]]:2 = tf_executor.island(%[[ISLAND0]], %[[ISLAND1]]) {
+// CHECK:      tf_executor.fetch %[[ISLAND2]]#0 : tensor<*xf32>
+
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: func @fetchWithControlDep(%arg0: tensor<*xf32>)
 func @fetchWithControlDep(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %result = tf_executor.graph {

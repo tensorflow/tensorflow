@@ -1477,8 +1477,8 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
   }
   if (registration == nullptr) {
     s.Update(errors::NotFound("No registered '", node_def.op(),
-                              "' OpKernel for ", DeviceTypeString(device_type),
-                              " devices compatible with node ",
+                              "' OpKernel for '", DeviceTypeString(device_type),
+                              "' devices compatible with node ",
                               FormatNodeDefForError(node_def)));
     if (was_attr_mismatch) {
       errors::AppendToMessage(

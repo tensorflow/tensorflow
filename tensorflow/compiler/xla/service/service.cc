@@ -351,11 +351,11 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   VLOG(1) << StrFormat("BuildExecutable on service %p", this);
 
   // Dump computation proto state if flag is set.
-  std::vector<std::unique_ptr<HloSnapshot>> hlo_snapshots;
+  std::vector<std::unique_ptr<HloProto>> hlo_protos;
   for (int64 i = 0; i < module_protos.size(); ++i) {
-    auto hlo_snapshot = absl::make_unique<HloSnapshot>();
-    *hlo_snapshot->mutable_hlo()->mutable_hlo_module() = *module_protos[i];
-    hlo_snapshots.push_back(std::move(hlo_snapshot));
+    auto hlo_proto = absl::make_unique<HloProto>();
+    *hlo_proto->mutable_hlo_module() = *module_protos[i];
+    hlo_protos.push_back(std::move(hlo_proto));
   }
 
   VLOG(1) << "Computations:";
@@ -383,7 +383,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     const auto& debug_opts = module_configs[i]->debug_options();
     if (DumpingEnabledForHloModule(module_protos[i]->name(), debug_opts) &&
         debug_opts.xla_dump_hlo_snapshots()) {
-      executables[i]->set_hlo_snapshot(std::move(hlo_snapshots[i]));
+      executables[i]->set_hlo_proto(std::move(hlo_protos[i]));
     }
   }
 
@@ -692,14 +692,17 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     executable_ptrs.push_back(executable.get());
   }
 
+  std::vector<HloSnapshot> snapshots;
+  snapshots.resize(executable_ptrs.size());
   for (int i = 0; i < executable_ptrs.size(); i++) {
     if (executable_ptrs[i]->dumping_snapshot()) {
+      *snapshots[i].mutable_hlo() = *executable_ptrs[i]->hlo_proto();
       TF_ASSIGN_OR_RETURN(auto stream,
                           execute_backend_->BorrowStream(
                               all_executors[i][0]->device_ordinal()));
       TF_RETURN_IF_ERROR(RecordArguments(all_arguments[i].front(), stream.get(),
                                          execute_backend_->transfer_manager(),
-                                         executable_ptrs[i]->hlo_snapshot()));
+                                         &snapshots[i]));
     }
   }
 
@@ -746,9 +749,8 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
                           execute_backend_->BorrowStream(all_executors[i][0]));
       TF_RETURN_IF_ERROR(RecordResult(*result_buffer, stream.get(),
                                       execute_backend_->transfer_manager(),
-                                      executable->hlo_snapshot()));
-      DumpHloSnapshotIfEnabled(executable->module(),
-                               *executable->hlo_snapshot());
+                                      &snapshots[i]));
+      DumpHloSnapshotIfEnabled(executable->module(), snapshots[i]);
     }
   }
 
@@ -803,9 +805,9 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   const auto& debug_opts = module_config->debug_options();
   if (DumpingEnabledForHloModule(module_proto.name(), debug_opts) &&
       debug_opts.xla_dump_hlo_snapshots()) {
-    auto hlo_snapshot = absl::make_unique<HloSnapshot>();
-    *hlo_snapshot->mutable_hlo()->mutable_hlo_module() = module_proto;
-    executable->set_hlo_snapshot(std::move(hlo_snapshot));
+    auto hlo_proto = absl::make_unique<HloProto>();
+    *hlo_proto->mutable_hlo_module() = module_proto;
+    executable->set_hlo_proto(std::move(hlo_proto));
   }
 
   return std::move(executable);
@@ -891,12 +893,13 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
   TF_ASSIGN_OR_RETURN(auto stream,
                       execute_backend_->BorrowStream(
                           execute_backend_->default_stream_executor()));
+  HloSnapshot snapshot;
   if (executable->dumping_snapshot()) {
-    executable->hlo_snapshot()->set_execution_platform(
-        execute_backend_->platform()->Name());
-    TF_RETURN_IF_ERROR(RecordArguments(
-        replicated_arguments.front(), stream.get(),
-        execute_backend_->transfer_manager(), executable->hlo_snapshot()));
+    *snapshot.mutable_hlo() = *executable->hlo_proto();
+    snapshot.set_execution_platform(execute_backend_->platform()->Name());
+    TF_RETURN_IF_ERROR(
+        RecordArguments(replicated_arguments.front(), stream.get(),
+                        execute_backend_->transfer_manager(), &snapshot));
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -913,8 +916,8 @@ Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
         allocation_tracker_.ResolveForReplica(result->output(), 0));
     TF_RETURN_IF_ERROR(RecordResult(*result_buffer, stream.get(),
                                     execute_backend_->transfer_manager(),
-                                    executable->hlo_snapshot()));
-    DumpHloSnapshotIfEnabled(executable->module(), *executable->hlo_snapshot());
+                                    &snapshot));
+    DumpHloSnapshotIfEnabled(executable->module(), snapshot);
   }
 
   VLOG(1) << "successfully completed 'execute' request";

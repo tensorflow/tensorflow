@@ -839,9 +839,13 @@ table Operator {
   // The list either has the same length as `inputs`, or is empty.
   mutating_variable_inputs:[bool];
 
-  // Intermediate tensors record the tensor indices that are internal to an Op.
-  // Those tensors contains quantization information for complicated ops such as
-  // LSTM.
+  // A list of indices to the subgraph's "tensors" that are internal to an Op.
+  // Internal tensors are those that do not flow in or out of the operation,
+  // but instead are part of internal computation. As such, the operation's
+  // implementation may manage its memory more efficiently. They are needed
+  // however (i.e. not just an implementation detail) since they are part of the
+  // computation, which may require relevant metadata such as quantization
+  // parameters.
   intermediates:[int];
 }
 

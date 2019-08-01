@@ -72,15 +72,30 @@ class EagerExecutor {
  public:
   ~EagerExecutor();
 
+  // Puts this in a shutdown state. In this state, Add() will return an error
+  // and not add new EagerNodes. After putting this in the shutdown state,
+  // blocks until all pendings nodes have finished running.
+  // Returns the status of executing pending nodes.
+  // If async was not enabled, aborts and destroys all pending nodes.
+  Status ShutDown();
+
   // This is called whenever async mode is enabled. Note that it may be called
   // multiple times as different calling threads may switch async mode on or off
   // independently.
   void EnableAsync();
 
-  // Schedules `node` for execution.
+  bool Async() const;
+
+  // Schedules `node` for execution. If an error occurs (e.g. EagerExecutor
+  // has already been shut down), the `node` is not added to this executor
+  // and its Abort() method is called.
   Status Add(std::unique_ptr<EagerNode> node);
 
   // Blocks till all currently pending ops are done.
+  // In particular, if EnableAsync() has not beed called, it will not return
+  // until that happens (and pendings, at the time of call, nodes finish
+  // running). If this executor has already been shut down, its final status is
+  // returned.
   Status WaitForAllPendingNodes();
 
   // Clears all currently set errors which re-enables async execution.
@@ -90,11 +105,42 @@ class EagerExecutor {
   Status status() const;
 
  private:
+  // Possible states for this executor.
+  // Executor starts in kActive state. When Shutdown() is called, Executor
+  // is put in the kShuttingDown state. In this state, the executor thread
+  // continues to run, but no new nodes are accepted. Finally, when all nodes
+  // are drained, the executor is put in the kShutDown state, which causes the
+  // thread to exit.
+  // If this executor is destroyed without calling shutdown first, it
+  // transitions to kShutDown state immediately which causes the thread to exit
+  // without running pending nodes.
+  enum class ExecutorState {
+    kActive,
+    kShuttingDown,
+    kShutDown,
+  };
+
+  const char* StateStringLocked() EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
+
   // Starts execution of pending EagerNodes. This function loops till
   // thread_done_ is set to true. If any errors are encontered, these are set
   // inside `status_`. The loop blocks anytime there are no pending nodes, or if
   // `status_` is not ok.
   void Run();
+
+  // The impl of WaitForAllPendingNodes
+  // `lock` is the lock that holds node_queue_mutex_.
+  Status WaitForAllPendingNodesLocked(mutex_lock* lock)
+      EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
+
+  // If async has been enabled on this executor, just calls
+  // WaitForAllPendingNodes. Else:
+  //  - Aborts and destroys all pending nodes
+  //  - sets the status_ to an error if it does not already contain one
+  // `lock` is the lock that holds node_queue_mutex_.
+  // Precondition: state_ != kActive.
+  void WaitForOrDestroyAllPendingNodes(mutex_lock* lock)
+      EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   Status WaitImpl(bool wait_all, uint64 node_id);
 
@@ -121,9 +167,13 @@ class EagerExecutor {
   // for executing the EagerNodes one-by-one.
   std::unique_ptr<Thread> thread_ GUARDED_BY(node_queue_mutex_);
 
+  // thread_exited_notification_ is notified by the `thread_` right before it
+  // exits.
+  Notification thread_exited_notification_;
+
   // Indicates that `thread_` should stop as soon as it is done executing the
   // current EagerNode.
-  bool thread_done_ GUARDED_BY(node_queue_mutex_) = false;
+  ExecutorState state_ GUARDED_BY(node_queue_mutex_) = ExecutorState::kActive;
 };
 
 }  // namespace tensorflow

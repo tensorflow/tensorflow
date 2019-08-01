@@ -217,6 +217,7 @@ py_test(
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["no_oss_py2"],  # b/138443278
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -753,7 +754,8 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
     ],
     tags = [
-        "multi_and_single_gpu",
+        # TODO(b/138143527): Re-enable after fixing Guitar failure.
+        # "multi_and_single_gpu",
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -1118,7 +1120,6 @@ distribute_py_test(
     tags = [
         "no_oss",  # TODO(b/135287893) reenable
         "no_rocm",
-        "notap",  # TODO(b/137972256) Re-enable this test.
     ],
     deps = [
         ":saved_model_test_base",
@@ -1166,5 +1167,71 @@ distribute_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+cuda_py_test(
+    name = "collective_all_reduce_strategy_test",
+    srcs = ["collective_all_reduce_strategy_test.py"],
+    additional_deps = [
+        ":collective_all_reduce_strategy",
+        ":combinations",
+        ":strategy_combinations",
+        ":multi_worker_test_base",
+        ":strategy_test_lib",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:cross_device_utils",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/estimator:estimator_py",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+    ],
+)
+
+cuda_py_test(
+    name = "parameter_server_strategy_test",
+    srcs = ["parameter_server_strategy_test.py"],
+    additional_deps = [
+        ":parameter_server_strategy",
+        ":central_storage_strategy",
+        ":combinations",
+        ":strategy_combinations",
+        ":multi_worker_test_base",
+        ":strategy_test_lib",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:session",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/estimator:estimator_py",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/133330625)
     ],
 )

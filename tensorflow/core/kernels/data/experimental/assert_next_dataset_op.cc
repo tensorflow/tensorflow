@@ -16,13 +16,13 @@ limitations under the License.
 
 #include <map>
 
-#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 
 /* static */ constexpr const char* const AssertNextDatasetOp::kInputDataset;
 /* static */ constexpr const char* const AssertNextDatasetOp::kDatasetType;
@@ -62,6 +62,8 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override { return input_->Cardinality(); }
+
+  bool IsStateful() const override { return input_->IsStateful(); }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -159,5 +161,6 @@ REGISTER_KERNEL_BUILDER(
     AssertNextDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

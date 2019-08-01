@@ -869,7 +869,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
             num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
         model.compile(
             loss='categorical_crossentropy',
-            optimizer=keras.optimizers.SGD(lr=0.1))
+            optimizer=gradient_descent.SGD(lr=0.1))
         return model
 
       # TODO(psv): Make sure the callback works correctly when min_delta is
@@ -975,7 +975,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
             num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
         model.compile(
             loss='categorical_crossentropy',
-            optimizer=keras.optimizers.SGD(lr=0.1),
+            optimizer=gradient_descent.SGD(lr=0.1),
             metrics=['accuracy'])
         return model
 

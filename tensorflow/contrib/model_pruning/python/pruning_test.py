@@ -129,7 +129,7 @@ class PruningTest(test.TestCase):
       mask_val = new_mask.eval()
       self.assertAllEqual(mask_val, expected_mask)
 
-  def testBlockMasking(self):
+  def testBlockMaskingWithNonnegativeBlockDimensions(self):
     param_list = ["block_height=2", "block_width=2", "threshold_decay=0"]
 
     weights_avg = constant_op.constant(
@@ -138,6 +138,25 @@ class PruningTest(test.TestCase):
     weights_max = constant_op.constant(
         [[0.1, 0.0, 0.2, 0.0], [0.0, -0.1, 0.0, -0.2], [0.3, 0.0, 0.4, 0.0],
          [0.0, -0.3, 0.0, -0.4]])
+    expected_mask = [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
+                     [1., 1., 1., 1.], [1., 1., 1., 1.]]
+
+    self._blockMasking(param_list + ["block_pooling_function=MAX"], weights_max,
+                       expected_mask)
+    self._blockMasking(param_list + ["block_pooling_function=AVG"], weights_avg,
+                       expected_mask)
+
+  def testBlockMaskingWithNegativeBlockDimensions(self):
+    param_list = ["block_height=1", "block_width=-1", "threshold_decay=0"]
+
+    weights_avg = constant_op.constant([[0.1, 0.1, 0.1, 0.1],
+                                        [0.2, 0.2, 0.2, 0.2],
+                                        [0.3, 0.3, 0.3, 0.3],
+                                        [0.3, 0.3, 0.4, 0.4]])
+    weights_max = constant_op.constant([[0.1, 0.0, 0.1, 0.0],
+                                        [0.0, 0.1, 0.0, 0.2],
+                                        [0.3, 0.0, 0.3, 0.0],
+                                        [0.0, -0.3, 0.0, 0.4]])
     expected_mask = [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0],
                      [1., 1., 1., 1.], [1., 1., 1., 1.]]
 

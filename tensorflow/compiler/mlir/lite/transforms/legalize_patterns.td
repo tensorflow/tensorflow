@@ -80,6 +80,7 @@ def : Pat<(TF_AvgPoolOp $value,
               /*stride_w=*/ExtractI32At<2>:$strides,
               /*fused_activation_function=*/TFL_AF_None)>;
 
+def : Pat<(TF_ArgMaxOp $input, $dim), (TFL_ArgMaxOp $input, $dim)>;
 def : Pat<(TF_ArgMinOp $input, $dim), (TFL_ArgMinOp $input, $dim)>;
 
 def : Pat<(TF_CeilOp $arg), (TFL_CeilOp $arg)>;
@@ -270,6 +271,9 @@ def : Pat<(TF_CastOp $arg0, BoolAttr:$arg1), (TFL_CastOp $arg0)>;
 def : Pat<(TF_BatchToSpaceNDOp $input, $block_shape, $crops), (TFL_BatchToSpaceNdOp $input, $block_shape, $crops)>;
 
 def : Pat<(TF_SpaceToBatchNDOp $input, $block_shape, $paddings), (TFL_SpaceToBatchNdOp $input, $block_shape, $paddings)>;
+
+def : Pat<(TF_SpaceToDepthOp $input, $block_size, IsDataFormatNHWC:$data_format),
+          (TFL_SpaceToDepthOp $input, (convertIntAttrTo32Bit $block_size))>;
 
 def : Pat<(TF_ResizeBilinearOp $images, $size, $align_corners, ConstBoolAttrFalse:$half_pixel_centers), (TFL_ResizeBilinearOp $images, $size, $align_corners)>;
 

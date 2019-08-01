@@ -32,6 +32,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class MatchingFilesDatasetOp : public DatasetOpKernel {
@@ -373,5 +374,6 @@ REGISTER_KERNEL_BUILDER(
     MatchingFilesDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

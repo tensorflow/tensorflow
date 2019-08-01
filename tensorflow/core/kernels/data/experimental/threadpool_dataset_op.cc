@@ -24,6 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class ThreadPoolResource : public ResourceBase {
@@ -171,6 +172,8 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    bool IsStateful() const override { return input_->IsStateful(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -278,6 +281,8 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    bool IsStateful() const override { return input_->IsStateful(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -378,6 +383,8 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    bool IsStateful() const override { return input_->IsStateful(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -455,5 +462,6 @@ REGISTER_KERNEL_BUILDER(
     ThreadPoolDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

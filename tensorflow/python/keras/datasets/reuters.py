@@ -79,7 +79,8 @@ def load_data(path='reuters.npz',
   path = get_file(
       path,
       origin=origin_folder + 'reuters.npz',
-      file_hash='87aedbeb0cb229e378797a632c1997b6')
+      file_hash=
+      'd6586e694ee56d7a4e65172e12b3e987c03096cb01eab99753921ef915959916')
   with np.load(path, allow_pickle=True) as f:
     xs, labels = f['x'], f['y']
 
