@@ -65,6 +65,23 @@ static LogicalResult extractValueFromConstOp(Operation *op,
   return success();
 }
 
+static ParseResult parseBinaryLogicalOp(OpAsmParser *parser,
+                                        OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> ops;
+  Type type;
+  if (parser->parseOperandList(ops, 2) || parser->parseColonType(type) ||
+      parser->resolveOperands(ops, type, result->operands)) {
+    return failure();
+  }
+  // Result must be a scalar or vector of boolean type.
+  Type resultType = parser->getBuilder().getIntegerType(1);
+  if (auto opsType = type.dyn_cast<VectorType>()) {
+    resultType = VectorType::get(opsType.getNumElements(), resultType);
+  }
+  result->addTypes(resultType);
+  return success();
+}
+
 template <typename EnumClass>
 static ParseResult parseEnumAttribute(EnumClass &value, OpAsmParser *parser) {
   Attribute attrVal;
@@ -133,6 +150,12 @@ static ParseResult parseNoIOOp(OpAsmParser *parser, OperationState *state) {
   if (parser->parseOptionalAttributeDict(state->attributes))
     return failure();
   return success();
+}
+
+static void printBinaryLogicalOp(Operation *logicalOp, OpAsmPrinter *printer) {
+  *printer << logicalOp->getName() << ' ' << *logicalOp->getOperand(0) << ", "
+           << *logicalOp->getOperand(1);
+  *printer << " : " << logicalOp->getOperand(0)->getType();
 }
 
 template <typename LoadStoreOpTy>
