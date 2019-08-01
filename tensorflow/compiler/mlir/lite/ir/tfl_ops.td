@@ -643,14 +643,13 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [NoSideEffect]> {
     Gather slices from `params` into a Tensor with shape specified by `indices`.
   }];
 
-  // TODO: missing Uint8.
   let arguments = (ins
-    TensorOf<[F32, I8, I64, I32]>:$params,
+    TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$params,
     TFL_I32OrI64Tensor:$indices
   );
 
   let results = (outs
-    TensorOf<[F32, I8, I64, I32]>:$output
+    TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$output
   );
 }
 
@@ -1659,9 +1658,8 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
 `seq_dim` reversed.
   }];
 
-  // Missing Uint8.
   let arguments = (ins
-    TensorOf<[F32, I16, I32, I64]>:$input,
+    TensorOf<[F32, I16, I32, I64, TFL_Uint8]>:$input,
     TFL_I32OrI64Tensor:$seq_lengths,
 
     I32Attr:$seq_dim,
@@ -1669,7 +1667,7 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
   );
 
   let results = (outs
-    TensorOf<[F32, I16, I32, I64]>:$output
+    TensorOf<[F32, I16, I32, I64, TFL_Uint8]>:$output
   );
 
   let hasOptions = 1;
@@ -1781,9 +1779,8 @@ def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
 
   let arguments = (ins
     TFL_BoolTensor:$condition,
-    // TODO: Missing uint8.
-    TensorOf<[F32, I1, I8, I16, I32, I64]>:$x,
-    TensorOf<[F32, I1, I8, I16, I32, I64]>:$y);
+    TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$x,
+    TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$y);
   let results = (outs AnyTensor:$output);
 
   // TODO(jpienaar): autogenerate this.
@@ -1929,10 +1926,9 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     Computes element-wise Hyperbolic tangent of input
   }];
 
-  // TODO(haoliang): missing Uint8.
-  let arguments = (ins TensorOf<[F32, I16, I8]>:$x);
+  let arguments = (ins TensorOf<[F32, I16, I8, TFL_Uint8]>:$x);
 
-  let results = (outs TensorOf<[F32, I16, I8]>:$y);
+  let results = (outs TensorOf<[F32, I16, I8, TFL_Uint8]>:$y);
 }
 
 def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
@@ -1971,8 +1967,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
   }];
 
   let arguments = (ins
-    // TODO: Missing uint8
-    TensorOf<[F32, I8, I32, I64]>:$input,
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8]>:$input,
     I32Tensor:$k);
 
   let results = (outs
