@@ -82,7 +82,7 @@ __device__ EIGEN_STRONG_INLINE void Swap(T& a, T& b) {
 
 // Check whether two boxes have an IoU greater than threshold.
 template <typename T>
-__device__ EIGEN_STRONG_INLINE bool OverThreshold(const Box* a, const Box* b,
+__device__ EIGEN_STRONG_INLINE bool OverThreshold(const Box* __restrict__ a, const Box* __restrict__ b,
                                                   float a_area,
                                                   T iou_threshold) {
   const float b_area = (b->x2 - b->x1) * (b->y2 - b->y1);
@@ -195,7 +195,7 @@ __device__ EIGEN_STRONG_INLINE void SelectHelper(const Index i_selected,
 template <typename Index, typename T, typename... Args>
 __device__ EIGEN_STRONG_INLINE void SelectHelper(const Index i_selected,
                                                  const Index i_original,
-                                                 const T* original, T* selected,
+                                                 const T* __restrict__ original, T* __restrict__ selected,
                                                  Args... args) {
   selected[i_selected] = original[i_original];
   SelectHelper(i_selected, i_original, args...);

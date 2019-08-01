@@ -30,7 +30,7 @@ namespace functor {
 
 typedef Eigen::GpuDevice GPUDevice;
 namespace {
-__device__ int PermutationOrder(int n, const int* pivots) {
+__device__ int PermutationOrder(int n, const int* __restrict__ pivots) {
   // Compute the order of the permutation from the number of transpositions
   // encoded in the pivot array, see:
   // http://icl.cs.utk.edu/lapack-forum/viewtopic.php?f=2&t=340

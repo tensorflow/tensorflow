@@ -37,7 +37,7 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 template <typename Scalar>
 __device__ void ComputePermutationFromTranspositions(
-    int64 num_rows, const int* pivots, Scalar* permutation_indices) {
+    int64 num_rows, const int* __restrict__ pivots, Scalar* __restrict__ permutation_indices) {
   // Fill in the output array with the identity permutation.
   for (int i = 0; i < num_rows; ++i) {
     permutation_indices[i] = Scalar(i);
