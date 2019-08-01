@@ -1381,7 +1381,10 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (int i = 0; i < 25 && updated_graph; ++i) {
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     updated_graph = false;
-    if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
+    // SchedulingPass() relies on defined fetches in order to infer the memory
+    // usage, so skip optimization if there are no fetches.
+    if (!item.fetch.empty() &&
+        (optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
          optimization_level_ == RewriterConfig::SCHEDULING_HEURISTICS ||
          optimization_level_ == RewriterConfig::HEURISTICS) &&
         cluster != nullptr) {
