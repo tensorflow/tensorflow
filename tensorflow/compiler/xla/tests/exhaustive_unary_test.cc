@@ -267,17 +267,10 @@ XLA_TEST_FLOAT_32_BITS_OR_LESS(Exp, {
 })
 
 XLA_TEST_FLOAT_32_BITS_OR_LESS(Expm1, {
-  ErrorSpecGen error_spec_gen = +[](NativeT x) {
-    float test_x = static_cast<float>(x);
-    if (test_x < -105) {
-      return ErrorSpec{0, 0};
-    } else if (std::abs(test_x) < 5e-6) {
-      // For points around x=0, we should make sure that the result is very
-      // accurate
-      return ErrorSpec{0, 1e-4};
-    }
-    return GetDefaultSpecGenerator()(x);
-  };
+  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
+  if (ty_ == F32) {
+    error_spec_gen = +[](NativeT x) { return ErrorSpec{0, 0.00015}; };
+  }
 
   // Our CPU implementation of expm1 returns one incorrect value: says
   // exp(88.7228394) = max-float, but the correct answer is inf.  We deem this

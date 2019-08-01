@@ -1099,7 +1099,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
   auto x_squared = FMul(x, x);
   auto x_squared_over_two = FMul(x_squared, half);
   auto for_small_x = FAdd(x, x_squared_over_two);
-  const auto kExponentIsSmallThreshold = 1e-5;
+  // At this point, the relative errors due to floating point precision loss of
+  // calculating exp(x) - 1 and the polynomial exp(x)-1 = x + x^2/2 are about
+  // equal, with a value of approximetely 2^-16.
+  const auto kExponentIsSmallThreshold = 0.009;
   auto abs_x =
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value}, {type}, b_);
   auto x_is_small =
