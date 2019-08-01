@@ -22,12 +22,15 @@ import collections as py_collections
 import itertools
 import weakref
 
+import numpy as np
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -62,6 +65,9 @@ WHITELIST_COLLECTIONS = [
     variable_scope._VARSTORE_KEY,  # pylint: disable=protected-access
     variable_scope._VARSCOPESTORE_KEY  # pylint: disable=protected-access
 ]
+
+
+_EAGER_CONST_THRESHOLD = 128
 
 
 class UnknownArgument(object):
@@ -569,6 +575,13 @@ class FuncGraph(ops.Graph):
     if isinstance(tensor, ops.EagerTensor):
       if name is None:
         name = str(ops.uid())
+
+      # Small EagerTensors are captured with Const ops
+      if (tensor.dtype in dtypes.TF_VALUE_DTYPES and
+          np.prod(tensor.shape) <= _EAGER_CONST_THRESHOLD):
+        return self.capture_eager_tensor(tensor, name)
+
+      # Large EagerTensors and resources are captured with Placeholder ops
       return self._capture_helper(tensor, name)
     if tensor.graph is not self:
       if name is None:
@@ -642,6 +655,22 @@ class FuncGraph(ops.Graph):
     self._captures[variable] = (variable, placeholder)
     tape.record_operation("captured_value", [placeholder], [variable],
                           lambda x: [x])
+
+  def capture_eager_tensor(self, tensor, name):
+    capture = self._captures.get(ops.tensor_id(tensor))
+    if capture is None:
+      # We clear all control dependencies and place the Const op on the same
+      # device as the source tensor. The device placement may be relaxed at
+      # a later date.
+      with ops.control_dependencies(None), self.device(tensor.device):
+        graph_const = constant_op.constant(tensor.numpy(), dtype=tensor.dtype,
+                                           shape=tensor.shape, name=name)
+      self.add_capture(tensor, graph_const)
+    else:
+      graph_const = capture[1]
+    tape.record_operation("captured_value", [graph_const], [tensor],
+                          lambda x: [x])
+    return graph_const
 
   @property
   def external_captures(self):
