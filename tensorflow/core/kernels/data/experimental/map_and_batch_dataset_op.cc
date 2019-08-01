@@ -53,11 +53,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
   explicit MapAndBatchDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
     FunctionMetadata::Params params;
-#ifndef INTEL_MKL
-    params.is_multi_device_function = true;
-#endif
 #ifdef INTEL_MKL
     params.is_multi_device_function = false;
+#else
+    params.is_multi_device_function = true;
 #endif
     OP_REQUIRES_OK(ctx,
                    FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
