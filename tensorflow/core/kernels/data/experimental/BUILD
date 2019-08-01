@@ -303,6 +303,22 @@ tf_kernel_library(
     ],
 )
 
+tf_cc_test(
+    name = "sampling_dataset_op_test",
+    size = "small",
+    srcs = ["sampling_dataset_op_test.cc"],
+    deps = [
+        ":sampling_dataset_op",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:dataset_test_base",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_kernel_library(
     name = "scan_dataset_op",
     srcs = ["scan_dataset_op.cc"],
