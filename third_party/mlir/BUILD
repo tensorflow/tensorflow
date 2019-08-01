@@ -948,10 +948,10 @@ cc_library(
 cc_library(
     name = "Transforms",
     srcs = [
+        "lib/Transforms/AffineDataCopyGeneration.cpp",
         "lib/Transforms/CSE.cpp",
         "lib/Transforms/Canonicalizer.cpp",
         "lib/Transforms/DialectConversion.cpp",
-        "lib/Transforms/DmaGeneration.cpp",
         "lib/Transforms/LoopCoalescing.cpp",
         "lib/Transforms/LoopFusion.cpp",
         "lib/Transforms/LoopInvariantCodeMotion.cpp",
