@@ -902,6 +902,25 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     # Data is not masked, returned values are random.
     self.assertGreater(history.history['loss'][0], 0.0)
 
+    model = keras.Model.from_config(model.get_config())
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    history = model.fit(
+        x=[np.ones((10, 5, 10)), np.zeros((10, 5))],
+        y=np.zeros((10, 100)),
+        batch_size=2)
+    # All data is masked, returned values are 0's.
+    self.assertEqual(history.history['loss'][0], 0.0)
+    history = model.fit(
+        x=[np.ones((10, 5, 10)), np.ones((10, 5))],
+        y=np.zeros((10, 100)),
+        batch_size=2)
+    # Data is not masked, returned values are random.
+    self.assertGreater(history.history['loss'][0], 0.0)
+
   @keras_parameterized.run_all_keras_modes
   def test_call_arg_derived_from_keras_layer(self):
 
@@ -914,6 +933,21 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     input2 = keras.Input(10)
     outputs = MyAdd()(input1, input2)
     model = keras.Model([input1, input2], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    history = model.fit(
+        x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    # Check serialization.
+    model = keras.Model.from_config(
+        model.get_config(), custom_objects={'MyAdd': MyAdd})
     model.compile(
         'sgd',
         'mse',
@@ -952,6 +986,20 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     # Check that second input was correctly added to first.
     self.assertEqual(history.history['loss'][0], 0.0)
 
+    model = keras.Model.from_config(
+        model.get_config(), custom_objects={'MaybeAdd': MaybeAdd})
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    history = model.fit(
+        x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
   @keras_parameterized.run_all_keras_modes
   def test_call_nested_arg_derived_from_keras_layer(self):
 
@@ -976,6 +1024,20 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
             'c': 5 * array_ops.ones((1, 10))
         })
     model = keras.Model([input1, input2, input3], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    history = model.fit(
+        x=[np.ones((10, 10)), 2 * np.ones((10, 10)), 3 * np.ones((10, 10))],
+        y=15 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that all inputs were correctly added.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    model = keras.Model.from_config(
+        model.get_config(), custom_objects={'AddAll': AddAll})
     model.compile(
         'sgd',
         'mse',

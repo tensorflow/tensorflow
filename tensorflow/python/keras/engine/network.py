@@ -26,6 +26,7 @@ import json
 import os
 import threading
 
+import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
@@ -889,9 +890,9 @@ class Network(base_layer.Layer):
           # The node is relevant to the model:
           # add to filtered_inbound_nodes.
           if node.arguments:
+            kwargs = _serialize_tensors(node.arguments)
             try:
-              json.dumps(node.arguments)
-              kwargs = node.arguments
+              json.dumps(kwargs)
             except TypeError:
               logging.warning(
                   'Layer ' + layer.name +
@@ -1011,6 +1012,7 @@ class Network(base_layer.Layer):
           kwargs = {}
         elif len(input_data) == 4:
           kwargs = input_data[3]
+          kwargs = _deserialize_keras_tensors(kwargs, created_layers)
         else:
           raise ValueError('Improperly formatted model config.')
 
@@ -1844,3 +1846,43 @@ def _should_skip_first_node(layer):
   """Returns True if the first layer node should not be saved or loaded."""
   # Networks start with a pre-existing node linking their input to output.
   return issubclass(layer.__class__, Network) and layer._is_graph_network
+
+
+def _serialize_tensors(kwargs):
+  """Serializes Tensors passed to `call`."""
+
+  def _serialize_keras_tensor(t):
+    """Serializes a single Tensor passed to `call`."""
+    if hasattr(t, '_keras_history'):
+      kh = t._keras_history
+      return [kh.layer.name, kh.node_index, kh.tensor_index]
+
+    if isinstance(t, np.ndarray):
+      return t.tolist()
+
+    if isinstance(t, ops.Tensor):
+      return backend.get_value(t).tolist()
+
+    return t
+
+  return nest.map_structure(_serialize_keras_tensor, kwargs)
+
+
+def _deserialize_keras_tensors(kwargs, layer_map):
+  """Deserializes Keras Tensors passed to `call`.."""
+
+  def _deserialize_keras_tensor(t):
+    """Deserializes a single Keras Tensor passed to `call`."""
+    if isinstance(t, tf_utils.ListWrapper):
+      t = t.as_list()
+      layer_name = t[0]
+      node_index = t[1]
+      tensor_index = t[2]
+
+      layer = layer_map[layer_name]
+      node = layer._inbound_nodes[node_index]
+      return nest.flatten(node.output_tensors)[tensor_index]
+    return t
+
+  kwargs = tf_utils.convert_inner_node_data(kwargs, wrap=True)
+  return nest.map_structure(_deserialize_keras_tensor, kwargs)
