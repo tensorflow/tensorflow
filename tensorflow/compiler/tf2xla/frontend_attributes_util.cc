@@ -24,15 +24,14 @@ const char kFrontendAttributesAttribute[] = "_XlaFrontendAttributes";
 }  // namespace
 
 xla::StatusOr<absl::optional<xla::FrontendAttributes>>
-GetFrontendAttributesFromNodeDef(const NodeDef& node_def) {
-  if (!HasNodeAttr(node_def, kFrontendAttributesAttribute)) {
-    return absl::optional<xla::FrontendAttributes>();
+GetFrontendAttributesFromNodeDef(const AttrSlice& attrs) {
+  auto attr = attrs.Find(kFrontendAttributesAttribute);
+  if (attr == nullptr) {
+    return xla::StatusOr<absl::optional<xla::FrontendAttributes>>(
+        absl::nullopt);
   }
-  string value;
   xla::FrontendAttributes attributes;
-  TF_RETURN_IF_ERROR(
-      GetNodeAttr(node_def, kFrontendAttributesAttribute, &value));
-  if (!attributes.ParseFromString(value)) {
+  if (!attributes.ParseFromString(attr->s())) {
     return errors::InvalidArgument(
         "Experimental _XlaFrontendAttributes attribute was not a valid encoded "
         "xla::FrontendAttributes proto.");

@@ -289,11 +289,12 @@ Status XlaBuilder::SetDynamicBinding(int64 dynamic_size_param_num,
   return Status::OK();
 }
 
-Status XlaBuilder::AddFrontendAttribute(const XlaOp& op, std::string attribute,
-                                        std::string value) {
+Status XlaBuilder::SetInstructionFrontendAttribute(const XlaOp& op,
+                                                   std::string attribute,
+                                                   std::string value) {
   TF_ASSIGN_OR_RETURN(auto instr_proto, LookUpMutableInstruction(op));
   auto* frontend_attributes = instr_proto->mutable_frontend_attributes();
-  (*frontend_attributes->mutable_map())[attribute] = value;
+  (*frontend_attributes->mutable_map())[attribute] = std::move(value);
   return Status::OK();
 }
 

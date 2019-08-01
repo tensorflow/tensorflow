@@ -20,12 +20,12 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 
 namespace tensorflow {
 
 xla::StatusOr<absl::optional<xla::FrontendAttributes>>
-GetFrontendAttributesFromNodeDef(const NodeDef& node_def);
+GetFrontendAttributesFromNodeDef(const AttrSlice& attrs);
 
 }  // namespace tensorflow
 

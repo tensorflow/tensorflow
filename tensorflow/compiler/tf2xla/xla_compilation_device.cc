@@ -100,7 +100,7 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
       sharding_parse_result.ValueOrDie();
 
   auto frontend_attributes_result =
-      GetFrontendAttributesFromNodeDef(op_kernel->def());
+      GetFrontendAttributesFromNodeDef(AttrSlice(op_kernel->def()));
   OP_REQUIRES_OK(context, frontend_attributes_result.status());
   absl::optional<xla::FrontendAttributes> frontend_attributes =
       frontend_attributes_result.ValueOrDie();
