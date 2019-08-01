@@ -378,11 +378,18 @@ def _resolve_grad_inputs(cond_graph, grad_graph):
       # `internal_captures` are not treated as intermediates and hence not added
       # to If op outputs. So we get the outer tensor corresponding to those
       # from the list of `external_captures`.
-      try:
-        t = t.graph._forward_cond.outputs[t.graph.outputs.index(t)]
-      except ValueError:
-        index = t.graph.internal_captures.index(t)
-        t = t.graph.external_captures[index]
+      for i, output in enumerate(t.graph.outputs):
+        if output is t:
+          t = t.graph._forward_cond.outputs[i]
+          break
+      else:
+        for i, output in enumerate(t.graph.internal_captures):
+          if output is t:
+            t = t.graph.external_captures[i]
+            break
+        else:
+          raise ValueError("Could not find external tensor capture {tensor} in "
+                           "captures or outputs".format(tensor=t))
 
       # Note: We rely on the capturing logic of the gradient If op graph to
       # correctly capture the tensors in `cond_graph.outer_graph`. Both cond_v2
@@ -747,8 +754,8 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
 
   def _capture_helper(self, tensor, name):
     if (tensor.graph is not self._forward_graph or
-        tensor in self._forward_graph.inputs or
-        tensor in self._forward_graph.outputs):
+        any(tensor is t for t in self._forward_graph.inputs) or
+        any(tensor is t for t in self._forward_graph.outputs)):
       return super(_CondGradFuncGraph, self)._capture_helper(tensor, name)
 
     if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):

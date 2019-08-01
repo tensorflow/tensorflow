@@ -692,8 +692,9 @@ def _get_accumulator(tensor):
 
   def get_func_graph_output(t):
     """Returns t or Identity(t) whichever exists in graph outputs else None."""
-    if t in tensor.graph.outputs:
-      return t
+    for output in tensor.graph.outputs:
+      if output is t:
+        return t
     # tf.defun adds an Identity for each output, check whether that is the case.
     identity_op = t.consumers()[0]
     if (identity_op.type == "Identity" and
@@ -704,8 +705,14 @@ def _get_accumulator(tensor):
   for consumer in tensor.consumers():
     # Find the consumer that is a TensorListPushBack node whose TensorList input
     # is in the list of function inputs.
-    if (consumer.type != "TensorListPushBack" or
-        consumer.inputs[0] not in tensor.graph.inputs):
+    if consumer.type != "TensorListPushBack":
+      continue
+
+    accum_input_idx = -1
+    for accum_input_idx, inp in enumerate(tensor.graph.inputs):
+      if inp is consumer.inputs[0]:
+        break
+    else:
       continue
 
     output = get_func_graph_output(consumer.outputs[0])
@@ -714,10 +721,12 @@ def _get_accumulator(tensor):
       # outputs.
       continue
 
-    accum_input_idx = tensor.graph.inputs.index(consumer.inputs[0])
-    accum_output_idx = tensor.graph.outputs.index(output)
-    if accum_input_idx == accum_output_idx:
-      return output
+    for accum_output_idx, out in enumerate(tensor.graph.outputs):
+      if out is output:
+        if accum_input_idx == accum_output_idx:
+          return output
+        break
+
   return None
 
 
@@ -922,9 +931,8 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     assert input_placeholder.dtype == dtypes.resource
     assert tensor_in_outer_graph.dtype == dtypes.resource
     # This must be a loop invariant.
-    assert input_placeholder == self._forward_graph.outputs[index], (
-        "Resource tensors must be loop invariants %s." %
-        tensor_in_outer_graph)
+    assert input_placeholder is self._forward_graph.outputs[index], (
+        "Resource tensors must be loop invariants %s." % tensor_in_outer_graph)
 
     self._indirect_captures[ops.tensor_id(tensor)] = self.capture(
         tensor_in_outer_graph, whitelisted=True)
