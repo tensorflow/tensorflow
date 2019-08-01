@@ -309,6 +309,48 @@ def : Pat<(OpAllAttrConstraint1
           (OpAllAttrConstraint2 $attr)>;
 
 //===----------------------------------------------------------------------===//
+// Test Patterns (Symbol Binding)
+
+// Test symbol binding.
+def OpSymbolBindingA : TEST_Op<"symbol_binding_a", []> {
+  let arguments = (ins I32:$operand, I64Attr:$attr);
+  let results = (outs I32:$result);
+}
+def OpSymbolBindingB : TEST_Op<"symbol_binding_b", []> {
+  let arguments = (ins I32:$operand);
+  let results = (outs I32:$result);
+
+  let builders = [
+    OpBuilder<
+      "Builder *builder, OperationState *state, Value *operand",
+      [{
+        state->types.assign({builder->getIntegerType(32)});
+        state->addOperands({operand});
+      }]>
+  ];
+}
+def OpSymbolBindingC : TEST_Op<"symbol_binding_c", []> {
+  let arguments = (ins I32:$operand);
+  let results = (outs I32:$result);
+  let builders = OpSymbolBindingB.builders;
+}
+def OpSymbolBindingD : TEST_Op<"symbol_binding_d", []> {
+  let arguments = (ins I32:$input1, I32:$input2, I64Attr:$attr);
+  let results = (outs I32:$result);
+}
+def HasOneUse: Constraint<CPred<"$0->hasOneUse()">, "has one use">;
+def : Pattern<
+    // Bind to source pattern op operand/attribute/result
+    (OpSymbolBindingA:$res_a $operand, $attr), [
+        // Bind to auxiliary op result
+        (OpSymbolBindingC:$res_c (OpSymbolBindingB:$res_b $operand)),
+
+        // Use bound symbols in resultant ops
+        (OpSymbolBindingD $res_b, $res_c, $attr)],
+    // Use bound symbols in additional constraints
+    [(HasOneUse $res_a)]>;
+
+//===----------------------------------------------------------------------===//
 // Test Patterns (Attributes)
 
 // Test matching against op attributes.
