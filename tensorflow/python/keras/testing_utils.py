@@ -28,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_v2
@@ -768,3 +769,26 @@ def get_expected_metric_variable_names(var_names, name_suffix=''):
     return [n + ':0' for n in var_names]
   # In V1 graph mode variable names are made unique using a suffix.
   return [n + name_suffix + ':0' for n in var_names]
+
+
+def enable_v2_dtype_behavior(fn):
+  """Decorator for enabling the layer V2 dtype behavior on a test."""
+  return _set_v2_dtype_behavior(fn, True)
+
+
+def disable_v2_dtype_behavior(fn):
+  """Decorator for disabling the layer V2 dtype behavior on a test."""
+  return _set_v2_dtype_behavior(fn, False)
+
+
+def _set_v2_dtype_behavior(fn, enabled):
+  """Returns version of 'fn' that runs with v2 dtype behavior on or off."""
+  def wrapper(*args, **kwargs):
+    v2_dtype_behavior = base_layer_utils.V2_DTYPE_BEHAVIOR
+    base_layer_utils.V2_DTYPE_BEHAVIOR = enabled
+    try:
+      return fn(*args, **kwargs)
+    finally:
+      base_layer_utils.V2_DTYPE_BEHAVIOR = v2_dtype_behavior
+
+  return wrapper

@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
@@ -204,42 +203,19 @@ struct ScatterFunctorBase {
                    typename TTypes<T>::ConstMatrix updates,
                    typename TTypes<Index>::ConstFlat indices) {
     // indices and params sizes were validated in DoCompute().
-    const Index kMaxLocks = 1024;
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
-    // Duplicate entries need to be handled correctly. Multiple updates to the
-    // same index has to be serialized. To reduce the number of locks and the
-    // memory usage, we divide the whole index space into kMaxLocks regions with
-    // each lock serializing access to a region.
-    const Index entries_per_lock = (limit + kMaxLocks - 1) / kMaxLocks;
-    mutex accessed[kMaxLocks];
-    std::atomic<Index> bad_index(-1);
-    auto ParallelScatter = [&](Index start, Index end) {
-      for (Index i = start; i < end; ++i) {
-        // Grab the index and check its validity.  Do this carefully,
-        // to avoid checking the value and grabbing it again from
-        // memory a second time (a security risk since it may change in
-        // between).
-        const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
-        if (!FastBoundsCheck(index, limit)) {
-          bad_index = i;
-          return;
-        }
-        const Index lock_id = index / entries_per_lock;
-        // Copy last Ndim-1 dimensions of updates[i] to params[index]
-        {
-          mutex_lock l(accessed[lock_id]);
-          scatter_op::internal::Assign<op>::Run(params.template chip<0>(index),
-                                                updates.template chip<0>(i));
-        }
-      }
-    };
-
-    const DeviceBase::CpuWorkerThreads& worker_threads =
-        *(c->device()->tensorflow_cpu_worker_threads());
-    Shard(worker_threads.num_threads, worker_threads.workers, N, 3500.0,
-          ParallelScatter);  // TODO: Come up with a good cost estimate.
-    return bad_index;
+    for (Index i = 0; i < N; i++) {
+      // Grab the index and check its validity.  Do this carefully,
+      // to avoid checking the value and grabbing it again from
+      // memory a second time (a security risk since it may change in between).
+      const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
+      if (!FastBoundsCheck(index, limit)) return i;
+      // Copy last Ndim-1 dimensions of updates[i] to params[index]
+      scatter_op::internal::Assign<op>::Run(params.template chip<0>(index),
+                                            updates.template chip<0>(i));
+    }
+    return -1;
   }
 };
 

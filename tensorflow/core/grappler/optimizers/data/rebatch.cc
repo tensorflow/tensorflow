@@ -69,7 +69,7 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
 // batch dimension. Furthermore, transformations like "Skip" may change
 // the semantics of the dataset (since we'd be skipping N minibatches instead
 // of N batches).
-constexpr std::array<const char*, 20> kPassThroughOps = {
+constexpr std::array<const char*, 21> kPassThroughOps = {
     "CacheDataset",
     "ExperimentalScanDataset",
     "ExperimentalParseExampleDataset",
@@ -87,6 +87,7 @@ constexpr std::array<const char*, 20> kPassThroughOps = {
     "ShardDataset",
     "ShuffleAndRepeatDataset",
     "ShuffleDataset",
+    "ShuffleDatasetV2",
     "SkipDataset",
     "TakeDataset",
     "WindowDataset"};

@@ -728,6 +728,15 @@ class Tensor(_TensorLike):
   # with ndarrays.
   __array_priority__ = 100
 
+  def __array__(self):
+    raise NotImplementedError("Cannot convert a symbolic Tensor ({}) to a numpy"
+                              " array.".format(self.name))
+
+  def __len__(self):
+    raise TypeError("len is not well defined for symbolic Tensors. ({}) "
+                    "Please call `x.shape` rather than `len(x)` for "
+                    "shape information.".format(self.name))
+
   @staticmethod
   def _override_operator(operator, func):
     _override_helper(Tensor, operator, func)

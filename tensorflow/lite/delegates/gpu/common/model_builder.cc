@@ -1737,7 +1737,7 @@ class SoftmaxOperationParser : public TFLiteOperationParser {
                const TfLiteRegistration* registration, GraphFloat32* graph,
                ObjectReader* reader) final {
     Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::SOFT_MAX);
+    node->operation.type = ToString(OperationType::SOFTMAX);
     RETURN_IF_ERROR(reader->AddInput(node, 0));
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
@@ -1753,8 +1753,7 @@ class SoftmaxOperationParser : public TFLiteOperationParser {
       // auto mul_node = reader->NewPassthroughNode(node);
       // mul_node->operation.type = ToString(OperationType::MUL);
     }
-    // TODO(impjdi): Rename to SoftmaxAttributes.
-    SoftMaxAttributes attr;
+    SoftmaxAttributes attr;
     attr.axis = Axis::CHANNELS;  // always by channels
     node->operation.attributes = attr;
     return OkStatus();

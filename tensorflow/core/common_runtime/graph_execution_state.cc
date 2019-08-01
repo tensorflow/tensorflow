@@ -466,8 +466,8 @@ Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
 
   // All the node types handled here have their output datatype set in
   // either attribute 'dtype' or 'T'.
-  if (!GetNodeAttr(node, "dtype", type).ok() &&
-      !GetNodeAttr(node, "T", type).ok()) {
+  if (!GetNodeAttrSimple(node, "dtype", type) &&
+      !GetNodeAttrSimple(node, "T", type)) {
     return errors::InvalidArgument(
         "Could not determine output type for feed node: ", node.name(),
         " of type ", node.op());

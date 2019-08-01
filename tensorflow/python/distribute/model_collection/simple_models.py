@@ -22,9 +22,12 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.distribute.model_collection import model_collection_base
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.module import module
+from tensorflow.python.ops import variables
 
 _BATCH_SIZE = 10
 
@@ -125,6 +128,30 @@ class SimpleSubclassModel(model_collection_base.ModelAndInput):
         experimental_run_tf_function=experimental_run_tf_function)
 
     return model, model.output_name
+
+  def get_data(self):
+    return _get_data_for_simple_models()
+
+  def get_batch_size(self):
+    return _BATCH_SIZE
+
+
+class _SimpleModule(module.Module):
+
+  def __init__(self):
+    self.v = variables.Variable(3.0)
+
+  @def_function.function
+  def __call__(self, x):
+    return self.v * x
+
+
+class SimpleTFModuleModel(model_collection_base.ModelAndInput):
+  """A simple model based on tf.Module and its data."""
+
+  def get_model(self, **kwargs):
+    model = _SimpleModule()
+    return model, 'foo'
 
   def get_data(self):
     return _get_data_for_simple_models()

@@ -28,28 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 
 namespace xla {
-using Eigen::half;
 
-namespace test_util {
-template <int N>
-struct IntegralTypeWithByteWidth {};
-
-template <>
-struct IntegralTypeWithByteWidth<2> {
-  using type = uint16;
-};
-
-template <>
-struct IntegralTypeWithByteWidth<4> {
-  using type = uint32;
-};
-
-template <>
-struct IntegralTypeWithByteWidth<8> {
-  using type = uint64;
-};
-}  // namespace test_util
-
+// T: The primitive type being tested.
+// N: The number of operands that the function being tested takes.
+template <PrimitiveType T, size_t N>
 class ExhaustiveOpTestBase : public ClientLibraryTestBase {
  public:
   struct ErrorSpec {
@@ -65,15 +47,159 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     ErrorSpec(float a, float r) : abs_err(a), rel_err(r) {}
   };
 
-  // `ty` is the primitive type being tested.
-  explicit ExhaustiveOpTestBase(PrimitiveType ty)
-      : ty_(ty), platform_(client_->platform()->Name()) {
+  // Definitions depending on the primitive type T.
+
+  static constexpr bool kIsComplex = (T == C128 || T == C64);
+
+  // The primitive type used to compute the reference output.
+  struct RefT {
+    static constexpr PrimitiveType value = (T == F16 || T == BF16) ? F32 : T;
+  };
+
+  // The primitive type of the component of T. If T is not complex, then
+  // ComponentT = T.
+  struct ComponentT {
+    static constexpr PrimitiveType value =
+        !kIsComplex ? T
+                    : T == C128 ? F64 : T == C64 ? F32 : PRIMITIVE_TYPE_INVALID;
+  };
+
+  // Same as ComponentT, but for the RefT primitive type.
+  struct ComponentRefT {
+    static constexpr PrimitiveType value =
+        !kIsComplex ? RefT::value
+                    : RefT::value == C128
+                          ? F64
+                          : RefT::value == C64 ? F32 : PRIMITIVE_TYPE_INVALID;
+  };
+
+  // The primitive type of an unsigned integer that can be bitcasted to and from
+  // ComponentT.
+  struct ComponentIntegralT {
+    static constexpr PrimitiveType value =
+        (T == C128 || T == F64)
+            ? U64
+            : (T == C64 || T == F32)
+                  ? U32
+                  : (T == F16 || T == BF16) ? U16 : PRIMITIVE_TYPE_INVALID;
+  };
+
+  // Native types that correspond to the primtive types above.
+  typedef typename primitive_util::PrimitiveTypeToNative<T>::type NativeT;
+  typedef typename primitive_util::PrimitiveTypeToNative<RefT::value>::type
+      NativeRefT;
+  typedef
+      typename primitive_util::PrimitiveTypeToNative<ComponentT::value>::type
+          ComponentNativeT;
+  typedef
+      typename primitive_util::PrimitiveTypeToNative<ComponentRefT::value>::type
+          ComponentNativeRefT;
+  typedef typename primitive_util::PrimitiveTypeToNative<
+      ComponentIntegralT::value>::type ComponentIntegralNativeT;
+
+  typedef std::array<Literal, N> InputLiterals;
+
+ private:
+  // N spans corresponding to the list of literal data values.
+  typedef std::array<absl::Span<const NativeT>, N> NativeInputsList;
+
+  // N data items representing a single input to some XLA function.
+  typedef std::array<NativeT, N> NativeInputs;
+
+  // N data items representing a single input to some interpreter backend
+  // function.
+  typedef std::array<NativeRefT, N> NativeRefInputs;
+
+  // Representations of the reference function passed in by the user.
+  template <size_t K>
+  struct EvaluateOpWrapper {};
+  template <>
+  struct EvaluateOpWrapper<1> {
+    typedef NativeRefT (*type)(NativeRefT);
+  };
+  template <>
+  struct EvaluateOpWrapper<2> {
+    typedef NativeRefT (*type)(NativeRefT, NativeRefT);
+  };
+
+  // Representations of the ErrorSpecGen function passed in by the user.
+  template <size_t K>
+  struct ErrorSpecGenWrapper {};
+  template <>
+  struct ErrorSpecGenWrapper<1> {
+    typedef ErrorSpec (*type)(NativeT);
+  };
+  template <>
+  struct ErrorSpecGenWrapper<2> {
+    typedef ErrorSpec (*type)(NativeT, NativeT);
+  };
+
+ public:
+  using ErrorSpecGen = typename ErrorSpecGenWrapper<N>::type;
+  using EvaluateOp = typename EvaluateOpWrapper<N>::type;
+
+  explicit ExhaustiveOpTestBase()
+      : ty_(T), platform_(client_->platform()->Name()) {
     SetFastMathDisabled(true);
 
     // Run all HLO passes.  In particular, constant folding is disabled by
     // default for tests, but we need to run it in order to tickle some bugs.
     mutable_debug_options()->clear_xla_disable_hlo_passes();
   }
+
+  void Run(std::function<XlaOp(XlaOp)> enqueue_op, EvaluateOp evaluate_op) {
+    Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator());
+  }
+
+  // A helper for implementing the Run method for exhaustive op tests. It
+  // constructs the HLO module, compiles and runs the module and checks the
+  // result.
+  //
+  // We use a function pointer for evaluate_op for performance because it is
+  // called each time an output element is compared inside a loop in routine
+  // ExpectNear.
+  void Run(std::function<XlaOp(XlaOp)> enqueue_op, EvaluateOp evaluate_op,
+           ErrorSpecGen error_spec_gen) {
+    InputLiterals input_literals = CreateInputLiterals();
+    FillInput(&input_literals);
+
+    XlaBuilder builder(TestName());
+
+    for (int i = 0; i < N; ++i) {
+      enqueue_op(Parameter(&builder, i, input_literals[i].shape(), "input"));
+    }
+
+    TF_ASSERT_OK_AND_ASSIGN(XlaComputation comp, builder.Build());
+    TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                            RunComputationHelper(comp, input_literals));
+    ExpectNear(input_literals, result_literal, evaluate_op, error_spec_gen);
+  }
+
+  StatusOr<Literal> RunComputationHelper(const XlaComputation& comp,
+                                         const Literal& literal) {
+    return RunComputation(comp, {&literal});
+  }
+
+  StatusOr<Literal> RunComputationHelper(
+      const XlaComputation& comp, const std::array<Literal, N>& literals) {
+    std::array<const Literal*, N> lit_ptrs;
+    for (int i = 0; i < N; ++i) {
+      lit_ptrs[i] = &literals[i];
+    }
+    return RunComputation(comp, lit_ptrs);
+  }
+
+  // We essentially reimplement LiteralTestUtil::Near here because
+  //  a) this streamlined implementation is much faster, and
+  //  b) we can print out better error messages (namely, we can print out
+  //     which floating-point value input failed, while LiteralTestUtil::Near
+  //     can only print out the input index that failed).
+  //  c) we need special handling of certain inputs.  For example, we say that
+  //     a denormal input has multiple correct outputs (namely, f(x) and f(0))
+  //     and just needs to be close to one of them.
+  void ExpectNear(const InputLiterals& input_literals,
+                  const Literal& result_literal, EvaluateOp evaluate_op,
+                  ErrorSpecGen error_spec_gen);
 
   // Builds and runs the computation using the LocalClient API, rather than the
   // plain Client API, which is used by ClientLibraryTestBase.  This is because
@@ -122,34 +248,395 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     return std::move(result_literal);
   }
 
+  const string& Platform() { return platform_; }
+
   // Returns the number of elements in each input literal.
   virtual int64 GetInputSize() = 0;
 
-  Literal CreateInputLiteral() {
-    return LiteralUtil::CreateFromDimensions(ty_, {GetInputSize()});
+  // Fills the literals with values to test for.
+  virtual void FillInput(InputLiterals* literals) = 0;
+
+  // Replace infinites with max value to help compute errors.
+  static ComponentNativeRefT ReplaceInfWithMax(ComponentNativeRefT value) {
+    if (std::isinf(value)) {
+      return std::copysign(std::numeric_limits<ComponentNativeRefT>::max(),
+                           value);
+    }
+    return value;
   }
 
-  // `T` is the type of the value being compared, which is float if ty_ is of 32
-  // bits or less, and double otherwise.
-  template <typename T>
-  bool IsClose(T expected, T actual, ErrorSpec spec) {
-    static_assert(
-        std::is_same<T, float>::value || std::is_same<T, double>::value,
-        "Only supports float and double.");
+  // Returns true if both components are 0, but their sign bits differ.
+  static bool CheckSignedZeroError(ComponentNativeRefT expected,
+                                   ComponentNativeRefT actual) {
+    return expected == 0 && actual == 0 &&
+           std::signbit(expected) != std::signbit(actual);
+  }
+
+  // Sets the components to 0 if both are NaNs.
+  static void RemoveCorrespondingNaNs(ComponentNativeRefT* expected,
+                                      ComponentNativeRefT* actual) {
+    if (std::isnan(*expected) && std::isnan(*actual)) {
+      *expected = 0;
+      *actual = 0;
+    }
+  }
+
+  // The Implementation of the functions above, except for complex inputs.
+
+  static std::complex<ComponentNativeRefT> ReplaceInfWithMax(
+      std::complex<ComponentNativeRefT> value) {
+    value.real(ReplaceInfWithMax(value.real()));
+    value.imag(ReplaceInfWithMax(value.imag()));
+    return value;
+  }
+
+  static bool CheckSignedZeroError(std::complex<ComponentNativeRefT> expected,
+                                   std::complex<ComponentNativeRefT> actual) {
+    return CheckSignedZeroError(expected.real(), actual.real()) ||
+           CheckSignedZeroError(expected.imag(), actual.imag());
+  }
+
+  static void RemoveCorrespondingNaNs(
+      std::complex<ComponentNativeRefT>* expected,
+      std::complex<ComponentNativeRefT>* actual) {
+    ComponentNativeRefT expected_real = expected->real();
+    ComponentNativeRefT expected_imag = expected->imag();
+    ComponentNativeRefT actual_real = actual->real();
+    ComponentNativeRefT actual_imag = actual->imag();
+    RemoveCorrespondingNaNs(&expected_real, &actual_real);
+    RemoveCorrespondingNaNs(&expected_imag, &actual_imag);
+    expected->real(expected_real);
+    expected->imag(expected_imag);
+    actual->real(actual_real);
+    actual->imag(actual_imag);
+  }
+
+  // Returns a list of inputs that should be tested for closeness given some
+  // original input values.
+  //
+  // For denormal component inputs, we accept answers that are close to any of:
+  //
+  //   - evaluate_op(input)
+  //   - evaluate_op(+/-0), where the sign of 0 equal to the sign of
+  //     `input`,
+  //   - evaluate_op(+/-min_normal_float), where the sign of
+  //     min_normal_float matches `input`.
+  //   - if relaxed_denormal_signs_, evaluate_op(-/+0), where the sign of
+  //     0 is the opposite of `input`.
+  //
+  // (In particular, the XLA:CPU implementation of log flushes positive
+  // denormals to min-normal-float.  This seems kind of reasonable if our
+  // goal is to avoid infinities because they cause nans?)
+  std::vector<ComponentNativeRefT> GetTestValuesWithSubnormalSubstitutions(
+      ComponentNativeRefT value) {
+    std::vector<ComponentNativeRefT> test_values;
+    if (std::fpclassify(value) == FP_SUBNORMAL) {
+      test_values.reserve(relaxed_denormal_signs_ ? 3 : 2);
+      test_values.push_back(std::copysign(0, value));
+      test_values.push_back(std::copysign(
+          std::numeric_limits<ComponentNativeRefT>::min(), value));
+      if (relaxed_denormal_signs_) {
+        test_values.push_back(std::copysign(0, -value));
+      }
+    } else {
+      test_values.push_back(value);
+    }
+    return test_values;
+  }
+
+  // Similar to complex numbers, we only need to test the components that are
+  // subnormal. We can find the subnormal testing values for each component,
+  // then take the Cartesian product of each set of component values.
+  std::vector<std::complex<ComponentNativeRefT>>
+  GetTestValuesWithSubnormalSubstitutions(
+      std::complex<ComponentNativeRefT> value) {
+    typedef std::complex<ComponentNativeRefT> complex;
+
+    auto real_values = GetTestValuesWithSubnormalSubstitutions(value.real());
+    auto imag_values = GetTestValuesWithSubnormalSubstitutions(value.imag());
+
+    std::vector<complex> test_values;
+    test_values.reserve(real_values.size() * imag_values.size());
+    for (auto real : real_values) {
+      for (auto imag : imag_values) {
+        test_values.push_back(complex(real, imag));
+      }
+    }
+
+    return test_values;
+  }
+
+  // The test values for an XLA function with N operands are the Cartesian
+  // product of the test values for each of the N operands.
+  std::vector<std::array<NativeRefT, N>>
+  GetTestValuesWithSubnormalSubstitutions(
+      const std::array<NativeRefT, N>& value) {
+    std::vector<std::array<NativeRefT, N>> test_values;
+
+    std::array<std::vector<NativeRefT>, N> component_test_values;
+    int total = 1;
+    for (int i = 0; i < N; ++i) {
+      component_test_values[i] =
+          GetTestValuesWithSubnormalSubstitutions(value[i]);
+      if (!component_test_values.empty()) {
+        total *= component_test_values[i].size();
+      }
+    }
+
+    // If total == 1, then value has no subnormal components, so we can just
+    // return a vector with value in it.
+    if (total == 1) {
+      test_values.push_back(value);
+      return test_values;
+    }
+
+    test_values.reserve(total);
+
+    // Perform a Cartesian product of the vectors in component_test_values.
+    // We can calculate this by uniquely mapping each integer from 0 to
+    // (total - 1) to a list of component indices. The function that maps an
+    // integer z to the index of component j is:
+    //    component_index(j) =  (i / NumValues(0, j-1)) % NumValues(j, j)
+    // and NumIndices(x, y) is the number of values in the Cartesian product of
+    // component_test_values[x], component_test_values[x+1], ...
+    // component_test_values[y].
+    for (int i = 0; i < total; ++i) {
+      int accumulated_num_values = 1;
+      std::array<NativeRefT, N> test_value;
+      for (int j = 0; j < N; ++j) {
+        int num_indices = component_test_values[j].size();
+        int component_index = (i / accumulated_num_values) % num_indices;
+        test_value[j] = component_test_values[j][component_index];
+        accumulated_num_values *= num_indices;
+      }
+      test_values.push_back(std::move(test_value));
+    }
+    return test_values;
+  }
+
+  // The number of values that can be substituted for subnormal inputs.
+  static constexpr int kNumSubnormalSubstitutionValues = 4;
+
+  // Encodings used to determine where subnormal test values are cached.
+  static constexpr int kPositiveMin = 0;
+  static constexpr int kNegativeMin = 1;
+  static constexpr int kPositiveZero = 2;
+  static constexpr int kNegativeZero = 3;
+  static constexpr int kNonSubnormal = -1;
+  static constexpr int kInvalidCacheIndex = -1;
+
+  // Since we take the cross product of all possible test values, and each
+  // component has kNumSubnormalSubstitutionValues possible test values, then
+  // the total number of different cache locations are
+  // kNumSubnormalSubstitutionValues raised to the num_components.
+  // num_components = N for the reals, and 2*N for the complex.
+  static constexpr int GetMaxCacheSize() {
+    return pow(kNumSubnormalSubstitutionValues, N * (kIsComplex ? 2 : 1));
+  }
+
+  // When we are testing a value such that all of its components are subnormal,
+  // we also need to test inputs made up of the Cartesian product of values
+  // replaced for each subnormal component. These additional test inputs are
+  // common enough where it will be efficient to just cache the results of these
+  // Cartesian products. In order to cache these values, we need a one to one
+  // mapping between these Cartesian products and cache locations.
+  //
+  // Our mapping works by assigning each component an integer in
+  // [0, kNumSubnormalSubstitutionValues) based on its test value. By lining
+  // these integers up with the n'th component corresponding to the n'th digit,
+  // then for each Cartesian product element we essentially create a unique base
+  // kNumSubnormalSubstitutionValues number. This number represents our cache
+  // index.
+  //
+  // In the event that there a component is not a subnormal, the value should
+  // not be cached, so we return a kNonSubnormal value.
+
+  static int GetCacheLocation(ComponentNativeRefT value) {
+    bool positive = !std::signbit(value);
+    if (std::abs(value) == std::numeric_limits<ComponentNativeRefT>::min()) {
+      if (positive) {
+        return kPositiveMin;
+      } else {
+        return kNegativeMin;
+      }
+    } else if (value != 0) {
+      CHECK(std::fpclassify(value) != FP_SUBNORMAL);
+      return kNonSubnormal;
+    } else if (positive) {
+      return kPositiveZero;
+    } else {
+      return kNegativeZero;
+    }
+  }
+
+  static int GetCacheLocation(std::complex<ComponentNativeRefT> value) {
+    int real_loc = GetCacheLocation(value.real());
+    int imag_loc = GetCacheLocation(value.imag());
+    if (real_loc == kNonSubnormal || imag_loc == kNonSubnormal) {
+      return kNonSubnormal;
+    } else {
+      return real_loc * kNumSubnormalSubstitutionValues + imag_loc;
+    }
+  }
+
+  static int GetCacheLocation(const NativeRefInputs& input) {
+    int location = 0;
+    int cache_size_per_element =
+        (kIsComplex
+             ? kNumSubnormalSubstitutionValues * kNumSubnormalSubstitutionValues
+             : kNumSubnormalSubstitutionValues);
+    for (int i = 0; i < N; ++i) {
+      int comp_loc = GetCacheLocation(input[i]);
+      if (i == kNonSubnormal) {
+        return kNonSubnormal;
+      }
+      location *= cache_size_per_element;
+      location += comp_loc;
+    }
+    return location;
+  }
+
+  // The inverse function of GetCacheLocation.
+
+  template <bool complex, typename RetT>
+  static RetT FromCacheLocationComponent(int cache_loc) {
+    LOG(FATAL) << "Not implemented.";
+  }
+
+  template <>
+  static ComponentNativeRefT
+  FromCacheLocationComponent<false, ComponentNativeRefT>(int cache_loc) {
+    switch (cache_loc) {
+      case kPositiveMin:
+        return std::numeric_limits<ComponentNativeRefT>::min();
+      case kNegativeMin:
+        return -std::numeric_limits<ComponentNativeRefT>::min();
+      case kPositiveZero:
+        return static_cast<ComponentNativeRefT>(0.0);
+      case kNegativeZero:
+        return static_cast<ComponentNativeRefT>(-0.0);
+      default:
+        LOG(FATAL) << "Invalid cache_loc value of " << cache_loc;
+    }
+  }
+
+  template <>
+  static std::complex<ComponentNativeRefT>
+  FromCacheLocationComponent<true, std::complex<ComponentNativeRefT>>(
+      int cache_loc) {
+    CHECK_LT(cache_loc,
+             kNumSubnormalSubstitutionValues * kNumSubnormalSubstitutionValues);
+    CHECK_GE(cache_loc, 0);
+
+    std::complex<ComponentNativeRefT> value;
+    value.real(FromCacheLocationComponent<false, ComponentNativeRefT>(
+        cache_loc / kNumSubnormalSubstitutionValues));
+    value.imag(FromCacheLocationComponent<false, ComponentNativeRefT>(
+        cache_loc % kNumSubnormalSubstitutionValues));
+    return std::move(value);
+  }
+
+  static NativeRefInputs FromCacheLocation(int cache_loc) {
+    NativeRefInputs input;
+    int cache_size_per_element =
+        (kIsComplex
+             ? kNumSubnormalSubstitutionValues * kNumSubnormalSubstitutionValues
+             : kNumSubnormalSubstitutionValues);
+    for (int i = N - 1; i >= 0; --i) {
+      input[i] = FromCacheLocationComponent<kIsComplex, NativeRefT>(
+          cache_loc % cache_size_per_element);
+      cache_loc /= cache_size_per_element;
+    }
+
+    return input;
+  }
+
+  // Returns a string that describes the test value for the actual value.
+  std::string GetSubnormalDescription(ComponentNativeRefT test_val,
+                                      ComponentNativeRefT actual_val) {
+    const string sp_min_normal = "sign-preserving min-normal-float";
+    const string sp_zero = "sign-preserving zero";
+    const string nsp_zero = "non-sign-preserving zero";
+
+    switch (GetCacheLocation(test_val)) {
+      case kNegativeMin:
+      case kPositiveMin:
+        return sp_min_normal;
+      case kNegativeZero:
+      case kPositiveZero:
+        return (std::signbit(test_val) == std::signbit(actual_val)) ? sp_zero
+                                                                    : nsp_zero;
+      default:
+        return "";
+    }
+  }
+
+  std::string GetSubnormalDescription(
+      std::complex<ComponentNativeRefT> test_val,
+      std::complex<ComponentNativeRefT> actual_val) {
+    std::string real =
+        GetSubnormalDescription(test_val.real(), actual_val.real());
+    std::string imag =
+        GetSubnormalDescription(test_val.imag(), actual_val.imag());
+
+    if (real.empty()) {
+      if (imag.empty()) {
+        return "";
+      }
+      real = "real";
+    } else if (imag.empty()) {
+      imag = "imag";
+    }
+
+    return absl::StrCat("(", real, ", ", imag, ")");
+  }
+
+  std::string GetSubnormalDescription(std::array<NativeRefT, N> test_vals,
+                                      std::array<NativeRefT, N> actual_vals) {
+    if (N == 1) {
+      return GetSubnormalDescription(test_vals[0], actual_vals[0]);
+    }
+
+    std::array<std::string, N> str_vals;
+    for (int i = 0; i < N; ++i) {
+      str_vals[i] = GetSubnormalDescription(test_vals[i], actual_vals[i]);
+      if (str_vals[i].empty()) {
+        str_vals[i] = "original";
+      }
+    }
+
+    return absl::StrCat("(", absl::StrJoin(str_vals, ", "), ")");
+  }
+
+  InputLiterals CreateInputLiterals() {
+    InputLiterals literals;
+    for (int i = 0; i < N; ++i) {
+      literals[i] = LiteralUtil::CreateFromDimensions(T, {GetInputSize()});
+    }
+    return std::move(literals);
+  }
+
+  // Determines if two output values are sufficiently close to each other based
+  // on an error spec.
+  bool IsClose(NativeRefT expected, NativeRefT actual, ErrorSpec spec) {
+    // When two corresponding values are a NaN, they can be considered to have
+    // the same value, so the values are just set to 0.
+    RemoveCorrespondingNaNs(&expected, &actual);
+
+    if (spec.strict_signed_zeros) {
+      if (CheckSignedZeroError(expected, actual)) {
+        return false;
+      }
+    }
+
     // Replace Inf with Max when calculating absolute or relative errors. This
     // allows the test to pass when another value are close to Inf and the
     // specified absolute or relative errors are not zero.
-    T abs_err =
+    double abs_err =
         std::abs(ReplaceInfWithMax(expected) - ReplaceInfWithMax(actual));
-    T rel_err = abs_err / std::abs(ReplaceInfWithMax(expected));
-    if (spec.strict_signed_zeros && actual == T{0} && expected == T{0}) {
-      // Check sign of zero.
-      return std::signbit(actual) == std::signbit(expected);
-    }
-    return abs_err <= spec.abs_err || rel_err <= spec.rel_err ||
-           (std::isnan(expected) && std::isnan(actual)) ||
-           (std::isinf(expected) && std::isinf(actual) &&
-            (expected > 0) == (actual > 0));
+    double rel_err = abs_err / std::abs(ReplaceInfWithMax(expected));
+
+    return abs_err <= spec.abs_err || rel_err <= spec.rel_err;
   }
 
   template <typename ErrorGenerator>
@@ -180,57 +667,57 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // bit patterns for T. This bit pattern is zero extended and stored as uint64.
   // This function is used to convert such a bit pattern stored as uint64 to
   // the input value for T.
-  //
-  // T is the type of the floating value represented by the `bits`.
-  template <typename T>
-  T ConvertValue(uint64 bits) {
-    using I = typename test_util::IntegralTypeWithByteWidth<sizeof(T)>::type;
+  static ComponentNativeT ConvertValue(uint64 bits) {
+    using I = ComponentIntegralNativeT;
     I used_bits = static_cast<I>(bits);
-    return BitCast<T>(used_bits);
+    return BitCast<ComponentNativeT>(used_bits);
   }
 
-  template <typename T>
-  T ConvertAndReplaceKnownIncorrectValueWith(uint64 bits,
-                                             int replacement_value = 0) {
+  ComponentNativeT ConvertAndReplaceKnownIncorrectValueWith(
+      uint64 bits, int replacement_value = 0) {
     if (known_incorrect_fn_ && known_incorrect_fn_(bits)) {
-      return static_cast<T>(replacement_value);
+      return static_cast<ComponentNativeT>(replacement_value);
     }
-    return ConvertValue<T>(bits);
+    return ConvertValue(bits);
   }
 
-  static string StringifyNum(float x);
+  static string StringifyNum(ComponentNativeT x);
 
-  static string StringifyNum(half x);
-
-  static string StringifyNum(bfloat16 x);
-
-  template <typename T>
-  static string StringifyNum(std::complex<T> x) {
-    return absl::StrCat(StringifyNum(x.real()), " ", StringifyNum(x.imag()));
+  static string StringifyNum(std::complex<ComponentNativeT> x) {
+    return absl::StrCat("(", StringifyNum(x.real()), ", ",
+                        StringifyNum(x.imag()), ")");
   }
 
-  template <typename T>
-  static void AppendStringifyNum(std::string* s, T x) {
+  // We also stringify the NativeRefT, so we need to generate an additional
+  // version of this function when NativeRefT != NativeT.
+  template <
+      typename T1 = NativeRefT,
+      class = typename std::enable_if<!std::is_same<NativeT, T1>::value>::type>
+  static string StringifyNum(NativeRefT x) {
+    return ExhaustiveOpTestBase<RefT::value, N>::StringifyNum(x);
+  }
+
+  static string StringifyNum(const NativeInputs& inputs) {
+    if (N == 1) {
+      return StringifyNum(inputs[0]);
+    }
+
+    std::array<std::string, N> str_vals;
+    for (int i = 0; i < N; ++i) {
+      str_vals[i] = StringifyNum(inputs[i]);
+    }
+
+    return absl::StrCat("(", absl::StrJoin(str_vals, ", "), ")");
+  }
+
+  static void AppendStringifyNum(std::string* s, NativeT x) {
     absl::StrAppend(s, StringifyNum(x));
   }
 
-  static std::function<ErrorSpec(float)> GetDefaultSpecGenerator(
-      PrimitiveType ty);
-
-  static std::vector<std::pair<int64, int64>> CreateExhaustiveF32Ranges();
-
- private:
-  template <typename T>
-  T ReplaceInfWithMax(T value) {
-    if (std::isinf(value)) {
-      return std::copysign(std::numeric_limits<T>::max(), value);
-    }
-
-    return value;
-  }
+  static ErrorSpecGen GetDefaultSpecGenerator();
 
  protected:
-  // The primitive type under test.
+  // The primitive type being tested.
   const PrimitiveType ty_;
 
   // The platform under test.
@@ -249,6 +736,30 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   //
   // XLA:GPU preserves denormal signs, but other backends don't.
   bool relaxed_denormal_signs_ = platform_ != "CUDA";
+
+ private:
+  typedef NativeRefT (*EvaluateOpInternal)(NativeRefInputs);
+  typedef ErrorSpec (*ErrorSpecGenInternal)(NativeInputs);
+
+  template <typename Type, typename FuncPtr>
+  ErrorSpec CallErrorSpec(FuncPtr* func, const std::array<Type, 1>& in) {
+    return func(in[0]);
+  }
+
+  template <typename Type, typename FuncPtr>
+  ErrorSpec CallErrorSpec(FuncPtr* func, const std::array<Type, 2>& in) {
+    return func(in[0], in[1]);
+  }
+
+  template <typename Type, typename FuncPtr>
+  Type CallOperation(FuncPtr* func, const std::array<Type, 1>& in) {
+    return func(in[0]);
+  }
+
+  template <typename Type, typename FuncPtr>
+  Type CallOperation(FuncPtr* func, const std::array<Type, 2>& in) {
+    return func(in[0], in[1]);
+  }
 };
 
 // Represents a set of 64 bit chunks by representing the starting bit chunk,

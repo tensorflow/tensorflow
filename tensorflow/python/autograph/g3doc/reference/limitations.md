@@ -424,3 +424,40 @@ exceptions exist:
 Use
 [inspect.getsource](https://docs.python.org/3/library/inspect.html#inspect.getsource)
 to quickly diagnose whether the source code is available for a function.
+
+#### Source code of lambda functions
+
+Key Point: Declare lambda functions on separate lines to avoid failures to
+load their source code.
+
+The Python runtime exposes the source code of lambda functions, however it
+may include surrounding code. Typically, the code includes all the lines that
+contained the lambda function, including surrounding code. This may make it
+impossible to parse the exact source code of the lambda function.
+
+For example, consider the declaration of a lambda function below, which
+is otherwise valid Python code:
+
+```
+foo = (
+ 'bar',
+ lambda: x)
+```
+
+The Python runtime will report the following source code for `foo[0]`:
+
+```
+>>> inspect.getsource(foo[0])
+' lambda: x)\n'
+```
+
+The code is the entire line of code at which the lambda was declared. Because
+the line is part of a larger expression, the line itself is not syntactically
+correct and cannot be parsed.
+
+This shortcoming can be avoided by declaring the lambda function separately:
+
+```
+my_lambda = lambda: x
+foo = ('bar', my_lambda)
+```

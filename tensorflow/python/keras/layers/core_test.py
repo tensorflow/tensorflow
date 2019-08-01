@@ -154,7 +154,7 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     def lambda_fn(x):
       return math_ops.matmul(x[0], x[1])
 
-    l = keras.layers.Lambda(lambda_fn)
+    l = keras.layers.Lambda(lambda_fn, dtype=dtypes.float64)
     output_shape = l.compute_output_shape([(10, 10), (10, 20)])
     self.assertAllEqual((10, 20), output_shape)
     output_signature = l.compute_output_signature([

@@ -1948,7 +1948,11 @@ class PhasedLSTMCell(rnn_cell_impl.RNNCell):
         in an existing scope. If not `True`, and the existing scope already has
         the given variables, an error is raised.
     """
-    super(PhasedLSTMCell, self).__init__(_reuse=reuse)
+    # We pass experimental_autocast=False because this layer can accept inputs
+    # of different dtypes, so we do not want to automatically cast them to the
+    # same dtype.
+    super(PhasedLSTMCell, self).__init__(_reuse=reuse,
+                                         experimental_autocast=False)
     self._num_units = num_units
     self._use_peepholes = use_peepholes
     self._leak = leak

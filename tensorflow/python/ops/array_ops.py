@@ -704,13 +704,15 @@ def _slice_helper(tensor, slice_spec, var=None):
       # python doesn't always use None when constructing ranges
       # for example a[:] gives slice(None,sys.maxsize,None)
       # whereas a[::1] gives slice(None,None,None)
-      if s.start is not None and s.start is not sys.maxsize:
+      if s.start is not None and (isinstance(s.start, ops.Tensor) or
+                                  s.start != sys.maxsize):
         _check_index(s.start)
         begin.append(s.start)
       else:
         begin.append(0)
         begin_mask |= (1 << index)
-      if s.stop is not None and s.stop != sys.maxsize:
+      if s.stop is not None and (isinstance(s.stop, ops.Tensor) or
+                                 s.stop != sys.maxsize):
         _check_index(s.stop)
         end.append(s.stop)
       else:
@@ -2028,7 +2030,7 @@ def matrix_diag(diagonal,
     A Tensor. Has the same type as `diagonal`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 7, 31):
+  if compat.forward_compatible(2019, 8, 31):
     # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
 
     # Special case to sidestep the tf.constant conversion error:
@@ -2140,7 +2142,7 @@ def matrix_diag_part(
     A Tensor containing diagonals of `input`. Has the same type as `input`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 7, 31):
+  if compat.forward_compatible(2019, 8, 31):
     # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
 
     # Special case to sidestep the tf.constant conversion error:
@@ -2247,7 +2249,7 @@ def matrix_set_diag(
       and high ends of a matrix band. `k[0]` must not be larger than `k[1]`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 7, 31):
+  if compat.forward_compatible(2019, 8, 31):
     # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
     return gen_array_ops.matrix_set_diag_v2(
         input=input, diagonal=diagonal, k=k, name=name)

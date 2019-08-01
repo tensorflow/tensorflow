@@ -42,6 +42,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
@@ -2124,6 +2125,32 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # Make sure the pre registered function is used, and no other function
         # is added.
         self.assertLen(graph._functions, 6)
+
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun',
+           function_decorator=function.defun),
+      dict(testcase_name='DefFunction',
+           function_decorator=def_function.function))
+  def testEagerCaptures(self, function_decorator):
+    with context.eager_mode():
+      large_tensor = array_ops.ones(shape=(256,))
+      self.assertGreater(256, func_graph._EAGER_CONST_THRESHOLD)
+
+      small_tensor = array_ops.ones(shape=(4,))
+      self.assertLessEqual(4, func_graph._EAGER_CONST_THRESHOLD)
+
+      v = resource_variable_ops.ResourceVariable(0.0)
+
+    for captured, op_type in [(large_tensor, 'Placeholder'),
+                              (small_tensor, 'Const'), (v, 'Placeholder')]:
+      @function_decorator
+      def test_fn():
+        return captured + 1  # pylint: disable=cell-var-from-loop
+
+      g = test_fn.get_concrete_function().graph
+      internal_captures = g.internal_captures
+      self.assertLen(internal_captures, 1)
+      self.assertEqual(internal_captures[0].op.type, op_type)
 
   def testRegisterFunctionWithInputSignature(self):
     def matmul(x, y):

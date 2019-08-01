@@ -38,6 +38,7 @@ from tensorflow.python.keras import models
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
@@ -173,16 +174,71 @@ class KerasLayerTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
-  def test_variables_in_float32(self, strategy_fn):
+  def test_infer_with_float32_vars(self, strategy_fn):
     x = constant_op.constant([1.], dtype=dtypes.float16)
-    with strategy_fn().scope():
-      with policy.policy_scope('infer_float32_vars'):
-        layer = AddLayer(assert_type=dtypes.float16)
+    with strategy_fn().scope(), policy.policy_scope('infer_float32_vars'):
+      layer = AddLayer(assert_type=dtypes.float16)
+      self.assertEqual(layer.dtype, dtypes.float32)
+      y = layer(x)
+      self.assertEqual(layer.v.dtype, dtypes.float32)
+      self.assertEqual(y.dtype, dtypes.float16)
+      self.assertEqual(layer.dtype, dtypes.float32)
+      self.assertEqual(layer._dtype_policy._name, 'float16_with_float32_vars')
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEqual(self.evaluate(y), 2.)
+
+      if base_layer_utils.v2_dtype_behavior_enabled():
+        # Layer should now cast inputs to float16
+        x = constant_op.constant([1.], dtype=dtypes.float32)
+        y = layer(x)
+        self.assertEqual(y.dtype, dtypes.float16)
+
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
+  @testing_utils.enable_v2_dtype_behavior
+  def test_floating_point_policies_with_float32_vars(self, strategy_fn):
+    for dtype in 'bfloat16', 'float16', 'float64':
+      x = constant_op.constant([1.])
+      policy_name = dtype + '_with_float32_vars'
+      with strategy_fn().scope(), policy.policy_scope(policy_name):
+        layer = AddLayer(assert_type=dtype)
+        self.assertEqual(layer.dtype, dtypes.float32)
+        self.assertEqual(layer._dtype_policy._name, policy_name)
         y = layer(x)
         self.assertEqual(layer.v.dtype, dtypes.float32)
-        self.assertEqual(y.dtype, dtypes.float16)
+        self.assertEqual(y.dtype, dtype)
+        self.assertEqual(layer.dtype, dtypes.float32)
+        self.assertEqual(layer._dtype_policy._name, policy_name)
         self.evaluate(variables.global_variables_initializer())
         self.assertEqual(self.evaluate(y), 2.)
+
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
+  @testing_utils.enable_v2_dtype_behavior
+  def test_int32_with_float32_vars(self, strategy_fn):
+
+    # The policy int32_with_float32_vars is not useful at all (nor is any other
+    # non-float policy with float32 variables), but we have it for consistency,
+    # and so we test it.
+
+    class IdentityLayerWithVar(base_layer.Layer):
+
+      def build(self, _):
+        self.v = self.add_weight('v', ())
+
+      def call(self, inputs):
+        # Variables are only casted to other floats, not ints
+        assert array_ops.identity(self.v).dtype == 'float32'
+        return array_ops.identity(inputs)
+
+    x = constant_op.constant([1])
+    with strategy_fn().scope(), policy.policy_scope('int32_with_float32_vars'):
+      layer = IdentityLayerWithVar()
+      self.assertEqual(layer.dtype, dtypes.float32)
+      self.assertEqual(layer._dtype_policy._name, 'int32_with_float32_vars')
+      y = layer(x)
+      self.assertEqual(layer.v.dtype, dtypes.float32)
+      self.assertEqual(y.dtype, dtypes.int32)
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
@@ -212,7 +268,7 @@ class KerasLayerTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
-  def test_layer_regularizer_runs_in_float32(self, strategy_fn):
+  def test_layer_regularizer_runs_in_var_dtype(self, strategy_fn):
     x = constant_op.constant([1.], dtype=dtypes.float16)
     with strategy_fn().scope():
       with policy.policy_scope('infer_float32_vars'):
@@ -255,6 +311,16 @@ class KerasLayerTest(keras_parameterized.TestCase):
         layer(x)
         self.assertEqual(layer.v.dtype, dtypes.float16)
         self.assertEqual(layer.dtype, dtypes.float16)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_error_passing_policy_string_to_layer(self):
+    with self.assertRaisesRegexp(
+        TypeError, "Cannot convert value 'float16_with_float32_vars' to a "
+                   "TensorFlow DType"):
+      # This is not allowed, as otherwise a "float16_with_float32_vars" policy
+      # could be created without an API call that has the name "experimental" in
+      # it.
+      AddLayer(dtype='float16_with_float32_vars')
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
@@ -304,7 +370,7 @@ class KerasLayerTest(keras_parameterized.TestCase):
     with strategy_fn().scope():
       with policy.policy_scope(save_policy):
         layer = AddLayer(assert_type=save_input_dtype)
-        layer.build(())
+        layer(x)  # Build layer
     layer.set_weights([np.array(100.)])
     self.assertEqual(self.evaluate(layer(x)), 101.)
     checkpoint = trackable_utils.Checkpoint(layer=layer)
@@ -316,7 +382,7 @@ class KerasLayerTest(keras_parameterized.TestCase):
     with strategy_fn().scope():
       with policy.policy_scope(load_policy):
         layer = AddLayer(assert_type=load_input_dtype)
-        layer.build(())
+        layer(x)  # Build layer
     layer.set_weights([np.array(200.)])
     self.assertEqual(self.evaluate(layer(x)), 201.)
     checkpoint = trackable_utils.Checkpoint(layer=layer)
@@ -366,20 +432,26 @@ class KerasModelTest(keras_parameterized.TestCase):
           'strategy_fn': create_mirrored_strategy,
           'use_regularizer': True
       }, {
+          'testcase_name': 'infer',
+          'strategy_fn': create_mirrored_strategy,
+          'policy_name': 'infer_with_float32_vars'
+      }, {
           'testcase_name': 'norun_distributed',
           'strategy_fn': create_mirrored_strategy,
           'experimental_run_tf_function': False
       })
+  @testing_utils.enable_v2_dtype_behavior
   def test_model(self,
                  strategy_fn,
                  use_operator=False,
                  use_regularizer=False,
+                 policy_name='float16_with_float32_vars',
                  experimental_run_tf_function=True):
     if not self._is_strategy_supported(strategy_fn, check_model_type=True):
       return
     regularizer = IdentityRegularizer() if use_regularizer else None
     with strategy_fn().scope():
-      with policy.policy_scope('infer_float32_vars'):
+      with policy.policy_scope(policy_name):
         layer_list = []
         if testing_utils.get_model_type() == 'subclass':
           # Subclassed models do not have an Input layer, so the model does not
@@ -493,6 +565,7 @@ class KerasModelTest(keras_parameterized.TestCase):
           'strategy_fn': create_mirrored_strategy,
           'use_loss_scaling': True
       })
+  @testing_utils.enable_v2_dtype_behavior
   def test_advanced_model(self, strategy_fn, use_loss_scaling=False):
     # The advanced model tests mixed-precision-related features that would occur
     # in a resnet50 model. It tests a model that has:
@@ -509,8 +582,8 @@ class KerasModelTest(keras_parameterized.TestCase):
     learning_rate = 2**-14
 
     with strategy.scope():
-      with policy.policy_scope(policy.Policy('infer_float32_vars')):
-        x = layers.Input(shape=(1,), batch_size=2, dtype=dtypes.float16)
+      with policy.policy_scope(policy.Policy('float16_with_float32_vars')):
+        x = layers.Input(shape=(1,), batch_size=2)
         layer1 = AddLayer(
             assert_type=dtypes.float16,
             regularizer=IdentityRegularizer(),

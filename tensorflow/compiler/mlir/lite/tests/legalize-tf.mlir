@@ -213,6 +213,20 @@ func @sigmoid(%arg0: tensor<?x88xf16>) -> tensor<?x88xf16> {
 // CHECK:  %0 = "tfl.logistic"(%arg0) : (tensor<?x88xf16>) -> tensor<?x88xf16>
 }
 
+func @sqrt(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Sqrt"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+// CHECK-LABEL: sqrt
+// CHECK:  %0 = "tfl.sqrt"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+}
+
+func @square(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Square"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+// CHECK-LABEL: square
+// CHECK:  %0 = "tfl.square"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+}
+
 func @log_softmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.LogSoftmax"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
   return %0 : tensor<8x16xf32>

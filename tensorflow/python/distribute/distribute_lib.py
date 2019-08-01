@@ -2290,9 +2290,12 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
     if kwargs.get("trainable", True):
       collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
       l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
-      for v in value_list:
-        if v in l:
-          l.remove(v)
+      for value in value_list:
+        for i, trainable_variable in enumerate(l):
+          if value is trainable_variable:
+            del l[i]
+            break
+
     g.add_to_collections(collections, result)
   elif ops.GraphKeys.GLOBAL_STEP in collections:
     ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, result)
