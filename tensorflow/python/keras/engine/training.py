@@ -248,9 +248,18 @@ class Model(network.Network):
     self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', False)
 
+    if isinstance(optimizer, (list, tuple)):
+      self.optimizer = [optimizers.get(opt) for opt in optimizer]
+      is_any_optimizer_v1 = any(
+          isinstance(opt, optimizers.Optimizer) for opt in self.optimizer)
+    else:
+      self.optimizer = optimizers.get(optimizer)
+      is_any_optimizer_v1 = isinstance(self.optimizer, optimizers.Optimizer)
+
     if ((sample_weight_mode is not None)
         or (target_tensors is not None)
         or (weighted_metrics is not None)
+        or is_any_optimizer_v1
         or not context.executing_eagerly()):
       # Fallback out of things that aren't supported with v2 loops
       self._experimental_run_tf_function = False
@@ -282,10 +291,6 @@ class Model(network.Network):
                                                              sample_weight_mode,
                                                              target_tensors,
                                                              weighted_metrics)
-    if isinstance(optimizer, (list, tuple)):
-      self.optimizer = [optimizers.get(opt) for opt in optimizer]
-    else:
-      self.optimizer = optimizers.get(optimizer)
     # We've disabled automatic dependency tracking for this method, but do want
     # to add a checkpoint dependency on the optimizer if it's trackable.
     if isinstance(self.optimizer, trackable.Trackable):

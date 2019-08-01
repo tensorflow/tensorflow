@@ -258,15 +258,9 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             experimental_run_tf_function=experimental_run_tf_function)
 
       dataset = keras_test_lib.get_dataset(distribution)
-
-      if experimental_run_tf_function and mode == 'eager':
-        exception_error_message = (
-            '`validation_split` argument is not supported when data adapter'
-            ' is.+')
-      else:
-        exception_error_message = (
-            '`validation_split` argument is not supported when input `x`'
-            ' is a dataset or a dataset iterator.+')
+      exception_error_message = (
+          '`validation_split` argument is not supported when input `x`'
+          ' is a dataset or a dataset iterator.+')
 
       # Test with validation split
       with self.assertRaisesRegexp(ValueError, exception_error_message):

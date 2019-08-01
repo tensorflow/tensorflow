@@ -588,18 +588,10 @@ class TrainingTest(keras_parameterized.TestCase):
     input_a_np = np.random.random((10, 3))
     input_b_np = np.random.random((10, 4))
 
-    if testing_utils.should_run_tf_function():
-      model.fit(np.ndarray.tolist(input_a_np),
-                np.ndarray.tolist(input_b_np),
-                epochs=2,
-                batch_size=5,
-                verbose=2)
-    else:
-      model.fit([np.ndarray.tolist(input_a_np)],
-                [np.ndarray.tolist(input_b_np)],
-                epochs=2,
-                batch_size=5,
-                verbose=2)
+    model.fit([np.ndarray.tolist(input_a_np)], [np.ndarray.tolist(input_b_np)],
+              epochs=2,
+              batch_size=5,
+              verbose=2)
 
   @keras_parameterized.run_all_keras_modes
   def test_evaluate_predict_on_arrays(self):
