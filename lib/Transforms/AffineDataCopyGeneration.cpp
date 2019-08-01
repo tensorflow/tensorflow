@@ -1,4 +1,4 @@
-//===- DmaGeneration.cpp - DMA generation pass ------------------------ -*-===//
+//===- AffineDataCopyGeneration.cpp - Explicit memref copying pass ------*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -17,7 +17,14 @@
 //
 // This file implements a pass to automatically promote accessed memref regions
 // to buffers in a faster memory space that is explicitly managed, with the
-// necessary data movement operations expressed as DMAs.
+// necessary data movement operations performed through either regular
+// point-wise load/store's or DMAs. Such explicit copying (also referred to as
+// array packing/unpacking in the literature), when done on arrays that exhibit
+// reuse, results in near elimination of conflict misses, TLB misses, reduced
+// use of hardware prefetch streams, and reduced false sharing. It is also
+// necessary for hardware that explicitly managed levels in the memory
+// hierarchy, and where DMAs may have to be used. This optimization is often
+// performed on already tiled code.
 //
 //===----------------------------------------------------------------------===//
 
@@ -34,7 +41,7 @@
 #include "llvm/Support/Debug.h"
 #include <algorithm>
 
-#define DEBUG_TYPE "affine-dma-generate"
+#define DEBUG_TYPE "affine-data-copy-generate"
 
 using namespace mlir;
 using llvm::SmallMapVector;
@@ -42,38 +49,46 @@ using llvm::SmallMapVector;
 static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 
 static llvm::cl::opt<unsigned long long> clFastMemoryCapacity(
-    "dma-fast-mem-capacity",
+    "affine-data-copy-generate-fast-mem-capacity",
     llvm::cl::desc(
         "Set fast memory space capacity in KiB (default: unlimited)"),
     llvm::cl::cat(clOptionsCategory));
 
+static llvm::cl::opt<bool>
+    clDma("affine-data-copy-generate-dma",
+          llvm::cl::desc("Generate DMA instead of point-wise copy"),
+          llvm::cl::cat(clOptionsCategory),
+          llvm::cl::init(true));
+
 static llvm::cl::opt<unsigned> clFastMemorySpace(
-    "dma-fast-mem-space", llvm::cl::init(2),
+    "affine-data-copy-generate-fast-mem-space", llvm::cl::init(0),
     llvm::cl::desc(
-        "Fast memory space identifier for DMA generation (default: 1)"),
+        "Fast memory space identifier for copy generation (default: 1)"),
     llvm::cl::cat(clOptionsCategory));
 
 static llvm::cl::opt<bool> clSkipNonUnitStrideLoop(
-    "dma-skip-non-unit-stride-loops", llvm::cl::Hidden, llvm::cl::init(false),
+    "affine-data-copy-generate-skip-non-unit-stride-loops", llvm::cl::Hidden,
+    llvm::cl::init(false),
     llvm::cl::desc("Testing purposes: avoid non-unit stride loop choice depths "
-                   "for DMA placement"),
+                   "for copy placement"),
     llvm::cl::cat(clOptionsCategory));
 
 namespace {
 
 /// Replaces all loads and stores on memref's living in 'slowMemorySpace' by
-/// introducing DMA operations (strided DMA if necessary) to transfer data into
-/// `fastMemorySpace` and rewriting the original load's/store's to instead
-/// load/store from the allocated fast memory buffers. Additional options
-/// specify the identifier corresponding to the fast memory space and the amount
-/// of fast memory space available. The pass traverses through the nesting
-/// structure, recursing to inner levels if necessary to determine at what depth
-/// DMA transfers need to be placed so that the allocated buffers fit within the
-/// memory capacity provided.
-// TODO(bondhugula): We currently can't generate DMAs correctly when stores are
-// strided. Check for strided stores.
-struct DmaGeneration : public FunctionPass<DmaGeneration> {
-  explicit DmaGeneration(
+/// introducing copy operations to transfer data into `fastMemorySpace` and
+/// rewriting the original load's/store's to instead load/store from the
+/// allocated fast memory buffers. Additional options specify the identifier
+/// corresponding to the fast memory space and the amount of fast memory space
+/// available. The pass traverses through the nesting structure, recursing to
+/// inner levels if necessary to determine at what depth copies need to be
+/// placed so that the allocated buffers fit within the memory capacity
+/// provided.
+// TODO(bondhugula): We currently can't generate copies correctly when stores
+// are strided. Check for strided stores.
+struct AffineDataCopyGeneration
+    : public FunctionPass<AffineDataCopyGeneration> {
+  explicit AffineDataCopyGeneration(
       unsigned slowMemorySpace = 0,
       unsigned fastMemorySpace = clFastMemorySpace, unsigned tagMemorySpace = 0,
       int minDmaTransferSize = 1024,
@@ -82,7 +97,7 @@ struct DmaGeneration : public FunctionPass<DmaGeneration> {
         tagMemorySpace(tagMemorySpace), minDmaTransferSize(minDmaTransferSize),
         fastMemCapacityBytes(fastMemCapacityBytes) {}
 
-  explicit DmaGeneration(const DmaGeneration &other)
+  explicit AffineDataCopyGeneration(const AffineDataCopyGeneration &other)
       : slowMemorySpace(other.slowMemorySpace),
         fastMemorySpace(other.fastMemorySpace),
         tagMemorySpace(other.tagMemorySpace),
@@ -90,29 +105,33 @@ struct DmaGeneration : public FunctionPass<DmaGeneration> {
         fastMemCapacityBytes(other.fastMemCapacityBytes) {}
 
   void runOnFunction() override;
-  bool runOnBlock(Block *block);
+  LogicalResult runOnBlock(Block *block);
   uint64_t runOnBlock(Block::iterator begin, Block::iterator end);
 
-  bool generateDma(const MemRefRegion &region, Block *block,
-                   Block::iterator begin, Block::iterator end,
-                   uint64_t *sizeInBytes, Block::iterator *nBegin,
-                   Block::iterator *nEnd);
+  LogicalResult generateCopy(const MemRefRegion &region, Block *block,
+                             Block::iterator begin, Block::iterator end,
+                             uint64_t *sizeInBytes, Block::iterator *nBegin,
+                             Block::iterator *nEnd);
 
-  // List of memory regions to DMA for. We need a map vector to have a
+  // List of memory regions to copy for. We need a map vector to have a
   // guaranteed iteration order to write test cases. CHECK-DAG doesn't help here
   // since the alloc's for example are identical except for the SSA id.
   SmallMapVector<Value *, std::unique_ptr<MemRefRegion>, 4> readRegions;
   SmallMapVector<Value *, std::unique_ptr<MemRefRegion>, 4> writeRegions;
 
-  // Map from original memref's to the DMA buffers that their accesses are
+  // Nests that are copy in's or copy out's; the root AffineForOp of that
+  // nest is stored herein.
+  DenseSet<Operation *> copyNests;
+
+  // Map from original memref's to the fast buffers that their accesses are
   // replaced with.
   DenseMap<Value *, Value *> fastBufferMap;
 
-  // Slow memory space associated with DMAs.
+  // Slow memory space associated with copies.
   const unsigned slowMemorySpace;
-  // Fast memory space associated with DMAs.
+  // Fast memory space associated with copies.
   unsigned fastMemorySpace;
-  // Tag memory space associated with DMAs.
+  // Memory space associated with DMA tags.
   unsigned tagMemorySpace;
   // Minimum DMA transfer size supported by the target in bytes.
   const int minDmaTransferSize;
@@ -125,17 +144,16 @@ struct DmaGeneration : public FunctionPass<DmaGeneration> {
 
 } // end anonymous namespace
 
-/// Generates DMAs for memref's living in 'slowMemorySpace' into newly created
+/// Generates copies for memref's living in 'slowMemorySpace' into newly created
 /// buffers in 'fastMemorySpace', and replaces memory operations to the former
 /// by the latter. Only load op's handled for now.
 /// TODO(bondhugula): extend this to store op's.
-FunctionPassBase *mlir::createDmaGenerationPass(unsigned slowMemorySpace,
-                                                unsigned fastMemorySpace,
-                                                unsigned tagMemorySpace,
-                                                int minDmaTransferSize,
-                                                uint64_t fastMemCapacityBytes) {
-  return new DmaGeneration(slowMemorySpace, fastMemorySpace, tagMemorySpace,
-                           minDmaTransferSize, fastMemCapacityBytes);
+FunctionPassBase *mlir::createAffineDataCopyGenerationPass(
+    unsigned slowMemorySpace, unsigned fastMemorySpace, unsigned tagMemorySpace,
+    int minDmaTransferSize, uint64_t fastMemCapacityBytes) {
+  return new AffineDataCopyGeneration(slowMemorySpace, fastMemorySpace,
+                                      tagMemorySpace, minDmaTransferSize,
+                                      fastMemCapacityBytes);
 }
 
 // Info comprising stride and number of elements transferred every stride.
@@ -220,31 +238,78 @@ emitRemarkForBlock(Block &block) {
   return block.getContainingOp()->emitRemark();
 }
 
+/// Generates a point-wise copy from/to `memref' to/from `fastMemRef' and
+/// returns the outermost AffineForOp of the copy loop nest. `memIndicesStart'
+/// holds the lower coordinates of the region in the original memref to copy
+/// in/out. If `copyOut' is true, generates a copy-out; otherwise a copy-in.
+static AffineForOp generatePointWiseCopy(Location loc, Value *memref,
+                                         Value *fastMemRef,
+                                         ArrayRef<Value *> memIndicesStart,
+                                         ArrayRef<int64_t> fastBufferShape,
+                                         bool isCopyOut, OpBuilder b) {
+  assert(!memIndicesStart.empty() && "only 1-d or more memrefs");
+
+  // The copy-in nest is generated as follows as an example for a 2-d region:
+  // for x = ...
+  //   for y = ...
+  //     fast_buf[x][y] = buf[mem_x + x][mem_y + y]
+
+  SmallVector<Value *, 4> fastBufIndices, memIndices;
+  AffineForOp copyNestRoot;
+  for (unsigned d = 0, e = fastBufferShape.size(); d < e; ++d) {
+    auto forOp = b.create<AffineForOp>(loc, 0, fastBufferShape[d]);
+    if (d == 0)
+      copyNestRoot = forOp;
+    b = forOp.getBodyBuilder();
+    fastBufIndices.push_back(forOp.getInductionVar());
+    // Construct the subscript for the slow memref being copied.
+    SmallVector<Value *, 2> operands = {memIndicesStart[d], forOp.getInductionVar()};
+    auto memIndex = b.create<AffineApplyOp>(
+        loc,
+        b.getAffineMap(2, 0, b.getAffineDimExpr(0) + b.getAffineDimExpr(1)),
+        operands);
+    memIndices.push_back(memIndex);
+  }
+
+  if (!isCopyOut) {
+    // Copy in.
+    auto load = b.create<AffineLoadOp>(loc, memref, memIndices);
+    b.create<AffineStoreOp>(loc, load, fastMemRef, fastBufIndices);
+    return copyNestRoot;
+  }
+
+  // Copy out.
+  auto load = b.create<AffineLoadOp>(loc, fastMemRef, fastBufIndices);
+  b.create<AffineStoreOp>(loc, load, memref, memIndices);
+  return copyNestRoot;
+}
+
 /// Creates a buffer in the faster memory space for the specified region;
-/// generates a DMA from the lower memory space to this one, and replaces all
-/// loads to load from that buffer. Returns false if DMAs could not be generated
-/// due to yet unimplemented cases. `begin` and `end` specify the insertion
-/// points where the incoming DMAs and outgoing DMAs, respectively, should
-/// be inserted (the insertion happens right before the insertion point). Since
-/// `begin` can itself be invalidated due to the memref rewriting done from this
-/// method, the output argument `nBegin` is set to its replacement (set
-/// to `begin` if no invalidation happens). Since outgoing DMAs are inserted at
-/// `end`, the output argument `nEnd` is set to the one following the original
-/// end (since the latter could have been invalidated/replaced). `sizeInBytes`
-/// is set to the size of the DMA buffer allocated.
-bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
-                                Block::iterator begin, Block::iterator end,
-                                uint64_t *sizeInBytes, Block::iterator *nBegin,
-                                Block::iterator *nEnd) {
+/// generates a copy from the lower memory space to this one, and replaces all
+/// loads to load from that buffer. Returns failure if copies could not be
+/// generated due to yet unimplemented cases. `begin` and `end` specify the
+/// insertion points where the incoming copies and outgoing copies,
+/// respectively, should be inserted (the insertion happens right before the
+/// insertion point). Since `begin` can itself be invalidated due to the memref
+/// rewriting done from this method, the output argument `nBegin` is set to its
+/// replacement (set to `begin` if no invalidation happens). Since outgoing
+/// copies are inserted at `end`, the output argument `nEnd` is set to the one
+/// following the original end (since the latter could have been
+/// invalidated/replaced). `sizeInBytes` is set to the size of the fast buffer
+/// allocated.
+LogicalResult AffineDataCopyGeneration::generateCopy(
+    const MemRefRegion &region, Block *block, Block::iterator begin,
+    Block::iterator end, uint64_t *sizeInBytes, Block::iterator *nBegin,
+    Block::iterator *nEnd) {
   *nBegin = begin;
   *nEnd = end;
 
   if (begin == end)
-    return true;
+    return success();
 
-  // DMAs for read regions are going to be inserted just before the for loop.
+  // Copies for read regions are going to be inserted at 'begin'.
   OpBuilder prologue(block, begin);
-  // DMAs for write regions are going to be inserted just after the for loop.
+  // Copies for write regions are going to be inserted at 'end'.
   OpBuilder epilogue(block, end);
   OpBuilder &b = region.isWrite() ? epilogue : prologue;
 
@@ -260,13 +325,13 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   if (layoutMaps.size() > 1 ||
       (layoutMaps.size() == 1 && !layoutMaps[0].isIdentity())) {
     LLVM_DEBUG(llvm::dbgs() << "Non-identity layout map not yet supported\n");
-    return false;
+    return failure();
   }
 
-  // Indices to use for the DmaStart op.
-  // Indices for the original memref being DMAed from/to.
+  // Indices to use for the copying.
+  // Indices for the original memref being copied from/to.
   SmallVector<Value *, 4> memIndices;
-  // Indices for the faster buffer being DMAed into/from.
+  // Indices for the faster buffer being copied into/from.
   SmallVector<Value *, 4> bufIndices;
 
   unsigned rank = memRefType.getRank();
@@ -280,19 +345,19 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
       &fastBufferShape, &lbs, &lbDivisors);
   if (!numElements.hasValue()) {
     LLVM_DEBUG(llvm::dbgs() << "Non-constant region size not supported\n");
-    return false;
+    return failure();
   }
 
   if (numElements.getValue() == 0) {
-    LLVM_DEBUG(llvm::dbgs() << "Nothing to DMA\n");
+    LLVM_DEBUG(llvm::dbgs() << "Nothing to copy\n");
     *sizeInBytes = 0;
-    return true;
+    return success();
   }
 
   const FlatAffineConstraints *cst = region.getConstraints();
   // 'regionSymbols' hold values that this memory region is symbolic/paramteric
-  // on; these typically include loop IVs surrounding the level at which the DMA
-  // generation is being done or other valid symbols in MLIR.
+  // on; these typically include loop IVs surrounding the level at which the
+  // copy generation is being done or other valid symbols in MLIR.
   SmallVector<Value *, 8> regionSymbols;
   cst->getIdValues(rank, cst->getNumIds(), &regionSymbols);
 
@@ -315,7 +380,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
     offset =
         (offset + lbs[d][cst->getNumCols() - 1 - rank]).floorDiv(lbDivisors[d]);
 
-    // Set DMA start location for this dimension in the lower memory space
+    // Set copy start location for this dimension in the lower memory space
     // memref.
     if (auto caf = offset.dyn_cast<AffineConstantExpr>()) {
       auto indexVal = caf.getValue();
@@ -332,7 +397,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
           cst->getNumDimIds() + cst->getNumSymbolIds() - rank, 0, offset);
       memIndices.push_back(b.create<AffineApplyOp>(loc, map, regionSymbols));
     }
-    // The fast buffer is DMAed into at location zero; addressing is relative.
+    // The fast buffer is copied into at location zero; addressing is relative.
     bufIndices.push_back(zeroIndex);
 
     // Record the offsets since they are needed to remap the memory accesses of
@@ -357,7 +422,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
     // fastMemRefType is a constant shaped memref.
     *sizeInBytes = getMemRefSizeInBytes(fastMemRefType).getValue();
     LLVM_DEBUG(emitRemarkForBlock(*block)
-               << "Creating DMA buffer of type " << fastMemRefType
+               << "Creating fast buffer of type " << fastMemRefType
                << " and size " << llvm::divideCeil(*sizeInBytes, 1024)
                << " KiB\n");
   } else {
@@ -365,10 +430,6 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
     fastMemRef = fastBufferMap[memref];
     *sizeInBytes = 0;
   }
-  // Create a tag (single element 1-d memref) for the DMA.
-  auto tagMemRefType =
-      top.getMemRefType({1}, top.getIntegerType(32), {}, tagMemorySpace);
-  auto tagMemRef = prologue.create<AllocOp>(loc, tagMemRefType);
 
   auto numElementsSSA =
       top.create<ConstantIndexOp>(loc, numElements.getValue());
@@ -380,7 +441,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   // multi-level strides.
   if (strideInfos.size() > 1) {
     LLVM_DEBUG(llvm::dbgs() << "Only up to one level of stride supported\n");
-    return false;
+    return failure();
   }
 
   Value *stride = nullptr;
@@ -392,9 +453,9 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   }
 
   // Record the last operation just before the point where we insert the
-  // outgoing DMAs. We later do the memref replacement later only in [begin,
-  // postDomFilter] so that the original memref's in the DMA ops themselves
-  // don't get replaced.
+  // copy out's. We later do the memref replacement later only in [begin,
+  // postDomFilter] so that the original memref's in the data movement code
+  // themselves don't get replaced.
   auto postDomFilter = std::prev(end);
 
   // Create fully composed affine maps for each memref.
@@ -402,40 +463,65 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   fullyComposeAffineMapAndOperands(&memAffineMap, &memIndices);
   auto bufAffineMap = b.getMultiDimIdentityMap(bufIndices.size());
   fullyComposeAffineMapAndOperands(&bufAffineMap, &bufIndices);
-  SmallVector<Value *, 4> tagIndices({zeroIndex});
-  auto tagAffineMap = b.getMultiDimIdentityMap(tagIndices.size());
-  fullyComposeAffineMapAndOperands(&tagAffineMap, &tagIndices);
-  if (!region.isWrite()) {
-    // DMA non-blocking read from original buffer to fast buffer.
-    b.create<AffineDmaStartOp>(loc, memref, memAffineMap, memIndices,
-                               fastMemRef, bufAffineMap, bufIndices, tagMemRef,
-                               tagAffineMap, tagIndices, numElementsSSA, stride,
-                               numEltPerStride);
+
+  if (!clDma) {
+    auto copyNest = generatePointWiseCopy(loc, memref, fastMemRef, memIndices,
+                                          fastBufferShape,
+                                          /*isCopyOut=*/region.isWrite(), b);
+
+    // Record this so that we can skip it from yet another copy.
+    copyNests.insert(copyNest);
+
+    if (region.isWrite())
+      // Since new ops are being appended (for copy out's), adjust the end to
+      // mark end of block range being processed.
+      *nEnd = Block::iterator(copyNest.getOperation());
   } else {
-    // DMA non-blocking write from fast buffer to the original memref.
-    auto op = b.create<AffineDmaStartOp>(
-        loc, fastMemRef, bufAffineMap, bufIndices, memref, memAffineMap,
-        memIndices, tagMemRef, tagAffineMap, tagIndices, numElementsSSA, stride,
-        numEltPerStride);
-    // Since new ops are being appended (for outgoing DMAs), adjust the end to
-    // mark end of range of the original.
-    *nEnd = Block::iterator(op.getOperation());
+    // Create a tag (single element 1-d memref) for the DMA.
+    auto tagMemRefType =
+        top.getMemRefType({1}, top.getIntegerType(32), {}, tagMemorySpace);
+    auto tagMemRef = prologue.create<AllocOp>(loc, tagMemRefType);
+
+    SmallVector<Value *, 4> tagIndices({zeroIndex});
+    auto tagAffineMap = b.getMultiDimIdentityMap(tagIndices.size());
+    fullyComposeAffineMapAndOperands(&tagAffineMap, &tagIndices);
+    if (!region.isWrite()) {
+      // DMA non-blocking read from original buffer to fast buffer.
+      b.create<AffineDmaStartOp>(loc, memref, memAffineMap, memIndices,
+                                 fastMemRef, bufAffineMap, bufIndices,
+                                 tagMemRef, tagAffineMap, tagIndices,
+                                 numElementsSSA, stride, numEltPerStride);
+    } else {
+      // DMA non-blocking write from fast buffer to the original memref.
+      auto op = b.create<AffineDmaStartOp>(
+          loc, fastMemRef, bufAffineMap, bufIndices, memref, memAffineMap,
+          memIndices, tagMemRef, tagAffineMap, tagIndices, numElementsSSA,
+          stride, numEltPerStride);
+      // Since new ops are being appended (for outgoing DMAs), adjust the end to
+      // mark end of block range being processed.
+      *nEnd = Block::iterator(op.getOperation());
+    }
+
+    // Matching DMA wait to block on completion; tag always has a 0 index.
+    b.create<AffineDmaWaitOp>(loc, tagMemRef, tagAffineMap, zeroIndex,
+                              numElementsSSA);
+
+    // Generate dealloc for the tag.
+    auto tagDeallocOp = epilogue.create<DeallocOp>(loc, tagMemRef);
+    if (*nEnd == end)
+      // Since new ops are being appended (for outgoing DMAs), adjust the end to
+      // mark end of range of the original.
+      *nEnd = Block::iterator(tagDeallocOp.getOperation());
   }
 
-  // Matching DMA wait to block on completion; tag always has a 0 index.
-  b.create<AffineDmaWaitOp>(loc, tagMemRef, tagAffineMap, zeroIndex,
-                            numElementsSSA);
-
-  // Generate dealloc for the tag.
-  auto tagDeallocOp = epilogue.create<DeallocOp>(loc, tagMemRef);
-  if (*nEnd == end)
-    // Since new ops are being appended (for outgoing DMAs), adjust the end to
-    // mark end of range of the original.
-    *nEnd = Block::iterator(tagDeallocOp.getOperation());
-
-  // Generate dealloc for the DMA buffer.
-  if (!existingBuf)
-    epilogue.create<DeallocOp>(loc, fastMemRef);
+  // Generate dealloc for the buffer.
+  if (!existingBuf) {
+    auto bufDeallocOp = epilogue.create<DeallocOp>(loc, fastMemRef);
+    // When generating pointwise copies, `nEnd' has to be set to deallocOp on
+    // the fast buffer (since it marks the new end insertion point).
+    if (!clDma && *nEnd == end)
+      *nEnd = Block::iterator(bufDeallocOp.getOperation());
+  }
 
   // Replace all uses of the old memref with the faster one while remapping
   // access indices (subtracting out lower bound offsets for each dimension).
@@ -470,36 +556,41 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
 
   *nBegin = wasAtStartOfBlock ? block->begin() : std::next(prev);
 
-  return true;
+  return success();
 }
 
-/// Generate DMAs for this block. The block is partitioned into separate
-/// `regions`; each region is either a sequence of one or more operations
-/// starting and ending with a load or store op, or just a loop (which could
-/// have other loops nested within). Returns false on an error, true otherwise.
-bool DmaGeneration::runOnBlock(Block *block) {
+/// Generate copies for this block. The block is partitioned into separate
+/// ranges: each range is either a sequence of one or more operations starting
+/// and ending with an affine load or store op, or just an affine.forop (which
+/// could have other affine for op's nested within).
+LogicalResult AffineDataCopyGeneration::runOnBlock(Block *block) {
   if (block->empty())
-    return true;
+    return success();
 
-  // Every loop in the block starts and ends a region. A contiguous sequence of
-  // operations starting and ending with a load/store op is also
-  // identified as a region. Straightline code (contiguous chunks of operation
-  // operations) are always assumed to not exhaust memory. As a result, this
-  // approach is conservative in some cases at the moment, we do a check later
-  // and report an error with location info.
+  copyNests.clear();
+
+  // Every affine.forop in the block starts and ends a block range for copying.
+  // A contiguous sequence of operations starting and ending with a load/store
+  // op is also identified as a copy block range. Straightline code (a
+  // contiguous chunk of operations excluding AffineForOp's) are always assumed
+  // to not exhaust memory. As a result, this approach is conservative in some
+  // cases at the moment; we do a check later and report an error with location
+  // info.
   // TODO(bondhugula): An 'affine.if' operation is being treated similar to an
   // operation. 'affine.if''s could have 'affine.for's in them;
   // treat them separately.
 
-  // Get to the first load, store, or for op.
+  // Get to the first load, store, or for op (that is not a copy nest itself).
   auto curBegin =
       std::find_if(block->begin(), block->end(), [&](Operation &op) {
-        return isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op) ||
-               isa<AffineForOp>(op);
+        return (isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op) ||
+                isa<AffineForOp>(op)) &&
+               copyNests.count(&op) == 0;
       });
 
   for (auto it = curBegin; it != block->end(); ++it) {
-    if (auto forOp = dyn_cast<AffineForOp>(&*it)) {
+    AffineForOp forOp;
+    if ((forOp = dyn_cast<AffineForOp>(&*it)) && copyNests.count(forOp) == 0) {
       // Returns true if the footprint is known to exceed capacity.
       auto exceedsCapacity = [&](AffineForOp forOp) {
         Optional<int64_t> footprint =
@@ -511,7 +602,7 @@ bool DmaGeneration::runOnBlock(Block *block) {
       };
 
       // If the memory footprint of the 'affine.for' loop is higher than fast
-      // memory capacity (when provided), we recurse to DMA at an inner level
+      // memory capacity (when provided), we recurse to copy at an inner level
       // until we find a depth at which footprint fits in fast mem capacity. If
       // the footprint can't be calculated, we assume for now it fits. Recurse
       // inside if footprint for 'forOp' exceeds capacity, or when
@@ -519,22 +610,22 @@ bool DmaGeneration::runOnBlock(Block *block) {
       bool recurseInner = clSkipNonUnitStrideLoop ? forOp.getStep() != 1
                                                   : exceedsCapacity(forOp);
       if (recurseInner) {
-        // We'll recurse and do the DMAs at an inner level for 'forInst'.
+        // We'll recurse and do the copies at an inner level for 'forInst'.
         runOnBlock(/*begin=*/curBegin, /*end=*/it);
         // Recurse onto the body of this loop.
         runOnBlock(forOp.getBody());
-        // The next region starts right after the 'affine.for' operation.
+        // The next block range starts right after the 'affine.for' operation.
         curBegin = std::next(it);
       } else {
-        // We have enough capacity, i.e., DMAs will be computed for the portion
-        // of the block until 'it', and for 'it', which is 'forOp'. Note that
-        // for the latter, the DMAs are placed just before this loop (for
-        // incoming DMAs) and right after (for outgoing ones).
+        // We have enough capacity, i.e., copies will be computed for the
+        // portion of the block until 'it', and for 'it', which is 'forOp'. Note
+        // that for the latter, the copies are placed just before this loop (for
+        // incoming copies) and right after (for outgoing ones).
         runOnBlock(/*begin=*/curBegin, /*end=*/it);
 
-        // Inner loop DMAs have their own scope - we don't thus update consumed
-        // capacity. The footprint check above guarantees this inner loop's
-        // footprint fits.
+        // Inner loop copies have their own scope - we don't thus update
+        // consumed capacity. The footprint check above guarantees this inner
+        // loop's footprint fits.
         runOnBlock(/*begin=*/it, /*end=*/std::next(it));
         curBegin = std::next(it);
       }
@@ -544,27 +635,27 @@ bool DmaGeneration::runOnBlock(Block *block) {
     }
   }
 
-  // Generate the DMA for the final region.
+  // Generate the copy for the final block range.
   if (curBegin != block->end()) {
     // Can't be a terminator because it would have been skipped above.
     assert(!curBegin->isKnownTerminator() && "can't be a terminator");
     runOnBlock(/*begin=*/curBegin, /*end=*/block->end());
   }
 
-  return true;
+  return success();
 }
 
 /// Given a memref region, determine the lowest depth at which transfers can be
 /// placed for it, and return the corresponding block, start and end positions
-/// in the block for placing incoming (read) and outgoing (write) DMAs
+/// in the block for placing incoming (read) and outgoing (write) copies
 /// respectively. The lowest depth depends on whether the region being accessed
 /// is invariant with respect to one or more immediately surrounding loops.
 static void
 findHighestBlockForPlacement(const MemRefRegion &region, Block &block,
                              Block::iterator &begin, Block::iterator &end,
-                             Block **dmaPlacementBlock,
-                             Block::iterator *dmaPlacementReadStart,
-                             Block::iterator *dmaPlacementWriteStart) {
+                             Block **copyPlacementBlock,
+                             Block::iterator *copyPlacementReadStart,
+                             Block::iterator *copyPlacementWriteStart) {
   const auto *cst = region.getConstraints();
   SmallVector<Value *, 4> symbols;
   cst->getIdValues(cst->getNumDimIds(), cst->getNumDimAndSymbolIds(), &symbols);
@@ -583,22 +674,24 @@ findHighestBlockForPlacement(const MemRefRegion &region, Block &block,
 
   if (it != enclosingFors.rbegin()) {
     auto lastInvariantIV = *std::prev(it);
-    *dmaPlacementReadStart = Block::iterator(lastInvariantIV.getOperation());
-    *dmaPlacementWriteStart = std::next(*dmaPlacementReadStart);
-    *dmaPlacementBlock = lastInvariantIV.getOperation()->getBlock();
+    *copyPlacementReadStart = Block::iterator(lastInvariantIV.getOperation());
+    *copyPlacementWriteStart = std::next(*copyPlacementReadStart);
+    *copyPlacementBlock = lastInvariantIV.getOperation()->getBlock();
   } else {
-    *dmaPlacementReadStart = begin;
-    *dmaPlacementWriteStart = end;
-    *dmaPlacementBlock = &block;
+    *copyPlacementReadStart = begin;
+    *copyPlacementWriteStart = end;
+    *copyPlacementBlock = &block;
   }
 }
 
-/// Generates DMAs for a contiguous sequence of operations in `block` in the
-/// iterator range [begin, end). Returns the total size of the DMA buffers used.
-//  Since we generate alloc's and dealloc's for all DMA buffers (before and
-//  after the range of operations resp), all of the fast memory capacity is
-//  assumed to be available.
-uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
+/// Generates copies for a contiguous sequence of operations in `block` in the
+/// iterator range [begin, end). Returns the total size of the fast buffers
+/// used.
+//  Since we generate alloc's and dealloc's for all fast buffers (before and
+//  after the range of operations resp.), all of the fast memory capacity is
+//  assumed to be available for processing this block range.
+uint64_t AffineDataCopyGeneration::runOnBlock(Block::iterator begin,
+                                              Block::iterator end) {
   if (begin == end)
     return 0;
 
@@ -607,11 +700,12 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
 
   Block *block = begin->getBlock();
 
-  // DMAs will be generated for this depth, i.e., symbolic in all loops
-  // surrounding the region of this block.
-  unsigned dmaDepth = getNestingDepth(*begin);
+  // Copies will be generated for this depth, i.e., symbolic in all loops
+  // surrounding the this block range.
+  unsigned copyDepth = getNestingDepth(*begin);
 
-  LLVM_DEBUG(llvm::dbgs() << "Generating DMAs at depth " << dmaDepth << "\n");
+  LLVM_DEBUG(llvm::dbgs() << "Generating copies at depth " << copyDepth
+                          << "\n");
 
   readRegions.clear();
   writeRegions.clear();
@@ -636,11 +730,11 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
 
     // Compute the MemRefRegion accessed.
     auto region = llvm::make_unique<MemRefRegion>(opInst->getLoc());
-    if (failed(region->compute(opInst, dmaDepth))) {
+    if (failed(region->compute(opInst, copyDepth))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Error obtaining memory region: semi-affine maps?\n");
       LLVM_DEBUG(llvm::dbgs() << "over-approximating to the entire memref\n");
-      if (!getFullMemRefAsRegion(opInst, dmaDepth, region.get())) {
+      if (!getFullMemRefAsRegion(opInst, copyDepth, region.get())) {
         LLVM_DEBUG(
             opInst->emitError("Non-constant memref sizes not yet supported"));
         error = true;
@@ -675,7 +769,7 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
                        << "Memory region bounding box failed; "
                           "over-approximating to the entire memref\n");
             // If the union fails, we will overapproximate.
-            if (!getFullMemRefAsRegion(opInst, dmaDepth, region.get())) {
+            if (!getFullMemRefAsRegion(opInst, copyDepth, region.get())) {
               LLVM_DEBUG(opInst->emitError(
                   "Non-constant memref sizes not yet supported"));
               error = true;
@@ -708,39 +802,39 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
 
   if (error) {
     begin->emitError(
-        "DMA generation failed for one or more memref's in this block\n");
+        "copy generation failed for one or more memref's in this block\n");
     return 0;
   }
 
-  uint64_t totalDmaBuffersSizeInBytes = 0;
+  uint64_t totalCopyBuffersSizeInBytes = 0;
   bool ret = true;
   auto processRegions =
       [&](const SmallMapVector<Value *, std::unique_ptr<MemRefRegion>, 4>
               &regions) {
         for (const auto &regionEntry : regions) {
-          // For each region, hoist DMA transfer past all invariant
+          // For each region, hoist copy in/out past all invariant
           // 'affine.for's.
-          Block::iterator dmaPlacementReadStart, dmaPlacementWriteStart;
-          Block *dmaPlacementBlock;
+          Block::iterator copyPlacementReadStart, copyPlacementWriteStart;
+          Block *copyPlacementBlock;
           findHighestBlockForPlacement(
-              *regionEntry.second, *block, begin, end, &dmaPlacementBlock,
-              &dmaPlacementReadStart, &dmaPlacementWriteStart);
+              *regionEntry.second, *block, begin, end, &copyPlacementBlock,
+              &copyPlacementReadStart, &copyPlacementWriteStart);
 
           uint64_t sizeInBytes;
           Block::iterator nBegin, nEnd;
-          bool iRet = generateDma(*regionEntry.second, dmaPlacementBlock,
-                                  dmaPlacementReadStart, dmaPlacementWriteStart,
-                                  &sizeInBytes, &nBegin, &nEnd);
-          if (iRet) {
-            // dmaPlacmentStart/End (or begin/end) may be invalidated; use
+          LogicalResult iRet = generateCopy(
+              *regionEntry.second, copyPlacementBlock, copyPlacementReadStart,
+              copyPlacementWriteStart, &sizeInBytes, &nBegin, &nEnd);
+          if (succeeded(iRet)) {
+            // copyPlacmentStart/End (or begin/end) may be invalidated; use
             // nBegin, nEnd to reset.
-            if (dmaPlacementBlock == block) {
+            if (copyPlacementBlock == block) {
               begin = nBegin;
               end = nEnd;
             }
-            totalDmaBuffersSizeInBytes += sizeInBytes;
+            totalCopyBuffersSizeInBytes += sizeInBytes;
           }
-          ret = ret & iRet;
+          ret = ret & succeeded(iRet);
         }
       };
   processRegions(readRegions);
@@ -748,29 +842,29 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
 
   if (!ret) {
     begin->emitError(
-        "DMA generation failed for one or more memref's in this block\n");
-    return totalDmaBuffersSizeInBytes;
+        "copy generation failed for one or more memref's in this block\n");
+    return totalCopyBuffersSizeInBytes;
   }
 
   // For a range of operations, a note will be emitted at the caller.
   AffineForOp forOp;
-  uint64_t sizeInKib = llvm::divideCeil(totalDmaBuffersSizeInBytes, 1024);
+  uint64_t sizeInKib = llvm::divideCeil(totalCopyBuffersSizeInBytes, 1024);
   if (llvm::DebugFlag && (forOp = dyn_cast<AffineForOp>(&*begin))) {
     forOp.emitRemark()
         << sizeInKib
-        << " KiB of DMA buffers in fast memory space for this block\n";
+        << " KiB of copy buffers in fast memory space for this block\n";
   }
 
-  if (totalDmaBuffersSizeInBytes > fastMemCapacityBytes) {
-    StringRef str = "Total size of all DMA buffers' for this block "
+  if (totalCopyBuffersSizeInBytes > fastMemCapacityBytes) {
+    StringRef str = "Total size of all copy buffers' for this block "
                     "exceeds fast memory capacity\n";
     block->getContainingOp()->emitError(str);
   }
 
-  return totalDmaBuffersSizeInBytes;
+  return totalCopyBuffersSizeInBytes;
 }
 
-void DmaGeneration::runOnFunction() {
+void AffineDataCopyGeneration::runOnFunction() {
   FuncOp f = getFunction();
   OpBuilder topBuilder(f.getBody());
   zeroIndex = topBuilder.create<ConstantIndexOp>(f.getLoc(), 0);
@@ -784,5 +878,6 @@ void DmaGeneration::runOnFunction() {
     runOnBlock(&block);
 }
 
-static PassRegistration<DmaGeneration>
-    pass("affine-dma-generate", "Generate DMAs for memory operations");
+static PassRegistration<AffineDataCopyGeneration>
+    pass("affine-data-copy-generate",
+         "Generate explicit copying for memory operations");

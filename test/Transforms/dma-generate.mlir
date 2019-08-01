@@ -1,12 +1,12 @@
-// RUN: mlir-opt %s -split-input-file -affine-dma-generate -dma-skip-non-unit-stride-loops -verify-diagnostics | FileCheck %s
-// RUN: mlir-opt %s -split-input-file -affine-dma-generate -dma-fast-mem-capacity=16 -dma-fast-mem-space=2 | FileCheck %s --check-prefix FAST-MEM-16KB
+// RUN: mlir-opt %s -split-input-file -affine-data-copy-generate -affine-data-copy-generate-dma -affine-data-copy-generate-fast-mem-space=2 -affine-data-copy-generate-skip-non-unit-stride-loops -verify-diagnostics | FileCheck %s
+// RUN: mlir-opt %s -split-input-file -affine-data-copy-generate -affine-data-copy-generate-dma -affine-data-copy-generate-fast-mem-capacity=16 -affine-data-copy-generate-fast-mem-space=2 | FileCheck %s --check-prefix FAST-MEM-16KB
 
-// We run most test cases with -dma-skip-non-unit-stride-loops to allow testing
+// We run most test cases with -copy-skip-non-unit-stride-loops to allow testing
 // DMA generation at inner levels easily - since the DMA generation would
 // otherwise always generate DMAs at the outermost level (default for fast mem
 // capacity is infinite). Using a specific capacity makes it harder to write
 // a test case as one would have to calculate total footprints. With
-// -dma-skip-non-unit-stride-loops, non-unit strides will always be skipped and
+// -copy-skip-non-unit-stride-loops, non-unit strides will always be skipped and
 // its inner loops will be traversed till a unit stride loop is found (or the
 // innermost block is reached).
 
@@ -288,7 +288,7 @@ func @dma_unknown_size(%arg0: memref<?x?xf32>) {
       // size -- not yet implemented.
       // CHECK: %{{.*}} = affine.load %{{.*}}[%{{.*}}, %{{.*}}] : memref<?x?xf32>
       affine.load %arg0[%i, %j] : memref<? x ? x f32>
-      // expected-error@-6 {{DMA generation failed for one or more memref's in this block}}
+      // expected-error@-6 {{copy generation failed for one or more memref's in this block}}
     }
   }
   return
@@ -308,7 +308,7 @@ func @dma_memref_3d(%arg0: memref<1024x1024x1024xf32>) {
         // not yet implemented.
         // CHECK: %{{.*}} = affine.load %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] : memref<1024x1024x1024xf32>
         %v = affine.load %arg0[%idx, %idy, %idz] : memref<1024 x 1024 x 1024 x f32>
-        // expected-error@-10 {{DMA generation failed for one or more memref's in this block}}
+        // expected-error@-10 {{copy generation failed for one or more memref's in this block}}
       }
     }
   }
