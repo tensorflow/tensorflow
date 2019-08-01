@@ -44,10 +44,8 @@ class SliceTest(test.TestCase):
       self.assertAllEqual(slice_val, inp[2, k:k])
 
   def testView(self):
-    cout = 45
     shape = [64, 28, 28, 32]
     dtype = dtypes.float32
-    gain = 3.14
     filter_size = [1, 1, 32, 32]
 
     convolution = nn_ops.conv2d
@@ -57,8 +55,8 @@ class SliceTest(test.TestCase):
       inputs, padding="VALID", strides=[1, 1, 1, 1], filter=filters)
 
     outputs = array_ops.slice(middle, [8, 8, 8, 8], [16, 16, 16, 16])
-    with self.session(use_gpu=True) as sess:
-      t = outputs.eval()
+    with self.session(use_gpu=True):
+      outputs.eval()
 
   def testInt32(self):
     inp = np.random.rand(4, 4).astype("i")
