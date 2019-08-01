@@ -24,8 +24,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Return the FrontendAttributes stored in the AttrSlice if there are some.
+//
+// Return an InvalidArgument error if some attributes are present but
+// cannot be parsed.
 xla::StatusOr<absl::optional<xla::FrontendAttributes>>
-GetFrontendAttributesFromNodeDef(const AttrSlice& attrs);
+GetFrontendAttributesFromAttrSlice(const AttrSlice& attrs);
 
 }  // namespace tensorflow
 

@@ -24,7 +24,7 @@ const char kFrontendAttributesAttribute[] = "_XlaFrontendAttributes";
 }  // namespace
 
 xla::StatusOr<absl::optional<xla::FrontendAttributes>>
-GetFrontendAttributesFromNodeDef(const AttrSlice& attrs) {
+GetFrontendAttributesFromAttrSlice(const AttrSlice& attrs) {
   auto attr = attrs.Find(kFrontendAttributesAttribute);
   if (attr == nullptr) {
     return xla::StatusOr<absl::optional<xla::FrontendAttributes>>(
