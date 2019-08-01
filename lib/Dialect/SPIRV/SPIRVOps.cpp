@@ -33,6 +33,7 @@ using namespace mlir;
 // TODO(antiagainst): generate these strings using ODS.
 static constexpr const char kAlignmentAttrName[] = "alignment";
 static constexpr const char kIndicesAttrName[] = "indices";
+static constexpr const char kIsSpecConstName[] = "is_spec_const";
 static constexpr const char kValueAttrName[] = "value";
 static constexpr const char kValuesAttrName[] = "values";
 static constexpr const char kFnNameAttrName[] = "fn";
@@ -466,6 +467,9 @@ static LogicalResult verify(spirv::CompositeExtractOp compExOp) {
 //===----------------------------------------------------------------------===//
 
 static ParseResult parseConstantOp(OpAsmParser *parser, OperationState *state) {
+  if (succeeded(parser->parseOptionalKeyword("spec")))
+    state->addAttribute(kIsSpecConstName, parser->getBuilder().getUnitAttr());
+
   Attribute value;
   if (parser->parseAttribute(value, kValueAttrName, state->attributes))
     return failure();
@@ -482,7 +486,8 @@ static ParseResult parseConstantOp(OpAsmParser *parser, OperationState *state) {
 }
 
 static void print(spirv::ConstantOp constOp, OpAsmPrinter *printer) {
-  *printer << spirv::ConstantOp::getOperationName() << " " << constOp.value();
+  *printer << spirv::ConstantOp::getOperationName()
+           << (constOp.is_spec_const() ? " spec " : " ") << constOp.value();
   if (constOp.getType().isa<spirv::ArrayType>()) {
     *printer << " : " << constOp.getType();
   }
