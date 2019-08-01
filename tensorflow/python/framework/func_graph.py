@@ -840,7 +840,7 @@ def func_graph_from_py_func(name,
                 ), args, kwargs)
           except Exception as e:  # pylint:disable=broad-except
             if hasattr(e, "ag_error_metadata"):
-              raise e.ag_error_metadata.to_exception(type(e))
+              raise e.ag_error_metadata.to_exception(e)
             else:
               raise
 
