@@ -73,7 +73,6 @@ using reference_ops::BroadcastSub4DSlow;
 using reference_ops::Concatenation;
 using reference_ops::ConcatenationWithScaling;
 using reference_ops::DepthConcatenation;
-using reference_ops::Dequantize;
 using reference_ops::Div;
 using reference_ops::Elu;
 using reference_ops::FakeQuant;
@@ -5756,6 +5755,65 @@ inline void BroadcastPow4D(const RuntimeShape& unextended_input1_shape,
   reference_ops::BroadcastPow4DSlow(unextended_input1_shape, input1_data,
                                     unextended_input2_shape, input2_data,
                                     unextended_output_shape, output_data);
+}
+
+inline void Dequantize(const tflite::DequantizationParams& op_params,
+                       const RuntimeShape& input_shape, const uint8* input_data,
+                       const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Dequantize");
+  const int32 zero_point = op_params.zero_point;
+  const double scale = op_params.scale;
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+
+  int i = 0;
+#ifdef USE_NEON
+  const float32x4_t scale_dup = vdupq_n_f32(static_cast<float>(scale));
+#ifdef __ARM_FEATURE_FMA
+  const float32x4_t zero_times_scale_dup =
+      vdupq_n_f32(static_cast<float>(-zero_point * scale));
+#else
+  const int32x4_t zero_point_dup = vdupq_n_s32(zero_point);
+#endif  // __ARM_FEATURE_FMA
+  for (; i <= flat_size - 8; i += 8) {
+    const uint8x8_t input_u8 = vld1_u8(input_data + i);
+    const uint16x8_t input_u16 = vmovl_u8(input_u8);
+    const int16x8_t input_s16 = vreinterpretq_s16_u16(input_u16);
+    const int16x4_t input_s16_low = vget_low_s16(input_s16);
+    const int16x4_t input_s16_high = vget_high_s16(input_s16);
+
+    int32x4_t val_low = vmovl_s16(input_s16_low);
+    int32x4_t val_high = vmovl_s16(input_s16_high);
+
+#ifdef __ARM_FEATURE_FMA
+    float32x4_t result_low = vcvtq_f32_s32(val_low);
+    float32x4_t result_high = vcvtq_f32_s32(val_high);
+    result_low = vfmaq_f32(zero_times_scale_dup, result_low, scale_dup);
+    result_high = vfmaq_f32(zero_times_scale_dup, result_high, scale_dup);
+#else
+    val_low = vsubq_s32(val_low, zero_point_dup);
+    val_high = vsubq_s32(val_high, zero_point_dup);
+
+    float32x4_t result_low = vcvtq_f32_s32(val_low);
+    float32x4_t result_high = vcvtq_f32_s32(val_high);
+    result_low = vmulq_f32(result_low, scale_dup);
+    result_high = vmulq_f32(result_high, scale_dup);
+#endif  // __ARM_FEATURE_FMA
+
+    vst1q_f32(output_data + i, result_low);
+    vst1q_f32(output_data + i + 4, result_high);
+  }
+#endif  // NEON
+  for (; i < flat_size; ++i) {
+    int32 val = input_data[i];
+    float result = static_cast<float>(scale * (val - zero_point));
+    output_data[i] = result;
+  }
+}
+
+inline void Dequantize(const RuntimeShape& input_shape,
+                       const Eigen::half* input_data,
+                       const RuntimeShape& output_shape, float* output_data) {
+  reference_ops::Dequantize(input_shape, input_data, output_shape, output_data);
 }
 
 }  // namespace optimized_ops
