@@ -476,7 +476,7 @@ class Callback(object):
   
   model.fit(data, labels, 
             batch_size=batch_size,
-            steps_per_epoch=int(np.ceil(X_train.shape[0])/batch_size),
+            steps_per_epoch=int(np.ceil(data.shape[0])/batch_size),
             epochs=epochs,
             verbose=0,
             validation_data=(val_data, val_labels),
