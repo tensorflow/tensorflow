@@ -87,6 +87,8 @@ class DatasetParams {
 
   virtual Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) = 0;
 
+  virtual ~DatasetParams() {}
+
   DataTypeVector output_dtypes;
   std::vector<PartialTensorShape> output_shapes;
   string node_name;
