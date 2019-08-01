@@ -655,6 +655,12 @@ class Layer(module.Module):
             training_value = backend.learning_phase()
 
       if self._expects_training_arg and training_value is not None:
+        # Force the training_value to be bool type which matches to the contract
+        # for layer/model call args.
+        if tensor_util.is_tensor(training_value):
+          training_value = math_ops.cast(training_value, dtypes.bool)
+        else:
+          training_value = bool(training_value)
         kwargs['training'] = training_value
         training_arg_passed_by_framework = True
 
