@@ -4,8 +4,8 @@ op {
   in_arg {
     name: "rate"
     description: <<END
-A scalar representing the sample rate of elements from the `input_dataset`
-that should be taken.
+A scalar representing the sample rate. Each element of `input_dataset` is 
+retained with this probability, independent of all other elements.
 END
   }
   in_arg {
@@ -20,5 +20,10 @@ END
 A scalar representing seed2 of random number generator.
 END
   }
-  summary: "Creates a dataset that contains `rate` elements from the `input_dataset`."
+  summary: "Creates a dataset that takes a Bernoulli sample of the contents of another dataset."
+  description: <<END
+There is no direct Python API for creating Datasets of this type. Rewrite rules in 
+`tensorflow/core/grappler/optimizers/data/filter_with_random_uniform_fusion.cc`
+create instances of this dataset.
+END
 }
