@@ -18,116 +18,105 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.autograph.core import converter
+from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.platform import test
 
 
+class TestBaseClass(object):
+
+  def overridden_method(self, x):
+    return x + 20
+
+
 class PyBuiltinsTest(test.TestCase):
 
-  def test_super_with_no_arg_in_original_context(self):
+  def _basic_function_scope(self):
+    return function_wrappers.FunctionScope(
+        'test_function_name',
+        'test_scope',  # Note: this must match the name in the `with` statement.
+        converter.ConversionOptions())
+
+  def test_super_in_original_context_niladic_call(self):
     test_case_self = self
 
-    class TestBase(object):
+    class TestSubclass(TestBaseClass):
 
-      def plus_twenty(self, x):
-        return x + 20
-
-    class TestSubclass(TestBase):
-
-      def plus_twenty(self, x):
+      def overridden_method(self, x):
         test_case_self.fail('This should never be called.')
 
-      def no_arg(self):
-        test_base = py_builtins.super_in_original_context(super, (), 0)
-        return test_base.plus_twenty(1)
+      def test_method(self):
+        with test_case_self._basic_function_scope() as test_scope:
+          b = py_builtins.super_in_original_context(super, (), test_scope)
+          return b.overridden_method(1)
 
     tc = TestSubclass()
-    self.assertEqual(tc.no_arg(), 21)
+    self.assertEqual(tc.test_method(), 21)
 
-  def test_super_in_original_context_with_locals(self):
+  def test_super_in_original_context_caller_with_locals(self):
     test_case_self = self
 
-    class TestBase(object):
+    class TestSubclass(TestBaseClass):
 
-      def plus_twenty(self, x):
-        return x + 20
-
-    class TestSubclass(TestBase):
-
-      def plus_twenty(self, x):
+      def overridden_method(self, x):
         test_case_self.fail('This should never be called.')
 
-      def with_locals(self):
-        x = 1
+      def test_method(self, x):
         y = 7
-        z = 7
-
-        test_base = py_builtins.super_in_original_context(super, (), 0)
-        return test_base.plus_twenty(x + y - z)
+        with test_case_self._basic_function_scope() as test_scope:
+          z = 7
+          return py_builtins.super_in_original_context(
+              super, (), test_scope).overridden_method(x + y - z)
 
     tc = TestSubclass()
-    self.assertEqual(tc.with_locals(), 21)
+    self.assertEqual(tc.test_method(1), 21)
 
-  def test_super_in_original_context_with_args(self):
+  def test_super_in_original_context_inner_function(self):
     test_case_self = self
 
-    class TestBase(object):
+    class TestSubclass(TestBaseClass):
 
-      def plus_twenty(self, x):
-        return x + 20
-
-    class TestSubclass(TestBase):
-
-      def plus_twenty(self, x):
+      def overridden_method(self, x):
         test_case_self.fail('This should never be called.')
 
-      def with_args(self, x, y, z):
-        test_base = py_builtins.super_in_original_context(super, (), 0)
-        return test_base.plus_twenty(x + y - z)
+      def test_method(self, x):
+        with test_case_self._basic_function_scope() as test_scope:
+          # Oddly, it's sufficient to use `self` in an inner function
+          # to gain access to __class__ in this scope.
+          # TODO(mdan): Is this true across implementations?
+          # Note: normally, it's illegal to use super() in inner functions (it
+          # throws an error), but the generated code may create them.
+          def inner_fn():
+            return py_builtins.super_in_original_context(
+                super, (), test_scope).overridden_method(x)
+
+          return inner_fn()
 
     tc = TestSubclass()
-    self.assertEqual(tc.with_args(1, 7, 7), 21)
-    self.assertEqual(tc.with_args.__func__(*[tc, 1, 7, 7]), 21)
+    self.assertEqual(tc.test_method(1), 21)
 
-  def test_super_in_original_context_with_varargs(self):
+  def test_super_in_original_context_inner_lambda(self):
     test_case_self = self
 
-    class TestBase(object):
+    class TestSubclass(TestBaseClass):
 
-      def plus_twenty(self, x):
-        return x + 20
-
-    class TestSubclass(TestBase):
-
-      def plus_twenty(self, x):
+      def overridden_method(self, x):
         test_case_self.fail('This should never be called.')
 
-      def with_varargs(self, *args):
-        test_base = py_builtins.super_in_original_context(super, (), 0)
-        return test_base.plus_twenty(args[0] + args[1] - args[2])
+      def test_method(self, x):
+        with test_case_self._basic_function_scope() as test_scope:
+          # Oddly, it's sufficient to use `self` in an inner function
+          # to gain access to __class__ in this scope.
+          # TODO(mdan): Is this true across implementations?
+          # Note: normally, it's illegal to use super() in inner functions (it
+          # throws an error), but the generated code may create them.
+          l = lambda: py_builtins.super_in_original_context(  # pylint:disable=g-long-lambda
+              super, (), test_scope).overridden_method(x)
+          return l()
 
     tc = TestSubclass()
-    self.assertEqual(tc.with_varargs.__func__(*[tc, 1, 7, 7]), 21)
-
-  def test_super_in_original_context_with_kwargs(self):
-    test_case_self = self
-
-    class TestBase(object):
-
-      def plus_twenty(self, x):
-        return x + 20
-
-    class TestSubclass(TestBase):
-
-      def plus_twenty(self, x):
-        test_case_self.fail('This should never be called.')
-
-      def with_kwargs(self, **kwargs):
-        test_base = py_builtins.super_in_original_context(super, (), 0)
-        return test_base.plus_twenty(kwargs['x'] + kwargs['y'] - kwargs['z'])
-
-    tc = TestSubclass()
-    self.assertEqual(tc.with_kwargs.__func__(tc, x=1, y=7, z=7), 21)
+    self.assertEqual(tc.test_method(1), 21)
 
 
 if __name__ == '__main__':

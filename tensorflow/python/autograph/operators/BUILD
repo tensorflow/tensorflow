@@ -100,6 +100,7 @@ py_test(
     deps = [
         ":operators",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/core",
     ],
 )
 
