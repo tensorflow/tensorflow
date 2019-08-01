@@ -92,10 +92,10 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
   SetDevice(DEVICE_GPU, std::move(device));
 
   // Create the resource handle.
-  const string container(kCacheContainerName);
+  const string container(kTfTrtContainerName);
   const string resource_name = "myresource";
   Reset();
-  TF_ASSERT_OK(NodeDefBuilder("op", "CreateTRTEngineCacheHandle")
+  TF_ASSERT_OK(NodeDefBuilder("op", "CreateTRTResourceHandle")
                    .Attr("resource_name", resource_name)
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
@@ -107,7 +107,7 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
   EXPECT_TRUE(
       errors::IsNotFound(rm->Lookup(container, resource_name, &resource)));
 
-  // Create the resouce using an empty file with InitializeTRTEngineOp.
+  // Create the resouce using an empty file with InitializeTRTResource.
   Reset();
   Env* env = Env::Default();
   const string filename = io::JoinPath(testing::TmpDir(), "trt_engine_file");
@@ -115,7 +115,7 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
     std::unique_ptr<WritableFile> file;
     TF_ASSERT_OK(env->NewWritableFile(filename, &file));
   }
-  TF_ASSERT_OK(NodeDefBuilder("op", "InitializeTRTEngineOp")
+  TF_ASSERT_OK(NodeDefBuilder("op", "InitializeTRTResource")
                    .Input(FakeInput(DT_RESOURCE))
                    .Input(FakeInput(DT_STRING))
                    .Attr("max_cached_engines_count", 1)
@@ -136,10 +136,10 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
       absl::make_unique<EngineContext>(std::move(engine), std::move(context)));
   resource->Unref();
 
-  // Serialize the engine using SerializeTRTEngineOp op.
+  // Serialize the engine using SerializeTRTResource op.
   Reset();
-  TF_ASSERT_OK(NodeDefBuilder("op", "SerializeTRTEngineOp")
-                   .Attr("delete_cache_after_dump", true)
+  TF_ASSERT_OK(NodeDefBuilder("op", "SerializeTRTResource")
+                   .Attr("delete_resource", true)
                    .Input(FakeInput(DT_STRING))
                    .Input(FakeInput(DT_STRING))
                    .Finalize(node_def()));
@@ -175,7 +175,7 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
 
   // Recreate the cache resource.
   Reset();
-  TF_ASSERT_OK(NodeDefBuilder("op", "InitializeTRTEngineOp")
+  TF_ASSERT_OK(NodeDefBuilder("op", "InitializeTRTResource")
                    .Input(FakeInput(DT_RESOURCE))
                    .Input(FakeInput(DT_STRING))
                    .Attr("max_cached_engines_count", 1)

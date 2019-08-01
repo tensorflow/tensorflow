@@ -40,10 +40,9 @@ namespace tensorflow {
 namespace tensorrt {
 using ::nvinfer1::IRuntime;
 
-class CreateTRTEngineCacheHandle : public OpKernel {
+class CreateTRTResourceHandle : public OpKernel {
  public:
-  explicit CreateTRTEngineCacheHandle(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {
+  explicit CreateTRTResourceHandle(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("resource_name", &resource_name_));
   }
 
@@ -60,7 +59,7 @@ class CreateTRTEngineCacheHandle : public OpKernel {
                 << resource_name_ << " on device " << ctx->device()->name();
         handle_.scalar<ResourceHandle>()() =
             MakeResourceHandle<TRTEngineCacheResource>(
-                ctx, std::string(kCacheContainerName), resource_name_);
+                ctx, std::string(kTfTrtContainerName), resource_name_);
         initialized_ = true;
       }
     }
@@ -73,17 +72,17 @@ class CreateTRTEngineCacheHandle : public OpKernel {
   mutex mutex_;
   bool initialized_ GUARDED_BY(mutex_) = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CreateTRTEngineCacheHandle);
+  TF_DISALLOW_COPY_AND_ASSIGN(CreateTRTResourceHandle);
 };
 
-REGISTER_KERNEL_BUILDER(Name("CreateTRTEngineCacheHandle")
+REGISTER_KERNEL_BUILDER(Name("CreateTRTResourceHandle")
                             .Device(DEVICE_GPU)
-                            .HostMemory("engine_cache_handle"),
-                        CreateTRTEngineCacheHandle);
+                            .HostMemory("resource_handle"),
+                        CreateTRTResourceHandle);
 
-class InitializeTRTEngineOp : public OpKernel {
+class InitializeTRTResource : public OpKernel {
  public:
-  explicit InitializeTRTEngineOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit InitializeTRTResource(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("max_cached_engines_count", &max_cached_engines_));
   }
@@ -156,19 +155,18 @@ class InitializeTRTEngineOp : public OpKernel {
   // Maximum number of cached engines
   int max_cached_engines_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InitializeTRTEngineOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(InitializeTRTResource);
 };
 
-REGISTER_KERNEL_BUILDER(Name("InitializeTRTEngineOp")
+REGISTER_KERNEL_BUILDER(Name("InitializeTRTResource")
                             .Device(DEVICE_GPU)
-                            .HostMemory("engine_cache_handle"),
-                        InitializeTRTEngineOp);
+                            .HostMemory("resource_handle"),
+                        InitializeTRTResource);
 
-class SerializeTRTEngineOp : public OpKernel {
+class SerializeTRTResource : public OpKernel {
  public:
-  explicit SerializeTRTEngineOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("delete_cache_after_dump",
-                                     &delete_cache_after_dump_));
+  explicit SerializeTRTResource(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("delete_resource", &delete_resource_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -179,7 +177,7 @@ class SerializeTRTEngineOp : public OpKernel {
 
     TRTEngineCacheResource* resource = nullptr;
     OP_REQUIRES_OK(
-        ctx, ctx->resource_manager()->Lookup(std::string(kCacheContainerName),
+        ctx, ctx->resource_manager()->Lookup(std::string(kTfTrtContainerName),
                                              resource_name, &resource));
     core::ScopedUnref unref_me(resource);
 
@@ -212,23 +210,23 @@ class SerializeTRTEngineOp : public OpKernel {
             << " TRT engines for op " << resource_name << " on device "
             << ctx->device()->name() << " to file " << filename;
 
-    if (delete_cache_after_dump_) {
+    if (delete_resource_) {
       VLOG(1) << "Destroying TRT engine cache resource for op " << resource_name
               << " on device " << ctx->device()->name();
       OP_REQUIRES_OK(ctx,
                      ctx->resource_manager()->Delete<TRTEngineCacheResource>(
-                         std::string(kCacheContainerName), resource_name));
+                         std::string(kTfTrtContainerName), resource_name));
     }
   }
 
  private:
-  bool delete_cache_after_dump_ = false;
+  bool delete_resource_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SerializeTRTEngineOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(SerializeTRTResource);
 };
 
-REGISTER_KERNEL_BUILDER(Name("SerializeTRTEngineOp").Device(DEVICE_GPU),
-                        SerializeTRTEngineOp);
+REGISTER_KERNEL_BUILDER(Name("SerializeTRTResource").Device(DEVICE_GPU),
+                        SerializeTRTResource);
 
 }  // namespace tensorrt
 }  // namespace tensorflow
