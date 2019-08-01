@@ -204,7 +204,9 @@ class MultiDeviceIterator : public ResourceBase {
                           MultiDeviceIteratorCallback callback) {
       HostBufferElement elem;
       if (incarnation_id_ != incarnation_id) {
-        elem.status = errors::InvalidArgument("Invalid incarnation id");
+        elem.status = errors::InvalidArgument(
+            "Invalid incarnation id. Provided: ", incarnation_id,
+            "; Expected: ", incarnation_id_);
         callback(elem);
         return;
       }
