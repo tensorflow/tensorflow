@@ -694,7 +694,7 @@ Status PostprocessLiftedArgsForWhile(
 Status PostprocessLiftedArgsForIf(
     const std::unordered_map<string, Node*>& outside_compilation_attr_to_node,
     Graph* g, Node* n, FunctionLibraryDefinition* fld) {
-  TF_RET_CHECK(n->type_string() == "If");
+  TF_RET_CHECK(n->IsIfNode());
 
   NameAttrList then_branch_func;
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "then_branch", &then_branch_func));
@@ -939,7 +939,7 @@ Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
           outside_compilation_attr_to_node, g, n, fld));
     }
 
-    if (n->type_string() == "If") {
+    if (n->IsIfNode()) {
       TF_RETURN_IF_ERROR(PostprocessLiftedArgsForIf(
           outside_compilation_attr_to_node, g, n, fld));
     }
