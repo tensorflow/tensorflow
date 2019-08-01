@@ -161,10 +161,10 @@ class XlaBuilder {
   // Sets the FrontendAttributes that will be added to all instructions until
   // cleared.
   //
-  // FrontendAttributes are often applied to a serie of XLA HLO instructions.
+  // FrontendAttributes are often applied to a series of XLA HLO instructions.
   // As a result they are set on the Computation Builder and all the
-  // instructions generated via the builder will have the same frontend
-  // attributes attached to them.
+  // instructions generated via the Computation Builder will have the same
+  // frontend attributes attached to them.
   void SetFrontendAttributes(const FrontendAttributes& frontend_attributes) {
     frontend_attributes_ = frontend_attributes;
   }
