@@ -56,6 +56,26 @@ func @verifyAllAttrConstraintOf() -> (i32, i32, i32) {
 }
 
 //===----------------------------------------------------------------------===//
+// Test Symbol Binding
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: symbolBinding
+func @symbolBinding(%arg0: i32) -> i32 {
+  // An op with one use is matched.
+  // CHECK: %0 = "test.symbol_binding_b"(%arg0)
+  // CHECK: %1 = "test.symbol_binding_c"(%0)
+  // CHECK: %2 = "test.symbol_binding_d"(%0, %1) {attr = 42 : i64}
+  %0 = "test.symbol_binding_a"(%arg0) {attr = 42} : (i32) -> (i32)
+
+  // An op without any use is not matched.
+  // CHECK: "test.symbol_binding_a"(%arg0)
+  %1 = "test.symbol_binding_a"(%arg0) {attr = 42} : (i32) -> (i32)
+
+  // CHECK: return %2
+  return %0: i32
+}
+
+//===----------------------------------------------------------------------===//
 // Test Attributes
 //===----------------------------------------------------------------------===//
 
