@@ -133,19 +133,6 @@ TensorShape PoolParameters::forward_output_shape() {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-// Forward declarations of the functor specializations for GPU.
-namespace functor {
-#define DECLARE_GPU_SPEC(T)                                         \
-  template <>                                                       \
-  void TransformDepth<GPUDevice, T, Eigen::DenseIndex>::operator()( \
-      const GPUDevice& d, typename TTypes<T, 4>::ConstTensor in,    \
-      const Eigen::DSizes<Eigen::DenseIndex, 4>& shuffle,           \
-      typename TTypes<T, 4>::Tensor out);                           \
-  extern template struct TransformDepth<GPUDevice, T, Eigen::DenseIndex>;
-
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC)
-#undef DECLARE_GPU_SPEC
-}  // namespace functor
 
 template <typename T>
 void DnnPoolingOp<T>::Compute(OpKernelContext* context,
