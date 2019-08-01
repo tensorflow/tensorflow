@@ -140,7 +140,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
       parent_generator_ = random::PhiloxRandom(seed_, seed2_);
       generator_ = random::SimplePhilox(&parent_generator_);
 
-      parent_generator_.Skip(num_random_samples_);
+      generator_.Skip(num_random_samples_);
     }
 
     Status SaveInternal(IteratorStateWriter* writer) override {
