@@ -2497,7 +2497,7 @@ class Model(network.Network):
       y = []
       sample_weights = None
 
-    if self.stateful and batch_size:
+    if self.stateful and batch_size and not is_dataset:
       # Check that for stateful networks, number of samples is a multiple
       # of the static batch size.
       if x[0].shape[0] % batch_size != 0:
