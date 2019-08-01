@@ -296,9 +296,12 @@ xla_test(
 xla_test(
     name = "conv_depthwise_test",
     timeout = "long",
-    srcs = ["conv_depthwise_test.cc"],
+    srcs = [
+        "conv_depthwise_test.cc",
+    ],
     shard_count = 50,
     deps = [
+        ":conv_depthwise_common",
         ":test_macros_header",
         "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -706,6 +709,27 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
+    ],
+)
+
+cc_library(
+    name = "conv_depthwise_common",
+    testonly = True,
+    srcs = ["conv_depthwise_common.cc"],
+    hdrs = ["conv_depthwise_common.h"],
+    deps = [
+        ":test_macros_header",
+        "//tensorflow/compiler/xla:execution_options_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:bfloat16_normalization",
+        "//tensorflow/compiler/xla/service:despecializer",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
