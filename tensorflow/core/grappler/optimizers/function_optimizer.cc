@@ -1216,9 +1216,9 @@ Status InlineFunctionCalls(const GrapplerItem& item,
       AddFrameForwardingControlEdge(control_flow_info, n, graph.get());
 
       if (n->IsIfNode()) {
-        TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), flib_def, false));
+        TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), false));
       } else if (n->type_string() == "Case") {
-        TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), flib_def, false));
+        TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), false));
       } else if (n->IsWhileNode()) {
         TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), false));
       }
