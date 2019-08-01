@@ -618,7 +618,7 @@ bool QuantizationDriver::PropagateParams() {
     Operation *op = work_list_.back();
     work_list_.pop_back();
 
-    // This op has been quantized, so we should consider it again.
+    // This op has been quantized, so we should not consider it again.
     if (quantized_.find(op) != quantized_.end()) continue;
     quantized_.insert(op);
 
