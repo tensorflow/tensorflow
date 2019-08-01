@@ -475,13 +475,11 @@ def : Pattern<(ThreeResultOp MultiResultOpKind4),
                (TwoResultOp:$res2__1 MultiResultOpKind4)]>;
 
 // Test referencing a single value in the value pack
-def HasNoUse: Constraint<
-    CPred<"$0->use_begin() == $0->use_end()">, "has no use">;
 // This rule only matches TwoResultOp if its second result has no use.
 def : Pattern<(TwoResultOp:$res MultiResultOpKind5),
               [(OneResultOp2 MultiResultOpKind5),
                (OneResultOp1 MultiResultOpKind5)],
-              [(HasNoUse $res__1)]>;
+              [(HasNoUseOf:$res__1)]>;
 
 // Test using auxiliary ops for replacing multi-result op
 def : Pattern<
@@ -493,20 +491,6 @@ def : Pattern<
         (OneResultOp3 $interm__1),
         (AnotherTwoResultOp MultiResultOpKind6)
     ]>;
-
-//===----------------------------------------------------------------------===//
-// Test Directives
-//===----------------------------------------------------------------------===//
-
-// Test 'verifyUnusedValue'
-def VUVTwoResultOp : TEST_Op<"vuv_two_result_op", []> {
-  let arguments = (ins I32:$input);
-  let results = (outs I32:$r1, I32:$r2);
-}
-def VUVFoldTwoResultOp : Pattern<(VUVTwoResultOp $input), [
-        (verifyUnusedValue),
-        (replaceWithValue $input)
-      ]>;
 
 //===----------------------------------------------------------------------===//
 // Test Legalization

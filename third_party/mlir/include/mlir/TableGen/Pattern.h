@@ -166,9 +166,6 @@ public:
   // value.
   bool isReplaceWithValue() const;
 
-  // Returns true if this DAG node is the `verifyUnusedValue` directive.
-  bool isVerifyUnusedValue() const;
-
   // Returns true if this DAG node is wrapping native code call.
   bool isNativeCodeCall() const;
 
