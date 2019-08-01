@@ -1487,9 +1487,9 @@ class Layer(module.Module):
           (in which case its weights aren't yet defined).
     """
     if not self.built:
-      if self.__class__.__name__ == 'Sequential':
+      if getattr(self, '_is_graph_network', False):
         with tf_utils.maybe_init_scope(self):
-          self._maybe_build()  # pylint: disable=no-value-for-parameter
+          self._maybe_build(self.inputs)
       else:
         raise ValueError('You tried to call `count_params` on ' + self.name +
                          ', but the layer isn\'t built. '
