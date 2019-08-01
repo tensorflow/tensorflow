@@ -67,6 +67,7 @@ def gen_api_init_files(
         name = api_gen_binary_target,
         srcs = ["//tensorflow/python/tools/api/generator:create_python_api.py"],
         main = "//tensorflow/python/tools/api/generator:create_python_api.py",
+        python_version = "PY2",
         srcs_version = "PY2AND3",
         visibility = ["//visibility:public"],
         deps = package_deps + [
@@ -91,6 +92,8 @@ def gen_api_init_files(
             " --compat_init_template=$(location %s)" % compat_init_template
         )
 
+    loading_flag = " --loading=default"
+
     native.genrule(
         name = name,
         outs = all_output_files,
@@ -99,7 +102,7 @@ def gen_api_init_files(
             root_init_template_flag + " --apidir=$(@D)" + output_dir +
             " --apiname=" + api_name + " --apiversion=" + str(api_version) +
             compat_api_version_flags + " " + compat_init_template_flags +
-            " --package=" + ",".join(packages) +
+            loading_flag + " --package=" + ",".join(packages) +
             " --output_package=" + output_package + " $(OUTS)"
         ),
         srcs = srcs,

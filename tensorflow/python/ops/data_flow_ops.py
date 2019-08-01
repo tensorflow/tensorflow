@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import hashlib
 import threading
 
@@ -41,6 +40,7 @@ from tensorflow.python.ops import resource_variable_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: enable=wildcard-import
@@ -64,7 +64,7 @@ def _as_shape_list(shapes,
   """Convert shapes to a list of tuples of int (or None)."""
   del dtypes
   if unknown_dim_allowed:
-    if (not isinstance(shapes, collections.Sequence) or not shapes or
+    if (not isinstance(shapes, collections_abc.Sequence) or not shapes or
         any(shape is None or isinstance(shape, int) for shape in shapes)):
       raise ValueError(
           "When providing partial shapes, a list of shapes must be provided.")
@@ -1092,8 +1092,8 @@ class Barrier(object):
       else:
         batch_dim = tensor_shape.Dimension(
             tensor_util.constant_value(op.inputs[1]))
-      op.outputs[0].set_shape(tensor_shape.vector(batch_dim))  # indices
-      op.outputs[1].set_shape(tensor_shape.vector(batch_dim))  # keys
+      op.outputs[0].set_shape(tensor_shape.TensorShape([batch_dim]))  # indices
+      op.outputs[1].set_shape(tensor_shape.TensorShape([batch_dim]))  # keys
       for output, shape in zip(op.outputs[2:], self._shapes):  # value_list
         output.set_shape(
             tensor_shape.TensorShape([batch_dim]).concatenate(shape))
@@ -1517,6 +1517,40 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
         indices=return_val.indices,
         values=return_val.values,
         dense_shape=return_val.shape)
+
+  # SparseConditionalAccumulator is not switched to resource. Use old kernels.
+  def num_accumulated(self, name=None):
+    """Number of gradients that have currently been aggregated in accumulator.
+
+    Args:
+      name: Optional name for the operation.
+
+    Returns:
+      Number of accumulated gradients currently in accumulator.
+    """
+    if name is None:
+      name = "%s_NumAccumulated" % self._name
+
+    return gen_data_flow_ops.accumulator_num_accumulated(
+        self._accumulator_ref, name=name)
+
+  def set_global_step(self, new_global_step, name=None):
+    """Sets the global time step of the accumulator.
+
+    The operation logs a warning if we attempt to set to a time step that is
+    lower than the accumulator's own time step.
+
+    Args:
+      new_global_step: Value of new time step. Can be a variable or a constant
+      name: Optional name for the operation.
+
+    Returns:
+      Operation that sets the accumulator's time step.
+    """
+    return gen_data_flow_ops.accumulator_set_global_step(
+        self._accumulator_ref,
+        math_ops.cast(ops.convert_to_tensor(new_global_step), _dtypes.int64),
+        name=name)
 
 
 class BaseStagingArea(object):

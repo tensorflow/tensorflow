@@ -42,6 +42,7 @@ from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 
@@ -57,7 +58,7 @@ def _get_sequence(value, n, channel_index, name):
   """Formats a value input for gen_nn_ops."""
   if value is None:
     value = [1]
-  elif not isinstance(value, collections.Sized):
+  elif not isinstance(value, collections_abc.Sized):
     value = [value]
 
   current_n = len(value)
@@ -2282,7 +2283,8 @@ def atrous_conv2d_transpose(value,
           data_format="NHWC")
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
-    if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
+    if not output_shape_.get_shape().is_compatible_with(
+        tensor_shape.TensorShape([4])):
       raise ValueError("output_shape must have shape (4,), got {}".format(
           output_shape_.get_shape()))
 
@@ -2600,10 +2602,10 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
   """
   with ops.name_scope(name, "conv_transpose",
                       [input, filter, output_shape]) as name:
-    if isinstance(output_shape, collections.Sized):
-      n = len(output_shape) - 2
-    elif isinstance(output_shape, ops.Tensor):
+    if tensor_util.is_tensor(output_shape):
       n = output_shape.shape[0] - 2
+    elif isinstance(output_shape, collections.Sized):
+      n = len(output_shape) - 2
     else:
       raise ValueError("output_shape must be a tensor or sized collection.")
 
@@ -2742,7 +2744,7 @@ def relu6(features, name=None):
 def leaky_relu(features, alpha=0.2, name=None):
   """Compute the Leaky ReLU activation function.
 
-  Source: [Rectifier Nonlinearities Improve Neural Network Acoustic Models. 
+  Source: [Rectifier Nonlinearities Improve Neural Network Acoustic Models.
   AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013](https://ai.stanford.edu/~amaas/papers/relu_hybrid_icml2013_final.pdf).
 
   Args:
@@ -3594,8 +3596,8 @@ def avg_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):  #
     ksize = [1] + _get_sequence(ksize, 1, channel_index, "ksize")
     strides = [1] + _get_sequence(strides, 1, channel_index, "strides")
 
-    data_format = "NHWC" if data_format == "NWC" else "NCHW"
     expanding_dim = 1 if data_format == "NWC" else 2
+    data_format = "NHWC" if data_format == "NWC" else "NCHW"
 
     input = array_ops.expand_dims_v2(input, expanding_dim)
     result = gen_nn_ops.avg_pool(
@@ -3785,8 +3787,8 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
     ksize = [1] + _get_sequence(ksize, 1, channel_index, "ksize")
     strides = [1] + _get_sequence(strides, 1, channel_index, "strides")
 
-    data_format = "NHWC" if data_format == "NWC" else "NCHW"
     expanding_dim = 1 if data_format == "NWC" else 2
+    data_format = "NHWC" if data_format == "NWC" else "NCHW"
 
     input = array_ops.expand_dims_v2(input, expanding_dim)
     result = gen_nn_ops.max_pool(
@@ -4233,7 +4235,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     else:
       rate = ops.convert_to_tensor(
           rate, dtype=x.dtype, name="rate")
-      rate.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+      rate.get_shape().assert_has_rank(0)
 
       # Do nothing if we know rate == 0
       if tensor_util.constant_value(rate) == 0:

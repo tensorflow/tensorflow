@@ -275,8 +275,7 @@ def get_func_graphs(op):
           fdef, input_shapes)
     for external_t, internal_t in zip(inputs, func_graph.inputs):
       custom_gradient.copy_handle_data(external_t, internal_t)
-    func_graph.captures = collections.OrderedDict(zip(inputs,
-                                                      func_graph.inputs))
+    func_graph.reset_captures(zip(inputs, func_graph.inputs))
     # Link the op so that the gradient code can use it.
     func_graph._forward_cond = op
     return func_graph
@@ -465,16 +464,21 @@ def _make_inputs_match(branch_graphs, branch_inputs):
     branch_graph. This is a deduped version of `sum(branch_inputs)`.
   """
   assert len(branch_graphs) == len(branch_inputs)
-  new_inputs = set()
+  added_inputs = set()
+  new_inputs = []
   for branch_in in branch_inputs:
-    new_inputs |= set(branch_in)
-  new_inputs = list(new_inputs)
+    for tensor in branch_in:
+      tensor_id = ops.tensor_id(tensor)
+      if tensor_id not in added_inputs:
+        added_inputs.add(tensor_id)
+        new_inputs.append(tensor)
 
   for branch_graph, branch_in in zip(branch_graphs, branch_inputs):
-    branch_input_to_param = dict(zip(branch_in, branch_graph.inputs))
+    input_ids = [ops.tensor_id(t) for t in branch_in]
+    branch_input_to_param = dict(zip(input_ids, branch_graph.inputs))
     input_list = []
     for in_t in new_inputs:
-      param = branch_input_to_param.get(in_t, None)
+      param = branch_input_to_param.get(ops.tensor_id(in_t))
       if param is None:
         param = _create_dummy_input(branch_graph, in_t)
       input_list.append(param)
@@ -482,8 +486,7 @@ def _make_inputs_match(branch_graphs, branch_inputs):
     branch_graph.inputs = input_list
 
     # Rewrite the FuncGraphs' state to reflect the new inputs.
-    branch_graph.captures = collections.OrderedDict(
-        zip(new_inputs, branch_graph.inputs))
+    branch_graph.reset_captures(zip(new_inputs, branch_graph.inputs))
 
   return new_inputs
 
@@ -751,7 +754,7 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
     if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
       # XLA does not yet support optionals, so capture intermediates directly.
       # TODO(skyewm,jpienaar): can XLA support optionals?
-      if tensor not in self.captures:
+      if tensor not in self.external_captures:
         self.xla_intermediates.append(tensor)
         self.op_needs_rewrite = True
       return super(_CondGradFuncGraph, self)._capture_helper(tensor, name)

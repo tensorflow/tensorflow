@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -115,8 +116,7 @@ def _lift_single_variable(old_variable, graph, variable_holder):
       trainable=old_variable.trainable,
       extra_handle_data=old_variable.handle)
   new_variable._initializer_op = old_variable._initializer_op  # pylint: disable=protected-access
-  graph.inputs.append(old_variable.handle)
-  graph.captures[new_variable.handle] = old_variable.handle
+  graph.add_capture(new_variable.handle, old_variable.handle)
   # Now that we've added the new variable to graph.captures,
   # graph.capture will use that cached value and do some post-processing
   # on the capture like recording it on the tape.
@@ -191,6 +191,14 @@ def _lift_unlifted_variables(graph, variable_holder):
       mutable_collection = ops.get_collection_ref(collection_name)
       for index, current in enumerate(mutable_collection):
         mutable_collection[index] = lifted_variables.get(current, current)
+        if not resource_variable_ops.is_resource_variable(
+            mutable_collection[index]):
+          logging.warning(
+              "Unable to create a python object for variable {} because it is "
+              "a reference variable. It may not be visible to training APIs. "
+              "If this is a problem, consider rebuilding the SavedModel after "
+              "running tf.compat.v1.enable_resource_variables().".format(
+                  mutable_collection[index]))
 
 
 # TODO(allenl): make this trackable
@@ -302,10 +310,9 @@ class WrappedFunction(function.ConcreteFunction):
     pruned_graph.outputs.extend(lift_map[x] for x in tensor_fetches)
     pruned_graph.control_outputs.extend(
         [lift_map[operation] for operation in operation_fetches])
-    for external_capture, internal_capture in self.graph.captures.items():
-      pruned_graph.captures[external_capture] = lift_map[internal_capture]
     pruned_graph.inputs.extend(lift_map[x] for x in flat_feeds)
-    pruned_graph.inputs.extend(pruned_graph.captures.values())
+    for external_capture, internal_capture in self.graph.captures:
+      pruned_graph.add_capture(external_capture, lift_map[internal_capture])
     for ti in tensor_infos:
       if ti.WhichOneof("encoding") == "name":  # Dense tensors only
         t = pruned_graph.as_graph_element(ti.name)

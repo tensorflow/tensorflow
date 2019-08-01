@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
+#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/Support/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -54,13 +57,21 @@ inline bool IsTrailingDimensions(ArrayRef<int64_t> a, ArrayRef<int64_t> b) {
   return std::equal(a.rbegin(), a.rend(), b.rbegin());
 }
 
+// Returns true if it is a shaped type of f32 elements.
+inline bool IsF32ShapedType(Type t) {
+  if (auto shaped_type = t.dyn_cast_or_null<ShapedType>()) {
+    return shaped_type.getElementType().isF32();
+  }
+  return false;
+}
+
 // Performs const folding `calculate` with broadcast behavior on the two
 // attributes `operand1` and `operand2` and returns the result if possible.
 // The two operands are expected to both be scalar values.
 template <class AttrElementT,
           class ElementValueT = typename AttrElementT::ValueType,
           class CalculationT =
-              std::function<ElementValueT(ElementValueT, ElementValueT)>>
+              llvm::function_ref<ElementValueT(ElementValueT, ElementValueT)>>
 Attribute ConstFoldBinaryOpScalarScalar(Type result_type, Attribute operand1,
                                         Attribute operand2,
                                         const CalculationT &calculate) {
@@ -84,7 +95,7 @@ Attribute ConstFoldBinaryOpScalarScalar(Type result_type, Attribute operand1,
 template <class AttrElementT,
           class ElementValueT = typename AttrElementT::ValueType,
           class CalculationT =
-              std::function<ElementValueT(ElementValueT, ElementValueT)>>
+              llvm::function_ref<ElementValueT(ElementValueT, ElementValueT)>>
 Attribute ConstFoldBinaryOpSplatSplat(Type result_type, Attribute operand1,
                                       Attribute operand2,
                                       const CalculationT &calculate) {
@@ -106,7 +117,7 @@ Attribute ConstFoldBinaryOpSplatSplat(Type result_type, Attribute operand1,
 template <class AttrElementT,
           class ElementValueT = typename AttrElementT::ValueType,
           class CalculationT =
-              std::function<ElementValueT(ElementValueT, ElementValueT)>>
+              llvm::function_ref<ElementValueT(ElementValueT, ElementValueT)>>
 Attribute ConstFoldBinaryOpDenseSplat(Type result_type, Attribute operand1,
                                       Attribute operand2,
                                       const CalculationT &calculate) {
@@ -139,7 +150,7 @@ Attribute ConstFoldBinaryOpDenseSplat(Type result_type, Attribute operand1,
 template <class AttrElementT,
           class ElementValueT = typename AttrElementT::ValueType,
           class CalculationT =
-              std::function<ElementValueT(ElementValueT, ElementValueT)>>
+              llvm::function_ref<ElementValueT(ElementValueT, ElementValueT)>>
 Attribute ConstFoldBinaryOpDenseDense(Type result_type, Attribute operand1,
                                       Attribute operand2,
                                       const CalculationT &calculate) {
@@ -203,7 +214,7 @@ Attribute ConstFoldBinaryOpDenseDense(Type result_type, Attribute operand1,
 template <class AttrElementT,
           class ElementValueT = typename AttrElementT::ValueType,
           class CalculationT =
-              std::function<ElementValueT(ElementValueT, ElementValueT)>>
+              llvm::function_ref<ElementValueT(ElementValueT, ElementValueT)>>
 Attribute ConstFoldBinaryOp(Type result_type, Attribute operand1,
                             Attribute operand2, const CalculationT &calculate,
                             bool is_commutative) {
@@ -249,8 +260,9 @@ Attribute ConstFoldBinaryOp(Type result_type, Attribute operand1,
 /// `intCalculate` is chosen to conduct the calculate.
 Attribute ConstFoldBinaryOp(
     Type result_type, ArrayRef<Attribute> operands,
-    std::function<APFloat(APFloat, APFloat)> float_calculate,
-    std::function<APInt(APInt, APInt)> int_calculate, bool is_commutative) {
+    llvm::function_ref<APFloat(APFloat, APFloat)> float_calculate,
+    llvm::function_ref<APInt(APInt, APInt)> int_calculate,
+    bool is_commutative) {
   // Note: All types are wrapped in tensor types in TFlite. E.g., f32 is
   // represented as tensor<f32>. So we are only handling tensor types here.
   auto type = result_type.dyn_cast<ShapedType>();
@@ -265,6 +277,32 @@ Attribute ConstFoldBinaryOp(
   if (elemType.isa<IntegerType>())
     return ConstFoldBinaryOp<IntegerAttr>(result_type, operands[0], operands[1],
                                           int_calculate, is_commutative);
+
+  return {};
+}
+
+/// Performs const folding a attributes `operand` and returns the result if
+/// possible.
+/// The function currently asserts that the `result_type` to be a f32 tensor
+/// type.
+/// TODO: Extend this function to handle integral tensor for ops like
+/// "tfl.logical_not".
+Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
+                           llvm::function_ref<APFloat(APFloat)> calculate) {
+  assert(IsF32ShapedType(result_type));
+  auto result_shape_type = result_type.cast<ShapedType>();
+
+  if (auto dense_elements = operand.dyn_cast_or_null<DenseElementsAttr>()) {
+    SmallVector<APFloat, 16> new_values;
+    const int num_elements = result_shape_type.getNumElements();
+    new_values.reserve(num_elements);
+
+    for (APFloat old_value : dense_elements.getValues<APFloat>()) {
+      new_values.push_back(calculate(old_value));
+    }
+
+    return DenseElementsAttr::get(result_shape_type, new_values);
+  }
 
   return {};
 }
@@ -453,6 +491,13 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
   // Remove identity reshape.
   if (getType() == getOperand()->getType()) return getOperand();
 
+  // Constant folding
+  assert(operands.size() == 1);
+  if (auto dense_elements = operands[0].dyn_cast_or_null<DenseElementsAttr>()) {
+    auto result_shape_type = getType().cast<ShapedType>();
+    return dense_elements.reshape(result_shape_type);
+  }
+
   return nullptr;
 }
 
@@ -569,11 +614,272 @@ static LogicalResult Verify(UnpackOp op) {
 // TODO(b/133854225): Implement shape inference to Mean
 
 //===----------------------------------------------------------------------===//
+// LSTMOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(LSTMOp op) {
+  auto operands = op.GetStatefulOperands();
+  if (operands.size() == 2 && operands[0] == 18 && operands[1] == 19) {
+    return success();
+  }
+  return op.emitError("LSTMOp expected to have two stateful operands");
+}
+
+//===----------------------------------------------------------------------===//
+// UnidirectionalSequenceLSTMOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(UnidirectionalSequenceLSTMOp op) {
+  auto operands = op.GetStatefulOperands();
+  if (operands.size() == 2 && operands[0] == 18 && operands[1] == 19) {
+    return success();
+  }
+  return op.emitError(
+      "UnidirectionalSequenceLSTMOp expected to have two stateful operands");
+}
+
+//===----------------------------------------------------------------------===//
+// UnidirectionalSequenceRNNOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(UnidirectionalSequenceRNNOp op) {
+  auto operands = op.GetStatefulOperands();
+  if (operands.size() == 1 && operands[0] == 4) {
+    return success();
+  }
+  return op.emitError(
+      "UnidirectionalSequenceRNNOp expected to have one stateful operand");
+}
+
+//===----------------------------------------------------------------------===//
+// AbsOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult AbsOp::fold(ArrayRef<Attribute> operands) {
+  Type result_type = getType();
+  // Only constant fold for tensor of f32 is implemented.
+  if (!IsF32ShapedType(result_type)) return nullptr;
+
+  auto compute = [](APFloat value) -> APFloat { return llvm::abs(value); };
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// SinOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult SinOp::fold(ArrayRef<Attribute> operands) {
+  Type result_type = getType();
+  // Only constant fold for tensor of f32 is implemented.
+  if (!IsF32ShapedType(result_type)) return nullptr;
+
+  auto compute = [](APFloat value) -> APFloat {
+    float f = value.convertToFloat();
+    float result = std::sin(f);
+    return APFloat(result);
+  };
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// CosOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CosOp::fold(ArrayRef<Attribute> operands) {
+  Type result_type = getType();
+  // Only constant fold for tensor of f32 is implemented.
+  if (!IsF32ShapedType(result_type)) return nullptr;
+
+  auto compute = [](APFloat value) -> APFloat {
+    float f = value.convertToFloat();
+    float result = std::cos(f);
+    return APFloat(result);
+  };
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// LogOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult LogOp::fold(ArrayRef<Attribute> operands) {
+  Type result_type = getType();
+  // Only constant fold for tensor of f32 is implemented.
+  if (!IsF32ShapedType(result_type)) return nullptr;
+
+  auto compute = [](APFloat value) -> APFloat {
+    float f = value.convertToFloat();
+    float result = std::log(f);
+    return APFloat(result);
+  };
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// SqrtOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
+  Type result_type = getType();
+  // Only constant fold for tensor of f32 is implemented.
+  if (!IsF32ShapedType(result_type)) return nullptr;
+
+  auto compute = [](APFloat value) -> APFloat {
+    float f = value.convertToFloat();
+    float result = std::sqrt(f);
+    return APFloat(result);
+  };
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// RsqrtOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult RsqrtOp::fold(ArrayRef<Attribute> operands) {
+  Type result_type = getType();
+  // Only constant fold for tensor of f32 is implemented.
+  if (!IsF32ShapedType(result_type)) return nullptr;
+
+  auto compute = [](APFloat value) -> APFloat {
+    float f = value.convertToFloat();
+    float result = 1.f / std::sqrt(f);
+    return APFloat(result);
+  };
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// SquareOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult SquareOp::fold(ArrayRef<Attribute> operands) {
+  Type result_type = getType();
+  // Only constant fold for tensor of f32 is implemented.
+  if (!IsF32ShapedType(result_type)) return nullptr;
+
+  auto compute = [](APFloat value) -> APFloat { return value * value; };
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// RankOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
+  if (auto elements_attr = operands[0].dyn_cast_or_null<ElementsAttr>()) {
+    auto rank = static_cast<int32_t>(elements_attr.getType().getRank());
+    return DenseElementsAttr::get(getType().cast<ShapedType>(), {rank});
+  }
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// ConstOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.empty() && "constant has no operands");
+
+  // Return the held attribute value.
+  return value();
+}
+
+//===----------------------------------------------------------------------===//
+// RangeOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// Compute the length of a range (1-D) tensor given `start`, `limit`, `delta`.
+// Template parameter `FloatOrInt` must be standard C integer or floating-point
+// types.
+template <typename FloatOrInt>
+int GetLengthOfRange(FloatOrInt start, FloatOrInt limit, FloatOrInt delta) {
+  // Refer to the implementation in
+  // tensorflow/lite/kernels/range.cc.
+  return std::is_integral<FloatOrInt>::value
+             ? ((std::abs(limit - start) + std::abs(delta) - 1) /
+                std::abs(delta))
+             : std::ceil(std::abs((limit - start) / delta));
+}
+
+// Builds a constant range tensor of `result_elem_type` elements.
+// Template parameter `FloatOrIntAtrr` must be mlir::IntegerAttr or
+// mlir::FloatAttr.
+template <typename FloatOrIntAtrr>
+DenseElementsAttr BuildConstRangeTensor(Type result_elem_type, int num_elements,
+                                        FloatOrIntAtrr start_attr,
+                                        FloatOrIntAtrr delta_attr) {
+  using ValueType = typename FloatOrIntAtrr::ValueType;  // APInt or APFloat
+  ValueType start = start_attr.getValue();
+  ValueType delta = delta_attr.getValue();
+
+  SmallVector<ValueType, 16> new_values;
+  new_values.reserve(num_elements);
+  ValueType new_value = start;
+  for (int i = 0; i < num_elements; ++i) {
+    new_values.push_back(new_value);
+    new_value = new_value + delta;
+  }
+  // Result is always a 1-D tensor.
+  auto new_result_type =
+      RankedTensorType::get({num_elements}, result_elem_type);
+  return DenseElementsAttr::get(new_result_type, new_values);
+}
+}  // namespace
+
+OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 3);
+  auto start_tensor = operands[0].dyn_cast_or_null<ElementsAttr>();
+  auto limit_tensor = operands[1].dyn_cast_or_null<ElementsAttr>();
+  auto delta_tensor = operands[2].dyn_cast_or_null<ElementsAttr>();
+  if (start_tensor && limit_tensor && delta_tensor) {
+    // Operands should all be scalars
+    assert(start_tensor.getType().getRank() == 0 &&
+           limit_tensor.getType().getRank() == 0 &&
+           delta_tensor.getType().getRank() == 0);
+    Type elem_type = getType().cast<ShapedType>().getElementType();
+    if (elem_type.isa<IntegerType>()) {
+      auto start_attr = start_tensor.getValue({}).cast<IntegerAttr>();
+      auto limit_attr = limit_tensor.getValue({}).cast<IntegerAttr>();
+      auto delta_attr = delta_tensor.getValue({}).cast<IntegerAttr>();
+      const int num_elements = GetLengthOfRange(
+          start_attr.getInt(), limit_attr.getInt(), delta_attr.getInt());
+      return BuildConstRangeTensor(elem_type, num_elements, start_attr,
+                                   delta_attr);
+    } else if (elem_type.isa<FloatType>()) {
+      auto start_attr = start_tensor.getValue({}).cast<FloatAttr>();
+      auto limit_attr = limit_tensor.getValue({}).cast<FloatAttr>();
+      auto delta_attr = delta_tensor.getValue({}).cast<FloatAttr>();
+      const int num_elements = GetLengthOfRange(start_attr.getValueAsDouble(),
+                                                limit_attr.getValueAsDouble(),
+                                                delta_attr.getValueAsDouble());
+      return BuildConstRangeTensor(elem_type, num_elements, start_attr,
+                                   delta_attr);
+    }
+  }
+
+  return nullptr;
+}
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
+
+Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
+                                                      Attribute value,
+                                                      Type type, Location loc) {
+  // If this is an opaque elements attribute or the result type doesn't match
+  // the attribute type, then generate a tfl.pseudo_const.
+  if (value.isa<OpaqueElementsAttr>() ||
+      (value.isa<ElementsAttr>() && value.getType() != type))
+    return builder.create<ConstOp>(loc, type, value.cast<ElementsAttr>());
+  return nullptr;
+}
 
 }  // namespace TFL
 }  // namespace mlir

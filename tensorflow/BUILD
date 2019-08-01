@@ -447,6 +447,7 @@ package_group(
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
+        "//third_party/py/autograph/...",
     ],
 )
 

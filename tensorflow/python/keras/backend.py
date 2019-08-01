@@ -64,7 +64,6 @@ from tensorflow.python.ops import map_fn as map_fn_lib
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
@@ -73,6 +72,7 @@ from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -775,7 +775,7 @@ def variable(value, dtype=None, name=None, constraint=None):
         indices=indices, values=sparse_coo.data, dense_shape=sparse_coo.shape)
     v._keras_shape = sparse_coo.shape
     return v
-  v = resource_variable_ops.ResourceVariable(
+  v = variables_module.Variable(
       value,
       dtype=dtypes_module.as_dtype(dtype),
       name=name,
@@ -3413,7 +3413,8 @@ class EagerExecutionFunction(object):
 
     self._freezable_vars_to_feed = []
     self._freezable_vars_values = []
-    freezable_vars_from_keras_graph = _FREEZABLE_VARS.get(global_graph, {})
+    freezable_vars_from_keras_graph = object_identity.ObjectIdentitySet(
+        _FREEZABLE_VARS.get(global_graph, {}))
     with _scratch_graph() as exec_graph:
       global_graph = get_graph()
       if source_graph not in (exec_graph, global_graph):
@@ -3425,8 +3426,12 @@ class EagerExecutionFunction(object):
             [p_new for [_, p_new] in legacy_update_ops
              if isinstance(p_new, ops.Tensor)])
         lifted_map = lift_to_graph.lift_to_graph(
-            init_tensors=init_tensors, graph=exec_graph, sources=inputs,
-            add_sources=True, handle_captures=True, base_graph=source_graph)
+            tensors=init_tensors,
+            graph=exec_graph,
+            sources=inputs,
+            add_sources=True,
+            handle_captures=True,
+            base_graph=source_graph)
 
         inputs = [lifted_map[i] for i in inputs]
         outputs = [lifted_map[i] for i in outputs]
@@ -3458,8 +3463,7 @@ class EagerExecutionFunction(object):
       with ops.control_dependencies(updates_ops):
         self.outputs[0] = array_ops.identity(self.outputs[0])
 
-      exec_graph.inputs = self._input_references + list(
-          exec_graph.captures.values())
+      exec_graph.inputs = self._input_references + exec_graph.internal_captures
       exec_graph.outputs = self.outputs
       graph_fn = eager_function.ConcreteFunction(exec_graph)
 
@@ -3796,6 +3800,7 @@ def rnn(step_function,
         tensor_array_ops.TensorArray(
             dtype=out.dtype,
             size=time_steps_t,
+            element_shape=out.shape,
             tensor_array_name='output_ta_%s' % i)
         for i, out in enumerate(nest.flatten(output_time_zero)))
 

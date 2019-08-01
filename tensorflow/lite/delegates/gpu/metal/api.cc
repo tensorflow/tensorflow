@@ -220,9 +220,9 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
             Slice(node_id, inputs[0], outputs[0],
                   absl::any_cast<SliceAttributes>(node->operation.attributes));
         break;
-      case OperationType::SOFT_MAX: {
+      case OperationType::SOFTMAX: {
         auto attr =
-            absl::any_cast<SoftMaxAttributes>(node->operation.attributes);
+            absl::any_cast<SoftmaxAttributes>(node->operation.attributes);
         if (attr.axis != Axis::CHANNELS) {
           return UnimplementedError("Softmax supports only CHANNELS dimension");
         }
@@ -263,7 +263,6 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
       case OperationType::MUL:
       case OperationType::RESIZE:
       case OperationType::SPACE_TO_BATCH:
-      case OperationType::STRETCH_TIME:
       case OperationType::UNKNOWN:
         return UnimplementedError("Unsupported op: " + node->operation.type);
     }

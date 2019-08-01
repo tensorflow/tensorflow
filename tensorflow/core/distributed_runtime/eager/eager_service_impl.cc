@@ -150,6 +150,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
       remote_workers, request->context_id(), std::move(rendezvous_creator),
       std::move(remote_mgr));
   if (!s.ok()) {
+    VLOG(1) << "EagerContext::InitializeRemoteWorker failed with "
+            << s.ToString();
     delete ctx;
     return s;
   }
@@ -279,7 +281,7 @@ Status EagerServiceImpl::WaitQueueDone(const WaitQueueDoneRequest* request,
         "EagerServiceImpl::WaitQueueDone is not "
         "implemented for particular op IDs.");
   }
-  return context->Context()->AsyncWait();
+  return context->Context()->Executor()->WaitForAllPendingNodes();
 }
 
 Status EagerServiceImpl::KeepAlive(const KeepAliveRequest* request,
@@ -293,6 +295,8 @@ Status EagerServiceImpl::KeepAlive(const KeepAliveRequest* request,
 
 Status EagerServiceImpl::CloseContext(const CloseContextRequest* request,
                                       CloseContextResponse* response) {
+  VLOG(1) << "Executing EagerService::CloseContext for context "
+          << request->context_id();
   ServerContext* context = nullptr;
   if (!GetServerContext(request->context_id(), &context).ok()) {
     // Swallow the error here.
@@ -342,8 +346,8 @@ Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
     Device* device;
     TF_RETURN_IF_ERROR(
         ctx->FindDeviceFromName(request->device_name().c_str(), &device));
-    TF_RETURN_IF_ERROR(
-        EagerCopyToDevice(tensor_handle, ctx, device, false, &copied_handle));
+    TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, ctx, ctx->Executor(),
+                                         device, false, &copied_handle));
     tensors.push_back(copied_handle);
     tensor_handle->Unref();
   }

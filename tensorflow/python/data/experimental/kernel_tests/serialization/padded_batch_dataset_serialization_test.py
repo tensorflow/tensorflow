@@ -36,10 +36,8 @@ class PaddedBatchDatasetSerializationTest(
           lambda x: array_ops.fill([x], x)).padded_batch(
               4, padded_shapes=[-1])
 
-    seq_lens1 = np.random.randint(1, 20, size=(32,)).astype(np.int32)
-    seq_lens2 = np.random.randint(21, 40, size=(32,)).astype(np.int32)
-    self.run_core_tests(lambda: build_dataset(seq_lens1),
-                        lambda: build_dataset(seq_lens2), 8)
+    seq_lens = np.random.randint(1, 20, size=(32,)).astype(np.int32)
+    self.run_core_tests(lambda: build_dataset(seq_lens), 8)
 
   def testPaddedBatchNonDefaultPadding(self):
 
@@ -56,10 +54,8 @@ class PaddedBatchDatasetSerializationTest(
               padded_shapes=(padded_shape, padded_shape),
               padding_values=(-1, "<end>"))
 
-    seq_lens1 = np.random.randint(1, 20, size=(32,)).astype(np.int32)
-    seq_lens2 = np.random.randint(21, 40, size=(32,)).astype(np.int32)
-    self.run_core_tests(lambda: build_dataset(seq_lens1),
-                        lambda: build_dataset(seq_lens2), 8)
+    seq_lens = np.random.randint(1, 20, size=(32,)).astype(np.int32)
+    self.run_core_tests(lambda: build_dataset(seq_lens), 8)
 
 
 if __name__ == "__main__":

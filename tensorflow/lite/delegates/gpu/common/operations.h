@@ -63,9 +63,8 @@ enum class OperationType {
   SIGMOID,
   SIN,
   SLICE,
-  SOFT_MAX,
+  SOFTMAX,
   SPACE_TO_BATCH,
-  STRETCH_TIME,
   SQRT,
   SQUARE,
   SQUARED_DIFF,
@@ -131,12 +130,6 @@ struct MaxUnpooling2DAttributes {
   HW strides = HW(-1, -1);
   HW kernel = HW(-1, -1);
   Padding2D padding;
-};
-
-struct StretchTimeAttributes {
-  Axis axis;
-  int32_t factor;
-  HW slice;
 };
 
 struct ConcatAttributes {
@@ -246,7 +239,7 @@ struct PReLUAttributes {
       alpha;
 };
 
-struct SoftMaxAttributes {
+struct SoftmaxAttributes {
   Axis axis = Axis::UNKNOWN;
 };
 

@@ -1060,5 +1060,5 @@ def softmax(x, axis, name=None):
     if axis_ is not None:
       axis = np.int(ndims + axis_ if axis_ < 0 else axis_)
     else:
-      axis = array_ops.where(axis < 0, ndims + axis, axis)
+      axis = array_ops.where_v2(axis < 0, ndims + axis, axis)
   return nn_ops.softmax(x, axis=axis)

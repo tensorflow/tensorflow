@@ -354,6 +354,22 @@ REGISTER_OP("RangeDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("AnonymousRandomSeedGenerator")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Output("handle: resource")
+    .Output("deleter: variant")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      c->set_output(1, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("DeleteRandomSeedGenerator")
+    .Input("handle: resource")
+    .Input("deleter: variant")
+    .SetShapeFn(shape_inference::NoOutputs);
+
 REGISTER_OP("ShuffleDataset")
     .Input("input_dataset: variant")
     .Input("buffer_size: int64")
@@ -369,6 +385,21 @@ REGISTER_OP("ShuffleDataset")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
+REGISTER_OP("ShuffleDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("buffer_size: int64")
+    .Input("seed_generator: resource")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // buffer_size, seed, and seed2 should be scalars.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
 

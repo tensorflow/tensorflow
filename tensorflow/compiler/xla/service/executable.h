@@ -219,16 +219,18 @@ class Executable {
     return hlo_module_->config().entry_computation_layout().result_shape();
   }
 
-  // Returns the size of the executable in bytes. Returns -1 by default if the
-  // method is not overridden to support this kind of query.
-  virtual int64 SizeInBytes();
+  // Returns the size of the executable in bytes. Returns -1 if this query is
+  // not supported by the executable.
+  //
+  // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
+  virtual int64 SizeOfGeneratedCodeInBytes();
 
   // Dumping helpers.
-  void set_hlo_snapshot(std::unique_ptr<xla::HloSnapshot> hlo_snapshot) {
-    hlo_snapshot_ = std::move(hlo_snapshot);
+  void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {
+    hlo_proto_ = std::move(hlo_proto);
   }
-  bool dumping_snapshot() const { return hlo_snapshot_ != nullptr; }
-  HloSnapshot* hlo_snapshot() const { return hlo_snapshot_.get(); }
+  bool dumping_snapshot() const { return hlo_proto_ != nullptr; }
+  HloProto const* hlo_proto() const { return hlo_proto_.get(); }
 
  protected:
   mutable tensorflow::mutex mutex_;
@@ -241,8 +243,8 @@ class Executable {
   // around.
   const std::shared_ptr<HloModule> hlo_module_;
 
-  // HloSnapshot this was compiled from. Null if not dumping executions.
-  std::unique_ptr<HloSnapshot> hlo_snapshot_;
+  // The serialized HLO proto. Non-null only if dumping snapshots is enabled.
+  std::unique_ptr<HloProto const> hlo_proto_;
 
   // Execution count, used to generate a unique filename for each dumped
   // execution.

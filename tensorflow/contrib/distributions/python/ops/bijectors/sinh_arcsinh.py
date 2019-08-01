@@ -43,7 +43,7 @@ __all__ = [
     warn_once=True)
 def _sqrtx2p1(x):
   """Implementation of `sqrt(1 + x**2)` which is stable despite large `x`."""
-  return array_ops.where(
+  return array_ops.where_v2(
       math_ops.abs(x) * np.sqrt(np.finfo(x.dtype.as_numpy_dtype).eps) <= 1.,
       math_ops.sqrt(x**2. + 1.),
       # For large x, calculating x**2 can overflow. This can be alleviated by

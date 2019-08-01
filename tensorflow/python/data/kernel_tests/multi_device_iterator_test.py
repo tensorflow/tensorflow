@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -426,6 +427,35 @@ class MultiDeviceIteratorV2Test(test_base.DatasetTestBase):
           dataset, ["/cpu:0", "/gpu:0"])
       for i, el in enumerate(multi_device_iterator):
         self.assertEqual([i * 2, i * 2 + 1], [el[0].numpy(), el[1].numpy()])
+
+  @test_util.run_v2_only
+  def testLimitedRetracing(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    trace_count = [0]
+
+    @def_function.function
+    def f(iterator):
+      trace_count[0] += 1
+      counter = np.int64(0)
+      for _ in range(5):
+        elem = next(iterator)
+        counter += elem[0]
+        counter += elem[1]
+      return counter
+
+    dataset = dataset_ops.Dataset.range(10)
+    dataset2 = dataset_ops.Dataset.range(20)
+
+    for _ in range(10):
+      multi_device_iterator = multi_device_iterator_ops.MultiDeviceIteratorV2(
+          dataset, ["/cpu:0", "/gpu:0"])
+      self.assertEqual(self.evaluate(f(multi_device_iterator)), 45)
+      multi_device_iterator2 = multi_device_iterator_ops.MultiDeviceIteratorV2(
+          dataset2, ["/cpu:0", "/gpu:0"])
+      self.assertEqual(self.evaluate(f(multi_device_iterator2)), 45)
+      self.assertEqual(trace_count[0], 1)
 
 
 if __name__ == "__main__":

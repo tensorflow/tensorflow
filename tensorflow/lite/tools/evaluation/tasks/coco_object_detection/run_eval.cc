@@ -34,6 +34,7 @@ constexpr char kModelOutputLabelsFlag[] = "model_output_labels";
 constexpr char kOutputFilePathFlag[] = "output_file_path";
 constexpr char kGroundTruthProtoFileFlag[] = "ground_truth_proto";
 constexpr char kInterpreterThreadsFlag[] = "num_interpreter_threads";
+constexpr char kDebugModeFlag[] = "debug_mode";
 constexpr char kDelegateFlag[] = "delegate";
 constexpr char kNnapiDelegate[] = "nnapi";
 constexpr char kGpuDelegate[] = "gpu";
@@ -49,7 +50,7 @@ bool EvaluateModel(const std::string& model_file_path,
                    const std::vector<std::string>& image_paths,
                    const std::string& ground_truth_proto_file,
                    std::string delegate, std::string output_file_path,
-                   int num_interpreter_threads) {
+                   int num_interpreter_threads, bool debug_mode) {
   EvaluationStageConfig eval_config;
   eval_config.set_name("object_detection");
   auto* detection_params =
@@ -65,27 +66,47 @@ bool EvaluateModel(const std::string& model_file_path,
 
   // Get ground truth data.
   absl::flat_hash_map<std::string, ObjectDetectionResult> ground_truth_map;
-  PopulateGroundTruth(ground_truth_proto_file, &ground_truth_map);
+  if (!ground_truth_proto_file.empty()) {
+    PopulateGroundTruth(ground_truth_proto_file, &ground_truth_map);
+  }
 
   ObjectDetectionStage eval(eval_config);
 
   eval.SetAllLabels(model_labels);
   if (eval.Init() != kTfLiteOk) return false;
 
+  // Open output file for writing.
+  std::ofstream ofile;
+  ofile.open(output_file_path, std::ios::out);
+
   const int step = image_paths.size() / 100;
   for (int i = 0; i < image_paths.size(); ++i) {
     if (step > 1 && i % step == 0) {
       LOG(INFO) << "Finished: " << i / step << "%";
     }
-    eval.SetInputs(image_paths[i],
-                   ground_truth_map[GetNameFromPath(image_paths[i])]);
+
+    const std::string image_name = GetNameFromPath(image_paths[i]);
+    eval.SetInputs(image_paths[i], ground_truth_map[image_name]);
     if (eval.Run() != kTfLiteOk) return false;
+
+    if (debug_mode) {
+      ObjectDetectionResult prediction = *eval.GetLatestPrediction();
+      prediction.set_image_name(image_name);
+      ofile << prediction.DebugString();
+      ofile << "======================================================\n";
+    }
   }
 
-  std::ofstream metrics_ofile;
-  metrics_ofile.open(output_file_path, std::ios::out);
-  metrics_ofile << eval.LatestMetrics().DebugString();
-  metrics_ofile.close();
+  // Write metrics to file.
+  EvaluationStageMetrics metrics = eval.LatestMetrics();
+  if (ground_truth_proto_file.empty()) {
+    // mAP metrics are meaningless for no ground truth.
+    metrics.mutable_process_metrics()
+        ->mutable_object_detection_metrics()
+        ->clear_average_precision_metrics();
+  }
+  ofile << metrics.DebugString();
+  ofile.close();
 
   return true;
 }
@@ -99,6 +120,7 @@ int Main(int argc, char* argv[]) {
   std::string output_file_path;
   std::string delegate;
   int num_interpreter_threads = 1;
+  bool debug_mode;
   std::vector<tflite::Flag> flag_list = {
       tflite::Flag::CreateFlag(kModelFileFlag, &model_file_path,
                                "Path to test tflite model file."),
@@ -112,13 +134,19 @@ int Main(int argc, char* argv[]) {
           kGroundTruthImagesPathFlag, &ground_truth_images_path,
           "Path to ground truth images. These will be evaluated in "
           "alphabetical order of filenames"),
-      tflite::Flag::CreateFlag(kGroundTruthProtoFileFlag,
-                               &ground_truth_proto_file,
-                               "Path to file containing "
-                               "tflite::evaluation::ObjectDetectionGroundTruth "
-                               "proto in text format"),
-      tflite::Flag::CreateFlag(kOutputFilePathFlag, &output_file_path,
-                               "File to output metrics proto to."),
+      tflite::Flag::CreateFlag(
+          kGroundTruthProtoFileFlag, &ground_truth_proto_file,
+          "Path to file containing "
+          "tflite::evaluation::ObjectDetectionGroundTruth "
+          "proto in text format. If left empty, mAP numbers are not output."),
+      tflite::Flag::CreateFlag(
+          kOutputFilePathFlag, &output_file_path,
+          "File to output to. Contains only metrics proto if debug_mode is "
+          "off, and per-image predictions also otherwise."),
+      tflite::Flag::CreateFlag(kDebugModeFlag, &debug_mode,
+                               "Whether to enable debug mode. Per-image "
+                               "predictions are written to the output file "
+                               "along with metrics."),
       tflite::Flag::CreateFlag(
           kInterpreterThreadsFlag, &num_interpreter_threads,
           "Number of interpreter threads to use for inference."),
@@ -141,7 +169,7 @@ int Main(int argc, char* argv[]) {
 
   if (!EvaluateModel(model_file_path, model_labels, image_paths,
                      ground_truth_proto_file, delegate, output_file_path,
-                     num_interpreter_threads)) {
+                     num_interpreter_threads, debug_mode)) {
     LOG(ERROR) << "Could not evaluate model";
     return 0;
   }

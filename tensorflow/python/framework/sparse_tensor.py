@@ -22,6 +22,7 @@ import collections
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import tf2
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -279,6 +280,16 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
     return (self._shape, self._dtype)
 
   @property
+  def dtype(self):
+    """The `tf.dtypes.DType` specified by this type for the SparseTensor."""
+    return self._dtype
+
+  @property
+  def shape(self):
+    """The `tf.TensorShape` specified by this type for the SparseTensor."""
+    return self._shape
+
+  @property
   def _component_specs(self):
     rank = self._shape.ndims
     num_values = None
@@ -293,7 +304,11 @@ class SparseTensorSpec(type_spec.BatchableTypeSpec):
     return [value.indices, value.values, value.dense_shape]
 
   def _from_components(self, tensor_list):
-    return SparseTensor(*tensor_list)
+    if (all(isinstance(t, np.ndarray) for t in tensor_list) and
+        not tf2.enabled()):
+      return SparseTensorValue(*tensor_list)
+    else:
+      return SparseTensor(*tensor_list)
 
   # The SparseTensorSpec tensor_list encoding uses (de)serialize_sparse ops
   # to (un)box the component tensors in a way that allows for batching &

@@ -36,10 +36,8 @@ class IgnoreErrorsSerializationTest(
 
   def testIgnoreErrorsCore(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
-    diff_components = np.array([1., 2., 3., np.nan]).astype(np.float32)
     num_outputs = 4
-    self.run_core_tests(lambda: self._build_ds(components),
-                        lambda: self._build_ds(diff_components), num_outputs)
+    self.run_core_tests(lambda: self._build_ds(components), num_outputs)
 
 
 if __name__ == "__main__":

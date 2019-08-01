@@ -48,21 +48,26 @@ def check_destinations(destinations):
     Boolean which is True if `destinations` is not empty.
   """
   # Calling bool() on a ResourceVariable is not allowed.
-  if isinstance(destinations, resource_variable_ops.BaseResourceVariable):
+  if isinstance(destinations,
+                (resource_variable_ops.BaseResourceVariable, ops.Tensor)):
     return bool(destinations.device)
   return bool(destinations)
 
 
 def validate_destinations(destinations):
-  if not isinstance(destinations,
-                    (value_lib.DistributedValues,
-                     resource_variable_ops.BaseResourceVariable,
-                     value_lib.AggregatingVariable,
-                     six.string_types,
-                     value_lib.TPUMirroredVariable,
-                     # LogicalDeviceSpec is only used internally, e.g. as a
-                     # broadcast destination, never supplied by a user.
-                     value_lib.LogicalDeviceSpec)):
+  """Validates the `destination` is one of expected types."""
+  if not isinstance(
+      destinations,
+      (
+          value_lib.DistributedValues,
+          resource_variable_ops.BaseResourceVariable,
+          ops.Tensor,
+          value_lib.AggregatingVariable,
+          six.string_types,
+          value_lib.TPUMirroredVariable,
+          # LogicalDeviceSpec is only used internally, e.g. as a
+          # broadcast destination, never supplied by a user.
+          value_lib.LogicalDeviceSpec)):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
                      " a tf.Variable object, or a device string.")
 
@@ -159,7 +164,7 @@ def get_devices_from(destinations):
         destinations.logical_device)
   elif isinstance(destinations, six.string_types):
     return (device_util.resolve(destinations),)
-  return (destinations.device,)
+  return (device_util.resolve(destinations.device),)
 
 
 def get_device_map_from(destinations):
@@ -199,7 +204,8 @@ def simple_broadcast(value, destinations, always_mirrored=False):
       value_updates.append(
           cross_device_utils.copy_tensor_or_indexed_slices_to_device(
               value, d))
-    return value_lib.Mirrored(device_map, value_updates, logical_device)
+    return value_lib.regroup(
+        device_map, value_updates, wrap_class=value_lib.Mirrored)
 
 
 def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
@@ -256,7 +262,7 @@ class CrossDeviceOps(object):
       ValueError: if per_replica_value can't be converted to a PerReplica
         object.
     """
-    if not isinstance(per_replica_value, value_lib.PerReplica):
+    if not isinstance(per_replica_value, value_lib.DistributedValues):
       per_replica_value = _make_tensor_into_per_replica(per_replica_value)
 
     validate_destinations(destinations)
@@ -265,8 +271,10 @@ class CrossDeviceOps(object):
     if self._num_between_graph_workers == 1 and len(
         per_replica_value.values) == 1 and _devices_match(
             per_replica_value, destinations):
-      return value_lib.Mirrored(per_replica_value.device_map,
-                                per_replica_value.values)
+      return value_lib.regroup(
+          per_replica_value.device_map,
+          per_replica_value.values,
+          wrap_class=value_lib.Mirrored)
 
     return self.reduce_implementation(reduce_op, per_replica_value,
                                       destinations)
@@ -306,7 +314,8 @@ class CrossDeviceOps(object):
         value_destination_pairs) and len(
             value_destination_pairs[0][0].values) == 1:
       return [
-          value_lib.Mirrored(v.device_map, v.values)
+          value_lib.regroup(
+              v.device_map, v.values, wrap_class=value_lib.Mirrored)
           for v, _ in value_destination_pairs
       ]
 
@@ -475,16 +484,20 @@ def _ungroup_and_make_mirrored(grouped_reduced,
   Returns:
     a list of Mirrored objects.
   """
-  device_map, logical_device = get_device_map_from(destinations)
+  device_map, _ = get_device_map_from(destinations)
   num_replicas = device_map.num_replicas_in_graph * num_between_graph_workers
   index = [[] for _ in range(len(grouped_reduced[0]))]
   for per_replica_reduced in grouped_reduced:
     for i, (v, _) in enumerate(per_replica_reduced):
       if reduce_op == reduce_util.ReduceOp.MEAN:
-        index[i].append(v / num_replicas)
+        with ops.device(v.device):
+          index[i].append(v / num_replicas)
       else:
         index[i].append(v)
-  return [value_lib.Mirrored(device_map, v, logical_device) for v in index]
+  return [
+      value_lib.regroup(device_map, v, wrap_class=value_lib.Mirrored)
+      for v in index
+  ]
 
 
 class _ConcatAndSplitPacker(object):
@@ -1009,10 +1022,19 @@ class CollectiveAllReduce(CrossDeviceOps):
   def reduce_implementation(self, reduce_op, per_replica_value, destinations):
     all_reduced = self._batch_all_reduce(reduce_op, [per_replica_value])[0]
     device_map, logical_device = get_device_map_from(destinations)
-    if (all_reduced.device_map is device_map and
+    devices = device_map.logical_to_actual_devices(logical_device)
+
+    if (isinstance(all_reduced, value_lib.Mirrored) and
+        all_reduced.device_map is device_map and
         all_reduced.logical_device == logical_device):
       return all_reduced
-    devices = device_map.logical_to_actual_devices(logical_device)
+
+    # Convert `all_reduced` to a `Mirrored` object, as a simple and uniform
+    # utility to access component for a particular device.
+    if not isinstance(all_reduced, value_lib.Mirrored):
+      all_reduced = value_lib.Mirrored(
+          value_lib.SingleDeviceMap(all_reduced.device), [all_reduced])
+
     index = []
     with ops.control_dependencies(all_reduced.values):
       for d in devices:
@@ -1024,7 +1046,7 @@ class CollectiveAllReduce(CrossDeviceOps):
             # copy from the corresponding replica instead of the primary.
             index.append(array_ops.identity(all_reduced.primary))
 
-    return value_lib.Mirrored(device_map, index, logical_device)
+    return value_lib.regroup(device_map, index, wrap_class=value_lib.Mirrored)
 
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs):
     all_devices_match = _all_devices_match(value_destination_pairs)

@@ -32,7 +32,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.eager import wrap_function
-from tensorflow.python.feature_column import feature_column_v2
+from tensorflow.python.feature_column import feature_column_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -58,6 +58,8 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import tag_constants
@@ -874,14 +876,15 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     root = Root()
     self.assertIn(root.v.handle,
-                  root.use_v.get_concrete_function().graph.captures)
+                  root.use_v.get_concrete_function().graph.external_captures)
     for _ in range(cycles):
       root = self.cycle(root, 1, signatures=root.use_v.get_concrete_function())
-    func_captures = root.use_v.get_concrete_function().graph.captures
+    func_captures = root.use_v.get_concrete_function().graph.external_captures
     self.assertLen(func_captures, 2)
     self.assertIn(root.v.handle, func_captures)
     self.assertIn(root.v1.handle, func_captures)
-    signature_captures = root.signatures["serving_default"].graph.captures
+    signature_captures = root.signatures[
+        "serving_default"].graph.external_captures
     self.assertLen(signature_captures, 2)
     self.assertIn(root.v.handle, signature_captures)
     self.assertIn(root.v1.handle, signature_captures)
@@ -1584,9 +1587,11 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_dense_features_layer(self, cycles):
-    columns = [feature_column_v2.numeric_column("x"),
-               feature_column_v2.numeric_column("y")]
-    layer = feature_column_v2.DenseFeatures(columns)
+    columns = [
+        feature_column_lib.numeric_column("x"),
+        feature_column_lib.numeric_column("y")
+    ]
+    layer = feature_column_lib.DenseFeatures(columns)
     model = sequential.Sequential([layer])
     model_input = {"x": constant_op.constant([[1.]]),
                    "y": constant_op.constant([[2.]])}
@@ -1599,9 +1604,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose([[1., 2.]], signature_output)
 
   def test_dense_features_layer_fit(self, cycles):
-    columns = [feature_column_v2.numeric_column("x")]
+    columns = [feature_column_lib.numeric_column("x")]
     model = sequential.Sequential(
-        [feature_column_v2.DenseFeatures(columns),
+        [feature_column_lib.DenseFeatures(columns),
          core.Dense(1)])
     model_input = {"x": constant_op.constant([[1.]])}
     model.compile(optimizer="adam", loss="mse")
@@ -1758,6 +1763,21 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f = outer
     imported = self.cycle(root, cycles)
     self.assertAllClose(2., imported.f(constant_op.constant(1.)))
+
+  def test_ragged_no_signature(self, cycles):
+
+    @def_function.function(input_signature=[
+        ragged_tensor.RaggedTensorSpec(shape=[None, None], dtype=dtypes.int32)
+    ])
+    def f(x):
+      return x + 1
+
+    obj = tracking.AutoTrackable()
+    obj.f = f
+
+    imported = self.cycle(obj, cycles, signatures={})
+    rt = ragged_factory_ops.constant([[1, 2], [3]])
+    self.assertAllEqual(imported.f(rt), [[2, 3], [4]])
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):

@@ -1,8 +1,8 @@
-$(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model,))
+$(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
 
 MICRO_VISION_MODEL_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.cc \
-$(MAKEFILE_DIR)/downloads/person_model/person_detect_model_data.cc
+$(MAKEFILE_DIR)/downloads/person_model_grayscale/person_detect_model_data.cc
 
 MICRO_VISION_MODEL_HDRS := \
 tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.h \
@@ -10,8 +10,8 @@ tensorflow/lite/experimental/micro/examples/micro_vision/person_detect_model_dat
 
 MICRO_VISION_TEST_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_vision/micro_vision_test.cc \
-$(MAKEFILE_DIR)/downloads/person_model/no_person_image_data.cc \
-$(MAKEFILE_DIR)/downloads/person_model/person_image_data.cc \
+$(MAKEFILE_DIR)/downloads/person_model_grayscale/no_person_image_data.cc \
+$(MAKEFILE_DIR)/downloads/person_model_grayscale/person_image_data.cc \
 $(MICRO_VISION_MODEL_SRCS)
 
 MICRO_VISION_TEST_HDRS := \

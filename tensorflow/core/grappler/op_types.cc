@@ -253,6 +253,10 @@ bool IsFusedBatchNorm(const NodeDef& node) {
          op == "FusedBatchNormV3";
 }
 
+bool IsFusedBatchNormEx(const NodeDef& node) {
+  return node.op() == "_FusedBatchNormEx";
+}
+
 bool IsFusedBatchNormGrad(const NodeDef& node) {
   const auto& op = node.op();
   return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2" ||
@@ -312,6 +316,8 @@ bool IsLogicalAnd(const NodeDef& node) { return node.op() == "LogicalAnd"; }
 bool IsLogicalNot(const NodeDef& node) { return node.op() == "LogicalNot"; }
 
 bool IsLogicalOr(const NodeDef& node) { return node.op() == "LogicalOr"; }
+
+bool IsLoopCond(const NodeDef& node) { return node.op() == "LoopCond"; }
 
 bool IsMatMul(const NodeDef& node) { return node.op() == "MatMul"; }
 

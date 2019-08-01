@@ -27,6 +27,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import signature_serialization
@@ -103,11 +104,23 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
                    wrapped.graph.as_graph_element(saver_def.restore_op_name)])
       initializer, _ = restore_fn(constant_op.constant(self._variables_path))
       if not ops.executing_eagerly_outside_functions():
+        # Add the initialization operation to the table initializers collection
+        # in case we don't have any lifted variables to attach it to. There
+        # isn't another great place to put it.
+        ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, initializer)
+        one_unlifted = False
         for variable in wrapped.graph.get_collection_ref(
             ops.GraphKeys.GLOBAL_VARIABLES):
+          if variable.graph is wrapped.graph:
+            one_unlifted = True
           # pylint: disable=protected-access
           variable._initializer_op = initializer
           # pylint: enable=protected-access
+        if one_unlifted:
+          logging.warning(
+              "Some variables could not be lifted out of a loaded function. "
+              "Run the tf.initializers.tables_initializer() operation to "
+              "restore these variables.")
 
   def _extract_signatures(self, wrapped, meta_graph_def):
     """Creates ConcreteFunctions for signatures in `meta_graph_def`."""
@@ -161,8 +174,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     # we don't have duplicates or name collisions.
     meta_graph_def.graph_def.library.Clear()
     for function in functions.values():
-      meta_graph_def.graph_def.library.function.append(
-          function._inference_function.definition)  # pylint: disable=protected-access
+      meta_graph_def.graph_def.library.function.append(function.function_def)
     # We've renamed functions and shared names. We need the same operation on
     # the GraphDef itself for consistency.
     for node_def in meta_graph_def.graph_def.node:

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/join.h"
 #include "tensorflow/lite/testing/split.h"
+#include "tensorflow/lite/tools/evaluation/utils.h"
 
 namespace tflite {
 namespace testing {
@@ -259,9 +260,8 @@ bool TfLiteDriver::Expectation::Check(bool verbose,
   }
 }
 
-TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name,
-                           bool reference_kernel)
-    : use_nnapi_(use_nnapi),
+TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
+    : delegate_(nullptr, nullptr),
       relative_threshold_(kRelativeThreshold),
       absolute_threshold_(kAbsoluteThreshold) {
   if (reference_kernel) {
@@ -274,8 +274,21 @@ TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name,
                                    tflite::ops::custom::Register_RFFT2D());
   }
 
-  if (delegate_name == "FLEX") {
-    delegate_ = FlexDelegate::Create();
+  switch (delegate_type) {
+    case DelegateType::kNone:
+      break;
+    case DelegateType::kNnapi:
+      delegate_ = evaluation::CreateNNAPIDelegate();
+      break;
+    case DelegateType::kGpu:
+      delegate_ = evaluation::CreateGPUDelegate(/*model=*/nullptr);
+      break;
+    case DelegateType::kFlex:
+      delegate_ = Interpreter::TfLiteDelegatePtr(
+          FlexDelegate::Create().release(), [](TfLiteDelegate* delegate) {
+            delete static_cast<tflite::FlexDelegate*>(delegate);
+          });
+      break;
   }
 }
 
@@ -310,8 +323,6 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
     Invalidate("Failed build interpreter");
     return;
   }
-  interpreter_->UseNNAPI(use_nnapi_);
-
   if (delegate_) {
     if (interpreter_->ModifyGraphWithDelegate(delegate_.get()) != kTfLiteOk) {
       Invalidate("Unable to the build graph using the delegate");

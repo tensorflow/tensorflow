@@ -431,5 +431,92 @@ TEST_F(AddEagerOpToGraphTest,
   TFE_DeleteTensorHandle(matrix);
 }
 
+class ShapeInferenceTest : public ::testing::Test {
+ protected:
+  ShapeInferenceTest()
+      : status_(TF_NewStatus()), tfe_context_options_(TFE_NewContextOptions()) {
+    tfe_context_ = TFE_NewContext(tfe_context_options_, status_);
+    CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+    matmul_op_ = TFE_NewOp(tfe_context_, "MatMul", status_);
+    CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+  }
+
+  ~ShapeInferenceTest() override {
+    TFE_DeleteOp(matmul_op_);
+    TFE_DeleteContextOptions(tfe_context_options_);
+    TFE_DeleteContext(tfe_context_);
+    TF_DeleteStatus(status_);
+  }
+
+  void infer_matmul_shapes(TF_ShapeAndTypeList* input_shapes,
+                           int64_t expected_rank, int64_t expected_first_dim,
+                           int64_t expected_second_dim) {
+    TF_ShapeAndTypeList* output_shapes;
+    TFE_InferShapes(matmul_op_, input_shapes,
+                    /*input_tensors*/ nullptr, /*num_input_tensors*/ 0,
+                    /*input_tensors_as_shapes*/ nullptr,
+                    /*input_resource_shapes_and_types*/ nullptr, &output_shapes,
+                    /*output_resource_shapes_and_types*/ nullptr, status_);
+    CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+    CHECK_EQ(output_shapes->num_items, 1);
+    EXPECT_EQ(output_shapes->items[0].num_dims, expected_rank);
+    if (expected_rank == 2) {
+      EXPECT_EQ(output_shapes->items[0].dims[0], expected_first_dim);
+      EXPECT_EQ(output_shapes->items[0].dims[1], expected_second_dim);
+    }
+    TF_DeleteShapeAndTypeList(input_shapes);
+    TF_DeleteShapeAndTypeList(output_shapes);
+  }
+
+  TF_Status* status_;
+  TFE_ContextOptions* tfe_context_options_;
+  TFE_Context* tfe_context_;
+  TFE_Op* matmul_op_;
+};
+
+TEST_F(ShapeInferenceTest, InfersShapes) {
+  // Infer shape when everything is known.
+  int64_t _3by2[] = {3, 2};
+  int64_t _2by4[] = {2, 4};
+  TF_ShapeAndTypeList* input_shapes = TF_NewShapeAndTypeList(/*num_shapes*/ 2);
+  TF_ShapeAndTypeListSetShape(input_shapes, 0, _3by2, 2);
+  TF_ShapeAndTypeListSetShape(input_shapes, 1, _2by4, 2);
+  infer_matmul_shapes(input_shapes, /*expected_rank*/ 2,
+                      /*expected_first_dim*/ 3, /*expected_second_dim*/ 4);
+
+  // Infer shape when second operand has unknown shape.
+  TF_ShapeAndTypeList* input_shapes_unknown_second =
+      TF_NewShapeAndTypeList(/*num_shapes*/ 2);
+  TF_ShapeAndTypeListSetShape(input_shapes_unknown_second, 0, _3by2, 2);
+  TF_ShapeAndTypeListSetUnknownShape(input_shapes_unknown_second, 1);
+  infer_matmul_shapes(
+      input_shapes_unknown_second, /*expected_rank*/ 2,
+      /*expected_first_dim*/ 3,
+      /*expected_second_dim*/ shape_inference::InferenceContext::kUnknownDim);
+
+  // Infer shape when some dimensions are unknown.
+  int64_t _unknownby2[] = {-1, 2};
+  TF_ShapeAndTypeList* input_shapes_unknown_dims =
+      TF_NewShapeAndTypeList(/*num_shapes*/ 2);
+  TF_ShapeAndTypeListSetShape(input_shapes_unknown_dims, 0, _unknownby2, 2);
+  TF_ShapeAndTypeListSetShape(input_shapes_unknown_dims, 1, _2by4, 2);
+  infer_matmul_shapes(
+      input_shapes_unknown_dims, /*expected_rank*/ 2,
+      /*expected_first_dim*/ shape_inference::InferenceContext::kUnknownDim,
+      /*expected_second_dim*/ 4);
+
+  // Infer shape when everything is unknown.
+  TF_ShapeAndTypeList* unknown_shapes =
+      TF_NewShapeAndTypeList(/*num_shapes*/ 2);
+  TF_ShapeAndTypeListSetUnknownShape(unknown_shapes, 0);
+  TF_ShapeAndTypeListSetUnknownShape(unknown_shapes, 1);
+  infer_matmul_shapes(
+      unknown_shapes, /*expected_rank*/ 2,
+      /*expected_first_dim*/ shape_inference::InferenceContext::kUnknownDim,
+      /*expected_second_dim*/ shape_inference::InferenceContext::kUnknownDim);
+
+  // TODO(bgogul): Add some death tests where status is not OK.
+}
+
 }  // namespace
 }  // namespace tensorflow

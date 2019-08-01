@@ -278,7 +278,18 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.range(1024).batch(
         32, drop_remainder=drop_remainder).apply(sleep.sleep(10))
     with self.assertRaises(errors.InvalidArgumentError):
-      rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+      rebatched_dataset = distribute._RebatchDataset(
+          dataset, num_workers=4, use_fallback=False)
+      next_element = self.getNext(rebatched_dataset)
+      self.evaluate(next_element())
+
+  def testUnsupportedTransformInFlatMapError(self, drop_remainder):
+    dataset = dataset_ops.Dataset.range(2).flat_map(
+        lambda _: dataset_ops.Dataset.range(32).batch(  # pylint: disable=g-long-lambda
+            32, drop_remainder=drop_remainder).apply(sleep.sleep(10)))
+    with self.assertRaises(errors.InvalidArgumentError):
+      rebatched_dataset = distribute._RebatchDataset(
+          dataset, num_workers=4, use_fallback=False)
       next_element = self.getNext(rebatched_dataset)
       self.evaluate(next_element())
 
@@ -431,6 +442,90 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
         "value": [k for k in range(i, i + 8)]
     } for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class RebatchDatasetFallbackTest(test_base.DatasetTestBase):
+
+  def testWithNoBatchDataset(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        [[k for k in range(i, i + 32)] for i in range(0, 1024, 32)])  # pylint: disable=g-complex-comprehension
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    self.assertEqual([[32]], [ts.as_list() for ts in _flat_shapes(dataset)])
+    self.assertEqual([[8]],
+                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
+
+    expected_output = [[k for k in range(i, i + 8)] for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  def testWithUnhandledTransformation(self):
+    dataset = dataset_ops.Dataset.range(1024).batch(
+        32, drop_remainder=True).apply(sleep.sleep(10))
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    self.assertEqual([[32]], [ts.as_list() for ts in _flat_shapes(dataset)])
+    self.assertEqual([[8]],
+                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
+
+    expected_output = [[k for k in range(i, i + 8)] for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  def testWithUnhandledTransformationInFlatMap(self):
+    dataset = dataset_ops.Dataset.range(2).flat_map(
+        lambda _: dataset_ops.Dataset.range(32).batch(  # pylint: disable=g-long-lambda
+            32, drop_remainder=True).apply(sleep.sleep(10)))
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+
+    self.assertEqual([[8]],
+                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
+
+    # Two elements where each element is a list of 4 elements where each element
+    # is a list of 8.
+    expected_output = [
+        [k for k in range(i, i + 8)]  # pylint: disable=g-complex-comprehension
+        for _ in range(2) for i in range(0, 32, 8)]  # generates 4 elements
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  def testWithUnknownBatchDim(self):
+    dataset = dataset_ops.Dataset.range(1024).batch(
+        32, drop_remainder=False).apply(sleep.sleep(10))
+
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Cannot use rebatching fallback"):
+      rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+      next_element = self.getNext(rebatched_dataset)
+      self.evaluate(next_element())
+
+  def testWithUnknownBatchDimInSecondComponent(self):
+    dataset0 = dataset_ops.Dataset.range(1024).batch(32, drop_remainder=True)
+    dataset1 = dataset_ops.Dataset.range(1024).batch(
+        32, drop_remainder=False).apply(sleep.sleep(10))
+    dataset = dataset_ops.Dataset.zip((dataset0, dataset1))
+
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Cannot use rebatching fallback"):
+      rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+      next_element = self.getNext(rebatched_dataset)
+      self.evaluate(next_element())
+
+  def testBatchSizeIndivisibleByNumWorkers(self):
+    # This doesn't work; reshape requires tensor shape to be exactly divisible
+    # by the second dim.
+    dataset = dataset_ops.Dataset.range(64).batch(
+        32, drop_remainder=True).apply(sleep.sleep(10))
+
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Cannot use rebatching fallback"):
+      rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=5)
+      next_element = self.getNext(rebatched_dataset)
+      self.evaluate(next_element())
+
+  def testBatchSizesDontMatch(self):
+    dataset = dataset_ops.Dataset.from_tensors((np.arange(10), np.arange(5)))
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Cannot use rebatching fallback"):
+      rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=5)
+      next_element = self.getNext(rebatched_dataset)
+      self.evaluate(next_element())
 
 
 if __name__ == "__main__":

@@ -69,11 +69,6 @@ class LinearModelTest(test.TestCase):
     model.compile('sgd', 'mse', [])
     model.fit([input_a_np, input_b_np], output_np, epochs=5)
 
-  def test_linear_model_with_int_input(self):
-    inp = input_layer.Input(shape=(1,), dtype=dtypes.int32)
-    with self.assertRaisesRegexp(TypeError, 'Unable to build'):
-      linear.LinearModel()(inp)
-
   def test_linear_model_with_sparse_input(self):
     indices = constant_op.constant([[0, 0], [0, 2], [1, 0], [1, 1]],
                                    dtype=dtypes.int64)

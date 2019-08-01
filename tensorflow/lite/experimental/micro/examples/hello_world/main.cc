@@ -48,6 +48,8 @@ int main(int argc, char* argv[]) {
   // Build an interpreter to run the model with
   tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
                                        tensor_arena_size, error_reporter);
+
+  // Allocate memory from the tensor_arena for the model's tensors
   interpreter.AllocateTensors();
 
   // Obtain pointers to the model's input and output tensors

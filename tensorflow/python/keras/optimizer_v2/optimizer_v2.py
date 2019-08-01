@@ -474,9 +474,12 @@ class OptimizerV2(trackable.Trackable):
     update_ops = []
     with backend.name_scope(name or self._name):
       for grad, var in grads_and_vars:
-        scope_name = ("" if ops.executing_eagerly_outside_functions() else
-                      "_" + var.op.name)
-        with backend.name_scope("update" + scope_name):
+        scope_name = ("update" if ops.executing_eagerly_outside_functions() else
+                      "update_" + var.op.name)
+        # Colocate the update with variables to avoid unnecessary communication
+        # delays. See b/136304694.
+        with backend.name_scope(
+            scope_name), distribution.extended.colocate_vars_with(var):
           update_ops.extend(
               distribution.extended.update(
                   var, apply_grad_to_update_var, args=(grad,), group=False))
@@ -1021,7 +1024,7 @@ def _filter_grads(grads_and_vars):
                      ([v.name for _, v in grads_and_vars],))
   if vars_with_empty_grads:
     logging.warning(
-        ("Gradients does not exist for variables %s when minimizing the loss."),
+        ("Gradients do not exist for variables %s when minimizing the loss."),
         ([v.name for v in vars_with_empty_grads]))
   return filtered
 

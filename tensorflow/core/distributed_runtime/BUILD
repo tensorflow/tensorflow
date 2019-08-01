@@ -286,6 +286,7 @@ cc_library(
         ":worker_cache",
         ":worker_interface",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:worker_proto_cc",
     ],

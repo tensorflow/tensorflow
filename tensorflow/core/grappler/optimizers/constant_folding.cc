@@ -1205,11 +1205,11 @@ Status ConstantFolding::CreateNodeDef(const string& name,
       case DT_INT64:
         POPULATE_TENSOR_PROTO(tensor, t, int64, int64);
       case DT_UINT64:
-        POPULATE_TENSOR_PROTO(tensor, t, uint64, int64);
+        POPULATE_TENSOR_PROTO(tensor, t, uint64, uint64);
       case DT_INT32:
         POPULATE_TENSOR_PROTO(tensor, t, int32, int);
       case DT_UINT32:
-        POPULATE_TENSOR_PROTO(tensor, t, uint32, int);
+        POPULATE_TENSOR_PROTO(tensor, t, uint32, uint32);
       case DT_INT16:
         POPULATE_TENSOR_PROTO(tensor, t, int16, int);
       case DT_UINT16:
@@ -3221,7 +3221,7 @@ bool ConstantFolding::PartialConcatConstFolding(GraphDef* optimized_graph,
     // child node.
     node->set_input(interval.first, added_node->name());
   }
-  if (!constant_input_runs.empty() && !inputs_to_delete.empty()) {
+  if (!inputs_to_delete.empty()) {
     // Fix up the inputs to the original node.
     protobuf::RepeatedPtrField<string> tmp;
     tmp.Swap(node->mutable_input());

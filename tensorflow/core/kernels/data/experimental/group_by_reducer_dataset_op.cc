@@ -25,6 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
@@ -111,6 +112,13 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override {
       return "GroupByReducerDatasetOp::Dataset";
+    }
+
+    bool IsStateful() const override {
+      return captured_key_func_->IsStateful() ||
+             captured_init_func_->IsStateful() ||
+             captured_reduce_func_->IsStateful() ||
+             captured_finalize_func_->IsStateful() || input_->IsStateful();
     }
 
    protected:
@@ -422,5 +430,6 @@ REGISTER_INPUT_COLOCATION_EXEMPTION("GroupByReducerDataset");
 REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalGroupByReducerDataset");
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

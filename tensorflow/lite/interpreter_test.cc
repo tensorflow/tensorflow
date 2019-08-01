@@ -87,20 +87,41 @@ TEST(BasicInterpreter, InvokeInvalidModel) {
   ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
 }
 
-TEST(BasicInterpreter, TestAllocateTensorsResetVariableTensors) {
+TEST(BasicInterpreter, TestAllocateTensorsResetVariableTensorsFloatAndHyrbid) {
   Interpreter interpreter;
   int tensor_index;
   ASSERT_EQ(interpreter.AddTensors(1, &tensor_index), kTfLiteOk);
   constexpr int kTensorSize = 16;
   TfLiteQuantizationParams quant;
   interpreter.SetTensorParametersReadWrite(tensor_index, kTfLiteFloat32, "",
-                                           {kTensorSize}, quant, true);
+                                           {kTensorSize}, quant,
+                                           /*is_variable=*/true);
   interpreter.SetVariables({tensor_index});
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
   TfLiteTensor* tensor = interpreter.tensor(tensor_index);
   // Ensure that variable tensors are reset to zero.
   for (int i = 0; i < kTensorSize; ++i) {
     ASSERT_EQ(tensor->data.f[i], 0.0f);
+  }
+}
+
+TEST(BasicInterpreter, TestAllocateTensorsResetVariableTensorsInt8) {
+  Interpreter interpreter;
+  int tensor_index;
+  ASSERT_EQ(interpreter.AddTensors(1, &tensor_index), kTfLiteOk);
+  constexpr int kTensorSize = 16;
+  TfLiteQuantizationParams quant;
+  quant.scale = 0.15;
+  quant.zero_point = -3;
+  interpreter.SetTensorParametersReadWrite(tensor_index, kTfLiteInt8, "",
+                                           {kTensorSize}, quant,
+                                           /*is_variable=*/true);
+  interpreter.SetVariables({tensor_index});
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+  TfLiteTensor* tensor = interpreter.tensor(tensor_index);
+  // Ensure that variable tensors are reset to zero point.
+  for (int i = 0; i < kTensorSize; ++i) {
+    ASSERT_EQ(tensor->data.int8[i], -3);
   }
 }
 

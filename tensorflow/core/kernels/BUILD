@@ -198,6 +198,10 @@ tf_cc_test(
 tf_kernel_library(
     name = "collective_ops",
     srcs = if_nccl([
+        "collective_nccl.h",
+        "collective_nccl.cc",
+        "collective_nccl_broadcaster.h",
+        "collective_nccl_broadcaster.cc",
         "collective_nccl_reducer.h",
         "collective_nccl_reducer.cc",
     ]),
@@ -214,9 +218,9 @@ tf_kernel_library(
 )
 
 tf_cuda_cc_test(
-    name = "collective_nccl_reducer_test",
+    name = "collective_nccl_test",
     size = "small",
-    srcs = ["collective_nccl_reducer_test.cc"],
+    srcs = ["collective_nccl_test.cc"],
     tags = tf_cuda_tests_tags() + ["no_cuda_on_cpu_tap"],
     deps = [
         "//tensorflow/core:all_kernels",
@@ -5317,6 +5321,7 @@ cc_library(
         ":string_join_op",
         ":string_length_op",
         ":string_lower_op",
+        ":string_ngrams_op",
         ":string_split_op",
         ":string_strip_op",
         ":string_to_hash_bucket_op",
@@ -5448,6 +5453,30 @@ tf_cc_test(
         ":ops_util",
         ":string_split_op",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "string_ngrams_op",
+    srcs = ["string_ngrams_op.cc"],
+    deps = STRING_DEPS + [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "string_ngrams_op_test",
+    srcs = ["string_ngrams_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":string_ngrams_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

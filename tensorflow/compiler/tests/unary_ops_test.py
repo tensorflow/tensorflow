@@ -27,7 +27,6 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -107,31 +106,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
           array_ops.identity,
           np.array([[-1, 1]], dtype=dtype),
           expected=np.array([[-1, 1]], dtype=dtype))
-
-      # TODO(penporn): Once XLA supports MatrixDiagV2, change the call to
-      # gen_array_ops.matrix_diag* (V1) to array_ops.matrix_diag* (V2).
-      self._assertOpOutputMatchesExpected(
-          gen_array_ops.matrix_diag, np.array([[1, 2], [3, 4]], dtype=dtype),
-          np.array([[[1, 0], [0, 2]], [[3, 0], [0, 4]]], dtype=dtype))
-      self._assertOpOutputMatchesExpected(
-          gen_array_ops.matrix_diag, np.array([1, 2, 3, 4], dtype=dtype),
-          np.array(
-              [[1, 0, 0, 0], [0, 2, 0, 0], [0, 0, 3, 0], [0, 0, 0, 4]],
-              dtype=dtype))
-      self._assertOpOutputMatchesExpected(
-          gen_array_ops.matrix_diag,
-          np.array(
-              [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]], dtype=dtype),
-          np.array(
-              [[[[1, 0, 0], [0, 2, 0], [0, 0, 3]], [[4, 0, 0], [0, 5, 0], [
-                  0, 0, 6
-              ]]], [[[7, 0, 0], [0, 8, 0], [0, 0, 9]], [[10, 0, 0], [0, 11, 0],
-                                                        [0, 0, 12]]]],
-              dtype=dtype))
-      self._assertOpOutputMatchesExpected(
-          gen_array_ops.matrix_diag_part,
-          np.arange(3 * 2 * 4).reshape([3, 2, 4]).astype(dtype),
-          np.array([[0, 5], [8, 13], [16, 21]], dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
           array_ops.prevent_gradient,

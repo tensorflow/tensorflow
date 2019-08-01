@@ -1,5 +1,5 @@
 load("@local_config_mlir//:tblgen.bzl", "gentbl")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_native_cc_binary")
 
 package(
     default_visibility = [":friends"],
@@ -99,12 +99,14 @@ cc_library(
         "ir/tf_ops.cc",
         "ir/tf_ops.cc.inc",
         "ir/tf_ops.h.inc",
+        "transforms/executor_island_coarsening.cc",
         "transforms/functional_control_flow_to_cfg.cc",
         "transforms/generated_canonicalize.inc",
         "transforms/generated_optimize.inc",
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
         "translate/control_to_executor_dialect.cc",
+        "translate/executor_to_control_dialect.cc",
     ],
     hdrs = [
         "ir/control_flow_ops.h",
@@ -131,7 +133,6 @@ cc_library(
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
         "@local_config_mlir//:TransformUtils",
-        "@local_config_mlir//:TypeUtilities",
     ],
     # TODO(jpienaar): Merge in the dialect registration.
     alwayslink = 1,
@@ -182,6 +183,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@llvm//:support",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardDialectRegistration",
         "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
@@ -281,9 +283,11 @@ cc_library(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_proto_cc",
+        "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:StandardOps",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -379,7 +383,6 @@ cc_library(
         ":convert_tensor",
         ":eval_util",
         ":tensorflow",
-        ":tf_graph_optimization_pass",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:framework",
@@ -409,6 +412,7 @@ cc_library(
     deps = [
         ":convert_graphdef",
         ":mlir_roundtrip_flags",
+        ":mlir_roundtrip_pass",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

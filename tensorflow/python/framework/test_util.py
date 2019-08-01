@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 from collections import OrderedDict
 import contextlib
 import functools
@@ -83,6 +82,7 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.compat import collections_abc
 
 
 # If the below import is made available through the BUILD rule, then this
@@ -547,7 +547,7 @@ def assert_no_new_pyobjects_executing_eagerly(f):
   a bit of Python.
   """
 
-  def decorator(self, **kwargs):
+  def decorator(self, *args, **kwargs):
     """Warms up, gets an object count, runs the test, checks for new objects."""
     with context.eager_mode():
       gc.disable()
@@ -558,7 +558,7 @@ def assert_no_new_pyobjects_executing_eagerly(f):
       # tests that fail with 1 warmup run, and pass with 2, on various versions
       # of python2.7.x.
       for _ in range(2):
-        f(self, **kwargs)
+        f(self, *args, **kwargs)
       gc.collect()
       previous_count = len(gc.get_objects())
       if ops.has_default_graph():
@@ -567,7 +567,7 @@ def assert_no_new_pyobjects_executing_eagerly(f):
             for collection in ops.get_default_graph().collections
         }
       for _ in range(3):
-        f(self, **kwargs)
+        f(self, *args, **kwargs)
       # Note that gc.get_objects misses anything that isn't subject to garbage
       # collection (C types). Collections are a common source of leaks, so we
       # test for collection sizes explicitly.
@@ -915,11 +915,14 @@ def generate_combinations_with_testcase_name(**kwargs):
 def run_all_in_graph_and_eager_modes(cls):
   """Execute all test methods in the given class with and without eager."""
   base_decorator = run_in_graph_and_eager_modes
-  for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith(
-        unittest.TestLoader.testMethodPrefix) and not (
-            name.startswith("testSkipEager") or
-            name.startswith("test_skip_eager") or name == "test_session"):
+  for name in dir(cls):
+    if (not name.startswith(unittest.TestLoader.testMethodPrefix) or
+        name.startswith("testSkipEager") or
+        name.startswith("test_skip_eager") or
+        name == "test_session"):
+      continue
+    value = getattr(cls, name, None)
+    if callable(value):
       setattr(cls, name, base_decorator(value))
   return cls
 
@@ -2301,8 +2304,8 @@ class TensorFlowTestCase(googletest.TestCase):
       a = a._asdict()
     if hasattr(b, "_asdict"):
       b = b._asdict()
-    a_is_dict = isinstance(a, collections.Mapping)
-    if a_is_dict != isinstance(b, collections.Mapping):
+    a_is_dict = isinstance(a, collections_abc.Mapping)
+    if a_is_dict != isinstance(b, collections_abc.Mapping):
       raise ValueError("Can't compare dict to non-dict, a%s vs b%s. %s" %
                        (path_str, path_str, msg))
     if a_is_dict:
@@ -2494,6 +2497,21 @@ class TensorFlowTestCase(googletest.TestCase):
       msgs.append("not equal lhs = {}".format(x))
       msgs.append("not equal rhs = {}".format(y))
       np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
+
+  @py_func_if_in_function
+  def assertNotAllEqual(self, a, b, msg=None):
+    """Asserts that two numpy arrays or Tensors do not have the same values.
+
+    Args:
+      a: the expected numpy ndarray or anything can be converted to one.
+      b: the actual numpy ndarray or anything can be converted to one.
+      msg: Optional message to report on failure.
+    """
+    try:
+      self.assertAllEqual(a, b, msg)
+    except AssertionError:
+      return
+    raise AssertionError("The two values are equal at all elements")
 
   @py_func_if_in_function
   def assertAllGreater(self, a, comparison_target):

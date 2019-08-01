@@ -296,9 +296,12 @@ xla_test(
 xla_test(
     name = "conv_depthwise_test",
     timeout = "long",
-    srcs = ["conv_depthwise_test.cc"],
+    srcs = [
+        "conv_depthwise_test.cc",
+    ],
     shard_count = 50,
     deps = [
+        ":conv_depthwise_common",
         ":test_macros_header",
         "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -709,9 +712,71 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "conv_depthwise_common",
+    testonly = True,
+    srcs = ["conv_depthwise_common.cc"],
+    hdrs = ["conv_depthwise_common.h"],
+    deps = [
+        ":test_macros_header",
+        "//tensorflow/compiler/xla:execution_options_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:bfloat16_normalization",
+        "//tensorflow/compiler/xla/service:despecializer",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
 xla_test(
-    name = "exhaustive_unary_test",
+    name = "exhaustive_unary_test_f32_or_smaller",
     srcs = ["exhaustive_unary_test.cc"],
+    copts = ["-DUNARY_TEST_TARGET_F32_OR_SMALLER"],
+    real_hardware_only = True,  # Very slow on the interpreter.
+    shard_count = 48,
+    tags = [
+        "optonly",
+        # This is a big test that we skip for capacity reasons in OSS testing.
+        "no_oss",
+    ],
+    deps = [
+        ":exhaustive_op_test_utils",
+    ],
+)
+
+xla_test(
+    name = "exhaustive_unary_test_f64",
+    srcs = ["exhaustive_unary_test.cc"],
+    backends = [
+        "gpu",
+        "cpu",
+    ],
+    copts = ["-DUNARY_TEST_TARGET_F64"],
+    real_hardware_only = True,  # Very slow on the interpreter.
+    shard_count = 48,
+    tags = [
+        "optonly",
+        # This is a big test that we skip for capacity reasons in OSS testing.
+        "no_oss",
+    ],
+    deps = [
+        ":exhaustive_op_test_utils",
+    ],
+)
+
+xla_test(
+    name = "exhaustive_unary_test_complex",
+    srcs = ["exhaustive_unary_test.cc"],
+    backends = [
+        "gpu",
+        "cpu",
+    ],
+    copts = ["-DUNARY_TEST_TARGET_COMPLEX"],
     real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
@@ -1987,8 +2052,8 @@ xla_test(
 )
 
 xla_test(
-    name = "fusion_test",
-    srcs = ["fusion_test.cc"],
+    name = "cpu_gpu_fusion_test",
+    srcs = ["cpu_gpu_fusion_test.cc"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array2d",

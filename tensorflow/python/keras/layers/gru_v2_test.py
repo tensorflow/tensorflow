@@ -445,7 +445,7 @@ class GRUV2Test(keras_parameterized.TestCase):
         optimizer=gradient_descent.GradientDescentOptimizer(0.01),
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 
@@ -518,7 +518,7 @@ class GRUV2Test(keras_parameterized.TestCase):
         optimizer='adam',
         loss='sparse_categorical_crossentropy',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(x, y, epochs=1, shuffle=False)
 
   @test_util.run_v2_only
@@ -593,9 +593,10 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
         num_classes=self.output_shape)
     y_train = keras.utils.to_categorical(y_train, self.output_shape)
 
-    model.compile(optimizer='sgd',
-                  loss=['categorical_crossentropy', None],
-                  run_distributed=testing_utils.should_run_distributed())
+    model.compile(
+        optimizer='sgd',
+        loss=['categorical_crossentropy', None],
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     existing_loss = 0
     for _ in range(self.epoch):
@@ -626,9 +627,64 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
     self._test_runtime_with_model(model)
 
+  def test_GRU_runtime_with_mask(self):
+    # Masking will affect which backend is selected based on whether the mask
+    # is strictly right padded.
+    layer = rnn.GRU(self.rnn_state_size, return_runtime=True)
+
+    inputs = keras.layers.Input(
+        shape=[self.timestep, self.input_shape], dtype=dtypes.float32)
+    masked_inputs = keras.layers.Masking()(inputs)
+
+    outputs, runtime = layer(masked_inputs)
+    # Expand the runtime so that it is a 1D tensor instead of scalar.
+    # TF model does not work with scalar model output, specially during
+    # aggregation.
+    runtime = keras.layers.Lambda(
+        lambda x: array_ops.expand_dims(x, axis=-1))(runtime)
+    model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
+
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=self.batch,
+        test_samples=0,
+        input_shape=(self.timestep, self.input_shape),
+        num_classes=self.output_shape)
+    y_train = keras.utils.to_categorical(y_train, self.output_shape)
+
+    model.compile(
+        optimizer='sgd',
+        loss=['categorical_crossentropy', None],
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    model.fit(x_train, y_train)
+
+    # Verify unpadded data.
+    _, runtime_value = model.predict(x_train)
+    if test.is_gpu_available():
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_GPU)
+    else:
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
+
+    # Update x/y to be right padded by setting the last timestep to 0
+    x_train[:, -1, :] = 0
+    y_train[:, -1] = 0
+    _, runtime_value = model.predict(x_train)
+    if test.is_gpu_available():
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_GPU)
+    else:
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
+
+    # Further update x/y to be mix padded (masks in the middle), and verify
+    # only cpu kernel can be selected.
+    x_train[:, -3, :] = 0
+    y_train[:, -3] = 0
+    _, runtime_value = model.predict(x_train)
+    self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
+
   # Due to b/120160788.
   @test_util.run_v2_only
-  def test_UnifiedGRU_with_cond(self):
+  def test_GRU_runtime_with_cond(self):
     # This test is to demonstrate the graph rewrite of grappler plugin under
     # the condition that the function returns different number of internal
     # states.

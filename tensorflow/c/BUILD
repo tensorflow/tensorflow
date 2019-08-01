@@ -355,6 +355,7 @@ tf_cuda_library(
     deps = [
         ":tf_status",
         ":tf_status_helper",
+        ":tf_tensor_internal",
     ] + select({
         "//tensorflow:android": [
             ":c_api_internal",
@@ -579,7 +580,7 @@ tf_cuda_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    tags = ["noasan"],
+    tags = ["no_cuda_on_cpu_tap"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
@@ -592,6 +593,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//third_party/eigen3",
     ],
 )
 

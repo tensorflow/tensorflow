@@ -106,12 +106,10 @@ std::string ToString(enum OperationType op) {
       return "sin";
     case OperationType::SLICE:
       return "slice";
-    case OperationType::SOFT_MAX:
-      return "soft_max";
+    case OperationType::SOFTMAX:
+      return "softmax";
     case OperationType::SPACE_TO_BATCH:
       return "space_to_batch";
-    case OperationType::STRETCH_TIME:
-      return "stretch_time";
     case OperationType::SQRT:
       return "sqrt";
     case OperationType::SQUARE:
@@ -160,8 +158,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"sigmoid", OperationType::SIGMOID},
           {"sin", OperationType::SIN},
           {"slice", OperationType::SLICE},
-          {"soft_max", OperationType::SOFT_MAX},
-          {"stretch_time", OperationType::STRETCH_TIME},
+          {"softmax", OperationType::SOFTMAX},
           {"sqrt", OperationType::SQRT},
           {"square", OperationType::SQUARE},
           {"subtract", OperationType::SUB},

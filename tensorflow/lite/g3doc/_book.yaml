@@ -24,6 +24,8 @@ upper_tabs:
         path: /lite/guide/android
       - title: "iOS quickstart"
         path: /lite/guide/ios
+      - title: "Python quickstart"
+        path: /lite/guide/python
       - title: "FAQ"
         path: /lite/guide/faq
       - title: "Roadmap"

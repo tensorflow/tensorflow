@@ -23,6 +23,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.feature_column import dense_features
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.feature_column import serialization
@@ -112,7 +113,8 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
         (17., 18., 19.)  # id 2
     )
     def _get_initializer(embedding_dimension, embedding_values):
-      def _initializer(shape, dtype, partition_info):
+
+      def _initializer(shape, dtype, partition_info=None):
         self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
         self.assertEqual(dtypes.float32, dtype)
         self.assertIsNone(partition_info)
@@ -199,7 +201,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
 
       def _get_initializer(embedding_dimension, embedding_values):
 
-        def _initializer(shape, dtype, partition_info):
+        def _initializer(shape, dtype, partition_info=None):
           self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
           self.assertEqual(dtypes.float32, dtype)
           self.assertIsNone(partition_info)
@@ -663,7 +665,7 @@ class DenseFeaturesTest(test.TestCase):
         ValueError,
         r'In embedding_column: aaa_embedding\. categorical_column must not be '
         r'of type SequenceCategoricalColumn\.'):
-      input_layer = fc.DenseFeatures([embedding_column_a])
+      input_layer = dense_features.DenseFeatures([embedding_column_a])
       _ = input_layer({'aaa': sparse_input})
 
   def test_indicator_column(self):
@@ -684,7 +686,7 @@ class DenseFeaturesTest(test.TestCase):
         ValueError,
         r'In indicator_column: aaa_indicator\. categorical_column must not be '
         r'of type SequenceCategoricalColumn\.'):
-      input_layer = fc.DenseFeatures([indicator_column_a])
+      input_layer = dense_features.DenseFeatures([indicator_column_a])
       _ = input_layer({'aaa': sparse_input})
 
 
@@ -971,7 +973,8 @@ class SequenceEmbeddingColumnTest(
         (3., 5.),  # id 1
         (7., 11.)  # id 2
     )
-    def _initializer(shape, dtype, partition_info):
+
+    def _initializer(shape, dtype, partition_info=None):
       self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
       self.assertEqual(dtypes.float32, dtype)
       self.assertIsNone(partition_info)
@@ -1066,7 +1069,7 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
         (7., 11.)  # id 2
     )
 
-    def _initializer(shape, dtype, partition_info):
+    def _initializer(shape, dtype, partition_info=None):
       self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
       self.assertEqual(dtypes.float32, dtype)
       self.assertIsNone(partition_info)

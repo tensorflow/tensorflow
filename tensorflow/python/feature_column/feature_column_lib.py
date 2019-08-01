@@ -18,7 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,line-too-long,wildcard-import
+# pylint: disable=unused-import,line-too-long,wildcard-import,g-bad-import-order
+# We import dense_features_v2 first so that the V1 DenseFeatures is the default
+# if users directly import feature_column_lib.
+from tensorflow.python.feature_column.dense_features_v2 import *
+from tensorflow.python.feature_column.dense_features import *
 from tensorflow.python.feature_column.feature_column import *
 from tensorflow.python.feature_column.feature_column_v2 import *
 from tensorflow.python.feature_column.sequence_feature_column import *

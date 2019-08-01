@@ -65,7 +65,7 @@ final class NativeLibrary {
         NativeLibrary.class.getClassLoader().getResourceAsStream(jniResourceName);
     // Extract the JNI's dependency
     final String frameworkLibName =
-        maybeAdjustForMacOS(System.mapLibraryName("tensorflow_framework"));
+        getVersionedLibraryName(System.mapLibraryName("tensorflow_framework"));
     final String frameworkResourceName = makeResourceName(frameworkLibName);
     log("frameworkResourceName: " + frameworkResourceName);
     final InputStream frameworkResource =
@@ -126,22 +126,66 @@ final class NativeLibrary {
     }
   }
 
-  private static String maybeAdjustForMacOS(String libFilename) {
-    if (!System.getProperty("os.name").contains("OS X")) {
+  private static boolean resourceExists(String baseName) {
+    return NativeLibrary.class.getClassLoader().getResource(makeResourceName(baseName)) != null;
+  }
+
+  private static String getVersionedLibraryName(String libFilename) {
+    // If the resource exists as an unversioned file, return that.
+    if (resourceExists(libFilename)) {
       return libFilename;
     }
-    // This is macOS, and the TensorFlow release process might have setup dependencies on
-    // libtensorflow_framework.so instead of libtensorflow_framework.dylib. Adjust for that.
-    final ClassLoader cl = NativeLibrary.class.getClassLoader();
-    if (cl.getResource(makeResourceName(libFilename)) != null) {
-      return libFilename;
+
+    final String versionName = getMajorVersionNumber();
+
+    // If we're on darwin, the versioned libraries look like blah.1.dylib.
+    final String darwinSuffix = ".dylib";
+    if (libFilename.endsWith(darwinSuffix)) {
+      final String prefix = libFilename.substring(0, libFilename.length() - darwinSuffix.length());
+      if (versionName != null) {
+        final String darwinVersionedLibrary = prefix + "." + versionName + darwinSuffix;
+        if (resourceExists(darwinVersionedLibrary)) {
+          return darwinVersionedLibrary;
+        }
+      } else {
+        // If we're here, we're on darwin, but we couldn't figure out the major version number. We
+        // already tried the library name without any changes, but let's do one final try for the
+        // library with a .so suffix.
+        final String darwinSoName = prefix + ".so";
+        if (resourceExists(darwinSoName)) {
+          return darwinSoName;
+        }
+      }
+    } else if (libFilename.endsWith(".so")) {
+      // Libraries ending in ".so" are versioned like "libfoo.so.1", so try that.
+      final String versionedSoName = libFilename + "." + versionName;
+      if (versionName != null && resourceExists(versionedSoName)) {
+        return versionedSoName;
+      }
     }
-    // liftensorflow_framework.dylib not found, try libtensorflow_framework.so
-    final String suffix = ".dylib";
-    if (!libFilename.endsWith(suffix)) {
-      return libFilename;
+
+    // Otherwise, we've got no idea.
+    return libFilename;
+  }
+
+  /**
+   * Returns the major version number of this TensorFlow Java API, or {@code null} if it cannot be
+   * determined.
+   */
+  private static String getMajorVersionNumber() {
+    String version = NativeLibrary.class.getPackage().getImplementationVersion();
+    // expecting a string like 1.14.0, we want to get the first '1'.
+    int dotIndex;
+    if (version == null || (dotIndex = version.indexOf('.')) == -1) {
+      return null;
     }
-    return libFilename.substring(0, libFilename.length() - suffix.length()) + ".so";
+    String majorVersion = version.substring(0, dotIndex);
+    try {
+      Integer.parseInt(majorVersion);
+      return majorVersion;
+    } catch (NumberFormatException unused) {
+      return null;
+    }
   }
 
   private static String extractResource(

@@ -46,6 +46,14 @@ def _compact_stack_trace(op):
   return compact_traces
 
 
+class InaccessibleTensorError(ValueError):
+  pass
+
+
+class OperatorNotAllowedInGraphError(TypeError):
+  pass
+
+
 @tf_export("errors.OpError", v1=["errors.OpError", "OpError"])
 @deprecation.deprecated_endpoints("OpError")
 class OpError(Exception):

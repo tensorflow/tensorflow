@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -40,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -76,18 +76,15 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
-// TODO(aaroey): put these constants into some class.
-const char* const kInputPHName = "TensorRTInputPH_";
-const char* const kOutputPHName = "TensorRTOutputPH_";
+namespace convert {
 
 bool IsEngineInput(absl::string_view name) {
-  return absl::StartsWith(name, kInputPHName);
+  return absl::StartsWith(name, IONamePrefixes::kInputPHName);
 }
 bool IsEngineOutput(absl::string_view name) {
-  return absl::StartsWith(name, kOutputPHName);
+  return absl::StartsWith(name, IONamePrefixes::kOutputPHName);
 }
 
-namespace convert {
 using absl::StrAppend;
 using absl::StrCat;
 
@@ -1799,6 +1796,7 @@ Status Conv2DPaddingHelper(OpConverterParams* params, const TFAttrs& attrs,
                            const nvinfer1::DimsHW& kernel_size,
                            const nvinfer1::DimsHW& dilation,
                            const nvinfer1::DimsHW& stride,
+                           const std::vector<int64_t>& input_dims,
                            nvinfer1::ITensor* tensor,
                            std::vector<std::pair<int, int>>* padding,
                            nvinfer1::ITensor** padded_tensor) {
@@ -1806,13 +1804,6 @@ Status Conv2DPaddingHelper(OpConverterParams* params, const TFAttrs& attrs,
     nvinfer1::DimsHW effective_kernel_size = kernel_size;
     effective_kernel_size.h() += (kernel_size.h() - 1) * (dilation.h() - 1);
     effective_kernel_size.w() += (kernel_size.w() - 1) * (dilation.w() - 1);
-    // Dimensions of transposed tensor.
-    const auto tensor_dim = tensor->getDimensions();
-    std::vector<int64_t> input_dims;
-    // Use 1 and 2 because tensor_dim has the dimensions of the transposed
-    // input.
-    input_dims = {static_cast<int>(tensor_dim.d[1]),
-                  static_cast<int>(tensor_dim.d[2])};
     *padding = CreateSamePadding(stride, effective_kernel_size, input_dims);
   } else {
     *padding = {{0, 0}, {0, 0}};
@@ -1930,9 +1921,25 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
 // Before TRT 5.1.3, we have to calculate padding ourselves.
 #if !IS_TRT_VERSION_GE(5, 1, 3, 0)
   std::vector<std::pair<int, int>> padding;
+  std::vector<int64_t> input_dims;
+  if (is_conv2d_backprop_input) {
+    // For backprop, calculate padding based on "input_sizes" input, which
+    // actually corresponds to output size. ("input_sizes" makes sense in the
+    // context of Conv2DBackpropInput).
+    // We use h_index and w_index instead of 1 and 2 because we havent
+    // transposed backprop_output_size along with the input.
+    auto output_size_weights =
+        static_cast<int*>(backprop_output_size.weights().GetValues());
+    input_dims = {output_size_weights[h_index], output_size_weights[w_index]};
+  } else {
+    // Use 1 and 2 because tensor_dim has the dimensions of the transposed
+    // input.
+    input_dims = {static_cast<int>(tensor_dim.d[1]),
+                  static_cast<int>(tensor_dim.d[2])};
+  }
   nvinfer1::ITensor* padded_tensor = nullptr;
   TF_RETURN_IF_ERROR(Conv2DPaddingHelper(params, attrs, kernel_size, dilation,
-                                         stride, tensor, &padding,
+                                         stride, input_dims, tensor, &padding,
                                          &padded_tensor));
   tensor = padded_tensor;
 #endif
@@ -2692,10 +2699,16 @@ Status ConvertFusedConv2DBiasActivation(OpConverterParams* params) {
   }
 // Before TRT 5.1.3, we have to calculate padding ourselves.
 #if !IS_TRT_VERSION_GE(5, 1, 3, 0)
+  const auto tensor_dim = tensor->getDimensions();
+  std::vector<int64_t> input_dims;
+  // Use 1 and 2 because tensor_dim has the dimensions of the transposed
+  // input.
+  input_dims = {static_cast<int>(tensor_dim.d[1]),
+                static_cast<int>(tensor_dim.d[2])};
   std::vector<std::pair<int, int>> padding;
   nvinfer1::ITensor* padded_tensor = nullptr;
   TF_RETURN_IF_ERROR(Conv2DPaddingHelper(params, attrs, kernel_size, dilation,
-                                         stride, tensor, &padding,
+                                         stride, input_dims, tensor, &padding,
                                          &padded_tensor));
   tensor = padded_tensor;
 #endif
@@ -5185,19 +5198,33 @@ Status ConvertGraphDefToEngine(
   for (const auto& node_def : gdef.node()) {
     string node_name = node_def.name();
     VLOG(2) << "Converting op name=" << node_name << ", op=" << node_def.op();
-    if (IsEngineInput(node_name) && (node_def.op() == "Placeholder")) {
+    if (IsEngineInput(node_name)) {
       int32 slot_number = -1;
-      if (!strings::safe_strto32(  // non-absl ok
-              node_name.c_str() + strlen(kInputPHName), &slot_number)) {
-        return errors::InvalidArgument("Failed to parse slot number from ",
-                                       node_name);
+      string type_key;
+      if (node_def.op() == "Placeholder") {
+        if (!strings::safe_strto32(  // non-absl ok
+                node_name.c_str() + strlen(IONamePrefixes::kInputPHName),
+                &slot_number)) {
+          return errors::InvalidArgument("Failed to parse slot number from ",
+                                         node_name);
+        }
+        type_key = "dtype";
+      } else if (tensorflow::grappler::IsArg(node_def)) {
+        // Maybe remove the dependence on grappler and re-implement IsArg,
+        // which is pretty simple (but could change if new Arg nodes are added)
+        slot_number = node_def.attr().at("index").i();
+        type_key = "T";
+      } else {
+        return errors::InvalidArgument(
+            "Node ", node_name,
+            " with is neither Placeholder nor Arg, instead ", node_def.op());
       }
       nvinfer1::DataType trt_dtype;
       nvinfer1::Dims trt_dims;
       int batch_size = -1;
       auto shape = input_shapes.at(slot_number);
       auto status = ValidateTensorProperties(
-          node_def.op(), node_def.attr().at("dtype").type(), shape,
+          node_def.op(), node_def.attr().at(type_key).type(), shape,
           /*validation_only=*/false, &trt_dtype, &trt_dims, &batch_size);
       if (!status.ok()) {
         const string error_message =
@@ -5213,12 +5240,23 @@ Status ConvertGraphDefToEngine(
       // engines offline, by calling sess.run() and cache/serialize the engines.
       TF_RETURN_IF_ERROR(
           converter.AddInputTensor(node_name, trt_dtype, trt_dims, batch_size));
-    } else if (IsEngineOutput(node_name) && (node_def.op() == "Identity")) {
+    } else if (IsEngineOutput(node_name)) {
       int32 slot_number = -1;
-      if (!strings::safe_strto32(  // non-absl ok
-              node_name.c_str() + strlen(kOutputPHName), &slot_number)) {
-        return errors::InvalidArgument("Failed to parse slot number from ",
-                                       node_name);
+      if (node_def.op() == "Identity") {
+        if (!strings::safe_strto32(  // non-absl ok
+                node_name.c_str() + strlen(IONamePrefixes::kOutputPHName),
+                &slot_number)) {
+          return errors::InvalidArgument("Failed to parse slot number from ",
+                                         node_name);
+        }
+      } else if (tensorflow::grappler::IsRetval(node_def)) {
+        slot_number = node_def.attr().at("index").i();
+      } else {
+        return errors::InvalidArgument(
+            "Node with name ", node_name,
+            " starting with IONamePrefixes::kOutputPHName is "
+            "neither Identity nor Retval, instead ",
+            node_def.op());
       }
       // Get output type that TensorFlow expects
       TFAttrs attrs(node_def);
@@ -5287,7 +5325,8 @@ Status ConvertSegmentToGraphDef(
 
     // Add dummy input/output nodes to the segment graphdef.
     if (connection.is_input_edge) {
-      const string node_name = StrCat(kInputPHName, connection.port_number);
+      const string node_name =
+          StrCat(IONamePrefixes::kInputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
         VLOG(1) << "Reusing input " << node_name << " for the edge "
                 << connection.outside_node_name << ":"
@@ -5297,16 +5336,18 @@ Status ConvertSegmentToGraphDef(
       }
       marker_nodes.insert(node_name);
       auto seg_node = segment_def->add_node();
-      NodeDefBuilder builder(node_name, "Placeholder");
+      NodeDefBuilder builder(node_name, "_Arg");
       auto status = builder.Attr("shape", partial_shape)
-                        .Attr("dtype", dtype)
+                        .Attr("T", dtype)
+                        .Attr("index", connection.port_number)
                         .Finalize(seg_node);
       VLOG(1) << "Constructing input " << node_name << " for the edge "
               << connection.outside_node_name << ":" << connection.outside_port
               << " -> " << connection.inside_node_name << ":"
               << connection.inside_port;
     } else {
-      const string node_name = StrCat(kOutputPHName, connection.port_number);
+      const string node_name =
+          StrCat(IONamePrefixes::kOutputPHName, connection.port_number);
       if (marker_nodes.count(node_name)) {
         VLOG(1) << "Reusing output " << node_name << " for the edge "
                 << connection.inside_node_name << ":" << connection.inside_port
@@ -5316,9 +5357,10 @@ Status ConvertSegmentToGraphDef(
       }
       marker_nodes.insert(node_name);
       auto seg_node = segment_def->add_node();
-      NodeDefBuilder builder(node_name, "Identity");
+      NodeDefBuilder builder(node_name, "_Retval");
       auto status =
-          builder
+          builder.Attr("T", dtype)
+              .Attr("index", connection.port_number)
               .Input(connection.inside_node_name, connection.inside_port, dtype)
               .Finalize(seg_node);
       VLOG(1) << "Constructing output " << node_name << " for the edge "
@@ -5344,12 +5386,12 @@ Status ConvertSegmentToGraphDef(
     if (connection.is_control_edge() || !connection.is_input_edge) continue;
     auto snode =
         segment_def->mutable_node(old_to_new_id_map[connection.inside_id]);
-    const string placeholder_name =
-        StrCat(kInputPHName, connection.port_number);
+    const string arg_name =
+        StrCat(IONamePrefixes::kInputPHName, connection.port_number);
     VLOG(1) << "Updating " << snode->name() << ":" << connection.inside_port
             << " from " << snode->input(connection.inside_port) << " to "
-            << placeholder_name;
-    snode->set_input(connection.inside_port, placeholder_name);
+            << arg_name;
+    snode->set_input(connection.inside_port, arg_name);
   }
   std::set<string> subgraph_node_names;
   for (const Node* node : subgraph_nodes) {

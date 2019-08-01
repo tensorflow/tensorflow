@@ -110,8 +110,10 @@ tensorflow/lite/kernels/internal/optimized/neon_check.h \
 tensorflow/lite/kernels/internal/reference/conv.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
+tensorflow/lite/kernels/internal/reference/floor.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/pooling.h \
+tensorflow/lite/kernels/internal/reference/prelu.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
 tensorflow/lite/kernels/internal/round.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \

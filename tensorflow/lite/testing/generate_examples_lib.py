@@ -79,7 +79,7 @@ KNOWN_BUGS = {
     # Div will use floordiv.
     r"div.*int32": "72051395",
     # Strided slice cannot handle new_axis_mask.
-    r"strided_slice.*new_axis_num=1|2": "137470173",
+    r"strided_slice.*spec=\[None": "137470173",
 }
 
 
@@ -870,7 +870,7 @@ def make_identity_tests(options):
   # Chose a set of parameters
   test_parameters = [{
       "input_shape": [[], [1], [3, 3]],
-      "use_snapshot": [False, True],
+      "op_to_use": ["identity", "identity_n", "snapshot"],
   }]
 
   def build_graph(parameters):
@@ -884,10 +884,13 @@ def make_identity_tests(options):
     # shape, this conversion still fails.
     # TODO(b/129197312), remove the walk-around code once the bug is fixed.
     input_doubled = input_tensor * 2.0
-    if parameters["use_snapshot"]:
-      identity_output = array_ops.snapshot(input_doubled)
-    else:
+    if parameters["op_to_use"] == "identity":
       identity_output = tf.identity(input_doubled)
+    elif parameters["op_to_use"] == "identity_n":
+      # Testing `IdentityN` with a single tensor.
+      identity_output = tf.identity_n([input_doubled])[0]
+    elif parameters["op_to_use"] == "snapshot":
+      identity_output = array_ops.snapshot(input_doubled)
     return [input_tensor], [identity_output]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -3294,12 +3297,37 @@ def make_strided_slice_np_style_tests(options):
   test_parameters = [
       {
           "dtype": [tf.float32],
-          "new_axis_num": [0, 1, 2],
-          "shape": [[12, 7], [33]],
-          "stride": [1, 2, 3],
-          "use_begin_end_mask": [True, False],
-          # share between begin and end to avoid creating too many combinations.
-          "begin_end_offset": [0, 1, 3]
+          "shape": [[12, 7], [33, 1]],
+          "spec": [[slice(3, 7, 2), slice(None)],
+                   [tf.newaxis,
+                    slice(3, 7, 1), tf.newaxis,
+                    slice(None)], [slice(1, 5, 1), slice(None)]],
+      },
+      # 1-D case
+      {
+          "dtype": [tf.float32],
+          "shape": [[44]],
+          "spec": [[slice(3, 7, 2)], [tf.newaxis, slice(None)]],
+      },
+      # Shrink mask.
+      {
+          "dtype": [tf.float32],
+          "shape": [[21, 15, 7]],
+          "spec": [[slice(3, 7, 2), slice(None), 2]],
+      },
+      # Ellipsis.
+      {
+          "dtype": [tf.float32],
+          "shape": [[21, 15, 7]],
+          "spec": [[slice(3, 7, 2), Ellipsis]],
+      },
+      # All combinations.
+      {
+          "dtype": [tf.float32],
+          "shape": [[21, 15, 7]],
+          "spec": [[tf.newaxis,
+                    slice(3, 7, 2),
+                    slice(None), Ellipsis]],
       },
   ]
 
@@ -3312,38 +3340,12 @@ def make_strided_slice_np_style_tests(options):
     Returns:
       strided_slice spec, e.g., [2:3, :] or [tf.newaxis, :, tf.newaxis].
     """
-    shape = parameters["shape"]
-    new_axis_num = parameters["new_axis_num"]
-    insert_new_axis_array = [False] * len(shape)
-    for _ in range(new_axis_num):
-      insert_loc = np.random.randint(0, len(insert_new_axis_array) + 1)
-      insert_new_axis_array.insert(insert_loc, True)
-    slice_spec = []
-    index = 0
-    for insert_new_axis in insert_new_axis_array:
-      if insert_new_axis:
-        slice_spec.append(tf.newaxis)
-      else:
-        # Random pop up begin/end/strides or just use ":"
-        if parameters["use_begin_end_mask"]:
-          # use slice(None), means use all values, equivalent of ":".
-          slice_spec.append(slice(None))
-        else:
-          # Begin.
-          begin = parameters["begin_end_offset"]
-          # End.
-          end = shape[index] - parameters["begin_end_offset"]
-          # Strides.
-          stride = parameters["stride"]
-          slice_spec.append(slice(begin, end, stride))
-        index += 1
-    return slice_spec
 
   def build_graph(parameters):
     """Build a simple graph with np style strided_slice."""
     input_value = tf.placeholder(
         dtype=parameters["dtype"], shape=parameters["shape"])
-    out = input_value.__getitem__(build_strided_slice_spec(parameters))
+    out = input_value.__getitem__(parameters["spec"])
     return [input_value], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

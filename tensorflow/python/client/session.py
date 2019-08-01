@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import re
 import threading
@@ -41,6 +40,7 @@ from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.compat import collections_abc
 
 
 class SessionInterface(object):
@@ -259,7 +259,7 @@ class _FetchMapper(object):
     elif isinstance(fetch, (list, tuple)):
       # NOTE(touts): This is also the code path for namedtuples.
       return _ListFetchMapper(fetch)
-    elif isinstance(fetch, collections.Mapping):
+    elif isinstance(fetch, collections_abc.Mapping):
       return _DictFetchMapper(fetch)
     elif _is_attrs_instance(fetch):
       return _AttrsFetchMapper(fetch)
@@ -491,8 +491,12 @@ class _FetchHandler(object):
 
   def _assert_fetchable(self, graph, op):
     if not graph.is_fetchable(op):
-      raise ValueError('Operation %r has been marked as not fetchable.' %
-                       op.name)
+      raise errors.InaccessibleTensorError(
+          'Operation %r has been marked as not fetchable. Typically this'
+          ' happens when it is defined in another function or code block.'
+          ' Use return values,explicit Python locals or TensorFlow collections'
+          ' to access it.'
+          % op.name)
 
   def fetches(self):
     """Return the unique names of tensors to fetch.

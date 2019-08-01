@@ -37,6 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
+using tensorflow::int64;
+
 static std::vector<int64> ConvertDenseIntAttr(mlir::DenseIntElementsAttr attr) {
   llvm::ArrayRef<int64> raw_data = attr.getValues<int64>();
   if (attr.isSplat())

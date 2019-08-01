@@ -40,10 +40,11 @@ bool CanBeLoopFused(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kTranspose;
 }
 
-bool IsNonComplexMatrixVectorDot(const HloInstruction* hlo) {
+bool IsNonComplexNonBatchedMatrixVectorDot(const HloInstruction* hlo) {
   const Shape& hlo_shape = hlo->shape();
   return !ShapeUtil::ElementIsComplex(hlo_shape) &&
-         hlo->opcode() == HloOpcode::kDot && hlo_shape.dimensions_size() <= 1;
+         hlo->opcode() == HloOpcode::kDot && hlo_shape.dimensions_size() <= 1 &&
+         hlo->dot_dimension_numbers().lhs_batch_dimensions_size() == 0;
 }
 
 bool HasExactlyOneUse(const HloInstruction& hlo_instr) {
@@ -54,7 +55,7 @@ bool HasExactlyOneUse(const HloInstruction& hlo_instr) {
 bool CanBeOutputFused(const HloInstruction* producer,
                       const HloInstruction* consumer) {
   return consumer->opcode() == HloOpcode::kAdd &&
-         IsNonComplexMatrixVectorDot(producer) &&
+         IsNonComplexNonBatchedMatrixVectorDot(producer) &&
          HasExactlyOneUse(*producer) == 1;
 }
 
@@ -74,10 +75,13 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   constexpr int kFusionThresholdBytes = 16 * 1024;
 
   if (CanBeOutputFused(producer, consumer)) {
+    VLOG(2) << "Fusion OK: Can create output fusion.";
     return true;
   }
 
   if (CanBeOutputFusedIntoSomeOperand(producer)) {
+    VLOG(2)
+        << "Bailing because producer can be output-fused into some operand.";
     return false;
   }
 

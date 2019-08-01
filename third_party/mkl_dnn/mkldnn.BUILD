@@ -62,8 +62,6 @@ cc_library(
         "src/cpu/xbyak/*.h",
     ]) + if_mkl_v1_open_source_only([
         ":mkldnn_config_h",
-        "src/cpu/jit_utils/jit_utils.cpp",
-        "src/cpu/jit_utils/jit_utils.hpp",
     ]) + [":mkldnn_version_h"],
     hdrs = glob(["include/*"]),
     copts = [

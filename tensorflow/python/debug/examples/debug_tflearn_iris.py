@@ -58,8 +58,11 @@ def main(_):
         "exclusive.")
   hooks = []
   if FLAGS.debug:
+    config_file_path = (tempfile.mktemp(".tfdbg_config")
+                        if FLAGS.use_random_config_path else None)
     hooks.append(tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type,
-                                            dump_root=FLAGS.dump_root))
+                                            dump_root=FLAGS.dump_root,
+                                            config_file_path=config_file_path))
   elif FLAGS.tensorboard_debug_address:
     hooks.append(tf_debug.TensorBoardDebugHook(FLAGS.tensorboard_debug_address))
 
@@ -122,6 +125,14 @@ if __name__ == "__main__":
       type=str,
       default="",
       help="Optional custom root directory for temporary debug dump data")
+  parser.add_argument(
+      "--use_random_config_path",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="""If set, set config file path to a random file in the temporary
+      directory.""")
   parser.add_argument(
       "--tensorboard_debug_address",
       type=str,

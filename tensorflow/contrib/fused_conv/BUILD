@@ -195,6 +195,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
     ],
     tags = [
+        "manual",  # TODO(b/117128481): re-enable after fixing OSS build
         "no_cuda_on_cpu_tap",
         "no_rocm",
         "no_windows",

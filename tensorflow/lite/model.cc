@@ -311,13 +311,21 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
           EnumNameBuiltinOperator(op_type));
     }
 
-    if (op->custom_options()) {
-      subgraph->AddNodeWithParameters(
-          FlatBufferIntArrayToVector(op->inputs()),
-          FlatBufferIntArrayToVector(op->outputs()),
-          FlatBufferIntArrayToVector(op->intermediates()),
-          reinterpret_cast<const char*>(op->custom_options()->data()),
-          op->custom_options()->size(), nullptr, registration);
+    if (op_type == BuiltinOperator_CUSTOM) {
+      if (op->custom_options()) {
+        subgraph->AddNodeWithParameters(
+            FlatBufferIntArrayToVector(op->inputs()),
+            FlatBufferIntArrayToVector(op->outputs()),
+            FlatBufferIntArrayToVector(op->intermediates()),
+            reinterpret_cast<const char*>(op->custom_options()->data()),
+            op->custom_options()->size(), nullptr, registration);
+      } else {
+        subgraph->AddNodeWithParameters(
+            FlatBufferIntArrayToVector(op->inputs()),
+            FlatBufferIntArrayToVector(op->outputs()),
+            FlatBufferIntArrayToVector(op->intermediates()), nullptr, 0,
+            nullptr, registration);
+      }
     } else {
       void* builtin_data = nullptr;
       MallocDataAllocator malloc_allocator;

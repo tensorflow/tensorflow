@@ -117,10 +117,11 @@ struct TensorData {
 
 class SingleOpResolver : public OpResolver {
  public:
-  SingleOpResolver(const BuiltinOperator op, TfLiteRegistration* registration)
+  SingleOpResolver(const BuiltinOperator op, TfLiteRegistration* registration,
+                   int version = 1)
       : op_(op), registration_(*registration) {
     registration_.builtin_code = static_cast<int32_t>(op);
-    registration_.version = 1;
+    registration_.version = version;
   }
   const TfLiteRegistration* FindOp(BuiltinOperator op,
                                    int version) const override {
@@ -288,9 +289,11 @@ class SingleOpModel {
       auto* t = interpreter_->tensor(index);
       CHECK(t) << "No tensor with index " << index << ".";
       CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      CHECK(v) << "Type mismatch for tensor with index " << index
-               << ". Requested " << typeToTfLiteType<T>() << ", got "
-               << t->type;
+      CHECK_EQ(t->type, typeToTfLiteType<T>())
+          << "Type mismatch for tensor with index " << index << ". Requested "
+          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
+          << TfLiteTypeGetName(t->type) << ".";
+      LOG(FATAL) << "Unknown tensor error.";
     }
     for (const T& f : data) {
       *v = f;
@@ -308,9 +311,11 @@ class SingleOpModel {
       auto* t = interpreter_->tensor(index);
       CHECK(t) << "No tensor with index " << index << ".";
       CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      CHECK(v) << "Type mismatch for tensor with index " << index
-               << ". Requested " << typeToTfLiteType<T>() << ", got "
-               << t->type;
+      CHECK_EQ(t->type, typeToTfLiteType<T>())
+          << "Type mismatch for tensor with index " << index << ". Requested "
+          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
+          << TfLiteTypeGetName(t->type) << ".";
+      LOG(FATAL) << "Unknown tensor error.";
     }
     for (const T& f : data) {
       *v = f;
@@ -353,6 +358,7 @@ class SingleOpModel {
 
   // Enables NNAPI delegate application during interpreter creation.
   static void SetForceUseNnapi(bool use_nnapi);
+  static bool GetForceUseNnapi();
 
  protected:
   int32_t GetTensorSize(int index) const;

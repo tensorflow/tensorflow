@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -494,6 +495,10 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
   with ops.name_scope(name, 'assert_equal', [x, y, data]):
     x = ops.convert_to_tensor(x, name='x')
     y = ops.convert_to_tensor(y, name='y')
+
+    # Short-circuit if x and y are the same tensor.
+    if x is y:
+      return None if context.executing_eagerly() else control_flow_ops.no_op()
 
     if context.executing_eagerly():
       eq = math_ops.equal(x, y)
@@ -1663,8 +1668,10 @@ def _dimension_sizes(x):
 
 
 def _symbolic_dimension_sizes(symbolic_shape):
-  if len(symbolic_shape) == 0:
+  # If len(symbolic_shape) == 0 construct a tuple
+  if not symbolic_shape:
     return tuple([1])
+
   return symbolic_shape
 
 
@@ -1682,8 +1689,9 @@ def _is_symbol_for_any_size(symbol):
   return symbol in [None, '.']
 
 
-def _is_symbol_for_unspecified_dims(symbol):
-  return symbol in [Ellipsis, '*']
+_TensorDimSizes = collections.namedtuple(
+    '_TensorDimSizes',
+    ['x', 'unspecified_dim', 'actual_sizes', 'symbolic_sizes'])
 
 
 @tf_export('debugging.assert_shapes', v1=[])
@@ -1697,12 +1705,12 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
   Example:
 
   ```python
-  tf.assert_shapes({
-    x: ('N', 'Q'),
-    y: ('N', 'D'),
-    param: ('Q',),
-    scalar: ()
-  })
+  tf.assert_shapes([
+    (x: ('N', 'Q')),
+    (y: ('N', 'D')),
+    (param: ('Q',)),
+    (scalar: ()),
+  ])
   ```
 
   If `x`, `y`, `param` or `scalar` does not have a shape that satisfies
@@ -1750,10 +1758,10 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
 
   ```python
   tf.assert_shapes({
-    x: ('N', 'Q'),
-    y: ('N', 'D'),
-    param: ('Q',),
-    scalar: ()
+    (x, ('N', 'Q')),
+    (y, ('N', 'D')),
+    (param, ('Q',)),
+    (scalar, ())
   })
   ```
 
@@ -1800,13 +1808,17 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
   Raises:
     ValueError:  If static checks determine any shape constraint is violated.
   """
+  # If the user manages to assemble a dict containing tensors (possible in
+  # Graph mode only), make sure we still accept that.
+  if isinstance(shapes, dict):
+    shapes = shapes.items()
+
   message = message or ''
   with ops.name_scope(name, 'assert_shapes', [shapes, data]):
-
     # Shape specified as None implies no constraint
-    shapes = {x: shapes[x] for x in shapes if shapes[x] is not None}
-
-    shapes = {ops.convert_to_tensor(x): shapes[x] for x in shapes}
+    shape_constraints = [
+        (ops.convert_to_tensor(x), s) for x, s in shapes if s is not None
+    ]
 
     executing_eagerly = context.executing_eagerly()
 
@@ -1815,8 +1827,8 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
         return _shape_and_dtype_str(x)
       return x.name
 
-    for x in shapes:
-      symbolic_shape = shapes[x]
+    tensor_dim_sizes = []
+    for tensor, symbolic_shape in shape_constraints:
       is_iterable = (
           hasattr(symbolic_shape, '__iter__') or
           hasattr(symbolic_shape, '__getitem__')  # For Python 2 compat.
@@ -1827,44 +1839,46 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
             'Tensor %s.  Specified shape must be an iterable.  '
             'An iterable has the attribute `__iter__` or `__getitem__`.  '
             'Received specified shape: %s' %
-            (message, tensor_name(x), symbolic_shape))
-      shapes[x] = tuple(shapes[x])
+            (message, tensor_name(tensor), symbolic_shape))
 
-    tensors_specified_innermost = set()
-    for x in shapes:
-      symbolic_shape = shapes[x]
-      for i, symbol in enumerate(symbolic_shape):
-        if not _is_symbol_for_unspecified_dims(symbol):
+      # We convert this into a tuple to handle strings, lists and numpy arrays
+      symbolic_shape_tuple = tuple(symbolic_shape)
+
+      tensors_specified_innermost = False
+      for i, symbol in enumerate(symbolic_shape_tuple):
+        if symbol not in [Ellipsis, '*']:
           continue
+
         if i != 0:
           raise ValueError(
               '%s.  '
               'Tensor %s specified shape index %d.  '
               'Symbol `...` or `*` for a variable number of '
               'unspecified dimensions is only allowed as the first entry' %
-              (message, tensor_name(x), i))
-        tensors_specified_innermost.add(x)
+              (message, tensor_name(tensor), i))
 
-    actual_sizes_by_tensor = {x: _dimension_sizes(x) for x in shapes}
-    specified_sizes_by_tensor = {
-        x: _symbolic_dimension_sizes(
-            # Ignoring innermost prefix
-            shapes[x][1:] if x in tensors_specified_innermost else shapes[x])
-        for x in shapes
-    }
+        tensors_specified_innermost = True
+
+      # Only include the size of the specified dimensions since the 0th symbol
+      # is either ellipsis or *
+      tensor_dim_sizes.append(
+          _TensorDimSizes(
+              tensor, tensors_specified_innermost, _dimension_sizes(tensor),
+              _symbolic_dimension_sizes(
+                  symbolic_shape_tuple[1:]
+                  if tensors_specified_innermost else symbolic_shape_tuple)))
 
     rank_assertions = []
-    for x in shapes.keys():
-      symbolic_sizes = specified_sizes_by_tensor[x]
-      rank = len(symbolic_sizes)
+    for sizes in tensor_dim_sizes:
+      rank = len(sizes.symbolic_sizes)
       rank_zero_or_one = rank in [0, 1]
-      if x in tensors_specified_innermost:
+      if sizes.unspecified_dim:
         if rank_zero_or_one:
-          # No assertion of rank needed as `x` only need to have rank at least 0.
-          # See elif rank_zero_or_one case comment.
+          # No assertion of rank needed as `x` only need to have rank at least
+          # 0. See elif rank_zero_or_one case comment.
           continue
         assertion = assert_rank_at_least(
-            x=x,
+            x=sizes.x,
             rank=rank,
             data=data,
             summarize=summarize,
@@ -1875,7 +1889,7 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
         # no distinction between the two in terms of rank.
         # See _dimension_sizes.
         assertion = assert_rank_in(
-            x=x,
+            x=sizes.x,
             ranks=[0, 1],
             data=data,
             summarize=summarize,
@@ -1883,7 +1897,7 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
             name=name)
       else:
         assertion = assert_rank(
-            x=x,
+            x=sizes.x,
             rank=rank,
             data=data,
             summarize=summarize,
@@ -1893,19 +1907,15 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
 
     size_assertions = []
     size_specifications = {}
-    for x in shapes.keys():
-      actual_sizes = actual_sizes_by_tensor[x]
-      symbolic_sizes = specified_sizes_by_tensor[x]
-      innermost_dims = x in tensors_specified_innermost
-
-      for i, size_symbol in enumerate(symbolic_sizes):
+    for sizes in tensor_dim_sizes:
+      for i, size_symbol in enumerate(sizes.symbolic_sizes):
 
         if _is_symbol_for_any_size(size_symbol):
           # Size specified as any implies no constraint
           continue
 
-        if innermost_dims:
-          tensor_dim = i - len(symbolic_sizes)
+        if sizes.unspecified_dim:
+          tensor_dim = i - len(sizes.symbolic_sizes)
         else:
           tensor_dim = i
 
@@ -1920,14 +1930,15 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
                 'Specified by tensor %s dimension %d' %
                 (tensor_name(specified_by_y), specified_at_dim))
 
-          actual_size = actual_sizes[tensor_dim]
+          actual_size = sizes.actual_sizes[tensor_dim]
           if _has_known_value(actual_size) and _has_known_value(specified_size):
             if int(actual_size) != int(specified_size):
               raise ValueError(
                   '%s.  %s.  Tensor %s dimension %s must have size %d.  '
                   'Received size %d, shape %s' %
-                  (message, size_check_message, tensor_name(x), tensor_dim,
-                   specified_size, actual_size, x.get_shape()))
+                  (message, size_check_message, tensor_name(sizes.x),
+                   tensor_dim, specified_size, actual_size,
+                   sizes.x.get_shape()))
             # No dynamic assertion needed
             continue
 
@@ -1938,15 +1949,15 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
           if data is None:
             data_ = [
                 message, size_check_message,
-                'Tensor %s dimension' % tensor_name(x), tensor_dim,
+                'Tensor %s dimension' % tensor_name(sizes.x), tensor_dim,
                 'must have size', specified_size, 'Received shape: ',
-                array_ops.shape(x)
+                array_ops.shape(sizes.x)
             ]
           size_assertions.append(
               control_flow_ops.Assert(condition, data_, summarize=summarize))
         else:
-          size = actual_sizes[tensor_dim]
-          size_specifications[size_symbol] = (size, x, tensor_dim)
+          size = sizes.actual_sizes[tensor_dim]
+          size_specifications[size_symbol] = (size, sizes.x, tensor_dim)
 
     with ops.control_dependencies(rank_assertions):
       shapes_assertion = control_flow_ops.group(size_assertions)

@@ -213,3 +213,19 @@ Memory (bytes): count=0
 
 Average inference timings in us: Warmup: 83235, Init: 38467, no stats: 79760.9
 ```
+
+## Benchmark multiple performance options in a single run
+
+A convenient and simple C++ binary is also provided to benchmark multiple
+performance options in a single run. This binary is built based on the
+aforementioned benchmark tool that could only benchmark a single performance
+option at a time. They share the same build/install/run process, but the BUILD
+target name of this binary is `benchmark_model_performance_options` and it takes
+some additional parameters as detailed below.
+
+### Additional Parameters
+*   `perf_options_list`: `string` (default='all') \
+    A comma-separated list of TFLite performance options to benchmark.
+*   `option_benchmark_run_delay`: `float` (default=-1.0) \
+    The delay between two consecutive runs of benchmarking performance options
+    in seconds.
