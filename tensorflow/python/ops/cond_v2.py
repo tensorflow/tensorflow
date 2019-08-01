@@ -766,7 +766,8 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
         self.op_needs_rewrite = True
       return super(_CondGradFuncGraph, self)._capture_helper(tensor, name)
 
-    captured_tensor = self._indirect_captures.get(tensor)
+    tensor_id = ops.tensor_id(tensor)
+    captured_tensor = self._indirect_captures.get(tensor_id)
     if captured_tensor is not None:
       return captured_tensor
 
@@ -788,7 +789,7 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
       captured_tensor = super(_CondGradFuncGraph, self)._capture_helper(
           self._forward_graph.inputs[index], name)
     else:
-      if tensor not in self._wrapped_intermediates:
+      if tensor_id not in self._wrapped_intermediates:
         # If the gradient has already been computed for this If op, 'tensor' may
         # already be wrapped.
         for consumer in tensor.consumers():
@@ -801,15 +802,15 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
           with self._forward_graph.as_default():
             optional = gen_dataset_ops.optional_from_value([tensor])
           self.op_needs_rewrite = True
-        self._wrapped_intermediates[tensor] = optional
+        self._wrapped_intermediates[tensor_id] = optional
 
-      optional = self._wrapped_intermediates[tensor]
+      optional = self._wrapped_intermediates[tensor_id]
       captured_optional = super(_CondGradFuncGraph,
                                 self)._capture_helper(optional, name)
       captured_tensor = gen_dataset_ops.optional_get_value(
           captured_optional, [tensor.dtype], [tensor.shape])[0]
 
-    self._indirect_captures[tensor] = captured_tensor
+    self._indirect_captures[tensor_id] = captured_tensor
     return captured_tensor
 
 

@@ -694,9 +694,9 @@ class FuncGraph(ops.Graph):
 
   @property
   def variable_captures(self):
-    """Map of variable handles to variables that as in the list of captures."""
+    """Map of tensor ids of variable handles to variables which are captured."""
     return {
-        self._captures[ops.tensor_id(v.handle)][1]: v
+        ops.tensor_id(self._captures[ops.tensor_id(v.handle)][1]): v
         for v in self.variables
         if ops.tensor_id(v.handle) in self._captures
     }
