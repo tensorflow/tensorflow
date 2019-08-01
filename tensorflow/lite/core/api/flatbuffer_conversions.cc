@@ -435,6 +435,9 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
                                    lstm_params->kernel_type());
             return kTfLiteError;
         }
+      } else {
+        error_reporter->Report("No valid LSTM builtin options exist");
+        return kTfLiteError;
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
