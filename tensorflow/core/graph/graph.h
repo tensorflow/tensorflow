@@ -189,6 +189,11 @@ class Node {
     UpdateProperties();
   }
 
+  void AddAttr(const string& name, std::vector<string>&& val) {
+    MoveAttrValue(std::move(val), AddAttrHelper(name));
+    UpdateProperties();
+  }
+
   void ClearAttr(const string& name);
 
   // Returns into '*e' the edge connecting to the 'idx' input of this Node.
