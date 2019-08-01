@@ -2006,6 +2006,8 @@ def TFL_TransposeOp : TFL_Op<"transpose",
   let results = (outs
     AnyTensor:$y
   );
+
+  let hasFolder = 1;
 }
 
 def TFL_UnpackOp : TFL_Op<"unpack", [NoSideEffect]> {

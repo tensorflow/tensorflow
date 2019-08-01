@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
+#include <cstdint>
+
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
@@ -25,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -863,6 +866,83 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
 
   return nullptr;
 }
+
+//===----------------------------------------------------------------------===//
+// TransposeOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// Computes the permutation of a constant `input_tensor` according to `perm`.
+// The function recursively traverses the dimensions of the output tensor in
+// a row-major order and writes the value in the output tensor into
+// `new_values`.
+void ComputePermutation(ElementsAttr input_tensor, ArrayRef<int32_t> perm,
+                        ArrayRef<int64_t> output_shape, int num_dimensions,
+                        int output_axis, std::vector<uint64_t> *input_indices,
+                        std::vector<Attribute> *new_values) {
+  // Refer to the implementation of `Transpose` function in
+  // tensorflow/lite/kernels/internal/reference/reference_ops.h
+  assert(output_axis < num_dimensions);
+  const int input_axis = perm[output_axis];
+  for (int i = 0; i < output_shape[output_axis]; ++i) {
+    // Update the input indices on `input_axis`.
+    input_indices->at(input_axis) = i;
+    // Write the value from `input_tensor` if it is the last axis or
+    // recurse into the next axis.
+    const bool is_last_axis = output_axis == num_dimensions - 1;
+    if (is_last_axis) {
+      new_values->push_back(input_tensor.getValue(*input_indices));
+    } else {
+      ComputePermutation(input_tensor, perm, output_shape, num_dimensions,
+                         output_axis + 1, input_indices, new_values);
+    }
+  }
+}
+
+}  // namespace
+
+OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 2);
+  auto input_tensor = operands[0].dyn_cast_or_null<ElementsAttr>();
+  auto perm_tensor = operands[1].dyn_cast_or_null<ElementsAttr>();
+  if (!input_tensor || !perm_tensor) return nullptr;
+
+  // Do not try to fold elements attr of a quant type because
+  // DenseElementsAttr does not support it.
+  if (!getType().cast<ShapedType>().getElementType().isIntOrFloat())
+    return nullptr;
+
+  assert(perm_tensor.getType().getRank() == 1);
+  const int num_dimensions = input_tensor.getType().getRank();
+  assert(perm_tensor.getType().getNumElements() == num_dimensions);
+
+  ArrayRef<int64_t> input_shape = input_tensor.getType().getShape();
+  auto output_type = getType().cast<ShapedType>();
+
+  SmallVector<int32_t, 4> perm;
+  SmallVector<int64_t, 4> output_shape;
+  for (int i = 0; i < num_dimensions; ++i) {
+    perm.push_back(perm_tensor.getValue({static_cast<uint64_t>(i)})
+                       .cast<IntegerAttr>()
+                       .getInt());
+    output_shape.push_back(input_shape[perm[i]]);
+
+    // Check that the derived output shape matches the static shape.
+    assert(!output_type.hasStaticShape() ||
+           output_type.getShape()[i] == output_shape[i]);
+  }
+
+  std::vector<Attribute> new_values;
+  new_values.reserve(input_tensor.getType().getNumElements());
+  std::vector<uint64_t> input_indices(num_dimensions);
+  ComputePermutation(input_tensor, perm, output_shape, num_dimensions,
+                     /*output_axis=*/0, &input_indices, &new_values);
+  auto result_type =
+      RankedTensorType::get(output_shape, output_type.getElementType());
+  return DenseElementsAttr::get(result_type, new_values);
+}
+
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
