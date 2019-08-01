@@ -22,9 +22,6 @@ namespace data {
 namespace experimental {
 namespace {
 
-// See documentation in tensorflow/core/ops/experimental_dataset_ops.cc for a
-// high-level description of the following op.
-
 class UniqueDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit UniqueDatasetOp(OpKernelConstruction* ctx)
