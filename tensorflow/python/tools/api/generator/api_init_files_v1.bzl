@@ -131,6 +131,7 @@ KERAS_API_INIT_FILES_V1 = [
     "keras/models/__init__.py",
     "keras/optimizers/__init__.py",
     "keras/optimizers/schedules/__init__.py",
+    "keras/premade/__init__.py",
     "keras/preprocessing/__init__.py",
     "keras/preprocessing/image/__init__.py",
     "keras/preprocessing/sequence/__init__.py",

@@ -24,8 +24,10 @@ from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import nn
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export('keras.experimental.LinearModel')
 class LinearModel(training.Model):
   r"""Linear Model for regression and classification problems.
 
