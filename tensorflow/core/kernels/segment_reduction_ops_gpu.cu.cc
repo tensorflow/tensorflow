@@ -55,8 +55,8 @@ template <typename T, typename Index, int OuterDimTileSize>
 __global__ void SortedSegmentSumCustomKernel(const Index input_outer_dim_size,
                                              const Index inner_dim_size,
                                              const Index output_outer_dim_size,
-                                             const Index* segment_ids,
-                                             const T* input, T* output,
+                                             const Index* __restrict__ segment_ids,
+                                             const T* __restrict__ input, T* __restrict__ output,
                                              const Index total_stripe_count) {
   for (int stripe_index : GpuGridRangeX(total_stripe_count)) {
     const Index segment_offset = stripe_index % inner_dim_size;
@@ -109,8 +109,8 @@ template <typename T, typename Index, typename KernelReductionFunctor>
 __global__ void UnsortedSegmentCustomKernel(const int64 input_outer_dim_size,
                                             const int64 inner_dim_size,
                                             const int64 output_outer_dim_size,
-                                            const Index* segment_ids,
-                                            const T* input, T* output) {
+                                            const Index* __restrict__ segment_ids,
+                                            const T* __restrict__ input, T* __restrict__ output) {
   const int64 input_total_size = input_outer_dim_size * inner_dim_size;
   for (int64 input_index : GpuGridRangeX(input_total_size)) {
     const int64 input_segment_index = input_index / inner_dim_size;

@@ -37,9 +37,9 @@ namespace functor {
 //   1: If prediction is larger than the target prediction for the batch.
 template <typename T, typename TargetT>
 __global__ void ComputePredictionMaskKernel(
-    const T* predictions,    // dims: [ num_targets x num_classes ]
-    const TargetT* targets,  // dims: [ num_targets ]
-    int64* mask,             // dims: [ num_targets x num_classes ]
+    const T* __restrict__ predictions,    // dims: [ num_targets x num_classes ]
+    const TargetT* __restrict__ targets,  // dims: [ num_targets ]
+    int64* __restrict__ mask,             // dims: [ num_targets x num_classes ]
     int num_targets, int num_classes) {
   CUDA_1D_KERNEL_LOOP(i, num_targets * num_classes) {
     const int batch_index = i / num_classes;

@@ -105,8 +105,8 @@ template struct FusedBatchNormFreezeGrad<GPUDevice, float, float>;
 template struct FusedBatchNormFreezeGrad<GPUDevice, Eigen::half, float>;
 
 template <class T>
-__global__ void VarianceToInvVarianceKernel(int nthreads, const T* input,
-                                            double epsilon, T* output) {
+__global__ void VarianceToInvVarianceKernel(int nthreads, const T* __restrict__ input,
+                                            double epsilon, T* __restrict__ output) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     output[index] = rsqrt(input[index] + T(epsilon));
   }
