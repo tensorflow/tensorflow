@@ -281,7 +281,7 @@ def dilation2d_v2(
       tensor. Must be: `[1, stride_height, stride_width, 1]`.
     padding: A `string` from: `"SAME", "VALID"`.
       The type of padding algorithm to use.
-    data_format: A `string`, only `"NCHW"` is currently supported.
+    data_format: A `string`, only `"NHWC"` is currently supported.
     dilations: A list of `ints` that has length `>= 4`.
       The input stride for atrous morphological dilation. Must be:
       `[1, rate_height, rate_width, 1]`.
@@ -290,8 +290,8 @@ def dilation2d_v2(
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
-  if data_format != "NCHW":
-    raise ValueError("Data formats other than NCHW are not yet supported")
+  if data_format != "NHWC":
+    raise ValueError("Data formats other than NHWC are not yet supported")
 
   return gen_nn_ops.dilation2d(input=input,
                                filter=filters,
