@@ -147,8 +147,8 @@ class XlaBuilder {
   // Sets OpMetadata that will be added to all instructions until cleared.
   //
   // OpMetadata is often applied to a series of XLA HLO instructions. As a
-  // result, OpMetadata is set on the Computation Builder. All subsequent
-  // instructions generated via this Computation Builder will have the same
+  // result, OpMetadata is set on the computation builder. All subsequent
+  // instructions generated via this computation builder will have the same
   // OpMetadata attached until a call to ClearOpMetadata.
   void SetOpMetadata(OpMetadata metadata) { metadata_ = std::move(metadata); }
 
@@ -162,8 +162,8 @@ class XlaBuilder {
   // cleared.
   //
   // FrontendAttributes are often applied to a series of XLA HLO instructions.
-  // As a result they are set on the Computation Builder and all the
-  // instructions generated via the Computation Builder will have the same
+  // As a result they are set on the computation builder and all the
+  // instructions generated via the computation builder will have the same
   // frontend attributes attached to them.
   void SetFrontendAttributes(const FrontendAttributes& frontend_attributes) {
     frontend_attributes_ = frontend_attributes;
