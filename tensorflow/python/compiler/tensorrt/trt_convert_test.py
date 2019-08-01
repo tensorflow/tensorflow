@@ -414,7 +414,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     def _destroy_cache():
       with ops.device("GPU:0"):
         handle = gen_trt_ops.create_trt_engine_cache_handle(
-            container=trt_convert._TRT_ENGINE_CACHE_CONTAINER_NAME,
             resource_name="TRTEngineOp_0")
         gen_resource_variable_ops.destroy_resource_op(
             handle, ignore_lookup_error=False)

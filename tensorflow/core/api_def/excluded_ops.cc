@@ -43,8 +43,8 @@ const std::unordered_set<std::string>* GetExcludedOps() {
 #endif  // INTEL_MKL
 #ifdef GOOGLE_TENSORRT
           "CreateTRTEngineCacheHandle",
-          "PopulateTRTEngineCache",
-          "DumpTRTEngineCache",
+          "InitializeTRTEngineOp",
+          "SerializeTRTEngineOp",
           "GetCalibrationDataOp",
           "TRTEngineOp",
 #endif  // GOOGLE_TENSORRT
