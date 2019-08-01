@@ -53,9 +53,9 @@ template <typename T>
 __global__ void __launch_bounds__(1024)
     TruncatedNormalKernel(random::PhiloxRandom gen, T* data, int64 num_batches,
                           int64 samples_per_batch, int64 num_elements,
-                          const T* means, bool single_mean, const T* stddevs,
-                          bool single_stddev, const T* minvals,
-                          bool single_minval, const T* maxvals,
+                          const T* __restrict__ means, bool single_mean, const T* stddevs,
+                          bool single_stddev, const T* __restrict__ minvals,
+                          bool single_minval, const T* __restrict__ maxvals,
                           bool single_maxval, int64 kMaxIterations) {
   const int32 max_samples_per_item = 2 * kMaxIterations;
   // Initial offset as given by GPU_1D_KERNEL_LOOP.

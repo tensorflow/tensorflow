@@ -61,8 +61,8 @@ __device__ void ComputePermutationFromTranspositions(
 // transpositions.
 template <typename Scalar>
 __global__ void ComputePermutationFromTranspositionsKernel(
-    GpuLaunchConfig config, const int64 num_rows, const int* all_pivots,
-    Scalar* all_permutation_indices) {
+    GpuLaunchConfig config, const int64 num_rows, const int* __restrict__ all_pivots,
+    Scalar* __restrict__ all_permutation_indices) {
   // We only parallelize over batches here. Performance is not critical,
   // since this cheap O(num_rows) kernel always follows an O(num_rows^3)
   // LU factorization.

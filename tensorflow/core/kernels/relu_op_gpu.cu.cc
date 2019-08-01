@@ -34,9 +34,9 @@ namespace functor {
 // This kernel computes ReluGrad by processing one half2, two fp16, at a time.
 // It effectively does: backdrops = (feature > 0) ? gradient : 0
 // It also tries to use native half2 primitives as much as possible.
-__global__ void ReluGradHalfKernel(const Eigen::half* gradient,
-                                   const Eigen::half* feature,
-                                   Eigen::half* backprop, int32 count) {
+__global__ void ReluGradHalfKernel(const Eigen::half* __restrict__ gradient,
+                                   const Eigen::half* __restrict__ feature,
+                                   Eigen::half* __restrict__ backprop, int32 count) {
   int32 half2_count = count >> 1;
   int32 index = blockIdx.x * blockDim.x + threadIdx.x;
   const int32 total_device_threads = gridDim.x * blockDim.x;
@@ -112,8 +112,8 @@ struct ReluGrad<Device, Eigen::half> {
   }
 };
 
-__global__ void Relu_int8x4_kernel(int vect_count, const int32* input,
-                                   int32* output) {
+__global__ void Relu_int8x4_kernel(int vect_count, const int32* __restrict__ input,
+                                   int32* __restrict__ output) {
   CUDA_1D_KERNEL_LOOP(index, vect_count) {
     output[index] = __vmaxs4(input[index], 0);
   }

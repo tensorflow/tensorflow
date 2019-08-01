@@ -60,9 +60,9 @@ namespace {
 // real value of V (which should be computed)
 template <class Scalar>
 __global__ void ComputeValueOfVKernel(Gpu2DLaunchConfig config, int64 m,
-                                      int64 ldu, const Scalar* M,
-                                      const Scalar* U, const Scalar* S,
-                                      Scalar* V) {
+                                      int64 ldu, const Scalar* __restrict__ M,
+                                      const Scalar* __restrict__ U, const Scalar* __restrict__ S,
+                                      Scalar* __restrict__ V) {
   GPU_AXIS_KERNEL_LOOP(batch, config.virtual_thread_count.x, X) {
     GPU_AXIS_KERNEL_LOOP(i, config.virtual_thread_count.y, Y) {
       Scalar v = M[i + m * batch] * U[ldu * (i + m * batch)] * S[batch];
@@ -74,7 +74,7 @@ __global__ void ComputeValueOfVKernel(Gpu2DLaunchConfig config, int64 m,
 // Extracts the sign of V
 // V[i] = V[i]>=0 ? 1 : 0
 template <class Scalar>
-__global__ void ExtractSignOfVKernel(GpuLaunchConfig config, Scalar* V) {
+__global__ void ExtractSignOfVKernel(GpuLaunchConfig config, Scalar* __restrict__ V) {
   GPU_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
     V[i] = V[i] >= 0 ? Scalar(1) : Scalar(-1);
   }

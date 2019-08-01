@@ -30,7 +30,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
 __global__ void DiagGpuKernel(const int num_threads, const int64 size,
-                              const T* in, T* out) {
+                              const T* __restrict__ in, T* __restrict__ out) {
   GPU_1D_KERNEL_LOOP(index, num_threads) {
     // Fill the diagonal elements or set to zero in other place.
     if (index % (1 + size) == 0) {

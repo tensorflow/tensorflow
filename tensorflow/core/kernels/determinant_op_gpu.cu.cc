@@ -84,10 +84,10 @@ __device__ inline complex128 operator/(const complex128& a, const double& b) {
 // the sign argument is ignored.
 template <typename Scalar, bool compute_log_abs_det = true>
 __global__ void DeterminantFromPivotedLUKernel(int nthreads, int n,
-                                               const Scalar* lu_factor,
-                                               const int* all_pivots,
-                                               Scalar* sign,
-                                               Scalar* log_abs_det) {
+                                               const Scalar* __restrict__ lu_factor,
+                                               const int* __restrict__ all_pivots,
+                                               Scalar* __restrict__ sign,
+                                               Scalar* __restrict__ log_abs_det) {
   typedef typename Eigen::NumTraits<Scalar>::Real RealScalar;
   const int matrix_size = n * n;
   const int stride = n + 1;

@@ -70,8 +70,8 @@ struct ScatterOpKernelBody<T, scatter_op::UpdateOp::MAX> {
 };
 
 template <typename T, typename Index, scatter_op::UpdateOp op>
-__global__ void ScatterOpCustomKernel(T* params, const T* updates,
-                                      const Index* indices,
+__global__ void ScatterOpCustomKernel(T* __restrict__ params, const T* __restrict__ updates,
+                                      const Index* __restrict__ indices,
                                       Index first_dim_size, Index updates_size,
                                       Index indices_size) {
   Index update_block = updates_size / indices_size;
@@ -90,8 +90,8 @@ __global__ void ScatterOpCustomKernel(T* params, const T* updates,
 }
 
 template <typename T, typename Index, scatter_op::UpdateOp op>
-__global__ void ScatterScalarOpCustomKernel(T* params, const T* update,
-                                            const Index* indices,
+__global__ void ScatterScalarOpCustomKernel(T* __restrict__ params, const T* __restrict__ update,
+                                            const Index* __restrict__ indices,
                                             Index first_dim_size,
                                             Index indices_size,
                                             Index synthesized_updates_size) {

@@ -41,13 +41,13 @@ DEFINE_GPU_KERNELS(double)
 
 template <typename dtype>
 __global__ void AvePoolBackwardNHWC(const int nthreads,
-                                    const dtype* const top_diff, const int num,
+                                    const dtype* const __restrict__ top_diff, const int num,
                                     const int height, const int width,
                                     const int channels, const int pooled_height,
                                     const int pooled_width, const int kernel_h,
                                     const int kernel_w, const int stride_h,
                                     const int stride_w, const int pad_t,
-                                    const int pad_l, dtype* const bottom_diff) {
+                                    const int pad_l, dtype* const __restrict__ bottom_diff) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     // find out the local index
     // find out the local offset

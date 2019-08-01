@@ -30,7 +30,7 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T, typename Index, bool is_axis_zero>
-__global__ void GatherOpKernel(const T* params, const Index* indices, T* out,
+__global__ void GatherOpKernel(const T* __restrict__ params, const Index* __restrict__ indices, T* __restrict__ out,
                                int64 gather_dim_size, int64 indices_size,
                                int64 slice_size, int64 out_size) {
   GPU_1D_KERNEL_LOOP(i, out_size) {

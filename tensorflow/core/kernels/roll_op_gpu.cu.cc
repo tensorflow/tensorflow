@@ -31,8 +31,8 @@ namespace {
 
 template <typename T>
 __global__ void RollKernel(const int32 nthreads, const int32 num_dims,
-                           const T* input, T* output, const int32* dim_size,
-                           const int32* threshold, const int64* dim_range) {
+                           const T* __restrict__ input, T* __restrict__ output, const int32* __restrict__ dim_size,
+                           const int32* __restrict__ threshold, const int64* __restrict__ dim_range) {
   CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
     int64 offset = 0;
     for (int i = 0; i < num_dims; i++) {

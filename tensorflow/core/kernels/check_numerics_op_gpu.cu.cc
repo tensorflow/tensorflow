@@ -36,7 +36,7 @@ typedef Eigen::GpuDevice GPUDevice;
 // A Cuda kernel to check if each element is Inf or Nan. If any exists, the
 // relevant elements in abnormal_detected will be set
 template <typename T>
-__global__ void CheckNumericsKernel(const T* data, int size,
+__global__ void CheckNumericsKernel(const T* __restrict__ data, int size,
                                     int abnormal_detected[2]) {
   const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
   const int32 total_thread_count = gridDim.x * blockDim.x;

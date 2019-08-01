@@ -33,8 +33,8 @@ __global__ void MatrixBandPartKernel(const int num_threads,
                                      const int batch_size, const int m,
                                      const int n, const int num_lower_diags,
                                      const int num_upper_diags,
-                                     const Scalar* input_ptr,
-                                     Scalar* output_ptr) {
+                                     const Scalar* __restrict__ input_ptr,
+                                     Scalar* __restrict__ output_ptr) {
   GPU_1D_KERNEL_LOOP(index, num_threads) {
     const int col = index % n;
     const int row = (index / n) % m;
