@@ -496,8 +496,10 @@ def maintain_losses(method):
     layer = self.call_collection.layer
     training = None
     # pylint: disable=protected-access
-    if layer._call_arg_was_passed('training', args, kwargs):
-      training = layer._get_call_arg_value('training', args, kwargs)
+    if (args or kwargs) and layer._call_arg_was_passed(
+        'training', args, kwargs, inputs_in_args=True):
+      training = layer._get_call_arg_value(
+          'training', args, kwargs, inputs_in_args=True)
     # pylint: enable=protected-access
     original_losses = _reset_layer_losses(layer)
     with base_layer_utils.call_context().enter(layer, None, True, training):

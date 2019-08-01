@@ -29,3 +29,6 @@ simple_sequential_model = combinations.NamedObject(
 
 simple_subclass_model = combinations.NamedObject(
     "SimpleSubclassModel", simple_models.SimpleSubclassModel())
+
+simple_tfmodule_model = combinations.NamedObject(
+    "SimpleTFModuleModel", simple_models.SimpleTFModuleModel())

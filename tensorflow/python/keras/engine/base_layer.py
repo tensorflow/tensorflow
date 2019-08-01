@@ -1852,19 +1852,25 @@ class Layer(module.Module):
       return None
     return input_masks
 
-  def _call_arg_was_passed(self, arg_name, args, kwargs):
+  def _call_arg_was_passed(self, arg_name, args, kwargs, inputs_in_args=False):
     if arg_name in kwargs:
       return True
-    # Ignore `inputs` arg.
-    if arg_name in dict(zip(self._call_fn_args[1:], args)):
+    call_fn_args = self._call_fn_args
+    if not inputs_in_args:
+      # Ignore `inputs` arg.
+      call_fn_args = call_fn_args[1:]
+    if arg_name in dict(zip(call_fn_args, args)):
       return True
     return False
 
-  def _get_call_arg_value(self, arg_name, args, kwargs):
+  def _get_call_arg_value(self, arg_name, args, kwargs, inputs_in_args=False):
     if arg_name in kwargs:
       return kwargs[arg_name]
-    # Ignore `inputs` arg.
-    args_dict = dict(zip(self._call_fn_args[1:], args))
+    call_fn_args = self._call_fn_args
+    if not inputs_in_args:
+      # Ignore `inputs` arg.
+      call_fn_args = call_fn_args[1:]
+    args_dict = dict(zip(call_fn_args, args))
     return args_dict[arg_name]
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):

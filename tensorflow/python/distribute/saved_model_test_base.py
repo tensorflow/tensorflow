@@ -75,6 +75,23 @@ def simple_models_with_strategy_pairs():
       experimental_run_tf_function=[True, False])
 
 
+def tfmodule_models_with_strategies():
+  return combinations.combine(
+      model_and_input=[model_combinations.simple_tfmodule_model],
+      distribution=strategies_minus_tpu,
+      mode=['eager'],
+      experimental_run_tf_function=[True])
+
+
+def tfmodule_models_with_strategy_pairs():
+  return combinations.combine(
+      model_and_input=[model_combinations.simple_tfmodule_model],
+      distribution_for_saving=strategies_minus_tpu,
+      distribution_for_restoring=strategies_minus_tpu,
+      mode=['eager'],
+      experimental_run_tf_function=[True])
+
+
 def load_and_run_with_saved_model_api(distribution, saved_dir, predict_dataset,
                                       output_name):
   """Loads a saved_model using tf.saved_model API, and runs it."""
@@ -146,6 +163,9 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
     # Train the model for 1 epoch
     model.fit(x=training_dataset, epochs=1, steps_per_epoch=100)
 
+  def _predict_with_model(self, distribution, model, predict_dataset):
+    return model.predict(predict_dataset, steps=PREDICT_STEPS)
+
   def _get_predict_dataset(self, x_predict, batch_size):
     predict_dataset = dataset_ops.Dataset.from_tensor_slices(x_predict)
     predict_dataset = predict_dataset.repeat()
@@ -163,10 +183,10 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
         experimental_run_tf_function=experimental_run_tf_function)
     x_train, y_train, x_predict = model_and_input.get_data()
     batch_size = model_and_input.get_batch_size()
+    predict_dataset = self._get_predict_dataset(x_predict, batch_size)
 
     self._train_model(model, x_train, y_train, batch_size)
-    predict_dataset = self._get_predict_dataset(x_predict, batch_size)
-    result_before_save = model.predict(predict_dataset, steps=PREDICT_STEPS)
+    result_before_save = self._predict_with_model(None, model, predict_dataset)
 
     self._save_model(model, saved_dir)
 
@@ -195,7 +215,8 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
 
       self._train_model(model, x_train, y_train, batch_size)
       predict_dataset = self._get_predict_dataset(x_predict, batch_size)
-      result_before_save = model.predict(predict_dataset, steps=PREDICT_STEPS)
+      result_before_save = self._predict_with_model(
+          distribution, model, predict_dataset)
 
     if save_in_scope:
       with distribution.scope():
@@ -229,7 +250,8 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
 
       self._train_model(model, x_train, y_train, batch_size)
       predict_dataset = self._get_predict_dataset(x_predict, batch_size)
-      result_before_save = model.predict(predict_dataset, steps=PREDICT_STEPS)
+      result_before_save = self._predict_with_model(
+          distribution_for_saving, model, predict_dataset)
 
     if save_in_scope:
       with distribution_for_saving.scope():
