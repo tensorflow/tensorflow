@@ -31,7 +31,9 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework.ops import composite_tensor
 from tensorflow.python.keras import backend
+from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
+from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
@@ -188,6 +190,43 @@ def _prepare_model_with_inputs(model, dataset):
   if target is not None:
     training_utils.prepare_sample_weight_modes(model._training_endpoints,
                                                model.sample_weight_mode)
+
+
+def should_fallback_to_v1_for_callback(inputs, callbacks):
+  """Whether to fallback to v1 training loop because of callbacks.
+
+  This is only a temporary solution until the v2 training loop is fixed for
+  using batch based callbacks.
+
+  Args:
+    inputs: the inputs to the model. Certain input type might not handle certain
+      callbacks well if it need batch based counting.
+    callbacks: list of callbacks configured for the fit/eval/predict.
+
+  Returns:
+    boolean, whether it should fallbacks to use v1 training loop.
+  """
+  try:
+    adapter_cls = data_adapter.select_data_adapter(inputs, None)
+    if adapter_cls not in (data_adapter.GeneratorDataAdapter,
+                           data_adapter.DatasetAdapter):
+      # For any input data that we know the overall size, eg numpy, list of
+      # list, etc, we don't need to fallback since the v2 loop can get the batch
+      # size.
+      return False
+  except ValueError:
+    # In case we can't find the adapter, then we should fallback to v1.
+    return True
+
+  callbacks = callbacks or []
+  for c in callbacks:
+    if isinstance(c, cbks.ModelCheckpoint) and isinstance(c.save_freq, int):
+      return True
+    elif (isinstance(c, cbks.TensorBoard) and
+          isinstance(c.update_freq, int) and
+          c.update_freq > 1):  # This is a implementation detail for TB.
+      return True
+  return False
 
 
 def train_on_batch(
