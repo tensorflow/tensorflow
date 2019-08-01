@@ -325,10 +325,11 @@ def random_crop(value, size, seed=None, name=None):
         paddings = [[0, m - s[i]] for (i, m) in enumerate(max_in_dims)]
         return tf.pad(t, paddings, 'CONSTANT', constant_values=constant_values)
 
-    v0 = pad_up_to(value[:, :, 0], [size_dim[0], size_dim[1]], 0)
-    v1 = pad_up_to(value[:, :, 1], [size_dim[0], size_dim[1]], 0)
-    v2 = pad_up_to(value[:, :, 2], [size_dim[0], size_dim[1]], 0)
-    value = tf.stack([v0, v1, v2], axis=2)
+    tmp = []
+    for ch in range(value.shape[2].value):
+        v0 = pad_up_to(value[:, :, ch], [size_dim[0], size_dim[1]], 0)
+        tmp.append(v0)
+    value = tf.stack(tmp, axis=2)
     print(value.shape)
 
     check = control_flow_ops.Assert(
