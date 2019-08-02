@@ -991,35 +991,19 @@ cc_library(
 )
 
 cc_library(
-    name = "nvptx_compiler",
-    srcs = if_cuda_is_configured([
-        "nvptx_compiler_registration.cc",
-    ]),
-    deps = [":nvptx_compiler_impl"],
-    alwayslink = True,  # Contains compiler registration
-)
-
-cc_library(
-    name = "nvptx_compiler_impl",
-    srcs = if_cuda_is_configured([
+    name = "gpu_compiler_impl",
+    srcs = [
         "gpu_compiler.cc",
-        "nvptx_compiler.cc",
-    ]),
-    hdrs = if_cuda_is_configured([
+    ],
+    hdrs = [
         "gpu_compiler.h",
-        "nvptx_compiler.h",
-    ]),
-    deps = if_cuda_is_configured([
+    ],
+    deps = [
         ":cudnn_batchnorm_rewriter",
         ":cudnn_conv_algorithm_picker",
-        ":cudnn_conv_pad_for_tensor_cores",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
-        ":cudnn_fused_conv_rewriter",
-        ":cusolver_rewriter",
         ":fusion_merger",
-        ":gemm_algorithm_picker",
-        ":gemm_rewriter",
         ":gpu_constants",
         ":gpu_copy_insertion",
         ":gpu_executable",
@@ -1083,21 +1067,50 @@ cc_library(
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:stream_executor_headers",
-        "//tensorflow/stream_executor/cuda:cuda_diagnostics",
-        "//tensorflow/stream_executor/cuda:ptxas_utils",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@llvm//:core",
+    ],
+)
+
+cc_library(
+    name = "nvptx_compiler",
+    srcs = if_cuda_is_configured([
+        "nvptx_compiler_registration.cc",
+    ]),
+    deps = if_cuda_is_configured([
+        "nvptx_compiler_impl",
+    ]),
+    alwayslink = True,  # Contains compiler registration
+)
+
+cc_library(
+    name = "nvptx_compiler_impl",
+    srcs = if_cuda_is_configured([
+        "nvptx_compiler.cc",
+    ]),
+    hdrs = if_cuda_is_configured([
+        "nvptx_compiler.h",
+    ]),
+    deps = if_cuda_is_configured([
+        ":cudnn_conv_pad_for_tensor_cores",
+        ":cudnn_fused_conv_rewriter",
+        ":cusolver_rewriter",
+        ":gemm_algorithm_picker",
+        ":gemm_rewriter",
+        ":gpu_compiler_impl",
+        "//tensorflow/core:cuda_libdevice_path",
+        "//tensorflow/stream_executor/cuda:cuda_diagnostics",
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
     ]),
 )
 
@@ -1106,7 +1119,9 @@ cc_library(
     srcs = if_rocm_is_configured([
         "amdgpu_compiler_registration.cc",
     ]),
-    deps = [":amdgpu_compiler_impl"],
+    deps = if_rocm_is_configured([
+        "amdgpu_compiler_impl",
+    ]),
     alwayslink = True,  # Contains compiler registration
 )
 
@@ -1114,98 +1129,17 @@ cc_library(
     name = "amdgpu_compiler_impl",
     srcs = if_rocm_is_configured([
         # TODO(whchung@gmail.com) : enable in the subsequent PR.
-        #"gpu_compiler.cc",
         #"amdgpu_compiler.cc",
     ]),
     hdrs = if_rocm_is_configured([
         # TODO(whchung@gmail.com): enable in the subsequent PR.
-        #"gpu_compiler.h",
         #"amdgpu_compiler.h"
     ]),
     deps = if_rocm_is_configured([
-        ":cudnn_batchnorm_rewriter",
-        ":cudnn_conv_padding_legalization",
-        ":cudnn_conv_rewriter",
-        ":fusion_merger",
-        ":gpu_constants",
-        ":gpu_copy_insertion",
-        ":gpu_executable",
-        ":gpu_hlo_schedule",
-        ":gpu_hlo_support_checker",
-        ":gpu_layout_assignment",
-        ":gpu_sanitize_constant_names",
-        ":gpu_scatter_expander",
-        ":instruction_fusion",
-        ":ir_emission_utils",
-        ":ir_emitter",
         # TODO(whchung@gmail.com): Enable these after pending PRs get merged.
+        #":gpu_compiler_impl",
         #":miopen_conv_algorithm_picker",
-        ":multi_output_fusion",
-        ":partition_assignment",
-        ":stream_assignment",
-        ":stream_executor_util",
-        ":target_constants",
-        ":variadic_op_splitter",
-        "//tensorflow/compiler/xla:protobuf_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:algebraic_simplifier",
-        "//tensorflow/compiler/xla/service:batchnorm_expander",
-        "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:call_inliner",
-        "//tensorflow/compiler/xla/service:conditional_simplifier",
-        "//tensorflow/compiler/xla/service:convolution_group_converter",
-        "//tensorflow/compiler/xla/service:dot_decomposer",
-        "//tensorflow/compiler/xla/service:dump",
-        "//tensorflow/compiler/xla/service:dynamic_index_splitter",
-        "//tensorflow/compiler/xla/service:executable",
-        "//tensorflow/compiler/xla/service:flatten_call_graph",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_constant_folding",
-        "//tensorflow/compiler/xla/service:hlo_cse",
-        "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
-        "//tensorflow/compiler/xla/service:hlo_dce",
-        "//tensorflow/compiler/xla/service:hlo_element_type_converter",
-        "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
-        "//tensorflow/compiler/xla/service:hlo_proto",
-        "//tensorflow/compiler/xla/service:hlo_proto_util",
-        "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
-        "//tensorflow/compiler/xla/service:hlo_verifier",
-        "//tensorflow/compiler/xla/service:llvm_compiler",
-        "//tensorflow/compiler/xla/service:mem_wasted_on_passthrough_params",
-        "//tensorflow/compiler/xla/service:reduce_precision_insertion",
-        "//tensorflow/compiler/xla/service:reshape_mover",
-        "//tensorflow/compiler/xla/service:rng_expander",
-        "//tensorflow/compiler/xla/service:slice_sinker",
-        "//tensorflow/compiler/xla/service:slow_operation_alarm",
-        "//tensorflow/compiler/xla/service:sort_simplifier",
-        "//tensorflow/compiler/xla/service:stable_sort_expander",
-        "//tensorflow/compiler/xla/service:transpose_folding",
-        "//tensorflow/compiler/xla/service:tuple_simplifier",
-        "//tensorflow/compiler/xla/service:while_loop_constant_sinking",
-        "//tensorflow/compiler/xla/service:while_loop_simplifier",
-        "//tensorflow/compiler/xla/service:while_loop_trip_count_annotator",
-        "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
-        "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:regexp_internal",
-        # TODO(whchung@gmail.com): Enable these after pending PRs get merged.
         #"//tensorflow/core:rocm_rocdl_path",
-        "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/stream_executor:stream_executor_headers",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
-        "@llvm//:core",
     ]),
 )
 
