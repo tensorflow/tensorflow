@@ -124,6 +124,9 @@ inline int GetTensorSpatialDims(int num_dims, TensorFormat format) {
       // Note: the VECT_W is not counted as an independent spatial dim here,
       // since it just a component of the width dimension.
       return num_dims - 3;  // Exclude N,C,VectDim.
+    default:
+      LOG(FATAL) << "Unknown format " << format;
+      return -1;  // Avoid compiler warning about missing return value
   }
 }
 
@@ -148,6 +151,9 @@ inline int GetTensorDimsFromSpatialDims(int num_spatial_dims,
     case FORMAT_NCHW_VECT_C:
     case FORMAT_NHWC_VECT_W:
       return num_spatial_dims + 3;  // Include N,C,VectDim.
+    default:
+      LOG(FATAL) << "Unknown format " << format;
+      return -1;  // Avoid compiler warning about missing return value
   }
 }
 
