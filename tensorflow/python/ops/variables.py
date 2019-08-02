@@ -2704,7 +2704,7 @@ def _safe_initial_value_from_op(name, op, op_cache):
   """
   op_type = op.node_def.op
   if op_type in ("IsVariableInitialized", "VarIsInitializedOp",
-                 "ReadVariableOp"):
+                 "ReadVariableOp", "If"):
     return op
 
   # Attempt to find the initialized_value of any variable reference / handles.
