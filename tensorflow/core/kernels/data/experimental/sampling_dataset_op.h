@@ -21,6 +21,8 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
+// See tensorflow/core/api_def/base_api/api_def_SamplingDataset.pbtxt for the
+// API definition that corresponds to this kernel.
 class SamplingDatasetOp : public UnaryDatasetOpKernel {
  public:
   // Names of op parameters, public so that they can be accessed by test cases.
