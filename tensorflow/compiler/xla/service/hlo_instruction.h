@@ -1928,7 +1928,8 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 // Custom (de)stringification functions for protos that live inside
 // HloInstruction.
 string PaddingConfigToString(const PaddingConfig& padding);
-string FrontendAttributesToString(const FrontendAttributes& frontend_attributes);
+string FrontendAttributesToString(
+    const FrontendAttributes& frontend_attributes);
 string OpMetadataToString(const OpMetadata& metadata);
 string RandomDistributionToString(const RandomDistribution& distribution);
 string PrecisionToString(const PrecisionConfig::Precision& precision);

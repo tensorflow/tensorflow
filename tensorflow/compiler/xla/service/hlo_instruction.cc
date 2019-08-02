@@ -2488,7 +2488,8 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     extra.push_back(StrCat("sharding=", sharding().ToString()));
   }
   if (!frontend_attributes_.map().empty()) {
-    extra.push_back(StrCat("frontend_attributes=", FrontendAttributesToString(frontend_attributes_)));
+    extra.push_back(StrCat("frontend_attributes=",
+                           FrontendAttributesToString(frontend_attributes_)));
   }
   if (!outer_dimension_partitions_.empty()) {
     extra.push_back(absl::StrFormat("outer_dimension_partitions={%s}",
@@ -3204,10 +3205,10 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
   return InvalidArgument("Unknown fusion kind: %s", kind_name);
 }
 
-string FrontendAttributesToString(const FrontendAttributes& frontend_attributes){
-  return absl::StrFormat("{%s}",
-                      absl::StrJoin(frontend_attributes.map(), ",",
-                                    absl::PairFormatter("=")));
+string FrontendAttributesToString(
+    const FrontendAttributes& frontend_attributes) {
+  return absl::StrFormat("{%s}", absl::StrJoin(frontend_attributes.map(), ",",
+                                               absl::PairFormatter("=")));
 }
 
 string PaddingConfigToString(const PaddingConfig& padding) {

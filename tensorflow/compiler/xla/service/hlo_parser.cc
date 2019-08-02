@@ -273,7 +273,7 @@ class HloParser {
   bool ParsePaddingConfig(PaddingConfig* padding);
   bool ParseMetadata(OpMetadata* metadata);
   bool ParseSharding(OpSharding* sharding);
-  bool ParseFrontendAttributes(FrontendAttributes *frontend_attributes);
+  bool ParseFrontendAttributes(FrontendAttributes* frontend_attributes);
   bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
   bool ParseParameterReplication(ParameterReplication* parameter_replication);
   bool ParseReplicaGroupsOnly(std::vector<ReplicaGroup>* replica_groups);
@@ -682,7 +682,8 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
   optional<OpSharding> sharding;
   optional<FrontendAttributes> frontend_attributes;
   attrs["sharding"] = {/*required=*/false, AttrTy::kSharding, &sharding};
-  attrs["frontend_attributes"] = {/*required=*/false, AttrTy::kFrontendAttributes, &frontend_attributes};
+  attrs["frontend_attributes"] = {
+      /*required=*/false, AttrTy::kFrontendAttributes, &frontend_attributes};
   optional<ParameterReplication> parameter_replication;
   attrs["parameter_replication"] = {/*required=*/false,
                                     AttrTy::kParameterReplication,
@@ -1847,9 +1848,9 @@ bool HloParser::ParseSharding(OpSharding* sharding) {
 // attributes
 //   ::= /*empty*/
 //   ::= attribute '=' value (',' attribute '=' value)*
-bool HloParser::ParseFrontendAttributes(FrontendAttributes *frontend_attributes)
-{
-  CHECK(frontend_attributes!= nullptr);
+bool HloParser::ParseFrontendAttributes(
+    FrontendAttributes* frontend_attributes) {
+  CHECK(frontend_attributes != nullptr);
   if (!ParseToken(TokKind::kLbrace,
                   "expected '{' to start frontend attributes")) {
     return false;
@@ -1860,7 +1861,7 @@ bool HloParser::ParseFrontendAttributes(FrontendAttributes *frontend_attributes)
     do {
       LocTy loc = lexer_.GetLoc();
       string attribute;
-      if(!ParseAttributeName(&attribute)){
+      if (!ParseAttributeName(&attribute)) {
         return false;
       }
       if (lexer_.GetKind() != TokKind::kIdent) {
@@ -1870,7 +1871,8 @@ bool HloParser::ParseFrontendAttributes(FrontendAttributes *frontend_attributes)
       lexer_.Lex();
     } while (EatIfPresent(TokKind::kComma));
   }
-  return ParseToken(TokKind::kRbrace, "expects '}' at the end of frontend attributes");
+  return ParseToken(TokKind::kRbrace,
+                    "expects '}' at the end of frontend attributes");
 }
 
 //  ::= '{' 'replicated'? 'maximal'? ('device=' int)? shape?
@@ -2894,10 +2896,11 @@ bool HloParser::ParseAttributeHelper(
       }
       case AttrTy::kFrontendAttributes: {
         FrontendAttributes frontend_attributes;
-        if(!ParseFrontendAttributes(&frontend_attributes)) {
+        if (!ParseFrontendAttributes(&frontend_attributes)) {
           return false;
         }
-        static_cast<optional<FrontendAttributes>*>(attr_out_ptr)->emplace(frontend_attributes);
+        static_cast<optional<FrontendAttributes>*>(attr_out_ptr)
+            ->emplace(frontend_attributes);
         return true;
       }
       case AttrTy::kParameterReplication: {
@@ -4163,7 +4166,8 @@ StatusOr<FrontendAttributes> HloParser::ParseFrontendAttributesOnly() {
     return InvalidArgument("Syntax error:\n%s", GetError());
   }
   if (lexer_.GetKind() != TokKind::kEof) {
-    return InvalidArgument("Syntax error:\nExtra content after frontend attributes");
+    return InvalidArgument(
+        "Syntax error:\nExtra content after frontend attributes");
   }
   return attributes;
 }
