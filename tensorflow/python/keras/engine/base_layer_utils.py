@@ -28,7 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
@@ -471,12 +471,13 @@ def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
   Raises:
     RuntimeError: In case of an out-of-graph tensor.
   """
-  if (force_raise or (ops.executing_eagerly_outside_functions() and
-                      hasattr(tensor, 'graph') and
-                      isinstance(tensor.graph,
-                                 (control_flow_util_v2.CondBranchFuncGraph,
-                                  control_flow_util_v2.WhileCondFuncGraph,
-                                  control_flow_util_v2.WhileBodyFuncGraph)))):
+  if (force_raise or
+      (ops.executing_eagerly_outside_functions() and
+       hasattr(tensor, 'graph') and
+       isinstance(tensor.graph,
+                  (control_flow_v2_func_graphs.CondBranchFuncGraph,
+                   control_flow_v2_func_graphs.WhileCondFuncGraph,
+                   control_flow_v2_func_graphs.WhileBodyFuncGraph)))):
     if method == 'activity_regularizer':
       bad_example = """
       class TestModel(tf.keras.Model):

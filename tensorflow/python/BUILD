@@ -2565,11 +2565,23 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":control_flow_util",
+        ":control_flow_v2_func_graphs",
         ":framework_ops",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/keras:base_layer_utils",
+    ],
+)
+
+py_library(
+    name = "control_flow_v2_func_graphs",
+    srcs = ["ops/control_flow_v2_func_graphs.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":func_graph",
     ],
 )
 

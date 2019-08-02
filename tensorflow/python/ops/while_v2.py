@@ -23,6 +23,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -62,7 +63,8 @@ def while_loop(cond,
                parallel_iterations=10,
                maximum_iterations=None,
                name=None,
-               return_same_structure=True):
+               return_same_structure=True,
+               back_prop=True):
   """Like tf.while_loop, except emits a single While op."""
   # Keep the original loop_vars around to know which args were TensorArrays.
   orig_loop_vars = loop_vars
@@ -225,6 +227,32 @@ def while_loop(cond,
                              len_orig_loop_vars], expand_composites=True),
         nest.flatten(loop_vars[first_loop_var_index:first_loop_var_index +
                                len_orig_loop_vars], expand_composites=True))
+
+    num_original_outputs = len(body_graph.outputs)
+    if back_prop and util.output_all_intermediates():
+      # Export all tensors in the loop body that may be needed for gradient
+      # computation. We do this by accumulating the intermediate values in
+      # TensorLists.
+      intermediate_tensors = _get_intermediates(body_graph)
+
+      for intermediate_tensor in intermediate_tensors:
+        tensor_list = list_ops.empty_tensor_list(
+            element_dtype=intermediate_tensor.dtype,
+            element_shape=intermediate_tensor.shape,
+            max_num_elements=maximum_iterations)
+        loop_vars.append(tensor_list)
+        with cond_graph.as_default():
+          # Add a placeholder to cond_graph's inputs corresponding to the
+          # tensor_list.
+          cond_graph.capture(tensor_list)
+        with body_graph.as_default():
+          # Push the intermediate tensor to the tensor list. This captures the
+          # `tensor_list` as well.
+          appended_tensor_list = list_ops.tensor_list_push_back(
+              tensor_list, intermediate_tensor)
+          # Add this modified tensor list to the list of outputs.
+          body_graph.outputs.append(appended_tensor_list)
+
     flattened_loop_vars = nest.flatten(loop_vars, expand_composites=True)
     _check_num_inputs_outputs(cond_graph, body_graph,
                               len(flattened_loop_vars))
@@ -260,6 +288,9 @@ def while_loop(cond,
           output_shapes=output_shapes,
           parallel_iterations=parallel_iterations,
           name=scope)
+      # This is needed so we do not compute derivative wrt these extra outputs.
+      outputs[0].op._set_attr("_num_original_outputs",
+                              attr_value_pb2.AttrValue(i=num_original_outputs))
 
     _copy_handle_data(body_graph.outputs, outputs)
     util.maybe_set_lowering_attr(outputs[0].op)
@@ -303,9 +334,19 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   maximum_iterations = op.inputs[1]
   parallel_iterations = op.get_attr("parallel_iterations")
 
-  grads = [_preprocess_grad(grad, body_out, while_out)
-           for grad, body_out, while_out
-           in zip(grads, body_graph.outputs, while_op.outputs)]
+  try:
+    num_original_outputs = op.get_attr("_num_original_outputs")
+  except:  # pylint: disable=bare-except
+    num_original_outputs = len(while_op.outputs)
+
+  num_intermediates = len(while_op.outputs) - num_original_outputs
+  grads = [
+      _preprocess_grad(grad, body_out, while_out)  # pylint: disable=g-complex-comprehension
+      for grad, body_out, while_out in zip(
+          grads[:num_original_outputs],
+          body_graph.outputs[:num_original_outputs],
+          while_op.outputs[:num_original_outputs])
+  ] + [None] * num_intermediates
 
   # We compute the gradient for the sub-graph between trainable ys and xs
   # with non-None incoming gradients. We later pad the None's to the list of
@@ -337,6 +378,11 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
     while_op._add_outputs([t.dtype for t in new_outputs],
                           [t.shape for t in new_outputs])
     _copy_handle_data(new_outputs, op.outputs[orig_num_params:])
+
+  # Do not ingore grads wrt extra outputs when computing higher order
+  # derivatives.
+  while_op._set_attr("_num_original_outputs",
+                     attr_value_pb2.AttrValue(i=len(while_op.outputs)))
 
   captured_inputs = _resolve_grad_captures(body_graph, body_grad_graph,
                                            while_op)
@@ -373,6 +419,48 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   # See comment in while_loop.
   outputs = [array_ops.identity(t) for t in outputs]
   return _get_structured_grad_output(outputs, grads, body_grad_graph)
+
+
+def _get_intermediates(func_graph):
+  """Returns all tensors in `func_graph` that should be accumulated."""
+  # We currently accumulate output tensors of most ops in the function and rely
+  # on the pruning pass to get rid of the unused accumulators at runtime.
+  # However, this can bloat the GraphDef and make debugging harder so we perform
+  # some optimizations.
+  #
+  # Optimization we currently perform:
+  # 1. We do not accumulate tensors which already have an accumulator
+  #    in the loop body.
+  # 2. We do not accumulate outputs of Identity nodes. When building the
+  #    FuncGraph, we add an Identity node for each output (see
+  #    `AutomaticControlDependencies.mark_as_return`). Accumulating outputs
+  #    of all these nodes bloats the GraphDef quite a bit so we remove those.
+  #    Since the gradient of an Identity node does not rely on its forward op's
+  #    input this is safe to do.
+  #
+  # Other possible optimizations:
+  # 1. Only accumulate tensors that will be required by the backward pass.
+  #    This will require running the gradient pass and hence would increase the
+  #    graph building time for the forward pass.
+  # 2. Do not accumulate Const nodes created inside the loop body.
+  # 3. Do not accumulate loop vars that are returned as-is just like captured
+  #    tensors.
+  intermediates = []
+  reverse_captures = dict((v, k) for k, v in func_graph.captures)
+
+  for op in func_graph.get_operations():
+    if op.type == "Identity":
+      continue
+    # Accumulating mutexes can cause deadlock.
+    if op.type == "MutexLock":
+      continue
+    for o in op.outputs:
+      if (o != func_graph.inputs[0] and  # Loop counter.
+          o.dtype != dtypes.resource and  # Do not accumulate resource tensors.
+          _get_accumulator(o) is None and  # Has existing accumulator.
+          o not in reverse_captures):  # Captured value, hence loop invariant.
+        intermediates.append(o)
+  return intermediates
 
 
 def _preprocess_grad(grad, body_graph_output, while_op_output):
@@ -835,6 +923,18 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
 
     captured_tensor = self._indirect_captures.get(ops.tensor_id(tensor))
     if captured_tensor is not None:
+      return captured_tensor
+
+    # Do not accumulate loop invariants.
+    if (tensor in self._forward_graph.inputs and
+        tensor in self._forward_graph.outputs):
+      captured_tensor = super(_WhileBodyGradFuncGraph,
+                              self)._capture_helper(tensor, name)
+      # Add to `popped_tensor_lists` so that this gets added to the list of
+      # outputs.
+      # TODO(srbs): Rename popped_tensor_lists.
+      self.popped_tensor_lists[captured_tensor] = captured_tensor
+      self._indirect_captures[tensor] = captured_tensor
       return captured_tensor
 
     # Resource tensors are not accumulated and handled specially.
