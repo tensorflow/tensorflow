@@ -347,6 +347,7 @@ cc_library(
     name = "reference_base",
     srcs = [],
     hdrs = [
+        "reference/arg_min_max.h",
         "reference/conv.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
@@ -401,6 +402,7 @@ cc_library(
     name = "legacy_reference_base",
     srcs = [],
     hdrs = [
+        "reference/arg_min_max.h",
         "reference/conv.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
