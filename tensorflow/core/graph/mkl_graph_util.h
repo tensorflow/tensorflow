@@ -177,6 +177,11 @@ static inline bool IsMklOp(const string& op_name, DataType T) {
   return IsMklLayoutDependentOp(op_name, T) || IsMklNameChangeOp(op_name, T);
 }
 
+static inline bool IsMklOp(const Node* n) {
+  DataType T;
+  return GetNodeAttr(n->def(), "T", &T).ok() && IsMklOp(n->type_string(), T);
+}
+
 // Check whether opname with type T is registered as MKL-compliant and
 // is element-wise.
 //

@@ -361,7 +361,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
-                      CopyAttrsAll, AlwaysRewrite,
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.avg_pool, mkl_op_registry::GetMklOpName(csinfo_.avg_pool),
@@ -468,9 +468,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.fused_conv2d, csinfo_.mkl_fused_conv2d,
                       CopyAttrsFusedConv2D, FusedConv2DRewrite,
                       kRewriteForLayoutPropagation});
-    rinfo_.push_back(
-        {csinfo_.identity, mkl_op_registry::GetMklOpName(csinfo_.identity),
-         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+    rinfo_.push_back({csinfo_.identity,
+                      mkl_op_registry::GetMklOpName(csinfo_.identity),
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
+                      kRewriteForLayoutPropagation});
+
     rinfo_.push_back({csinfo_.lrn, mkl_op_registry::GetMklOpName(csinfo_.lrn),
                       CopyAttrsAll, LrnRewrite, kRewriteForLayoutPropagation});
     rinfo_.push_back(
@@ -502,11 +504,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool3d_grad),
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
-    rinfo_.push_back(
-        {csinfo_.maximum, mkl_op_registry::GetMklOpName(csinfo_.maximum),
-         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+    rinfo_.push_back({csinfo_.maximum,
+                      mkl_op_registry::GetMklOpName(csinfo_.maximum),
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
+                      kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.mul, mkl_op_registry::GetMklOpName(csinfo_.mul),
-                      CopyAttrsAll, AlwaysRewrite,
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.pad_with_conv2d, csinfo_.mkl_pad_with_conv2d,
                       CopyAttrsPadWithConv2D, AlwaysRewrite,
@@ -645,35 +648,36 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.requantize, mkl_op_registry::GetMklOpName(csinfo_.requantize),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
 #endif  // !ENABLE_MKLDNN_V1
-    // Disable these two MKL operators for now due to some test failures caused
-    // by these two ops
-    /*
-    rinfo_.push_back({csinfo_.tanh,
-                      mkl_op_registry::GetMklOpName(csinfo_.tanh),
-                      CopyAttrsAll, AlwaysRewrite,
-                      kRewriteForLayoutPropagation});
-    rinfo_.push_back({csinfo_.tanh_grad,
-                      mkl_op_registry::GetMklOpName(csinfo_.tanh_grad),
-                      CopyAttrsAll, AlwaysRewrite,
-                      kRewriteForLayoutPropagation});
-    */
+// Disable these two MKL operators for now due to some test failures caused
+// by these two ops
+/*
+rinfo_.push_back({csinfo_.tanh,
+                  mkl_op_registry::GetMklOpName(csinfo_.tanh),
+                  CopyAttrsAll, AlwaysRewrite,
+                  kRewriteForLayoutPropagation});
+rinfo_.push_back({csinfo_.tanh_grad,
+                  mkl_op_registry::GetMklOpName(csinfo_.tanh_grad),
+                  CopyAttrsAll, AlwaysRewrite,
+                  kRewriteForLayoutPropagation});
+*/
 #ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back(
         {csinfo_.reshape, mkl_op_registry::GetMklOpName(csinfo_.reshape),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
-    rinfo_.push_back(
-        {csinfo_.slice, mkl_op_registry::GetMklOpName(csinfo_.slice),
-         CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+    rinfo_.push_back({csinfo_.slice,
+                      mkl_op_registry::GetMklOpName(csinfo_.slice),
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
+                      kRewriteForLayoutPropagation});
     rinfo_.push_back(
         {csinfo_.softmax, mkl_op_registry::GetMklOpName(csinfo_.softmax),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
 
     rinfo_.push_back({csinfo_.squared_difference,
                       mkl_op_registry::GetMklOpName(csinfo_.squared_difference),
-                      CopyAttrsAll, AlwaysRewrite,
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.sub, mkl_op_registry::GetMklOpName(csinfo_.sub),
-                      CopyAttrsAll, AlwaysRewrite,
+                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.transpose,
                       mkl_op_registry::GetMklOpName(csinfo_.transpose),
@@ -1379,6 +1383,38 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // Default rewrite rule to be used in scenario 1 for rewrite.
   // @return - true (since we want to always rewrite)
   static bool AlwaysRewrite(const Node* n) { return true; }
+
+  // Rewrite rule which considers "context" of the current node to decide if we
+  // should rewrite. By "context" we currently mean all the inputs of current
+  // node. The idea is if none of the inputs of current node are not MKL nodes,
+  // then rewriting current node to MKL node _may not_ offer any performance
+  // improvement.
+  //
+  // One such case is element-wise ops. For such ops, we reuse the Eigen
+  // implementation and pass the MKL metadata tensor through so we can avoid
+  // conversions. However, if all incoming edges are in TF format, we don't
+  // need all this overhead, so replace the elementwise node only if at least
+  // one of its parents is a MKL node.
+  //
+  // More generally, all memory- or IO-bound ops (such as Identity) may fall
+  // under this category.
+  //
+  // @input - Input graph node to be rewritten
+  // @return - true if node is to be rewritten as MKL node; false otherwise.
+  static bool RewriteIfAtleastOneMklInput(const Node* n) {
+    DataType T;
+    if (GetNodeAttr(n->def(), "T", &T).ok() &&
+        mkl_op_registry::IsMklOp(
+            mkl_op_registry::GetMklOpName(n->type_string()), T)) {
+      for (auto e : n->in_edges()) {
+        if (e->IsControlEdge()) continue;
+        if (mkl_op_registry::IsMklOp(e->src())) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 
   static bool DequantizeRewrite(const Node* n) {
     DCHECK(n);
@@ -3490,47 +3526,6 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
       !mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(n->type_string()),
                                 T)) {
     return nullptr;
-  }
-
-  // For elementwise node, we reuse the Eigen implementation and pass the MKL
-  // metadata tensor through so we can avoid conversions. However, if all
-  // incoming edges are in TF format, we don't need all this overhead, so
-  // replace the elementwise node only if at least one of its parents is a MKL
-  // node.
-  //
-  // Identity nodes can also skip replacement if they are not being served by
-  // any MKL nodes.
-  //
-  // TODO(vrane): Add implementation for element-wise ops that doesn't reuse
-  // eigen code to reduce cross-library dependency.
-  VLOG(1) << "ELEMENTWISE: checking op: " << n->type_string();
-  if (mkl_op_registry::IsMklElementWiseOp(
-          mkl_op_registry::GetMklOpName(n->type_string()), T) ||
-      n->type_string().find("Identity") != string::npos) {
-    VLOG(1) << "ELEMENTWISE: op is elementwise: " << n->type_string();
-    bool incoming_mkl_edge = false;
-    int num_parent = 0;
-    for (auto parent : n->in_edges()) {
-      if (mkl_op_registry::IsMklLayoutDependentOp(parent->src()->type_string(),
-                                                  T)) {
-        VLOG(1) << "ELEMENTWISE: parent " << num_parent++
-                << " is MKL op: " << parent->src()->type_string();
-        incoming_mkl_edge = true;
-        break;
-      } else {
-        VLOG(1) << "ELEMENTWISE: parent " << num_parent++
-                << " is NON-MKL op: " << parent->src()->type_string();
-      }
-    }
-    if (incoming_mkl_edge == false) {
-      VLOG(1) << "ELEMENTWISE: Skipping replacement of elementwise node which "
-                 "has no MKL "
-                 "parents.";
-      return nullptr;
-    } else {
-      VLOG(1) << "ELEMENTWISE: Replacing elementwise node " << n->type_string()
-              << " which has MKL parents";
-    }
   }
 
   // We now check if rewrite rule applies for this op. If rewrite rule passes
