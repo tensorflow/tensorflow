@@ -33,14 +33,14 @@ namespace gpu {
 namespace gl {
 namespace {
 
-class SoftMax : public NodeShader {
+class Softmax : public NodeShader {
  public:
   Status GenerateCode(const GenerationContext& ctx,
                       GeneratedCode* generated_code) const final {
-    auto input = ctx.graph->FindInputs(ctx.node->id)[0];
-    auto output = ctx.graph->FindOutputs(ctx.node->id)[0];
-    auto attr =
-        absl::any_cast<SoftMaxAttributes>(ctx.node->operation.attributes);
+    const auto* input = ctx.graph->FindInputs(ctx.node->id)[0];
+    const auto* output = ctx.graph->FindOutputs(ctx.node->id)[0];
+    const auto& attr = absl::any_cast<const SoftmaxAttributes&>(
+        ctx.node->operation.attributes);
     if (input->tensor.shape != output->tensor.shape) {
       return InvalidArgumentError("Input and output shape does not match");
     }
@@ -89,8 +89,8 @@ class SoftMax : public NodeShader {
 
 }  // namespace
 
-std::unique_ptr<NodeShader> NewSoftMaxNodeShader() {
-  return absl::make_unique<SoftMax>();
+std::unique_ptr<NodeShader> NewSoftmaxNodeShader() {
+  return absl::make_unique<Softmax>();
 }
 
 }  // namespace gl

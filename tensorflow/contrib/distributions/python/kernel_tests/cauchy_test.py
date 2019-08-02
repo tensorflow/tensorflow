@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.contrib.distributions.python.ops import cauchy as cauchy_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -400,9 +401,10 @@ class CauchyTest(test.TestCase):
 
   def testCauchyNegativeLocFails(self):
     with self.cached_session():
-      cauchy = cauchy_lib.Cauchy(loc=[1.], scale=[-5.], validate_args=True)
-      with self.assertRaisesOpError("Condition x > 0 did not hold"):
-        cauchy.mode().eval()
+      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                               "Condition x > 0 did not hold"):
+        _ = cauchy_lib.Cauchy(loc=[1.], scale=[-5.], validate_args=True)
+        # Error detected statically; no need for _.mode().eval()
 
   def testCauchyShape(self):
     with self.cached_session():

@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,21 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""estimator python module.
-
-Importing from tensorflow.python.estimator is unsupported
-and will soon break!
-"""
-# pylint: disable=unused-import,g-bad-import-order,g-import-not-at-top,wildcard-import
-
+"""Platform-specific helpers for connecting to remote servers."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow_estimator.python import estimator
 
-# Include attrs that start with single underscore.
-_HAS_DYNAMIC_ATTRIBUTES = True
-estimator.__all__ = [s for s in dir(estimator) if not s.startswith('__')]
-
-from tensorflow_estimator.python.estimator import *
+def get_default_communication_protocol():
+  return 'grpc'

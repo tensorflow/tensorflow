@@ -198,6 +198,9 @@ void SingleOpModel::SetForceUseNnapi(bool use_nnapi) {
   force_use_nnapi = use_nnapi;
 }
 
+// static
+bool SingleOpModel::GetForceUseNnapi() { return force_use_nnapi; }
+
 int32_t SingleOpModel::GetTensorSize(int index) const {
   TfLiteTensor* t = interpreter_->tensor(index);
   CHECK(t);

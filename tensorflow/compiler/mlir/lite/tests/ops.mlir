@@ -155,6 +155,26 @@ func @testSinWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 
 // -----
 
+// test invalid Sqrt input
+func @testSqrtWithWrongInputType(tensor<? x i32>) -> tensor<? x i32> {
+^bb0(%arg0: tensor<? x i32>):
+  // expected-error @+1 {{tfl.sqrt' op operand #0 must be tensor of floating-point values}}
+  %0 = "tfl.sqrt"(%arg0): (tensor<? x i32>) -> tensor<? x i32>
+  return %0#0 : tensor<? x i32>
+}
+
+// -----
+
+// test invalid Square input
+func @testSquareWithWrongInputType(tensor<? x i32>) -> tensor<? x i32> {
+^bb0(%arg0: tensor<? x i32>):
+  // expected-error @+1 {{tfl.square' op operand #0 must be tensor of floating-point values}}
+  %0 = "tfl.square"(%arg0): (tensor<? x i32>) -> tensor<? x i32>
+  return %0#0 : tensor<? x i32>
+}
+
+// -----
+
 // CHECK-LABEL: testSqrt
 func @testSqrt(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):
@@ -982,4 +1002,38 @@ func @testRangeOutputTypeMismatch(%arg0 : tensor<i32>, %arg1 : tensor<i32>, %arg
   // expected-error @+1 {{op failed to verify that operands and output must have same element type}}
   %0 = "tfl.range"(%arg0, %arg1, %arg2) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
+}
+
+// -----
+
+func @transpose(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2xi32>) -> tensor<2x2xi32> {
+  %0 = "tfl.transpose"(%arg0, %arg1) : (tensor<2x2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
+
+
+// -----
+
+func @transpose_perm_not_i32(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2xf32>) -> tensor<2x2xi32> {
+  // expected-error @+1 {{op operand #1 must be tensor of 32-bit integer values}}
+  %0 = "tfl.transpose"(%arg0, %arg1) : (tensor<2x2xi32>, tensor<2xf32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
+
+
+// -----
+
+func @transpose_element_type(%arg0 : tensor<2x2xf32>, %arg1 : tensor<2xi32>) -> tensor<2x2xi32> {
+  // expected-error @+1 {{input and output must have same element type}}
+  %0 = "tfl.transpose"(%arg0, %arg1) : (tensor<2x2xf32>, tensor<2xi32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
+
+
+// -----
+
+func @transpose_1d_perm(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // expected-error @+1 {{op failed to verify that operand 1 is 1-D}}
+  %0 = "tfl.transpose"(%arg0, %arg1) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
 }

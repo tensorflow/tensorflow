@@ -2214,7 +2214,7 @@ class Options(options_lib.OptionsBase):
       name="experimental_distribute",
       ty=distribute_options.DistributeOptions,
       docstring=
-      "The distribution options associated with the dataset. See "
+      "The distribution strategy options associated with the dataset. See "
       "`tf.data.experimental.DistributeOptions` for more details.",
       default_factory=distribute_options.DistributeOptions)
 
@@ -2263,6 +2263,9 @@ class Options(options_lib.OptionsBase):
       result.append("latency_all_edges")
     if self.experimental_slack:
       result.append("slack")
+    if (self.experimental_distribute and
+        self.experimental_distribute._make_stateless):  # pylint: disable=protected-access
+      result.append("make_stateless")
     return result
 
   def _static_optimization_configs(self):
@@ -2595,6 +2598,8 @@ class StructuredFunctionWrapper(object):
                          "`input_classes`, `input_shapes`, and `input_types` "
                          "must be specified.")
       self._input_structure = input_structure
+
+    self._func = func
 
     if defun_kwargs is None:
       defun_kwargs = {}

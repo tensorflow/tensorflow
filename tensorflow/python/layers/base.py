@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
@@ -198,6 +199,15 @@ class Layer(base_layer.Layer):
     # Avoid an incorrect lint error
     self._trainable_weights = []
     self.built = False
+
+    if dtype is None:
+      # Indicates to infer dtype from inputs. When the V2 dtype behavior is
+      # enabled, Keras layers default their dtype to floatx instead, so we pass
+      # an "infer" policy to keep the old V1 behavior.
+      dtype = policy.Policy('infer')
+
+    if 'experimental_autocast' not in kwargs:
+      kwargs['experimental_autocast'] = False
 
     super(Layer, self).__init__(trainable=trainable, name=name, dtype=dtype,
                                 **kwargs)

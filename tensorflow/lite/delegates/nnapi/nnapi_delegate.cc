@@ -557,7 +557,14 @@ class NNAPIOpBuilder {
   TfLiteStatus AddVectorInt32Operand(const int32_t* values,
                                      uint32_t num_values) {
     return AddVectorOperand<int32_t>(values, num_values,
-                                     ANEURALNETWORKS_TENSOR_INT32);
+                                     ANEURALNETWORKS_TENSOR_INT32,
+                                     /*scale=*/0.f, /*zero_point=*/0);
+  }
+
+  TfLiteStatus AddVectorInt32Operand(const int32_t* values, uint32_t num_values,
+                                     float scale, int32_t zero_point) {
+    return AddVectorOperand<int32_t>(
+        values, num_values, ANEURALNETWORKS_TENSOR_INT32, scale, zero_point);
   }
 
   TfLiteStatus AddVectorFloat32Operand(const float* values,
@@ -687,7 +694,7 @@ class NNAPIOpBuilder {
   template <typename T>
   TfLiteStatus AddNewInputConstantTensor(
       int32_t nn_type, TfLiteType type, const TfLiteIntArray* dims,
-      const std::function<TfLiteStatus(TfLitePtrUnion, int64_t)>& init_fn,
+      const std::vector<T>& tensor_value,
       const TfLiteQuantizationParams& quant_params, int* tensor_index) {
     TF_LITE_ENSURE_OK(context_,
                       context_->AddTensors(context_, 1, tensor_index));
@@ -706,8 +713,9 @@ class NNAPIOpBuilder {
             // Resize Tensor takes ownership of the dims array passed as param
             TfLiteIntArrayCopy(dims)));
 
-    const int64_t out_size = NumElements(dims);
-    TF_LITE_ENSURE_OK(context_, init_fn(new_tensor->data, out_size));
+    memcpy(new_tensor->data.raw,
+           reinterpret_cast<const char*>(tensor_value.data()),
+           tensor_value.size() * sizeof(T));
 
     const uint32_t tensor_rank = static_cast<uint32_t>(dims->size);
     const uint32_t* tensor_dims = reinterpret_cast<const uint32_t*>(dims->data);
@@ -735,11 +743,11 @@ class NNAPIOpBuilder {
   template <typename T>
   TfLiteStatus AddNewInputConstantTensor(
       int32_t nn_type, TfLiteType type, std::initializer_list<int> dims,
-      const std::function<TfLiteStatus(TfLitePtrUnion, int64_t)>& init_fn,
+      const std::vector<T>& tensor_value,
       const TfLiteQuantizationParams& quant_params, int* tensor_index) {
     TfLiteIntArray* dim_array = TfLiteIntArrayCreate(dims.size());
-    const auto result = AddNewInputConstantTensor<T>(
-        nn_type, type, dim_array, init_fn, quant_params, tensor_index);
+    const auto result = AddNewInputConstantTensor(
+        nn_type, type, dim_array, tensor_value, quant_params, tensor_index);
     TfLiteIntArrayFree(dim_array);
     return result;
   }
@@ -781,9 +789,13 @@ class NNAPIOpBuilder {
 
   template <typename T>
   TfLiteStatus AddVectorOperand(const T* values, uint32_t num_values,
-                                int32_t nn_type) {
-    ANeuralNetworksOperandType operand_type{
-        .type = nn_type, .dimensionCount = 1, .dimensions = &num_values};
+                                int32_t nn_type, float scale,
+                                int32_t zero_point) {
+    ANeuralNetworksOperandType operand_type{.type = nn_type,
+                                            .dimensionCount = 1,
+                                            .dimensions = &num_values,
+                                            .scale = scale,
+                                            .zeroPoint = zero_point};
 
     RETURN_TFLITE_ERROR_IF_NN_ERROR(
         context_,
@@ -795,6 +807,13 @@ class NNAPIOpBuilder {
                       nn_model_, ann_index, values, sizeof(T) * num_values));
     augmented_inputs_.push_back(ann_index);
     return kTfLiteOk;
+  }
+
+  template <typename T>
+  TfLiteStatus AddVectorOperand(const T* values, uint32_t num_values,
+                                int32_t nn_type) {
+    return AddVectorOperand(values, num_values, nn_type, /*scale=*/0.f,
+                            /*zero_point=*/0);
   }
 
   TfLiteStatus AddFloat32OutputTensor(uint32_t dimension_count,
@@ -1036,7 +1055,7 @@ class NNAPIDelegateKernel {
   // (i.e. if the returned MappingFn is null, then the node is not supported).
   static MappingFn Map(const TfLiteContext* context, int builtin_code,
                        int version, int android_sdk_version,
-                       const TfLiteNode* node) {
+                       const TfLiteNode* node, bool is_accelerator_specified) {
     switch (builtin_code) {
       case kTfLiteBuiltinAdd:
         if (version <= 2) {
@@ -1118,8 +1137,10 @@ class NNAPIDelegateKernel {
           }
           auto builtin =
               reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
-          // Large filter window would overflow.
-          if (builtin->filter_width * builtin->filter_height > 256) {
+          // TODO(b/138756912): Large filter window would overflow on the
+          // reference CPU path.
+          if (!is_accelerator_specified &&
+              (builtin->filter_width * builtin->filter_height > 256)) {
             return nullptr;
           }
           return [](const NNAPIOpMappingArgs& mapping_args)
@@ -1812,6 +1833,91 @@ class NNAPIDelegateKernel {
           return BasicMappingFn<ANEURALNETWORKS_SIN>;
         }
         break;
+      case kTfLiteBuiltinTransposeConv:
+        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          return [](const NNAPIOpMappingArgs& mapping_args)
+                     -> ANeuralNetworksOperationType {
+            const bool hybrid_op = IsHybridOperator(mapping_args.context,
+                                                    kTfLiteBuiltinTransposeConv,
+                                                    mapping_args.node);
+            mapping_args.builder->AddTensorInput(/*kDataInputTensor*/ 2,
+                                                 hybrid_op);
+            mapping_args.builder->AddTensorInput(/*kWeightsTensor*/ 1,
+                                                 hybrid_op);
+
+            // NNAPI requires a bias tensor, so we allocate a new tensor to fill
+            // it with zeroes. It is deleted with other tensors in the context
+            // during subgraph destructor call.
+            int bias_index = -1;
+            mapping_args.context->AddTensors(mapping_args.context, 1,
+                                             &bias_index);
+            TfLiteTensor* bias_tensor =
+                &mapping_args.context->tensors[bias_index];
+            const auto input_type =
+                mapping_args.context
+                    ->tensors[mapping_args.node->inputs
+                                  ->data[/*kDataInputTensor*/ 2]]
+                    .type;
+            if (input_type == kTfLiteFloat32) {
+              bias_tensor->type = kTfLiteFloat32;
+            } else {
+              bias_tensor->type = kTfLiteInt32;
+            }
+
+            // Create an array with a required bias shape and resize the bias
+            // tensor.
+            TfLiteIntArray* bias_shape = TfLiteIntArrayCreate(1);
+            const TfLiteTensor& output_shape =
+                mapping_args.context->tensors
+                    [mapping_args.node->inputs->data[/*kOutputShapeTensor*/ 0]];
+            const int output_depth = output_shape.data.i32[3];
+            bias_shape->data[0] = output_depth;
+            bias_tensor->allocation_type = kTfLiteDynamic;
+            mapping_args.context->ResizeTensor(mapping_args.context,
+                                               bias_tensor, bias_shape);
+
+            // Set tensor's values to zeroes and add it using AddVector*, so
+            // that the values are copied to NNAPI. We don't use the AddTensor
+            // function because it doesn't copy values and the tensor we just
+            // created is not in the node->inputs.
+            if (input_type == kTfLiteFloat32) {
+              memset(bias_tensor->data.f, 0, output_depth * sizeof(float));
+              mapping_args.builder->AddVectorFloat32Operand(bias_tensor->data.f,
+                                                            output_depth);
+            } else {
+              memset(bias_tensor->data.i32, 0, output_depth * sizeof(int));
+              const TfLiteTensor& input_tensor =
+                  mapping_args.context->tensors
+                      [mapping_args.node->inputs->data[/*kDataInputTensor*/ 2]];
+              const TfLiteTensor& filter_tensor =
+                  mapping_args.context->tensors
+                      [mapping_args.node->inputs->data[/*kWeightsTensor*/ 1]];
+              // NNAPI requires bias scale to be a product of an input scale and
+              // a filter scale.
+              bias_tensor->params.scale =
+                  input_tensor.params.scale * filter_tensor.params.scale;
+              mapping_args.builder->AddVectorInt32Operand(
+                  bias_tensor->data.i32, output_depth,
+                  input_tensor.params.scale * filter_tensor.params.scale,
+                  /*zero_point=*/0);
+            }
+
+            mapping_args.builder->AddTensorInput(/*kOutputShapeTensor*/ 0,
+                                                 hybrid_op);
+
+            auto builtin = reinterpret_cast<TfLiteTransposeConvParams*>(
+                mapping_args.node->builtin_data);
+            mapping_args.builder->AddScalarInt32Operand(builtin->padding);
+            mapping_args.builder->AddScalarInt32Operand(builtin->stride_width);
+            mapping_args.builder->AddScalarInt32Operand(builtin->stride_height);
+            mapping_args.builder->AddScalarInt32Operand(
+                /*ANEURALNETWORKS_FUSED_NONE*/ 0);
+            // Use NHWC layout for input and output
+            mapping_args.builder->AddScalarBoolOperand(false);
+            return ANEURALNETWORKS_TRANSPOSE_CONV;
+          };
+        }
+        break;
       case kTfLiteBuiltinSqrt:
         if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI12 &&
             IsFloat(context->tensors[node->inputs->data[0]].type)) {
@@ -1977,13 +2083,6 @@ class NNAPIDelegateKernel {
                   &input_to_cell, &recurrent_to_forget, &input_to_forget,
                   &recurrent_to_output, &input_to_output);
 
-              const auto ui8_fill_with =
-                  [](const std::vector<uint8_t>& read_from,
-                     TfLitePtrUnion write_to, int64_t size) -> TfLiteStatus {
-                std::copy(read_from.begin(), read_from.end(), write_to.uint8);
-                return kTfLiteOk;
-              };
-
               TfLiteIntArray* recurrent_weight_dims = TfLiteIntArrayCreate(2);
               TfLiteIntArray* input_weight_dims = TfLiteIntArrayCreate(2);
               tflite::delegate::nnapi::SetWeightSubmatrixDims(
@@ -1993,71 +2092,48 @@ class NNAPIDelegateKernel {
 
               mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
                   ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  input_weight_dims,
-                  std::bind(ui8_fill_with, input_to_input,
-                            std::placeholders::_1, std::placeholders::_2),
+                  input_weight_dims, input_to_input, weight_tensor.params,
+                  &new_tensor_index);
+
+              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
+                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
+                  input_weight_dims, input_to_forget, weight_tensor.params,
+                  &new_tensor_index);
+
+              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
+                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
+                  input_weight_dims, input_to_cell, weight_tensor.params,
+                  &new_tensor_index);
+
+              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
+                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
+                  input_weight_dims, input_to_output, weight_tensor.params,
+                  &new_tensor_index);
+
+              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
+                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
+                  recurrent_weight_dims, recurrent_to_input,
                   weight_tensor.params, &new_tensor_index);
 
               mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
                   ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  input_weight_dims,
-                  std::bind(ui8_fill_with, input_to_forget,
-                            std::placeholders::_1, std::placeholders::_2),
+                  recurrent_weight_dims, recurrent_to_forget,
                   weight_tensor.params, &new_tensor_index);
 
               mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
                   ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  input_weight_dims,
-                  std::bind(ui8_fill_with, input_to_cell, std::placeholders::_1,
-                            std::placeholders::_2),
+                  recurrent_weight_dims, recurrent_to_cell,
                   weight_tensor.params, &new_tensor_index);
 
               mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
                   ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  input_weight_dims,
-                  std::bind(ui8_fill_with, input_to_output,
-                            std::placeholders::_1, std::placeholders::_2),
-                  weight_tensor.params, &new_tensor_index);
-
-              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
-                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  recurrent_weight_dims,
-                  std::bind(ui8_fill_with, recurrent_to_input,
-                            std::placeholders::_1, std::placeholders::_2),
-                  weight_tensor.params, &new_tensor_index);
-
-              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
-                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  recurrent_weight_dims,
-                  std::bind(ui8_fill_with, recurrent_to_forget,
-                            std::placeholders::_1, std::placeholders::_2),
-                  weight_tensor.params, &new_tensor_index);
-
-              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
-                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  recurrent_weight_dims,
-                  std::bind(ui8_fill_with, recurrent_to_cell,
-                            std::placeholders::_1, std::placeholders::_2),
-                  weight_tensor.params, &new_tensor_index);
-
-              mapping_args.builder->AddNewInputConstantTensor<uint8_t>(
-                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
-                  recurrent_weight_dims,
-                  std::bind(ui8_fill_with, recurrent_to_output,
-                            std::placeholders::_1, std::placeholders::_2),
+                  recurrent_weight_dims, recurrent_to_output,
                   weight_tensor.params, &new_tensor_index);
 
               TfLiteIntArrayFree(input_weight_dims);
               TfLiteIntArrayFree(recurrent_weight_dims);
 
               // Biases have to be split in four
-              const auto i32_fill_with =
-                  [](const std::vector<int32_t>& read_from,
-                     TfLitePtrUnion write_to, int64_t size) -> TfLiteStatus {
-                std::copy(read_from.begin(), read_from.end(), write_to.i32);
-                return kTfLiteOk;
-              };
-
               const auto bias_size = output_dims->data[1];
               const TfLiteTensor& biases_tensor =
                   mapping_args.context->tensors
@@ -2074,30 +2150,19 @@ class NNAPIDelegateKernel {
               int input_bias_tensor = -1;
               mapping_args.builder->AddNewInputConstantTensor<int32_t>(
                   ANEURALNETWORKS_TENSOR_INT32, kTfLiteInt32, {bias_size},
-                  std::bind(i32_fill_with, input_bias, std::placeholders::_1,
-                            std::placeholders::_2),
-                  biases_tensor.params, &input_bias_tensor);
-              // kForgetGateBiasTensor
+                  input_bias, biases_tensor.params, &input_bias_tensor);
               int forget_bias_tensor = -1;
-              mapping_args.builder->AddNewInputConstantTensor<int32_t>(
+              mapping_args.builder->AddNewInputConstantTensor(
                   ANEURALNETWORKS_TENSOR_INT32, kTfLiteInt32, {bias_size},
-                  std::bind(i32_fill_with, forget_bias, std::placeholders::_1,
-                            std::placeholders::_2),
-                  biases_tensor.params, &forget_bias_tensor);
-              // kCellGateBiasTensor
+                  forget_bias, biases_tensor.params, &forget_bias_tensor);
               int cell_gate_bias_tensor = -1;
-              mapping_args.builder->AddNewInputConstantTensor<int32_t>(
+              mapping_args.builder->AddNewInputConstantTensor(
                   ANEURALNETWORKS_TENSOR_INT32, kTfLiteInt32, {bias_size},
-                  std::bind(i32_fill_with, cell_bias, std::placeholders::_1,
-                            std::placeholders::_2),
-                  biases_tensor.params, &cell_gate_bias_tensor);
-              // kOutputGateBiasTensor
+                  cell_bias, biases_tensor.params, &cell_gate_bias_tensor);
               int output_gate_bias_tensor = -1;
-              mapping_args.builder->AddNewInputConstantTensor<int32_t>(
+              mapping_args.builder->AddNewInputConstantTensor(
                   ANEURALNETWORKS_TENSOR_INT32, kTfLiteInt32, {bias_size},
-                  std::bind(i32_fill_with, output_bias, std::placeholders::_1,
-                            std::placeholders::_2),
-                  biases_tensor.params, &output_gate_bias_tensor);
+                  output_bias, biases_tensor.params, &output_gate_bias_tensor);
 
               mapping_args.builder->AddTensorInput(
                   mapping_args.node->inputs->data[4 /* kInputPrevState */],
@@ -3087,11 +3152,15 @@ class NNAPIDelegateKernel {
             continue;
           }
         }
-
         if ((reg->builtin_code == kTfLiteBuiltinSplit) &&
             (input_index == node->inputs->data[0])) {
           // Skip the axis input tensor; it will be added as a scalar operand
           // by the Map() mapping.
+          continue;
+        }
+        if (reg->builtin_code == kTfLiteBuiltinTransposeConv) {
+          // Everything is added during Map since input tensors
+          // have different order.
           continue;
         }
 
@@ -3216,8 +3285,9 @@ class NNAPIDelegateKernel {
       // Get op type and operands
       int nn_op_type = Map(
           context, reg->builtin_code, reg->version, nnapi_->android_sdk_version,
-          node)({context, &builder, node, &model_state_outputs_,
-                 &model_state_tfl_inputs_, &feedback_loops_});
+          node, /*is_accelerator_specified=*/nnapi_device_ !=
+                    nullptr)({context, &builder, node, &model_state_outputs_,
+                              &model_state_tfl_inputs_, &feedback_loops_});
       // Map outputs to NN API tensor indices.
       int output_tensor_flags = 0;
       if (need_int8_conversion) {
@@ -3441,6 +3511,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
       !nnapi->nnapi_exists) {
     return kTfLiteOk;
   }
+  bool is_accelerator_specified = false;
   // For NNAPI 1.2+, check if there is any accelerator available.
   // If not, don't delegate to NNAPI's CPU reference implementation.
   if (nnapi->android_sdk_version >= kMinSdkVersionForNNAPI12) {
@@ -3450,6 +3521,10 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
       if (!GetDeviceHandle(context, device_name_ptr)) {
         // If the selected accelerator cannot be found, NNAPI will not be used.
         return kTfLiteOk;
+      } else {
+        // also check if the selected device is not CPU reference impl.
+        const string kNnapiReferenceImplName = "nnapi-reference";
+        is_accelerator_specified = kNnapiReferenceImplName != device_name_ptr;
       }
     } else {
       // If no accelerator is specified, only use NNAPI if an accelerator is
@@ -3481,7 +3556,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
         context, node_index, &node, &registration));
     if (NNAPIDelegateKernel::Map(context, registration->builtin_code,
                                  registration->version, android_sdk_version,
-                                 node)) {
+                                 node, is_accelerator_specified)) {
       supported_nodes.push_back(node_index);
     }
   }

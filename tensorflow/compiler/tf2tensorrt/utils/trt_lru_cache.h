@@ -170,7 +170,7 @@ class CalibrationContext {
   std::unique_ptr<std::thread> thr_;
 };
 
-ABSL_CONST_INIT extern const absl::string_view kCacheContainerName;
+ABSL_CONST_INIT extern const absl::string_view kTfTrtContainerName;
 
 class TRTEngineCacheResource : public ResourceBase {
  public:

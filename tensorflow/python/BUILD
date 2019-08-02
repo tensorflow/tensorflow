@@ -2486,6 +2486,25 @@ tf_py_test(
         ":framework_for_generated_wrappers",
         "//third_party/py/numpy",
     ],
+    tags = [
+        "no_oss",  # TODO(b/138811357): re-enable after fixing flakiness.
+    ],
+)
+
+cuda_py_test(
+    name = "collective_ops_gpu_test",
+    size = "small",
+    srcs = ["ops/collective_ops_gpu_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":collective_ops",
+        ":framework_for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+    ],
 )
 
 py_library(
@@ -5116,7 +5135,6 @@ tf_py_test(
     grpc_enabled = True,
     tags = [
         "no_oss",  # Test flaky due to port collisions.
-        "nofwdcompat",  # b/137641346
         "notsan",  # data race due to b/62910646
         "oss_serial",
     ],

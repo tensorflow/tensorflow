@@ -409,11 +409,13 @@ class AttentionWrapperV2Test(test.TestCase, parameterized.TestCase):
         memory_sequence_length=self.encoder_sequence_length,
         normalize=True,
         dtype=dtype)
-    cell = keras.layers.LSTMCell(self.units, recurrent_activation="sigmoid")
-    cell = wrapper.AttentionWrapper(cell, attention_mechanism)
+    cell = keras.layers.LSTMCell(self.units, recurrent_activation="sigmoid",
+                                 dtype=dtype)
+    cell = wrapper.AttentionWrapper(cell, attention_mechanism, dtype=dtype)
 
     sampler = sampler_py.TrainingSampler()
-    my_decoder = basic_decoder.BasicDecoderV2(cell=cell, sampler=sampler)
+    my_decoder = basic_decoder.BasicDecoderV2(cell=cell, sampler=sampler,
+                                              dtype=dtype)
 
     final_outputs, final_state, _ = my_decoder(
         decoder_inputs,
@@ -436,11 +438,13 @@ class AttentionWrapperV2Test(test.TestCase, parameterized.TestCase):
         scale=True,
         dtype=dtype,
     )
-    cell = keras.layers.LSTMCell(self.units, recurrent_activation="sigmoid")
-    cell = wrapper.AttentionWrapper(cell, attention_mechanism)
+    cell = keras.layers.LSTMCell(self.units, recurrent_activation="sigmoid",
+                                 dtype=dtype)
+    cell = wrapper.AttentionWrapper(cell, attention_mechanism, dtype=dtype)
 
     sampler = sampler_py.TrainingSampler()
-    my_decoder = basic_decoder.BasicDecoderV2(cell=cell, sampler=sampler)
+    my_decoder = basic_decoder.BasicDecoderV2(cell=cell, sampler=sampler,
+                                              dtype=dtype)
 
     final_outputs, final_state, _ = my_decoder(
         decoder_inputs,

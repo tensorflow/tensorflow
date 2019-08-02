@@ -625,6 +625,9 @@ cc_library(
 tf_cuda_cc_test(
     name = "meta_optimizer_test",
     srcs = ["meta_optimizer_test.cc"],
+    tags = [
+        "no_gpu",
+    ],
     deps = [
         ":custom_graph_optimizer",
         ":custom_graph_optimizer_registry",

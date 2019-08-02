@@ -248,9 +248,18 @@ class Model(network.Network):
     self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', False)
 
+    if isinstance(optimizer, (list, tuple)):
+      self.optimizer = [optimizers.get(opt) for opt in optimizer]
+      is_any_optimizer_v1 = any(
+          isinstance(opt, optimizers.Optimizer) for opt in self.optimizer)
+    else:
+      self.optimizer = optimizers.get(optimizer)
+      is_any_optimizer_v1 = isinstance(self.optimizer, optimizers.Optimizer)
+
     if ((sample_weight_mode is not None)
         or (target_tensors is not None)
         or (weighted_metrics is not None)
+        or is_any_optimizer_v1
         or not context.executing_eagerly()):
       # Fallback out of things that aren't supported with v2 loops
       self._experimental_run_tf_function = False
@@ -282,10 +291,6 @@ class Model(network.Network):
                                                              sample_weight_mode,
                                                              target_tensors,
                                                              weighted_metrics)
-    if isinstance(optimizer, (list, tuple)):
-      self.optimizer = [optimizers.get(opt) for opt in optimizer]
-    else:
-      self.optimizer = optimizers.get(optimizer)
     # We've disabled automatic dependency tracking for this method, but do want
     # to add a checkpoint dependency on the optimizer if it's trackable.
     if isinstance(self.optimizer, trackable.Trackable):
@@ -478,7 +483,7 @@ class Model(network.Network):
   def run_eagerly(self, value):
     self._run_eagerly = value
 
-  def _select_training_loop(self, inputs):
+  def _select_training_loop(self, inputs, callbacks):
     """Select training loop for fit/eval/predict based on the inputs."""
     # TODO(kaftan) or TODO(scottzhu): This check should eventually be nicely
     #  integrated into the data adapters in the v2 loop. We can't do this yet
@@ -493,9 +498,12 @@ class Model(network.Network):
                        '`iter(dataset)`.')
 
     # Experiment training loop with default DS path.
-    if (context.executing_eagerly() and self._experimental_run_tf_function
+    if (context.executing_eagerly()
+        and self._experimental_run_tf_function
         and not distributed_training_utils.is_tpu_strategy(
-            self._distribution_strategy)):
+            self._distribution_strategy)
+        and not training_v2_utils.should_fallback_to_v1_for_callback(
+            inputs, callbacks)):
       try:
         valid_adapter = data_adapter.select_data_adapter(inputs, None)
       except ValueError as data_failure_exception:
@@ -503,12 +511,17 @@ class Model(network.Network):
         logging.warning('Falling back from v2 loop because of error: '
                         '%s' % data_failure_exception)
       if valid_adapter:
-        return training_v2.Loop()
+        if multi_worker_util.in_multi_worker_mode():
+          return training_distributed.DistributionMultiWorkerTrainingLoop(
+              training_v2.Loop())
+        else:
+          return training_v2.Loop()
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
       if multi_worker_util.in_multi_worker_mode():
-        return training_distributed.DistributionMultiWorkerTrainingLoop()
+        return training_distributed.DistributionMultiWorkerTrainingLoop(
+            training_distributed.DistributionSingleWorkerTrainingLoop())
       else:
         return training_distributed.DistributionSingleWorkerTrainingLoop()
 
@@ -700,7 +713,7 @@ class Model(network.Network):
     self._assert_compile_was_called()
     self._check_call_args('fit')
 
-    func = self._select_training_loop(x)
+    func = self._select_training_loop(x, callbacks)
     return func.fit(
         self,
         x=x,
@@ -813,7 +826,7 @@ class Model(network.Network):
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
 
-    func = self._select_training_loop(x)
+    func = self._select_training_loop(x, callbacks)
     return func.evaluate(
         self,
         x=x,
@@ -891,7 +904,7 @@ class Model(network.Network):
     _keras_api_gauge.get_cell('predict').set(True)
     self._check_call_args('predict')
 
-    func = self._select_training_loop(x)
+    func = self._select_training_loop(x, callbacks)
     return func.predict(
         self,
         x=x,
@@ -2492,7 +2505,7 @@ class Model(network.Network):
       y = []
       sample_weights = None
 
-    if self.stateful and batch_size:
+    if self.stateful and batch_size and not is_dataset:
       # Check that for stateful networks, number of samples is a multiple
       # of the static batch size.
       if x[0].shape[0] % batch_size != 0:

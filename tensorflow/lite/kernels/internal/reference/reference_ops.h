@@ -32,7 +32,9 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/arg_min_max.h"
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
+#include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
 #include "tensorflow/lite/kernels/internal/reference/prelu.h"
@@ -898,9 +900,9 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
     const int32 input2_val = params.input2_offset + input2_data[i];
     const int32 unclamped_result =
         params.output_offset +
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(input1_val * input2_val,
-                                                       params.output_multiplier,
-                                                       params.output_shift);
+        MultiplyByQuantizedMultiplier(input1_val * input2_val,
+                                      params.output_multiplier,
+                                      params.output_shift);
     const int32 clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
@@ -1002,9 +1004,9 @@ inline void BroadcastMul4DSlow(const ArithmeticParams& params,
               input2_data[SubscriptToIndex(desc2, b, y, x, c)];
           const int32 unclamped_result =
               params.output_offset +
-              MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                  input1_val * input2_val, params.output_multiplier,
-                  params.output_shift);
+              MultiplyByQuantizedMultiplier(input1_val * input2_val,
+                                            params.output_multiplier,
+                                            params.output_shift);
           const int32 clamped_output = std::min(
               params.quantized_activation_max,
               std::max(params.quantized_activation_min, unclamped_result));
@@ -2637,16 +2639,6 @@ T FloorMod(T input1, T input2) {
              : trunc_mod;
 }
 
-inline void Floor(const RuntimeShape& input_shape, const float* input_data,
-                  const RuntimeShape& output_shape, float* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    int offset = i;
-    output_data[offset] = std::floor(input_data[offset]);
-  }
-}
-
 inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
                  const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -3577,52 +3569,6 @@ void MaximumMinimumBroadcast4DSlow(const RuntimeShape& unextended_input1_shape,
           output_data[out_idx] = op(in1_val, in2_val);
         }
       }
-    }
-  }
-}
-
-template <typename T1, typename T2, typename T3, typename Cmp>
-void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
-               const T3* input2_data, const RuntimeShape& output_shape,
-               T2* output_data, const Cmp& cmp) {
-  gemmlowp::ScopedProfilingLabel label("ArgMinMax");
-  TFLITE_DCHECK_GT(input1_shape.DimensionsCount(), 0);
-  TFLITE_DCHECK_EQ(input1_shape.DimensionsCount() - 1,
-                   output_shape.DimensionsCount());
-
-  int axis = input2_data[0];
-  if (axis < 0) {
-    axis += input1_shape.DimensionsCount();
-  }
-
-  const int axis_size = input1_shape.Dims(axis);
-
-  int outer_size = 1;
-  for (int i = 0; i < axis; ++i) {
-    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i));
-    outer_size *= input1_shape.Dims(i);
-  }
-
-  int inner_size = 1;
-  const int dims_count = input1_shape.DimensionsCount();
-  for (int i = axis + 1; i < dims_count; ++i) {
-    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i - 1));
-    inner_size *= input1_shape.Dims(i);
-  }
-
-  for (int outer = 0; outer < outer_size; ++outer) {
-    for (int inner = 0; inner < inner_size; ++inner) {
-      auto min_max_value = input1_data[outer * axis_size * inner_size + inner];
-      int min_max_index = 0;
-      for (int i = 1; i < axis_size; ++i) {
-        const auto& curr_value =
-            input1_data[(outer * axis_size + i) * inner_size + inner];
-        if (cmp(curr_value, min_max_value)) {
-          min_max_value = curr_value;
-          min_max_index = i;
-        }
-      }
-      output_data[outer * inner_size + inner] = min_max_index;
     }
   }
 }

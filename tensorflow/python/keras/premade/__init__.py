@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,21 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""inputs python module.
-
-Importing from tensorflow.python.estimator is unsupported
-and will soon break!
-"""
-# pylint: disable=unused-import,g-bad-import-order,g-import-not-at-top,wildcard-import
-
+"""Premade Model API."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow_estimator.python.estimator import inputs
-
-# Include attrs that start with single underscore.
-_HAS_DYNAMIC_ATTRIBUTES = True
-inputs.__all__ = [s for s in dir(inputs) if not s.startswith('__')]
-
-from tensorflow_estimator.python.estimator.inputs import *
+from tensorflow.python.keras.premade import linear
+from tensorflow.python.keras.premade import wide_deep

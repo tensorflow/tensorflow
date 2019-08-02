@@ -653,24 +653,27 @@ def convert_func_to_ast(f, program_ctx, do_rename=True):
   _add_self_references(namespace, program_ctx.autograph_module)
   namer = naming.Namer(namespace)
 
+  if isinstance(node, gast.Lambda):
+    new_name = namer.new_symbol('tf__lambda', ())
+  elif do_rename:
+    new_name = namer.function_name(f.__name__)
+  else:
+    new_name = f.__name__
+
   entity_info = transformer.EntityInfo(
       source_code=source,
       source_file='<fragment>',
       future_features=future_features,
       namespace=namespace)
-  context = converter.EntityContext(namer, entity_info, program_ctx)
+  context = converter.EntityContext(namer, entity_info, program_ctx, new_name)
   node = node_to_graph(node, context)
 
   if isinstance(node, gast.Lambda):
-    new_name = namer.new_symbol('tf__lambda', ())
     node = gast.Assign(
         targets=[gast.Name(new_name, gast.Store(), None)], value=node)
-
   elif do_rename:
-    new_name = namer.function_name(f.__name__)
     node.name = new_name
   else:
-    new_name = f.__name__
     assert node.name == new_name
 
   return (node,), new_name, entity_info

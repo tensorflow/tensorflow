@@ -347,9 +347,11 @@ cc_library(
     name = "reference_base",
     srcs = [],
     hdrs = [
+        "reference/arg_min_max.h",
         "reference/conv.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
+        "reference/floor.h",
         "reference/fully_connected.h",
         "reference/integer_ops/add.h",
         "reference/integer_ops/conv.h",
@@ -400,9 +402,11 @@ cc_library(
     name = "legacy_reference_base",
     srcs = [],
     hdrs = [
+        "reference/arg_min_max.h",
         "reference/conv.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
+        "reference/floor.h",
         "reference/fully_connected.h",
         "reference/legacy_reference_ops.h",
         "reference/pooling.h",
@@ -625,11 +629,8 @@ cc_library(
         ":freebsd": [
             ":sse_tensor_utils",
         ],
-        "//tensorflow:windows": [
-            ":portable_tensor_utils",
-        ],
         "//conditions:default": [
-            ":neon_tensor_utils",
+            ":portable_tensor_utils",
         ],
     }),
 )

@@ -644,7 +644,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     self._testShape(fn_true, fn_false, shape)
     self._testReturnValues(fn_true, fn_false, b"abc", b"xyz")
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/138741991")
   def test_variable(self):
     shape = tensor_shape.TensorShape([])
     fn_true = lambda: variables.Variable(3.0)
@@ -792,7 +792,7 @@ class DataTypesTest(test_util.TensorFlowTestCase):
     fn_false = lambda: ta.read(1)
     self._testShape(fn_true, fn_false, shape)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/138741991")
   def test_list(self):
     shape = [tensor_shape.TensorShape([]), tensor_shape.TensorShape([]),
              tensor_shape.TensorShape([])]
@@ -1288,7 +1288,7 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     # Expect a tuple since that is what the body returns.
     self.assertEqual(self.evaluate(r), (10,))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("Unsupported in cfv2")
   def testWhileLoopSameReturnShape_False(self):
     i = constant_op.constant(0)
     c = lambda i, _: math_ops.less(i, 10)

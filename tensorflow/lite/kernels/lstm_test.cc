@@ -38,12 +38,13 @@ class LSTMOpModel : public SingleOpModel {
               bool use_peephole, bool use_projection_weights,
               bool use_projection_bias, float cell_clip, float proj_clip,
               const std::vector<std::vector<int>>& input_shapes,
-              const TensorType& weight_type = TensorType_FLOAT32,
-              bool is_layer_norm = false)
+              const TensorType weight_type, bool is_layer_norm)
       : n_batch_(n_batch),
         n_input_(n_input),
         n_cell_(n_cell),
-        n_output_(n_output) {
+        n_output_(n_output),
+        weight_type_(weight_type),
+        is_layer_norm_(is_layer_norm) {
     input_ = AddInput(TensorType_FLOAT32);
 
     if (use_cifg) {
@@ -138,62 +139,66 @@ class LSTMOpModel : public SingleOpModel {
   }
 
   void SetInputToInputWeights(const std::vector<float>& f) {
-    PopulateTensor(input_to_input_weights_, f);
+    SetWeights(input_to_input_weights_, f);
   }
 
   void SetInputToForgetWeights(const std::vector<float>& f) {
-    PopulateTensor(input_to_forget_weights_, f);
+    SetWeights(input_to_forget_weights_, f);
   }
 
   void SetInputToCellWeights(const std::vector<float>& f) {
-    PopulateTensor(input_to_cell_weights_, f);
+    SetWeights(input_to_cell_weights_, f);
   }
 
   void SetInputToOutputWeights(const std::vector<float>& f) {
-    PopulateTensor(input_to_output_weights_, f);
+    SetWeights(input_to_output_weights_, f);
   }
 
   void SetRecurrentToInputWeights(const std::vector<float>& f) {
-    PopulateTensor(recurrent_to_input_weights_, f);
+    SetWeights(recurrent_to_input_weights_, f);
   }
 
   void SetRecurrentToForgetWeights(const std::vector<float>& f) {
-    PopulateTensor(recurrent_to_forget_weights_, f);
+    SetWeights(recurrent_to_forget_weights_, f);
   }
 
   void SetRecurrentToCellWeights(const std::vector<float>& f) {
-    PopulateTensor(recurrent_to_cell_weights_, f);
+    SetWeights(recurrent_to_cell_weights_, f);
   }
 
   void SetRecurrentToOutputWeights(const std::vector<float>& f) {
-    PopulateTensor(recurrent_to_output_weights_, f);
+    SetWeights(recurrent_to_output_weights_, f);
   }
 
   void SetCellToInputWeights(const std::vector<float>& f) {
-    PopulateTensor(cell_to_input_weights_, f);
+    SetWeights(cell_to_input_weights_, f);
   }
 
   void SetCellToForgetWeights(const std::vector<float>& f) {
-    PopulateTensor(cell_to_forget_weights_, f);
+    SetWeights(cell_to_forget_weights_, f);
   }
 
   void SetCellToOutputWeights(const std::vector<float>& f) {
-    PopulateTensor(cell_to_output_weights_, f);
+    SetWeights(cell_to_output_weights_, f);
   }
 
   void SetInputLayerNormCoefficients(const std::vector<float>& f) {
+    ASSERT_TRUE(is_layer_norm_);
     PopulateTensor(input_layer_norm_coefficients_, f);
   }
 
   void SetForgetLayerNormCoefficients(const std::vector<float>& f) {
+    ASSERT_TRUE(is_layer_norm_);
     PopulateTensor(forget_layer_norm_coefficients_, f);
   }
 
   void SetCellLayerNormCoefficients(const std::vector<float>& f) {
+    ASSERT_TRUE(is_layer_norm_);
     PopulateTensor(cell_layer_norm_coefficients_, f);
   }
 
   void SetOutputLayerNormCoefficients(const std::vector<float>& f) {
+    ASSERT_TRUE(is_layer_norm_);
     PopulateTensor(output_layer_norm_coefficients_, f);
   }
 
@@ -214,7 +219,7 @@ class LSTMOpModel : public SingleOpModel {
   }
 
   void SetProjectionWeights(const std::vector<float>& f) {
-    PopulateTensor(projection_weights_, f);
+    SetWeights(projection_weights_, f);
   }
 
   void SetProjectionBias(const std::vector<float>& f) {
@@ -282,79 +287,26 @@ class LSTMOpModel : public SingleOpModel {
       return AddNullInput();
     }
   }
-};
 
-class HybridLSTMOpModel : public LSTMOpModel {
- public:
-  HybridLSTMOpModel(int n_batch, int n_input, int n_cell, int n_output,
-                    bool use_cifg, bool use_peephole,
-                    bool use_projection_weights, bool use_projection_bias,
-                    float cell_clip, float proj_clip,
-                    const std::vector<std::vector<int>>& input_shapes,
-                    TensorType tensor_type)
-      : LSTMOpModel(n_batch, n_input, n_cell, n_output, use_cifg, use_peephole,
-                    use_projection_weights, use_projection_bias, cell_clip,
-                    proj_clip, input_shapes, tensor_type) {
-    tensor_type_ = tensor_type;
-  }
-
-  TensorType tensor_type_;
-
-  void SetWeights(int weights_idx, const std::vector<float>& f) {
-    if (tensor_type_ == TensorType_UINT8) {
-      SymmetricQuantizeAndPopulate(weights_idx, f);
-    } else {
-      SignedSymmetricQuantizeAndPopulate(weights_idx, f);
+  void SetWeights(int index, const std::vector<float>& data) {
+    switch (weight_type_) {
+      case TensorType_FLOAT32:
+        PopulateTensor(index, data);
+        break;
+      case TensorType_UINT8:
+        SymmetricQuantizeAndPopulate(index, data);
+        break;
+      case TensorType_INT8:
+        SignedSymmetricQuantizeAndPopulate(index, data);
+        break;
+      default:
+        GTEST_FAIL() << "Type not supported: " << weight_type_;
+        break;
     }
   }
 
-  void SetInputToInputWeights(const std::vector<float>& f) {
-    SetWeights(input_to_input_weights_, f);
-  }
-
-  void SetInputToForgetWeights(const std::vector<float>& f) {
-    SetWeights(input_to_forget_weights_, f);
-  }
-
-  void SetInputToCellWeights(const std::vector<float>& f) {
-    SetWeights(input_to_cell_weights_, f);
-  }
-
-  void SetInputToOutputWeights(const std::vector<float>& f) {
-    SetWeights(input_to_output_weights_, f);
-  }
-
-  void SetRecurrentToInputWeights(const std::vector<float>& f) {
-    SetWeights(recurrent_to_input_weights_, f);
-  }
-
-  void SetRecurrentToForgetWeights(const std::vector<float>& f) {
-    SetWeights(recurrent_to_forget_weights_, f);
-  }
-
-  void SetRecurrentToCellWeights(const std::vector<float>& f) {
-    SetWeights(recurrent_to_cell_weights_, f);
-  }
-
-  void SetRecurrentToOutputWeights(const std::vector<float>& f) {
-    SetWeights(recurrent_to_output_weights_, f);
-  }
-
-  void SetCellToInputWeights(const std::vector<float>& f) {
-    SetWeights(cell_to_input_weights_, f);
-  }
-
-  void SetCellToForgetWeights(const std::vector<float>& f) {
-    SetWeights(cell_to_forget_weights_, f);
-  }
-
-  void SetCellToOutputWeights(const std::vector<float>& f) {
-    SetWeights(cell_to_output_weights_, f);
-  }
-
-  void SetProjectionWeights(const std::vector<float>& f) {
-    SetWeights(projection_weights_, f);
-  }
+  const TensorType weight_type_;
+  const bool is_layer_norm_;
 };
 
 class BaseLstmTest : public ::testing::Test {
@@ -500,7 +452,9 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
 
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
-                   });
+                   },
+                   /*weight_type=*/TensorType_FLOAT32,
+                   /*is_layer_norm=*/false);
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -598,37 +552,38 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingLstmTest,
   const int n_cell = 4;
   const int n_output = 4;
 
-  HybridLSTMOpModel lstm(
-      n_batch, n_input, n_cell, n_output,
-      /*use_cifg=*/false, /*use_peephole=*/false,
-      /*use_projection_weights=*/false,
-      /*use_projection_bias=*/false, /*cell_clip=*/0.0, /*proj_clip=*/0.0,
-      {
-          {n_batch, n_input},  // input tensor
+  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
+                   /*use_cifg=*/false, /*use_peephole=*/false,
+                   /*use_projection_weights=*/false,
+                   /*use_projection_bias=*/false, /*cell_clip=*/0.0,
+                   /*proj_clip=*/0.0,
+                   {
+                       {n_batch, n_input},  // input tensor
 
-          {n_cell, n_input},  // input_to_input_weight tensor
-          {n_cell, n_input},  // input_to_forget_weight tensor
-          {n_cell, n_input},  // input_to_cell_weight tensor
-          {n_cell, n_input},  // input_to_output_weight tensor
+                       {n_cell, n_input},  // input_to_input_weight tensor
+                       {n_cell, n_input},  // input_to_forget_weight tensor
+                       {n_cell, n_input},  // input_to_cell_weight tensor
+                       {n_cell, n_input},  // input_to_output_weight tensor
 
-          {n_cell, n_output},  // recurrent_to_input_weight tensor
-          {n_cell, n_output},  // recurrent_to_forget_weight tensor
-          {n_cell, n_output},  // recurrent_to_cell_weight tensor
-          {n_cell, n_output},  // recurrent_to_output_weight tensor
+                       {n_cell, n_output},  // recurrent_to_input_weight tensor
+                       {n_cell, n_output},  // recurrent_to_forget_weight tensor
+                       {n_cell, n_output},  // recurrent_to_cell_weight tensor
+                       {n_cell, n_output},  // recurrent_to_output_weight tensor
 
-          {0},  // cell_to_input_weight tensor
-          {0},  // cell_to_forget_weight tensor
-          {0},  // cell_to_output_weight tensor
+                       {0},  // cell_to_input_weight tensor
+                       {0},  // cell_to_forget_weight tensor
+                       {0},  // cell_to_output_weight tensor
 
-          {n_cell},  // input_gate_bias tensor
-          {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
-          {n_cell},  // output_gate_bias tensor
+                       {n_cell},  // input_gate_bias tensor
+                       {n_cell},  // forget_gate_bias tensor
+                       {n_cell},  // cell_bias tensor
+                       {n_cell},  // output_gate_bias tensor
 
-          {0, 0},  // projection_weight tensor
-          {0},     // projection_bias tensor
-      },
-      TensorType_UINT8);
+                       {0, 0},  // projection_weight tensor
+                       {0},     // projection_bias tensor
+                   },
+                   /*weight_type=*/TensorType_UINT8,
+                   /*is_layer_norm=*/false);
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -657,37 +612,38 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingLstmTest,
   const int n_cell = 4;
   const int n_output = 4;
 
-  HybridLSTMOpModel lstm(
-      n_batch, n_input, n_cell, n_output,
-      /*use_cifg=*/false, /*use_peephole=*/false,
-      /*use_projection_weights=*/false,
-      /*use_projection_bias=*/false, /*cell_clip=*/0.0, /*proj_clip=*/0.0,
-      {
-          {n_batch, n_input},  // input tensor
+  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
+                   /*use_cifg=*/false, /*use_peephole=*/false,
+                   /*use_projection_weights=*/false,
+                   /*use_projection_bias=*/false, /*cell_clip=*/0.0,
+                   /*proj_clip=*/0.0,
+                   {
+                       {n_batch, n_input},  // input tensor
 
-          {n_cell, n_input},  // input_to_input_weight tensor
-          {n_cell, n_input},  // input_to_forget_weight tensor
-          {n_cell, n_input},  // input_to_cell_weight tensor
-          {n_cell, n_input},  // input_to_output_weight tensor
+                       {n_cell, n_input},  // input_to_input_weight tensor
+                       {n_cell, n_input},  // input_to_forget_weight tensor
+                       {n_cell, n_input},  // input_to_cell_weight tensor
+                       {n_cell, n_input},  // input_to_output_weight tensor
 
-          {n_cell, n_output},  // recurrent_to_input_weight tensor
-          {n_cell, n_output},  // recurrent_to_forget_weight tensor
-          {n_cell, n_output},  // recurrent_to_cell_weight tensor
-          {n_cell, n_output},  // recurrent_to_output_weight tensor
+                       {n_cell, n_output},  // recurrent_to_input_weight tensor
+                       {n_cell, n_output},  // recurrent_to_forget_weight tensor
+                       {n_cell, n_output},  // recurrent_to_cell_weight tensor
+                       {n_cell, n_output},  // recurrent_to_output_weight tensor
 
-          {0},  // cell_to_input_weight tensor
-          {0},  // cell_to_forget_weight tensor
-          {0},  // cell_to_output_weight tensor
+                       {0},  // cell_to_input_weight tensor
+                       {0},  // cell_to_forget_weight tensor
+                       {0},  // cell_to_output_weight tensor
 
-          {n_cell},  // input_gate_bias tensor
-          {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
-          {n_cell},  // output_gate_bias tensor
+                       {n_cell},  // input_gate_bias tensor
+                       {n_cell},  // forget_gate_bias tensor
+                       {n_cell},  // cell_bias tensor
+                       {n_cell},  // output_gate_bias tensor
 
-          {0, 0},  // projection_weight tensor
-          {0},     // projection_bias tensor
-      },
-      TensorType_INT8);
+                       {0, 0},  // projection_weight tensor
+                       {0},     // projection_bias tensor
+                   },
+                   /*weight_type=*/TensorType_INT8,
+                   /*is_layer_norm=*/false);
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -791,7 +747,9 @@ TEST_F(CifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
 
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
-                   });
+                   },
+                   /*weight_type=*/TensorType_FLOAT32,
+                   /*is_layer_norm=*/false);
 
   lstm.SetInputToCellWeights(input_to_cell_weights_);
   lstm.SetInputToForgetWeights(input_to_forget_weights_);
@@ -819,38 +777,38 @@ TEST_F(CifgNoPeepholeNoProjectionNoClippingLstmTest,
   const int n_cell = 4;
   const int n_output = 4;
 
-  HybridLSTMOpModel lstm(
-      n_batch, n_input, n_cell, n_output,
-      /*use_cifg=*/true, /*use_peephole=*/true,
-      /*use_projection_weights=*/false,
-      /*use_projection_bias=*/false,
-      /*cell_clip=*/0.0, /*proj_clip=*/0.0,
-      {
-          {n_batch, n_input},  // input tensor
+  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
+                   /*use_cifg=*/true, /*use_peephole=*/true,
+                   /*use_projection_weights=*/false,
+                   /*use_projection_bias=*/false,
+                   /*cell_clip=*/0.0, /*proj_clip=*/0.0,
+                   {
+                       {n_batch, n_input},  // input tensor
 
-          {0, 0},             // input_to_input_weight tensor
-          {n_cell, n_input},  // input_to_forget_weight tensor
-          {n_cell, n_input},  // input_to_cell_weight tensor
-          {n_cell, n_input},  // input_to_output_weight tensor
+                       {0, 0},             // input_to_input_weight tensor
+                       {n_cell, n_input},  // input_to_forget_weight tensor
+                       {n_cell, n_input},  // input_to_cell_weight tensor
+                       {n_cell, n_input},  // input_to_output_weight tensor
 
-          {0, 0},              // recurrent_to_input_weight tensor
-          {n_cell, n_output},  // recurrent_to_forget_weight tensor
-          {n_cell, n_output},  // recurrent_to_cell_weight tensor
-          {n_cell, n_output},  // recurrent_to_output_weight tensor
+                       {0, 0},              // recurrent_to_input_weight tensor
+                       {n_cell, n_output},  // recurrent_to_forget_weight tensor
+                       {n_cell, n_output},  // recurrent_to_cell_weight tensor
+                       {n_cell, n_output},  // recurrent_to_output_weight tensor
 
-          {0},       // cell_to_input_weight tensor
-          {n_cell},  // cell_to_forget_weight tensor
-          {n_cell},  // cell_to_output_weight tensor
+                       {0},       // cell_to_input_weight tensor
+                       {n_cell},  // cell_to_forget_weight tensor
+                       {n_cell},  // cell_to_output_weight tensor
 
-          {0},       // input_gate_bias tensor
-          {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
-          {n_cell},  // output_gate_bias tensor
+                       {0},       // input_gate_bias tensor
+                       {n_cell},  // forget_gate_bias tensor
+                       {n_cell},  // cell_bias tensor
+                       {n_cell},  // output_gate_bias tensor
 
-          {0, 0},  // projection_weight tensor
-          {0},     // projection_bias tensor
-      },
-      TensorType_UINT8);
+                       {0, 0},  // projection_weight tensor
+                       {0},     // projection_bias tensor
+                   },
+                   /*weight_type=*/TensorType_UINT8,
+                   /*is_layer_norm=*/false);
 
   lstm.SetInputToCellWeights(input_to_cell_weights_);
   lstm.SetInputToForgetWeights(input_to_forget_weights_);
@@ -878,38 +836,38 @@ TEST_F(CifgNoPeepholeNoProjectionNoClippingLstmTest,
   const int n_cell = 4;
   const int n_output = 4;
 
-  HybridLSTMOpModel lstm(
-      n_batch, n_input, n_cell, n_output,
-      /*use_cifg=*/true, /*use_peephole=*/true,
-      /*use_projection_weights=*/false,
-      /*use_projection_bias=*/false,
-      /*cell_clip=*/0.0, /*proj_clip=*/0.0,
-      {
-          {n_batch, n_input},  // input tensor
+  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
+                   /*use_cifg=*/true, /*use_peephole=*/true,
+                   /*use_projection_weights=*/false,
+                   /*use_projection_bias=*/false,
+                   /*cell_clip=*/0.0, /*proj_clip=*/0.0,
+                   {
+                       {n_batch, n_input},  // input tensor
 
-          {0, 0},             // input_to_input_weight tensor
-          {n_cell, n_input},  // input_to_forget_weight tensor
-          {n_cell, n_input},  // input_to_cell_weight tensor
-          {n_cell, n_input},  // input_to_output_weight tensor
+                       {0, 0},             // input_to_input_weight tensor
+                       {n_cell, n_input},  // input_to_forget_weight tensor
+                       {n_cell, n_input},  // input_to_cell_weight tensor
+                       {n_cell, n_input},  // input_to_output_weight tensor
 
-          {0, 0},              // recurrent_to_input_weight tensor
-          {n_cell, n_output},  // recurrent_to_forget_weight tensor
-          {n_cell, n_output},  // recurrent_to_cell_weight tensor
-          {n_cell, n_output},  // recurrent_to_output_weight tensor
+                       {0, 0},              // recurrent_to_input_weight tensor
+                       {n_cell, n_output},  // recurrent_to_forget_weight tensor
+                       {n_cell, n_output},  // recurrent_to_cell_weight tensor
+                       {n_cell, n_output},  // recurrent_to_output_weight tensor
 
-          {0},       // cell_to_input_weight tensor
-          {n_cell},  // cell_to_forget_weight tensor
-          {n_cell},  // cell_to_output_weight tensor
+                       {0},       // cell_to_input_weight tensor
+                       {n_cell},  // cell_to_forget_weight tensor
+                       {n_cell},  // cell_to_output_weight tensor
 
-          {0},       // input_gate_bias tensor
-          {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
-          {n_cell},  // output_gate_bias tensor
+                       {0},       // input_gate_bias tensor
+                       {n_cell},  // forget_gate_bias tensor
+                       {n_cell},  // cell_bias tensor
+                       {n_cell},  // output_gate_bias tensor
 
-          {0, 0},  // projection_weight tensor
-          {0},     // projection_bias tensor
-      },
-      TensorType_INT8);
+                       {0, 0},  // projection_weight tensor
+                       {0},     // projection_bias tensor
+                   },
+                   /*weight_type=*/TensorType_INT8,
+                   /*is_layer_norm=*/false);
 
   lstm.SetInputToCellWeights(input_to_cell_weights_);
   lstm.SetInputToForgetWeights(input_to_forget_weights_);
@@ -1563,7 +1521,9 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLstmTest, LstmBlackBoxTest) {
 
                        {n_output, n_cell},  // projection_weight tensor
                        {0},                 // projection_bias tensor
-                   });
+                   },
+                   /*weight_type=*/TensorType_FLOAT32,
+                   /*is_layer_norm=*/false);
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -1595,38 +1555,38 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLstmTest, HybridLstmBlackBoxTestInt8) {
   const int n_cell = 20;
   const int n_output = 16;
 
-  HybridLSTMOpModel lstm(
-      n_batch, n_input, n_cell, n_output,
-      /*use_cifg=*/false, /*use_peephole=*/true,
-      /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false,
-      /*cell_clip=*/0.0, /*proj_clip=*/0.0,
-      {
-          {n_batch, n_input},  // input tensor
+  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
+                   /*use_cifg=*/false, /*use_peephole=*/true,
+                   /*use_projection_weights=*/true,
+                   /*use_projection_bias=*/false,
+                   /*cell_clip=*/0.0, /*proj_clip=*/0.0,
+                   {
+                       {n_batch, n_input},  // input tensor
 
-          {n_cell, n_input},  // input_to_input_weight tensor
-          {n_cell, n_input},  // input_to_forget_weight tensor
-          {n_cell, n_input},  // input_to_cell_weight tensor
-          {n_cell, n_input},  // input_to_output_weight tensor
+                       {n_cell, n_input},  // input_to_input_weight tensor
+                       {n_cell, n_input},  // input_to_forget_weight tensor
+                       {n_cell, n_input},  // input_to_cell_weight tensor
+                       {n_cell, n_input},  // input_to_output_weight tensor
 
-          {n_cell, n_output},  // recurrent_to_input_weight tensor
-          {n_cell, n_output},  // recurrent_to_forget_weight tensor
-          {n_cell, n_output},  // recurrent_to_cell_weight tensor
-          {n_cell, n_output},  // recurrent_to_output_weight tensor
+                       {n_cell, n_output},  // recurrent_to_input_weight tensor
+                       {n_cell, n_output},  // recurrent_to_forget_weight tensor
+                       {n_cell, n_output},  // recurrent_to_cell_weight tensor
+                       {n_cell, n_output},  // recurrent_to_output_weight tensor
 
-          {n_cell},  // cell_to_input_weight tensor
-          {n_cell},  // cell_to_forget_weight tensor
-          {n_cell},  // cell_to_output_weight tensor
+                       {n_cell},  // cell_to_input_weight tensor
+                       {n_cell},  // cell_to_forget_weight tensor
+                       {n_cell},  // cell_to_output_weight tensor
 
-          {n_cell},  // input_gate_bias tensor
-          {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
-          {n_cell},  // output_gate_bias tensor
+                       {n_cell},  // input_gate_bias tensor
+                       {n_cell},  // forget_gate_bias tensor
+                       {n_cell},  // cell_bias tensor
+                       {n_cell},  // output_gate_bias tensor
 
-          {n_output, n_cell},  // projection_weight tensor
-          {0},                 // projection_bias tensor
-      },
-      TensorType_INT8);
+                       {n_output, n_cell},  // projection_weight tensor
+                       {0},                 // projection_bias tensor
+                   },
+                   /*weight_type=*/TensorType_INT8,
+                   /*is_layer_norm=*/false);
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -1659,38 +1619,38 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLstmTest,
   const int n_cell = 20;
   const int n_output = 16;
 
-  HybridLSTMOpModel lstm(
-      n_batch, n_input, n_cell, n_output,
-      /*use_cifg=*/false, /*use_peephole=*/true,
-      /*use_projection_weights=*/true,
-      /*use_projection_bias=*/false,
-      /*cell_clip=*/0.0, /*proj_clip=*/0.0,
-      {
-          {n_batch, n_input},  // input tensor
+  LSTMOpModel lstm(n_batch, n_input, n_cell, n_output,
+                   /*use_cifg=*/false, /*use_peephole=*/true,
+                   /*use_projection_weights=*/true,
+                   /*use_projection_bias=*/false,
+                   /*cell_clip=*/0.0, /*proj_clip=*/0.0,
+                   {
+                       {n_batch, n_input},  // input tensor
 
-          {n_cell, n_input},  // input_to_input_weight tensor
-          {n_cell, n_input},  // input_to_forget_weight tensor
-          {n_cell, n_input},  // input_to_cell_weight tensor
-          {n_cell, n_input},  // input_to_output_weight tensor
+                       {n_cell, n_input},  // input_to_input_weight tensor
+                       {n_cell, n_input},  // input_to_forget_weight tensor
+                       {n_cell, n_input},  // input_to_cell_weight tensor
+                       {n_cell, n_input},  // input_to_output_weight tensor
 
-          {n_cell, n_output},  // recurrent_to_input_weight tensor
-          {n_cell, n_output},  // recurrent_to_forget_weight tensor
-          {n_cell, n_output},  // recurrent_to_cell_weight tensor
-          {n_cell, n_output},  // recurrent_to_output_weight tensor
+                       {n_cell, n_output},  // recurrent_to_input_weight tensor
+                       {n_cell, n_output},  // recurrent_to_forget_weight tensor
+                       {n_cell, n_output},  // recurrent_to_cell_weight tensor
+                       {n_cell, n_output},  // recurrent_to_output_weight tensor
 
-          {n_cell},  // cell_to_input_weight tensor
-          {n_cell},  // cell_to_forget_weight tensor
-          {n_cell},  // cell_to_output_weight tensor
+                       {n_cell},  // cell_to_input_weight tensor
+                       {n_cell},  // cell_to_forget_weight tensor
+                       {n_cell},  // cell_to_output_weight tensor
 
-          {n_cell},  // input_gate_bias tensor
-          {n_cell},  // forget_gate_bias tensor
-          {n_cell},  // cell_bias tensor
-          {n_cell},  // output_gate_bias tensor
+                       {n_cell},  // input_gate_bias tensor
+                       {n_cell},  // forget_gate_bias tensor
+                       {n_cell},  // cell_bias tensor
+                       {n_cell},  // output_gate_bias tensor
 
-          {n_output, n_cell},  // projection_weight tensor
-          {0},                 // projection_bias tensor
-      },
-      TensorType_UINT8);
+                       {n_output, n_cell},  // projection_weight tensor
+                       {0},                 // projection_bias tensor
+                   },
+                   /*weight_type=*/TensorType_UINT8,
+                   /*is_layer_norm=*/false);
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -1715,111 +1675,6 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLstmTest,
 
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.00467);
 }
-
-class LayerNormLSTMOpModel : public LSTMOpModel {
- public:
-  LayerNormLSTMOpModel(int n_batch, int n_input, int n_cell, int n_output,
-                       bool use_cifg, bool use_peephole,
-                       bool use_projection_weights, bool use_projection_bias,
-                       float cell_clip, float proj_clip,
-                       const std::vector<std::vector<int>>& input_shapes,
-                       const TensorType& weight_type = TensorType_FLOAT32)
-      : LSTMOpModel(n_batch, n_input, n_cell, n_output, use_cifg, use_peephole,
-                    use_projection_weights, use_projection_bias, cell_clip,
-                    proj_clip, input_shapes, weight_type,
-                    /*is_layer_norm*/ true) {}
-};
-
-class HybridLayerNormLSTMOpModel : public LayerNormLSTMOpModel {
- public:
-  HybridLayerNormLSTMOpModel(int n_batch, int n_input, int n_cell, int n_output,
-                             bool use_cifg, bool use_peephole,
-                             bool use_projection_weights,
-                             bool use_projection_bias, float cell_clip,
-                             float proj_clip,
-                             const std::vector<std::vector<int>>& input_shapes,
-                             TensorType tensor_type)
-      : LayerNormLSTMOpModel(n_batch, n_input, n_cell, n_output, use_cifg,
-                             use_peephole, use_projection_weights,
-                             use_projection_bias, cell_clip, proj_clip,
-                             input_shapes, tensor_type) {
-    tensor_type_ = tensor_type;
-  }
-
-  TensorType tensor_type_;
-
-  void SetWeights(int weights_idx, const std::vector<float>& f) {
-    if (tensor_type_ == TensorType_UINT8) {
-      SymmetricQuantizeAndPopulate(weights_idx, f);
-    } else {
-      SignedSymmetricQuantizeAndPopulate(weights_idx, f);
-    }
-  }
-
-  void SetInputToInputWeights(const std::vector<float>& f) {
-    SetWeights(input_to_input_weights_, f);
-  }
-
-  void SetInputToForgetWeights(const std::vector<float>& f) {
-    SetWeights(input_to_forget_weights_, f);
-  }
-
-  void SetInputToCellWeights(const std::vector<float>& f) {
-    SetWeights(input_to_cell_weights_, f);
-  }
-
-  void SetInputToOutputWeights(const std::vector<float>& f) {
-    SetWeights(input_to_output_weights_, f);
-  }
-
-  void SetRecurrentToInputWeights(const std::vector<float>& f) {
-    SetWeights(recurrent_to_input_weights_, f);
-  }
-
-  void SetRecurrentToForgetWeights(const std::vector<float>& f) {
-    SetWeights(recurrent_to_forget_weights_, f);
-  }
-
-  void SetRecurrentToCellWeights(const std::vector<float>& f) {
-    SetWeights(recurrent_to_cell_weights_, f);
-  }
-
-  void SetRecurrentToOutputWeights(const std::vector<float>& f) {
-    SetWeights(recurrent_to_output_weights_, f);
-  }
-
-  void SetCellToInputWeights(const std::vector<float>& f) {
-    SetWeights(cell_to_input_weights_, f);
-  }
-
-  void SetCellToForgetWeights(const std::vector<float>& f) {
-    SetWeights(cell_to_forget_weights_, f);
-  }
-
-  void SetCellToOutputWeights(const std::vector<float>& f) {
-    SetWeights(cell_to_output_weights_, f);
-  }
-
-  void SetInputLayerNormCoefficients(const std::vector<float>& f) {
-    PopulateTensor(input_layer_norm_coefficients_, f);
-  }
-
-  void SetForgetLayerNormCoefficients(const std::vector<float>& f) {
-    PopulateTensor(forget_layer_norm_coefficients_, f);
-  }
-
-  void SetCellLayerNormCoefficients(const std::vector<float>& f) {
-    PopulateTensor(cell_layer_norm_coefficients_, f);
-  }
-
-  void SetOutputLayerNormCoefficients(const std::vector<float>& f) {
-    PopulateTensor(output_layer_norm_coefficients_, f);
-  }
-
-  void SetProjectionWeights(const std::vector<float>& f) {
-    SetWeights(projection_weights_, f);
-  }
-};
 
 class BaseLayerNormLstmTest : public ::testing::Test {
  protected:
@@ -1852,8 +1707,7 @@ class BaseLayerNormLstmTest : public ::testing::Test {
   // the input.
   void VerifyGoldens(const std::vector<std::vector<float>>& input,
                      const std::vector<std::vector<float>>& output,
-                     LayerNormLSTMOpModel* layer_norm_lstm,
-                     float tolerance = 1e-5) {
+                     LSTMOpModel* layer_norm_lstm, float tolerance = 1e-5) {
     const int num_batches = input.size();
     EXPECT_GT(num_batches, 0);
     const int num_inputs = layer_norm_lstm->num_inputs();
@@ -1960,7 +1814,7 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const float cell_clip = 0.0;
   const float proj_clip = 0.0;
 
-  LayerNormLSTMOpModel layer_norm_lstm(
+  LSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/false, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
@@ -1997,7 +1851,9 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
           {n_cell},  // forget_layer_norm_coefficient tensor
           {n_cell},  // cell_layer_norm_coefficient tensor
           {n_cell},  // output_layer_norm_coefficient tensor
-      });
+      },
+      /*weight_type=*/TensorType_FLOAT32,
+      /*is_layer_norm=*/true);
 
   layer_norm_lstm.SetInputToInputWeights(input_to_input_weights_);
   layer_norm_lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -2055,7 +1911,7 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const float cell_clip = 0.0;
   const float proj_clip = 0.0;
 
-  HybridLayerNormLSTMOpModel layer_norm_lstm(
+  LSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/false, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
@@ -2093,7 +1949,8 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
           {n_cell},  // cell_layer_norm_coefficient tensor
           {n_cell},  // output_layer_norm_coefficient tensor
       },
-      TensorType_UINT8);
+      /*weight_type=*/TensorType_UINT8,
+      /*is_layer_norm=*/true);
 
   layer_norm_lstm.SetInputToInputWeights(input_to_input_weights_);
   layer_norm_lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -2150,7 +2007,7 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const float cell_clip = 0.0;
   const float proj_clip = 0.0;
 
-  HybridLayerNormLSTMOpModel layer_norm_lstm(
+  LSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/false, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
@@ -2188,7 +2045,8 @@ TEST_F(NoCifgPeepholeProjectionNoClippingLayerNormLstmTest,
           {n_cell},  // cell_layer_norm_coefficient tensor
           {n_cell},  // output_layer_norm_coefficient tensor
       },
-      TensorType_INT8);
+      /*weight_type=*/TensorType_INT8,
+      /*is_layer_norm=*/true);
 
   layer_norm_lstm.SetInputToInputWeights(input_to_input_weights_);
   layer_norm_lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -2292,7 +2150,7 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const float cell_clip = 0.0;
   const float proj_clip = 0.0;
 
-  LayerNormLSTMOpModel layer_norm_lstm(
+  LSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/true, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
@@ -2329,7 +2187,9 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
           {n_cell},  // forget_layer_norm_coefficient tensor
           {n_cell},  // cell_layer_norm_coefficient tensor
           {n_cell},  // output_layer_norm_coefficient tensor
-      });
+      },
+      /*weight_type=*/TensorType_FLOAT32,
+      /*is_layer_norm=*/true);
 
   layer_norm_lstm.SetInputToCellWeights(input_to_cell_weights_);
   layer_norm_lstm.SetInputToForgetWeights(input_to_forget_weights_);
@@ -2382,7 +2242,7 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const float cell_clip = 0.0;
   const float proj_clip = 0.0;
 
-  HybridLayerNormLSTMOpModel layer_norm_lstm(
+  LSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/true, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
@@ -2420,7 +2280,8 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
           {n_cell},  // cell_layer_norm_coefficient tensor
           {n_cell},  // output_layer_norm_coefficient tensor
       },
-      TensorType_UINT8);
+      /*weight_type=*/TensorType_UINT8,
+      /*is_layer_norm=*/true);
 
   layer_norm_lstm.SetInputToCellWeights(input_to_cell_weights_);
   layer_norm_lstm.SetInputToForgetWeights(input_to_forget_weights_);
@@ -2473,7 +2334,7 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
   const float cell_clip = 0.0;
   const float proj_clip = 0.0;
 
-  HybridLayerNormLSTMOpModel layer_norm_lstm(
+  LSTMOpModel layer_norm_lstm(
       n_batch, n_input, n_cell, n_output,
       /*use_cifg=*/true, /*use_peephole=*/true,
       /*use_projection_weights=*/true,
@@ -2511,7 +2372,8 @@ TEST_F(CifgPeepholeProjectionNoClippingLayerNormLstmTest,
           {n_cell},  // cell_layer_norm_coefficient tensor
           {n_cell},  // output_layer_norm_coefficient tensor
       },
-      TensorType_INT8);
+      /*weight_type=*/TensorType_INT8,
+      /*is_layer_norm=*/true);
 
   layer_norm_lstm.SetInputToCellWeights(input_to_cell_weights_);
   layer_norm_lstm.SetInputToForgetWeights(input_to_forget_weights_);
@@ -2593,7 +2455,8 @@ TEST(LSTMOpModel, InvalidTypeTest) {
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
                    },
-                   /*weight_type=*/TensorType_INT32),
+                   /*weight_type=*/TensorType_INT32,
+                   /*is_layer_norm=*/false),
                "");
 
   EXPECT_DEATH(LSTMOpModel lstm(
@@ -2627,7 +2490,8 @@ TEST(LSTMOpModel, InvalidTypeTest) {
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
                    },
-                   /*weight_type=*/TensorType_COMPLEX64),
+                   /*weight_type=*/TensorType_COMPLEX64,
+                   /*is_layer_norm=*/false),
                "");
 }
 #endif

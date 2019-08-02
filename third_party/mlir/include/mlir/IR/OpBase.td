@@ -1174,8 +1174,16 @@ class Results<dag rets> {
 }
 
 //===----------------------------------------------------------------------===//
+// Common value constraints
+//===----------------------------------------------------------------------===//
+
+def HasNoUseOf: Constraint<
+    CPred<"$_self->use_begin() == $_self->use_end()">, "has no use">;
+
+//===----------------------------------------------------------------------===//
 // Common op type constraints
 //===----------------------------------------------------------------------===//
+
 // These traits are for verifying properties of an op that require knowledge of
 // multiple arguments or results. For verifying properties of a single argument
 // or result, prefer operand type constraints.
@@ -1406,11 +1414,5 @@ class NativeCodeCall<string expr> {
 // Directive used in result pattern to indicate that no new op are generated,
 // so to replace the matched DAG with an existing SSA value.
 def replaceWithValue;
-
-// Directive used in result pattern to indicate that no replacement is generated
-// for the current result. Predicates are generated to make sure the
-// corresponding result in source pattern is unused.
-//   syntax: (verifyUnusedValue)
-def verifyUnusedValue;
 
 #endif // OP_BASE

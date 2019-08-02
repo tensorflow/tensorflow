@@ -4391,12 +4391,10 @@ class IdentityCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=(1, -1, 0),
         dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      with self.assertRaisesRegexp(
-          errors.OpError, 'assert_greater_or_equal_0'):
-        id_weight_pair.id_tensor.eval()
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        'Negative bucket index for categorical column "aaa"'):
+      column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   @test_util.run_deprecated_v1
   def test_get_sparse_tensors_with_inputs_too_big(self):
@@ -4405,12 +4403,10 @@ class IdentityCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=(1, 99, 0),
         dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with _initialized_session():
-      with self.assertRaisesRegexp(
-          errors.OpError, 'assert_less_than_num_buckets'):
-        id_weight_pair.id_tensor.eval()
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        'Bucket index for categorical column "aaa" exceeds number of buckets'):
+      column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   @test_util.run_deprecated_v1
   def test_get_sparse_tensors_with_default_value(self):

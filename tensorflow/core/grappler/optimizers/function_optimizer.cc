@@ -146,7 +146,7 @@ class FakeDevice : public Device {
 bool MarkedNoSpecialize(const FunctionDef& fdef) {
   const auto attr = AttrSlice(&fdef.attr());
   bool nospecialize = false;
-  return GetNodeAttr(attr, kNoSpecializeAttr, &nospecialize).ok() &&
+  return GetNodeAttrSimple(attr, kNoSpecializeAttr, &nospecialize) &&
          nospecialize;
 }
 
@@ -787,15 +787,14 @@ using OutputControlSource = InlineFunctionBodyOptions::OutputControlSource;
 // Checks if boolean attribute is defined and its value is 'true'.
 bool CheckBoolAttr(const Node* n, absl::string_view attr_name) {
   bool match;
-  Status s = GetNodeAttr(n->attrs(), attr_name, &match);
-  return s.ok() && match;
+  bool found = GetNodeAttrSimple(n->attrs(), attr_name, &match);
+  return found && match;
 }
 
 // Checks if string attribute is defined and it's not empty.
 bool CheckStringAttr(const Node* n, absl::string_view attr_name) {
-  string match;
-  Status s = GetNodeAttr(n->attrs(), attr_name, &match);
-  return s.ok() && !match.empty();
+  const string& value = GetNodeAttrString(n->attrs(), attr_name);
+  return !value.empty();
 }
 
 bool LowerUsingSwitchMergeIsOn(const Node* n) {
@@ -1216,11 +1215,11 @@ Status InlineFunctionCalls(const GrapplerItem& item,
       AddFrameForwardingControlEdge(control_flow_info, n, graph.get());
 
       if (n->IsIfNode()) {
-        TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), flib_def, false));
+        TF_RETURN_IF_ERROR(RewriteIfNode(n, graph.get(), false));
       } else if (n->type_string() == "Case") {
-        TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), flib_def, false));
-      } else if (n->type_string() == "While") {
-        TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), flib_def, false));
+        TF_RETURN_IF_ERROR(RewriteCaseNode(n, graph.get(), false));
+      } else if (n->IsWhileNode()) {
+        TF_RETURN_IF_ERROR(RewriteWhileNode(n, graph.get(), false));
       }
       continue;
     }

@@ -33,6 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -1734,9 +1735,10 @@ class StreamingAUCTest(test.TestCase):
       predictions = constant_op.constant(
           [1, -1, 1, -1], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
-      _, update_op = metrics.streaming_auc(predictions, labels)
-      sess.run(variables.local_variables_initializer())
-      self.assertRaises(errors_impl.InvalidArgumentError, update_op.eval)
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   r'predictions must be in \[0, 1\]'):
+        _, _ = metrics.streaming_auc(predictions, labels)
+        # Error detected statically; no need to run the op.
 
   def testAllCorrect(self):
     self.allCorrectAsExpected('ROC')
@@ -6718,6 +6720,7 @@ class StreamingConcatTest(test.TestCase):
 
   def setUp(self):
     ops.reset_default_graph()
+    variable_scope.enable_resource_variables()
 
   def testVars(self):
     metrics.streaming_concat(values=array_ops.ones((10,)))

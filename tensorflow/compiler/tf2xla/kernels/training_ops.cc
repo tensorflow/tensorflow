@@ -270,6 +270,53 @@ class ResourceApplyAdagrad : public XlaOpKernel {
 REGISTER_XLA_OP(Name("ResourceApplyAdagrad").TypeConstraint("T", kFloatTypes),
                 ResourceApplyAdagrad);
 
+class ResourceApplyAdagradV2 : public XlaOpKernel {
+ public:
+  explicit ResourceApplyAdagradV2(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    DataType type = ctx->input_type(2);
+
+    TensorShape var_shape, accum_shape;
+    xla::XlaOp var, accum;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, type, &var_shape, &var));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, type, &accum_shape, &accum));
+
+    OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
+                errors::InvalidArgument(
+                    "var and accum do not have the same shape",
+                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+
+    TensorShape lr_shape = ctx->InputShape(2);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
+                errors::InvalidArgument("lr is not a scalar: ",
+                                        lr_shape.DebugString()));
+
+    TensorShape epsilon_shape = ctx->InputShape(3);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_shape),
+                errors::InvalidArgument("epsilon is not a scalar: ",
+                                        epsilon_shape.DebugString()));
+
+    TensorShape grad_shape = ctx->InputShape(4);
+    OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
+                errors::InvalidArgument(
+                    "var and grad do not have the same shape",
+                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+
+    xla::XlaOp lr = ctx->Input(2);
+    xla::XlaOp epsilon = ctx->Input(3);
+    xla::XlaOp grad = ctx->Input(4);
+
+    accum = accum + xla::Square(grad);
+    var = var - grad * lr / (xla::Sqrt(accum) + epsilon);
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, var));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, accum));
+  }
+};
+REGISTER_XLA_OP(Name("ResourceApplyAdagradV2").TypeConstraint("T", kFloatTypes),
+                ResourceApplyAdagradV2);
+
 class ResourceApplyProximalAdagrad : public XlaOpKernel {
  public:
   explicit ResourceApplyProximalAdagrad(OpKernelConstruction* ctx)
