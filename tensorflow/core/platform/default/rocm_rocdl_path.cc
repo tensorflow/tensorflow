@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
-#if !defined(PLATFORM_GOOGLE)
+#if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
 #include "third_party/gpus/rocm/rocm_config.h"
 #endif
 #include "tensorflow/core/platform/logging.h"
@@ -25,8 +25,12 @@ limitations under the License.
 namespace tensorflow {
 
 string ROCmRoot() {
+#if TENSORFLOW_USE_ROCM
   VLOG(3) << "ROCM root = " << TF_ROCM_TOOLKIT_PATH;
   return TF_ROCM_TOOLKIT_PATH;
+#else
+  return "";
+#endif
 }
 
 }  // namespace tensorflow
