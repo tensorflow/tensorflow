@@ -721,6 +721,10 @@ def to_code_v1(entity,
   del arg_values
   del arg_types
   del indentation
+  if not hasattr(type(entity), '__code__'):
+    raise ValueError('Cannot apply autograph to a function that doesn\'t '
+                     'expose a __code__ object. If this is a @tf.function,'
+                     ' please use to_code(f.python_function) instead.')
   return to_code(
       entity,
       recursive=recursive,
@@ -747,6 +751,10 @@ def to_code(entity, recursive=True, experimental_optional_features=None):
   Returns:
     The converted code as string.
   """
+  if not hasattr(type(entity), '__code__'):
+    raise ValueError('Cannot apply autograph to a function that doesn\'t '
+                     'expose a __code__ object. If this is a @tf.function,'
+                     ' please use to_code(f.python_function) instead.')
   source = tf_inspect.getsource(
       to_graph(
           entity,
