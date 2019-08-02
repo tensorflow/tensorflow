@@ -75,6 +75,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
