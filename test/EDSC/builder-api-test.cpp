@@ -603,6 +603,42 @@ memref<?x?x?xf32>, index, index, index) -> ()
   f.erase();
 }
 */
+
+// Exercise StdIndexedValue for loads and stores.
+TEST_FUNC(indirect_access) {
+  using namespace edsc;
+  using namespace edsc::intrinsics;
+  using namespace edsc::op;
+  auto memrefType =
+      MemRefType::get({-1}, FloatType::getF32(&globalContext()), {}, 0);
+  auto f = makeFunction("indirect_access", {},
+                        {memrefType, memrefType, memrefType, memrefType});
+
+  OpBuilder builder(f.getBody());
+  ScopedContext scope(builder, f.getLoc());
+  ValueHandle zero = constant_index(0);
+  MemRefView vC(f.getArgument(2));
+  IndexedValue B(f.getArgument(1)), D(f.getArgument(3));
+  StdIndexedValue A(f.getArgument(0)), C(f.getArgument(2));
+  IndexHandle i, N(vC.ub(0));
+
+  // clang-format off
+  LoopBuilder(&i, zero, N, 1)([&]{
+      C((ValueHandle)D(i)) = A((ValueHandle)B(i));
+  });
+  // clang-format on
+
+  // clang-format off
+  // CHECK-LABEL: func @indirect_access(
+  // CHECK:  [[B:%.*]] = affine.load
+  // CHECK:  [[D:%.*]] = affine.load
+  // CHECK:  load %{{.*}}{{\[}}[[B]]{{\]}}
+  // CHECK:  store %{{.*}}, %{{.*}}{{\[}}[[D]]{{\]}}
+  // clang-format on
+  f.print(llvm::outs());
+  f.erase();
+}
+
 int main() {
   RUN_TESTS();
   return 0;
