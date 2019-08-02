@@ -302,6 +302,25 @@ static PassRegistration<MyPass> pass("command-line-arg", "description");
     pass from `mlir-opt`.
 *   "description" is a description of the pass.
 
+For passes that cannot be default-constructed, use the third optional argument
+of `PassRegistration` that takes a callback creating the pass:
+
+```c++
+static PassRegistration<MyParametricPass> pass(
+    "command-line-arg", "description",
+    []() -> Pass * {
+      Pass *p = new MyParametricPass(/*options*/);
+      /*... non-trivial-logic to configure the pass ...*/;
+      return p;
+    });
+```
+
+This variant of registration can be used, for example, to accept the
+configuration of a pass from command-line arguments and pass it over to the pass
+constructor. Pass registration mechanism takes ownership of the pass. Make sure
+that the pass is copy-constructible in a way that does not share data since
+[pass manager](#pass-manager) may create copies of the pass to run in parallel.
+
 ### Pass Pipeline Registration
 
 Described above is the mechanism used for registering a specific derived pass
