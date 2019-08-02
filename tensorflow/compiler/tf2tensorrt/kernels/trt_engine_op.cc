@@ -93,7 +93,9 @@ class TRTEngineOp : public AsyncOpKernel {
                VectorTensorShapeHasher>;
 
   // Execute calibration
-  void ExecuteCalibration(OpKernelContext* ctx, AsyncHelper* helper);
+  void ExecuteCalibration(OpKernelContext* ctx,
+                          TRTEngineCacheResource* cache_res,
+                          AsyncHelper* helper);
 
   // Construct a function handle for executing native funcdef graph
   // These are the exact same function.
@@ -117,7 +119,8 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Get engine for the input shape
   StatusOr<EngineContext*> GetEngine(
-      const std::vector<TensorShape>& input_shapes, OpKernelContext* ctx);
+      const std::vector<TensorShape>& input_shapes, OpKernelContext* ctx,
+      TRTEngineCacheResource* cache_res);
 
   // Verify that the input shapes are consistent and can be handled by this op.
   Status VerifyInputShapes(const std::vector<TensorShape>& shapes);
@@ -274,6 +277,9 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     OP_REQUIRES_OK(context,
                    FunctionDefToGraphDef(func_handle_, lib, &segment_graph_));
   }
+  // TODO(laigd): calibration_data is used in TF v1.x and we keep it only for
+  // backward compatibility reasons. Remove it once all known users switch to
+  // 2.0.
   calibration_mode_ =
       (use_calibration_ && precision_mode_ == TrtPrecisionMode::INT8 &&
        calibration_data.empty());
@@ -319,18 +325,14 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
 }
 
 void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
+                                     TRTEngineCacheResource* cache_res,
                                      AsyncHelper* helper) {
   VLOG(1) << "Executing TRT calibration: " << name();
   helper->Ref();
   core::ScopedUnref sc(helper);
 
-  TRTEngineCacheResource* cache_res = nullptr;
-  OP_REQUIRES_OK_ASYNC(ctx, GetEngineCacheResource(ctx, &cache_res), *helper);
-  core::ScopedUnref unref_cache_res(cache_res);
-
   CalibrationContext* calib_ctx = cache_res->calib_ctx_.get();
-
-  int num_inputs = ctx->num_inputs();
+  const int num_inputs = ctx->num_inputs();
   // TODO(laigd): need to check that input shape matches.
   // Pass input data to calibrator
   std::unordered_map<string, void*> input_data;
@@ -443,10 +445,6 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
                                AsyncOpKernel::DoneCallback done) {
   auto helper = new AsyncHelper(done);
   core::ScopedUnref sc(helper);
-  if (calibration_mode_) {
-    ExecuteCalibration(ctx, helper);
-    return;
-  }
   // Get shapes of inputs to engine.
   std::vector<TensorShape> input_shapes;
   input_shapes.reserve(ctx->num_inputs());
@@ -454,14 +452,40 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     input_shapes.push_back(ctx->input(i).shape());
   }
   OP_REQUIRES_OK_ASYNC(ctx, VerifyInputShapes(input_shapes), *helper);
-  StatusOr<EngineContext*> status = GetEngine(input_shapes, ctx);
+
+  TRTEngineCacheResource* cache_res = nullptr;
+  OP_REQUIRES_OK_ASYNC(ctx, GetEngineCacheResource(ctx, &cache_res), *helper);
+  core::ScopedUnref unref_cache_res(cache_res);
+
+  StatusOr<EngineContext*> status = GetEngine(input_shapes, ctx, cache_res);
   OP_REQUIRES_OK_ASYNC(ctx, status.status(), *helper);
+
   EngineContext* engine_context = status.ValueOrDie();
   if (!engine_context->cuda_engine) {
-    VLOG(1) << "Engine retrieval for input shapes: "
-            << TensorShapeUtils::ShapeListString(input_shapes)
-            << " failed. Running native segment for " << name();
-    ExecuteNativeSegment(ctx, helper);
+    // TODO(laigd): consider the following alternatives:
+    // 1. Serialize the state (calibration or inference) using
+    //    TRTEngineInstance proto (or a new proto), so we know which mode we're
+    //    in and don't run calibration during inference (which is invalid).
+    // 2. Reuse the calibration_data attribute or use a new attribute in the
+    //    NodeDef to indicate whether it's in calibration mode.
+    if (calibration_mode_) {
+      if (!cache_res->calib_ctx_) {
+        // TODO(laigd): better encapsulation.
+        mutex_lock lock(engine_mutex_);
+        if (!cache_res->calib_ctx_) {
+          OP_REQUIRES_OK_ASYNC(
+              ctx, AllocateCalibrationResources(ctx, cache_res), *helper);
+        }
+      }
+      // TODO(laigd): check that the input shapes match the shapes of the
+      // persistent tensor in the calibration resource.
+      ExecuteCalibration(ctx, cache_res, helper);
+    } else {
+      VLOG(1) << "Engine retrieval for input shapes: "
+              << TensorShapeUtils::ShapeListString(input_shapes)
+              << " failed. Running native segment for " << name();
+      ExecuteNativeSegment(ctx, helper);
+    }
     return;
   }
   const bool retry = ExecuteTrtEngine(ctx, engine_context);
@@ -621,19 +645,14 @@ Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
       std::string(kTfTrtContainerName), std::string(resource_name), cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
-        if (calibration_mode_) {
-          TF_RETURN_IF_ERROR(AllocateCalibrationResources(ctx, *cr));
-        }
         return Status::OK();
       }});
 }
 
 StatusOr<EngineContext*> TRTEngineOp::GetEngine(
-    const std::vector<TensorShape>& input_shapes, OpKernelContext* ctx) {
+    const std::vector<TensorShape>& input_shapes, OpKernelContext* ctx,
+    TRTEngineCacheResource* cache_res) {
   static EngineContext empty_context;
-  TRTEngineCacheResource* cache_res = nullptr;
-  TF_RETURN_IF_ERROR(GetEngineCacheResource(ctx, &cache_res));
-  core::ScopedUnref sc(cache_res);
 
   mutex_lock lock(engine_mutex_);
   // TODO(tmorris): using first input to get batch size - is this reliable?
@@ -646,6 +665,9 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
 
   // Handle the static engine case. For static engines, the cache will have a
   // single element containing the only engine.
+  //
+  // TODO(laigd): This is legacy mode for TF v1.x, need to remove when all known
+  // users switch to 2.0.
   if (static_engine_) {
     if (cache.size()) {
       // Batch size of engine must be >= the input batch size
@@ -699,6 +721,12 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   // If matched, use that engine. Otherwise, we will look in cache for that
   // exact shape and possibly create a new engine if it is not in cache.
   if (!cache.count(engine_input_shapes)) {
+    // Don't create new engines if in INT8+calibration mode, since it'll fail
+    // (calibrator was created with empty calibration_data). Instead, it'll
+    // fallback and run calibration. Also see the TODO in ComputeAsync() about
+    // alternatives to checking calibration mode when GetEngine() fails.
+    if (calibration_mode_) return &empty_context;
+
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
     LOG(INFO) << "Building a new TensorRT engine for " << name()
@@ -747,7 +775,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
   const int num_inputs = ctx->num_inputs();
   std::vector<TensorShape> shapes;
   cres->device_tensors_.resize(num_inputs);
-  VLOG(1) << " Constructing calibrator";
+  VLOG(1) << "Constructing calibrator";
   for (int i = 0; i < num_inputs; i++) {
     // allocate workspace on device for inputs
     const Tensor& t = ctx->input(i);
@@ -812,16 +840,14 @@ Status TRTEngineOp::AllocateCalibrationResources(
 
     // Transfer the ownership of the engine to the engine cache, so we can
     // dump it out during conversion for TF 2.0.
-    if (cache_res) {
-      mutex_lock lock(this->engine_mutex_);
-      cres->SetCalibrationTable();
-      this->calibrator_ = std::move(cres->calibrator_);
-      TrtUniquePtrType<nvinfer1::IExecutionContext> exec_context(
-          cres->engine_->createExecutionContext());
-      cache_res->cache_.emplace(
-          shapes, absl::make_unique<EngineContext>(std::move(cres->engine_),
-                                                   std::move(exec_context)));
-    }
+    mutex_lock lock(this->engine_mutex_);
+    cres->SetCalibrationTable();
+    this->calibrator_ = std::move(cres->calibrator_);
+    TrtUniquePtrType<nvinfer1::IExecutionContext> exec_context(
+        cres->engine_->createExecutionContext());
+    cache_res->cache_.emplace(
+        shapes, absl::make_unique<EngineContext>(std::move(cres->engine_),
+                                                 std::move(exec_context)));
 
     VLOG(1) << "Calibration loop terminated " << this->name();
   }));
