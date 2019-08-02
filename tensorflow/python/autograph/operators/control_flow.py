@@ -103,6 +103,21 @@ def _disallow_undefs_into_loop(*values):
           'return statements are not supported within a TensorFlow loop.')
 
 
+def _shape_greater_than_or_equal(shape1, shape2):
+  """Check whether the shape2 is equal or more specific than shape1."""
+
+  # The following logic was mirrored from control_flow_ops.py's
+  # _ShapeLessThanOrEqual function.
+  if shape1.dims is None:
+    return True
+  if shape1.ndims != shape2.ndims:
+    return False
+  for dim1, dim2 in zip(shape1.dims, shape2.dims):
+    if dim1.value is not None and dim1.value != dim2.value:
+      return False
+  return True
+
+
 def _verify_tf_loop_vars(init_loop_vars,
                          first_iter_vars,
                          basic_symbol_names,
@@ -166,12 +181,12 @@ def _verify_tf_loop_vars(init_loop_vars,
         init_shape = init_loop_var.shape
         first_iter_shape = first_iter_var.shape
         # TODO(b/135183013): Update needed once we support shape_invariants.
-        if ((init_shape.rank is None) != (first_iter_shape.rank is None) or
-            (tuple(init_shape.as_list()) != tuple(first_iter_shape.as_list()))):
+        if not _shape_greater_than_or_equal(init_shape, first_iter_shape):
           raise ValueError(
               '"{}" has shape {} before the loop, but shape {} after one'
               ' iteration. TensorFlow control flow requires it stays the'
-              ' same.'.format(name, init_shape, first_iter_shape))
+              ' same or be more specific.'.format(name, init_shape,
+                                                  first_iter_shape))
 
     nest.map_structure(
         functools.partial(_check_same_type, name), init_loop_var,
