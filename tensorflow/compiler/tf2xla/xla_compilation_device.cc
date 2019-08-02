@@ -102,11 +102,15 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
   auto frontend_attributes_result =
       GetFrontendAttributesFromAttrSlice(AttrSlice(op_kernel->def()));
   OP_REQUIRES_OK(context, frontend_attributes_result.status());
-  absl::optional<xla::FrontendAttributes> frontend_attributes =
+  absl::optional<xla::FrontendAttributes> attributes =
       frontend_attributes_result.ValueOrDie();
 
+  xla::FrontendAttributes merged_attributes = b->frontend_attributes();
+  if (attributes.has_value()) {
+    merged_attributes.mutable_map()->insert(attributes.value().map().begin(), attributes.value().map().end());
+  }
   xla::XlaScopedFrontendAttributesAssignment assign_frontend_attributes(
-      b, frontend_attributes);
+      b, std::move(merged_attributes));
 
   // If no sharding metadata is found, XLA is free to use whatever device it
   // wants. In practice this usually has the effect of placing things on device

@@ -169,12 +169,13 @@ class XlaBuilder {
     frontend_attributes_ = frontend_attributes;
   }
 
-  // Merge the passed FrontendAttributes with the ones already set.
+  // Swap the passed FrontendAttributes with the ones currently set.
   //
-  // In case of duplicates the new attributes take precedence.
-  void MergeFrontendAttributes(const FrontendAttributes& frontend_attributes) {
-    frontend_attributes_.mutable_map()->insert(
-        frontend_attributes.map().begin(), frontend_attributes.map().end());
+  // Return the old attributes.
+  FrontendAttributes SwapFrontendAttributes(const FrontendAttributes& frontend_attributes) {
+    FrontendAttributes old_attributes = std::move(frontend_attributes_);
+    frontend_attributes_ = std::move(frontend_attributes);
+    return old_attributes;
   }
 
   // Returns the FrontendAttributes that will be attached to all instructions.
@@ -1085,9 +1086,9 @@ class XlaScopedShardingAssignment {
 class XlaScopedFrontendAttributesAssignment {
  public:
   XlaScopedFrontendAttributesAssignment(
-      xla::XlaBuilder* builder, absl::optional<FrontendAttributes> attributes)
+      xla::XlaBuilder* builder, FrontendAttributes attributes)
       : builder_(builder) {
-    SetFrontendAttributes(attributes);
+      saved_ = builder_->SwapFrontendAttributes(std::move(attributes));
   }
 
   XlaScopedFrontendAttributesAssignment(
@@ -1096,23 +1097,10 @@ class XlaScopedFrontendAttributesAssignment {
       const XlaScopedFrontendAttributesAssignment&) = delete;
 
   ~XlaScopedFrontendAttributesAssignment() {
-    SetFrontendAttributes(absl::nullopt);
+    builder_->SetFrontendAttributes(std::move(saved_));
   }
 
  private:
-  void SetFrontendAttributes(
-      const absl::optional<FrontendAttributes>& attributes) {
-    if (attributes.has_value()) {
-      // Save the existing attributes:
-      saved_ = builder_->frontend_attributes();
-      // Merge the existring attributes with the new ones.
-      builder_->MergeFrontendAttributes(attributes.value());
-    } else {
-      builder_->SetFrontendAttributes(saved_);
-      saved_.Clear();
-    }
-  }
-
   xla::XlaBuilder* const builder_;
   FrontendAttributes saved_;
 };
