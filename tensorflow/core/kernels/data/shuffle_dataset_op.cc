@@ -697,6 +697,8 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     RandomSeedGenerator* seed_generator = nullptr;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 2), &seed_generator));
+    // Transferring ownership of seed generator reference onto
+    // `ReshufflingDatasetV2`.
     *output = new ReshufflingDatasetV2(ctx, input, buffer_size, count,
                                        ctx->input(2), seed_generator);
     return;

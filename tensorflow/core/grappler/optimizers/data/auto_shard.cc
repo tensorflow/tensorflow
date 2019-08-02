@@ -51,7 +51,7 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 24> kPassThroughOps = {
+constexpr std::array<const char*, 25> kPassThroughOps = {
     "_Retval",
     "BatchDataset",
     "BatchDatasetV2",
@@ -59,6 +59,7 @@ constexpr std::array<const char*, 24> kPassThroughOps = {
     "PaddedBatchDataset",
     "PaddedBatchDatasetV2",
     "CacheDataset",
+    "CacheDatasetV2",
     "FilterDataset",
     "Identity",
     "MapAndBatchDataset",
@@ -75,7 +76,7 @@ constexpr std::array<const char*, 24> kPassThroughOps = {
     "ShuffleDatasetV2",
     "SkipDataset",
     "TakeDataset",
-    "WindowDataset"
+    "WindowDataset",
 };
 
 // TODO(frankchn): Process functions within kFuncDatasetOps as well.
