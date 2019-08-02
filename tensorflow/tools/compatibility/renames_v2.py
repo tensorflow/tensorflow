@@ -1459,10 +1459,6 @@ renames = {
         'tf.compat.v1.train.do_quantize_training_on_graphdef',
     'tf.train.experimental.MixedPrecisionLossScaleOptimizer':
         'tf.compat.v1.train.experimental.MixedPrecisionLossScaleOptimizer',
-    'tf.train.experimental.disable_mixed_precision_graph_rewrite':
-        'tf.compat.v1.train.experimental.disable_mixed_precision_graph_rewrite',
-    'tf.train.experimental.enable_mixed_precision_graph_rewrite':
-        'tf.compat.v1.train.experimental.enable_mixed_precision_graph_rewrite',
     'tf.train.exponential_decay':
         'tf.compat.v1.train.exponential_decay',
     'tf.train.export_meta_graph':
