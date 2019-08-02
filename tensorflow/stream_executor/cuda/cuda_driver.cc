@@ -178,7 +178,7 @@ void CheckPointerIsValid(const PtrT ptr, absl::string_view name) {
   // If we failed, reset cuda error status to avoid poisoning cuda streams.
   if (err != cudaSuccess) cudaGetLastError();
   bool points_to_host_memory = (err == cudaErrorInvalidValue ||
-                                attributes.memoryType != cudaMemoryTypeDevice);
+                                attributes.type != cudaMemoryTypeDevice);
   CHECK_EQ(is_host_ptr, points_to_host_memory) << absl::StreamFormat(
       "%s pointer is not actually on %s: %p", name, is_host_ptr ? "CPU" : "GPU",
       reinterpret_cast<const void*>(ptr));
