@@ -138,6 +138,8 @@ class TFL_Int8UniformQuantizedType<int zero_pt, int smantissa, int sexp>
 // operand's tensor types.
 def TFL_QUI8 : TFL_QuantizedType<"Uniform", [8], 0>;
 def TFL_QI8 : TFL_QuantizedType<"Uniform", [8], 1>;
+def TFL_QUI16 : TFL_QuantizedType<"Uniform", [16], 0>;
+def TFL_QI16 : TFL_QuantizedType<"Uniform", [16], 1>;
 def TFL_QUI32 : TFL_QuantizedType<"Uniform", [32], 0>;
 def TFL_QI32 : TFL_QuantizedType<"Uniform", [32], 1>;
 
@@ -613,8 +615,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let summary = "Fully connected op";
 
   let arguments = (ins
-    TensorOf<[F32, TFL_QI8, TFL_QUI8]>:$input,
-    TensorOf<[F32, TFL_QI8, TFL_QUI8]>:$filter,
+    TensorOf<[F32, TFL_QI8, TFL_QUI8, TFL_QI16, TFL_QUI16]>:$input,
+    TensorOf<[F32, TFL_QI8, TFL_QUI8, TFL_QI16, TFL_QUI16]>:$filter,
     TFL_TensorOfOrNone<[F32, TFL_QI32, TFL_QUI32]>:$bias,
 
     TFL_AFAttr:$fused_activation_function,
@@ -624,7 +626,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 
   // Depending on the weights format, this op can have one or two outputs.
   let results = (outs
-    Variadic<TensorOf<[F32, TFL_QI8, TFL_QUI8]>>:$output
+    Variadic<TensorOf<[F32, TFL_QI8, TFL_QUI8, TFL_QI16, TFL_QUI16]>>:$output
   );
 
   let hasOptions = 1;
