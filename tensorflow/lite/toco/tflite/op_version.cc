@@ -183,6 +183,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
   op_signature.model = &model;
   string model_min_version;
   for (const auto& op : model.operators) {
+    if (op_types_map.find(op->type) == op_types_map.end()) continue;
     op_signature.op = op.get();
     const int version = op_types_map.at(op->type)->GetVersion(op_signature);
     std::pair<OperatorType, int> version_key = {op->type, version};
