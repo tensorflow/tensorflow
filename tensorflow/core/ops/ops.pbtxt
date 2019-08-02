@@ -6132,6 +6132,7 @@ op {
     name: "message"
     type: "string"
   }
+  is_stateful: true
 }
 op {
   name: "Cholesky"
