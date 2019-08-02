@@ -161,6 +161,9 @@ endif
 ifeq ($(TARGET),rpi)
 	BUILD_WITH_NNAPI=false
 endif
+ifeq ($(TARGET),generic-aarch64)
+	BUILD_WITH_NNAPI=false
+endif
 ifeq ($(BUILD_WITH_NNAPI),true)
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate.cc
 	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/nnapi_implementation.cc
