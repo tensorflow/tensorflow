@@ -11,10 +11,8 @@ graph.
 *   [Control flow](control_flow.md)
 *   [Functions and function calls](functions.md)
 *   [Error handling](error_handling.md)
-*   Conversion mechanics (coming soon)
-*   Collections (coming soon)
 *   [Limitations](limitations.md)
-*   Common errors (coming soon)
+*   [Common errors](common_errors.md)
 
 For more information on AutoGraph, see the following articles:
 
