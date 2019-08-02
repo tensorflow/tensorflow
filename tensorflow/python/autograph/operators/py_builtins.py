@@ -342,21 +342,18 @@ def _py_enumerate(s, start=0):
   return enumerate(s, start)
 
 
-def zip_(*s):
-  if all(isinstance(x, dataset_ops.DatasetV2) for x in s):
-    return _tf_dataset_zip(*s)
-  return _py_zip(*s)
+def zip_(*iterables):
+  if all(isinstance(x, dataset_ops.DatasetV2) for x in iterables):
+    return _tf_dataset_zip(*iterables)
+  return _py_zip(*iterables)
 
 
-def _tf_dataset_zip(*s):
-  tup = ()
-  for x in s:
-    tup += (x,)
-  return dataset_ops.DatasetV2.zip(tup)
+def _tf_dataset_zip(*iterables):
+  return dataset_ops.DatasetV2.zip(tuple(iterables))
 
 
-def _py_zip(*s):
-  return zip(*s)
+def _py_zip(*iterables):
+  return zip(*iterables)
 
 
 SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip)
