@@ -26,6 +26,8 @@ const char* ToString(UntypedStreamingRPCState::Tag::TagType tag_type) {
       return "kRequestWriteCompleted";
     case UntypedStreamingRPCState::Tag::TagType::kResponseReadCommpleted:
       return "kResponseReadCommpleted";
+    case UntypedStreamingRPCState::Tag::TagType::kCallFinished:
+      return "kCallFinished";
   }
 }
 
@@ -43,6 +45,9 @@ void UntypedStreamingRPCState::Tag::OnCompleted(bool ok) {
       break;
     case TagType::kResponseReadCommpleted:
       streaming_state_->ResponseReadCompleted(ok);
+      break;
+    case TagType::kCallFinished:
+      streaming_state_->CallFinished(ok);
       break;
   }
   streaming_state_->Unref();  // Ref acquired when tag was handed to grpc.
