@@ -157,7 +157,7 @@ void ThreadPool::ExecuteImpl(int task_count, int stride, Task* tasks) {
     // Task #0 will be run on the current thread.
     CreateThreads(task_count - 1);
     counter_to_decrement_when_ready_.Reset(task_count - 1);
-    for (int i = 1; i < task_count; i++) {
+    for (int i = 1; i < task_count; ++i) {
       auto task_address = reinterpret_cast<std::uintptr_t>(tasks) + i * stride;
       threads_[i - 1]->StartWork(reinterpret_cast<Task*>(task_address));
     }
