@@ -220,7 +220,7 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
   }
 
   // For column reduction, the tile block is tize_size_y x tile_size_x, and we
-  // are reducing along tile_size_y. tile_size_y needs to be
+  // are reducing along tile_size_y. Only tile_size_y needs to be
   // large enough to make the tiling implementation efficient.
   return dims_in_elem[1] >= kWarpSize;
 }
