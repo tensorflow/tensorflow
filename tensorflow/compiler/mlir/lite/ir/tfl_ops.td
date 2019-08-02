@@ -411,6 +411,33 @@ def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect]> {
   );
 }
 
+def TFL_ReduceAnyOp : TFL_Op<"reduce_any", [NoSideEffect]> {
+  let summary = [{
+Computes the "logical or" of elements across dimensions of a tensor.
+  }];
+
+  let description = [{
+Reduces `input` along the dimensions given in `axis`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`axis`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+  }];
+
+  let arguments = (ins
+    I1Tensor:$input,
+    I32Tensor:$reduction_indices,
+
+    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+  );
+
+  let results = (outs
+    I1Tensor:$output
+  );
+
+  let hasOptions = 1;
+  let customOption = "ReducerOptions";
+}
+
 def TFL_AveragePool2DOp:
     TFL_Op<"average_pool_2d", [NoSideEffect, TFL_SameOperandsAndResultsScale]> {
   let summary = "Average_pool_2d operator";
