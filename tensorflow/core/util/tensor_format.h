@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -441,7 +442,9 @@ T GetFilterDim(gtl::ArraySlice<T> dimension_attribute,
                                           filter_tensor_format) == 3)
                   ? GetFilterDimIndex<3>(filter_tensor_format, dimension)
                   : GetFilterDimIndex<2>(filter_tensor_format, dimension);
-  CHECK(index >= 0 && index < dimension_attribute.size())
+  using size_type = typename gtl::ArraySlice<T>::size_type;
+  CHECK(index >= 0 &&
+        static_cast<size_type>(index) < dimension_attribute.size())
       << "Invalid index from the dimension: " << index << ", "
       << filter_tensor_format << ", " << dimension;
   return dimension_attribute[index];
