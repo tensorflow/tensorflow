@@ -55,12 +55,12 @@ using namespace mlir::linalg::intrinsics;
 using add = ValueBuilder<mlir::LLVM::AddOp>;
 using addi = ValueBuilder<mlir::AddIOp>;
 using bitcast = ValueBuilder<mlir::LLVM::BitcastOp>;
-using call = OperationBuilder<mlir::LLVM::CallOp>;
 using cmpi = ValueBuilder<mlir::CmpIOp>;
 using constant = ValueBuilder<mlir::LLVM::ConstantOp>;
 using extractvalue = ValueBuilder<mlir::LLVM::ExtractValueOp>;
 using gep = ValueBuilder<mlir::LLVM::GEPOp>;
 using insertvalue = ValueBuilder<mlir::LLVM::InsertValueOp>;
+using llvm_call = OperationBuilder<mlir::LLVM::CallOp>;
 using llvm_icmp = ValueBuilder<LLVM::ICmpOp>;
 using llvm_load = ValueBuilder<LLVM::LoadOp>;
 using llvm_store = OperationBuilder<LLVM::StoreOp>;
@@ -206,7 +206,7 @@ public:
     Value *allocSize =
         mul(size, constant(int64Ty, IntegerAttr::get(indexType, elementSize)));
     Value *allocated =
-        call(voidPtrTy, rewriter.getSymbolRefAttr(mallocFunc), allocSize)
+        llvm_call(voidPtrTy, rewriter.getSymbolRefAttr(mallocFunc), allocSize)
             .getOperation()
             ->getResult(0);
     allocated = bitcast(elementPtrType, allocated);
@@ -251,7 +251,7 @@ public:
     edsc::ScopedContext context(rewriter, op->getLoc());
     Value *casted = bitcast(voidPtrTy, extractvalue(elementPtrTy, operands[0],
                                                     positionAttr(rewriter, 0)));
-    call(ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), casted);
+    llvm_call(ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), casted);
     rewriter.replaceOp(op, llvm::None);
     return matchSuccess();
   }
@@ -611,8 +611,12 @@ template <typename LinalgOp>
 static FuncOp
 getLLVMLibraryCallDeclaration(Operation *op, LLVMTypeConverter &lowering,
                               ConversionPatternRewriter &rewriter) {
-  assert(isa<LinalgOp>(op));
-  auto fnName = LinalgOp::getLibraryCallName();
+  auto linalgOp = cast<LinalgOp>(op);
+  auto fnName = linalgOp.getLibraryCallName();
+  if (fnName.empty()) {
+    op->emitWarning("No library call defined for: ") << *op;
+    return FuncOp();
+  }
   auto module = op->getParentOfType<ModuleOp>();
   if (auto f = module.lookupSymbol<FuncOp>(fnName)) {
     return f;
@@ -661,7 +665,7 @@ static void getLLVMLibraryCallDefinition(FuncOp fn,
     implFnArgs.push_back(alloca);
     llvm_store(arg, alloca);
   }
-  call(ArrayRef<Type>(), builder.getSymbolRefAttr(implFn), implFnArgs);
+  llvm_call(ArrayRef<Type>(), builder.getSymbolRefAttr(implFn), implFnArgs);
   llvm_return{ArrayRef<Value *>()};
 }
 
@@ -704,6 +708,8 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     // Only emit library call declaration. Fill in the body later.
     auto f = getLLVMLibraryCallDeclaration<LinalgOp>(op, lowering, rewriter);
+    if (!f)
+      return matchFailure();
     static_cast<LinalgTypeConverter &>(lowering).addLibraryFnDeclaration(f);
 
     auto fAttr = rewriter.getSymbolRefAttr(f);

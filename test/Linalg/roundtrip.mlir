@@ -164,3 +164,26 @@ func @const_buffer_view(%arg0: index, %arg1: index, %arg2: index) {
   %c2 = linalg.view %c0[%c1] : !linalg.buffer<17xf32> -> !linalg.view<?xf32>
   return
 }
+
+#accesses = [
+  (i, j, k) -> (j, i),
+  (i, j, k) -> (i, k, i + j)
+]
+#trait = {
+  indexing_maps = #accesses,
+  n_views = [1, 1],
+  n_loop_types = [3, 0, 0],
+  fun = @foo,
+  library_call = "external_function_name"
+}
+func @foo(%0: vector<3x4xi4>, %1: f32) -> f32 {
+  %f0 = constant 0.0 : f32
+  return %f0 : f32
+}
+func @generic(%arg0: !linalg.view<?x?xvector<3x4xi4>>, %arg1: !linalg.view<?x?x?xf32>) {
+  linalg.generic #trait %arg0, %arg1 {foo = 1} : !linalg.view<?x?xvector<3x4xi4>>, !linalg.view<?x?x?xf32>
+  return
+}
+// CHECK-LABEL: func @foo
+// CHECK-LABEL: func @generic
+//       CHECK:   linalg.generic {fun = @foo, indexing_maps = [#map2, #map3], library_call = "external_function_name", n_loop_types = [3, 0, 0], n_views = [1, 1]} %{{.*}}, %{{.*}} {foo = 1 : i64}: !linalg.view<?x?xvector<3x4xi4>>, !linalg.view<?x?x?xf32>
