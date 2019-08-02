@@ -988,3 +988,13 @@ func @space_to_depth(%arg0: tensor<1x2x2x1xf32>) -> tensor<?xf32> {
   // CHECK: %[[ARG:.*]]: tensor<1x2x2x1xf32>
   // CHECK: "tfl.space_to_depth"(%[[ARG]]) {block_size = 2 : i32} : (tensor<1x2x2x1xf32>) -> tensor<?xf32>
 }
+
+func @round(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Round"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+
+  // CHECK-LABEL: round
+  // CHECK: %[[ARG:.*]]: tensor<8x16xf32>
+  // CHECK: %[[RESULT:.*]] = "tfl.round"(%[[ARG]]) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  // CHECK: return %[[RESULT]] : tensor<8x16xf32>
+}

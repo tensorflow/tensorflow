@@ -135,6 +135,7 @@ def : Pat<(TF_ReverseSequenceOp $input, $seq_lengths, $seq_dim, $batch_dim),
           (TFL_ReverseSequenceOp $input, $seq_lengths,
            (convertIntAttrTo32Bit $seq_dim),
            (convertIntAttrTo32Bit $batch_dim))>;
+def : Pat<(TF_RoundOp $arg), (TFL_RoundOp $arg)>;
 def : Pat<(TF_RsqrtOp $arg), (TFL_RsqrtOp $arg)>;
 def : Pat<(TF_SqrtOp $arg), (TFL_SqrtOp $arg)>;
 def : Pat<(TF_SquareOp $arg), (TFL_SquareOp $arg)>;
