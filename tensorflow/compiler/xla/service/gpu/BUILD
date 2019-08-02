@@ -600,7 +600,7 @@ cc_library(
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor/cuda:redzone_allocator",
+        "//tensorflow/stream_executor:redzone_allocator",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -617,7 +617,6 @@ cc_library(
         ":gpu_autotuning_proto",
         ":gpu_executable",
         ":ir_emission_utils",
-        ":scratch_allocator",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -632,13 +631,12 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor:redzone_allocator",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
-        # Cuda only dependency
-        "//tensorflow/stream_executor/cuda:redzone_allocator",
     ],
 )
 
@@ -1091,7 +1089,6 @@ cc_library(
         "nvptx_compiler.h",
     ],
     deps = [
-        ":cudnn_conv_algorithm_picker",
         ":cudnn_conv_pad_for_tensor_cores",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
@@ -1336,7 +1333,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:kernel_spec",
-        "//tensorflow/stream_executor/cuda:ptxas_utils",
+        "//tensorflow/stream_executor:gpu_asm_opts",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -1359,19 +1356,25 @@ tf_cc_test(
 
 cc_library(
     name = "buffer_comparator",
-    srcs = ["buffer_comparator.cc"],
+    srcs = [] + if_cuda_is_configured([
+        "buffer_comparator_cuda.cc",
+    ]) + if_rocm_is_configured([
+        "buffer_comparator_rocm.cc",
+    ]),
     hdrs = ["buffer_comparator.h"],
     deps = [
-        ":partition_assignment",
         ":stream_executor_util",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:stream_executor_headers",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_is_configured([
+        ":partition_assignment",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
+    ]),
 )
 
 tf_cc_test(

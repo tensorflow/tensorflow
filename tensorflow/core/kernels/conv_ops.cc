@@ -65,7 +65,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
 #include "tensorflow/stream_executor/cuda/ptxas_utils.h"
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
@@ -697,7 +697,11 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   // in NHWC data layout. In all other configurations it's more efficient to
   // run computation in NCHW data format.
   const bool compute_in_nhwc =
+#if GOOGLE_CUDA
       DataTypeToEnum<T>::value == DT_HALF && IsVoltaOrLater(*stream->parent());
+#else
+      false;
+#endif
 
   // We only do one directional conversion: NHWC->NCHW. We never convert in the
   // other direction. Grappler layout optimizer selects preferred layout and
@@ -955,8 +959,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 
     se::TfAllocatorAdapter tf_allocator_adapter(
         stream->parent()->platform(), ctx->device()->GetAllocator({}));
-    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                            se::cuda::PtxCompilationOptions());
+
+    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                      se::cuda::PtxCompilationOptions());
     se::DeviceMemory<T> output_tensor(
         WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
@@ -964,9 +969,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
-      se::cuda::RedzoneAllocator rz_scratch_allocator(
-          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
-          /*memory_limit=*/ConvolveScratchSize);
+      se::RedzoneAllocator rz_scratch_allocator(
+          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions());
       DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
       se::ScratchAllocator* allocator_used =
           !RedzoneCheckDisabled()

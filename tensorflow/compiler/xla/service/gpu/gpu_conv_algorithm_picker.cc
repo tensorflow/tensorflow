@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_blacklist.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/scratch_allocator.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -38,10 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-
-#if !TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
-#endif
+#include "tensorflow/stream_executor/redzone_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -51,6 +47,54 @@ using absl::optional;
 using se::DeviceMemoryBase;
 using se::dnn::AlgorithmDesc;
 using tensorflow::AutotuneResult;
+
+class ScratchAllocator : public se::ScratchAllocator {
+ public:
+  ScratchAllocator(int device_ordinal,
+                   se::DeviceMemoryAllocator* memory_allocator)
+      : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
+
+  int64 GetMemoryLimitInBytes() override {
+    return 1LL << 32;  // 4GB.  TODO(jlebar): Tune this?
+  }
+  int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
+
+  StatusOr<se::DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override;
+
+  template <typename T>
+  StatusOr<se::DeviceMemory<T>> Allocate(int64 num_elements) {
+    TF_ASSIGN_OR_RETURN(se::DeviceMemory<uint8> bytes,
+                        AllocateBytes(num_elements * sizeof(T)));
+    return se::DeviceMemory<T>(bytes);
+  }
+
+ private:
+  const int device_ordinal_;
+  se::DeviceMemoryAllocator* memory_allocator_;
+  std::vector<se::OwningDeviceMemory> allocated_buffers_;
+  int64 total_allocated_bytes_ = 0;
+};
+
+StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
+    int64 byte_size) {
+  CHECK_GE(byte_size, 0) << "byte_size must be positive.";
+  if (byte_size > GetMemoryLimitInBytes()) {
+    return se::port::Status(
+        se::port::error::RESOURCE_EXHAUSTED,
+        absl::StrFormat(
+            "Allocating %d bytes exceeds the memory limit of %d bytes.",
+            byte_size, GetMemoryLimitInBytes()));
+  }
+
+  TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory allocated_buffer,
+                      memory_allocator_->Allocate(device_ordinal_, byte_size,
+                                                  /*retry_on_failure=*/false));
+  total_allocated_bytes_ += byte_size;
+
+  se::DeviceMemoryBase buffer_addr = *allocated_buffer;
+  allocated_buffers_.push_back(std::move(allocated_buffer));
+  return se::DeviceMemory<uint8>(buffer_addr);
+}
 
 std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
                                          se::StreamExecutor* stream_exec) {
@@ -130,7 +174,6 @@ void PrintPlatformInfo(const se::Stream* stream) {
   }
 }
 
-#if !TENSORFLOW_USE_ROCM
 // Returns true if the redzones in `allocator`'s allocations are unmodified.
 //
 // If the redzones are modified, logs an error, sets the appropriate failure
@@ -141,15 +184,17 @@ void PrintPlatformInfo(const se::Stream* stream) {
 //
 // `name` is a user-friendly name for the set of redzones being checked, e.g.
 // "input/output" or "scratch".
-StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
+StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
                              se::Stream* stream, absl::string_view name,
                              const HloInstruction* instr,
                              AutotuneResult* result) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
-  using RedzoneCheckStatus = se::cuda::RedzoneAllocator::RedzoneCheckStatus;
+  using RedzoneCheckStatus = se::RedzoneAllocator::RedzoneCheckStatus;
+
   TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
                       allocator.CheckRedzones());
+
   if (redzone_check.ok()) {
     return true;
   }
@@ -174,7 +219,6 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
   PrintPlatformInfo(stream);
   return false;
 }
-#endif
 
 using ConvCacheKey =
     std::tuple<se::StreamExecutor*,
@@ -255,7 +299,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
 
   StatusOr<AutotuneResult> result_or(InternalError("Unknown platform."));
   if (stream_exec_->platform_kind() == se::PlatformKind::kROCm) {
-    result_or = PickBestAlgorithmNoCacheROCm(*instr, allocator, &stream);
+    result_or = PickBestAlgorithmNoCacheRocm(*instr, allocator, &stream);
   } else if (stream_exec_->platform_kind() == se::PlatformKind::kCuda) {
     result_or = PickBestAlgorithmNoCacheCuda(*instr, allocator, &stream);
   }
@@ -272,7 +316,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     const HloCustomCallInstruction& instr, se::DeviceMemoryAllocator* allocator,
     se::Stream* stream) {
 // Right now Redzone allocator is available in Cuda target only
-#if !TENSORFLOW_USE_ROCM
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuConvAlgorithmPicker::PickBestAlgorithmImpl for ", instr.ToString()));
 
@@ -290,8 +333,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   const HloModuleConfig& hlo_module_config = instr.GetModule()->config();
 
   // Allocate space for the input, filter, and output of the convolution.
-  se::cuda::RedzoneAllocator input_output_allocator(
-      &stream, allocator, PtxOptsFromConfig(hlo_module_config));
+  se::RedzoneAllocator input_output_allocator(
+      stream, allocator, GpuAsmOptsFromConfig(hlo_module_config));
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr.operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
@@ -302,7 +345,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   }
   TF_ASSIGN_OR_RETURN(auto result_buffer,
                       input_output_allocator.AllocateBytes(
-                          stream, ShapeUtil::ByteSizeOf(result_shape)));
+                          ShapeUtil::ByteSizeOf(result_shape)));
   initialize_buffer(result_buffer);
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
@@ -325,7 +368,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       debug_options.xla_gpu_crash_on_verification_failures();
 
   const auto canonical_hlo =
-      std::get<1>(AutotuneCacheKeyfromInstruction(instr, stream_exec_));
+      std::get<1>(AutotuneCacheKeyfromInstruction(&instr, stream_exec_));
 
   absl::Span<const AlgorithmDesc> blacklisted_algos =
       GetBlacklistedAlgorithms(GetComputeCapability(stream_exec_),
@@ -339,12 +382,12 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
     if (absl::c_linear_search(blacklisted_algos, alg)) {
       LOG(INFO) << "Omitted potentially buggy algorithm "
-                << AlgorithmToString(alg) << " for conv " << instr->ToString();
+                << AlgorithmToString(alg) << " for conv " << instr.ToString();
       continue;
     }
 
-    se::cuda::RedzoneAllocator scratch_allocator(
-        &stream, allocator, PtxOptsFromConfig(hlo_module_config));
+    se::RedzoneAllocator scratch_allocator(
+        stream, allocator, GpuAsmOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr.ToString();
@@ -444,8 +487,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       TF_ASSIGN_OR_RETURN(
           reference_result_buffer,
           input_output_allocator.AllocateBytes(result_buffer.size()));
-      stream.ThenMemcpy(&reference_result_buffer, result_buffer,
-                        result_buffer.size());
+      stream->ThenMemcpy(&reference_result_buffer, result_buffer,
+                         result_buffer.size());
       first_algorithm = alg;
     }
   }
@@ -528,7 +571,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   if (best_result != profile_results.end() && !has_failure(*best_result)) {
     return *best_result;
   }
-#endif
 
   return InternalError(
       "All algorithms tried for convolution %s failed.  Falling back to "
@@ -537,7 +579,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 }
 
 StatusOr<tensorflow::AutotuneResult>
-GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheROCm(
+GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     const HloCustomCallInstruction& instr, se::DeviceMemoryAllocator* allocator,
     se::Stream* stream) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
@@ -561,7 +603,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheROCm(
   for (const auto* operand : instr.operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator.AllocateBytes(
-                            stream, ShapeUtil::ByteSizeOf(operand->shape())));
+                            ShapeUtil::ByteSizeOf(operand->shape())));
     initialize_buffer(buffer);
     operand_buffers.push_back(buffer);
   }
@@ -569,7 +611,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheROCm(
   TF_ASSIGN_OR_RETURN(
       auto result_buffer,
       input_output_allocator.AllocateBytes(
-          stream, ShapeUtil::ByteSizeOf(instr.shape().tuple_shapes(0))));
+          ShapeUtil::ByteSizeOf(instr.shape().tuple_shapes(0))));
   initialize_buffer(result_buffer);
 
   ScratchAllocator scratch_allocator(device_ordinal, allocator);
@@ -577,10 +619,10 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheROCm(
   VLOG(3) << "Auto-tuning for " << instr.ToString();
   RunConvOptions options;
   options.profile_result = &profile_result;
-#if TENSORFLOW_USE_ROCM
-  // ROCm: Needs to set the first time caller flag
-  options.first_call_from_algorithm_picker = true;
-#endif
+
+  // ROCm: Set the overriding algorithm to empty to remind cudnn_conv_runner
+  // that the AlgorithmConfig in running convolution needs to be empty
+  options.algo_override = se::dnn::AlgorithmDesc();
 
   bool launch_ok =
       RunCudnnConv(&instr, absl::MakeSpan(operand_buffers), result_buffer,
@@ -635,11 +677,6 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
                       instr->backend_config<CudnnConvBackendConfig>());
   backend_config.set_algorithm(best_algo.conv().algorithm());
   backend_config.set_tensor_ops_enabled(best_algo.conv().tensor_ops_enabled());
-#if TENSORFLOW_USE_ROCM
-  // ROCm: Needs to set scratch size for ROCm stream executor make sure scratch
-  // space for convolution related calls are correctly allocated
-  backend_config.set_scratch_size(best_algo.scratch_bytes());
-#endif
 
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));

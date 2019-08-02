@@ -57,7 +57,7 @@ class GpuConvAlgorithmPicker : public HloModulePass {
       const HloCustomCallInstruction& instr,
       se::DeviceMemoryAllocator* allocator, se::Stream* stream);
 
-  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheROCm(
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheRocm(
       const HloCustomCallInstruction& instr,
       se::DeviceMemoryAllocator* allocator, se::Stream* stream);
 
