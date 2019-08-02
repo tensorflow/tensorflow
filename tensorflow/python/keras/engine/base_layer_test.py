@@ -1362,7 +1362,7 @@ class DTypeTest(keras_parameterized.TestCase):
     class IdentityLayerWithoutAutocast(IdentityLayer):
 
       def __init__(self, *args, **kwargs):
-        kwargs['experimental_autocast'] = False
+        kwargs['autocast'] = False
         super(IdentityLayerWithoutAutocast, self).__init__(*args, **kwargs)
 
     layer = IdentityLayerWithoutAutocast(dtype='float64')

@@ -150,6 +150,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:tf2",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",

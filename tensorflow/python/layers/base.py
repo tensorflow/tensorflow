@@ -206,8 +206,8 @@ class Layer(base_layer.Layer):
       # an "infer" policy to keep the old V1 behavior.
       dtype = policy.Policy('infer')
 
-    if 'experimental_autocast' not in kwargs:
-      kwargs['experimental_autocast'] = False
+    if 'autocast' not in kwargs:
+      kwargs['autocast'] = False
 
     super(Layer, self).__init__(trainable=trainable, name=name, dtype=dtype,
                                 **kwargs)
