@@ -86,8 +86,8 @@ FLAGS = None
 
 
 def main(_):
-  # We want to see all the logging messages for this tutorial.
-  tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
+  # Set the verbosity based on flags (default is INFO, so we see all messages)
+  tf.compat.v1.logging.set_verbosity(FLAGS.verbosity)
 
   # Start a new TensorFlow session.
   sess = tf.compat.v1.InteractiveSession()
@@ -453,6 +453,34 @@ if __name__ == '__main__':
       type=str,
       default='mfcc',
       help='Spectrogram processing mode. Can be "mfcc", "average", or "micro"')
+
+  # Function used to parse --verbosity argument
+  def verbosity_arg(value):
+    """Parses verbosity argument.
+
+    Args:
+      value: A member of tf.logging.
+    Raises:
+      ArgumentTypeError: Not an expected value.
+    """
+    value = value.upper()
+    if value == 'INFO':
+      return tf.compat.v1.logging.INFO
+    elif value == 'DEBUG':
+      return tf.compat.v1.logging.DEBUG
+    elif value == 'ERROR':
+      return tf.compat.v1.logging.ERROR
+    elif value == 'FATAL':
+      return tf.compat.v1.logging.FATAL
+    elif value == 'WARN':
+      return tf.compat.v1.logging.WARN
+    else:
+      raise argparse.ArgumentTypeError('Not an expected value')
+  parser.add_argument(
+      '--verbosity',
+      type=verbosity_arg,
+      default=tf.compat.v1.logging.INFO,
+      help='Log verbosity. Can be "INFO", "DEBUG", "ERROR", "FATAL", or "WARN"')
 
   FLAGS, unparsed = parser.parse_known_args()
   tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
