@@ -24,6 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class ToTFRecordOp : public AsyncOpKernel {
@@ -141,5 +142,6 @@ REGISTER_KERNEL_BUILDER(
     Name("ExperimentalDatasetToTFRecord").Device(DEVICE_CPU), ToTFRecordOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

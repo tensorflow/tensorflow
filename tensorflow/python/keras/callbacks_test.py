@@ -135,7 +135,7 @@ class CallbackCountsTest(keras_parameterized.TestCase):
         adam.AdamOptimizer(0.001),
         'binary_crossentropy',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     return model
 
   @parameterized.named_parameters(('with_numpy', _get_numpy()),
@@ -238,7 +238,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         optimizer='rmsprop',
         metrics=[keras.metrics.CategoricalAccuracy(name='my_acc')],
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     return model
 
   @keras_parameterized.run_with_all_model_types
@@ -1292,7 +1292,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         opt,
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     return model
 
   def test_TensorBoard_default_logdir(self):
@@ -1526,7 +1526,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         opt,
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     return model
 
   def fitModelAndAssertKerasModelWritten(self, model):

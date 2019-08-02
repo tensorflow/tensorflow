@@ -436,7 +436,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       self.assertEqual(num_to_fp32, 1)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/138749235')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_simple_loop(self):
     """Test graph with while loop."""
@@ -455,7 +455,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map, 'while/Relu')
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/138749235')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_loop_with_vars_intertwined(self):
     """Test graph with intertwined while loops."""
@@ -528,7 +528,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map, 'Relu_1')
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/138749235')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_recurrent_lstm(self):
     """Test graph with recurrent lstm."""
@@ -554,42 +554,42 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map, 'while/Tanh_1')
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('v1 loop test')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_1(self):
     self._run_simple_loop_test('W', 'C', 'C')
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('v1 loop test')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_2(self):
     self._run_simple_loop_test('C', 'C', 'W')
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('v1 loop test')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_3(self):
     self._run_simple_loop_test('W', 'G', 'W')
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('v1 loop test')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_4(self):
     self._run_simple_loop_test('W', 'gbg', 'W')
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/138749235')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_5(self):
     self._run_simple_loop_test('b', 'gWC', 'c')
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/138749235')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_6(self):
     self._run_simple_loop_test('b', 'CWCG', 'C')
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/138749235')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_7(self):
     self._run_simple_loop_test('C', 'GWCG', 'C')
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/138749235')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_8(self):
     self._run_simple_loop_test('C', 'CgbgWC', 'g')

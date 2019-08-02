@@ -63,7 +63,7 @@ enum class OperationType {
   SIGMOID,
   SIN,
   SLICE,
-  SOFT_MAX,
+  SOFTMAX,
   SPACE_TO_BATCH,
   SQRT,
   SQUARE,
@@ -239,7 +239,7 @@ struct PReLUAttributes {
       alpha;
 };
 
-struct SoftMaxAttributes {
+struct SoftmaxAttributes {
   Axis axis = Axis::UNKNOWN;
 };
 

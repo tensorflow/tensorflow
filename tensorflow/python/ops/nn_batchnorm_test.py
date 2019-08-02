@@ -364,6 +364,10 @@ class SufficientStatisticsTest(test.TestCase):
       if d in set(axes):
         count *= x.shape[d]
     if not keep_dims:
+      # Starting from numpy 1.17.0, squeeze no longer take None input with not
+      # None axis.
+      if not shift:
+        axis = None
       shift = np.squeeze(shift, axis=axis)
     return count, m_ss, v_ss, shift
 

@@ -54,6 +54,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -474,9 +475,14 @@ def standardize_input_data(data,
   Raises:
       ValueError: in case of improperly formatted user-provided data.
   """
+  try:
+    data_len = len(data)
+  except TypeError:
+    # For instance if data is `None` or a symbolic Tensor.
+    data_len = None
+
   if not names:
-    if (data is not None and hasattr(data, '__len__') and len(data) and
-        not isinstance(data, dict)):
+    if data_len and not isinstance(data, dict):
       raise ValueError(
           'Error when checking model ' + exception_prefix + ': '
           'expected no data, but got:', data)
@@ -1068,7 +1074,7 @@ def get_loss_function(loss):
     return loss
 
   # Deserialize loss configuration, if needed.
-  if isinstance(loss, collections.Mapping):
+  if isinstance(loss, collections_abc.Mapping):
     loss = losses.get(loss)
 
   # Custom callable class.
@@ -1124,6 +1130,24 @@ def validate_dataset_input(x, y, sample_weight, validation_split=None):
         '`validation_split` argument is not supported when '
         'input `x` is a dataset or a dataset iterator. '
         'Received: x=%s, validation_split=%f' % (x, validation_split))
+
+
+def validate_input_types(inp, orig_inp, allow_dict=True, field_name='inputs'):
+  """Helper function to validate either inputs or targets."""
+  if isinstance(inp, (list, tuple)):
+    if not all(isinstance(v, np.ndarray) or
+               tensor_util.is_tensor(v) for v in inp):
+      raise ValueError(
+          'Please provide as model inputs either a single array or a list of '
+          'arrays. You passed: {}={}'.format(field_name, str(orig_inp)))
+  elif isinstance(inp, dict):
+    if not allow_dict:
+      raise ValueError(
+          'You cannot pass a dictionary as model {}.'.format(field_name))
+  elif not isinstance(inp, np.ndarray) and not tensor_util.is_tensor(inp):
+    raise ValueError(
+        'Please provide as model inputs either a single array or a list of '
+        'arrays. You passed: {}={}'.format(field_name, orig_inp))
 
 
 def check_generator_arguments(y=None, sample_weight=None,
@@ -1285,7 +1309,7 @@ def prepare_loss_functions(loss, output_names):
       ValueError: If loss is a dict with keys not in model output names,
           or if loss is a list with len not equal to model outputs.
   """
-  if isinstance(loss, collections.Mapping):
+  if isinstance(loss, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys('loss', loss, output_names)
     loss_functions = []
     for name in output_names:
@@ -1297,7 +1321,7 @@ def prepare_loss_functions(loss, output_names):
       loss_functions.append(get_loss_function(loss.get(name, None)))
   elif isinstance(loss, six.string_types):
     loss_functions = [get_loss_function(loss) for _ in output_names]
-  elif isinstance(loss, collections.Sequence):
+  elif isinstance(loss, collections_abc.Sequence):
     if len(loss) != len(output_names):
       raise ValueError('When passing a list as loss, it should have one entry '
                        'per model outputs. The model has {} outputs, but you '
@@ -1578,8 +1602,9 @@ def infer_steps_for_dataset(dataset, steps, epochs=1, steps_name='steps'):
 
   Returns:
     Integer or `None`. Inferred number of steps to loop through the dataset.
-    `None` is returned if the size of the dataset is unknown and `steps` was
-    not specified.
+    `None` is returned if 1) the size of the dataset is unknown and `steps` was
+    not specified, or 2) this is multi-worker training and auto sharding is
+    enabled.
 
   Raises:
     ValueError: In case of invalid argument values.
@@ -1800,9 +1825,9 @@ def should_run_validation(validation_freq, epoch):
       raise ValueError('`validation_freq` can not be less than 1.')
     return one_indexed_epoch % validation_freq == 0
 
-  if not isinstance(validation_freq, collections.Container):
+  if not isinstance(validation_freq, collections_abc.Container):
     raise ValueError('`validation_freq` must be an Integer or '
-                     '`collections.Container` (e.g. list, tuple, etc.)')
+                     '`collections_abc.Container` (e.g. list, tuple, etc.)')
   return one_indexed_epoch in validation_freq
 
 

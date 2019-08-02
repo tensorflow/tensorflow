@@ -21,22 +21,22 @@ from os import path
 import shutil
 import tempfile
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class FileCacheTest(test_base.DatasetTestBase):
+class FileCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def setUp(self):
     self.tmp_dir = tempfile.mkdtemp()
@@ -46,6 +46,7 @@ class FileCacheTest(test_base.DatasetTestBase):
     if self.tmp_dir:
       shutil.rmtree(self.tmp_dir, ignore_errors=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCacheDatasetPassthrough(self):
     components = (np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8]),
                   np.array([9.0, 10.0, 11.0, 12.0]))
@@ -98,6 +99,7 @@ class FileCacheTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testConcurrentWriters(self):
     components = (np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8]),
                   np.array([9.0, 10.0, 11.0, 12.0]))
@@ -119,6 +121,7 @@ class FileCacheTest(test_base.DatasetTestBase):
 
     self.evaluate(get_next1())  # this should continue to succeed
 
+  @combinations.generate(test_base.default_test_combinations())
   def testConcurrentReaders(self):
     components = (np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8]),
                   np.array([9.0, 10.0, 11.0, 12.0]))
@@ -165,12 +168,14 @@ class FileCacheTest(test_base.DatasetTestBase):
     self.assertAllEqual(elements, elements_itr1)
     self.assertAllEqual(elements, elements_itr2)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testReadingPastEndOfSequence(self):
     dataset = dataset_ops.Dataset.range(10).cache(self.cache_prefix)
     dataset = dataset.map(lambda a: a).batch(4).repeat(2)
     expected_output = [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9]] * 2
     self.assertDatasetProduces(dataset, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCleaningUpCacheFiles(self):
 
     def do_test(i):
@@ -190,9 +195,9 @@ class FileCacheTest(test_base.DatasetTestBase):
       do_test(i)
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class MemoryCacheTest(test_base.DatasetTestBase):
+class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCacheDatasetPassthrough(self):
     with ops.device("cpu:0"):
       repeat_count = variables.Variable(constant_op.constant(10, dtypes.int64))
@@ -227,6 +232,7 @@ class MemoryCacheTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(cached_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testEmptyCacheReading(self):
     components = (np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8]),
                   np.array([9.0, 10.0, 11.0, 12.0]))
@@ -239,6 +245,7 @@ class MemoryCacheTest(test_base.DatasetTestBase):
     # caching, respectively.
     self.assertDatasetProduces(cache_dataset, expected_output=[])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testConcurrentReaders(self):
 
     dataset = dataset_ops.Dataset.range(5).cache()
@@ -267,6 +274,7 @@ class MemoryCacheTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next1())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCacheTakeRepeat(self):
     dataset = dataset_ops.Dataset.range(10).cache().take(5).repeat(2)
 

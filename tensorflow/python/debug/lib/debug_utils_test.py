@@ -59,11 +59,13 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
     cls._graph = cls._sess.graph
 
     # These are all the expected nodes in the graph:
-    #   Two variables (a, b), each with four nodes (Variable, init, Assign,
-    #       read).
-    #   One constant (c).
-    #   One add operation and one matmul operation.
-    cls._expected_num_nodes = 4 * 2 + 1 + 1 + 1
+    #   - Two variables (a, b), each with four nodes (Variable, init, Assign,
+    #     read).
+    #   - One constant (c).
+    #   - One add operation and one matmul operation.
+    #   - One wildcard node name ("*") that covers nodes created internally
+    #     by TensorFlow itself (e.g., Grappler).
+    cls._expected_num_nodes = 4 * 2 + 1 + 1 + 1 + 1
 
   def setUp(self):
     self._run_options = config_pb2.RunOptions()
@@ -88,9 +90,14 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
     for watch in watch_opts:
       node_names.append(watch.node_name)
 
-      self.assertEqual(expected_output_slot, watch.output_slot)
-      self.assertEqual(expected_debug_ops, watch.debug_ops)
-      self.assertEqual(expected_debug_urls, watch.debug_urls)
+      if watch.node_name == "*":
+        self.assertEqual(-1, watch.output_slot)
+        self.assertEqual(expected_debug_ops, watch.debug_ops)
+        self.assertEqual(expected_debug_urls, watch.debug_urls)
+      else:
+        self.assertEqual(expected_output_slot, watch.output_slot)
+        self.assertEqual(expected_debug_ops, watch.debug_ops)
+        self.assertEqual(expected_debug_urls, watch.debug_urls)
 
     return node_names
 
@@ -203,19 +210,22 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
                                       ["file:///tmp/tfdbg_1"])
 
     # Verify the node names.
-    self.assertTrue("a1_init" in node_names)
-    self.assertTrue("a1" in node_names)
-    self.assertTrue("a1/Assign" in node_names)
-    self.assertTrue("a1/read" in node_names)
+    self.assertIn("a1_init", node_names)
+    self.assertIn("a1", node_names)
+    self.assertIn("a1/Assign", node_names)
+    self.assertIn("a1/read", node_names)
 
-    self.assertTrue("b_init" in node_names)
-    self.assertTrue("b" in node_names)
-    self.assertTrue("b/Assign" in node_names)
-    self.assertTrue("b/read" in node_names)
+    self.assertIn("b_init", node_names)
+    self.assertIn("b", node_names)
+    self.assertIn("b/Assign", node_names)
+    self.assertIn("b/read", node_names)
 
-    self.assertTrue("c" in node_names)
-    self.assertTrue("p1" in node_names)
-    self.assertTrue("s" in node_names)
+    self.assertIn("c", node_names)
+    self.assertIn("p1", node_names)
+    self.assertIn("s", node_names)
+
+    # Assert that the wildcard node name has been created.
+    self.assertIn("*", node_names)
 
   @test_util.run_v1_only("b/120545219")
   def testWatchGraph_nodeNameWhitelist(self):

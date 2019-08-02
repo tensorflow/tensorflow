@@ -2431,8 +2431,8 @@ def tf_pybind_extension(
     )
     native.cc_binary(
         name = so_file,
-        srcs = srcs + hdrs + tf_binary_additional_srcs() + tf_binary_pybind_deps(),
-        data = data + tf_binary_pybind_deps(),
+        srcs = srcs + hdrs,
+        data = data,
         copts = copts,
         nocopts = nocopts,
         linkopts = linkopts + _rpath_linkopts(name) + select({
@@ -2523,8 +2523,9 @@ def if_mlir(if_true, if_false = []):
         "//tensorflow:with_mlir_support": if_true,
     })
 
+# TODO(b/138724071): Remove when build is stable.
 def if_mlir_tflite(if_true, if_false = []):
-    return if_mlir(if_true, if_false)
+    return if_true  # Internally we always build with MLIR.
 
 def tfcompile_extra_flags():
     return ""

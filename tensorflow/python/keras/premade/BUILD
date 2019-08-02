@@ -13,6 +13,7 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 py_library(
     name = "premade",
     srcs = [
+        "__init__.py",
         "linear.py",
         "wide_deep.py",
     ],

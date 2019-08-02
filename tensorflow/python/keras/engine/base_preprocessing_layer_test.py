@@ -160,7 +160,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     layer.set_total(15)
 
@@ -177,7 +177,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     self.assertAllEqual([[16], [17], [18]], model.predict([1., 2., 3.]))
 
@@ -190,7 +190,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     layer.adapt(input_dataset)
 
@@ -211,7 +211,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     self.assertAllEqual([[16], [17], [18]], model.predict([1., 2., 3.]))
 
@@ -223,7 +223,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     combiner = layer._combiner
     updates = combiner.extract(combiner.compute(input_dataset))
@@ -243,7 +243,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     self.assertAllEqual([[16], [17], [18]], model.predict([1., 2., 3.]))
 
@@ -257,7 +257,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     layer.adapt(input_dataset)
 
@@ -275,7 +275,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     self.assertAllEqual([[16], [17], [18]], model.predict([1., 2., 3.]))
 
@@ -293,7 +293,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
-    model._run_distributed = testing_utils.should_run_distributed()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     combiner = layer._combiner
     updates = combiner.extract(combiner.compute(input_dataset))
@@ -312,7 +312,8 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
       output = layer(input_data)
       model = keras.Model(input_data, output)
       model._run_eagerly = testing_utils.should_run_eagerly()
-      model._run_distributed = testing_utils.should_run_distributed()
+      model._experimental_run_tf_function = (
+          testing_utils.should_run_tf_function())
       return (model, layer)
 
     input_dataset = np.array([1, 2, 3, 4, 5])
@@ -338,7 +339,8 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
       output = layer(input_data)
       model = keras.Model(input_data, output)
       model._run_eagerly = testing_utils.should_run_eagerly()
-      model._run_distributed = testing_utils.should_run_distributed()
+      model._experimental_run_tf_function = (
+          testing_utils.should_run_tf_function())
       return (model, layer)
 
     input_dataset = np.array([1, 2, 3, 4, 5])

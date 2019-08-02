@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.util import object_identity
 
 
 def is_differentiable(op):
@@ -390,7 +391,7 @@ def map_subgraph(init_tensor, sources, disallowed_placeholders, visited_ops,
       sources and add_sources is False.
   """
   ops_to_visit = [_as_operation(init_tensor)]
-  extra_sources = set()
+  extra_sources = object_identity.ObjectIdentitySet()
   while ops_to_visit:
     op = ops_to_visit.pop()
     if op in visited_ops:

@@ -1,3 +1,4 @@
+llvm/llvm/projects/google_mlir/WORKSPACE
 tensorflow/contrib/mpi/BUILD
 tensorflow/stream_executor/build_defs.bzl
 tensorflow/python/autograph/core/config.py
@@ -189,11 +190,6 @@ tensorflow/third_party/ngraph/nlohmann_json.BUILD
 tensorflow/third_party/clang_toolchain/download_clang.bzl
 tensorflow/third_party/clang_toolchain/BUILD
 tensorflow/third_party/clang_toolchain/cc_configure_clang.bzl
-tensorflow/third_party/mlir/BUILD
-tensorflow/third_party/mlir/mlir_configure.bzl
-tensorflow/third_party/mlir/bindings/python/BUILD
-tensorflow/third_party/mlir/test/BUILD
-tensorflow/third_party/mlir/tblgen.bzl
 tensorflow/third_party/gast.BUILD
 tensorflow/third_party/llvm/BUILD
 tensorflow/third_party/llvm/expand_cmake_vars.py

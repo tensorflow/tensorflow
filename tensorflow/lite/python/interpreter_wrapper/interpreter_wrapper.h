@@ -26,8 +26,7 @@ limitations under the License.
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
-struct _TfLiteDelegate;
-typedef struct _TfLiteDelegate TfLiteDelegate;
+struct TfLiteDelegate;
 
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tflite {

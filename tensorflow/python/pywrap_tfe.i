@@ -166,6 +166,7 @@ limitations under the License.
 %rename("%s") TFE_CancellationManagerIsCancelled;
 %rename("%s") TFE_CancellationManagerStartCancel;
 %rename("%s") TFE_DeleteCancellationManager;
+%rename("%s") TF_ImportGraphDefOptionsSetValidateColocationConstraints;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"

@@ -346,8 +346,8 @@ Status EagerServiceImpl::SendTensor(const SendTensorRequest* request,
     Device* device;
     TF_RETURN_IF_ERROR(
         ctx->FindDeviceFromName(request->device_name().c_str(), &device));
-    TF_RETURN_IF_ERROR(
-        EagerCopyToDevice(tensor_handle, ctx, device, false, &copied_handle));
+    TF_RETURN_IF_ERROR(EagerCopyToDevice(tensor_handle, ctx, ctx->Executor(),
+                                         device, false, &copied_handle));
     tensors.push_back(copied_handle);
     tensor_handle->Unref();
   }

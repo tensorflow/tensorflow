@@ -84,9 +84,11 @@ class TestIOUtils(keras_parameterized.TestCase):
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(64, input_shape=(10,), activation='relu'))
     model.add(keras.layers.Dense(1, activation='sigmoid'))
-    model.compile(loss='binary_crossentropy', optimizer='sgd',
-                  run_eagerly=testing_utils.should_run_eagerly(),
-                  run_distributed=testing_utils.should_run_distributed())
+    model.compile(
+        loss='binary_crossentropy',
+        optimizer='sgd',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     # Note: you have to use shuffle='batch' or False with HDF5Matrix
     model.fit(x_train, y_train, batch_size=32, shuffle='batch', verbose=False)

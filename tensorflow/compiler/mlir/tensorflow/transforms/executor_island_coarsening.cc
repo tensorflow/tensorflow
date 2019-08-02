@@ -32,9 +32,9 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Transforms/RegionUtils.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
 namespace TFExecutor {
@@ -43,7 +43,7 @@ namespace {
 
 // IslandType is an enum representing if an island is the island (parent)
 // merging another island or is the island (child) being being merged.
-enum class IslandType : bool { kParentIsland, kChildIsland };
+enum IslandType { kParentIsland, kChildIsland };
 
 // Output is a helper struct holding a result index and island type (parent or
 // child).
@@ -72,26 +72,24 @@ struct ExecutorIslandCoarsening
 // the op found is not an island, an empty optional is returned.
 llvm::Optional<tf_executor::IslandOp> GetOperandCandidateToMergeWith(
     tf_executor::IslandOp* island) {
+  Operation* graph_op = island->getParentOp();
   Operation* candidate = nullptr;
 
   // Check island control operands.
-  for (Value* island_operand : island->controlInputs()) {
-    Operation* island_operand_op = island_operand->getDefiningOp();
-    if (!candidate || candidate->isBeforeInBlock(island_operand_op))
-      candidate = island_operand_op;
+  for (Value* input : island->controlInputs()) {
+    Operation* def = input->getDefiningOp();
+    DCHECK_EQ(def->getParentOp(), graph_op);
+    if (!candidate || candidate->isBeforeInBlock(def)) candidate = def;
   }
 
   // Check island data operands.
-  llvm::SetVector<Value*> inputs;
-  mlir::getUsedValuesDefinedAbove(island->body(), island->body(), inputs);
-  for (Value* input : inputs) {
-    Operation* input_op_def = input->getDefiningOp();
-    // Input may be a function arg.
-    if (!input_op_def) continue;
-
-    if (!candidate || candidate->isBeforeInBlock(input_op_def))
-      candidate = input_op_def;
-  }
+  island->walk([graph_op, &candidate](Operation* op) {
+    for (Value* input : op->getOperands()) {
+      Operation* def = input->getDefiningOp();
+      if (!def || def->getParentOp() != graph_op) continue;
+      if (!candidate || candidate->isBeforeInBlock(def)) candidate = def;
+    }
+  });
 
   if (!candidate || !llvm::isa<tf_executor::IslandOp>(candidate))
     return llvm::None;
@@ -109,16 +107,19 @@ llvm::Optional<tf_executor::IslandOp> GetResultCandidateToMergeWith(
   Operation* graph_op = island->getParentOp();
   Operation* candidate = nullptr;
 
-  // Check island control and data results.
-  for (Value* result : island->getResults()) {
-    for (Operation* user : result->getUsers()) {
-      Operation* user_op = user->getParentOp() == graph_op
-                               ? user
-                               : user->getParentOfType<tf_executor::IslandOp>();
-      if (!user_op) continue;
+  // Check island control results.
+  for (Operation* user : island->control()->getUsers()) {
+    DCHECK_EQ(user->getParentOp(), graph_op);
+    if (!candidate || candidate->isBeforeInBlock(user)) candidate = user;
+  }
 
-      if (!candidate || user_op->isBeforeInBlock(candidate))
-        candidate = user_op;
+  // Check island data results.
+  Block& graph_block = llvm::cast<tf_executor::GraphOp>(graph_op).GetBody();
+  for (Value* result : island->outputs()) {
+    for (Operation* user : result->getUsers()) {
+      Operation* def = graph_block.findAncestorInstInBlock(*user);
+      DCHECK_NE(def, nullptr);
+      if (!candidate || def->isBeforeInBlock(candidate)) candidate = def;
     }
   }
 
@@ -142,14 +143,16 @@ llvm::SmallSetVector<Value*, 8> GetNewIslandOperands(
 
 // Collects the results for the new island by going through each data output of
 // the islands being merged. Unused results outside of the merged island to be
-// formed are pruned. Results of the parent island that are consumed by the
-// child island are replaced by the respecitve inner ops output from the parent
+// formed are pruned. If the child island inner ops consume the parent island
+// control output, the child island inner ops will have that respective control
+// input pruned. Results of the parent island that are consumed by the child
+// island are replaced by the respective inner ops output from the parent
 // island.
 llvm::SmallVector<Output, 8> GetNewIslandResultsAndForwardOutputs(
     mlir::MLIRContext* context, tf_executor::IslandOp* parent,
     tf_executor::IslandOp* child, llvm::SmallVector<Type, 8>* result_types) {
   llvm::SmallVector<Output, 8> results;
-  Operation* child_op = child->getOperation();
+  Block& child_body = child->GetBody();
   int result_index = 0;
 
   Operation& last_op = parent->GetBody().back();
@@ -158,8 +161,7 @@ llvm::SmallVector<Output, 8> GetNewIslandResultsAndForwardOutputs(
     bool output_captured = false;
     Value* yield_input = yield_op.getOperand(result_index);
     for (auto& use : llvm::make_early_inc_range(output->getUses())) {
-      if (use.getOwner()->getParentOfType<tf_executor::IslandOp>() ==
-          child_op) {
+      if (child_body.findAncestorInstInBlock(*use.getOwner())) {
         // Forward output from inner op.
         use.set(yield_input);
       } else if (!output_captured) {
@@ -333,6 +335,7 @@ void ExecutorIslandCoarsening::runOnFunction() {
       }
     } while (updated);
   });
+  // TODO(lyandy): Add canonicalization for dedupping control inputs.
 }
 
 }  // namespace

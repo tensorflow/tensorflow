@@ -22,6 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 
 /* static */ constexpr const char* const AssertNextDatasetOp::kInputDataset;
 /* static */ constexpr const char* const AssertNextDatasetOp::kDatasetType;
@@ -160,5 +161,6 @@ REGISTER_KERNEL_BUILDER(
     AssertNextDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

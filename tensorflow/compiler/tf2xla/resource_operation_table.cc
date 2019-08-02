@@ -57,6 +57,7 @@ CreateResourceOpInfoMap() {
   add("ResourceApplyAdaMax"                  , kReadWrite, kVariable);
   add("ResourceApplyAdadelta"                , kReadWrite, kVariable);
   add("ResourceApplyAdagrad"                 , kReadWrite, kVariable);
+  add("ResourceApplyAdagradV2"               , kReadWrite, kVariable),
   add("ResourceApplyAdagradDA"               , kReadWrite, kVariable);
   add("ResourceApplyAdam"                    , kReadWrite, kVariable);
   add("ResourceApplyAddSign"                 , kReadWrite, kVariable);

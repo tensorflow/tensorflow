@@ -23,6 +23,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -43,6 +44,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import while_v2_indexed_slices_rewriter
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 
 # pylint: disable=protected-access
 
@@ -202,8 +204,10 @@ def while_loop(cond,
       num_cond_captures = len(cond_graph.external_captures)
       assert (cond_graph.external_captures ==
               body_graph.external_captures[:num_cond_captures])
+      cond_graph_captures = object_identity.ObjectIdentitySet(
+          cond_graph.external_captures)
       for body_capture in body_graph.external_captures[num_cond_captures:]:
-        assert body_capture not in cond_graph.captures
+        assert body_capture not in cond_graph_captures
         cond_graph.capture(body_capture)
 
     # Make sure that the shapes of the loop outputs are compatible with the
@@ -233,7 +237,23 @@ def while_loop(cond,
                                    first_loop_var_index + num_flattened_outputs)
       output_shapes[orig_loop_vars_range] = nest.flatten(
           shape_invariants, expand_composites=True)[orig_loop_vars_range]
-      outputs = gen_functional_ops._while(
+
+      cond_stateful_ops = [
+          op for op in cond_graph.get_operations() if op._is_stateful
+      ]
+      body_stateful_ops = [
+          op for op in body_graph.get_operations() if op._is_stateful
+      ]
+      # TODO(yanhuasun): Remove this after Aug 23, 2019. This is required to
+      # abide by 3-week forward compat window of new TF python op generating
+      # code with stale runtime binaries.
+      if (cond_stateful_ops or body_stateful_ops or
+          not compat.forward_compatible(2019, 8, 23)):
+        op_fn = gen_functional_ops._while
+      else:
+        op_fn = gen_functional_ops.stateless_while
+
+      outputs = op_fn(
           flattened_loop_vars,
           util.create_new_tf_function(cond_graph),
           util.create_new_tf_function(body_graph),
@@ -267,6 +287,7 @@ def while_loop(cond,
     return outputs
 
 
+@ops.RegisterGradient("StatelessWhile")
 @ops.RegisterGradient("While")
 def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   """The gradient of a While op produced by while_loop."""
@@ -476,8 +497,8 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
   # the output of `_is_loop_invariant`. Also we would never attempt to capture
   # those accumulators so `_is_loop_invariant` should never receive those new
   # tensors as args.
-  body_graph_inputs = frozenset(body_graph.inputs)
-  body_graph_outputs = frozenset(body_graph.outputs)
+  body_graph_inputs = object_identity.ObjectIdentitySet(body_graph.inputs)
+  body_graph_outputs = object_identity.ObjectIdentitySet(body_graph.outputs)
 
   args = [counter, maximum_iterations, total_iters] + list(grads)
   # Note: The returned function does not have `args` in the list of
@@ -497,9 +518,10 @@ def _create_grad_func(ys, xs, grads, cond_graph, body_graph, name, while_op,
   #    `popped_tensor_lists` by `_WhileBodyGradFuncGraph`.
   # 2. Resources, which are output as is.
   # 3. Forward graph loop invariants, which are output as is.
-  for external_capture, internal_capture in grad_func_graph.captures.items():
-    if internal_capture in grad_func_graph.popped_tensor_lists:
-      new_output = grad_func_graph.popped_tensor_lists[internal_capture]
+  for external_capture, internal_capture in grad_func_graph.captures:
+    if ops.tensor_id(internal_capture) in grad_func_graph.popped_tensor_lists:
+      new_output = grad_func_graph.popped_tensor_lists[ops.tensor_id(
+          internal_capture)]
     elif (internal_capture.dtype == dtypes.resource or _is_loop_invariant(
         external_capture, body_graph_inputs, body_graph_outputs)):
       new_output = internal_capture
@@ -582,7 +604,11 @@ def _resolve_grad_captures(body_graph, body_grad_graph, while_op):
     # regular non-captured inputs).
     if t.graph == body_graph:
       # Captured accumulator or loop invariant.
-      t = while_op.outputs[t.graph.outputs.index(t)]
+      for i, output in enumerate(t.graph.outputs):
+        if output is t:
+          t = while_op.outputs[i]
+          break
+
       # Note: We rely on the capturing logic of the gradient While op graph to
       # correctly capture the tensors in `body_graph.outer_graph`. Both cond_v2
       # and while_v2 handle this while building their gradient functions.
@@ -666,8 +692,9 @@ def _get_accumulator(tensor):
 
   def get_func_graph_output(t):
     """Returns t or Identity(t) whichever exists in graph outputs else None."""
-    if t in tensor.graph.outputs:
-      return t
+    for output in tensor.graph.outputs:
+      if output is t:
+        return t
     # tf.defun adds an Identity for each output, check whether that is the case.
     identity_op = t.consumers()[0]
     if (identity_op.type == "Identity" and
@@ -678,8 +705,14 @@ def _get_accumulator(tensor):
   for consumer in tensor.consumers():
     # Find the consumer that is a TensorListPushBack node whose TensorList input
     # is in the list of function inputs.
-    if (consumer.type != "TensorListPushBack" or
-        consumer.inputs[0] not in tensor.graph.inputs):
+    if consumer.type != "TensorListPushBack":
+      continue
+
+    accum_input_idx = -1
+    for accum_input_idx, inp in enumerate(tensor.graph.inputs):
+      if inp is consumer.inputs[0]:
+        break
+    else:
       continue
 
     output = get_func_graph_output(consumer.outputs[0])
@@ -688,10 +721,12 @@ def _get_accumulator(tensor):
       # outputs.
       continue
 
-    accum_input_idx = tensor.graph.inputs.index(consumer.inputs[0])
-    accum_output_idx = tensor.graph.outputs.index(output)
-    if accum_input_idx == accum_output_idx:
-      return output
+    for accum_output_idx, out in enumerate(tensor.graph.outputs):
+      if out is output:
+        if accum_input_idx == accum_output_idx:
+          return output
+        break
+
   return None
 
 
@@ -798,7 +833,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       # the input of the Identity node instead.
       tensor = tensor.op.inputs[0]
 
-    captured_tensor = self._indirect_captures.get(tensor)
+    captured_tensor = self._indirect_captures.get(ops.tensor_id(tensor))
     if captured_tensor is not None:
       return captured_tensor
 
@@ -865,8 +900,9 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     new_tensor_list, captured_tensor = list_ops.tensor_list_pop_back(
         captured_accumulator, element_dtype=tensor.dtype)
 
-    self._indirect_captures[tensor] = captured_tensor
-    self.popped_tensor_lists[captured_accumulator] = new_tensor_list
+    self._indirect_captures[ops.tensor_id(tensor)] = captured_tensor
+    self.popped_tensor_lists[ops.tensor_id(
+        captured_accumulator)] = new_tensor_list
     return captured_tensor
 
   def _resource_capture_helper(self, tensor):
@@ -895,13 +931,12 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     assert input_placeholder.dtype == dtypes.resource
     assert tensor_in_outer_graph.dtype == dtypes.resource
     # This must be a loop invariant.
-    assert input_placeholder == self._forward_graph.outputs[index], (
-        "Resource tensors must be loop invariants %s." %
-        tensor_in_outer_graph)
+    assert input_placeholder is self._forward_graph.outputs[index], (
+        "Resource tensors must be loop invariants %s." % tensor_in_outer_graph)
 
-    self._indirect_captures[tensor] = self.capture(
+    self._indirect_captures[ops.tensor_id(tensor)] = self.capture(
         tensor_in_outer_graph, whitelisted=True)
-    return self._indirect_captures[tensor]
+    return self._indirect_captures[ops.tensor_id(tensor)]
 
 
 def _check_shapes_compat(output_tensors, shape_invariants, input_tensors):

@@ -495,6 +495,11 @@ class DistributedDataset(_IterableInput):
         else:
           raise
 
+    # TODO(b/138745411): Remove once stateful transformations are supported.
+    options = dataset_ops.Options()
+    options.experimental_distribute._make_stateless = True  # pylint: disable=protected-access
+    dataset = dataset.with_options(options)
+
     self._cloned_datasets = []
     if input_context:
       # Between-graph where we rely on the input_context for sharding
@@ -963,6 +968,10 @@ def _create_iterators_per_worker_with_input_context(input_contexts,
     worker = input_workers.worker_devices[i]
     with ops.device(worker):
       dataset = dataset_fn(ctx)
+      # TODO(b/138745411): Remove once stateful transformations are supported.
+      options = dataset_ops.Options()
+      options.experimental_distribute._make_stateless = True  # pylint: disable=protected-access
+      dataset = dataset.with_options(options)
       devices = input_workers.compute_devices_for_worker(i)
       iterator = _SingleWorkerDatasetIterator(dataset, worker, devices)
       iterators.append(iterator)

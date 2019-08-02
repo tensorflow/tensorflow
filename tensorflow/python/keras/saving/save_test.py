@@ -24,7 +24,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
-from tensorflow.python.feature_column import feature_column_v2
+from tensorflow.python.feature_column import feature_column_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.saving import model_config
@@ -83,16 +83,18 @@ class TestSaveModel(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_saving_with_dense_features(self):
-    cols = [feature_column_v2.numeric_column('a'),
-            feature_column_v2.indicator_column(
-                feature_column_v2.categorical_column_with_vocabulary_list(
-                    'b', ['one', 'two']))]
+    cols = [
+        feature_column_lib.numeric_column('a'),
+        feature_column_lib.indicator_column(
+            feature_column_lib.categorical_column_with_vocabulary_list(
+                'b', ['one', 'two']))
+    ]
     input_layers = {
         'a': keras.layers.Input(shape=(1,), name='a'),
         'b': keras.layers.Input(shape=(1,), name='b', dtype='string')
     }
 
-    fc_layer = feature_column_v2.DenseFeatures(cols)(input_layers)
+    fc_layer = feature_column_lib.DenseFeatures(cols)(input_layers)
     output = keras.layers.Dense(10)(fc_layer)
 
     model = keras.models.Model(input_layers, output)

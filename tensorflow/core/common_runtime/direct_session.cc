@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/run_handler.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -353,7 +354,10 @@ DirectSession::DirectSession(const SessionOptions& options,
     } else {
       printf("Device mapping:\n%s", mapping_str.c_str());
     }
-    LOG(INFO) << "Device mapping:\n" << mapping_str;
+    string msg = strings::StrCat("Device mapping:\n", mapping_str);
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
   }
   for (auto d : device_mgr_->ListDevices()) {
     devices_.push_back(d);

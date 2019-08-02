@@ -18,6 +18,9 @@ include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 
+def HasNoUse: Constraint<
+    CPred<"$0->use_begin() == $0->use_end()">, "has no use">;
+
 // Converts tf.FusedBatchNorm into a sequence of more primitive arithmetic
 // operations. Specifically, performs the following calculation:
 //
@@ -29,9 +32,9 @@ def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 // is then to compute
 //   (x * multiplier) + (offset - mean * multiplier).
 def : Pattern<
-    (TF_FusedBatchNormOp $x, $scale, $offset, $mean, $variance,
-                         F32Attr:$epsilon, $data_format,
-                         FalseBoolAttr:$is_training),
+    (TF_FusedBatchNormOp:$root
+        $x, $scale, $offset, $mean, $variance,
+        F32Attr:$epsilon, $data_format, FalseBoolAttr:$is_training),
     [(TF_AddOp
         (TF_MulOp
             $x,
@@ -41,11 +44,14 @@ def : Pattern<
                     (TF_AddOp $variance,
                               (TF_ConstOp $epsilon))))),
         (TF_SubOp $offset, (TF_MulOp $mean, $multiplier))),
-     /*batch_mean=*/(verifyUnusedValue),
-     /*batch_variance=*/(verifyUnusedValue),
-     /*reserve_space_1=*/(verifyUnusedValue),
-     /*reserve_space_2=*/(verifyUnusedValue)
-    ]>;
+     // We already guaranteed that the last four results has no use so it does
+     // not matter what value we provide here for replacement.
+     /*batch_mean=*/(replaceWithValue $x),
+     /*batch_variance=*/(replaceWithValue $x),
+     /*reserve_space_1=*/(replaceWithValue $x),
+     /*reserve_space_2=*/(replaceWithValue $x)],
+    [(HasNoUse $root__1), (HasNoUse $root__2),
+     (HasNoUse $root__3), (HasNoUse $root__4)]>;
 
 // TODO(jpienaar): Move to opbase something more general.
 def TFi32ElementsAttr : Attr<CPred<"$_self.isa<DenseIntElementsAttr>">,

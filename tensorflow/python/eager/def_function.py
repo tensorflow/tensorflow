@@ -33,6 +33,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 
@@ -269,14 +270,19 @@ class Function(object):
         conversion options when autograph is set to True.
       experimental_relax_shapes: When true, argument shapes may be relaxed to
         avoid unecessary retracing.
-      experimental_compile: If false, the function is interpreted by the
-        standard TensorFlow executor, which dispatches op kernels one by one as
-        they become executable. If True, the function is compiled by XLA. XLA
-        would fuse all the ops and emit more efficient code to run for some
-        devices (e.g. TPU, XLA_GPU) and some use cases (e.g. dense tensor
-        computation). It requires that the whole function is compilable by XLA.
-        If None (default), compile the function with XLA when running on TPU and
-        use the standard TensorFlow executor when running on other devices.
+      experimental_compile: If false, execute the function in a regular way. The
+        function is optimized by some graph rewrite passes (some ops might be
+        clustered into a single op) and interpreted by the standard TensorFlow
+        executor, which dispatches op kernels one by one as they become
+        executable. Set it to false when directly running a multi-device
+        function on TPUs (e.g. two TPU cores, one TPU core and its
+        host CPU). If True, the function is compiled directly by XLA. XLA would
+        fuse all the ops and emit more efficient code to run for some devices
+        (e.g. TPU, XLA_GPU) and some use cases (e.g. dense tensor computation).
+        It requires that the whole function is compilable by XLA. If None
+        (default), compile the function with XLA when running on TPU and go
+        through the regular function execution path when running on other
+        devices.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -527,7 +533,7 @@ class Function(object):
     # Note: using defun here avoids an infinite recursion.
     @function_lib.defun
     def initialize_variables():
-      op_map = {}
+      op_map = object_identity.ObjectIdentityDictionary()
       for v, init in initializer_map.items():
         with ops.init_scope():
           if resource_variable_ops.var_is_initialized_op(v.handle):
@@ -597,13 +603,7 @@ class Function(object):
       concrete_functions.extend(
           self._stateless_fn._function_cache.all_values())
     # pylint: enable=protected-access
-    deduplicated_concrete_functions = []
     seen_signatures = []
-    # We are using a list so that:
-    #  - the returned collection is deterministic, and
-    #  - we can use a custom equality operator (is_same_structure).
-    # This is run only at serialization time on likely very small inputs so we
-    # are not concerned about O(n^2) runtime.
     for concrete_function in concrete_functions:
       signature = concrete_function.structured_input_signature
       flattened = nest.flatten(signature)
@@ -615,9 +615,14 @@ class Function(object):
       equal_to_signature = functools.partial(
           function_lib.is_same_structure, signature, check_values=True)
       if not any(equal_to_signature(s) for s in seen_signatures):
-        deduplicated_concrete_functions.append(concrete_function)
         seen_signatures.append(signature)
-    return deduplicated_concrete_functions
+
+    # Re-create concrete functions for these signatures. Re-creating ensures
+    # that if the cache key has changed, the function will be traced again.
+    concrete_functions = []
+    for args, kwargs in seen_signatures:
+      concrete_functions.append(self.get_concrete_function(*args, **kwargs))
+    return concrete_functions
 
   def get_concrete_function(self, *args, **kwargs):
     """Returns a `ConcreteFunction` specialized to inputs and execution context.
@@ -1004,17 +1009,22 @@ def function(func=None,
       autograph=True.
     experimental_relax_shapes: When true, argument shapes may be relaxed to
       avoid unecessary retracing.
-    experimental_compile: If false, the function is interpreted by the standard
-      TensorFlow executor, which dispatches op kernels one by one as they become
-      executable. If True, the function is compiled by XLA
-      (https://www.tensorflow.org/xla). XLA would fuse all the ops and emit more
-      efficient code to run for some devices (e.g. TPU, XLA_GPU) and some use
-      cases (e.g. dense tensor computation). It requires that the whole function
-      is compilable by XLA (e.g. static tensor shape, a subset of operations,
-      no string, compile-time constant input, etc). If None (default),
-      compile the function with XLA when running on TPU and use the standard
-      TensorFlow executor when running on other devices. Note: TensorArrays on
-      TPU don't work with standard TensorFlow executor.
+    experimental_compile: If false, execute the function in a regular way. The
+      function is optimized by some graph rewrite passes (some ops might be
+      clustered into a single op) and interpreted by the standard TensorFlow
+      executor, which dispatches op kernels one by one as they become
+      executable. Set it to false when directly running a multi-device function
+      on TPUs (e.g. two TPU cores, one TPU core and its host CPU). If True, the
+      function is compiled directly by XLA (https://www.tensorflow.org/xla).
+      XLA would fuse all the ops and emit more efficient code to run for some
+      devices (e.g. TPU, XLA_GPU) and some use cases (e.g. dense tensor
+      computation). It requires that the whole function is compilable by XLA
+      (e.g. static tensor shape, a subset of operations, no string, compile-time
+      constant input, etc). If None (default), compile the function with XLA
+      when running on TPU and go through the regular function execution path
+      when running on other devices. Note: TensorArrays on TPU don't work with
+      standard TensorFlow executor.
+
   Returns:
      If `func` is not None, returns a callable that will execute the compiled
      function (and return zero or more `tf.Tensor` objects).

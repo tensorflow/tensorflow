@@ -548,12 +548,21 @@ class MklPoolingOpBase : public OpKernel {
     if (pool_params->data_format == TensorFormat::FORMAT_NCHW) {
       output_tf_shape = MklDnnDimsToTFShape(output_dims_mkl_order);
     } else {
-      memory::dims output_dims_NHWC_order;
-      output_dims_NHWC_order = {pool_params->tensor_in_batch,
-                                static_cast<int>(pool_params->out_height),
-                                static_cast<int>(pool_params->out_width),
-                                pool_params->out_depth};
-      output_tf_shape = MklDnnDimsToTFShape(output_dims_NHWC_order);
+      memory::dims output_dims_order;
+      // determine Pooling2D (NHWC) or Pooling3D (NDHWC)
+      if (this->ksize_.size() == 4) {
+        output_dims_order = {pool_params->tensor_in_batch,
+                             static_cast<int>(pool_params->out_height),
+                             static_cast<int>(pool_params->out_width),
+                             pool_params->out_depth};
+      } else {
+        output_dims_order = {pool_params->tensor_in_batch,
+                             static_cast<int>(pool_params->out_planes),
+                             static_cast<int>(pool_params->out_height),
+                             static_cast<int>(pool_params->out_width),
+                             pool_params->out_depth};
+      }
+      output_tf_shape = MklDnnDimsToTFShape(output_dims_order);
     }
     AllocateOutputSetMklShape(context, kOutputIndex, output_tensor,
                               output_tf_shape, output_mkl_shape);
