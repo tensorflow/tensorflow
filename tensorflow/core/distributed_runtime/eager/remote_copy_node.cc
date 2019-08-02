@@ -134,7 +134,8 @@ Status RemoteCopyNode::StartSend() {
     request.set_context_id(ctx_->GetContextId());
     auto* remote_op = request.add_queue()->mutable_operation();
     status = ctx_->RemoteMgr()->SerializeRemoteTensorHandle(
-        src_, remote_op->add_inputs(), src_->device());
+        src_, remote_op->add_inputs(), src_->device(),
+        src_->DeviceOrHostCPU(ctx_)->name());
     if (!status.ok()) {
       captured_state_->SetSendStatus(status);
       return status;
