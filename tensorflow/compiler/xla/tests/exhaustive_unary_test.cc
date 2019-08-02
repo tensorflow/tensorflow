@@ -670,6 +670,23 @@ class ExhaustiveComplexUnaryTestBase
  protected:
   using typename ExhaustiveUnaryTest<T>::NativeT;
 
+  void SetParamsForTanh() {
+    // TODO(b/138126045): Current libc++ implementation of the complex tanh
+    //                    function returns (NaN, NaN) when the imaginary
+    //                    component is more than half of the max value.
+    // TODO(b/138750327): Current libc++ implementation of the complex tanh
+    //                    function returns (1, 0) when the real component is
+    //                    negative infinity, when it should return (-1, 0).
+    // We only need to set the former as incorrect values for C128 because when
+    // testing with C64, we first cast our input to a C128 value.
+    this->known_incorrect_fn_ = [&](int64 v) {
+      double f = this->ConvertValue(v);
+      return (T == C128 &&
+              std::abs(f) > std::numeric_limits<float>::max() / 2) ||
+             f == -std::numeric_limits<double>::infinity();
+    };
+  }
+
  private:
   // Generates the input complex literal given the FpValues representation for
   // the real and imaginary components.
@@ -705,6 +722,29 @@ class ExhaustiveComplexUnaryTestBase
 
 typedef ExhaustiveComplexUnaryTestBase<C64> ExhaustiveC64UnaryTest;
 typedef ExhaustiveComplexUnaryTestBase<C128> ExhaustiveC128UnaryTest;
+
+// The current libc++ implementation of the complex tanh function provides
+// less accurate results when the denomenator of a complex tanh is small, due
+// to floating point precision loss. To avoid this issue for complex64 numbers,
+// we cast it to and from a complex128 when computing tanh.
+XLA_TEST_P(ExhaustiveC64UnaryTest, Tanh) {
+  SetParamsForTanh();
+  ErrorSpecGen error_spec_gen = +[](complex64 x) {
+    // This implementation of Tanh becomes less accurate when the denominator
+    // is small.
+    if (std::cosh(2 * x.real()) + std::cos(2 * x.imag()) < 1e-4) {
+      return ErrorSpec{5e-2, 5e-2};
+    }
+
+    return GetDefaultSpecGenerator()(x);
+  };
+  Run(
+      Tanh,
+      +[](complex64 x) {
+        return static_cast<complex64>(std::tanh(static_cast<complex128>(x)));
+      },
+      error_spec_gen);
+}
 
 #if defined(UNARY_TEST_TARGET_COMPLEX)
 INSTANTIATE_TEST_SUITE_P(
@@ -752,6 +792,12 @@ XLA_TEST_P(ExhaustiveC128UnaryTest, Log) {
   };
   Run(
       Log, +[](complex128 x) { return std::log(x); });
+}
+
+XLA_TEST_P(ExhaustiveC128UnaryTest, Tanh) {
+  SetParamsForTanh();
+  Run(
+      Tanh, +[](complex128 x) { return std::tanh(x); });
 }
 
 #if defined(UNARY_TEST_TARGET_COMPLEX)
