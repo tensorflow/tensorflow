@@ -2591,8 +2591,21 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":control_flow_util",
+        ":control_flow_util_v2",
         ":framework_ops",
         ":util",
+    ],
+)
+
+tf_py_test(
+    name = "control_flow_v2_toggles_test",
+    size = "small",
+    srcs = ["ops/control_flow_v2_toggles_test.py"],
+    additional_deps = [
+        ":control_flow_v2_toggles",
+        ":control_flow_util_v2",
+        ":client_testlib",
+        ":platform_test",
     ],
 )
 

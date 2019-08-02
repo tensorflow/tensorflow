@@ -363,6 +363,8 @@ renames = {
         'tf.compat.v1.estimator.tpu.TPUEstimatorSpec',
     'tf.estimator.tpu.experimental.EmbeddingSpec':
         'tf.compat.v1.estimator.tpu.experimental.EmbeddingSpec',
+    'tf.experimental.output_all_intermediates':
+        'tf.compat.v1.experimental.output_all_intermediates',
     'tf.expm1':
         'tf.math.expm1',
     'tf.fake_quant_with_min_max_args':
