@@ -202,6 +202,8 @@ tf_kernel_library(
         "collective_nccl.cc",
         "collective_nccl_broadcaster.h",
         "collective_nccl_broadcaster.cc",
+        "collective_nccl_gatherer.h",
+        "collective_nccl_gatherer.cc",
         "collective_nccl_reducer.h",
         "collective_nccl_reducer.cc",
     ]),
