@@ -989,16 +989,15 @@ class MklConvOp : public OpKernel {
     }
     
     // Allocate shape of MKL tensor
-    output_mkl_shape.SetMklTensor(true);
-    output_mkl_shape.SetMklLayout(&DST_MD);
-    output_mkl_shape.SetElemType(MklDnnType<Toutput>());
-    output_mkl_shape.SetTfLayout(output_dims_mkl_order.size(),
+    output_mkl_shape->SetMklTensor(true);
+    output_mkl_shape->SetMklLayout(&DST_MD);
+    output_mkl_shape->SetElemType(MklDnnType<Toutput>());
+    output_mkl_shape->SetTfLayout(output_dims_mkl_order.size(),
                                  output_dims_mkl_order, output_tf_format);
 
     // Allocate shape of TF tensor
     TensorShape output_tf_shape;
     output_tf_shape.AddDim((DST_MD.get_size() / sizeof(Toutput)));
-
     if (eager_mode) {
       AllocTmpBuffer<Toutput>(context, tmp_tensor, output_tf_shape);
       output_tf_shape = output_mkl_shape->GetTfShape();
@@ -1012,7 +1011,7 @@ class MklConvOp : public OpKernel {
       GetMklShape(context, kInputIndex_Add, &add_mkl_shape);
 
       // Check if reorder is needed
-      if (add_mkl_shape == output_mkl_shape) {
+      if (add_mkl_shape == *output_mkl_shape) {
         DCHECK((*output_tensor)->CopyFrom(add_tensor, output_tf_shape));
       } else {
         if (add_mkl_shape.IsMklTensor()) {
@@ -1020,14 +1019,14 @@ class MklConvOp : public OpKernel {
         } else {
 #ifdef ENABLE_MKLDNN_V1
           auto output_format_tag = MklTensorFormatToMklDnnDataFormat(
-              output_mkl_shape.GetTfDataFormat());
+              output_mkl_shape->GetTfDataFormat());
           DCHECK_NE(output_format_tag, memory::format_tag::undef);
           auto add_md = memory::desc(output_dims_mkl_order,
                                      MklDnnType<Toutput>(), output_format_tag);
 #else
           auto add_md =
               memory::desc(output_dims_mkl_order, MklDnnType<Toutput>(),
-                           output_mkl_shape.GetTfDataFormat());
+                           output_mkl_shape->GetTfDataFormat());
           auto add_pd = memory::primitive_desc(add_md, this->cpu_engine_);
 #endif  // ENABLE_MKLDNN_V1
           void* add_buf = static_cast<void*>(
