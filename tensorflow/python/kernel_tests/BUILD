@@ -271,7 +271,6 @@ tf_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
-    tags = ["nofwdcompat"],  # b/137641346
 )
 
 tf_py_test(
@@ -984,7 +983,6 @@ tf_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
-    tags = ["nofwdcompat"],  # b/137641346
 )
 
 tf_py_test(
@@ -3123,6 +3121,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",
@@ -3865,6 +3864,7 @@ cuda_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
@@ -3890,6 +3890,7 @@ cuda_py_test(
         "//tensorflow/python/data/experimental/ops:prefetching_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:gradients",

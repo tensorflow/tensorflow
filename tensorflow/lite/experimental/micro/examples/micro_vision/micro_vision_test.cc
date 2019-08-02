@@ -69,10 +69,9 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_NE(nullptr, input);
   TF_LITE_MICRO_EXPECT_EQ(4, input->dims->size);
   TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[0]);
-  TF_LITE_MICRO_EXPECT_EQ(96, input->dims->data[1]);
-  TF_LITE_MICRO_EXPECT_EQ(96, input->dims->data[2]);
-  // TODO(rocky): This will be a single channel for monochrome inputs
-  TF_LITE_MICRO_EXPECT_EQ(3, input->dims->data[3]);
+  TF_LITE_MICRO_EXPECT_EQ(kNumRows, input->dims->data[1]);
+  TF_LITE_MICRO_EXPECT_EQ(kNumCols, input->dims->data[2]);
+  TF_LITE_MICRO_EXPECT_EQ(kNumChannels, input->dims->data[3]);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteUInt8, input->type);
 
   // Copy an image with a person into the memory area used for the input.
@@ -95,7 +94,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[0]);
   TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[1]);
   TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[2]);
-  TF_LITE_MICRO_EXPECT_EQ(3, output->dims->data[3]);
+  TF_LITE_MICRO_EXPECT_EQ(kCategoryCount, output->dims->data[3]);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteUInt8, output->type);
 
   // Make sure that the expected "Person" score is higher than the other class.

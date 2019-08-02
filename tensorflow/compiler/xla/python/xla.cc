@@ -110,18 +110,23 @@ StatusOr<std::string> GetComputationHloDotGraph(
 }
 
 // Registers a 'fn_capsule' as a CPU custom call target.
-// 'fn_capsule' is a void* pointer encapsulated in a PyCapsule object, with name
-// "xla._CPU_CUSTOM_CALL_TARGET".
-Status RegisterCpuCustomCallTarget(const std::string& fn_name,
-                                   py::capsule capsule) {
-  static const char* const kName = "xla._CPU_CUSTOM_CALL_TARGET";
-  if (absl::string_view(capsule.name()) != kName) {
+// 'fn_capsule' must be a void* pointer encapsulated in a PyCapsule object,
+// with name "xla._CUSTOM_CALL_TARGET".
+// 'platform' is an XLA platform name, e.g., "Host" or "CUDA".
+Status PyRegisterCustomCallTarget(const std::string& fn_name,
+                                  py::capsule capsule,
+                                  const std::string& platform) {
+  static const char* const kName = "xla._CUSTOM_CALL_TARGET";
+  // TODO(phawkins): remove old name after fixing users.
+  static const char* const kOldCpuName = "xla._CPU_CUSTOM_CALL_TARGET";
+  if (absl::string_view(capsule.name()) != kName &&
+      absl::string_view(capsule.name()) != kOldCpuName) {
     return InvalidArgument(
-        "Argument to RegisterCpuCustomCallTargetRegistry was not a "
-        "xla._CPU_CUSTOM_CALL_TARGET capsule.");
+        "Argument to RegisterCustomCallTargetRegistry was not a "
+        "xla._CUSTOM_CALL_TARGET capsule.");
   }
   CustomCallTargetRegistry::Global()->Register(
-      fn_name, static_cast<void*>(capsule), "Host");
+      fn_name, static_cast<void*>(capsule), platform);
   return Status::OK();
 }
 
@@ -295,8 +300,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   // Local XLA client methods.
 
-  // CPU custom-call targets.
-  m.def("RegisterCpuCustomCallTarget", &RegisterCpuCustomCallTarget);
+  // Custom-call targets.
+  m.def("RegisterCustomCallTarget", &PyRegisterCustomCallTarget);
 
   py::class_<AllocatorConfig> alloc_config(m, "AllocatorConfig");
   alloc_config.def(py::init<>())
@@ -407,6 +412,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static("Compile", &PyLocalExecutable::Compile,
                   py::call_guard<py::gil_scoped_release>())
       .def("DeviceOrdinals", &PyLocalExecutable::DeviceOrdinals)
+      .def("SizeOfGeneratedCodeInBytes",
+           &PyLocalExecutable::SizeOfGeneratedCodeInBytes)
       .def("Delete", &PyLocalExecutable::Delete)
       .def("Execute", &PyLocalExecutable::Execute,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
@@ -425,7 +432,10 @@ PYBIND11_MODULE(xla_extension, m) {
                     &DebugOptions::set_xla_cpu_fast_math_honor_nans)
       .def_property("xla_cpu_fast_math_honor_division",
                     &DebugOptions::xla_cpu_fast_math_honor_division,
-                    &DebugOptions::set_xla_cpu_fast_math_honor_division);
+                    &DebugOptions::set_xla_cpu_fast_math_honor_division)
+      .def_property("xla_gpu_enable_fast_min_max",
+                    &DebugOptions::xla_gpu_enable_fast_min_max,
+                    &DebugOptions::set_xla_gpu_enable_fast_min_max);
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())

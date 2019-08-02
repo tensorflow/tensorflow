@@ -765,7 +765,7 @@ Status PropagateConstIntoFunctionalNodes(
   for (Node* n : g->op_nodes()) {
     if (n->IsIfNode()) {
       TF_RETURN_IF_ERROR(PropagateConstIntoIfNode(g, n, lookup_fld, fld));
-    } else if (n->type_string() == "While") {
+    } else if (n->IsWhileNode()) {
       TF_RETURN_IF_ERROR(PropagateConstIntoWhileNode(g, n, lookup_fld, fld));
     }
   }
@@ -796,7 +796,7 @@ Status RewriteTensorListWithConstElement(Graph* g,
     // Find the forward While op.
     std::vector<const Edge*> fwd_while_edges;
     for (const Edge* e : n->out_edges()) {
-      if (!e->IsControlEdge() && e->dst()->type_string() == "While") {
+      if (!e->IsControlEdge() && e->dst()->IsWhileNode()) {
         fwd_while_edges.push_back(e);
       }
     }
@@ -810,8 +810,7 @@ Status RewriteTensorListWithConstElement(Graph* g,
     int fwd_while_dst_input = fwd_while_edges[0]->dst_input();
     std::vector<const Edge*> bwd_while_edges;
     for (const Edge* e : fwd_while->out_edges()) {
-      if (e->src_output() == fwd_while_dst_input &&
-          e->dst()->type_string() == "While") {
+      if (e->src_output() == fwd_while_dst_input && e->dst()->IsWhileNode()) {
         bwd_while_edges.push_back(e);
       }
     }

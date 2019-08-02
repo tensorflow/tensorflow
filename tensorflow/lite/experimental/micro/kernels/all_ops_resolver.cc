@@ -24,6 +24,7 @@ TfLiteRegistration* Register_AVERAGE_POOL_2D();
 TfLiteRegistration* Register_MAX_POOL_2D();
 TfLiteRegistration* Register_ABS();
 TfLiteRegistration* Register_PRELU();
+TfLiteRegistration* Register_FLOOR();
 
 AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D());
@@ -36,6 +37,7 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_AVERAGE_POOL_2D, Register_AVERAGE_POOL_2D());
   AddBuiltin(BuiltinOperator_ABS, Register_ABS());
   AddBuiltin(BuiltinOperator_PRELU, Register_PRELU());
+  AddBuiltin(BuiltinOperator_FLOOR, Register_FLOOR());
 }
 
 }  // namespace micro

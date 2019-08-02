@@ -219,9 +219,11 @@ class Executable {
     return hlo_module_->config().entry_computation_layout().result_shape();
   }
 
-  // Returns the size of the executable in bytes. Returns -1 by default if the
-  // method is not overridden to support this kind of query.
-  virtual int64 SizeInBytes();
+  // Returns the size of the executable in bytes. Returns -1 if this query is
+  // not supported by the executable.
+  //
+  // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
+  virtual int64 SizeOfGeneratedCodeInBytes();
 
   // Dumping helpers.
   void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {

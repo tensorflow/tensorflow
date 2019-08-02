@@ -459,7 +459,8 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, len(debug_dumps))
     for debug_dump in debug_dumps:
       node_names = [datum.node_name for datum in debug_dump.dumped_tensor_data]
-      self.assertItemsEqual(["callable_a", "callable_b"], node_names)
+      self.assertIn("callable_a", node_names)
+      self.assertIn("callable_b", node_names)
 
   def testDebuggingMakeCallableFromOptionsWithTwoFeedsWorks(self):
     ph1 = array_ops.placeholder(dtypes.float32, name="callable_ph1")
@@ -486,7 +487,8 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, len(debug_dumps))
     for debug_dump in debug_dumps:
       node_names = [datum.node_name for datum in debug_dump.dumped_tensor_data]
-      self.assertItemsEqual(["callable_a", "callable_b"], node_names)
+      self.assertIn("callable_a", node_names)
+      self.assertIn("callable_b", node_names)
 
   def testDebugMakeCallableFromOptionsWithCustomOptionsAndMetadataWorks(self):
     variable_1 = variables.VariableV1(

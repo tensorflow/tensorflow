@@ -75,6 +75,8 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
 
       // Declare output tensor
       Tensor* output_tensor = nullptr;
+      // Declare output workspace tensor
+      Tensor* output_ws_tensor = nullptr;
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
@@ -83,6 +85,19 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
         const int kOutputIndex = 0;
         this->AllocateEmptyOutputTensor(context, kOutputIndex, &pool_params,
                                         output_dims_mkl_order, &output_tensor);
+        bool int8_forward_inference =
+            std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
+
+        // Allocate an empty workspace tensor if not Quantized MaxPooling
+        // Because Quantized MaxPooling does not have backward pass
+        // Therefore no workspace, which is used to help backward pass in MKL
+        if (!int8_forward_inference) {
+          const int kOutputWorkspaceIndex = 1;
+          // output_ws_tensor is not really used, so using output_dims_mkl_order
+          this->AllocateEmptyOutputTensor(context, kOutputWorkspaceIndex,
+                                          &pool_params, output_dims_mkl_order,
+                                          &output_ws_tensor);
+        }
         return;
       }
 

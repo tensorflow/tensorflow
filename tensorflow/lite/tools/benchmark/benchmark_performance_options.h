@@ -16,31 +16,55 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_BENCHMARK_BENCHMARK_PERFORMANCE_OPTIONS_H_
 #define TENSORFLOW_LITE_TOOLS_BENCHMARK_BENCHMARK_PERFORMANCE_OPTIONS_H_
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
 namespace tflite {
 namespace benchmark {
+
+class MultiRunStatsRecorder : public BenchmarkListener {
+ public:
+  void OnBenchmarkStart(const BenchmarkParams& params) override;
+  void OnBenchmarkEnd(const BenchmarkResults& results) override;
+
+  virtual void OutputStats();
+
+ protected:
+  using EachRunStatsEntry = std::pair<std::string, BenchmarkResults>;
+
+  // Use this to order the runs by the average inference time in increasing
+  // order (i.e. the fastest run ranks first.)
+  struct EachRunStatsEntryComparator {
+    bool operator()(const EachRunStatsEntry& i, const EachRunStatsEntry& j) {
+      return (i.second.inference_time_us().avg() <
+              j.second.inference_time_us().avg());
+    }
+  };
+
+  std::string current_run_name_;
+  std::vector<EachRunStatsEntry> each_run_stats_;
+};
 
 // Benchmarks all performance options on a model by repeatedly invoking the
 // single-performance-option run on a passed-in 'BenchmarkModel' object.
 class BenchmarkPerformanceOptions {
  public:
   // Doesn't own the memory of 'single_option_run'.
-  explicit BenchmarkPerformanceOptions(BenchmarkModel* single_option_run)
-      : BenchmarkPerformanceOptions(DefaultParams(), single_option_run) {}
-
-  BenchmarkPerformanceOptions(BenchmarkParams params,
-                              BenchmarkModel* single_option_run)
-      : params_(std::move(params)),
-        single_option_run_(single_option_run),
-        single_option_run_params_(single_option_run->mutable_params()) {}
+  explicit BenchmarkPerformanceOptions(BenchmarkModel* single_option_run);
 
   virtual ~BenchmarkPerformanceOptions() {}
 
-  virtual void Run(int argc, char** argv);
+  void Run(int argc, char** argv);
 
  protected:
   static BenchmarkParams DefaultParams();
+  static std::unique_ptr<MultiRunStatsRecorder> DefaultRunStatsRecorder();
+
+  BenchmarkPerformanceOptions(
+      BenchmarkParams params, BenchmarkModel* single_option_run,
+      std::unique_ptr<MultiRunStatsRecorder> all_run_stats);
 
   // Unparsable flags will remain in 'argv' in the original order and 'argc'
   // will be updated accordingly.
@@ -49,9 +73,10 @@ class BenchmarkPerformanceOptions {
 
   bool ParsePerfOptions();
   virtual std::vector<std::string> GetValidPerfOptions() const;
-  bool HasOption(const string& option) const;
-  virtual void ResetPerformanceOptions();
+  bool HasOption(const std::string& option) const;
 
+  virtual void Run();
+  virtual void ResetPerformanceOptions();
   virtual void BenchmarkCPUOptions();
   virtual void BenchmarkGPUOptions();
   virtual void BenchmarkNnapiOptions();
@@ -62,6 +87,8 @@ class BenchmarkPerformanceOptions {
   // The object that drives a single-performance-option run.
   BenchmarkModel* const single_option_run_;          // Doesn't own the memory.
   BenchmarkParams* const single_option_run_params_;  // Doesn't own the memory.
+
+  std::unique_ptr<MultiRunStatsRecorder> all_run_stats_;
 };
 
 }  // namespace benchmark

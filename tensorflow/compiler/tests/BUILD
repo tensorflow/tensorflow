@@ -955,10 +955,7 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["stateful_random_ops_test.py"],
     shard_count = 10,
-    tags = [
-        "notap",  # TODO(b/138578268): times out on 2019-07-29.
-        "optonly",
-    ],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",

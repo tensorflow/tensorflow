@@ -545,6 +545,8 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
   let arguments = (ins ElementsAttr:$value);
 
   let results = (outs AnyTensor:$output);
+
+  let hasFolder = 1;
 }
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution">;
@@ -641,14 +643,13 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [NoSideEffect]> {
     Gather slices from `params` into a Tensor with shape specified by `indices`.
   }];
 
-  // TODO: missing Uint8.
   let arguments = (ins
-    TensorOf<[F32, I8, I64, I32]>:$params,
+    TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$params,
     TFL_I32OrI64Tensor:$indices
   );
 
   let results = (outs
-    TensorOf<[F32, I8, I64, I32]>:$output
+    TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$output
   );
 }
 
@@ -1657,9 +1658,8 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
 `seq_dim` reversed.
   }];
 
-  // Missing Uint8.
   let arguments = (ins
-    TensorOf<[F32, I16, I32, I64]>:$input,
+    TensorOf<[F32, I16, I32, I64, TFL_Uint8]>:$input,
     TFL_I32OrI64Tensor:$seq_lengths,
 
     I32Attr:$seq_dim,
@@ -1667,7 +1667,7 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
   );
 
   let results = (outs
-    TensorOf<[F32, I16, I32, I64]>:$output
+    TensorOf<[F32, I16, I32, I64, TFL_Uint8]>:$output
   );
 
   let hasOptions = 1;
@@ -1706,7 +1706,11 @@ def TFL_ShapeOp: TFL_Op<"shape", [NoSideEffect, TFL_NoQuantizableResult]> {
 }
 
 // TODO(jpienaar): Flesh this out.
-def TFL_RangeOp: TFL_Op<"range", [NoSideEffect]> {
+def TFL_RangeOp: TFL_Op<"range", [NoSideEffect, TFL_OperandHasRank<0, 0>,
+    TFL_OperandHasRank<1, 0>, TFL_OperandHasRank<2, 0>,
+    PredOpTrait<"operands and output must have same element type",
+      And<[TCresVTEtIsSameAsOp<0, 0>, TCresVTEtIsSameAsOp<0, 1>,
+           TCresVTEtIsSameAsOp<0, 2>]>>]> {
   let summary = "Range operator";
 
   let description = [{
@@ -1720,6 +1724,8 @@ def TFL_RangeOp: TFL_Op<"range", [NoSideEffect]> {
     AnyTensor:$delta);
 
   let results = (outs AnyTensor:$result);
+
+  let hasFolder = 1;
 }
 
 def TFL_ReverseV2Op: TFL_Op<"reverse_v2",
@@ -1773,9 +1779,8 @@ def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
 
   let arguments = (ins
     TFL_BoolTensor:$condition,
-    // TODO: Missing uint8.
-    TensorOf<[F32, I1, I8, I16, I32, I64]>:$x,
-    TensorOf<[F32, I1, I8, I16, I32, I64]>:$y);
+    TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$x,
+    TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$y);
   let results = (outs AnyTensor:$output);
 
   // TODO(jpienaar): autogenerate this.
@@ -1837,9 +1842,9 @@ def TFL_SqrtOp: TFL_Op<"sqrt", [NoSideEffect, SameOperandsAndResultType]> {
     Computes element-wise Square root of input
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  let arguments = (ins TFL_FpTensor:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TFL_FpTensor:$y);
 
   let hasFolder = 1;
 }
@@ -1851,9 +1856,9 @@ def TFL_SquareOp: TFL_Op<"square", [NoSideEffect, SameOperandsAndResultType]> {
     Computes element-wise Square of input
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  let arguments = (ins TFL_FpTensor:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TFL_FpTensor:$y);
 
   let hasOptions = 0b1;
 
@@ -1921,10 +1926,9 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     Computes element-wise Hyperbolic tangent of input
   }];
 
-  // TODO(haoliang): missing Uint8.
-  let arguments = (ins TensorOf<[F32, I16, I8]>:$x);
+  let arguments = (ins TensorOf<[F32, I16, I8, TFL_Uint8]>:$x);
 
-  let results = (outs TensorOf<[F32, I16, I8]>:$y);
+  let results = (outs TensorOf<[F32, I16, I8, TFL_Uint8]>:$y);
 }
 
 def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
@@ -1963,8 +1967,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
   }];
 
   let arguments = (ins
-    // TODO: Missing uint8
-    TensorOf<[F32, I8, I32, I64]>:$input,
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8]>:$input,
     I32Tensor:$k);
 
   let results = (outs
@@ -1982,10 +1985,12 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
 // dimensions.
 def TFL_TransposeOp : TFL_Op<"transpose",
   [NoSideEffect,
+   TFL_OperandHasRank<1,1>,
    // TODO(jpienaar): these are only true dynamically, change so that it works
    // with unknowns.
-   // TFL_OperandHasRank<1,1>,
    // TFL_OperandRankEquals1DimOfOperand<0, 1>,
+   PredOpTrait<"input and output must have same element type",
+   TCresVTEtIsSameAsOp<0, 0>>,
    TFL_SameOperandsAndResultsScale]> {
   let summary = "Transpose operator";
 
@@ -1995,7 +2000,7 @@ def TFL_TransposeOp : TFL_Op<"transpose",
 
   let arguments = (
     ins AnyTensor:$x,
-    AnyTensor:$perm
+    TensorOf<[I32]>:$perm
   );
 
   let results = (outs

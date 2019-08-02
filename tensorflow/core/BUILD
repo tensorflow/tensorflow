@@ -941,6 +941,7 @@ tf_cuda_library(
         "example/feature_util.h",
         "framework/allocator.h",
         "framework/bounds_check.h",
+        "framework/tstring.h",
         "framework/variant.h",
         "framework/variant_encode_decode.h",
         "framework/variant_op_registry.h",

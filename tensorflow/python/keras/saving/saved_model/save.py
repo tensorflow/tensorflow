@@ -39,6 +39,7 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.lazy_loader import LazyLoader
 
@@ -252,7 +253,8 @@ def _wrap_layer_functions(layer, serialization_cache):
     fns['activity_regularizer_fn'] = _wrap_activity_regularizer(layer)
     fns['call_and_return_all_conditional_losses'] = (
         call_collection.add_function(
-            _append_activity_regularizer_loss(call_fn_with_losses,
+            _append_activity_regularizer_loss(layer,
+                                              call_fn_with_losses,
                                               fns['activity_regularizer_fn']),
             '{}_layer_call_and_return_all_conditional_losses'.format(layer.name)
             ))
@@ -343,7 +345,8 @@ def _replace_child_layer_functions(layer, serialization_cache):
         # Some layers have an unsettable activity regularizer.
         pass
       child_layer.call = utils.use_wrapped_call(
-          child_layer, layer_fns['call_and_return_conditional_losses'])
+          child_layer, layer_fns['call_and_return_conditional_losses'],
+          default_training_value=False)
   return original_fns
   # pylint: enable=protected-access
 
@@ -380,6 +383,23 @@ def _restore_layer_losses(losses_dict):
 # pylint: enable=protected-access
 
 
+def layer_uses_training_bool(layer):
+  """Returns whether this layer or any of its children uses the training arg."""
+  if layer._expects_training_arg:  # pylint: disable=protected-access
+    return True
+  visited = {layer}
+  to_visit = _list_all_layers(layer)
+  while to_visit:
+    layer = to_visit.pop()
+    if layer in visited:
+      continue
+    if layer._expects_training_arg:  # pylint: disable=protected-access
+      return True
+    visited.add(layer)
+    to_visit.extend(_list_all_layers(layer))
+  return False
+
+
 class LayerCallCollection(object):
   """Groups wrapped layer call functions.
 
@@ -391,8 +411,10 @@ class LayerCallCollection(object):
   """
 
   def __init__(self, layer):
-    self._layer = layer
-    self._expects_training_arg = layer._expects_training_arg  # pylint: disable=protected-access
+    self.layer = layer
+    self._expects_training_arg = layer_uses_training_bool(layer)
+    self._training_arg_index = utils.get_training_arg_index(layer.call)
+
     self._input_signature = self._generate_input_signature(layer)
     self._functions = weakref.WeakValueDictionary()
     # Bool indicating whether this object is currently tracing the layer call
@@ -447,24 +469,15 @@ class LayerCallCollection(object):
       # TODO(kathywu): Replace arguments with broader shapes defined in the
       # input signature.
       if self._expects_training_arg:
-        arg_list = tf_inspect.getfullargspec(fn.python_function).args
-        if 'training' in arg_list:
-          training_arg_index = arg_list.index('training')
-        else:
-          training_arg_index = -1
+        def trace_with_training(value, fn=fn):
+          utils.set_training_arg(value, self._training_arg_index, args, kwargs)
+          with K.learning_phase_scope(value):
+            fn.get_concrete_function(*args, **kwargs)
 
-        def set_training_arg(training, index=training_arg_index):
-          if index >= 0 and len(args) > index:
-            args[index] = training
-          else:
-            kwargs['training'] = training
-
-        set_training_arg(False)
-        fn.original_get_concrete_function(*args, **kwargs)
-        set_training_arg(True)
-        fn.original_get_concrete_function(*args, **kwargs)
+        trace_with_training(True)
+        trace_with_training(False)
       else:
-        fn.original_get_concrete_function(*args, **kwargs)
+        fn.get_concrete_function(*args, **kwargs)
     self.tracing = False
 
   @property
@@ -480,10 +493,63 @@ class LayerCallCollection(object):
       return None
     return self._input_signature
 
-  def add_function(self, python_function, name):
+  def training_arg_was_passed(self, args, kwargs):
+    if not self.layer._expects_training_arg and self._expects_training_arg:  # pylint: disable=protected-access
+      return (utils.get_training_arg(self._training_arg_index, args, kwargs)
+              is not None)
+    else:
+      return self.layer._call_arg_was_passed(  # pylint: disable=protected-access
+          'training', args, kwargs, inputs_in_args=True)
+
+  def get_training_arg_value(self, args, kwargs):
+    if not self.layer._expects_training_arg and self._expects_training_arg:  # pylint: disable=protected-access
+      return utils.get_training_arg(self._training_arg_index, args, kwargs)
+    else:
+      return self.layer._get_call_arg_value(  # pylint: disable=protected-access
+          'training', args, kwargs, inputs_in_args=True)
+
+  def _maybe_wrap_with_training_arg(self, call_fn):
+    """Wraps call function with added training argument if necessary."""
+    if not self.layer._expects_training_arg and self._expects_training_arg:  # pylint: disable=protected-access
+      # Add training arg to wrapper function.
+      arg_spec = tf_inspect.getfullargspec(call_fn)
+      args = arg_spec.args + ['training']
+      defaults = arg_spec.defaults or []
+      defaults.append(False)
+      new_arg_spec = tf_inspect.FullArgSpec(
+          args=args,
+          varargs=arg_spec.varargs,
+          varkw=arg_spec.varkw,
+          defaults=defaults,
+          kwonlyargs=arg_spec.kwonlyargs,
+          kwonlydefaults=arg_spec.kwonlydefaults,
+          annotations=arg_spec.annotations)
+
+      # Set new training arg index
+      self._training_arg_index = len(args) - 1
+      if tf_inspect.ismethod(call_fn):
+        self._training_arg_index -= 1
+
+      def wrap_with_training_arg(*args, **kwargs):
+        # Remove the training value, since the original call_fn does not expect
+        # a training arg. Instead, the training value will be propagated using
+        # the call context created in LayerCall.
+        args = list(args)
+        kwargs = kwargs.copy()
+        utils.remove_training_arg(self._training_arg_index, args, kwargs)
+        return call_fn(*args, **kwargs)
+
+      return tf_decorator.make_decorator(
+          target=call_fn,
+          decorator_func=wrap_with_training_arg,
+          decorator_argspec=new_arg_spec)
+
+    return call_fn
+
+  def add_function(self, call_fn, name):
     """Adds a layer call function to the collection."""
     self._functions[name] = fn = LayerCall(
-        self, python_function, name,
+        self, self._maybe_wrap_with_training_arg(call_fn), name,
         input_signature=self.fn_input_signature)
 
     if (None not in nest.flatten(self._input_signature) and
@@ -494,24 +560,43 @@ class LayerCallCollection(object):
     return fn
 
 
+def maintain_losses(method):
+  """Ensures layer losses are kept the same, and runs method in call context."""
+  def wrapper(self, *args, **kwargs):
+    """Calls method within call context."""
+    layer = self.call_collection.layer
+    training = None
+    # pylint: disable=protected-access
+    if (args or kwargs) and self.call_collection.training_arg_was_passed(
+        args, kwargs):
+      training = self.call_collection.get_training_arg_value(args, kwargs)
+    # pylint: enable=protected-access
+    original_losses = _reset_layer_losses(layer)
+    with base_layer_utils.call_context().enter(layer, None, True, training):
+      ret = method(self, *args, **kwargs)
+    _restore_layer_losses(original_losses)
+    return ret
+  return tf_decorator.make_decorator(target=method, decorator_func=wrapper)
+
+
 class LayerCall(def_function.Function):
   """Function that triggers traces of other functions in the same collection."""
 
   def __init__(self, call_collection, *args, **kwargs):
     super(LayerCall, self).__init__(*args, **kwargs)
     self.call_collection = call_collection
+    self.original_call = call_collection.layer.call
 
+  @maintain_losses
   def __call__(self, *args, **kwargs):
     if not self.call_collection.tracing:
       self.call_collection.add_trace(*args, **kwargs)
     return super(LayerCall, self).__call__(*args, **kwargs)
 
+  @maintain_losses
   def get_concrete_function(self, *args, **kwargs):
     if not self.call_collection.tracing:
       self.call_collection.add_trace(*args, **kwargs)
-    return super(LayerCall, self).get_concrete_function(*args, **kwargs)
-
-  def original_get_concrete_function(self, *args, **kwargs):
     return super(LayerCall, self).get_concrete_function(*args, **kwargs)
 
 
@@ -530,37 +615,38 @@ def _wrap_call_and_conditional_losses(layer):
   """
   # Create function that generates both outputs and losses
   layer_call = layer.call
-  if layer._expects_training_arg:  # pylint: disable=protected-access
-    def call_and_return_conditional_losses(inputs, training=False):
-      return layer_call(inputs, training=training), layer.get_losses_for(inputs)
-  else:
-    def call_and_return_conditional_losses(inputs):
-      K.set_learning_phase(0)
-      return layer_call(inputs), layer.get_losses_for(inputs)
-  return call_and_return_conditional_losses
+  def call_and_return_conditional_losses(inputs, *args, **kwargs):
+    return layer_call(inputs, *args, **kwargs), layer.get_losses_for(inputs)
+  return _create_call_fn_decorator(layer, call_and_return_conditional_losses)
 
 
 def _extract_outputs_from_fn(layer, call_and_return_conditional_losses):
   """Returns a function that returns only call function outputs."""
   if isinstance(layer, keras_load.RevivedLayer):
     return layer.keras_api.__call__  # pylint: disable=protected-access
-  if layer._expects_training_arg:  # pylint: disable=protected-access
-    def call(inputs, training=False):
-      return call_and_return_conditional_losses(inputs, training=training)[0]
-  else:
-    def call(inputs):
-      return call_and_return_conditional_losses(inputs)[0]
-  return call
+  def call(inputs, *args, **kwargs):
+    return call_and_return_conditional_losses(inputs, *args, **kwargs)[0]
+  return _create_call_fn_decorator(layer, call)
 
 
 def _append_activity_regularizer_loss(
-    call_fn_with_losses, activity_regularizer_fn):
+    layer, call_fn_with_losses, activity_regularizer_fn):
   """Appends activity regularizer loss to losses returned by the wrapped fn."""
-  def fn(*args, **kwargs):
-    outputs, losses = call_fn_with_losses(*args, **kwargs)
+  def fn(inputs, *args, **kwargs):
+    outputs, losses = call_fn_with_losses(inputs, *args, **kwargs)
     losses.append(activity_regularizer_fn(outputs))
     return outputs, losses
-  return fn
+  return _create_call_fn_decorator(layer, fn)
+
+
+def _create_call_fn_decorator(layer, wrapped_call):
+  fn, arg_spec = utils.maybe_add_training_arg(
+      layer.call, wrapped_call, layer._expects_training_arg,  # pylint: disable=protected-access
+      default_training_value=False)
+  return tf_decorator.make_decorator(
+      target=layer.call,
+      decorator_func=fn,
+      decorator_argspec=arg_spec)
 
 
 def _wrap_unconditional_loss(loss_fn, index):

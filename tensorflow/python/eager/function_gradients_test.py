@@ -298,6 +298,24 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       y = f(x)
     self.assertAllEqual(self.evaluate(t.gradient(y, x)), 4.0)
 
+  def testGraphLoopGradientInsideSession(self):
+    with ops.Graph().as_default():
+      n = constant_op.constant(2.0)
+      x = array_ops.placeholder(dtypes.float32, shape=None)
+
+      @def_function.function
+      def f():
+        c = lambda n: n < 10
+        b = lambda n: n * x
+        return control_flow_ops.while_loop(c, b, [n],
+                                           [tensor_shape.unknown_shape()])
+
+      l = f()
+      dx = gradients_impl.gradients(l, [x])[0]
+
+      with self.cached_session():
+        self.assertEqual(dx.eval(feed_dict={x: 2.0}), 24.0)
+
   def testDefunDifferentiable(self):
     v = resource_variable_ops.ResourceVariable(1.0)
 

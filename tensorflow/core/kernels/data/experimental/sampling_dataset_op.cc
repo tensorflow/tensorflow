@@ -24,6 +24,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
+namespace {
 
 // Constants declared in sampling_dataset_op.h and used both here and in test
 // cases.
@@ -226,5 +228,6 @@ namespace {
 REGISTER_KERNEL_BUILDER(Name("SamplingDataset").Device(DEVICE_CPU),
                         SamplingDatasetOp);
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

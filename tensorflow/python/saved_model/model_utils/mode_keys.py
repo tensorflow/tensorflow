@@ -19,7 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
+from tensorflow.python.util.compat import collections_abc
 
 
 class KerasModeKeys(object):
@@ -65,7 +65,7 @@ def is_train(mode):
   return mode in [KerasModeKeys.TRAIN, EstimatorModeKeys.TRAIN]
 
 
-class ModeKeyMap(collections.Mapping):
+class ModeKeyMap(collections_abc.Mapping):
   """Map using ModeKeys as keys.
 
   This class creates an immutable mapping from modes to values. For example,

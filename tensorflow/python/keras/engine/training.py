@@ -66,6 +66,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.util.compat import collections_abc
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -155,7 +156,7 @@ class Model(network.Network):
     self._compile_distribution = False
 
     self._run_eagerly = None
-    self._run_distributed = False
+    self._experimental_run_tf_function = False
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -244,20 +245,30 @@ class Model(network.Network):
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
     self._run_eagerly = kwargs.pop('run_eagerly', None)
-    self._run_distributed = kwargs.pop('run_distributed', False)
+    self._experimental_run_tf_function = kwargs.pop(
+        'experimental_run_tf_function', False)
+
+    if isinstance(optimizer, (list, tuple)):
+      self.optimizer = [optimizers.get(opt) for opt in optimizer]
+      is_any_optimizer_v1 = any(
+          isinstance(opt, optimizers.Optimizer) for opt in self.optimizer)
+    else:
+      self.optimizer = optimizers.get(optimizer)
+      is_any_optimizer_v1 = isinstance(self.optimizer, optimizers.Optimizer)
 
     if ((sample_weight_mode is not None)
         or (target_tensors is not None)
         or (weighted_metrics is not None)
+        or is_any_optimizer_v1
         or not context.executing_eagerly()):
       # Fallback out of things that aren't supported with v2 loops
-      self._run_distributed = False
+      self._experimental_run_tf_function = False
 
     self._compile_time_distribution_strategy = (
         distribution_strategy_context.get_strategy())
 
     if distribute is not None:
-      if tf2.enabled() or self._run_distributed:
+      if tf2.enabled() or self._experimental_run_tf_function:
         raise ValueError(
             'Distribute argument in compile is not available in TF 2.0 please '
             'create the model under the distribution strategy scope.')
@@ -275,15 +286,11 @@ class Model(network.Network):
           self._distribution_strategy = (
               distribution_strategy_context.get_strategy())
 
-    if not self._run_distributed:
+    if not self._experimental_run_tf_function:
       self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
                                                              sample_weight_mode,
                                                              target_tensors,
                                                              weighted_metrics)
-    if isinstance(optimizer, (list, tuple)):
-      self.optimizer = [optimizers.get(opt) for opt in optimizer]
-    else:
-      self.optimizer = optimizers.get(optimizer)
     # We've disabled automatic dependency tracking for this method, but do want
     # to add a checkpoint dependency on the optimizer if it's trackable.
     if isinstance(self.optimizer, trackable.Trackable):
@@ -309,6 +316,9 @@ class Model(network.Network):
     # Set tf.distribute.Strategy specific parameters.
     self._distributed_model_cache = {}
     self._distributed_function_cache = {}
+
+    # Clear any `_eager_losses` that was added.
+    self._clear_losses()
 
     if (not context.executing_eagerly() and
         self._distribution_strategy is not None):
@@ -473,7 +483,7 @@ class Model(network.Network):
   def run_eagerly(self, value):
     self._run_eagerly = value
 
-  def _select_training_loop(self, inputs):
+  def _select_training_loop(self, inputs, callbacks):
     """Select training loop for fit/eval/predict based on the inputs."""
     # TODO(kaftan) or TODO(scottzhu): This check should eventually be nicely
     #  integrated into the data adapters in the v2 loop. We can't do this yet
@@ -489,11 +499,11 @@ class Model(network.Network):
 
     # Experiment training loop with default DS path.
     if (context.executing_eagerly()
-        and self._run_distributed
-        # TODO(scottzhu): Finish getting sequences working with the v2 loops.
-        and not isinstance(inputs, (data_utils.Sequence))
+        and self._experimental_run_tf_function
         and not distributed_training_utils.is_tpu_strategy(
-            self._distribution_strategy)):
+            self._distribution_strategy)
+        and not training_v2_utils.should_fallback_to_v1_for_callback(
+            inputs, callbacks)):
       try:
         valid_adapter = data_adapter.select_data_adapter(inputs, None)
       except ValueError as data_failure_exception:
@@ -501,12 +511,17 @@ class Model(network.Network):
         logging.warning('Falling back from v2 loop because of error: '
                         '%s' % data_failure_exception)
       if valid_adapter:
-        return training_v2.Loop()
+        if multi_worker_util.in_multi_worker_mode():
+          return training_distributed.DistributionMultiWorkerTrainingLoop(
+              training_v2.Loop())
+        else:
+          return training_v2.Loop()
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
       if multi_worker_util.in_multi_worker_mode():
-        return training_distributed.DistributionMultiWorkerTrainingLoop()
+        return training_distributed.DistributionMultiWorkerTrainingLoop(
+            training_distributed.DistributionSingleWorkerTrainingLoop())
       else:
         return training_distributed.DistributionSingleWorkerTrainingLoop()
 
@@ -654,9 +669,9 @@ class Model(network.Network):
             and 'validation_steps' is None, validation
             will run until the `validation_data` dataset is exhausted.
         validation_freq: Only relevant if validation data is provided. Integer
-            or `collections.Container` instance (e.g. list, tuple, etc.). If an
-            integer, specifies how many training epochs to run before a new
-            validation run is performed, e.g. `validation_freq=2` runs
+            or `collections_abc.Container` instance (e.g. list, tuple, etc.).
+            If an integer, specifies how many training epochs to run before a
+            new validation run is performed, e.g. `validation_freq=2` runs
             validation every 2 epochs. If a Container, specifies the epochs on
             which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
             validation at the end of the 1st, 2nd, and 10th epochs.
@@ -698,7 +713,7 @@ class Model(network.Network):
     self._assert_compile_was_called()
     self._check_call_args('fit')
 
-    func = self._select_training_loop(x)
+    func = self._select_training_loop(x, callbacks)
     return func.fit(
         self,
         x=x,
@@ -811,7 +826,7 @@ class Model(network.Network):
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
 
-    func = self._select_training_loop(x)
+    func = self._select_training_loop(x, callbacks)
     return func.evaluate(
         self,
         x=x,
@@ -889,7 +904,7 @@ class Model(network.Network):
     _keras_api_gauge.get_cell('predict').set(True)
     self._check_call_args('predict')
 
-    func = self._select_training_loop(x)
+    func = self._select_training_loop(x, callbacks)
     return func.predict(
         self,
         x=x,
@@ -960,7 +975,7 @@ class Model(network.Network):
     """
     self._assert_compile_was_called()
     self._check_call_args('train_on_batch')
-    if self._run_distributed:
+    if self._experimental_run_tf_function:
       outputs = training_v2_utils.train_on_batch(
           self, x, y=y, sample_weight=sample_weight,
           class_weight=class_weight, reset_metrics=reset_metrics)
@@ -1053,7 +1068,7 @@ class Model(network.Network):
     """
     self._assert_compile_was_called()
     self._check_call_args('test_on_batch')
-    if self._run_distributed:
+    if self._experimental_run_tf_function:
       outputs = training_v2_utils.test_on_batch(
           self, x, y=y, sample_weight=sample_weight,
           reset_metrics=reset_metrics)
@@ -1116,7 +1131,7 @@ class Model(network.Network):
           expectations of the model.
     """
     self._check_call_args('predict_on_batch')
-    if self._run_distributed:
+    if self._experimental_run_tf_function:
       return training_v2_utils.predict_on_batch(self, x)
 
     if (self._distribution_strategy and
@@ -1131,7 +1146,7 @@ class Model(network.Network):
     # at this point.
     if self.run_eagerly or self._distribution_strategy:
       inputs = training_utils.cast_if_floating_dtype(inputs)
-      if isinstance(inputs, collections.Sequence):
+      if isinstance(inputs, collections_abc.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
         if len(inputs) == 1:
           inputs = inputs[0]
@@ -1209,9 +1224,9 @@ class Model(network.Network):
             Optional for `Sequence`: if unspecified, will use
             the `len(validation_data)` as a number of steps.
         validation_freq: Only relevant if validation data is provided. Integer
-            or `collections.Container` instance (e.g. list, tuple, etc.). If an
-            integer, specifies how many training epochs to run before a new
-            validation run is performed, e.g. `validation_freq=2` runs
+            or `collections_abc.Container` instance (e.g. list, tuple, etc.).
+            If an integer, specifies how many training epochs to run before a
+            new validation run is performed, e.g. `validation_freq=2` runs
             validation every 2 epochs. If a Container, specifies the epochs on
             which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
             validation at the end of the 1st, 2nd, and 10th epochs.
@@ -2355,135 +2370,24 @@ class Model(network.Network):
     if check_steps:
       training_utils.check_steps_argument(x, steps, steps_name)
 
-    # First, we build/compile the model on the fly if necessary.
-    all_inputs = []
-    is_build_called = False
-    is_compile_called = False
-    # Whether this is a subclassed model that expects dictionary inputs
-    # rather than list inputs (e.g. FeatureColumn-based models).
-    dict_inputs = False
-
+    # First, we build the model on the fly if necessary.
     if not self.inputs:
-      # We need to use `x_input` to set the model inputs.
-
-      # If input data is a dataset iterator in graph mode or if it is an eager
-      # iterator and only one batch of samples is required, we fetch the data
-      # tensors from the iterator and then standardize them.
-      if isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
-        x_input, y_input, _ = training_utils.extract_tensors_from_dataset(x)
-      else:
-        x_input = x
-        y_input = y
-
-      # We type-check that `x_input` and `y_input` are either single arrays
-      # or lists of arrays, and extract a flat list of inputs from the passed
-      # structure.
-      if isinstance(x_input, (list, tuple)):
-        if not all(isinstance(v, np.ndarray) or
-                   tensor_util.is_tensor(v) for v in x_input):
-          raise ValueError('Please provide as model inputs either a single '
-                           'array or a list of arrays. You passed: x=' + str(x))
-        all_inputs += list(x_input)
-      elif isinstance(x_input, dict):
-        dict_inputs = True
-        keys = sorted(x_input.keys())
-        all_inputs = [x_input[k] for k in keys]
-      else:
-        if (not isinstance(x_input, np.ndarray) and
-            not tensor_util.is_tensor(x_input)):
-          raise ValueError('Please provide as model inputs either a single '
-                           'array or a list of arrays. You passed: x=' + str(x))
-        all_inputs.append(x_input)
-
-      # Now that we have a flat set of inputs, we make sure that none of them
-      # are CompositeTensors or CompositeTensorValues of any type (or scipy
-      # sparse arrays, which we treat as SparseTensor values). We cannot safely
-      # infer input data from an arbitrary composite tensor, so we don't try -
-      # users should explictly add composite tensor inputs to their subclassed
-      # models.
-      for input_tensor in all_inputs:
-        if (composite_tensor_utils.is_composite_or_composite_value(input_tensor)
-           ):
-          # TODO(b/132691975): Document subclass-model CT input handling.
-          raise ValueError(
-              'All SparseTensor and RaggedTensor inputs must be explicitly '
-              'declared using a keras.Input() with sparse=True or ragged=True. '
-              'We found an undeclared input %s. For Sequential models, please '
-              'add a keras.Input() as your first Layer. For subclassed models, '
-              'please call self._add_inputs() on your input set, which you can '
-              'create using keras.Input() for each input to your model.' %
-              (input_tensor,))
-
-      # Build the model using the retrieved inputs (value or symbolic).
-      # If values or generated from a dataset, then in symbolic-mode
-      # placeholders will be created to match the value shapes.
+      all_inputs, y_input, dict_inputs = self._build_model_with_inputs(x, y)
       is_build_called = True
-      if is_dataset:
-        def create_tensor_spec(t):
-          return tensor_spec.TensorSpec(t.shape, t.dtype)
-        cast_inputs = nest.map_structure(create_tensor_spec, x_input)
-      elif training_utils.has_tensors(x_input):
-        cast_inputs = training_utils.cast_if_floating_dtype(x_input)
-      else:
-        cast_inputs = x_input
-
-      self._set_inputs(cast_inputs)
     else:
-      y_input = y
+      all_inputs = []
+      # Whether this is a subclassed model that expects dictionary inputs
+      # rather than list inputs (e.g. FeatureColumn-based models).
       dict_inputs = isinstance(self.inputs, dict)
+      is_build_called = False
+      y_input = y
 
+    # Second, we compile the model on the fly if necessary, mostly for subclass
+    # models.
+    is_compile_called = False
     if not self._is_compiled and self.optimizer:
-      # On-the-fly compilation of the model.
-      if y_input is not None:
-        # We need to use `y` to set the model targets.
-        if training_utils.has_tensors(y_input):
-          y_input = training_utils.cast_if_floating_dtype(y_input)
-        if isinstance(y_input, (list, tuple)):
-          if not all(isinstance(v, np.ndarray) or
-                     tensor_util.is_tensor(v) for v in y_input):
-            raise ValueError('Please provide as model targets either a single '
-                             'array or a list of arrays. '
-                             'You passed: y=' + str(y))
-          all_inputs += list(y_input)
-        elif isinstance(y_input, dict):
-          raise ValueError('You cannot pass a dictionary as model targets.')
-        else:
-          if (not isinstance(y_input, np.ndarray) and
-              not tensor_util.is_tensor(y_input)):
-            raise ValueError('Please provide as model targets either a single '
-                             'array or a list of arrays. '
-                             'You passed: y=' + str(y))
-          all_inputs.append(y_input)
-
-      # Typecheck that all inputs are *either* value *or* symbolic.
-      # TODO(fchollet): this check could be removed in Eager mode?
-      if any(tensor_util.is_tensor(v) for v in all_inputs):
-        if not all(tensor_util.is_tensor(v) for v in all_inputs):
-          raise ValueError('Do not pass inputs that mix Numpy arrays and '
-                           'TensorFlow tensors. '
-                           'You passed: x=' + str(x) + '; y=' + str(y))
-
-      if is_dataset or context.executing_eagerly():
-        target_tensors = None
-      else:
-        # Handle target tensors if any passed.
-        if y_input is not None:
-          if not isinstance(y_input, (list, tuple)):
-            y_input = [y_input]
-          target_tensors = [v for v in y_input if _is_symbolic_tensor(v)]
-        else:
-          target_tensors = None
+      self._compile_from_inputs(all_inputs, y_input, x, y)
       is_compile_called = True
-      self.compile(
-          optimizer=self.optimizer,
-          loss=self.loss,
-          metrics=self._compile_metrics,
-          weighted_metrics=self._compile_weighted_metrics,
-          loss_weights=self.loss_weights,
-          target_tensors=target_tensors,
-          sample_weight_mode=self.sample_weight_mode,
-          run_eagerly=self.run_eagerly,
-          run_distributed=self._run_distributed)
 
     # In graph mode, if we had just set inputs and targets as symbolic tensors
     # by invoking build and compile on the model respectively, we do not have to
@@ -2601,7 +2505,7 @@ class Model(network.Network):
       y = []
       sample_weights = None
 
-    if self.stateful and batch_size:
+    if self.stateful and batch_size and not is_dataset:
       # Check that for stateful networks, number of samples is a multiple
       # of the static batch size.
       if x[0].shape[0] % batch_size != 0:
@@ -2616,6 +2520,107 @@ class Model(network.Network):
                                           dataset_ops.DatasetV2)):
       x = dict(zip(feed_input_names, x))
     return x, y, sample_weights
+
+  def _build_model_with_inputs(self, inputs, targets):
+    """Build the model (set model inputs/outputs), mainly for subclass model."""
+    processed_inputs = []
+    is_dict_inputs = False
+    orig_inputs = inputs
+    # We need to use `inputs` to set the model inputs.
+    # If input data is a dataset iterator in graph mode or if it is an eager
+    # iterator and only one batch of samples is required, we fetch the data
+    # tensors from the iterator and then standardize them.
+    if isinstance(inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+      inputs, targets, _ = training_utils.extract_tensors_from_dataset(inputs)
+    # We type-check that `inputs` and `targets` are either single arrays
+    # or lists of arrays, and extract a flat list of inputs from the passed
+    # structure.
+    training_utils.validate_input_types(inputs, orig_inputs)
+
+    if isinstance(inputs, (list, tuple)):
+      processed_inputs += list(inputs)
+    elif isinstance(inputs, dict):
+      is_dict_inputs = True
+      keys = sorted(inputs.keys())
+      processed_inputs = [inputs[k] for k in keys]
+    else:
+      processed_inputs.append(inputs)
+    # Now that we have a flat set of inputs, we make sure that none of them
+    # are CompositeTensors or CompositeTensorValues of any type (or scipy
+    # sparse arrays, which we treat as SparseTensor values). We cannot safely
+    # infer input data from an arbitrary composite tensor, so we don't try -
+    # users should explicitly add composite tensor inputs to their subclassed
+    # models.
+    for input_tensor in processed_inputs:
+      if composite_tensor_utils.is_composite_or_composite_value(input_tensor):
+        # TODO(b/132691975): Document subclass-model CT input handling.
+        raise ValueError(
+            'All SparseTensor and RaggedTensor inputs must be explicitly '
+            'declared using a keras.Input() with sparse=True or ragged=True. '
+            'We found an undeclared input %s. For Sequential models, please '
+            'add a keras.Input() as your first Layer. For subclassed models, '
+            'please call self._add_inputs() on your input set, which you can '
+            'create using keras.Input() for each input to your model.' %
+            (input_tensor,))
+    # Build the model using the retrieved inputs (value or symbolic).
+    # If values are generated from a dataset, then in symbolic-mode
+    # placeholders will be created to match the value shapes.
+    if isinstance(orig_inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
+                                iterator_ops.Iterator)):
+      def create_tensor_spec(t):
+        return tensor_spec.TensorSpec(t.shape, t.dtype)
+
+      cast_inputs = nest.map_structure(create_tensor_spec, inputs)
+    elif training_utils.has_tensors(inputs):
+      cast_inputs = training_utils.cast_if_floating_dtype(inputs)
+    else:
+      cast_inputs = inputs
+    self._set_inputs(cast_inputs)
+    return processed_inputs, targets, is_dict_inputs
+
+  def _compile_from_inputs(self, all_inputs, target, orig_inputs, orig_target):
+    if target is not None:
+      # We need to use `y` to set the model targets.
+      if training_utils.has_tensors(target):
+        target = training_utils.cast_if_floating_dtype(target)
+      training_utils.validate_input_types(target, orig_target,
+                                          allow_dict=False, field_name='target')
+      if isinstance(target, (list, tuple)):
+        all_inputs += list(target)
+      else:
+        all_inputs.append(target)
+    # Type check that all inputs are *either* value *or* symbolic.
+    # TODO(fchollet): this check could be removed in Eager mode?
+    if any(tensor_util.is_tensor(v) for v in all_inputs):
+      if not all(tensor_util.is_tensor(v) for v in all_inputs):
+        raise ValueError('Do not pass inputs that mix Numpy arrays and '
+                         'TensorFlow tensors. '
+                         'You passed: x=' + str(orig_inputs) +
+                         '; y=' + str(orig_target))
+    is_dataset = isinstance(orig_inputs, (dataset_ops.DatasetV1,
+                                          dataset_ops.DatasetV2,
+                                          iterator_ops.Iterator))
+    if is_dataset or context.executing_eagerly():
+      target_tensors = None
+    else:
+      # Handle target tensors if any passed.
+      if target is not None:
+        if not isinstance(target, (list, tuple)):
+          target = [target]
+        target_tensors = [v for v in target if _is_symbolic_tensor(v)]
+      else:
+        target_tensors = None
+
+    self.compile(
+        optimizer=self.optimizer,
+        loss=self.loss,
+        metrics=self._compile_metrics,
+        weighted_metrics=self._compile_weighted_metrics,
+        loss_weights=self.loss_weights,
+        target_tensors=target_tensors,
+        sample_weight_mode=self.sample_weight_mode,
+        run_eagerly=self.run_eagerly,
+        experimental_run_tf_function=self._experimental_run_tf_function)
 
   # TODO(omalleyt): Consider changing to a more descriptive function name.
   def _set_inputs(self, inputs, outputs=None, training=None):

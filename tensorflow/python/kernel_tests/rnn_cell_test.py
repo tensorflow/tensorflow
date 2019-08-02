@@ -35,6 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -1014,11 +1015,15 @@ class LSTMTest(test.TestCase):
                 inputs[0]: input_value
             })
 
+      comparison_fn = self.assertAllEqual
+      if (test_util.is_xla_enabled() and
+          control_flow_v2_toggles.control_flow_v2_enabled()):
+        comparison_fn = self.assertAllClose
       if in_graph_mode:
-        self.assertAllEqual(outputs_static, outputs_dynamic)
+        comparison_fn(outputs_static, outputs_dynamic)
       else:
         self.assertAllEqual(array_ops.stack(outputs_static), outputs_dynamic)
-      self.assertAllEqual(np.hstack(state_static), np.hstack(state_dynamic))
+      comparison_fn(np.hstack(state_static), np.hstack(state_dynamic))
 
   @test_util.run_in_graph_and_eager_modes
   def testDynamicRNNWithNestedTupleStates(self):
@@ -1101,13 +1106,17 @@ class LSTMTest(test.TestCase):
                 inputs[0]: input_value
             })
 
+      comparison_fn = self.assertAllEqual
+      if (test_util.is_xla_enabled() and
+          control_flow_v2_toggles.control_flow_v2_enabled()):
+        comparison_fn = self.assertAllClose
       if in_graph_mode:
-        self.assertAllEqual(outputs_static, outputs_dynamic)
+        comparison_fn(outputs_static, outputs_dynamic)
       else:
         self.assertAllEqual(array_ops.stack(outputs_static), outputs_dynamic)
         state_static = nest.flatten(state_static)
         state_dynamic = nest.flatten(state_dynamic)
-      self.assertAllEqual(np.hstack(state_static), np.hstack(state_dynamic))
+      comparison_fn(np.hstack(state_static), np.hstack(state_dynamic))
 
   def _testDynamicEquivalentToStaticRNN(self, use_sequence_length):
     time_steps = 8
@@ -1164,10 +1173,6 @@ class LSTMTest(test.TestCase):
             cell, inputs, sequence_length=sequence_length, dtype=dtypes.float32)
 
       if in_graph_mode:
-        # Generate gradients and run sessions to obtain outputs
-        feeds = {concat_inputs: input_values}
-        # Initialize
-        variables_lib.global_variables_initializer().run(feed_dict=feeds)
         # Generate gradients of sum of outputs w.r.t. inputs
         static_gradients = gradients_impl.gradients(
             outputs_static + [state_static], [concat_inputs])
@@ -1186,6 +1191,10 @@ class LSTMTest(test.TestCase):
             gradients_impl.gradients(y, trainable_variables)
             for y in [outputs_static[0], outputs_static[-1], state_static]
         ])
+        # Generate gradients and run sessions to obtain outputs
+        feeds = {concat_inputs: input_values}
+        # Initialize
+        variables_lib.global_variables_initializer().run(feed_dict=feeds)
         # Test forward pass
         values_static = sess.run(outputs_static, feed_dict=feeds)
         (state_value_static,) = sess.run((state_static,), feed_dict=feeds)
@@ -1229,10 +1238,6 @@ class LSTMTest(test.TestCase):
         split_outputs_dynamic = array_ops.unstack(outputs_dynamic, time_steps)
 
       if in_graph_mode:
-        feeds = {concat_inputs: input_values}
-
-        # Initialize
-        variables_lib.global_variables_initializer().run(feed_dict=feeds)
 
         # Generate gradients of sum of outputs w.r.t. inputs
         dynamic_gradients = gradients_impl.gradients(
@@ -1259,6 +1264,11 @@ class LSTMTest(test.TestCase):
                 state_dynamic
             ]
         ])
+
+        feeds = {concat_inputs: input_values}
+
+        # Initialize
+        variables_lib.global_variables_initializer().run(feed_dict=feeds)
 
         # Test forward pass
         values_dynamic = sess.run(split_outputs_dynamic, feed_dict=feeds)

@@ -760,15 +760,6 @@ class ControlFlowContext(object):
       return self._outer_context.GetWhileContext()
     return None
 
-  def _IsInOuterContext(self, op):
-    op_ctxt = util.GetOutputContext(op)
-    outer_ctxt = self.outer_context
-    while outer_ctxt != op_ctxt:
-      if outer_ctxt is None:
-        return False
-      outer_ctxt = outer_ctxt.outer_context
-    return True
-
   def _RemoveExternalControlEdges(self, op):
     """Remove any external control dependency on this op."""
     while_ctxt = self.GetWhileContext()
@@ -2281,9 +2272,22 @@ class WhileContext(ControlFlowContext):
       for x in xs:
         inp_op = x.op.inputs[0].op
         control_inputs = graph._control_dependencies_for_inputs([inp_op])
-        outer_control_inputs = [
-            op for op in control_inputs if self._IsInOuterContext(op)
-        ]
+        outer_control_inputs = []
+        for op in control_inputs:
+          # We need to keep control inputs that are in any ancestor
+          # ControlFlowContext, and within outer WhileContext.
+          keep_as_control_input = True
+          op_ctxt = util.GetOutputContext(op)
+          outer_ctxt = self.outer_context
+          outer_while_context = (None if outer_ctxt is None else
+                                 outer_ctxt.GetWhileContext())
+          while outer_ctxt != op_ctxt:
+            if outer_ctxt is None or outer_ctxt == outer_while_context:
+              keep_as_control_input = False
+              break
+            outer_ctxt = outer_ctxt.outer_context
+          if keep_as_control_input:
+            outer_control_inputs.append(op)
         x.op._set_control_flow_context(self)
         x.op._add_control_inputs(outer_control_inputs)
         graph._record_op_seen_by_control_dependencies(x.op)
@@ -2648,6 +2652,13 @@ def while_loop(cond,
   ```
 
   """
+  if not callable(cond):
+    raise TypeError("cond must be callable.")
+  if not callable(body):
+    raise TypeError("body must be callable.")
+  if parallel_iterations < 1:
+    raise TypeError("parallel_iterations must be a positive integer.")
+
   # Always enable control flow v2 if building a function, regardless of toggle.
   executing_eagerly = context.executing_eagerly()
   if (util.EnableControlFlowV2(ops.get_default_graph()) and
@@ -2665,13 +2676,6 @@ def while_loop(cond,
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:
       raise ValueError("No loop variables provided")
-    if not callable(cond):
-      raise TypeError("cond must be callable.")
-    if not callable(body):
-      raise TypeError("body must be callable.")
-    if parallel_iterations < 1:
-      raise TypeError("parallel_iterations must be a positive integer.")
-
     try_to_pack = (len(loop_vars) == 1 and not return_same_structure)
     if maximum_iterations is not None:
       maximum_iterations = ops.convert_to_tensor(

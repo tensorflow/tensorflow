@@ -136,6 +136,8 @@ def : Pat<(TF_ReverseSequenceOp $input, $seq_lengths, $seq_dim, $batch_dim),
            (convertIntAttrTo32Bit $seq_dim),
            (convertIntAttrTo32Bit $batch_dim))>;
 def : Pat<(TF_RsqrtOp $arg), (TFL_RsqrtOp $arg)>;
+def : Pat<(TF_SqrtOp $arg), (TFL_SqrtOp $arg)>;
+def : Pat<(TF_SquareOp $arg), (TFL_SquareOp $arg)>;
 // TODO(jpienaar): this is not true for all selects, TF's select supports rank 0
 // condition
 def : Pat<(TF_SelectOp $cond, $x, $y), (TFL_SelectOp $cond, $x, $y)>;

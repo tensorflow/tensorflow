@@ -38,6 +38,12 @@ import six as _six
 
 from tensorflow.python.util.tf_export import tf_export
 
+try:
+  # This import only works on python 3.3 and above.
+  import collections.abc as collections_abc  # pylint: disable=unused-import
+except ImportError:
+  import collections as collections_abc  # pylint: disable=unused-import
+
 
 def as_bytes(bytes_or_text, encoding='utf-8'):
   """Converts `bytearray`, `bytes`, or unicode python input types to `bytes`.

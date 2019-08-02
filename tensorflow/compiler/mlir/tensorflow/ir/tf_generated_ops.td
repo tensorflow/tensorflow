@@ -136,7 +136,7 @@ Usage:
   import tensorflow as tf
   a = [1, 10, 26.9, 2.8, 166.32, 62.3]
   b = tf.math.argmax(input = a)
-  c = tf.keras.backend.eval(b)  
+  c = tf.keras.backend.eval(b)
   # c = 4
   # here a[4] = 166.32 which is the largest element of a across axis 0
   ```
@@ -169,7 +169,7 @@ Usage:
   import tensorflow as tf
   a = [1, 10, 26.9, 2.8, 166.32, 62.3]
   b = tf.math.argmin(input = a)
-  c = tf.keras.backend.eval(b)  
+  c = tf.keras.backend.eval(b)
   # c = 0
   # here a[0] = 1 which is the smallest element of a across axis 0
   ```
@@ -3232,6 +3232,31 @@ def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   );
 
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_TensorListPushBackOp : TF_Op<"TensorListPushBack", [NoSideEffect]> {
+  let summary = [{
+Returns a list which has the passed-in `Tensor` as last element and the other elements of the given list in `input_handle`.
+  }];
+
+  let description = [{
+tensor: The tensor to put on the list.
+input_handle: The old list.
+output_handle: A list with the elements of the old list followed by tensor.
+element_dtype: the type of elements in the list.
+element_shape: a shape compatible with that of elements in the list.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    TF_Tensor:$tensor
+  );
+
+  let results = (outs
+    TF_VariantTensor:$output_handle
+  );
+
+  TF_DerivedOperandTypeAttr element_dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [NoSideEffect]> {

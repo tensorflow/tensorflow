@@ -566,7 +566,8 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
     const tensorflow::Tensor* t = nullptr;
     tensorflow::TensorHandle* h_cpu = nullptr;
     status->status = EagerCopyToDevice(
-        handle, handle->Context(), handle->Context()->HostCPU(), false, &h_cpu);
+        handle, handle->Context(), handle->Context()->Executor(),
+        handle->Context()->HostCPU(), false, &h_cpu);
     if (!status->status.ok()) {
       return nullptr;
     }
@@ -918,6 +919,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return nullptr;
   }
   status->status = tensorflow::EagerCopyToDevice(h->handle, ctx->context,
+                                                 ctx->context->Executor(),
                                                  device, false, &handle);
   if (status->status.ok()) {
     return new TFE_TensorHandle(handle);

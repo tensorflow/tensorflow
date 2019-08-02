@@ -73,7 +73,6 @@ using reference_ops::BroadcastSub4DSlow;
 using reference_ops::Concatenation;
 using reference_ops::ConcatenationWithScaling;
 using reference_ops::DepthConcatenation;
-using reference_ops::Dequantize;
 using reference_ops::Div;
 using reference_ops::Elu;
 using reference_ops::FakeQuant;
@@ -2055,6 +2054,9 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
       vdup_n_u8(params.quantized_activation_min);
   const auto output_activation_max_vector =
       vdup_n_u8(params.quantized_activation_max);
+  const int left_shift = std::max(0, params.output_shift);
+  const int right_shift = std::max(0, -params.output_shift);
+  const int32x4_t left_shift_vec = vdupq_n_s32(left_shift);
   for (; i <= size - 8; i += 8) {
     // We load / store 8 at a time, multiplying as two sets of 4 int32s.
     const auto input1_val_original = vld1_u8(input1_data + i);
@@ -2074,14 +2076,16 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
     auto p1 = vmull_s16(input2_val_low, input1_val_low);
     auto p2 = vmull_s16(input2_val_high, input1_val_high);
 
+    p1 = vshlq_s32(p1, left_shift_vec);
+    p2 = vshlq_s32(p2, left_shift_vec);
     p1 = vqrdmulhq_n_s32(p1, params.output_multiplier);
     p2 = vqrdmulhq_n_s32(p2, params.output_multiplier);
     using gemmlowp::RoundingDivideByPOT;
-    p1 = RoundingDivideByPOT(p1, -params.output_shift);
-    p2 = RoundingDivideByPOT(p2, -params.output_shift);
+    p1 = RoundingDivideByPOT(p1, right_shift);
+    p2 = RoundingDivideByPOT(p2, right_shift);
 
-    const auto p1_narrowed = vmovn_s32(p1);
-    const auto p2_narrowed = vmovn_s32(p2);
+    const auto p1_narrowed = vqmovn_s32(p1);
+    const auto p2_narrowed = vqmovn_s32(p2);
     const auto p =
         vaddq_s16(vcombine_s16(p1_narrowed, p2_narrowed), output_offset_vector);
     const auto clamped =
@@ -2096,9 +2100,9 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
     const int32 input2_val = params.input2_offset + input2_data[i];
     const int32 unclamped_result =
         params.output_offset +
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(input1_val * input2_val,
-                                                       params.output_multiplier,
-                                                       params.output_shift);
+        MultiplyByQuantizedMultiplier(input1_val * input2_val,
+                                      params.output_multiplier,
+                                      params.output_shift);
     const int32 clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
@@ -2126,6 +2130,9 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
       vdup_n_u8(params.quantized_activation_min);
   const auto output_activation_max_vector =
       vdup_n_u8(params.quantized_activation_max);
+  const int left_shift = std::max(0, params.output_shift);
+  const int right_shift = std::max(0, -params.output_shift);
+  const int32x4_t left_shift_vec = vdupq_n_s32(left_shift);
   for (; i <= size - 8; i += 8) {
     // We load / store 8 at a time, multiplying as two sets of 4 int32s.
     const auto input2_val_original = vld1_u8(input2_data + i);
@@ -2139,11 +2146,13 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
     auto p1 = vmull_n_s16(input2_val_low, input1_val);
     auto p2 = vmull_n_s16(input2_val_high, input1_val);
 
+    p1 = vshlq_s32(p1, left_shift_vec);
+    p2 = vshlq_s32(p2, left_shift_vec);
     p1 = vqrdmulhq_n_s32(p1, params.output_multiplier);
     p2 = vqrdmulhq_n_s32(p2, params.output_multiplier);
     using gemmlowp::RoundingDivideByPOT;
-    p1 = RoundingDivideByPOT(p1, -params.output_shift);
-    p2 = RoundingDivideByPOT(p2, -params.output_shift);
+    p1 = RoundingDivideByPOT(p1, right_shift);
+    p2 = RoundingDivideByPOT(p2, right_shift);
 
     const auto p1_narrowed = vmovn_s32(p1);
     const auto p2_narrowed = vmovn_s32(p2);
@@ -5746,6 +5755,65 @@ inline void BroadcastPow4D(const RuntimeShape& unextended_input1_shape,
   reference_ops::BroadcastPow4DSlow(unextended_input1_shape, input1_data,
                                     unextended_input2_shape, input2_data,
                                     unextended_output_shape, output_data);
+}
+
+inline void Dequantize(const tflite::DequantizationParams& op_params,
+                       const RuntimeShape& input_shape, const uint8* input_data,
+                       const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Dequantize");
+  const int32 zero_point = op_params.zero_point;
+  const double scale = op_params.scale;
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+
+  int i = 0;
+#ifdef USE_NEON
+  const float32x4_t scale_dup = vdupq_n_f32(static_cast<float>(scale));
+#ifdef __ARM_FEATURE_FMA
+  const float32x4_t zero_times_scale_dup =
+      vdupq_n_f32(static_cast<float>(-zero_point * scale));
+#else
+  const int32x4_t zero_point_dup = vdupq_n_s32(zero_point);
+#endif  // __ARM_FEATURE_FMA
+  for (; i <= flat_size - 8; i += 8) {
+    const uint8x8_t input_u8 = vld1_u8(input_data + i);
+    const uint16x8_t input_u16 = vmovl_u8(input_u8);
+    const int16x8_t input_s16 = vreinterpretq_s16_u16(input_u16);
+    const int16x4_t input_s16_low = vget_low_s16(input_s16);
+    const int16x4_t input_s16_high = vget_high_s16(input_s16);
+
+    int32x4_t val_low = vmovl_s16(input_s16_low);
+    int32x4_t val_high = vmovl_s16(input_s16_high);
+
+#ifdef __ARM_FEATURE_FMA
+    float32x4_t result_low = vcvtq_f32_s32(val_low);
+    float32x4_t result_high = vcvtq_f32_s32(val_high);
+    result_low = vfmaq_f32(zero_times_scale_dup, result_low, scale_dup);
+    result_high = vfmaq_f32(zero_times_scale_dup, result_high, scale_dup);
+#else
+    val_low = vsubq_s32(val_low, zero_point_dup);
+    val_high = vsubq_s32(val_high, zero_point_dup);
+
+    float32x4_t result_low = vcvtq_f32_s32(val_low);
+    float32x4_t result_high = vcvtq_f32_s32(val_high);
+    result_low = vmulq_f32(result_low, scale_dup);
+    result_high = vmulq_f32(result_high, scale_dup);
+#endif  // __ARM_FEATURE_FMA
+
+    vst1q_f32(output_data + i, result_low);
+    vst1q_f32(output_data + i + 4, result_high);
+  }
+#endif  // NEON
+  for (; i < flat_size; ++i) {
+    int32 val = input_data[i];
+    float result = static_cast<float>(scale * (val - zero_point));
+    output_data[i] = result;
+  }
+}
+
+inline void Dequantize(const RuntimeShape& input_shape,
+                       const Eigen::half* input_data,
+                       const RuntimeShape& output_shape, float* output_data) {
+  reference_ops::Dequantize(input_shape, input_data, output_shape, output_data);
 }
 
 }  // namespace optimized_ops

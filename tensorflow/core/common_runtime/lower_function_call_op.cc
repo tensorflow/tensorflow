@@ -33,8 +33,9 @@ bool LowerAsMultiDeviceFunction(const Node* n) {
   if (n->IsPartitionedCall()) return true;
 
   bool match;
-  Status s = GetNodeAttr(n->attrs(), kLowerAsMultiDeviceFunctionAttr, &match);
-  return s.ok() && match;
+  bool found =
+      GetNodeAttrSimple(n->attrs(), kLowerAsMultiDeviceFunctionAttr, &match);
+  return found && match;
 }
 
 }  // namespace

@@ -99,6 +99,22 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithSmallDimensionsNotTiled) {
                      /*match_optimized_ir=*/true);
 }
 
+TEST_F(GpuKernelTilingTest, UnnestedTransposeC128TypeRun) {
+  const char *const kHloString = R"(
+    HloModule unnested_transpose_3
+
+    ENTRY unnested_transpose_3 {
+      para0 = c128[65,65]{1,0} parameter(0)
+      ROOT copy1 = c128[65,65]{0,1} copy(para0)
+    })";
+
+  // With the current implementation for the available hardwares, we bail out
+  // from the tiled transpose implementation at the last minute. Instead of
+  // checking the transpose is not tiled, we only check the module compiled and
+  // run in this test.
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.0}));
+}
+
 TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
   const char *const kHloString = R"(
     HloModule multiple_output_fusion_1

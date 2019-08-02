@@ -29,6 +29,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import saving
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.ops import array_ops
@@ -187,7 +188,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
         adam.Adam(0.001),
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     np_inputs = nest.map_structure(
         lambda x: np.ones((10,) + tuple(x.shape[1:]), 'float32'), model.inputs)
@@ -202,7 +203,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
         adam.Adam(0.001),
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     new_model.fit(np_inputs, np_outputs, batch_size=2)
     new_model(np_inputs)  # Test calling the new model directly on inputs.
     # Assert that metrics are preserved and in the right order.
@@ -298,6 +299,15 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     for layer in model.layers:
       self.assertTrue(layer.built)
     # Test something that requires Layers to be built.
+    model.summary()
+
+  def test_json_serialization(self):
+    inputs = keras.Input(shape=(4,), dtype='uint8')
+    outputs = math_ops.cast(inputs, 'float32') / 4.
+    model = saving.model_from_json(keras.Model(inputs, outputs).to_json())
+    self.assertAllEqual(
+        self.evaluate(model(np.array([0, 64, 128, 192], np.uint8))),
+        [0., 16., 32., 48.])
     model.summary()
 
 
