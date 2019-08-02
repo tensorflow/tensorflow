@@ -46,16 +46,14 @@ struct TrMulTask final : Task {
         packing_status(packing_status_),
         tuning_resolver(tuning_resolver_),
         local_allocator(local_allocator_),
-        trace(trace_) {}
+        trace(trace_),
+        local_packed{nullptr, nullptr} {}
 
   void Run() override {
     TraceRecordThreadStart(thread_id, trace);
 
-    // Local indicators of packedness to avoid the overhead of atomic ops.
-    SidePair<bool*> local_packed{nullptr, nullptr};
-
     for (Side side : {Side::kLhs, Side::kRhs}) {
-      if (packing_status[side]) {
+      if (!params->is_prepacked[side]) {
         const int size = NumBlocksPerSide(side, block_map);
         local_allocator->Allocate(size, &local_packed[side]);
         memset(local_packed[side], 0, size * sizeof(bool));
@@ -91,7 +89,7 @@ struct TrMulTask final : Task {
       // Get coordinates of the current block to handle, in matrix space.
       GetBlockMatrixCoords(block_map, block, &start, &end);
       // Maybe pack the current LHS/RHS block, if not already packed.
-      EnsurePacked(local_packed, block, start, end, tuning);
+      EnsurePacked(block, start, end, tuning);
       // Actually do matrix multiplication work
       params->RunKernel(tuning, start, end);
       TraceRecordBlockFinished(thread_id, block_id, trace);
@@ -110,9 +108,11 @@ struct TrMulTask final : Task {
   // If the block was already packed, returns true.
   // If the block was not started packing, packs it and returns true.
   // If the block was being packed by another thread, returns false.
-  bool TryPack(Side side, bool* local_packed, int block, int start, int end,
-               Tuning tuning) {
-    if (local_packed && !local_packed[block]) {
+  bool TryPack(Side side, int block, int start, int end, Tuning tuning) {
+    if (params->is_prepacked[side]) {
+      return true;
+    }
+    if (!local_packed[side][block]) {
       // Explanation of this compare_exchange_strong operation:
       // This atomically performs all of the following:
       // 1. Read `status` with "acquire" memory order.
@@ -164,7 +164,7 @@ struct TrMulTask final : Task {
       }
       RUY_DCHECK(status.load(std::memory_order_acquire) ==
                  PackingStatus::kFinished);
-      local_packed[block] = true;
+      local_packed[side][block] = true;
     }
     return true;
   }
@@ -173,8 +173,7 @@ struct TrMulTask final : Task {
   // are packed. In the event that they are already being packed on another
   // threads, this function may perform the packing of some other block while
   // waiting for that other thread to finish packing the requested block.
-  void EnsurePacked(const SidePair<bool*> local_packed,
-                    const SidePair<int>& block, const SidePair<int>& start,
+  void EnsurePacked(const SidePair<int>& block, const SidePair<int>& start,
                     const SidePair<int>& end, Tuning tuning) {
 #if RUY_OPT_ENABLED(RUY_OPT_PACK_AHEAD)
     SidePair<int> next_runahead_block{block[Side::kLhs] + 1,
@@ -184,8 +183,8 @@ struct TrMulTask final : Task {
     while (true) {
       bool both_sides_packed = true;
       for (Side side : {Side::kLhs, Side::kRhs}) {
-        both_sides_packed &= TryPack(side, local_packed[side], block[side],
-                                     start[side], end[side], tuning);
+        both_sides_packed &=
+            TryPack(side, block[side], start[side], end[side], tuning);
       }
       if (both_sides_packed) {
         break;
@@ -201,8 +200,8 @@ struct TrMulTask final : Task {
       int runahead_block_start, runahead_block_end;
       GetBlockMatrixCoords(runahead_side, block_map, runahead_block,
                            &runahead_block_start, &runahead_block_end);
-      TryPack(runahead_side, local_packed[runahead_side], runahead_block,
-              runahead_block_start, runahead_block_end, tuning);
+      TryPack(runahead_side, runahead_block, runahead_block_start,
+              runahead_block_end, tuning);
       next_runahead_block[runahead_side] = runahead_block + 1;
 #endif
     }
@@ -216,6 +215,9 @@ struct TrMulTask final : Task {
   TuningResolver* tuning_resolver;
   Allocator* local_allocator;
   Trace* trace;
+
+  // Local indicators of packedness to avoid the overhead of atomic ops.
+  SidePair<bool*> local_packed;
 };
 
 void AllocatePMatrix(Allocator* allocator, PMatrix* packed) {
