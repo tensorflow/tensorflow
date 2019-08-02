@@ -88,7 +88,7 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
   for (const auto& result : results) {
     *log.add_results() = result;
   }
-  Logger::Singleton()->LogProto(log);
+  Logger::GetSingleton()->LogProto(log);
 }
 
 void LogFusedConvForwardAutotuneResults(
@@ -126,7 +126,7 @@ void LogFusedConvForwardAutotuneResults(
   for (const auto& result : results) {
     *log.add_results() = result;
   }
-  Logger::Singleton()->LogProto(log);
+  Logger::GetSingleton()->LogProto(log);
 }
 
 Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,

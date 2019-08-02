@@ -16,17 +16,19 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/tflite/builtin_operator.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
-#include "tensorflow/core/framework/node_def.pb.h"
 
 namespace toco {
 namespace tflite {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 
 class ExportTest : public ::testing::Test {
  protected:
@@ -146,6 +148,11 @@ class ExportTest : public ::testing::Test {
     }
   }
 
+  tensorflow::Status ExportAndReturnStatus(const ExportParams& params) {
+    string result;
+    return Export(input_model_, &result, params);
+  }
+
   std::vector<string> ExportAndSummarizeOperators(const ExportParams& params) {
     std::vector<string> names;
 
@@ -211,6 +218,17 @@ TEST_F(ExportTest, LoadOperatorsMap) {
                                               "MyCrazyOp", 1)]);
   EXPECT_EQ(
       3, operators[details::OperatorKey(::tflite::BuiltinOperator_SUB, "", 1)]);
+}
+
+TEST_F(ExportTest, UnsupportedFunctionality) {
+  AddOperatorsByName({"Conv"});
+
+  ExportParams params;
+  params.allow_dynamic_tensors = false;
+  auto status = ExportAndReturnStatus(params);
+  EXPECT_EQ(status.code(), ::tensorflow::error::UNIMPLEMENTED);
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Unsupported flag: allow_dynamic_tensors."));
 }
 
 TEST_F(ExportTest, Export) {

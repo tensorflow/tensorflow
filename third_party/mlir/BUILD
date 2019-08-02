@@ -4,8 +4,20 @@
 licenses(["notice"])
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [":friends"],
     features = ["-layering_check"],
+)
+
+package_group(
+    name = "subpackages",
+    packages = ["//..."],
+)
+
+# Please do not depend on this from any other packages.
+package_group(
+    name = "friends",
+    includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
+    packages = ["//..."],
 )
 
 exports_files(["run_lit.sh"])
@@ -57,7 +69,6 @@ cc_library(
         "include/mlir/IR/DialectHooks.h",
         "include/mlir/IR/DialectSymbolRegistry.def",
         "include/mlir/IR/Function.h",
-        "include/mlir/IR/FunctionGraphTraits.h",
         "include/mlir/IR/Identifier.h",
         "include/mlir/IR/IntegerSet.h",
         "include/mlir/IR/Location.h",
@@ -70,6 +81,7 @@ cc_library(
         "include/mlir/IR/OperationSupport.h",
         "include/mlir/IR/PatternMatch.h",
         "include/mlir/IR/Region.h",
+        "include/mlir/IR/RegionGraphTraits.h",
         "include/mlir/IR/StandardTypes.h",
         "include/mlir/IR/StorageUniquerSupport.h",
         "include/mlir/IR/SymbolTable.h",
@@ -96,6 +108,7 @@ cc_library(
         "lib/Pass/PassTiming.cpp",
     ],
     hdrs = [
+        "include/mlir/Analysis/Verifier.h",
         "include/mlir/Pass/AnalysisManager.h",
         "include/mlir/Pass/Pass.h",
         "include/mlir/Pass/PassInstrumentation.h",
@@ -103,7 +116,10 @@ cc_library(
         "include/mlir/Pass/PassRegistry.h",
     ],
     includes = ["include"],
-    linkopts = ["-lpthread"],
+    linkopts = [
+        "-lm",
+        "-lpthread",
+    ],
     deps = [
         ":IR",
         ":Support",
@@ -132,6 +148,7 @@ cc_library(
         ":IR",
         ":StandardOps",
         ":Support",
+        ":TransformUtils",
         ":VectorOps",
         "@llvm//:support",
     ],
@@ -405,6 +422,7 @@ cc_library(
     deps = [
         ":GPUOpsIncGen",
         ":IR",
+        ":StandardOps",
         ":Support",
     ],
 )
@@ -608,15 +626,29 @@ gentbl(
     tbl_outs = [
         (
             "-gen-rewriters",
-            "include/mlir/SPIRV/Transforms/StdOpsToSPIRVConversion.cpp.inc",
+            "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/SPIRV/Transforms/StdOpsToSPIRVConversion.td",
+    td_file = "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
-        "include/mlir/IR/OpBase.td",
-        "include/mlir/StandardOps/Ops.td",
+        ":StdOpsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "SPIRVOpUtilsIncGen",
+    tbl_outs = [
+        (
+            "-gen-spirv-op-utils",
+            "include/mlir/SPIRV/SPIRVOpUtils.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/SPIRV/SPIRVBase.td",
+    td_srcs = [
+        ":SPIRVOpsTdFiles",
     ],
 )
 
@@ -640,6 +672,7 @@ cc_library(
     srcs = [
         "include/mlir/SPIRV/SPIRVEnums.cpp.inc",
         "include/mlir/SPIRV/SPIRVEnums.h.inc",
+        "include/mlir/SPIRV/SPIRVOpUtils.inc",
         "include/mlir/SPIRV/SPIRVOps.cpp.inc",
         "include/mlir/SPIRV/SPIRVOps.h.inc",
         "lib/SPIRV/SPIRVDialect.cpp",
@@ -655,6 +688,7 @@ cc_library(
     deps = [
         ":IR",
         ":Parser",
+        ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":Support",
         "@llvm//:support",
@@ -665,17 +699,21 @@ cc_library(
 cc_library(
     name = "SPIRVConversions",
     srcs = [
-        "include/mlir/SPIRV/Transforms/StdOpsToSPIRVConversion.cpp.inc",
-        "lib/SPIRV/Transforms/StdOpsToSPIRVConversion.cpp",
+        "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp",
+        "lib/Conversion/StandardToSPIRV/StdOpsToSPIRVConversion.cpp.inc",
     ],
     hdrs = [
         "include/mlir/SPIRV/Passes.h",
     ],
-    includes = ["include"],
+    includes = [
+        "include",
+        "lib/Conversion/StandardToSPIRV",
+    ],
     deps = [
         ":IR",
         ":Pass",
         ":SPIRVDialect",
+        ":StandardOps",
         ":StdOpsToSPIRVConversionIncGen",
         ":Support",
         "@llvm//:support",
@@ -770,6 +808,7 @@ cc_library(
         ":AffineOps",
         ":Analysis",
         ":IR",
+        ":StandardDialectRegistration",
         ":StandardOps",
         ":Support",
         "@llvm//:support",
@@ -785,6 +824,7 @@ cc_library(
         "lib/Transforms/DmaGeneration.cpp",
         "lib/Transforms/LoopFusion.cpp",
         "lib/Transforms/LoopInvariantCodeMotion.cpp",
+        "lib/Transforms/LoopParametricTiling.cpp",
         "lib/Transforms/LoopTiling.cpp",
         "lib/Transforms/LoopUnroll.cpp",
         "lib/Transforms/LoopUnrollAndJam.cpp",
@@ -819,18 +859,19 @@ cc_library(
 )
 
 cc_library(
-    name = "AffineToGPU",
+    name = "LoopsToGPU",
     srcs = [
-        "lib/Conversion/AffineToGPU/AffineToGPU.cpp",
+        "lib/Conversion/LoopsToGPU/LoopsToGPU.cpp",
     ],
     hdrs = [
-        "include/mlir/Conversion/AffineToGPU/AffineToGPU.h",
+        "include/mlir/Conversion/LoopsToGPU/LoopsToGPU.h",
     ],
     includes = ["include"],
     deps = [
         ":AffineOps",
         ":GPUDialect",
         ":IR",
+        ":Linalg",
         ":StandardOps",
         ":Support",
         ":TransformUtils",
@@ -840,14 +881,18 @@ cc_library(
 )
 
 cc_library(
-    name = "AffineToGPUPass",
+    name = "LoopsToGPUPass",
     srcs = [
-        "lib/Conversion/AffineToGPU/AffineToGPUPass.cpp",
+        "lib/Conversion/LoopsToGPU/LoopsToGPUPass.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h",
     ],
     includes = ["include"],
     deps = [
         ":AffineOps",
-        ":AffineToGPU",
+        ":Linalg",
+        ":LoopsToGPU",
         ":Pass",
         "@llvm//:support",
     ],
@@ -905,6 +950,7 @@ cc_library(
         "include/mlir/Analysis/SliceAnalysis.h",
         "include/mlir/Analysis/Utils.h",
         "include/mlir/Analysis/VectorAnalysis.h",
+        "include/mlir/Analysis/Verifier.h",
     ],
     includes = ["include"],
     deps = [
@@ -1064,15 +1110,15 @@ cc_library(
         ":SPIRVDialectRegistration",
         ":Support",
         ":Transforms",
-        ":ViewFunctionGraph",
+        ":ViewRegionGraph",
         "@llvm//:support",
     ],
 )
 
 cc_library(
-    name = "ViewFunctionGraph",
-    srcs = ["lib/Transforms/ViewFunctionGraph.cpp"],
-    hdrs = ["include/mlir/Transforms/ViewFunctionGraph.h"],
+    name = "ViewRegionGraph",
+    srcs = ["lib/Transforms/ViewRegionGraph.cpp"],
+    hdrs = ["include/mlir/Transforms/ViewRegionGraph.h"],
     includes = ["include"],
     deps = [
         ":Analysis",
@@ -1089,6 +1135,7 @@ cc_library(
     hdrs = ["include/mlir/Support/TranslateClParser.h"],
     includes = ["include"],
     deps = [
+        ":Analysis",
         ":IR",
         ":Parser",
         ":Support",
@@ -1143,13 +1190,13 @@ cc_binary(
     name = "mlir-opt",
     deps = [
         ":AffineDialectRegistration",
-        ":AffineToGPUPass",
         ":Analysis",
         ":FxpMathOps",
         ":FxpMathOpsDialectRegistration",
         ":GPUDialectRegistration",
         ":IR",
         ":LinalgDialectRegistration",
+        ":LoopsToGPUPass",
         ":MlirOptLib",
         ":MlirOptMain",
         ":QuantOps",
@@ -1160,18 +1207,6 @@ cc_binary(
         "@llvm//:support",
         "@local_config_mlir//test:TestDialect",
         "@local_config_mlir//test:TestTransforms",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite_dialect_registration",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite_optimize",
-        "@org_tensorflow//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
-        "@org_tensorflow//tensorflow/compiler/mlir/tensorflow",
-        "@org_tensorflow//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla:xla_dialect_registration",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla:xla_legalize_control_flow",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "@org_tensorflow//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
     ],
 )
 
@@ -1202,6 +1237,46 @@ cc_binary(
     linkopts = ["-ldl"],
     deps = [
         ":mlir-cpu-runner-lib",
+        "@llvm//:support",
+    ],
+)
+
+cc_binary(
+    name = "tools/libcuda-runtime-wrappers.so",
+    srcs = ["tools/mlir-cuda-runner/cuda-runtime-wrappers.cpp"],
+    includes = ["include"],
+    linkshared = True,
+    deps = [
+        "//third_party/gpus/cuda:cuda_headers",
+        "//third_party/gpus/cuda:cuda_runtime",
+        "//third_party/gpus/cuda:libcuda",
+        "@llvm//:support",
+    ],
+)
+
+cc_binary(
+    name = "mlir-cuda-runner",
+    srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
+    data = [
+        ":tools/libcuda-runtime-wrappers.so",
+    ],
+    includes = ["include"],
+    deps = [
+        ":GPUDialect",
+        ":GPUDialectRegistration",
+        ":GPUToNVVMTransforms",
+        ":GPUTransforms",
+        ":IR",
+        ":LLVMDialect",
+        ":LLVMTransforms",
+        ":Pass",
+        ":Transforms",
+        ":mlir-cpu-runner-lib",
+        "//devtools/build/runtime:get_runfiles_dir",
+        "//third_party/gpus/cuda:cuda_headers",
+        "//third_party/gpus/cuda:cuda_runtime",
+        "//third_party/gpus/cuda:libcuda",
+        "@llvm//:support",
     ],
 )
 
@@ -1251,11 +1326,14 @@ cc_binary(
         "tools/mlir-tblgen/OpDocGen.cpp",
         "tools/mlir-tblgen/ReferenceImplGen.cpp",
         "tools/mlir-tblgen/RewriterGen.cpp",
-        "tools/mlir-tblgen/SPIRVSerializationGen.cpp",
+        "tools/mlir-tblgen/SPIRVUtilsGen.cpp",
         "tools/mlir-tblgen/mlir-tblgen.cpp",
     ],
     includes = ["include"],
-    linkopts = ["-lpthread"],
+    linkopts = [
+        "-lm",
+        "-lpthread",
+    ],
     deps = [
         ":Support",
         ":TableGen",

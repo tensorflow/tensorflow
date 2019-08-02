@@ -90,6 +90,26 @@ else_branch: A function that takes 'inputs' and returns a list of
     tensors.  whose types are the same as what then_branch returns.
 )doc");
 
+Status IfShapeInferenceFn(shape_inference::InferenceContext* c) {
+  std::vector<PartialTensorShape> output_shapes;
+  TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+  // If `output_shapes` attr is set use that as the shapes of the outputs
+  // else return unknown shapes.
+  if (output_shapes.empty()) return shape_inference::UnknownShape(c);
+  if (output_shapes.size() != c->num_outputs()) {
+    return errors::InvalidArgument(
+        "`output_shapes` must be the same length as num outputs (",
+        output_shapes.size(), " vs. ", c->num_outputs());
+  }
+  for (size_t i = 0; i < output_shapes.size(); ++i) {
+    shape_inference::ShapeHandle output_shape_handle;
+    TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+        output_shapes[i], &output_shape_handle));
+    c->set_output(static_cast<int>(i), output_shape_handle);
+  }
+  return Status::OK();
+}
+
 REGISTER_OP("StatelessIf")
     .Input("cond: Tcond")
     .Input("input: Tin")
@@ -99,7 +119,8 @@ REGISTER_OP("StatelessIf")
     .Attr("Tout: list(type) >= 0")
     .Attr("then_branch: func")
     .Attr("else_branch: func")
-    .SetShapeFn(shape_inference::UnknownShape);
+    .Attr("output_shapes: list(shape) = []")
+    .SetShapeFn(IfShapeInferenceFn);
 
 REGISTER_OP("If")
     .Input("cond: Tcond")
@@ -112,25 +133,7 @@ REGISTER_OP("If")
     .Attr("else_branch: func")
     .Attr("output_shapes: list(shape) = []")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      std::vector<PartialTensorShape> output_shapes;
-      TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
-      // If `output_shapes` attr is set use that as the shapes of the outputs
-      // else return unknown shapes.
-      if (output_shapes.empty()) return shape_inference::UnknownShape(c);
-      if (output_shapes.size() != c->num_outputs()) {
-        return errors::InvalidArgument(
-            "`output_shapes` must be the same length as num outputs (",
-            output_shapes.size(), " vs. ", c->num_outputs());
-      }
-      for (size_t i = 0; i < output_shapes.size(); ++i) {
-        shape_inference::ShapeHandle output_shape_handle;
-        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
-            output_shapes[i], &output_shape_handle));
-        c->set_output(static_cast<int>(i), output_shape_handle);
-      }
-      return Status::OK();
-    });
+    .SetShapeFn(IfShapeInferenceFn);
 
 REGISTER_OP("Case")
     .Input("branch_index: int32")

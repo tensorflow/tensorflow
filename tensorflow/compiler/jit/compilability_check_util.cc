@@ -324,7 +324,7 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     return false;
   }
 
-  if (node.type_string() == "If" &&
+  if (node.IsIfNode() &&
       !IsCompilableIf(node, lib_runtime, stack_trace, uncompilable_nodes)) {
     LogNotCompilable(node, "unsupported if");
     return false;

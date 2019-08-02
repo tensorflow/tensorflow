@@ -154,7 +154,7 @@ class ConcatAggregator(Aggregator):
       self.results = np.concatenate(self.results, axis=0)
 
     if isinstance(self.results, ops.EagerTensor):
-      self.results = self.results._cpu_nograd()._numpy()  # pylint: disable=protected-access
+      self.results = self.results._numpy()  # pylint: disable=protected-access
 
 
 _COPY_THREADS = 4
@@ -226,6 +226,12 @@ class SliceAggregator(Aggregator):
 
     # In the special case of single batch inference, no copy is needed.
     if batch_end - batch_start == self.num_samples_or_steps:
+      if self.num_samples_or_steps != batch_element.shape[0]:
+        raise ValueError(
+            'Mismatch between expected batch size and model output batch size. '
+            'Output shape = {}, expected output shape = shape {}'.format(
+                batch_element.shape, self.results.shape))
+
       self.results = batch_element
       return
 
@@ -1721,6 +1727,13 @@ def convert_eager_tensors_to_numpy(structure):
     return element
 
   return nest.map_structure(_convert, structure)
+
+
+def list_to_tuple(maybe_list):
+  """Datasets will stack the list of tensor, so switch them to tuples."""
+  if isinstance(maybe_list, list):
+    return tuple(maybe_list)
+  return maybe_list
 
 
 def should_run_validation(validation_freq, epoch):

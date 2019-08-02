@@ -85,8 +85,10 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
+    name_utils::IteratorPrefixParams params;
+    params.op_version = op_version_;
     return absl::make_unique<Iterator>(Iterator::Params{
-        this, name_utils::IteratorPrefix(kDatasetType, prefix)});
+        this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
   }
 
   const DataTypeVector& output_dtypes() const override {

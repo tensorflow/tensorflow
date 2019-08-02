@@ -426,6 +426,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels/internal:audio_utils",
         "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:cpu_check",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:optimized",
@@ -585,6 +586,7 @@ cc_test(
     name = "arg_min_max_test",
     size = "small",
     srcs = ["arg_min_max_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -668,6 +670,7 @@ cc_test(
     name = "cast_test",
     size = "small",
     srcs = ["cast_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -830,6 +833,7 @@ cc_test(
     name = "unidirectional_sequence_lstm_test",
     size = "small",
     srcs = ["unidirectional_sequence_lstm_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1147,6 +1151,7 @@ cc_test(
     name = "log_softmax_test",
     size = "small",
     srcs = ["log_softmax_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1229,6 +1234,7 @@ cc_test(
     name = "split_test",
     size = "small",
     srcs = ["split_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1312,6 +1318,7 @@ cc_test(
     name = "neg_test",
     size = "small",
     srcs = ["neg_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1343,6 +1350,7 @@ cc_test(
     srcs = [
         "slice_test.cc",
     ],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1427,12 +1435,14 @@ cc_test(
     name = "pow_test",
     size = "small",
     srcs = ["pow_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels/internal:test_util",
         "@com_google_googletest//:gtest",
     ],
 )

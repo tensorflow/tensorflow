@@ -1,3 +1,6 @@
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -12,6 +15,7 @@ cc_library(
         ":depthwise_conv",
         ":elementwise",
         ":fully_connected",
+        ":hard_swish",
         ":max_unpooling",
         ":mul",
         ":padding",
@@ -119,6 +123,18 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/metal:environment",
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "hard_swish",
+    srcs = ["hard_swish.cc"],
+    hdrs = ["hard_swish.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
     ],
 )
 
@@ -303,3 +319,48 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
     ],
 )
+
+objc_library(
+    name = "test_util",
+    testonly = 1,
+    srcs = [
+        "test_util.mm",
+    ],
+    hdrs = ["test_util.h"],
+    sdk_frameworks = [
+        "Metal",
+    ],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/metal:api",
+        "//tensorflow/lite/delegates/gpu/metal:inference_context",
+    ],
+)
+
+objc_library(
+    name = "add_test_lib",
+    testonly = 1,
+    srcs = ["add_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":add",
+        ":test_util",
+    ],
+)
+
+ios_unit_test(
+    name = "add_test",
+    testonly = 1,
+    minimum_os_version = "9.0",
+    tags = [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":add_test_lib"],
+)
+
+tflite_portable_test_suite()

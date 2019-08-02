@@ -3,6 +3,9 @@
 // CHECK-LABEL: func @control_type() -> !tf_executor.control
 func @control_type() -> !tf_executor.control
 
+// CHECK-LABEL: func @token_type() -> !tf_executor.token
+func @token_type() -> !tf_executor.token
+
 // CHECK-LABEL: func @empty_graph
 func @empty_graph() {
   tf_executor.graph {
@@ -276,4 +279,130 @@ func @enter_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
     tf_executor.fetch %res#0 : tensor<*xf32>
   }
   return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @nextiteration(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+func @nextiteration(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1:3 = tf_executor.NextIteration.Source : tensor<*xf32>
+    tf_executor.NextIteration.Sink[%1#1] %1#0 : tensor<*xf32>
+// CHECK: %1:3 = tf_executor.NextIteration.Source : tensor<*xf32>
+// CHECK: tf_executor.NextIteration.Sink [%1#1] %1#0 : tensor<*xf32>
+    tf_executor.fetch %1#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @nextiteration_with_attributes(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+func @nextiteration_with_attributes(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1:3 = tf_executor.NextIteration.Source : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+    tf_executor.NextIteration.Sink[%1#1] %1#0 : tensor<*xf32> {attr4 = 42 : i64, tf_executor.attr_push = "other_value"}
+// CHECK: %1:3 = tf_executor.NextIteration.Source : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+// CHECK: tf_executor.NextIteration.Sink [%1#1] %1#0 : tensor<*xf32> {attr4 = 42 : i64, tf_executor.attr_push = "other_value"}
+    tf_executor.fetch %1#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @nextiteration_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+func @nextiteration_control(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1:3 = tf_executor.Switch %arg0, %arg1 : tensor<*xf32>
+    %2:2 = tf_executor.Enter %arg0, %1#2, %1#2 frame "some/frame" : tensor<*xf32>
+    %3:3 = tf_executor.NextIteration.Source : tensor<*xf32>
+    tf_executor.NextIteration.Sink [%3#1] %3#0, %1#2 : tensor<*xf32>
+// CHECK: %3:3 = tf_executor.NextIteration.Source : tensor<*xf32>
+// CHECK: tf_executor.NextIteration.Sink [%3#1] %3#0, %1#2 : tensor<*xf32>
+    tf_executor.fetch %3#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @exit(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func @exit(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+// CHECK: %1:2 = tf_executor.Exit %arg0 : tensor<*xf32>
+    %1:2 = tf_executor.Exit %arg0 : tensor<*xf32>
+    tf_executor.fetch %1#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @exit_with_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func @exit_with_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+// CHECK: %1:2 = tf_executor.Exit %arg0 : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+    %1:2 = tf_executor.Exit %arg0 : tensor<*xf32> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+    tf_executor.fetch %1#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @exit_with_control(%arg0: tensor<*xf32>, %arg1: !tf_executor.control) -> tensor<*xf32> {
+func @exit_with_control(%arg0: tensor<*xf32>, %arg1: !tf_executor.control) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1:2 = tf_executor.Exit %arg0, %arg1 : tensor<*xf32>
+    %2:2 = tf_executor.Exit %arg0, %1#1 : tensor<*xf32>
+    tf_executor.fetch %2#0 : tensor<*xf32>
+  }
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @control_trigger(%arg0: !tf_executor.control, %arg1: !tf_executor.control) {
+func @control_trigger(%arg0: !tf_executor.control, %arg1: !tf_executor.control) {
+  tf_executor.graph {
+// CHECK: tf_executor.ControlTrigger %arg0, %arg1
+    %0 = tf_executor.ControlTrigger %arg0, %arg1
+  }
+  return
+}
+
+// CHECK-LABEL: func @control_trigger_with_attributes(%arg0: !tf_executor.control, %arg1: !tf_executor.control) {
+func @control_trigger_with_attributes(%arg0: !tf_executor.control, %arg1: !tf_executor.control) {
+  tf_executor.graph {
+// CHECK: tf_executor.ControlTrigger %arg0, %arg1 {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+    %0 = tf_executor.ControlTrigger %arg0, %arg1 {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+  }
+  return
+}
+
+// CHECK-LABEL: func @loop_cond(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+func @loop_cond(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+  %0 = tf_executor.graph {
+// CHECK: tf_executor.LoopCond %arg0 : tensor<i1>
+    %1:2 = tf_executor.LoopCond %arg0 : tensor<i1>
+    tf_executor.fetch %1#0 : tensor<i1>
+  }
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @loop_cond_with_attributes(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+func @loop_cond_with_attributes(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+  %0 = tf_executor.graph {
+// CHECK: tf_executor.LoopCond %arg0 : tensor<i1> {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+    %1:2 = tf_executor.LoopCond %arg0 : tensor<i1>  {attr3 = 32 : i64, tf_executor.attr_fetch = "some_value"}
+    tf_executor.fetch %1#0 : tensor<i1>
+  }
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @loop_cond_with_control(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+func @loop_cond_with_control(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<i1> {
+  %0 = tf_executor.graph {
+// CHECK: tf_executor.LoopCond %arg0, %arg1 : tensor<i1>
+    %1:2 = tf_executor.LoopCond %arg0, %arg1 : tensor<i1>
+    tf_executor.fetch %1#0 : tensor<i1>
+  }
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @loop_cond_with_control_broadcast(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<*xi1> {
+func @loop_cond_with_control_broadcast(%arg0: tensor<i1>, %arg1: !tf_executor.control) -> tensor<*xi1> {
+  %0 = tf_executor.graph {
+// CHECK: tf_executor.LoopCond %arg0, %arg1 : (tensor<i1>, !tf_executor.control) -> (tensor<*xi1>, !tf_executor.control)
+    %1:2 = tf_executor.LoopCond %arg0, %arg1 : (tensor<i1>, !tf_executor.control) -> (tensor<*xi1>, !tf_executor.control)
+    tf_executor.fetch %1#0 : tensor<*xi1>
+  }
+  return %0 : tensor<*xi1>
 }

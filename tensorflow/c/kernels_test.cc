@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -227,4 +228,85 @@ TEST(TestKernel, DeleteKernelBuilderIsOkOnNull) {
   TF_DeleteKernelBuilder(nullptr);
 }
 
+TEST(TestKernel, TestTypeConstraint) {
+  const char* kernel_name = "SomeKernelName";
+  const char* op_name = "TypeOp";
+  const char* device_name = "FakeDeviceName1";
+
+  REGISTER_OP(op_name)
+      .Input("input1: double")
+      .Input("input2: uint8")
+      .Output("output1: uint8")
+      .Attr("T: type");
+
+  TF_KernelBuilder* builder = TF_NewKernelBuilder(
+      op_name, device_name, &MyCreateFunc, &MyComputeFunc, &MyDeleteFunc);
+  TF_Status* status = TF_NewStatus();
+  TF_KernelBuilder_TypeConstraint(builder, "T", TF_DataType::TF_INT32, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+  TF_RegisterKernelBuilder(kernel_name, builder, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+
+  TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+  KernelList list;
+  list.ParseFromArray(buf->data, buf->length);
+  const auto expected_str = R"str(kernel {
+  op: "TypeOp"
+  device_type: "FakeDeviceName1"
+  constraint {
+    name: "T"
+    allowed_values {
+      list {
+        type: DT_INT32
+      }
+    }
+  }
+}
+)str";
+  ASSERT_EQ(expected_str, list.DebugString());
+
+  TF_DeleteBuffer(buf);
+  TF_DeleteStatus(status);
+  TF_DeleteKernelBuilder(builder);
+  ASSERT_TRUE(delete_called);
+}
+
+TEST(TestKernel, TestHostMemory) {
+  const char* kernel_name = "SomeKernelName";
+  const char* op_name = "HostMemoryOp";
+  const char* device_name = "FakeDeviceName1";
+
+  REGISTER_OP(op_name)
+      .Input("input1: double")
+      .Input("input2: uint8")
+      .Output("output1: uint8")
+      .Attr("T: type");
+
+  TF_KernelBuilder* builder = TF_NewKernelBuilder(
+      op_name, device_name, &MyCreateFunc, &MyComputeFunc, &MyDeleteFunc);
+  TF_KernelBuilder_HostMemory(builder, "input2");
+  TF_KernelBuilder_HostMemory(builder, "output1");
+  TF_Status* status = TF_NewStatus();
+  TF_RegisterKernelBuilder(kernel_name, builder, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+
+  TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+  KernelList list;
+  list.ParseFromArray(buf->data, buf->length);
+  const auto expected_str = R"str(kernel {
+  op: "HostMemoryOp"
+  device_type: "FakeDeviceName1"
+  host_memory_arg: "input2"
+  host_memory_arg: "output1"
+}
+)str";
+  ASSERT_EQ(expected_str, list.DebugString());
+
+  TF_DeleteBuffer(buf);
+  TF_DeleteStatus(status);
+  TF_DeleteKernelBuilder(builder);
+  ASSERT_TRUE(delete_called);
+}
 }  // namespace tensorflow

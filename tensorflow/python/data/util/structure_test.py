@@ -238,14 +238,14 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
 
   @parameterized.named_parameters(
       ("RaggedTensor_RaggedRank",
-       structure.RaggedTensorStructure(dtypes.int32, None, 1),
-       structure.RaggedTensorStructure(dtypes.int32, None, 2)),
+       ragged_tensor.RaggedTensorSpec(None, dtypes.int32, 1),
+       ragged_tensor.RaggedTensorSpec(None, dtypes.int32, 2)),
       ("RaggedTensor_Shape",
-       structure.RaggedTensorStructure(dtypes.int32, [3, None], 1),
-       structure.RaggedTensorStructure(dtypes.int32, [5, None], 1)),
+       ragged_tensor.RaggedTensorSpec([3, None], dtypes.int32, 1),
+       ragged_tensor.RaggedTensorSpec([5, None], dtypes.int32, 1)),
       ("RaggedTensor_DType",
-       structure.RaggedTensorStructure(dtypes.int32, None, 1),
-       structure.RaggedTensorStructure(dtypes.float32, None, 1)),
+       ragged_tensor.RaggedTensorSpec(None, dtypes.int32, 1),
+       ragged_tensor.RaggedTensorSpec(None, dtypes.float32, 1)),
   )
   def testRaggedStructureInequality(self, s1, s2):
     # pylint: disable=g-generic-assert
@@ -525,25 +525,25 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
 
   @parameterized.named_parameters(
       ("Tensor", dtypes.float32, tensor_shape.scalar(), ops.Tensor,
-       structure.TensorStructure(dtypes.float32, [])),
+       tensor_spec.TensorSpec([], dtypes.float32)),
       ("SparseTensor", dtypes.int32, tensor_shape.matrix(
           2, 2), sparse_tensor.SparseTensor,
-       structure.SparseTensorStructure(dtypes.int32, [2, 2])),
+       sparse_tensor.SparseTensorSpec([2, 2], dtypes.int32)),
       ("TensorArray_0", dtypes.int32, tensor_shape.as_shape(
           [None, True, 2, 2]), tensor_array_ops.TensorArray,
-       structure.TensorArrayStructure(
-           dtypes.int32, [2, 2], dynamic_size=None, infer_shape=True)),
+       tensor_array_ops.TensorArraySpec(
+           [2, 2], dtypes.int32, dynamic_size=None, infer_shape=True)),
       ("TensorArray_1", dtypes.int32, tensor_shape.as_shape(
           [True, None, 2, 2]), tensor_array_ops.TensorArray,
-       structure.TensorArrayStructure(
-           dtypes.int32, [2, 2], dynamic_size=True, infer_shape=None)),
+       tensor_array_ops.TensorArraySpec(
+           [2, 2], dtypes.int32, dynamic_size=True, infer_shape=None)),
       ("TensorArray_2", dtypes.int32, tensor_shape.as_shape(
           [True, False, 2, 2]), tensor_array_ops.TensorArray,
-       structure.TensorArrayStructure(
-           dtypes.int32, [2, 2], dynamic_size=True, infer_shape=False)),
+       tensor_array_ops.TensorArraySpec(
+           [2, 2], dtypes.int32, dynamic_size=True, infer_shape=False)),
       ("RaggedTensor", dtypes.int32, tensor_shape.matrix(
-          2, None), structure.RaggedTensorStructure(dtypes.int32, [2, None], 1),
-       structure.RaggedTensorStructure(dtypes.int32, [2, None], 1)),
+          2, None), ragged_tensor.RaggedTensorSpec([2, None], dtypes.int32, 1),
+       ragged_tensor.RaggedTensorSpec([2, None], dtypes.int32, 1)),
       ("Nested", {
           "a": dtypes.float32,
           "b": (dtypes.int32, dtypes.string)
@@ -555,9 +555,9 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
           "b": (sparse_tensor.SparseTensor, ops.Tensor)
       }, {
           "a":
-              structure.TensorStructure(dtypes.float32, []),
-          "b": (structure.SparseTensorStructure(dtypes.int32, [2, 2]),
-                structure.TensorStructure(dtypes.string, []))
+              tensor_spec.TensorSpec([], dtypes.float32),
+          "b": (sparse_tensor.SparseTensorSpec([2, 2], dtypes.int32),
+                tensor_spec.TensorSpec([], dtypes.string))
       }),
   )
   def testConvertLegacyStructure(self, output_types, output_shapes,
@@ -567,9 +567,9 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     self.assertEqual(actual_structure, expected_structure)
 
   def testNestedNestedStructure(self):
-    s = (structure.TensorStructure(dtypes.int64, []),
-         (structure.TensorStructure(dtypes.float32, []),
-          structure.TensorStructure(dtypes.string, [])))
+    s = (tensor_spec.TensorSpec([], dtypes.int64),
+         (tensor_spec.TensorSpec([], dtypes.float32),
+          tensor_spec.TensorSpec([], dtypes.string)))
 
     int64_t = constant_op.constant(37, dtype=dtypes.int64)
     float32_t = constant_op.constant(42.0)
@@ -595,31 +595,31 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     self.assertIs(string_t, actual_string_t)
 
   @parameterized.named_parameters(
-      ("Tensor", structure.TensorStructure(dtypes.float32, []), 32,
-       structure.TensorStructure(dtypes.float32, [32])),
-      ("TensorUnknown", structure.TensorStructure(dtypes.float32, []), None,
-       structure.TensorStructure(dtypes.float32, [None])),
-      ("SparseTensor", structure.SparseTensorStructure(dtypes.float32, [None]),
-       32, structure.SparseTensorStructure(dtypes.float32, [32, None])),
+      ("Tensor", tensor_spec.TensorSpec([], dtypes.float32), 32,
+       tensor_spec.TensorSpec([32], dtypes.float32)),
+      ("TensorUnknown", tensor_spec.TensorSpec([], dtypes.float32), None,
+       tensor_spec.TensorSpec([None], dtypes.float32)),
+      ("SparseTensor", sparse_tensor.SparseTensorSpec([None], dtypes.float32),
+       32, sparse_tensor.SparseTensorSpec([32, None], dtypes.float32)),
       ("SparseTensorUnknown",
-       structure.SparseTensorStructure(dtypes.float32, [4]), None,
-       structure.SparseTensorStructure(dtypes.float32, [None, 4])),
+       sparse_tensor.SparseTensorSpec([4], dtypes.float32), None,
+       sparse_tensor.SparseTensorSpec([None, 4], dtypes.float32)),
       ("RaggedTensor",
-       structure.RaggedTensorStructure(dtypes.float32, [2, None], 1), 32,
-       structure.RaggedTensorStructure(dtypes.float32, [32, 2, None], 2)),
+       ragged_tensor.RaggedTensorSpec([2, None], dtypes.float32, 1), 32,
+       ragged_tensor.RaggedTensorSpec([32, 2, None], dtypes.float32, 2)),
       ("RaggedTensorUnknown",
-       structure.RaggedTensorStructure(dtypes.float32, [4, None], 1), None,
-       structure.RaggedTensorStructure(dtypes.float32, [None, 4, None], 2)),
+       ragged_tensor.RaggedTensorSpec([4, None], dtypes.float32, 1), None,
+       ragged_tensor.RaggedTensorSpec([None, 4, None], dtypes.float32, 2)),
       ("Nested", {
           "a":
-              structure.TensorStructure(dtypes.float32, []),
-          "b": (structure.SparseTensorStructure(dtypes.int32, [2, 2]),
-                structure.TensorStructure(dtypes.string, []))
+              tensor_spec.TensorSpec([], dtypes.float32),
+          "b": (sparse_tensor.SparseTensorSpec([2, 2], dtypes.int32),
+                tensor_spec.TensorSpec([], dtypes.string))
       }, 128, {
           "a":
-              structure.TensorStructure(dtypes.float32, [128]),
-          "b": (structure.SparseTensorStructure(dtypes.int32, [128, 2, 2]),
-                structure.TensorStructure(dtypes.string, [128]))
+              tensor_spec.TensorSpec([128], dtypes.float32),
+          "b": (sparse_tensor.SparseTensorSpec([128, 2, 2], dtypes.int32),
+                tensor_spec.TensorSpec([128], dtypes.string))
       }),
   )
   def testBatch(self, element_structure, batch_size,
@@ -630,32 +630,32 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     self.assertEqual(batched_structure, expected_batched_structure)
 
   @parameterized.named_parameters(
-      ("Tensor", structure.TensorStructure(
-          dtypes.float32, [32]), structure.TensorStructure(dtypes.float32, [])),
-      ("TensorUnknown", structure.TensorStructure(dtypes.float32, [None]),
-       structure.TensorStructure(dtypes.float32, [])),
-      ("SparseTensor",
-       structure.SparseTensorStructure(dtypes.float32, [32, None]),
-       structure.SparseTensorStructure(dtypes.float32, [None])),
+      ("Tensor", tensor_spec.TensorSpec(
+          [32], dtypes.float32), tensor_spec.TensorSpec([], dtypes.float32)),
+      ("TensorUnknown", tensor_spec.TensorSpec(
+          [None], dtypes.float32), tensor_spec.TensorSpec([], dtypes.float32)),
+      ("SparseTensor", sparse_tensor.SparseTensorSpec([32, None],
+                                                      dtypes.float32),
+       sparse_tensor.SparseTensorSpec([None], dtypes.float32)),
       ("SparseTensorUnknown",
-       structure.SparseTensorStructure(dtypes.float32, [None, 4]),
-       structure.SparseTensorStructure(dtypes.float32, [4])),
+       sparse_tensor.SparseTensorSpec([None, 4], dtypes.float32),
+       sparse_tensor.SparseTensorSpec([4], dtypes.float32)),
       ("RaggedTensor",
-       structure.RaggedTensorStructure(dtypes.float32, [32, None, None], 2),
-       structure.RaggedTensorStructure(dtypes.float32, [None, None], 1)),
+       ragged_tensor.RaggedTensorSpec([32, None, None], dtypes.float32, 2),
+       ragged_tensor.RaggedTensorSpec([None, None], dtypes.float32, 1)),
       ("RaggedTensorUnknown",
-       structure.RaggedTensorStructure(dtypes.float32, [None, None, None], 2),
-       structure.RaggedTensorStructure(dtypes.float32, [None, None], 1)),
+       ragged_tensor.RaggedTensorSpec([None, None, None], dtypes.float32, 2),
+       ragged_tensor.RaggedTensorSpec([None, None], dtypes.float32, 1)),
       ("Nested", {
           "a":
-              structure.TensorStructure(dtypes.float32, [128]),
-          "b": (structure.SparseTensorStructure(dtypes.int32, [128, 2, 2]),
-                structure.TensorStructure(dtypes.string, [None]))
+              tensor_spec.TensorSpec([128], dtypes.float32),
+          "b": (sparse_tensor.SparseTensorSpec([128, 2, 2], dtypes.int32),
+                tensor_spec.TensorSpec([None], dtypes.string))
       }, {
           "a":
-              structure.TensorStructure(dtypes.float32, []),
-          "b": (structure.SparseTensorStructure(dtypes.int32, [2, 2]),
-                structure.TensorStructure(dtypes.string, []))
+              tensor_spec.TensorSpec([], dtypes.float32),
+          "b": (sparse_tensor.SparseTensorSpec(
+              [2, 2], dtypes.int32), tensor_spec.TensorSpec([], dtypes.string))
       }),
   )
   def testUnbatch(self, element_structure, expected_unbatched_structure):
@@ -703,12 +703,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
 
     for expected, actual in zip(
         nest.flatten(expected_element_0), nest.flatten(actual_element_0)):
-      if sparse_tensor.is_sparse(expected):
-        self.assertSparseValuesEqual(expected, actual)
-      elif ragged_tensor.is_ragged(expected):
-        self.assertAllEqual(expected, actual)
-      else:
-        self.assertAllEqual(expected, actual)
+      self.assertValuesEqual(expected, actual)
 
   # pylint: enable=g-long-lambda
 

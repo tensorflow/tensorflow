@@ -168,16 +168,16 @@ struct TensorObjectDef {
   }
 };
 
+// @return true if tensor object def is defined.
+bool IsValid(const TensorObjectDef& def);
+
 using TensorObject = absl::variant<absl::monostate, OpenGlBuffer, OpenGlTexture,
                                    CpuMemory, OpenClBuffer, OpenClTexture>;
 
 // @return true if object is set and corresponding values are defined.
-bool IsValid(const TensorObject& object);
+bool IsValid(const TensorObjectDef& def, const TensorObject& object);
 
 ObjectType GetType(const TensorObject& object);
-
-// @return true if object representation corresponds to the given definition.
-bool IsCompatible(const TensorObjectDef& def, const TensorObject& object);
 
 // @return true if corresponding object is set for the given type
 bool IsObjectPresent(ObjectType type, const TensorObject& obj);

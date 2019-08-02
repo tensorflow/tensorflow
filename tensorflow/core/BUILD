@@ -498,7 +498,12 @@ cc_library(
     hdrs = ["platform/logger.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
-    deps = [":lib_proto_parsing"],
+    deps = [
+        ":lib",
+        ":lib_proto_parsing",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/synchronization",
+    ],
 )
 
 filegroup(
@@ -1448,6 +1453,7 @@ cc_library(
         ":training_ops_op_lib",
         ":user_ops_op_lib",
         ":word2vec_ops",
+        "//tensorflow/c/kernels:bitcast_op_lib",
     ] + if_mkl([
         ":mkl_array_ops_op_lib",
         ":mkl_nn_ops_op_lib",
@@ -1467,6 +1473,7 @@ cc_library(
         ":array_ops_op_lib",
         ":framework",
         ":lib",
+        "//tensorflow/c/kernels:bitcast_op_lib",
     ],
     alwayslink = 1,
 )
@@ -2083,7 +2090,7 @@ cc_library(
 
 filegroup(
     name = "android_op_registrations_and_gradients",
-    srcs = glob(
+    srcs = ["//tensorflow/c/kernels:android_all_ops"] + glob(
         [
             "ops/**/*.cc",
             "ops/**/*.h",
@@ -2345,9 +2352,7 @@ tf_proto_library_cc(
     srcs = ["protobuf/worker.proto"],
     cc_api_version = 2,
     protodeps = tf_additional_all_protos() + [],
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library_cc(
@@ -3142,6 +3147,20 @@ CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
 
 tf_cuda_library(
     name = "core_cpu_base",
+    hdrs = CORE_CPU_BASE_HDRS + ["public/session.h"],
+    copts = tf_copts(),
+    deps = [":core_cpu_base_no_ops"] + if_static([
+        ":function_ops_op_lib",
+        ":functional_grad",
+        ":functional_ops_op_lib",
+        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/kernels:required",
+    ]),
+    alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "core_cpu_base_no_ops",
     srcs = [
         "common_runtime/eval_const_tensor.cc",
         "common_runtime/scoped_allocator.cc",
@@ -3150,11 +3169,10 @@ tf_cuda_library(
         "common_runtime/graph_optimizer.h",
         "graph/graph_constructor.cc",  # Depends on common_runtime.
         "graph/graph_def_builder_util.cc",  # Depends on common_runtime.
-        "public/session.h",
         "public/session_options.h",
         "public/version.h",
     ] + CORE_CPU_BASE_HDRS,
-    hdrs = CORE_CPU_BASE_HDRS,
+    hdrs = CORE_CPU_BASE_HDRS + ["public/session.h"],
     copts = tf_copts(),
     deps = [
         ":graph",
@@ -3167,14 +3185,8 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "//third_party/eigen3",
     ] + if_static([
-        ":function_ops_op_lib",
-        ":functional_grad",
-        ":functional_ops_op_lib",
         "@com_google_absl//absl/algorithm:container",
-        "//tensorflow/core/kernels:bounds_check",
-        "//tensorflow/core/kernels:required",
     ]),
-    alwayslink = 1,
 )
 
 CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
@@ -3189,6 +3201,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/collective_param_resolver_local.h",
     "common_runtime/collective_rma_local.h",
     "common_runtime/collective_util.h",
+    "common_runtime/colocation_graph.h",
     "common_runtime/constant_folding.h",
     "common_runtime/copy_tensor.h",
     "common_runtime/costmodel_manager.h",
@@ -3215,6 +3228,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/partitioning_utils.h",
     "common_runtime/placer.h",
     "common_runtime/process_util.h",
+    "common_runtime/inspecting_placer.h",
     "common_runtime/profile_handler.h",
     "common_runtime/renamed_device.h",
     "common_runtime/rendezvous_mgr.h",
@@ -3245,7 +3259,6 @@ tf_cuda_library(
         "common_runtime/collective_rma_local.cc",
         "common_runtime/collective_util.cc",
         "common_runtime/colocation_graph.cc",
-        "common_runtime/colocation_graph.h",
         "common_runtime/constant_folding.cc",
         "common_runtime/copy_tensor.cc",
         "common_runtime/costmodel_manager.cc",
@@ -3263,7 +3276,6 @@ tf_cuda_library(
         "common_runtime/hierarchical_tree_broadcaster.cc",
         "common_runtime/input_colocation_exemption_registry.cc",
         "common_runtime/inspecting_placer.cc",
-        "common_runtime/inspecting_placer.h",
         "common_runtime/isolate_placer_inspection_required_ops_pass.cc",
         "common_runtime/local_device.cc",
         "common_runtime/lower_case_op.cc",
@@ -3338,6 +3350,16 @@ tf_cuda_library(
         ":proto_text",
         "//tensorflow/core/grappler:grappler_item",
     ] + if_static([":core_cpu_impl"]) + tf_protos_all() + tf_protos_grappler(),
+)
+
+tf_cuda_library(
+    name = "core_cpu_lib_no_ops",
+    hdrs = CORE_CPU_LIB_HEADERS,
+    deps = [
+        ":core_cpu_base_no_ops",
+        ":proto_text",
+        "//tensorflow/core/grappler:grappler_item",
+    ] + tf_protos_all() + tf_protos_grappler(),
 )
 
 tf_cuda_library(
@@ -3609,11 +3631,15 @@ tf_cuda_library(
     srcs = [
         "common_runtime/gpu/gpu_id.h",
     ],
-    hdrs = ["common_runtime/gpu/gpu_mem_allocator.h"],
+    hdrs = [
+        "common_runtime/gpu/gpu_host_allocator.h",
+        "common_runtime/gpu/gpu_mem_allocator.h",
+    ],
     features = ["parse_headers"],
     visibility = ["//visibility:public"],
     deps = [
         ":allocator",
+        ":lib",
         ":lib_internal",
         ":stream_executor",
     ],
@@ -4314,7 +4340,7 @@ tf_cc_tests_gpu(
         "common_runtime/ring_reducer_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":all_kernels",
         ":core",
@@ -4343,7 +4369,7 @@ tf_cc_tests_gpu(
         "common_runtime/ring_gatherer_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":all_kernels",
         ":core",
@@ -4372,7 +4398,7 @@ tf_cc_tests_gpu(
         "common_runtime/hierarchical_tree_broadcaster_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":all_kernels",
         ":core",
@@ -4927,6 +4953,7 @@ tf_cc_test(
         ":test",
         ":test_main",
         ":testlib",
+        "//tensorflow/c/kernels:bitcast_op_lib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:cwise_op",

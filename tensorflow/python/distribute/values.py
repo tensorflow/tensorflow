@@ -591,7 +591,7 @@ def _enter_or_assert_strategy(strategy):
 
 
 DistributedVarOp = collections.namedtuple(
-    "DistributedVarOp", ["name", "graph", "type"])
+    "DistributedVarOp", ["name", "graph", "traceback", "type"])
 
 
 class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
@@ -757,6 +757,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.AbstractVariable):
     if distribution_strategy_context.in_cross_replica_context():
       return DistributedVarOp(self.primary.op.name,
                               self.primary.op.graph,
+                              self.primary.op.traceback,
                               self.primary.op.type)
     return self.get().op
 
@@ -885,7 +886,8 @@ class TPUVariableMixin(object):
   @property
   def op(self):
     return DistributedVarOp(
-        self.primary.op.name, self.primary.op.graph, self.primary.op.type)
+        self.primary.op.name, self.primary.op.graph, self.primary.op.traceback,
+        self.primary.op.type)
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""

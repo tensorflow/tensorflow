@@ -17,12 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util import deprecation
 
@@ -390,11 +391,15 @@ class LMDBDataset(dataset_ops.DatasetSource):
     """
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
-    variant_tensor = gen_experimental_dataset_ops.experimental_lmdb_dataset(
-        self._filenames, **self._flat_structure)
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = gen_experimental_dataset_ops.lmdb_dataset(
+          self._filenames, **self._flat_structure)
+    else:
+      variant_tensor = gen_experimental_dataset_ops.experimental_lmdb_dataset(
+          self._filenames, **self._flat_structure)
     super(LMDBDataset, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
-    return (structure.TensorStructure(dtypes.string, []),
-            structure.TensorStructure(dtypes.string, []))
+  def element_spec(self):
+    return (tensor_spec.TensorSpec([], dtypes.string),
+            tensor_spec.TensorSpec([], dtypes.string))

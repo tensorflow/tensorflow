@@ -42,6 +42,13 @@ static tflite::Padding ConvertTFL_PaddingAttrForOptionWriter(
       .Case("VALID", tflite::Padding_VALID);
 }
 
+static tflite::MirrorPadMode ConvertTFL_MirrorPaddingAttrForOptionWriter(
+    llvm::StringRef str, flatbuffers::FlatBufferBuilder* builder) {
+  return llvm::StringSwitch<tflite::MirrorPadMode>(str)
+      .Case("REFLECT", tflite::MirrorPadMode_REFLECT)
+      .Case("SYMMETRIC", tflite::MirrorPadMode_SYMMETRIC);
+}
+
 static tflite::TensorType ConvertDerivedTypeAttrForOptionWriter(
     mlir::Type type, flatbuffers::FlatBufferBuilder* builder) {
   switch (type.getKind()) {
@@ -79,6 +86,17 @@ static tflite::TensorType ConvertDerivedTypeAttrForOptionWriter(
 static int ConvertI32AttrForOptionWriter(
     llvm::APInt i, flatbuffers::FlatBufferBuilder* builder) {
   return i.getSExtValue();
+}
+
+static flatbuffers::Offset<flatbuffers::Vector<int32_t>>
+ConvertI64ArrayAttrForOptionWriter(mlir::ArrayAttr attrArray,
+                                   flatbuffers::FlatBufferBuilder* builder) {
+  std::vector<int32_t> intVec;
+  intVec.reserve(attrArray.getValue().size());
+  for (auto attr : attrArray.getValue()) {
+    intVec.push_back(attr.cast<mlir::IntegerAttr>().getInt());
+  }
+  return builder->CreateVector(intVec);
 }
 
 // F32Attr already returns a float as required by flatbuffer builders.

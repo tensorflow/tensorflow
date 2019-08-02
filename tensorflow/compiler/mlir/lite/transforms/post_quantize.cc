@@ -48,9 +48,9 @@ class PostQuantizePass : public FunctionPass<PostQuantizePass> {
   bool emit_quant_adaptor_ops_;
 };
 
-void RemoveQuantizationAdaptorOps(Function* func) {
-  mlir::OpBuilder builder(func->getBody());
-  auto& bb = func->getBlocks().front();
+void RemoveQuantizationAdaptorOps(FuncOp func) {
+  mlir::OpBuilder builder(func.getBody());
+  auto& bb = func.getBlocks().front();
   auto* terminator = bb.getTerminator();
 
   int num_args = bb.getNumArguments();
@@ -113,13 +113,12 @@ void RemoveQuantizationAdaptorOps(Function* func) {
     }
   }
   auto new_func_type = builder.getFunctionType(input_types, output_types);
-  func->setType(new_func_type);
+  func.setType(new_func_type);
 }
 
 void PostQuantizePass::runOnFunction() {
-  auto& func = getFunction();
   if (!emit_quant_adaptor_ops_) {
-    RemoveQuantizationAdaptorOps(&func);
+    RemoveQuantizationAdaptorOps(getFunction());
   }
 }
 

@@ -178,6 +178,8 @@ cc_library(
     name = "graph_transformations",
     srcs = [
         "graph_transformations/convert_expanddims_to_reshape.cc",
+        "graph_transformations/convert_matrix_diag_v2_to_v1.cc",
+        "graph_transformations/convert_matrix_set_diag_v2_to_v1.cc",
         "graph_transformations/convert_pure_conv_to_depthwise.cc",
         "graph_transformations/convert_reorder_axes.cc",
         "graph_transformations/convert_squeeze_to_reshape.cc",
@@ -494,6 +496,19 @@ tf_cc_test(
     deps = [
         ":model_cmdline_flags",
         ":model_flags_proto_cc",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "toco_cmdline_flags_test",
+    srcs = [
+        "toco_cmdline_flags_test.cc",
+    ],
+    deps = [
+        ":toco_cmdline_flags",
+        ":toco_flags_proto_cc",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],

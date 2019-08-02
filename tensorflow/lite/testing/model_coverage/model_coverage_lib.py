@@ -27,6 +27,7 @@ from google.protobuf.message import DecodeError
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.python import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python import lite as _lite
+from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python import util as _util
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
@@ -81,7 +82,7 @@ def _convert(converter, **kwargs):
   Args:
     converter: TFLiteConverter object.
     **kwargs: Additional arguments to be passed into the converter. Supported
-      flags are {"target_ops", "post_training_quantize"}.
+      flags are {"target_ops", "post_training_quantize", "quantize_to_float16"}.
 
   Returns:
     The converted TFLite model in serialized format.
@@ -92,7 +93,9 @@ def _convert(converter, **kwargs):
   if "target_ops" in kwargs:
     converter.target_spec.supported_ops = kwargs["target_ops"]
   if "post_training_quantize" in kwargs:
-    converter.post_training_quantize = kwargs["post_training_quantize"]
+    converter.optimizations = [_lite.Optimize.DEFAULT]
+  if kwargs.get("quantize_to_float16", False):
+    converter.target_spec.supported_types = [constants.FLOAT16]
   return converter.convert()
 
 
@@ -362,7 +365,10 @@ def test_frozen_graph_quant(filename,
       for float_tensor in float_tensors)
   has_quant_tensor = num_tensors_float != num_tensors_same_dtypes
 
+  # For the "flex" case, post_training_quantize should not alter the graph,
+  # unless we are quantizing to float16.
   if ("target_ops" in kwargs and
+      not kwargs.get("quantize_to_float16", False) and
       set(kwargs["target_ops"]) == set([_lite.OpsSet.SELECT_TF_OPS])):
     if has_quant_tensor:
       raise ValueError("--post_training_quantize flag unexpectedly altered the "
@@ -463,6 +469,42 @@ def test_saved_model_v2(directory,
   tflite_model = _convert(converter, **kwargs)
 
   compare_models_v2(tflite_model, concrete_func, input_data=input_data)
+
+
+def test_saved_model_v2_quant_float16(directory, **kwargs):
+  """Validates the TensorFlow SavedModel converts to a TFLite model."""
+
+  converter = _lite.TFLiteConverterV2.from_saved_model(directory)
+  tflite_model_float = _convert(converter, version=2, **kwargs)
+
+  interpreter_float = _lite.Interpreter(model_content=tflite_model_float)
+  interpreter_float.allocate_tensors()
+  float_tensors = interpreter_float.get_tensor_details()
+
+  tflite_model_quant = _convert(
+      converter,
+      version=2,
+      post_training_quantize=True,
+      quantize_to_float16=True,
+      **kwargs)
+
+  interpreter_quant = _lite.Interpreter(model_content=tflite_model_quant)
+  interpreter_quant.allocate_tensors()
+  quant_tensors = interpreter_quant.get_tensor_details()
+  quant_tensors_map = {
+      tensor_detail["name"]: tensor_detail for tensor_detail in quant_tensors
+  }
+
+  # Check if weights are of different types in the float and quantized models.
+  num_tensors_float = len(float_tensors)
+  num_tensors_same_dtypes = sum(
+      float_tensor["dtype"] == quant_tensors_map[float_tensor["name"]]["dtype"]
+      for float_tensor in float_tensors)
+  has_quant_tensor = num_tensors_float != num_tensors_same_dtypes
+
+  if not has_quant_tensor:
+    raise ValueError("--post_training_quantize flag was unable to quantize the "
+                     "graph as expected.")
 
 
 def test_keras_model(filename,

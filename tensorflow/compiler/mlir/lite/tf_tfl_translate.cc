@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
@@ -32,8 +33,9 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
+using mlir::FuncOp;
 using mlir::MLIRContext;
-using mlir::Module;
+using mlir::ModuleOp;
 using stream_executor::port::StatusOr;
 using tensorflow::Status;
 
@@ -47,7 +49,7 @@ static llvm::cl::opt<bool> print_function_result_mapping(
 enum TranslationStatus { kTrSuccess, kTrFailure };
 
 static int PrintFunctionResultMapping(const std::string &result,
-                                      Module *module) {
+                                      ModuleOp module) {
   // Build model from the resultant string to extract the return values from
   // their source of truth.
   auto model =
@@ -56,7 +58,7 @@ static int PrintFunctionResultMapping(const std::string &result,
 
   // Get an unknown location for where we don't have a terminator to get the
   // location of the return value from.
-  auto unknown_loc = mlir::UnknownLoc::get(module->getContext());
+  auto unknown_loc = mlir::UnknownLoc::get(module.getContext());
 
   auto print_buffer = [&](const tflite::SubGraph &subgraph, int id, int buffer,
                           std::function<mlir::Location(int)> loc) {
@@ -83,8 +85,8 @@ static int PrintFunctionResultMapping(const std::string &result,
     std::cout << '\'' << subgraph_name << "' outputs:\n";
     mlir::Operation *terminator = nullptr;
     if (subgraph->name()) {
-      if (auto fn = module->getNamedFunction(subgraph->name()->str()))
-        terminator = fn->back().getTerminator();
+      if (auto fn = module.lookupSymbol<FuncOp>(subgraph->name()->str()))
+        terminator = fn.back().getTerminator();
     }
     i = 0;
     for (auto output : *subgraph->outputs()) {
@@ -122,7 +124,7 @@ int main(int argc, char **argv) {
   llvm::SourceMgr source_mgr;
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
 
-  StatusOr<std::unique_ptr<Module>> module =
+  StatusOr<mlir::OwningModuleRef> module =
       tensorflow::LoadFromGraphdefOrMlirSource(
           input_file_name, input_mlir, use_splatted_constant, extra_opdefs,
           debug_info_file, input_arrays, input_dtypes, input_shapes,

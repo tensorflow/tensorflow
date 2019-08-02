@@ -158,26 +158,25 @@ struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
     auto out_backprop_t = out_backprop.tensor<T, 4>();
     auto filter_t = filter.tensor<T, 4>();
 
-    const bool has_input_padding =
-        (padding_left || padding_right || padding_top || padding_bottom);
-
     // WARNING: Need to swap row/col, padding_top/padding_left, and
     // padding_bottom/padding_right when calling Eigen. Eigen expects tensors
     // in NWHC format, but Tensorflow uses NHWC.
 
-    if (!has_input_padding) {
-      // If all input paddings are zero, we can assign spatial convolution
-      // backward input result to the `in_backprop`.
-
+    if (padding != EXPLICIT) {
+      // If padding was not explicitly defined, Eigen spatial convolution
+      // backward input will infer correct forward paddings from input tensors.
       in_backprop_t.device(d) = Eigen::SpatialConvolutionBackwardInput(
-          filter_t, out_backprop_t,                                //
-          in_backprop_t.dimension(2), in_backprop_t.dimension(1),  //
-          col_stride, row_stride, col_dilation, row_dilation);
+          filter_t, out_backprop_t, in_backprop_t.dimension(2),
+          in_backprop_t.dimension(1), col_stride, row_stride, col_dilation,
+          row_dilation);
 
     } else {
       // Otherwise we have to slice the result of a spatial convolution backward
       // input, before assigning it to the `in_backprop` to remove padding.
       using Offsets = Eigen::DSizes<Eigen::Index, 4>;
+
+      // TODO(ezhulenev): Pass explicit paddings to Eigen and do not materialize
+      // intermediate result in memory before slicing.
 
       in_backprop_t.device(d) =
           Eigen::SpatialConvolutionBackwardInput(

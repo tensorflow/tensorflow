@@ -332,6 +332,9 @@ typedef enum TFE_ContextMirroringPolicy {
 } TFE_ContextMirroringPolicy;
 // LINT.ThenChange(//tensorflow/core/common_runtime/eager/context.h)
 
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetMirroringPolicy(
+    TFE_ContextOptions*, TFE_ContextMirroringPolicy);
+
 // Sets a thread-local mirroring policy. After this call, other calls to
 // TFE_Execute in the same thread will use the mirroring policy specified here
 // instead of the mirroring policy used to construct the context. This has no
@@ -343,6 +346,19 @@ TF_CAPI_EXPORT extern void TFE_ContextSetThreadLocalMirroringPolicy(
 // thread.
 TF_CAPI_EXPORT extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
     TFE_Context*);
+
+// -----------------------------------------------------------------------------
+// Cancellation APIs.
+
+typedef struct TFE_CancellationManager TFE_CancellationManager;
+TF_CAPI_EXPORT extern TFE_CancellationManager* TFE_NewCancellationManager();
+TF_CAPI_EXPORT extern bool TFE_CancellationManagerIsCancelled(
+    TFE_CancellationManager*);
+TF_CAPI_EXPORT extern void TFE_CancellationManagerStartCancel(
+    TFE_CancellationManager*);
+TF_CAPI_EXPORT extern void TFE_DeleteCancellationManager(
+    TFE_CancellationManager*);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

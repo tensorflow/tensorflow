@@ -477,11 +477,11 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
-        "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -730,6 +730,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_query",
         "//tensorflow/compiler/xla/service:instruction_fusion",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
@@ -764,6 +765,7 @@ cc_library(
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_reachability",
         "//tensorflow/compiler/xla/service:multi_output_fusion",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
@@ -868,12 +870,14 @@ tf_cc_test(
     srcs = ["fusion_merger_test.cc"],
     deps = [
         ":fusion_merger",
+        ":gpu_fusible",
         ":instruction_fusion",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -926,8 +930,8 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "nvptx_constants",
-    hdrs = ["nvptx_constants.h"],
+    name = "target_constants",
+    hdrs = ["target_constants.h"],
 )
 
 cc_library(
@@ -936,8 +940,8 @@ cc_library(
     hdrs = ["gpu_transfer_manager.h"],
     deps = [
         ":infeed_manager",
-        ":nvptx_constants",
         ":outfeed_manager",
+        ":target_constants",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_tree",
@@ -979,14 +983,15 @@ cc_library(
         ":gpu_hlo_support_checker",
         ":gpu_layout_assignment",
         ":gpu_sanitize_constant_names",
+        ":gpu_scatter_expander",
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",
         ":multi_output_fusion",
-        ":nvptx_constants",
         ":partition_assignment",
         ":stream_assignment",
         ":stream_executor_util",
+        ":target_constants",
         ":variadic_op_splitter",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -996,7 +1001,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:buffer_liveness",
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:conditional_simplifier",
         "//tensorflow/compiler/xla/service:convolution_group_converter",
@@ -1347,6 +1351,18 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "gpu_scatter_expander",
+    srcs = ["gpu_scatter_expander.cc"],
+    hdrs = ["gpu_scatter_expander.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:scatter_expander",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 

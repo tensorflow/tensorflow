@@ -2342,21 +2342,33 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
     int lda, int64 stride_a, const DeviceMemory<Eigen::half> &b, int ldb,
     int64 stride_b, float beta, DeviceMemory<Eigen::half> *c, int ldc,
     int64 stride_c, int batch_count) {
-  LOG(ERROR) << "rocBLAS does not currently support the "
-                "DoBlasGemmStridedBatched operation "
-             << "for the \"Eigen::half\" dataype";
-  return false;
+  const Eigen::half alpha_half(alpha);
+  const Eigen::half beta_half(beta);
+
+  return DoBlasInternal(
+      wrap::rocblas_hgemm_strided_batched, stream,
+      false, /* pointer_mode_host */
+      ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
+      reinterpret_cast<const rocblas_half *>(&alpha_half),
+      reinterpret_cast<const rocblas_half *>(GpuMemory(a)), lda, stride_a,
+      reinterpret_cast<const rocblas_half *>(GpuMemory(b)), ldb, stride_b,
+      reinterpret_cast<const rocblas_half *>(&beta_half),
+      reinterpret_cast<rocblas_half *>(GpuMemoryMutable(c)), ldc, stride_c,
+      batch_count);
 }
+
 bool ROCMBlas::DoBlasGemmStridedBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
     uint64 n, uint64 k, float alpha, const DeviceMemory<float> &a, int lda,
     int64 stride_a, const DeviceMemory<float> &b, int ldb, int64 stride_b,
     float beta, DeviceMemory<float> *c, int ldc, int64 stride_c,
     int batch_count) {
-  LOG(ERROR) << "rocBLAS does not currently support the "
-                "DoBlasGemmStridedBatched operation "
-             << "for the \"float\" dataype";
-  return false;
+  return DoBlasInternal(wrap::rocblas_sgemm_strided_batched, stream,
+                        false, /* pointer_mode_host */
+                        ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
+                        n, k, &alpha, GpuMemory(a), lda, stride_a, GpuMemory(b),
+                        ldb, stride_b, &beta, GpuMemoryMutable(c), ldc,
+                        stride_c, batch_count);
 }
 bool ROCMBlas::DoBlasGemmStridedBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
@@ -2364,10 +2376,12 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
     int64 stride_a, const DeviceMemory<double> &b, int ldb, int64 stride_b,
     double beta, DeviceMemory<double> *c, int ldc, int64 stride_c,
     int batch_count) {
-  LOG(ERROR) << "rocBLAS does not currently support the "
-                "DoBlasGemmStridedBatched operation "
-             << "for the \"double\" dataype";
-  return false;
+  return DoBlasInternal(wrap::rocblas_dgemm_strided_batched, stream,
+                        false, /* pointer_mode_host */
+                        ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
+                        n, k, &alpha, GpuMemory(a), lda, stride_a, GpuMemory(b),
+                        ldb, stride_b, &beta, GpuMemoryMutable(c), ldc,
+                        stride_c, batch_count);
 }
 bool ROCMBlas::DoBlasGemmStridedBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,

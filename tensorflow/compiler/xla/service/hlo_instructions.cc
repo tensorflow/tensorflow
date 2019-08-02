@@ -515,7 +515,7 @@ HloCollectiveInstruction::HloCollectiveInstruction(
     const std::vector<ReplicaGroup>& replica_groups,
     const absl::optional<int64>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
-      replica_groups_({replica_groups.begin(), replica_groups.end()}) {
+      replica_groups_(replica_groups) {
   for (auto operand : operands) {
     AppendOperand(operand);
   }
@@ -909,6 +909,46 @@ HloBroadcastInstruction::CloneWithNewOperandsImpl(
                                                     dimensions());
 }
 
+HloReshapeInstruction::HloReshapeInstruction(const Shape& shape,
+                                             HloInstruction* operand,
+                                             int64 inferred_dimension)
+    : HloInstruction(HloOpcode::kReshape, shape),
+      inferred_dimension_(inferred_dimension) {
+  AppendOperand(operand);
+}
+
+HloInstructionProto HloReshapeInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  if (inferred_dimension_ != -1) {
+    proto.add_dimensions(inferred_dimension_);
+  }
+  return proto;
+}
+
+std::vector<string> HloReshapeInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  if (inferred_dimension() == -1) {
+    return {};
+  }
+  return {StrCat("inferred_dimension=", inferred_dimension())};
+}
+
+bool HloReshapeInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloReshapeInstruction&>(other);
+  return inferred_dimension() == casted_other.inferred_dimension();
+}
+
+std::unique_ptr<HloInstruction> HloReshapeInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return absl::make_unique<HloReshapeInstruction>(shape, new_operands[0],
+                                                  inferred_dimension());
+}
+
 HloMapInstruction::HloMapInstruction(const Shape& shape,
                                      absl::Span<HloInstruction* const> operands,
                                      HloComputation* map_computation)
@@ -1268,10 +1308,21 @@ void HloFusionInstruction::MergeFusionInstruction(
       unfused_instructions.push_back(fused_instruction);
     }
   }
-  CHECK(unfused_instructions.front() == cloned_fusion->fused_expression_root());
+
+  // If there are no unfused instructions, the fused computation must consist
+  // only of kParameter instructions. Make the operand of the corresponding
+  // parameter number the new root.
+  HloInstruction* unfused_root =
+      unfused_instructions.empty()
+          ? instruction_to_merge->mutable_operand(
+                instruction_to_merge->fused_instructions_computation()
+                    ->root_instruction()
+                    ->parameter_number())
+          : unfused_instructions.front();
+  CHECK(unfused_root == cloned_fusion->fused_expression_root() ||
+        unfused_instructions.empty());
   // Replace instruction_to_merge use of 'this' with unfused_root.
-  TF_CHECK_OK(
-      instruction_to_merge->ReplaceUseWith(this, unfused_instructions.front()));
+  TF_CHECK_OK(instruction_to_merge->ReplaceUseWith(this, unfused_root));
   // Fuse 'unfused_instructions' into 'this'.
   for (auto& instruction : unfused_instructions) {
     FuseInstruction(instruction);
@@ -1319,7 +1370,16 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
     }
   }
 
-  HloInstruction* unfused_root = unfused_instructions.front();
+  // If there are no unfused instructions, the fused computation must consist
+  // only of kParameter instructions. Make the operand of the corresponding
+  // parameter number the new root.
+  HloInstruction* unfused_root =
+      unfused_instructions.empty()
+          ? instruction_to_merge->mutable_operand(
+                instruction_to_merge->fused_instructions_computation()
+                    ->root_instruction()
+                    ->parameter_number())
+          : unfused_instructions.front();
   TF_CHECK_OK(instruction_to_merge->ReplaceAllUsesWith(unfused_root));
 
   TF_CHECK_OK(
@@ -1329,6 +1389,9 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
   }
 
   // Fuse the root instruction and generate multiple outputs.
+  if (unfused_instructions.empty()) {
+    return;
+  }
   FuseInstructionIntoMultiOutput(unfused_root);
   TF_CHECK_OK(unfused_root->parent()->RemoveInstruction(unfused_root));
   // The rest instructions are of normal fusing.

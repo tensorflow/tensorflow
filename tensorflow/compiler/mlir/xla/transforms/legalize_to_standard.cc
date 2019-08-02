@@ -130,7 +130,7 @@ FunctionPassBase *mlir::XLA::createLegalizeToStdPass() {
 /// Perform the lowering to standard dialect.
 void LegalizeToStandard::runOnFunction() {
   OwningRewritePatternList patterns;
-  auto &func = getFunction();
+  auto func = getFunction();
 
   mlir::XLA::populateWithGenerated(func.getContext(), &patterns);
   patterns.push_back(

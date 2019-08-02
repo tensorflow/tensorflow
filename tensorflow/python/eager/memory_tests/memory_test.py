@@ -24,24 +24,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-import six
-
 from tensorflow.python import keras
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.eager.memory_tests import memory_test_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.variables import Variable
-
-# memory_profiler might not be available in the OSS version of TensorFlow.
-try:
-  import memory_profiler  # pylint:disable=g-import-not-at-top
-except ImportError:
-  memory_profiler = None
 
 
 class SingleLayerNet(keras.Model):
@@ -55,49 +46,20 @@ class SingleLayerNet(keras.Model):
     return self.fc1(x)
 
 
-def assert_no_leak(f, num_iters=100000, increase_threshold_absolute_mb=10):
-  """Assert memory usage doesn't increase beyond given threshold for f."""
-
-  with context.eager_mode():
-    # Warm up.
-    f()
-
-    # Wait for background threads to start up and take over memory.
-    # FIXME: The nature of this test leaves few other options. Maybe there
-    # is a better way to do this.
-    time.sleep(4)
-
-    initial = memory_profiler.memory_usage(-1)[0]
-
-    for _ in six.moves.range(num_iters):
-      f()
-
-    increase = memory_profiler.memory_usage(-1)[0] - initial
-
-    assert increase < increase_threshold_absolute_mb, (
-        "Increase is too high. Initial memory usage: %f MB. Increase: %f MB. "
-        "Maximum allowed increase: %f") % (initial, increase,
-                                           increase_threshold_absolute_mb)
-
-
-def memory_profiler_is_available():
-  return memory_profiler is not None
-
-
 class MemoryTest(test.TestCase):
 
   def testMemoryLeakAnonymousVariable(self):
-    if memory_profiler is None:
+    if not memory_test_util.memory_profiler_is_available():
       self.skipTest("memory_profiler required to run this test")
 
     def f():
       inputs = Variable(array_ops.zeros([32, 100], dtypes.float32))
       del inputs
 
-    assert_no_leak(f, num_iters=10000)
+    memory_test_util.assert_no_leak(f, num_iters=10000)
 
   def testMemoryLeakInSimpleModelForwardOnly(self):
-    if memory_profiler is None:
+    if not memory_test_util.memory_profiler_is_available():
       self.skipTest("memory_profiler required to run this test")
 
     inputs = array_ops.zeros([32, 100], dtypes.float32)
@@ -107,10 +69,10 @@ class MemoryTest(test.TestCase):
       with backprop.GradientTape():
         net(inputs)
 
-    assert_no_leak(f)
+    memory_test_util.assert_no_leak(f)
 
   def testMemoryLeakInSimpleModelForwardAndBackward(self):
-    if memory_profiler is None:
+    if not memory_test_util.memory_profiler_is_available():
       self.skipTest("memory_profiler required to run this test")
 
     inputs = array_ops.zeros([32, 100], dtypes.float32)
@@ -124,10 +86,10 @@ class MemoryTest(test.TestCase):
 
       del tape
 
-    assert_no_leak(f)
+    memory_test_util.assert_no_leak(f)
 
   def testMemoryLeakInFunction(self):
-    if memory_profiler is None:
+    if not memory_test_util.memory_profiler_is_available():
       self.skipTest("memory_profiler required to run this test")
 
     def f():
@@ -138,4 +100,5 @@ class MemoryTest(test.TestCase):
 
       graph(constant_op.constant(42))
 
-    assert_no_leak(f, num_iters=1000, increase_threshold_absolute_mb=30)
+    memory_test_util.assert_no_leak(
+        f, num_iters=1000, increase_threshold_absolute_mb=30)

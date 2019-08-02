@@ -35,9 +35,9 @@ from tensorflow.contrib.util import loader
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.platform import resource_loader
 
 _bigtable_so = loader.load_op_library(
@@ -591,8 +591,8 @@ class _BigtableKeyDataset(dataset_ops.DatasetSource):
     self._table = table
 
   @property
-  def _element_structure(self):
-    return structure.TensorStructure(dtypes.string, [])
+  def element_spec(self):
+    return tensor_spec.TensorSpec([], dtypes.string)
 
 
 class _BigtablePrefixKeyDataset(_BigtableKeyDataset):
@@ -652,8 +652,8 @@ class _BigtableLookupDataset(dataset_ops.DatasetSource):
     super(_BigtableLookupDataset, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
-    return tuple([structure.TensorStructure(dtypes.string, [])] *
+  def element_spec(self):
+    return tuple([tensor_spec.TensorSpec([], dtypes.string)] *
                  self._num_outputs)
 
 
@@ -681,8 +681,8 @@ class _BigtableScanDataset(dataset_ops.DatasetSource):
     super(_BigtableScanDataset, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
-    return tuple([structure.TensorStructure(dtypes.string, [])] *
+  def element_spec(self):
+    return tuple([tensor_spec.TensorSpec([], dtypes.string)] *
                  self._num_outputs)
 
 
@@ -703,6 +703,6 @@ class _BigtableSampleKeyPairsDataset(dataset_ops.DatasetSource):
     super(_BigtableSampleKeyPairsDataset, self).__init__(variant_tensor)
 
   @property
-  def _element_structure(self):
-    return (structure.TensorStructure(dtypes.string, []),
-            structure.TensorStructure(dtypes.string, []))
+  def element_spec(self):
+    return (tensor_spec.TensorSpec([], dtypes.string),
+            tensor_spec.TensorSpec([], dtypes.string))

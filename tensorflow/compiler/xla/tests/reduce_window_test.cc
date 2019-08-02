@@ -105,7 +105,7 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
   XlaBuilder builder_;
 };
 
-TEST_P(ReduceWindowTest, MismatchedRanksGivesErrorStatus) {
+XLA_TEST_P(ReduceWindowTest, MismatchedRanksGivesErrorStatus) {
   const auto input = CreateConstantFromLiteral(
       LiteralUtil::CreateR1<float>({1, 1, 1, 1}), &builder_);
   const auto init_value =
@@ -122,7 +122,7 @@ TEST_P(ReduceWindowTest, MismatchedRanksGivesErrorStatus) {
 }
 
 // Regression test for b/68964348.
-TEST_P(ReduceWindowTest, R0ReduceWindow) {
+XLA_TEST_P(ReduceWindowTest, R0ReduceWindow) {
   const auto input =
       CreateConstantFromLiteral(LiteralUtil::CreateR0<float>(42.0), &builder_);
   const auto init =
@@ -134,7 +134,7 @@ TEST_P(ReduceWindowTest, R0ReduceWindow) {
                            ErrorSpec(0.00001));
 }
 
-TEST_P(ReduceWindowTest, Min3In5Stride2) {
+XLA_TEST_P(ReduceWindowTest, Min3In5Stride2) {
   const auto input = CreateConstantFromLiteral(
       LiteralUtil::CreateR1<float>({10000, 1000, 100, 10, 1}), &builder_);
   ReduceWindowMin(input, {3}, {2}, Padding::kValid);
@@ -142,7 +142,7 @@ TEST_P(ReduceWindowTest, Min3In5Stride2) {
                            {}, ErrorSpec(0.00001));
 }
 
-TEST_P(ReduceWindowTest, Min3In5Stride1WithSamePadding) {
+XLA_TEST_P(ReduceWindowTest, Min3In5Stride1WithSamePadding) {
   const auto input = CreateConstantFromLiteral(
       LiteralUtil::CreateR1<float>({10000, 1000, 100, 10, 1}), &builder_);
   ReduceWindowMin(input, /*window_dimensions=*/{3}, /*window_strides=*/{1},
@@ -165,7 +165,7 @@ XLA_TEST_P(ReduceWindowTest, ZeroElementSmall) {
                            DefaultErrorSpec());
 }
 
-TEST_P(ReduceWindowTest, NonSquareSmall) {
+XLA_TEST_P(ReduceWindowTest, NonSquareSmall) {
   Array4D<float> input_array(1, 2, 2, 1);
   input_array.FillRandom(2.f, 2.f);
   const auto input = CreateConstantFromArray(input_array, &builder_);
@@ -180,7 +180,7 @@ TEST_P(ReduceWindowTest, NonSquareSmall) {
                            DefaultErrorSpec());
 }
 
-TEST_P(ReduceWindowTest, MiddleDimsSmall) {
+XLA_TEST_P(ReduceWindowTest, MiddleDimsSmall) {
   Array4D<float> input_array(1, 3, 3, 1);
   input_array.FillRandom(2.f, 2.f);
   const auto input = CreateConstantFromArray(input_array, &builder_);
@@ -194,7 +194,7 @@ TEST_P(ReduceWindowTest, MiddleDimsSmall) {
                            DefaultErrorSpec());
 }
 
-TEST_P(ReduceWindowTest, Along2ndMinorDim) {
+XLA_TEST_P(ReduceWindowTest, Along2ndMinorDim) {
   Array4D<float> input_array(3, 6, 7, 32);
   input_array.FillRandom(2.f, 2.f);
   const auto input = CreateConstantFromArray(input_array, &builder_);
@@ -211,7 +211,7 @@ TEST_P(ReduceWindowTest, Along2ndMinorDim) {
                            DefaultErrorSpec());
 }
 
-TEST_P(ReduceWindowTest, AmongMajor2DimsAdd) {
+XLA_TEST_P(ReduceWindowTest, AmongMajor2DimsAdd) {
   Array4D<float> input_array(4, 4, 6, 8);
   input_array.FillWithMinorDimNum();
   const auto input_data_handle =
@@ -233,7 +233,7 @@ TEST_P(ReduceWindowTest, AmongMajor2DimsAdd) {
                            DefaultErrorSpec());
 }
 
-TEST_P(ReduceWindowTest, AmongMajor2DimsMax) {
+XLA_TEST_P(ReduceWindowTest, AmongMajor2DimsMax) {
   Array4D<float> input_array(3, 3, 2, 1);
   input_array.FillWithMinorDimNum();
   const auto input_data_handle =
@@ -247,7 +247,7 @@ TEST_P(ReduceWindowTest, AmongMajor2DimsMax) {
   ComputeAndCompare(&builder_, {}, DefaultErrorSpec());
 }
 
-TEST_P(ReduceWindowTest, AmongMajor2DimsMediumSize) {
+XLA_TEST_P(ReduceWindowTest, AmongMajor2DimsMediumSize) {
   Array4D<float> input_array(9, 12, 4, 89);
   input_array.FillRandom(2.f, 2.f);
 
@@ -272,7 +272,7 @@ TEST_P(ReduceWindowTest, AmongMajor2DimsMediumSize) {
 
 // Tests the super windowing logic w.r.t handling prime number of windows in a
 // major dimension with reduction.
-TEST_P(ReduceWindowTest, PrimeWindowsInReductionDimension) {
+XLA_TEST_P(ReduceWindowTest, PrimeWindowsInReductionDimension) {
   Array4D<float> input_array(15, 15, 4, 128);
   input_array.FillRandom(2.f, 4.f);
 
@@ -295,7 +295,7 @@ TEST_P(ReduceWindowTest, PrimeWindowsInReductionDimension) {
                            DefaultErrorSpec());
 }
 
-TEST_P(ReduceWindowTest, ReduceAlongLaneDimension) {
+XLA_TEST_P(ReduceWindowTest, ReduceAlongLaneDimension) {
   Array4D<float> input_array(19, 17, 8, 256);
   input_array.FillWithMinorDimNum();
 
@@ -350,7 +350,7 @@ XLA_TEST_P(ReduceWindowTest, NonstandardReduceFunction) {
                            {}, DefaultErrorSpec());
 }
 
-TEST_P(ReduceWindowTest, R4UnitWindow) {
+XLA_TEST_P(ReduceWindowTest, R4UnitWindow) {
   Array4D<float> input_array(13, 12, 8, 15);
   input_array.FillRandom(2.f, 2.f);
   Literal input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
@@ -471,7 +471,7 @@ XLA_TEST_P(ReduceWindowTest, R4SecondMinorWin) {
                            {input_data.get()}, DefaultErrorSpec());
 }
 
-TEST_P(ReduceWindowTest, AmongMajor2DimsMultipleMinor) {
+XLA_TEST_P(ReduceWindowTest, AmongMajor2DimsMultipleMinor) {
   Array4D<float> input_array(6, 4, 10, 130);
   input_array.FillRandom(2.0f);
 
@@ -538,7 +538,7 @@ XLA_TEST_P(ReduceWindowTest, Add128In128) {
 }
 
 // Regression test for a bug that appeared in Inception (b/34784899).
-TEST_P(ReduceWindowTest, R2ReduceWindowInceptionFromBroadcast) {
+XLA_TEST_P(ReduceWindowTest, R2ReduceWindowInceptionFromBroadcast) {
   Array2D<float> input_array(14, 14, 1.0f);
   const auto input = CreateConstantFromArray(input_array, &builder_);
   int win_len = 3;
@@ -548,7 +548,7 @@ TEST_P(ReduceWindowTest, R2ReduceWindowInceptionFromBroadcast) {
   ComputeAndCompare(&builder_, {}, DefaultErrorSpec());
 }
 
-TEST_P(ReduceWindowTest, R2ReduceWindowNonOverlappingFromBroadcast) {
+XLA_TEST_P(ReduceWindowTest, R2ReduceWindowNonOverlappingFromBroadcast) {
   Array2D<float> input_array(6, 4, 1.0f);
   XlaOp input = Broadcast(
       CreateConstantFromLiteral(LiteralUtil::One(F32), &builder_), {6, 4});
@@ -668,7 +668,7 @@ class R4ReduceWindowTest : public ReduceWindowTestBase,
   }
 };
 
-TEST_P(R4ReduceWindowTest, DoIt) { DoIt(); }
+XLA_TEST_P(R4ReduceWindowTest, DoIt) { DoIt(); }
 
 // base_bounds, window_bounds, strides, pad_low, pad_high
 const R4ReduceWindowTestData kR4ReduceWindowTestValues[] = {
@@ -1009,7 +1009,7 @@ class R3ReduceWindowTest : public ReduceWindowTestBase,
   R3ReduceWindowTest() { set_use_bfloat16(::testing::get<1>(GetParam())); }
 };
 
-TEST_P(R3ReduceWindowTest, DoIt) {
+XLA_TEST_P(R3ReduceWindowTest, DoIt) {
   XlaBuilder b(TestName());
   const auto& param = ::testing::get<0>(GetParam());
 
@@ -1261,7 +1261,7 @@ class R2ReduceWindowTest : public ReduceWindowTestBase,
   }
 };
 
-TEST_P(R2ReduceWindowTest, DoIt) { DoIt(); }
+XLA_TEST_P(R2ReduceWindowTest, DoIt) { DoIt(); }
 
 INSTANTIATE_TEST_CASE_P(
     R2ReduceWindowTestInstantiation, R2ReduceWindowTest,
@@ -1409,7 +1409,7 @@ class R1ReduceWindowTest : public ReduceWindowTestBase,
   R1ReduceWindowTest() { set_use_bfloat16(::testing::get<1>(GetParam())); }
 };
 
-TEST_P(R1ReduceWindowTest, DoIt) {
+XLA_TEST_P(R1ReduceWindowTest, DoIt) {
   XlaBuilder b(TestName());
   const auto& param = ::testing::get<0>(GetParam());
   CHECK(param.reducer == kAdd || param.reducer == kMax);
@@ -1651,6 +1651,26 @@ ENTRY %reduce-window (parameter.0: f16[81,8], parameter.1: f16[]) -> f16[82,8] {
 
 )";
   EXPECT_TRUE(RunAndCompare(hlo_string, absl::nullopt));
+}
+
+XLA_TEST_F(ReduceWindowTextTest, R4OnlyDilation) {
+  const string hlo_string = R"(
+HloModule R4OnlyDilation
+mul {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+ENTRY R4OnlyDilation {
+  operand = f32[2,2,2,2]{3,2,1,0} parameter(0)
+  constant = f32[] constant(1)
+  ROOT reduce-window = f32[3,3,3,3]{3,2,1,0}
+    reduce-window(operand, constant),
+    window={size=1x1x1x1 pad=0_0x0_0x0_0x0_0 lhs_dilate=2x2x2x2},
+    to_apply=mul
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.001}));
 }
 
 }  // namespace

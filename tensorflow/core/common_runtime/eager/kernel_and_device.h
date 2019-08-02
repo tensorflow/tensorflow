@@ -70,9 +70,8 @@ class KernelAndDevice : public core::RefCounted {
       : device_(flr == nullptr ? nullptr : flr->device()),
         host_cpu_device_(host_cpu_device),
         flr_(flr),
-        runner_(runner),
-        default_runner_([](std::function<void()> f) { f(); }),
-        collective_executor_(std::move(collective_executor)) {}
+        collective_executor_(std::move(collective_executor)),
+        runner_(runner) {}
 
   // Not thread safe.
   virtual ~KernelAndDevice() {}
@@ -114,6 +113,8 @@ class KernelAndDevice : public core::RefCounted {
   virtual const string& name() const = 0;
 
  protected:
+  std::function<void(std::function<void()>)>* get_runner() const;
+
   // TODO(apassos) Consider a shared cancellation manager. Note that this
   // cancellation manager is not useful to actually cancel anything, and is
   // provided here only for the few kernels which can't handle one being
@@ -122,9 +123,10 @@ class KernelAndDevice : public core::RefCounted {
   Device* const device_;               // can be null
   Device* const host_cpu_device_;      // non-null
   FunctionLibraryRuntime* const flr_;  // can be null
-  std::function<void(std::function<void()>)>* const runner_;
-  std::function<void(std::function<void()>)> default_runner_;
   const std::unique_ptr<CollectiveExecutor::Handle> collective_executor_;
+
+ private:
+  std::function<void(std::function<void()>)>* const runner_;  // can be null
 };
 
 // Represents an op kernel and the device it will be run on.

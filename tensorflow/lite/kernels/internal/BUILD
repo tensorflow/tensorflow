@@ -367,6 +367,7 @@ cc_library(
         "reference/pooling.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
+        "reference/strided_slice.h",
     ],
     deps = [
         ":common",
@@ -406,6 +407,7 @@ cc_library(
         "reference/pooling.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
+        "reference/strided_slice.h",
     ],
     deps = [
         ":common",

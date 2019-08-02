@@ -19,6 +19,10 @@ limitations under the License.
 #ifdef HANDLE_TF_TYPE
 
 //             class, enumerant, name
+HANDLE_TF_TYPE(Uint8, UINT8, "uint8")
+HANDLE_TF_TYPE(Uint16, UINT16, "uint16")
+HANDLE_TF_TYPE(Uint32, UINT32, "uint32")
+HANDLE_TF_TYPE(Uint64, UINT64, "uint64")
 HANDLE_TF_TYPE(Qint8, QINT8, "qint8")
 HANDLE_TF_TYPE(Qint16, QINT16, "qint16")
 HANDLE_TF_TYPE(Qint32, QINT32, "qint32")
@@ -26,7 +30,6 @@ HANDLE_TF_TYPE(Quint8, QUINT8, "quint8")
 HANDLE_TF_TYPE(Quint16, QUINT16, "quint16")
 HANDLE_TF_TYPE(String, STRING, "string")
 HANDLE_TF_TYPE(Resource, RESOURCE, "resource")
-HANDLE_TF_TYPE(Variant, VARIANT, "variant")
 HANDLE_TF_TYPE(Complex64, COMPLEX64, "complex64")
 HANDLE_TF_TYPE(Complex128, COMPLEX128, "complex128")
 HANDLE_TF_TYPE(FloatRef, FLOAT_REF, "f32ref")
@@ -52,8 +55,15 @@ HANDLE_TF_TYPE(Complex128Ref, COMPLEX128_REF, "complex128ref")
 HANDLE_TF_TYPE(HalfRef, HALF_REF, "halfref")
 HANDLE_TF_TYPE(ResourceRef, RESOURCE_REF, "resourceref")
 
+#ifndef HANDLE_CUSTOM_TF_TYPE
+#define HANDLE_CUSTOM_TF_TYPE(class, enumerant, name) \
+  HANDLE_TF_TYPE(class, enumerant, name)
+#endif
+HANDLE_CUSTOM_TF_TYPE(Variant, VARIANT, "variant")
+#undef HANDLE_CUSTOM_TF_TYPE
+
 #ifndef HANDLE_LAST_TF_TYPE
-#define HANDLE_LAST_TF_TYPE(class, enumerant, name)                            \
+#define HANDLE_LAST_TF_TYPE(class, enumerant, name) \
   HANDLE_TF_TYPE(class, enumerant, name)
 #endif
 HANDLE_LAST_TF_TYPE(VariantRef, VARIANT_REF, "variantref")

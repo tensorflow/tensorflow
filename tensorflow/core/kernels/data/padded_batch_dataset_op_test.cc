@@ -1018,10 +1018,11 @@ TEST_F(PaddedBatchDatasetOpTest, IteratorOutputPrefix) {
   std::unique_ptr<IteratorBase> iterator;
   TF_ASSERT_OK(padded_batch_dataset->MakeIterator(iterator_ctx.get(),
                                                   "Iterator", &iterator));
-
+  name_utils::IteratorPrefixParams params;
+  params.op_version = kOpVersion;
   EXPECT_EQ(iterator->prefix(),
             name_utils::IteratorPrefix(PaddedBatchDatasetOp::kDatasetType,
-                                       "Iterator"));
+                                       "Iterator", params));
 }
 
 TEST_P(ParameterizedPaddedBatchDatasetOpTest, Roundtrip) {

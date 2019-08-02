@@ -104,18 +104,11 @@ tf_py_test(
 )
 
 py_library(
-    name = "object_identity",
-    srcs = ["object_identity.py"],
-    srcs_version = "PY2AND3",
-)
-
-py_library(
     name = "graph_view",
     srcs = ["graph_view.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":base",
-        ":object_identity",
         ":tracking",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
@@ -134,7 +127,6 @@ py_library(
         ":base",
         ":data_structures",
         ":graph_view",
-        ":object_identity",
         ":tracking",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

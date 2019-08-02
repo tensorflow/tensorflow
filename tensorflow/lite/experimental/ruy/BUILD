@@ -244,7 +244,8 @@ cc_library(
 cc_library(
     name = "kernel",
     srcs = [
-        "kernel.cc",
+        "kernel_arm32.cc",
+        "kernel_arm64.cc",
     ],
     hdrs = [
         "kernel.h",

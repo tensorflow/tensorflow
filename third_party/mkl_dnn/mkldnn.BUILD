@@ -3,6 +3,7 @@ exports_files(["LICENSE"])
 load(
     "@org_tensorflow//third_party/mkl_dnn:build_defs.bzl",
     "if_mkl_open_source_only",
+    "if_mkl_v1_open_source_only",
 )
 load(
     "@org_tensorflow//third_party:common.bzl",
@@ -17,6 +18,16 @@ config_setting(
     },
 )
 
+template_rule(
+    name = "mkldnn_config_h",
+    src = "include/mkldnn_config.h.in",
+    out = "include/mkldnn_config.h",
+    substitutions = {
+        "#cmakedefine MKLDNN_CPU_BACKEND MKLDNN_BACKEND_${MKLDNN_CPU_BACKEND}": "#define MKLDNN_CPU_BACKEND MKLDNN_BACKEND_NATIVE",
+        "#cmakedefine MKLDNN_GPU_BACKEND MKLDNN_BACKEND_${MKLDNN_GPU_BACKEND}": "#define MKLDNN_GPU_BACKEND MKLDNN_BACKEND_NONE",
+    },
+)
+
 # Create the file mkldnn_version.h with MKL-DNN version numbers.
 # Currently, the version numbers are hard coded here. If MKL-DNN is upgraded then
 # the version numbers have to be updated manually. The version numbers can be
@@ -24,6 +35,8 @@ config_setting(
 # set to "version_major.version_minor.version_patch". The git hash version can
 # be set to NA.
 # TODO(agramesh1) Automatically get the version numbers from CMakeLists.txt.
+# TODO(bhavanis): MKL-DNN minor version needs to be updated for MKL-DNN v1.x.
+# The current version numbers will work only if MKL-DNN v0.18 is used.
 
 template_rule(
     name = "mkldnn_version_h",
@@ -53,6 +66,10 @@ cc_library(
         "src/cpu/rnn/*.cpp",
         "src/cpu/rnn/*.hpp",
         "src/cpu/xbyak/*.h",
+    ]) + if_mkl_v1_open_source_only([
+        ":mkldnn_config_h",
+        "src/cpu/jit_utils/jit_utils.cpp",
+        "src/cpu/jit_utils/jit_utils.hpp",
     ]) + [":mkldnn_version_h"],
     hdrs = glob(["include/*"]),
     copts = [
@@ -60,6 +77,9 @@ cc_library(
         "-DUSE_MKL",
         "-DUSE_CBLAS",
     ] + if_mkl_open_source_only([
+        "-UUSE_MKL",
+        "-UUSE_CBLAS",
+    ]) + if_mkl_v1_open_source_only([
         "-UUSE_MKL",
         "-UUSE_CBLAS",
     ]) + select({

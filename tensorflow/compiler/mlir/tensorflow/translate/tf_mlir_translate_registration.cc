@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
+namespace mlir {
 using stream_executor::port::Status;
 using stream_executor::port::StatusOr;
 
@@ -39,53 +40,55 @@ inline absl::string_view StringRefToView(llvm::StringRef ref) {
 }
 }  // namespace
 
-static std::unique_ptr<mlir::Module> GraphdefToMlirTranslateFunction(
-    llvm::StringRef input_filename, mlir::MLIRContext* context) {
+static OwningModuleRef GraphdefToMlirTranslateFunction(
+    llvm::StringRef input_filename, MLIRContext* context) {
   return tensorflow::GraphdefToMlirTranslateFunction(
       StringRefToView(input_filename), debug_info_file, input_arrays,
       input_dtypes, input_shapes, output_arrays, inference_type, min_values,
       max_values, prune_unused_nodes, context);
 }
 
-static mlir::TranslateToMLIRRegistration GraphdefToMlirTranslate(
+static TranslateToMLIRRegistration GraphdefToMlirTranslate(
     "graphdef-to-mlir", GraphdefToMlirTranslateFunction);
 
-static std::unique_ptr<mlir::Module> GraphdefToSplattedMlirTranslateFunction(
-    llvm::StringRef input_filename, mlir::MLIRContext* context) {
+static OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
+    llvm::StringRef input_filename, MLIRContext* context) {
   return tensorflow::GraphdefToSplattedMlirTranslateFunction(
       StringRefToView(input_filename), debug_info_file, input_arrays,
       input_dtypes, input_shapes, output_arrays, inference_type, min_values,
       max_values, prune_unused_nodes, context);
 }
 
-static mlir::TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(
+static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(
     "graphdef-to-splatted-mlir", GraphdefToSplattedMlirTranslateFunction);
 
-static bool MlirToGraphdefTranslateFunction(mlir::Module* module,
-                                            llvm::StringRef output_filename) {
-  if (!module) return true;
+static LogicalResult MlirToGraphdefTranslateFunction(
+    ModuleOp module, llvm::StringRef output_filename) {
+  if (!module) return failure();
 
   std::error_code error;
   auto result = llvm::make_unique<llvm::ToolOutputFile>(output_filename, error,
                                                         llvm::sys::fs::F_None);
   if (error) {
     LOG(ERROR) << error.message();
-    return true;
+    return failure();
   }
 
   // TODO(fengliuai): Add exporter flags.
   tensorflow::ExporterConfigs confs;
   StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
-      tensorflow::ConvertMlirToGraphdef(*module, confs));
+      tensorflow::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {
     LOG(ERROR) << "Graph export failed: " << graphdef_or.status();
-    return true;
+    return mlir::failure();
   }
 
   result->os() << graphdef_or.ValueOrDie()->DebugString();
   result->keep();
-  return false;
+  return success();
 }
 
-static mlir::TranslateFromMLIRRegistration MlirToGraphdefTranslate(
+static TranslateFromMLIRRegistration mlir_to_graphdef_translate(
     "mlir-to-graphdef", MlirToGraphdefTranslateFunction);
+
+}  // namespace mlir

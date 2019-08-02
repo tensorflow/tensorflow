@@ -199,6 +199,7 @@ cc_library(
     srcs = ["window_dataset.cc"],
     hdrs = ["window_dataset.h"],
     deps = [
+        ":name_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -208,7 +209,9 @@ cc_library(
 tf_kernel_library(
     name = "batch_dataset_op",
     srcs = ["batch_dataset_op.cc"],
+    hdrs = ["batch_dataset_op.h"],
     deps = [
+        ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -272,7 +275,9 @@ tf_cc_test(
 tf_kernel_library(
     name = "window_dataset_op",
     srcs = ["window_dataset_op.cc"],
+    hdrs = ["window_dataset_op.h"],
     deps = [
+        ":name_utils",
         ":window_dataset",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -872,8 +877,10 @@ tf_cc_test(
 tf_kernel_library(
     name = "tensor_slice_dataset_op",
     srcs = ["tensor_slice_dataset_op.cc"],
+    hdrs = ["tensor_slice_dataset_op.h"],
     deps = [
         ":dataset_utils",
+        ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -902,7 +909,9 @@ tf_cc_test(
 tf_kernel_library(
     name = "zip_dataset_op",
     srcs = ["zip_dataset_op.cc"],
+    hdrs = ["zip_dataset_op.h"],
     deps = [
+        ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -972,6 +981,39 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
+    name = "text_line_dataset_op",
+    srcs = ["text_line_dataset_op.cc"],
+    hdrs = ["text_line_dataset_op.h"],
+    deps = [
+        ":name_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "text_line_dataset_op_test",
+    size = "small",
+    srcs = ["text_line_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":text_line_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -1054,12 +1096,31 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cache_dataset_ops",
     srcs = ["cache_dataset_ops.cc"],
+    hdrs = ["cache_dataset_ops.h"],
     deps = [
+        ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/util/tensor_bundle",
+    ],
+)
+
+tf_cc_test(
+    name = "cache_dataset_ops_test",
+    srcs = ["cache_dataset_ops_test.cc"],
+    deps = [
+        ":cache_dataset_ops",
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":tensor_slice_dataset_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ptr_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -1114,6 +1175,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "dataset_ops",
     srcs = ["dataset_ops.cc"],
+    hdrs = ["dataset_ops.h"],
     deps = [
         ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
@@ -1155,6 +1217,7 @@ tf_kernel_library(
         ":take_dataset_op",
         ":tensor_dataset_op",
         ":tensor_slice_dataset_op",
+        ":text_line_dataset_op",
         ":window_dataset_op",
         ":zip_dataset_op",
         "//tensorflow/core:array_ops_op_lib",

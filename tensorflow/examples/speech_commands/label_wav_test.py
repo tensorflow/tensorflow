@@ -48,7 +48,7 @@ class LabelWavTest(test.TestCase):
     input_name = "test_input"
     output_name = "test_output"
     graph_filename = os.path.join(tmp_dir, "test_graph.pb")
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
       tf.placeholder(tf.string, name=input_name)
       tf.zeros([1, 3], name=output_name)
       with open(graph_filename, "wb") as f:

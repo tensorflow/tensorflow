@@ -221,6 +221,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("UnbatchDataset").Device(DEVICE_CPU),
+                        UnbatchDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalUnbatchDataset").Device(DEVICE_CPU),
                         UnbatchDatasetOp);
 
