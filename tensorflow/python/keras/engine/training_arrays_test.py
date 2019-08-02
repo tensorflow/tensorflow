@@ -63,7 +63,8 @@ class ValidationDatasetNoLimitTest(keras_parameterized.TestCase):
                            evaluation[-1], places=5)
 
 
-class PrintTrainingInfoTest(parameterized.TestCase):
+class PrintTrainingInfoTest(keras_parameterized.TestCase,
+                            parameterized.TestCase):
 
   @test_util.run_v1_only("Only relevant in graph mode.")
   def test_print_info_with_datasets(self):
@@ -109,6 +110,38 @@ class PrintTrainingInfoTest(parameterized.TestCase):
 
     if do_validation:
       self.assertIn(", validate on 50 samples", mock_stdout.getvalue())
+
+  @keras_parameterized.run_all_keras_modes
+  def test_dict_float64_input(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__(self)
+        self.dense1 = keras.layers.Dense(10, activation="relu")
+        self.dense2 = keras.layers.Dense(10, activation="relu")
+        self.concat = keras.layers.Concatenate()
+        self.dense3 = keras.layers.Dense(1, activation="sigmoid")
+
+      def call(self, inputs):
+        d1 = self.dense1(inputs["one"])
+        d2 = self.dense2(inputs["two"])
+        concat = self.concat([d1, d2])
+        return self.dense3(concat)
+
+    model = MyModel()
+    model.compile(
+        loss="mae",
+        optimizer="adam",
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    model.fit(
+        x={
+            "one": np.random.rand(100, 10, 1),
+            "two": np.random.rand(100, 10, 1)
+        },
+        y=np.random.rand(100, 10, 1))
 
   def test_dict_validation_input(self):
     """Test case for GitHub issue 30122."""
