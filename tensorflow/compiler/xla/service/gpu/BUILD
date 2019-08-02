@@ -601,9 +601,13 @@ cc_library(
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor/cuda:redzone_allocator",
         "@com_google_absl//absl/types:optional",
-    ],
+    ] + if_cuda_is_configured([
+        "//tensorflow/stream_executor/cuda:redzone_allocator_cuda",
+    ]) + if_rocm_is_configured([
+        "//tensorflow/stream_executor/rocm:redzone_allocator_rocm",
+    ]),
+
 )
 
 cc_library(
@@ -1326,20 +1330,25 @@ tf_cc_test(
 
 cc_library(
     name = "buffer_comparator",
-    srcs = ["buffer_comparator.cc"],
+    srcs = [] + if_cuda_is_configured([
+        "buffer_comparator_cuda.cc",
+    ]) + if_rocm_is_configured([
+        "buffer_comparator_rocm.cc",
+    ]),
     hdrs = ["buffer_comparator.h"],
     deps = [
-        ":partition_assignment",
         ":stream_executor_util",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:stream_executor_headers",
-        "//tensorflow/stream_executor/cuda:ptxas_utils",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_cuda_is_configured([
+        ":partition_assignment",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
+    ]),
 )
 
 tf_cc_test(

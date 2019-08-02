@@ -36,7 +36,8 @@ struct RunConvOptions {
   // Use this algorithm, instead of the one from the instruction.
   absl::optional<se::dnn::AlgorithmDesc> algo_override;
 
-  // This is the first call to conv runner from the algorithm picker
+  // Used by ROCm only: This is the first call to conv runner from
+  // the algorithm picker
   bool first_call_from_algorithm_picker;
 };
 

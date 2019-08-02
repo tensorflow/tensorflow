@@ -450,7 +450,7 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
       if (!ptx.empty()) {
         StatusOr<std::vector<uint8>> maybe_cubin = se::cuda::CompilePtx(
             stream_exec->device_ordinal(), cache_ptx->c_str(),
-            PtxOptsFromConfig(hlo_module_config));
+            GpuAsmOptsFromConfig(hlo_module_config));
         if (maybe_cubin.ok()) {
           cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
           VLOG(2) << "Compiled PTX size:" << ptx.size()

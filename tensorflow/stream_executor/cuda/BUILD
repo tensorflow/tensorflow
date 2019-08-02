@@ -100,11 +100,12 @@ cc_library(
 cc_library(
     name = "ptxas_utils",
     srcs = if_cuda_is_configured(["ptxas_utils.cc"]),
-    hdrs = ["ptxas_utils.h"],
+    hdrs = if_cuda_is_configured(["ptxas_utils.h"]),
     deps = if_cuda_is_configured([
         ":cuda_driver",
         ":ptxas_wrapper",
         "@com_google_absl//absl/types:span",
+        "//tensorflow/stream_executor:gpu_asm_opts",
         "//tensorflow/stream_executor/gpu:gpu_helpers_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",

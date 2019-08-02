@@ -24,10 +24,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
-
-using cuda::PtxCompilationOptions = GpuAsmOpts;
 namespace cuda {
 
+using PtxCompilationOptions = GpuAsmOpts;
 // Compiles the given PTX string using ptxas and returns the resulting machine
 // code (i.e. a cubin) as a byte array.
 //
