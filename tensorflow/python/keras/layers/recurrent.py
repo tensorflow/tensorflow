@@ -1362,7 +1362,8 @@ class SimpleRNN(RNN):
         recurrent_constraint=recurrent_constraint,
         bias_constraint=bias_constraint,
         dropout=dropout,
-        recurrent_dropout=recurrent_dropout)
+        recurrent_dropout=recurrent_dropout,
+        dtype=kwargs.get('dtype'))
     super(SimpleRNN, self).__init__(
         cell,
         return_sequences=return_sequences,
@@ -1890,7 +1891,8 @@ class GRU(RNN):
         dropout=dropout,
         recurrent_dropout=recurrent_dropout,
         implementation=implementation,
-        reset_after=reset_after)
+        reset_after=reset_after,
+        dtype=kwargs.get('dtype'))
     super(GRU, self).__init__(
         cell,
         return_sequences=return_sequences,
@@ -2516,7 +2518,8 @@ class LSTM(RNN):
         bias_constraint=bias_constraint,
         dropout=dropout,
         recurrent_dropout=recurrent_dropout,
-        implementation=implementation)
+        implementation=implementation,
+        dtype=kwargs.get('dtype'))
     super(LSTM, self).__init__(
         cell,
         return_sequences=return_sequences,
