@@ -342,7 +342,24 @@ def _py_enumerate(s, start=0):
   return enumerate(s, start)
 
 
-SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate)
+def zip_(*s):
+  if all(isinstance(x, dataset_ops.DatasetV2) for x in s):
+    return _tf_dataset_zip(*s)
+  return _py_zip(*s)
+
+
+def _tf_dataset_zip(*s):
+  tup = ()
+  for x in s:
+    tup += (x,)
+  return dataset_ops.DatasetV2.zip(tup)
+
+
+def _py_zip(*s):
+  return zip(*s)
+
+
+SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip)
 
 if six.PY2:
   SUPPORTED_BUILTINS += (xrange,)
@@ -357,4 +374,5 @@ BUILTIN_FUINCTIONS_MAP = {
     # TODO(mdan): This might make more sense as tf.data.range.
     'xrange': range_,
     'enumerate': enumerate_,
+    'zip': zip_,
 }
