@@ -94,11 +94,12 @@ class RelaxedBernoulliTest(test.TestCase):
     """If validate_args, raises InvalidArgumentError when temperature is 0."""
     temperature = constant_op.constant(0.0)
     p = constant_op.constant([0.1, 0.4])
-    with self.assertRaisesWithPredicateMatch(errors_impl.InvalidArgumentError,
-                                             "x > 0 did not hold"):
-      _ = relaxed_bernoulli.RelaxedBernoulli(
-          temperature, probs=p, validate_args=True)
-      # Error detected statically; no need to run the op.
+    dist = relaxed_bernoulli.RelaxedBernoulli(temperature, probs=p,
+                                              validate_args=True)
+    with self.cached_session():
+      sample = dist.sample()
+      with self.assertRaises(errors_impl.InvalidArgumentError):
+        sample.eval()
 
   def testDtype(self):
     temperature = constant_op.constant(1.0, dtype=dtypes.float32)

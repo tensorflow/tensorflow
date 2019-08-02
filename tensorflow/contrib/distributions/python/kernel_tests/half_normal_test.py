@@ -24,7 +24,6 @@ import numpy as np
 from tensorflow.contrib.distributions.python.ops import half_normal as hn_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -41,7 +40,6 @@ def try_import(name):  # pylint: disable=invalid-name
   except ImportError as e:
     tf_logging.warning("Could not import %s: %s" % (name, str(e)))
   return module
-
 
 stats = try_import("scipy.stats")
 
@@ -290,10 +288,9 @@ class HalfNormalTest(test.TestCase):
 
   def testNegativeSigmaFails(self):
     with self.cached_session():
-      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
-                                               "Condition x > 0 did not hold"):
-        _ = hn_lib.HalfNormal(scale=[-5.], validate_args=True, name="G")
-        # Error detected statically; no need for _.mean().eval()
+      halfnorm = hn_lib.HalfNormal(scale=[-5.], validate_args=True, name="G")
+      with self.assertRaisesOpError("Condition x > 0 did not hold"):
+        halfnorm.mean().eval()
 
   def testHalfNormalShape(self):
     with self.cached_session():

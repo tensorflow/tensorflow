@@ -21,7 +21,6 @@ import numpy as np
 from scipy import stats
 from tensorflow.contrib import distributions as distributions_lib
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
@@ -362,14 +361,15 @@ class QuantizedDistributionTest(test.TestCase):
 
   def testLowerCutoffMustBeBelowUpperCutoffOrWeRaise(self):
     with self.cached_session():
-      with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
-                                               "must be strictly less"):
-        _ = distributions.QuantizedDistribution(
-            distribution=distributions.Normal(loc=0., scale=1.),
-            low=1.,  # not strictly less than high.
-            high=1.,
-            validate_args=True)
-        # Error detected statically; no need for _.sample().eval()
+      qdist = distributions.QuantizedDistribution(
+          distribution=distributions.Normal(loc=0., scale=1.),
+          low=1.,  # not strictly less than high.
+          high=1.,
+          validate_args=True)
+
+      self.assertTrue(qdist.validate_args)  # Default is True.
+      with self.assertRaisesOpError("must be strictly less"):
+        qdist.sample().eval()
 
   def testCutoffsMustBeIntegerValuedIfValidateArgsTrue(self):
     with self.cached_session():
