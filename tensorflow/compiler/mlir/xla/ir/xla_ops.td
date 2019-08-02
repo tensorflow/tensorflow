@@ -25,7 +25,7 @@ include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
 def XLA_Dialect : Dialect {
-  let name = "xla";
+  let name = "xla_hlo";
   let cppNamespace = "XLA";
 }
 
