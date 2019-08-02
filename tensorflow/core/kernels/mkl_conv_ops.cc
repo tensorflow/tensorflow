@@ -989,7 +989,6 @@ class MklConvOp : public OpKernel {
     }
     
     // Allocate shape of MKL tensor
-    MklDnnShape output_mkl_shape;
     output_mkl_shape.SetMklTensor(true);
     output_mkl_shape.SetMklLayout(&DST_MD);
     output_mkl_shape.SetElemType(MklDnnType<Toutput>());
