@@ -1080,7 +1080,10 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
     setattr(cls, operator, _run_op)
 
   def __hash__(self):
-    return id(self)
+    if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
+      raise TypeError("Variable is unhashable if Tensor equality is enabled.")
+    else:
+      return id(self)
 
   # TODO(gjn): duplicate of math_ops.tensor_equals, consider removing
   def __eq__(self, other):
