@@ -12,10 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/experimental/sampling_dataset_op.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/experimental/sampling_dataset_op.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -25,7 +25,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-// Constants declared in sampling_dataset_op.h and used both here and in test 
+// Constants declared in sampling_dataset_op.h and used both here and in test
 // cases.
 /* static */ constexpr const char* const SamplingDatasetOp::kDatasetType;
 /* static */ constexpr const char* const SamplingDatasetOp::kInputDataset;
@@ -34,7 +34,6 @@ namespace data {
 /* static */ constexpr const char* const SamplingDatasetOp::kSeed2;
 /* static */ constexpr const char* const SamplingDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const SamplingDatasetOp::kOutputShapes;
-
 
 class SamplingDatasetOp::Dataset : public DatasetBase {
  public:
@@ -52,9 +51,9 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return std::unique_ptr<IteratorBase>(new Iterator(
-        {this, name_utils::IteratorPrefix(kDatasetType, prefix)},
-        seed_, seed2_));
+    return std::unique_ptr<IteratorBase>(
+        new Iterator({this, name_utils::IteratorPrefix(kDatasetType, prefix)},
+                     seed_, seed2_));
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -65,7 +64,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override { 
+  string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -149,8 +148,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
           this->full_name("num_random_samples"), num_random_samples_));
       TF_RETURN_IF_ERROR(writer->WriteScalar(this->full_name("seed"), seed_));
-      TF_RETURN_IF_ERROR(
-          writer->WriteScalar(this->full_name("seed2"), seed2_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(this->full_name("seed2"), seed2_));
 
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
@@ -168,8 +166,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(reader->ReadScalar(
           this->full_name("num_random_samples"), &num_random_samples_));
       TF_RETURN_IF_ERROR(reader->ReadScalar(this->full_name("seed"), &seed_));
-      TF_RETURN_IF_ERROR(
-          reader->ReadScalar(this->full_name("seed2"), &seed2_));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(this->full_name("seed2"), &seed2_));
       ResetRngs();
 
       if (!reader->Contains(full_name("input_impl_empty"))) {
@@ -203,14 +200,14 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
   const float rate_;
   const int64 seed_, seed2_;
   const DatasetBase* const input_;
-}; // SamplingDatasetOp::Dataset
+};  // SamplingDatasetOp::Dataset
 
 SamplingDatasetOp::SamplingDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+    : UnaryDatasetOpKernel(ctx) {}
 
 // Create a new SamplingDatasetOp::Dataset, and return it as the output.
 void SamplingDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
-                   DatasetBase** output) {
+                                    DatasetBase** output) {
   float rate;
   int64 seed;
   int64 seed2;

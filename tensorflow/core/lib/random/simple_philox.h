@@ -67,9 +67,7 @@ class SimplePhilox {
   uint32 Skewed(int max_log);
 
   // Skip ahead `num_skips` entries in the stream of random numbers
-  void Skip(uint64 num_skips) {
-    single_.Skip(num_skips);
-  }
+  void Skip(uint64 num_skips) { single_.Skip(num_skips); }
 
  private:
   SingleSampleAdapter<PhiloxRandom> single_;

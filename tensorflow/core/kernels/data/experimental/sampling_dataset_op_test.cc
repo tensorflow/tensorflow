@@ -19,7 +19,7 @@ namespace {
 
 constexpr char kNodeName[] = "sampling_dataset";
 
-// Parameters for constructing a dataset that returns an ordered sequence 
+// Parameters for constructing a dataset that returns an ordered sequence
 // of numbers
 struct RangeDatasetParams {
   int start;
@@ -31,10 +31,9 @@ struct TakeDatasetParams {
   int count;
 };
 
-
-class SamplingDatasetOpTest: public DatasetOpsTestBase {
+class SamplingDatasetOpTest : public DatasetOpsTestBase {
  protected:
-  // Creates a new `SamplingDataset` op kernel. 
+  // Creates a new `SamplingDataset` op kernel.
   // Doesn't initialize the kernel's static parameters because they are inputs,
   // not attributes.
   Status CreateSamplingDatasetOpKernel(
@@ -44,10 +43,8 @@ class SamplingDatasetOpTest: public DatasetOpsTestBase {
     NodeDef node_def = test::function::NDef(
         kNodeName, name_utils::OpName(SamplingDatasetOp::kDatasetType),
         // Inputs
-        {SamplingDatasetOp::kInputDataset,
-         SamplingDatasetOp::kRate,
-         SamplingDatasetOp::kSeed,
-         SamplingDatasetOp::kSeed2},
+        {SamplingDatasetOp::kInputDataset, SamplingDatasetOp::kRate,
+         SamplingDatasetOp::kSeed, SamplingDatasetOp::kSeed2},
         // Attributes
         {{SamplingDatasetOp::kOutputTypes, output_types},
          {SamplingDatasetOp::kOutputShapes, output_shapes}});
@@ -91,7 +88,6 @@ class SamplingDatasetOpTest: public DatasetOpsTestBase {
   }
 };
 
-
 // Common parameters that every test case in this file shares
 struct TestCase {
   // Static parameters of the kernel
@@ -121,65 +117,57 @@ struct TestCase {
   // When to insert save and restore steps while scanning the dataset in the
   // "roundtrip" test case.
   std::vector<int> breakpoints;
-  
 };
 
 // Test case 1: 100% sample should return all inputs
 TestCase TestCase1() {
-  return {
-    /*rate*/ 1.0,
-    /*seed*/ 42,
-    /*seed2*/ 7,
-    /*range_dataset_params*/ {/*start*/0, /*stop*/ 10, /*step*/ 1},
-    /*take_dataset_params*/ {/*count*/ 3},
-    /*expected_outputs*/
-    {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-     DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-     DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2})},
-    /*expected_output_dtypes*/ {DT_INT64}, 
-    /*expected_output_shapes*/ {PartialTensorShape({})},
-    /*expected_cardinality*/ kUnknownCardinality,
-    /*breakpoints*/ {0, 2, 5}
-  };
+  return {/*rate*/ 1.0,
+          /*seed*/ 42,
+          /*seed2*/ 7,
+          /*range_dataset_params*/ {/*start*/ 0, /*stop*/ 10, /*step*/ 1},
+          /*take_dataset_params*/ {/*count*/ 3},
+          /*expected_outputs*/
+          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
+           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
+           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ kUnknownCardinality,
+          /*breakpoints*/ {0, 2, 5}};
 }
 
 // Test case 2: 10% sample should return about 10% of inputs, and the specific
 // inputs returned shouldn't change across build environments.
 TestCase TestCase2() {
-  return {
-    /*rate*/ 0.1,
-    /*seed*/ 42,
-    /*seed2*/ 7,
-    /*range_dataset_params*/ {/*start*/0, /*stop*/ 100, /*step*/ 1},
-    /*take_dataset_params*/ {/*count*/ 20},
-    /*expected_outputs*/
-    {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {9}),
-     DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {11}),
-     DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {19})},
-    /*expected_output_dtypes*/ {DT_INT64}, 
-    /*expected_output_shapes*/ {PartialTensorShape({})},
-    /*expected_cardinality*/ kUnknownCardinality,
-    /*breakpoints*/ {0, 2, 5}
-  };
+  return {/*rate*/ 0.1,
+          /*seed*/ 42,
+          /*seed2*/ 7,
+          /*range_dataset_params*/ {/*start*/ 0, /*stop*/ 100, /*step*/ 1},
+          /*take_dataset_params*/ {/*count*/ 20},
+          /*expected_outputs*/
+          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {9}),
+           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {11}),
+           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {19})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ kUnknownCardinality,
+          /*breakpoints*/ {0, 2, 5}};
 }
 
 // Test case 3: 0% sample should return nothing and should not crash.
 TestCase TestCase3() {
-  return {
-    /*rate*/ 0.0,
-    /*seed*/ 42,
-    /*seed2*/ 7,
-    /*range_dataset_params*/ {/*start*/0, /*stop*/ 100, /*step*/ 1},
-    /*take_dataset_params*/ {/*count*/ 20},
-    /*expected_outputs*/
-    {},
-    /*expected_output_dtypes*/ {DT_INT64}, 
-    /*expected_output_shapes*/ {PartialTensorShape({})},
-    /*expected_cardinality*/ kUnknownCardinality,
-    /*breakpoints*/ {0, 2, 5}
-  };
+  return {/*rate*/ 0.0,
+          /*seed*/ 42,
+          /*seed2*/ 7,
+          /*range_dataset_params*/ {/*start*/ 0, /*stop*/ 100, /*step*/ 1},
+          /*take_dataset_params*/ {/*count*/ 20},
+          /*expected_outputs*/
+          {},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ kUnknownCardinality,
+          /*breakpoints*/ {0, 2, 5}};
 }
-
 
 // Parameterized test class shared by the next 6 test cases
 class ParameterizedSamplingDatasetOpTest
@@ -190,39 +178,36 @@ class ParameterizedSamplingDatasetOpTest
 TEST_P(ParameterizedSamplingDatasetOpTest, GetNext) {
   // BEGIN INITIALIZATION CODE
   // This test case and all the other test cases in this file go through the
-  // same sequence of initialization steps. 
+  // same sequence of initialization steps.
   // Tests that don't examine the results of the op skip step 7.
-  
+
   // Step 1: Set up enough of a TF runtime to be able to invoke a kernel.
   const int thread_num = 2, cpu_num = 2;
   TestCase test_case = GetParam();
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
-  // Step 2: Create the dataset that will provide input data for the kernel 
+  // Step 2: Create the dataset that will provide input data for the kernel
   Tensor range_and_take_dataset_tensor;
   TF_ASSERT_OK(MakeRangeAndTakeDatasetTensor(test_case.range_dataset_params,
                                              test_case.take_dataset_params,
                                              &range_and_take_dataset_tensor));
-  
+
   // Step 3: Box up the four inputs to the kernel inside TensorValue objects
   // inside a vector.
   Tensor rate = CreateTensor<float>(TensorShape({}), {test_case.rate});
   Tensor seed = CreateTensor<int64>(TensorShape({}), {test_case.seed});
   Tensor seed2 = CreateTensor<int64>(TensorShape({}), {test_case.seed2});
-  gtl::InlinedVector<TensorValue, 4> inputs({
-    TensorValue(&range_and_take_dataset_tensor),
-    TensorValue(&rate),
-    TensorValue(&seed),
-    TensorValue(&seed2)});
-    
-  // Step 4: Create a SamplingDataset kernel to test, passing in attributes 
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&range_and_take_dataset_tensor), TensorValue(&rate),
+       TensorValue(&seed), TensorValue(&seed2)});
+
+  // Step 4: Create a SamplingDataset kernel to test, passing in attributes
   // of the kernel.
   std::unique_ptr<OpKernel> sampling_dataset_kernel;
-  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(
-        test_case.expected_output_dtypes, 
-        test_case.expected_output_shapes,
-        &sampling_dataset_kernel));
+  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(test_case.expected_output_dtypes,
+                                             test_case.expected_output_shapes,
+                                             &sampling_dataset_kernel));
 
   // Step 5: Create a context in which the kernel will operate. This is where
   // the kernel gets initialized with its inputs
@@ -240,14 +225,14 @@ TEST_P(ParameterizedSamplingDatasetOpTest, GetNext) {
 
   // Step 7: Create an iterator to read the output of the dataset.
   std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(CreateIteratorContext(sampling_dataset_context.get(),
-                                     &iterator_context));
+  TF_ASSERT_OK(
+      CreateIteratorContext(sampling_dataset_context.get(), &iterator_context));
   std::unique_ptr<IteratorBase> iterator;
   string iterator_prefix = name_utils::IteratorPrefix(
       TakeDatasetOp::kDatasetType,
       name_utils::IteratorPrefix(RangeDatasetOp::kDatasetType, "Iterator"));
   TF_ASSERT_OK(sampling_dataset->MakeIterator(iterator_context.get(),
-                                                 iterator_prefix, &iterator));
+                                              iterator_prefix, &iterator));
   // END INITIALIZATION CODE
 
   // Copy the iterator's output into a vector to make comparison easier.
@@ -264,7 +249,7 @@ TEST_P(ParameterizedSamplingDatasetOpTest, GetNext) {
                            /*compare_order*/ true));
 }
 
-// Verify that the machinery for creating SamplingDataset kernels runs and 
+// Verify that the machinery for creating SamplingDataset kernels runs and
 // correctly creates kernels of with the node name "SamplingDataset".
 TEST_F(SamplingDatasetOpTest, DatasetNodeName) {
   // BEGIN INITIALIZATION CODE
@@ -278,21 +263,18 @@ TEST_F(SamplingDatasetOpTest, DatasetNodeName) {
   TF_ASSERT_OK(MakeRangeAndTakeDatasetTensor(test_case.range_dataset_params,
                                              test_case.take_dataset_params,
                                              &range_and_take_dataset_tensor));
-  
+
   Tensor rate = CreateTensor<float>(TensorShape({}), {test_case.rate});
   Tensor seed = CreateTensor<int64>(TensorShape({}), {test_case.seed});
   Tensor seed2 = CreateTensor<int64>(TensorShape({}), {test_case.seed2});
-  gtl::InlinedVector<TensorValue, 4> inputs({
-    TensorValue(&range_and_take_dataset_tensor),
-    TensorValue(&rate),
-    TensorValue(&seed),
-    TensorValue(&seed2)});
-    
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&range_and_take_dataset_tensor), TensorValue(&rate),
+       TensorValue(&seed), TensorValue(&seed2)});
+
   std::unique_ptr<OpKernel> sampling_dataset_kernel;
-  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(
-        test_case.expected_output_dtypes, 
-        test_case.expected_output_shapes,
-        &sampling_dataset_kernel));
+  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(test_case.expected_output_dtypes,
+                                             test_case.expected_output_shapes,
+                                             &sampling_dataset_kernel));
 
   std::unique_ptr<OpKernelContext> sampling_dataset_context;
   TF_ASSERT_OK(CreateSamplingDatasetContext(
@@ -320,21 +302,18 @@ TEST_P(ParameterizedSamplingDatasetOpTest, DatasetTypeString) {
   TF_ASSERT_OK(MakeRangeAndTakeDatasetTensor(test_case.range_dataset_params,
                                              test_case.take_dataset_params,
                                              &range_and_take_dataset_tensor));
-  
+
   Tensor rate = CreateTensor<float>(TensorShape({}), {test_case.rate});
   Tensor seed = CreateTensor<int64>(TensorShape({}), {test_case.seed});
   Tensor seed2 = CreateTensor<int64>(TensorShape({}), {test_case.seed2});
-  gtl::InlinedVector<TensorValue, 4> inputs({
-    TensorValue(&range_and_take_dataset_tensor),
-    TensorValue(&rate),
-    TensorValue(&seed),
-    TensorValue(&seed2)});
-    
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&range_and_take_dataset_tensor), TensorValue(&rate),
+       TensorValue(&seed), TensorValue(&seed2)});
+
   std::unique_ptr<OpKernel> sampling_dataset_kernel;
-  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(
-        test_case.expected_output_dtypes, 
-        test_case.expected_output_shapes,
-        &sampling_dataset_kernel));
+  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(test_case.expected_output_dtypes,
+                                             test_case.expected_output_shapes,
+                                             &sampling_dataset_kernel));
 
   std::unique_ptr<OpKernelContext> sampling_dataset_context;
   TF_ASSERT_OK(CreateSamplingDatasetContext(
@@ -346,9 +325,9 @@ TEST_P(ParameterizedSamplingDatasetOpTest, DatasetTypeString) {
                              &sampling_dataset));
   core::ScopedUnref scoped_unref(sampling_dataset);
   // END INITIALIZATION CODE
- 
+
   EXPECT_EQ(sampling_dataset->type_string(),
-      name_utils::OpName(SamplingDatasetOp::kDatasetType));
+            name_utils::OpName(SamplingDatasetOp::kDatasetType));
 }
 
 TEST_P(ParameterizedSamplingDatasetOpTest, DatasetOutputDtypes) {
@@ -363,21 +342,18 @@ TEST_P(ParameterizedSamplingDatasetOpTest, DatasetOutputDtypes) {
   TF_ASSERT_OK(MakeRangeAndTakeDatasetTensor(test_case.range_dataset_params,
                                              test_case.take_dataset_params,
                                              &range_and_take_dataset_tensor));
-  
+
   Tensor rate = CreateTensor<float>(TensorShape({}), {test_case.rate});
   Tensor seed = CreateTensor<int64>(TensorShape({}), {test_case.seed});
   Tensor seed2 = CreateTensor<int64>(TensorShape({}), {test_case.seed2});
-  gtl::InlinedVector<TensorValue, 4> inputs({
-    TensorValue(&range_and_take_dataset_tensor),
-    TensorValue(&rate),
-    TensorValue(&seed),
-    TensorValue(&seed2)});
-    
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&range_and_take_dataset_tensor), TensorValue(&rate),
+       TensorValue(&seed), TensorValue(&seed2)});
+
   std::unique_ptr<OpKernel> sampling_dataset_kernel;
-  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(
-        test_case.expected_output_dtypes, 
-        test_case.expected_output_shapes,
-        &sampling_dataset_kernel));
+  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(test_case.expected_output_dtypes,
+                                             test_case.expected_output_shapes,
+                                             &sampling_dataset_kernel));
 
   std::unique_ptr<OpKernelContext> sampling_dataset_context;
   TF_ASSERT_OK(CreateSamplingDatasetContext(
@@ -389,7 +365,7 @@ TEST_P(ParameterizedSamplingDatasetOpTest, DatasetOutputDtypes) {
                              &sampling_dataset));
   core::ScopedUnref scoped_unref(sampling_dataset);
   // END INITIALIZATION CODE
-  
+
   TF_EXPECT_OK(VerifyTypesMatch(sampling_dataset->output_dtypes(),
                                 test_case.expected_output_dtypes));
 }
@@ -406,21 +382,18 @@ TEST_P(ParameterizedSamplingDatasetOpTest, DatasetOutputShapes) {
   TF_ASSERT_OK(MakeRangeAndTakeDatasetTensor(test_case.range_dataset_params,
                                              test_case.take_dataset_params,
                                              &range_and_take_dataset_tensor));
-  
+
   Tensor rate = CreateTensor<float>(TensorShape({}), {test_case.rate});
   Tensor seed = CreateTensor<int64>(TensorShape({}), {test_case.seed});
   Tensor seed2 = CreateTensor<int64>(TensorShape({}), {test_case.seed2});
-  gtl::InlinedVector<TensorValue, 4> inputs({
-    TensorValue(&range_and_take_dataset_tensor),
-    TensorValue(&rate),
-    TensorValue(&seed),
-    TensorValue(&seed2)});
-    
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&range_and_take_dataset_tensor), TensorValue(&rate),
+       TensorValue(&seed), TensorValue(&seed2)});
+
   std::unique_ptr<OpKernel> sampling_dataset_kernel;
-  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(
-        test_case.expected_output_dtypes, 
-        test_case.expected_output_shapes,
-        &sampling_dataset_kernel));
+  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(test_case.expected_output_dtypes,
+                                             test_case.expected_output_shapes,
+                                             &sampling_dataset_kernel));
 
   std::unique_ptr<OpKernelContext> sampling_dataset_context;
   TF_ASSERT_OK(CreateSamplingDatasetContext(
@@ -432,7 +405,7 @@ TEST_P(ParameterizedSamplingDatasetOpTest, DatasetOutputShapes) {
                              &sampling_dataset));
   core::ScopedUnref scoped_unref(sampling_dataset);
   // END INITIALIZATION CODE
-  
+
   TF_EXPECT_OK(VerifyShapesCompatible(sampling_dataset->output_shapes(),
                                       test_case.expected_output_shapes));
 }
@@ -449,21 +422,18 @@ TEST_P(ParameterizedSamplingDatasetOpTest, Cardinality) {
   TF_ASSERT_OK(MakeRangeAndTakeDatasetTensor(test_case.range_dataset_params,
                                              test_case.take_dataset_params,
                                              &range_and_take_dataset_tensor));
-  
+
   Tensor rate = CreateTensor<float>(TensorShape({}), {test_case.rate});
   Tensor seed = CreateTensor<int64>(TensorShape({}), {test_case.seed});
   Tensor seed2 = CreateTensor<int64>(TensorShape({}), {test_case.seed2});
-  gtl::InlinedVector<TensorValue, 4> inputs({
-    TensorValue(&range_and_take_dataset_tensor),
-    TensorValue(&rate),
-    TensorValue(&seed),
-    TensorValue(&seed2)});
-    
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&range_and_take_dataset_tensor), TensorValue(&rate),
+       TensorValue(&seed), TensorValue(&seed2)});
+
   std::unique_ptr<OpKernel> sampling_dataset_kernel;
-  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(
-        test_case.expected_output_dtypes, 
-        test_case.expected_output_shapes,
-        &sampling_dataset_kernel));
+  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(test_case.expected_output_dtypes,
+                                             test_case.expected_output_shapes,
+                                             &sampling_dataset_kernel));
 
   std::unique_ptr<OpKernelContext> sampling_dataset_context;
   TF_ASSERT_OK(CreateSamplingDatasetContext(
@@ -492,21 +462,18 @@ TEST_P(ParameterizedSamplingDatasetOpTest, DatasetSave) {
   TF_ASSERT_OK(MakeRangeAndTakeDatasetTensor(test_case.range_dataset_params,
                                              test_case.take_dataset_params,
                                              &range_and_take_dataset_tensor));
-  
+
   Tensor rate = CreateTensor<float>(TensorShape({}), {test_case.rate});
   Tensor seed = CreateTensor<int64>(TensorShape({}), {test_case.seed});
   Tensor seed2 = CreateTensor<int64>(TensorShape({}), {test_case.seed2});
-  gtl::InlinedVector<TensorValue, 4> inputs({
-    TensorValue(&range_and_take_dataset_tensor),
-    TensorValue(&rate),
-    TensorValue(&seed),
-    TensorValue(&seed2)});
-    
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&range_and_take_dataset_tensor), TensorValue(&rate),
+       TensorValue(&seed), TensorValue(&seed2)});
+
   std::unique_ptr<OpKernel> sampling_dataset_kernel;
-  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(
-        test_case.expected_output_dtypes, 
-        test_case.expected_output_shapes,
-        &sampling_dataset_kernel));
+  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(test_case.expected_output_dtypes,
+                                             test_case.expected_output_shapes,
+                                             &sampling_dataset_kernel));
 
   std::unique_ptr<OpKernelContext> sampling_dataset_context;
   TF_ASSERT_OK(CreateSamplingDatasetContext(
@@ -518,7 +485,7 @@ TEST_P(ParameterizedSamplingDatasetOpTest, DatasetSave) {
                              &sampling_dataset));
   core::ScopedUnref scoped_unref(sampling_dataset);
   // END INITIALIZATION CODE
-  
+
   std::unique_ptr<SerializationContext> serialization_context;
   TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
   VariantTensorData data;
@@ -539,21 +506,18 @@ TEST_P(ParameterizedSamplingDatasetOpTest, IteratorOutputDtypes) {
   TF_ASSERT_OK(MakeRangeAndTakeDatasetTensor(test_case.range_dataset_params,
                                              test_case.take_dataset_params,
                                              &range_and_take_dataset_tensor));
-  
+
   Tensor rate = CreateTensor<float>(TensorShape({}), {test_case.rate});
   Tensor seed = CreateTensor<int64>(TensorShape({}), {test_case.seed});
   Tensor seed2 = CreateTensor<int64>(TensorShape({}), {test_case.seed2});
-  gtl::InlinedVector<TensorValue, 4> inputs({
-    TensorValue(&range_and_take_dataset_tensor),
-    TensorValue(&rate),
-    TensorValue(&seed),
-    TensorValue(&seed2)});
-    
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&range_and_take_dataset_tensor), TensorValue(&rate),
+       TensorValue(&seed), TensorValue(&seed2)});
+
   std::unique_ptr<OpKernel> sampling_dataset_kernel;
-  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(
-        test_case.expected_output_dtypes, 
-        test_case.expected_output_shapes,
-        &sampling_dataset_kernel));
+  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(test_case.expected_output_dtypes,
+                                             test_case.expected_output_shapes,
+                                             &sampling_dataset_kernel));
 
   std::unique_ptr<OpKernelContext> sampling_dataset_context;
   TF_ASSERT_OK(CreateSamplingDatasetContext(
@@ -566,16 +530,16 @@ TEST_P(ParameterizedSamplingDatasetOpTest, IteratorOutputDtypes) {
   core::ScopedUnref scoped_unref(sampling_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(CreateIteratorContext(sampling_dataset_context.get(),
-                                     &iterator_context));
+  TF_ASSERT_OK(
+      CreateIteratorContext(sampling_dataset_context.get(), &iterator_context));
   std::unique_ptr<IteratorBase> iterator;
   string iterator_prefix = name_utils::IteratorPrefix(
       TakeDatasetOp::kDatasetType,
       name_utils::IteratorPrefix(RangeDatasetOp::kDatasetType, "Iterator"));
   TF_ASSERT_OK(sampling_dataset->MakeIterator(iterator_context.get(),
-                                                 iterator_prefix, &iterator));
+                                              iterator_prefix, &iterator));
   // END INITIALIZATION CODE
-  
+
   TF_EXPECT_OK(VerifyTypesMatch(iterator->output_dtypes(),
                                 test_case.expected_output_dtypes));
 }
@@ -592,21 +556,18 @@ TEST_P(ParameterizedSamplingDatasetOpTest, IteratorOutputShapes) {
   TF_ASSERT_OK(MakeRangeAndTakeDatasetTensor(test_case.range_dataset_params,
                                              test_case.take_dataset_params,
                                              &range_and_take_dataset_tensor));
-  
+
   Tensor rate = CreateTensor<float>(TensorShape({}), {test_case.rate});
   Tensor seed = CreateTensor<int64>(TensorShape({}), {test_case.seed});
   Tensor seed2 = CreateTensor<int64>(TensorShape({}), {test_case.seed2});
-  gtl::InlinedVector<TensorValue, 4> inputs({
-    TensorValue(&range_and_take_dataset_tensor),
-    TensorValue(&rate),
-    TensorValue(&seed),
-    TensorValue(&seed2)});
-    
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&range_and_take_dataset_tensor), TensorValue(&rate),
+       TensorValue(&seed), TensorValue(&seed2)});
+
   std::unique_ptr<OpKernel> sampling_dataset_kernel;
-  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(
-        test_case.expected_output_dtypes, 
-        test_case.expected_output_shapes,
-        &sampling_dataset_kernel));
+  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(test_case.expected_output_dtypes,
+                                             test_case.expected_output_shapes,
+                                             &sampling_dataset_kernel));
 
   std::unique_ptr<OpKernelContext> sampling_dataset_context;
   TF_ASSERT_OK(CreateSamplingDatasetContext(
@@ -619,19 +580,18 @@ TEST_P(ParameterizedSamplingDatasetOpTest, IteratorOutputShapes) {
   core::ScopedUnref scoped_unref(sampling_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(CreateIteratorContext(sampling_dataset_context.get(),
-                                     &iterator_context));
+  TF_ASSERT_OK(
+      CreateIteratorContext(sampling_dataset_context.get(), &iterator_context));
   std::unique_ptr<IteratorBase> iterator;
   string iterator_prefix = name_utils::IteratorPrefix(
       TakeDatasetOp::kDatasetType,
       name_utils::IteratorPrefix(RangeDatasetOp::kDatasetType, "Iterator"));
   TF_ASSERT_OK(sampling_dataset->MakeIterator(iterator_context.get(),
-                                                 iterator_prefix, &iterator));
+                                              iterator_prefix, &iterator));
   // END INITIALIZATION CODE
-  
+
   TF_EXPECT_OK(VerifyShapesCompatible(iterator->output_shapes(),
                                       test_case.expected_output_shapes));
-
 }
 
 TEST_P(ParameterizedSamplingDatasetOpTest, IteratorOutputPrefix) {
@@ -646,21 +606,18 @@ TEST_P(ParameterizedSamplingDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(MakeRangeAndTakeDatasetTensor(test_case.range_dataset_params,
                                              test_case.take_dataset_params,
                                              &range_and_take_dataset_tensor));
-  
+
   Tensor rate = CreateTensor<float>(TensorShape({}), {test_case.rate});
   Tensor seed = CreateTensor<int64>(TensorShape({}), {test_case.seed});
   Tensor seed2 = CreateTensor<int64>(TensorShape({}), {test_case.seed2});
-  gtl::InlinedVector<TensorValue, 4> inputs({
-    TensorValue(&range_and_take_dataset_tensor),
-    TensorValue(&rate),
-    TensorValue(&seed),
-    TensorValue(&seed2)});
-    
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&range_and_take_dataset_tensor), TensorValue(&rate),
+       TensorValue(&seed), TensorValue(&seed2)});
+
   std::unique_ptr<OpKernel> sampling_dataset_kernel;
-  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(
-        test_case.expected_output_dtypes, 
-        test_case.expected_output_shapes,
-        &sampling_dataset_kernel));
+  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(test_case.expected_output_dtypes,
+                                             test_case.expected_output_shapes,
+                                             &sampling_dataset_kernel));
 
   std::unique_ptr<OpKernelContext> sampling_dataset_context;
   TF_ASSERT_OK(CreateSamplingDatasetContext(
@@ -673,24 +630,24 @@ TEST_P(ParameterizedSamplingDatasetOpTest, IteratorOutputPrefix) {
   core::ScopedUnref scoped_unref(sampling_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(CreateIteratorContext(sampling_dataset_context.get(),
-                                     &iterator_context));
+  TF_ASSERT_OK(
+      CreateIteratorContext(sampling_dataset_context.get(), &iterator_context));
   std::unique_ptr<IteratorBase> iterator;
   string iterator_prefix = name_utils::IteratorPrefix(
       TakeDatasetOp::kDatasetType,
       name_utils::IteratorPrefix(RangeDatasetOp::kDatasetType, "Iterator"));
   TF_ASSERT_OK(sampling_dataset->MakeIterator(iterator_context.get(),
-                                                 iterator_prefix, &iterator));
+                                              iterator_prefix, &iterator));
   // END INITIALIZATION CODE
 
-    EXPECT_EQ(iterator->prefix(),
+  EXPECT_EQ(iterator->prefix(),
             name_utils::IteratorPrefix(SamplingDatasetOp::kDatasetType,
                                        iterator_prefix));
 }
 
 // Save and restore the dataset while scanning it. Verify the returned tuples.
 TEST_P(ParameterizedSamplingDatasetOpTest, Roundtrip) {
-    // BEGIN INITIALIZATION CODE
+  // BEGIN INITIALIZATION CODE
   // See ParameterizedSamplingDatasetOpTest::GetNext for explanatory comments.
   const int thread_num = 2, cpu_num = 2;
   TestCase test_case = GetParam();
@@ -701,21 +658,18 @@ TEST_P(ParameterizedSamplingDatasetOpTest, Roundtrip) {
   TF_ASSERT_OK(MakeRangeAndTakeDatasetTensor(test_case.range_dataset_params,
                                              test_case.take_dataset_params,
                                              &range_and_take_dataset_tensor));
-  
+
   Tensor rate = CreateTensor<float>(TensorShape({}), {test_case.rate});
   Tensor seed = CreateTensor<int64>(TensorShape({}), {test_case.seed});
   Tensor seed2 = CreateTensor<int64>(TensorShape({}), {test_case.seed2});
-  gtl::InlinedVector<TensorValue, 4> inputs({
-    TensorValue(&range_and_take_dataset_tensor),
-    TensorValue(&rate),
-    TensorValue(&seed),
-    TensorValue(&seed2)});
-    
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&range_and_take_dataset_tensor), TensorValue(&rate),
+       TensorValue(&seed), TensorValue(&seed2)});
+
   std::unique_ptr<OpKernel> sampling_dataset_kernel;
-  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(
-        test_case.expected_output_dtypes, 
-        test_case.expected_output_shapes,
-        &sampling_dataset_kernel));
+  TF_ASSERT_OK(CreateSamplingDatasetOpKernel(test_case.expected_output_dtypes,
+                                             test_case.expected_output_shapes,
+                                             &sampling_dataset_kernel));
 
   std::unique_ptr<OpKernelContext> sampling_dataset_context;
   TF_ASSERT_OK(CreateSamplingDatasetContext(
@@ -728,14 +682,14 @@ TEST_P(ParameterizedSamplingDatasetOpTest, Roundtrip) {
   core::ScopedUnref scoped_unref(sampling_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(CreateIteratorContext(sampling_dataset_context.get(),
-                                     &iterator_context));
+  TF_ASSERT_OK(
+      CreateIteratorContext(sampling_dataset_context.get(), &iterator_context));
   std::unique_ptr<IteratorBase> iterator;
   string iterator_prefix = name_utils::IteratorPrefix(
       TakeDatasetOp::kDatasetType,
       name_utils::IteratorPrefix(RangeDatasetOp::kDatasetType, "Iterator"));
   TF_ASSERT_OK(sampling_dataset->MakeIterator(iterator_context.get(),
-                                                 iterator_prefix, &iterator));
+                                              iterator_prefix, &iterator));
   // END INITIALIZATION CODE
 
   std::unique_ptr<SerializationContext> serialization_ctx;
@@ -765,14 +719,12 @@ TEST_P(ParameterizedSamplingDatasetOpTest, Roundtrip) {
 
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
                            /*compare_order*/ true));
-
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    SamplingDatasetOpTest, ParameterizedSamplingDatasetOpTest,
-    ::testing::ValuesIn(std::vector<TestCase>(
-        {TestCase1(), TestCase2(), TestCase3()})));
-
+INSTANTIATE_TEST_SUITE_P(SamplingDatasetOpTest,
+                         ParameterizedSamplingDatasetOpTest,
+                         ::testing::ValuesIn(std::vector<TestCase>(
+                             {TestCase1(), TestCase2(), TestCase3()})));
 
 }  // namespace
 }  // namespace data

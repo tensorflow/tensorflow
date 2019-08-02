@@ -20,11 +20,10 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-
 class SamplingDatasetOp : public UnaryDatasetOpKernel {
  public:
   // Names of op parameters, public so that they can be accessed by test cases.
-  // Make sure that these are kept in sync with the REGISTER_OP call in 
+  // Make sure that these are kept in sync with the REGISTER_OP call in
   // tensorflow/core/ops/experimental_dataset_ops.cc
   static constexpr const char* const kDatasetType = "Sampling";
   static constexpr const char* const kInputDataset = "input_dataset";
