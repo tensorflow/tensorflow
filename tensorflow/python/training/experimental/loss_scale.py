@@ -205,7 +205,7 @@ class FixedLossScale(LossScale):
         number as long as no nan or inf is encountered in training.
 
     Raises:
-      ValueError: If loss_scale is less than 1.
+      ValueError: If loss_scale_value is less than 1.
     """
     super(FixedLossScale, self).__init__()
     if not isinstance(loss_scale_value, six.integer_types + (float,)):

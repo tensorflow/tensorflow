@@ -59,6 +59,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
 from tensorflow.python.autograph.utils import ag_logging
@@ -76,13 +78,13 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.util import nest
 
 LIMIT_PYTHON_ITERATIONS = True
 PYTHON_MAX_ITERATIONS = 100000000  # Fails in about one minute for empty loops.
 WARN_INEFFICIENT_UNROLL = True
 INEFFICIENT_UNROLL_MIN_ITERATIONS = 3000
 INEFFICIENT_UNROLL_MIN_OPS = 1
-
 
 def _disallow_undefs_into_loop(*values):
   """Ensures that all values in the state are defined when entering a loop."""
@@ -98,10 +100,158 @@ def _disallow_undefs_into_loop(*values):
       # return value if the loop contained a return statement.
       # TODO(mdan): This should be checked at the place where return occurs.
       raise ValueError(
-          'Return statements are not supported within a TensorFlow loop.')
+          'return statements are not supported within a TensorFlow loop.')
 
 
-def for_stmt(iter_, extra_test, body, get_state, set_state, init_vars):
+def _verify_tf_loop_vars(init_loop_vars,
+                         first_iter_vars,
+                         basic_symbol_names,
+                         composite_symbol_names,
+                         include_shapes=True):
+  """Verifies loop variables for consistency."""
+
+  # The whole point of _verify_tf_loop_vars is to give more useful error message
+  # than tf-level exception by including variable names.  If it's not available,
+  # there is no point at performing this verification here.  As of 2019-07-31,
+  # operators:control_flow_test does not pass the names.
+  if basic_symbol_names is None:
+    return
+
+  output_symbol_names = basic_symbol_names + composite_symbol_names
+
+  assert len(init_loop_vars) == len(first_iter_vars) == len(output_symbol_names)
+
+  for init_loop_var, first_iter_var, name in zip(init_loop_vars,
+                                                 first_iter_vars,
+                                                 output_symbol_names):
+
+    try:
+      nest.assert_same_structure(
+          init_loop_var, first_iter_var, expand_composites=True)
+    except (ValueError, TypeError) as e:
+      raise TypeError('"{}" does not have the same nested structure after one'
+                      ' iteration.\n\n{}'.format(name, e))
+
+    def _check_same_type(name, init_loop_var, first_iter_var):
+      """Ensures init_loop_var and first_iter_var are consistent."""
+      if isinstance(init_loop_var, (bool, int, float, str)):
+        init_loop_var = ops.convert_to_tensor_v2(init_loop_var)
+
+      if isinstance(first_iter_var, (bool, int, float, str)):
+        first_iter_var = ops.convert_to_tensor_v2(first_iter_var)
+
+      if (not tensor_util.is_tensor(init_loop_var) or
+          not tensor_util.is_tensor(first_iter_var)):
+        return
+
+      # TODO(mdan): Properly account for CompositeTensors.
+      if (not hasattr(init_loop_var, 'dtype') or
+          not hasattr(first_iter_var, 'dtype')):
+        return
+      if (not hasattr(init_loop_var, 'shape') or
+          not hasattr(first_iter_var, 'shape')):
+        return
+
+      if init_loop_var.dtype != first_iter_var.dtype:
+        raise TypeError(
+            '"{}" has dtype {} before the loop, but dtype {} after one'
+            ' iteration. TensorFlow control flow requires it stays the'
+            ' same.'.format(
+                name,
+                init_loop_var.dtype.name,
+                first_iter_var.dtype.name,
+            ))
+
+      if include_shapes:
+        init_shape = init_loop_var.shape
+        first_iter_shape = first_iter_var.shape
+        # TODO(b/135183013): Update needed once we support shape_invariants.
+        if ((init_shape.rank is None) != (first_iter_shape.rank is None) or
+            (tuple(init_shape.as_list()) != tuple(first_iter_shape.as_list()))):
+          raise ValueError(
+              '"{}" has shape {} before the loop, but shape {} after one'
+              ' iteration. TensorFlow control flow requires it stays the'
+              ' same.'.format(name, init_shape, first_iter_shape))
+
+    nest.map_structure(
+        functools.partial(_check_same_type, name), init_loop_var,
+        first_iter_var)
+
+
+def _verify_tf_cond_vars(body_outputs, orelse_outputs, basic_symbol_names,
+                         composite_symbol_names):
+  """Verifies variables manipulated by a conditional for consistency."""
+
+  # The whole point of _verify_tf_cond_vars is to give more useful error message
+  # than tf-level exception by including variable names.  If it's not available,
+  # there is no point at performing this verification here.  As of 2019-07-31,
+  # conditional expression does not pass the names.
+  if basic_symbol_names is None:
+    return
+
+  output_symbol_names = basic_symbol_names + composite_symbol_names
+
+  basic_body_outputs, composite_body_outputs = body_outputs
+  basic_orelse_outputs, composite_orelse_outputs = orelse_outputs
+  assert isinstance(composite_body_outputs, tuple)
+  assert isinstance(composite_orelse_outputs, tuple)
+
+  # TODO(kkimlabs): Make this more consistent.
+  # The basic outputs should always be a tuple.
+  if not isinstance(basic_body_outputs, tuple):
+    basic_body_outputs = (basic_body_outputs,)
+  if not isinstance(basic_orelse_outputs, tuple):
+    basic_orelse_outputs = (basic_orelse_outputs,)
+
+  body_outputs = basic_body_outputs + composite_body_outputs
+  orelse_outputs = basic_orelse_outputs + composite_orelse_outputs
+
+  for body_output, orelse_output, name in zip(body_outputs, orelse_outputs,
+                                              output_symbol_names):
+    try:
+      nest.assert_same_structure(
+          body_output, orelse_output, expand_composites=True)
+    except (ValueError, TypeError) as e:
+      raise TypeError(
+          '"{}" does not have the same nested structure in the TRUE and FALSE'
+          ' branches.\n\n{}'.format(name, str(e)))
+
+    def _check_same_type(name, body_output_var, orelse_output_var):
+      """Verfies that body_output_var and orelse_output_var have same dtype."""
+      if isinstance(body_output_var, (bool, int, float, str)):
+        body_output_var = ops.convert_to_tensor_v2(body_output_var)
+
+      if isinstance(orelse_output_var, (bool, int, float, str)):
+        orelse_output_var = ops.convert_to_tensor_v2(orelse_output_var)
+
+      if (not tensor_util.is_tensor(body_output_var) or
+          not tensor_util.is_tensor(orelse_output_var)):
+        return
+
+      # TODO(mdan): Properly account for CompositeTensors.
+      if (not hasattr(body_output_var, 'dtype') or
+          not hasattr(orelse_output_var, 'dtype')):
+        return
+
+      if body_output_var.dtype != orelse_output_var.dtype:
+        raise TypeError(
+            '"{}" has dtype {} in the TRUE branch, but dtype={} in the FALSE'
+            ' branch. TensorFlow control flow requires that they are the'
+            ' same.'.format(name, body_output_var.dtype.name,
+                            orelse_output_var.dtype.name))
+
+    nest.map_structure(
+        functools.partial(_check_same_type, name), body_output, orelse_output)
+
+
+def for_stmt(iter_,
+             extra_test,
+             body,
+             get_state,
+             set_state,
+             init_vars,
+             basic_symbol_names=None,
+             composite_symbol_names=None):
   """Functional form of a for statement.
 
   The loop operates on a state, which includes all symbols that are
@@ -135,6 +285,8 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, init_vars):
     set_state: Additional callable which save values captured by get_state back
       into the Python environment. This is only useful when staging the loop.
     init_vars: Tuple containing the initial state.
+    basic_symbol_names: Tuple containing basic loop var names.
+    composite_symbol_names: Tuple containing composite loop var names.
 
   Returns:
     Tuple containing the final state.
@@ -142,18 +294,22 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, init_vars):
   if tensor_util.is_tensor(iter_):
     if tensors.is_range_tensor(iter_):
       return _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state,
-                                init_vars)
+                                init_vars, basic_symbol_names,
+                                composite_symbol_names)
     else:
       return _known_len_tf_for_stmt(iter_, extra_test, body, get_state,
-                                    set_state, init_vars)
+                                    set_state, init_vars, basic_symbol_names,
+                                    composite_symbol_names)
 
   if isinstance(iter_, dataset_ops.DatasetV2):
     return _tf_dataset_for_stmt(iter_, extra_test, body, get_state, set_state,
-                                init_vars)
+                                init_vars, basic_symbol_names,
+                                composite_symbol_names)
 
   if isinstance(iter_, iterator_ops.IteratorV2):
     return _tf_iterator_for_stmt(iter_, extra_test, body, get_state, set_state,
-                                 init_vars)
+                                 init_vars, basic_symbol_names,
+                                 composite_symbol_names)
 
   # Note: This experimental interface is subject to change.
   custom_handler = getattr(iter_, '_autograph_for_loop', None)
@@ -179,7 +335,8 @@ def _py_for_stmt(iter_, extra_test, body, get_state, set_state, init_vars):
 
 
 def _known_len_tf_for_stmt(iter_, extra_test, body, get_state, set_state,
-                           init_vars):
+                           init_vars, basic_symbol_names,
+                           composite_symbol_names):
   """Overload of for_stmt that iterates over TF entities that admit a length."""
   _disallow_undefs_into_loop(*init_vars)
 
@@ -191,8 +348,11 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, get_state, set_state,
   iter_ = ta.unstack(iter_)
 
   def while_body(iterate_index, *loop_vars):
+    """Main loop body."""
     iterate = iter_.read(iterate_index)
     new_vars = body(iterate, *loop_vars)
+    _verify_tf_loop_vars(loop_vars, new_vars, basic_symbol_names,
+                         composite_symbol_names)
 
     loop_vars = (iterate_index + 1,)
     if new_vars:
@@ -211,8 +371,11 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, get_state, set_state,
       while_body,
       get_state,
       set_state,
-      init_vars=(0,) + init_vars,
-      opts=dict(maximum_iterations=n))
+      (0,) + init_vars,
+      None,
+      None,
+      opts=dict(maximum_iterations=n),
+  )
 
   # Note: the iteration index is not returned by the while loop, however
   # if a symbol with the same name exists outside the loop, it will be captured
@@ -227,8 +390,8 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, get_state, set_state,
   return results
 
 
-def _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state,
-                       init_vars):
+def _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state, init_vars,
+                       basic_symbol_names, composite_symbol_names):
   """Overload of for_stmt that iterates over a TF range (and elides it)."""
   _disallow_undefs_into_loop(*init_vars)
 
@@ -236,8 +399,8 @@ def _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state,
 
   def while_body(iterate, *loop_vars):
     new_vars = body(iterate, *loop_vars)
-
     loop_vars = (iterate + delta,)
+
     if new_vars:
       loop_vars += new_vars
 
@@ -256,13 +419,20 @@ def _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state,
   maximum_iterations = math_ops.cast(
       misc.get_range_len(start, limit, delta), dtypes.int32)
 
+  # The first loopvar corresponds to the iterate variable which is internal.
+  if isinstance(basic_symbol_names, tuple):
+    basic_symbol_names = (None,) + basic_symbol_names
+
   results = _tf_while_stmt(
       while_cond,
       while_body,
       get_state,
       set_state,
-      init_vars=(start,) + init_vars,
-      opts=dict(maximum_iterations=maximum_iterations))
+      (start,) + init_vars,
+      basic_symbol_names,
+      composite_symbol_names,
+      opts=dict(maximum_iterations=maximum_iterations),
+  )
 
   # Note: the iteration index is not returned by the while loop, however
   # if a symbol with the same name exists outside the loop, it will be captured
@@ -278,12 +448,16 @@ def _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state,
 
 
 def _tf_iterator_for_stmt(itr, extra_test, body, get_state, set_state,
-                          init_vars):
+                          init_vars, basic_symbol_names,
+                          composite_symbol_names):
   """Overload of for_stmt that iterates over TF Iterators. See for_loop."""
   _disallow_undefs_into_loop(*init_vars)
 
   def while_body_actual(opt_iterate, *loop_vars):
+    """Actual main loop body."""
     new_vars = body(opt_iterate.get_value(), *loop_vars)
+    _verify_tf_loop_vars(loop_vars, new_vars, basic_symbol_names,
+                         composite_symbol_names)
     # TODO(mdan): Fix this inconsistency in the converter.
     if new_vars is None:
       new_vars = ()
@@ -318,31 +492,40 @@ def _tf_iterator_for_stmt(itr, extra_test, body, get_state, set_state,
           has_next, lambda: extra_test(*loop_vars), lambda: False)
     return has_next
 
+  # The first loopvar corresponds to the iterate variable which is internal.
   _, final_vars = _tf_while_stmt(
       while_cond,
       while_body,
       get_state,
       set_state,
-      init_vars=(True, init_vars),
-      opts=None)
+      (True, init_vars),
+      None,
+      None,
+      opts=None,
+  )
   return final_vars
 
 
-def _tf_dataset_for_stmt(ds, extra_test, body, get_state, set_state, init_vars):
+def _tf_dataset_for_stmt(ds, extra_test, body, get_state, set_state, init_vars,
+                         basic_symbol_names, composite_symbol_names):
   """Overload of for_stmt that iterates over TF Datasets."""
   _disallow_undefs_into_loop(*init_vars)
 
   if extra_test is not None:
     assert init_vars, 'Lowering should always add state.'
     return _dataset_for_stmt_with_extra_test(ds, extra_test, body, get_state,
-                                             set_state, init_vars)
+                                             set_state, init_vars,
+                                             basic_symbol_names,
+                                             composite_symbol_names)
 
   return _dataset_for_stmt_no_extra_test(ds, body, get_state, set_state,
-                                         init_vars)
+                                         init_vars, basic_symbol_names,
+                                         composite_symbol_names)
 
 
 def _dataset_for_stmt_with_extra_test(ds, extra_test, body, get_state,
-                                      set_state, init_vars):
+                                      set_state, init_vars, basic_symbol_names,
+                                      composite_symbol_names):
   """Overload of _dataset_for_stmt with early stopping. See for_stmt."""
 
   # TODO(mdan): Simplify this - following it is extremely difficult.
@@ -354,6 +537,12 @@ def _dataset_for_stmt_with_extra_test(ds, extra_test, body, get_state,
     def true_fn():
       set_state(state)
       outputs = body(iterate, *loop_vars)
+      _verify_tf_loop_vars(
+          loop_vars + state,
+          outputs + state,
+          basic_symbol_names,
+          composite_symbol_names,
+          include_shapes=False)
       return outputs, get_state()
 
     extra_cond = extra_test(*loop_vars)
@@ -385,7 +574,8 @@ def _dataset_for_stmt_with_extra_test(ds, extra_test, body, get_state,
   return final_vars
 
 
-def _dataset_for_stmt_no_extra_test(ds, body, get_state, set_state, init_vars):
+def _dataset_for_stmt_no_extra_test(ds, body, get_state, set_state, init_vars,
+                                    basic_symbol_names, composite_symbol_names):
   """Overload of _dataset_for_stmt without early stopping. See for_stmt."""
   init_state = get_state()
   assert isinstance(init_vars, tuple)
@@ -399,6 +589,8 @@ def _dataset_for_stmt_no_extra_test(ds, body, get_state, set_state, init_vars):
 
   if no_vars:
     init_vars = (constant_op.constant(0),)
+    if isinstance(basic_symbol_names, tuple):
+      basic_symbol_names = (None,) + basic_symbol_names
   if no_state:
     init_state = (constant_op.constant(0),)
 
@@ -419,6 +611,12 @@ def _dataset_for_stmt_no_extra_test(ds, body, get_state, set_state, init_vars):
     else:
       new_state = get_state()
 
+    _verify_tf_loop_vars(
+        loop_vars + state,
+        new_vars + new_state,
+        basic_symbol_names,
+        composite_symbol_names,
+        include_shapes=False)
     return new_vars, new_state
 
   aug_vars = init_vars, get_state()
@@ -430,7 +628,16 @@ def _dataset_for_stmt_no_extra_test(ds, body, get_state, set_state, init_vars):
   return final_vars
 
 
-def while_stmt(test, body, get_state, set_state, init_vars, opts=None):
+def while_stmt(
+    test,
+    body,
+    get_state,
+    set_state,
+    init_vars,
+    basic_symbol_names=None,
+    composite_symbol_names=None,
+    opts=None,
+):
   """Functional form of a while statement.
 
   The loop operates on a so-called state, which includes all symbols that are
@@ -449,11 +656,14 @@ def while_stmt(test, body, get_state, set_state, init_vars, opts=None):
     set_state: Additional callable which save values captured by get_state back
       into the Python environment. This is only useful when staging the loop.
     init_vars: Tuple containing the initial state.
+    basic_symbol_names: Tuple containing basic loop var names.
+    composite_symbol_names: Tuple containing composite loop var names.
     opts: Optional dict of extra loop parameters.
 
   Returns:
     Tuple containing the final state.
   """
+
   # Evaluate the initial test once in order to do the dispatch. The evaluation
   # is isolated to minimize unwanted side effects.
   # TODO(mdan): Do a full iteration - some state types might lower to Tensor.
@@ -463,7 +673,8 @@ def while_stmt(test, body, get_state, set_state, init_vars, opts=None):
   # TensorFlow: Multiple evaluations are acceptable in this case, so we're fine
   # with the re-evaluation of `test` that `_tf_while_stmt` will make.
   if tensors.is_dense_tensor(init_test):
-    return _tf_while_stmt(test, body, get_state, set_state, init_vars, opts)
+    return _tf_while_stmt(test, body, get_state, set_state, init_vars,
+                          basic_symbol_names, composite_symbol_names, opts)
 
   # Normal Python: We already consumed one evaluation of `test`; consistently,
   # unroll one iteration before dispatching to a normal loop.
@@ -475,7 +686,11 @@ def while_stmt(test, body, get_state, set_state, init_vars, opts=None):
   return _py_while_stmt(test, body, get_state, set_state, init_vars, opts)
 
 
-def _tf_while_stmt(test, body, get_state, set_state, init_vars, opts):
+# TODO(kkimlabs): Some callers set basic_symbol_names=None and
+# composite_symbol_names=None and call _verify_tf_loop_vars(...) itself.  We can
+# remove these arguments once all callers do that.
+def _tf_while_stmt(test, body, get_state, set_state, init_vars,
+                   basic_symbol_names, composite_symbol_names, opts):
   """Overload of while_stmt that stages a TF while_stmt."""
   _disallow_undefs_into_loop(*init_vars)
 
@@ -495,7 +710,11 @@ def _tf_while_stmt(test, body, get_state, set_state, init_vars, opts):
     state = aug_loop_vars[state_slice]
     set_state(state)
     loop_vars = body(*aug_loop_vars[loop_vars_slice])
-    return loop_vars + get_state()
+    new_state = loop_vars + get_state()
+    _verify_tf_loop_vars(aug_loop_vars, new_state, basic_symbol_names,
+                         composite_symbol_names)
+
+    return new_state
 
   # Non-v2 while_loop unpacks the results when there is only one return value.
   # This enforces consistency across versions.
@@ -592,7 +811,13 @@ def _py_while_stmt(test, body, get_state, set_state, init_vars, opts):
   return loop_vars
 
 
-def if_stmt(cond, body, orelse, get_state, set_state):
+def if_stmt(cond,
+            body,
+            orelse,
+            get_state,
+            set_state,
+            basic_symbol_names=None,
+            composite_symbol_names=None):
   """Functional form of an if statement.
 
   Args:
@@ -612,18 +837,22 @@ def if_stmt(cond, body, orelse, get_state, set_state):
       restore checkpointed values. The single argument a tuple containing values
       for each composite symbol that may be modified in a branch of the
       conditional. The is usually the result of a call to get_state.
+    basic_symbol_names: Tuple containing basic loop var names.
+    composite_symbol_names: Tuple containing composite loop var names.
 
   Returns:
     Tuple containing the statement outputs.
   """
   # Note: tf.cond doesn't support SparseTensor.
   if tensors.is_dense_tensor(cond):
-    return tf_if_stmt(cond, body, orelse, get_state, set_state)
+    return tf_if_stmt(cond, body, orelse, get_state, set_state,
+                      basic_symbol_names, composite_symbol_names)
   else:
     return _py_if_stmt(cond, body, orelse)
 
 
-def tf_if_stmt(cond, body, orelse, get_state, set_state):
+def tf_if_stmt(cond, body, orelse, get_state, set_state, basic_symbol_names,
+               composite_symbol_names):
   """Overload of if_stmt that stages a TF cond."""
   body = _wrap_disallow_undefs_from_cond(body, branch_name='if')
   orelse = _wrap_disallow_undefs_from_cond(orelse, branch_name='else')
@@ -635,7 +864,28 @@ def tf_if_stmt(cond, body, orelse, get_state, set_state):
   # symbols (e.g. `a`) which cannot be passed by reference and must be returned.
   # See _isolate_state.
   # TODO(mdan): We should minimize calls to get/set_state.
-  final_vars, final_state = control_flow_ops.cond(cond, body, orelse)
+
+  body_branch = 0
+  orelse_branch = 1
+  result = [None, None]
+
+  def error_checking_body():
+    result[body_branch] = body()
+    if result[orelse_branch] is not None:
+      _verify_tf_cond_vars(result[body_branch], result[orelse_branch],
+                           basic_symbol_names, composite_symbol_names)
+    return result[body_branch]
+
+  def error_checking_orelse():
+    result[orelse_branch] = orelse()
+    if result[body_branch] is not None:
+      _verify_tf_cond_vars(result[body_branch], result[orelse_branch],
+                           basic_symbol_names, composite_symbol_names)
+    return result[orelse_branch]
+
+  final_vars, final_state = control_flow_ops.cond(cond, error_checking_body,
+                                                  error_checking_orelse)
+
   set_state(final_state)
 
   return final_vars

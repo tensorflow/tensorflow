@@ -356,9 +356,11 @@ class _EagerDefinedFunction(object):
     operations = [op for op in graph.get_operations() if op not in input_ops]
 
     graph_output_names = graph._output_names  # pylint: disable=protected-access
-    if (graph_output_names is not None
-        and all(t in graph_output_names for t in outputs)):
-      output_names = [compat.as_bytes(graph_output_names[t]) for t in outputs]
+    if (graph_output_names is not None and
+        all(ops.tensor_id(t) in graph_output_names for t in outputs)):
+      output_names = [
+          compat.as_bytes(graph_output_names[ops.tensor_id(t)]) for t in outputs
+      ]
       if len(set(output_names)) != len(output_names):
         # There are duplicate names for some reason, probably an invalid
         # signature. Revert to auto-naming.
@@ -637,10 +639,12 @@ class _DelayedRewriteGradientFunctions(object):
       custom_gradient.copy_handle_data(func_graph_output, op.outputs[i])
     # pylint: enable=protected-access
 
-    capture_mapping = dict(zip(self._func_graph.outputs, op.outputs))
-    remapped_captures = []
-    for capture in backwards_function.captured_inputs:
-      remapped_captures.append(capture_mapping.get(capture, capture))
+    capture_mapping = dict(
+        zip([ops.tensor_id(t) for t in self._func_graph.outputs], op.outputs))
+    remapped_captures = [
+        capture_mapping.get(ops.tensor_id(capture), capture)
+        for capture in backwards_function.captured_inputs
+    ]
 
     # Replace Nones with zeros since we're calling a graph function which
     # expects numeric inputs.

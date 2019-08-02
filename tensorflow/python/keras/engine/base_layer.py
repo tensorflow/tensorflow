@@ -655,6 +655,12 @@ class Layer(module.Module):
             training_value = backend.learning_phase()
 
       if self._expects_training_arg and training_value is not None:
+        # Force the training_value to be bool type which matches to the contract
+        # for layer/model call args.
+        if tensor_util.is_tensor(training_value):
+          training_value = math_ops.cast(training_value, dtypes.bool)
+        else:
+          training_value = bool(training_value)
         kwargs['training'] = training_value
         training_arg_passed_by_framework = True
 
@@ -1487,9 +1493,9 @@ class Layer(module.Module):
           (in which case its weights aren't yet defined).
     """
     if not self.built:
-      if self.__class__.__name__ == 'Sequential':
+      if getattr(self, '_is_graph_network', False):
         with tf_utils.maybe_init_scope(self):
-          self._maybe_build()  # pylint: disable=no-value-for-parameter
+          self._maybe_build(self.inputs)
       else:
         raise ValueError('You tried to call `count_params` on ' + self.name +
                          ', but the layer isn\'t built. '
@@ -1852,19 +1858,25 @@ class Layer(module.Module):
       return None
     return input_masks
 
-  def _call_arg_was_passed(self, arg_name, args, kwargs):
+  def _call_arg_was_passed(self, arg_name, args, kwargs, inputs_in_args=False):
     if arg_name in kwargs:
       return True
-    # Ignore `inputs` arg.
-    if arg_name in dict(zip(self._call_fn_args[1:], args)):
+    call_fn_args = self._call_fn_args
+    if not inputs_in_args:
+      # Ignore `inputs` arg.
+      call_fn_args = call_fn_args[1:]
+    if arg_name in dict(zip(call_fn_args, args)):
       return True
     return False
 
-  def _get_call_arg_value(self, arg_name, args, kwargs):
+  def _get_call_arg_value(self, arg_name, args, kwargs, inputs_in_args=False):
     if arg_name in kwargs:
       return kwargs[arg_name]
-    # Ignore `inputs` arg.
-    args_dict = dict(zip(self._call_fn_args[1:], args))
+    call_fn_args = self._call_fn_args
+    if not inputs_in_args:
+      # Ignore `inputs` arg.
+      call_fn_args = call_fn_args[1:]
+    args_dict = dict(zip(call_fn_args, args))
     return args_dict[arg_name]
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):

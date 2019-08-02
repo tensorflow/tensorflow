@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 from tensorflow.contrib.distributions.python.ops import deterministic as deterministic_lib
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -40,11 +41,10 @@ class DeterministicTest(test.TestCase):
 
   def testInvalidTolRaises(self):
     loc = rng.rand(2, 3, 4).astype(np.float32)
-    deterministic = deterministic_lib.Deterministic(
-        loc, atol=-1, validate_args=True)
-    with self.cached_session():
-      with self.assertRaisesOpError("Condition x >= 0"):
-        deterministic.prob(0.).eval()
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Condition x >= 0"):
+      _ = deterministic_lib.Deterministic(loc, atol=-1, validate_args=True)
+      # Error detected statically; no need for _.prob(0.).eval()
 
   def testProbWithNoBatchDimsIntegerType(self):
     deterministic = deterministic_lib.Deterministic(0)
@@ -195,16 +195,16 @@ class VectorDeterministicTest(test.TestCase):
 
   def testInvalidTolRaises(self):
     loc = rng.rand(2, 3, 4).astype(np.float32)
-    deterministic = deterministic_lib.VectorDeterministic(
-        loc, atol=-1, validate_args=True)
-    with self.cached_session():
-      with self.assertRaisesOpError("Condition x >= 0"):
-        deterministic.prob(loc).eval()
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Condition x >= 0"):
+      _ = deterministic_lib.VectorDeterministic(
+          loc, atol=-1, validate_args=True)
+      # Error detected statically; no need for _.prob(loc).eval()
 
   def testInvalidXRaises(self):
     loc = rng.rand(2, 3, 4).astype(np.float32)
     deterministic = deterministic_lib.VectorDeterministic(
-        loc, atol=-1, validate_args=True)
+        loc, atol=None, validate_args=True)
     with self.cached_session():
       with self.assertRaisesRegexp(ValueError, "must have rank at least 1"):
         deterministic.prob(0.).eval()

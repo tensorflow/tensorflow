@@ -1,6 +1,10 @@
 # Description: Operations defined for Cluster Resolvers
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_additional_rpc_deps",
+)
 
 package(
     default_visibility = [
@@ -63,7 +67,7 @@ py_library(
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python:training_server_lib",
-    ],
+    ] + tf_additional_rpc_deps(),
 )
 
 py_library(

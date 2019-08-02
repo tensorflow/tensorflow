@@ -51,7 +51,6 @@ using reference_ops::BroadcastSub4DSlow;
 using reference_ops::Concatenation;
 using reference_ops::ConcatenationWithScaling;
 using reference_ops::DepthConcatenation;
-using reference_ops::Dequantize;
 using reference_ops::Div;
 using reference_ops::FakeQuant;
 using reference_ops::Gather;
@@ -4704,6 +4703,17 @@ void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
                        const Dims<4>& output_dims) {
   Maximum(DimsToShape(input1_dims), input1_data, input2_data,
           DimsToShape(output_dims), output_data);
+}
+
+inline void Dequantize(const uint8* input_data, const Dims<4>& input_dims,
+                       int32 zero_point, double scale, float* output_data,
+                       const Dims<4>& output_dims) {
+  tflite::DequantizationParams op_params;
+  op_params.zero_point = zero_point;
+  op_params.scale = scale;
+
+  Dequantize(op_params, DimsToShape(input_dims), input_data,
+             DimsToShape(output_dims), output_data);
 }
 
 }  // namespace optimized_ops

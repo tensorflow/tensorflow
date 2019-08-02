@@ -40,6 +40,7 @@ from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.lazy_loader import LazyLoader
 
 # To avoid circular dependencies between keras/engine and keras/saving,
@@ -382,6 +383,23 @@ def _restore_layer_losses(losses_dict):
 # pylint: enable=protected-access
 
 
+def layer_uses_training_bool(layer):
+  """Returns whether this layer or any of its children uses the training arg."""
+  if layer._expects_training_arg:  # pylint: disable=protected-access
+    return True
+  visited = {layer}
+  to_visit = _list_all_layers(layer)
+  while to_visit:
+    layer = to_visit.pop()
+    if layer in visited:
+      continue
+    if layer._expects_training_arg:  # pylint: disable=protected-access
+      return True
+    visited.add(layer)
+    to_visit.extend(_list_all_layers(layer))
+  return False
+
+
 class LayerCallCollection(object):
   """Groups wrapped layer call functions.
 
@@ -394,7 +412,7 @@ class LayerCallCollection(object):
 
   def __init__(self, layer):
     self.layer = layer
-    self._expects_training_arg = layer._expects_training_arg  # pylint: disable=protected-access
+    self._expects_training_arg = layer_uses_training_bool(layer)
     self._training_arg_index = utils.get_training_arg_index(layer.call)
 
     self._input_signature = self._generate_input_signature(layer)
@@ -475,10 +493,63 @@ class LayerCallCollection(object):
       return None
     return self._input_signature
 
-  def add_function(self, python_function, name):
+  def training_arg_was_passed(self, args, kwargs):
+    if not self.layer._expects_training_arg and self._expects_training_arg:  # pylint: disable=protected-access
+      return (utils.get_training_arg(self._training_arg_index, args, kwargs)
+              is not None)
+    else:
+      return self.layer._call_arg_was_passed(  # pylint: disable=protected-access
+          'training', args, kwargs, inputs_in_args=True)
+
+  def get_training_arg_value(self, args, kwargs):
+    if not self.layer._expects_training_arg and self._expects_training_arg:  # pylint: disable=protected-access
+      return utils.get_training_arg(self._training_arg_index, args, kwargs)
+    else:
+      return self.layer._get_call_arg_value(  # pylint: disable=protected-access
+          'training', args, kwargs, inputs_in_args=True)
+
+  def _maybe_wrap_with_training_arg(self, call_fn):
+    """Wraps call function with added training argument if necessary."""
+    if not self.layer._expects_training_arg and self._expects_training_arg:  # pylint: disable=protected-access
+      # Add training arg to wrapper function.
+      arg_spec = tf_inspect.getfullargspec(call_fn)
+      args = arg_spec.args + ['training']
+      defaults = arg_spec.defaults or []
+      defaults.append(False)
+      new_arg_spec = tf_inspect.FullArgSpec(
+          args=args,
+          varargs=arg_spec.varargs,
+          varkw=arg_spec.varkw,
+          defaults=defaults,
+          kwonlyargs=arg_spec.kwonlyargs,
+          kwonlydefaults=arg_spec.kwonlydefaults,
+          annotations=arg_spec.annotations)
+
+      # Set new training arg index
+      self._training_arg_index = len(args) - 1
+      if tf_inspect.ismethod(call_fn):
+        self._training_arg_index -= 1
+
+      def wrap_with_training_arg(*args, **kwargs):
+        # Remove the training value, since the original call_fn does not expect
+        # a training arg. Instead, the training value will be propagated using
+        # the call context created in LayerCall.
+        args = list(args)
+        kwargs = kwargs.copy()
+        utils.remove_training_arg(self._training_arg_index, args, kwargs)
+        return call_fn(*args, **kwargs)
+
+      return tf_decorator.make_decorator(
+          target=call_fn,
+          decorator_func=wrap_with_training_arg,
+          decorator_argspec=new_arg_spec)
+
+    return call_fn
+
+  def add_function(self, call_fn, name):
     """Adds a layer call function to the collection."""
     self._functions[name] = fn = LayerCall(
-        self, python_function, name,
+        self, self._maybe_wrap_with_training_arg(call_fn), name,
         input_signature=self.fn_input_signature)
 
     if (None not in nest.flatten(self._input_signature) and
@@ -496,8 +567,9 @@ def maintain_losses(method):
     layer = self.call_collection.layer
     training = None
     # pylint: disable=protected-access
-    if layer._call_arg_was_passed('training', args, kwargs):
-      training = layer._get_call_arg_value('training', args, kwargs)
+    if (args or kwargs) and self.call_collection.training_arg_was_passed(
+        args, kwargs):
+      training = self.call_collection.get_training_arg_value(args, kwargs)
     # pylint: enable=protected-access
     original_losses = _reset_layer_losses(layer)
     with base_layer_utils.call_context().enter(layer, None, True, training):

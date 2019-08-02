@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -50,14 +51,19 @@ constexpr char kConstOp[] = "Const";
 constexpr char kIdentityOp[] = "Identity";
 constexpr char kSubOp[] = "Sub";
 constexpr char kTruncateDivOp[] = "TruncateDiv";
+constexpr char kOutputShapesAttr[] = "output_shapes";
+constexpr char kOutputTypesAttr[] = "output_types";
+constexpr char kTOutputTypesAttr[] = "Toutput_types";
+constexpr char kBatchOp[] = "BatchDataset";
+constexpr char kBatchV2Op[] = "BatchDatasetV2";
+constexpr char kPaddedBatchOp[] = "PaddedBatchDataset";
+constexpr char kPaddedBatchV2Op[] = "PaddedBatchDatasetV2";
+constexpr char kMapAndBatchOp[] = "MapAndBatchDataset";
+constexpr char kExperimentalMapAndBatchOp[] = "ExperimentalMapAndBatchDataset";
 
 constexpr std::array<const char*, 6> kBatchDatasetOps = {
-    "BatchDataset",
-    "BatchDatasetV2",
-    "ExperimentalMapAndBatchDataset",
-    "MapAndBatchDataset",
-    "PaddedBatchDataset",
-    "PaddedBatchDatasetV2"};
+    kBatchOp,       kBatchV2Op,      kMapAndBatchOp, kExperimentalMapAndBatchOp,
+    kPaddedBatchOp, kPaddedBatchV2Op};
 
 constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ConcatenateDataset",
@@ -117,17 +123,24 @@ constexpr std::array<const char*, 9> kSourceDatasetOps = {
     "TFRecordDataset",
 };
 
-NodeDef* AddBinaryNode(const string& input_x, const string& input_y,
-                       const string& op, DataType type,
-                       MutableGraphView* graph) {
+NodeDef MakeBinaryNode(const string& input_x, const string& input_y,
+                       const string& op, DataType dtype) {
   NodeDef node;
   node.set_op(op);
   node.add_input(input_x);
   node.add_input(input_y);
-  graph_utils::SetUniqueGraphNodeName(op, graph->graph(), &node);
-  AddNodeAttr("T", type, &node);
+  AddNodeAttr("T", dtype, &node);
 
-  return graph->AddNode(std::move(node));
+  return node;
+}
+
+NodeDef* AddBinaryNode(const string& input_x, const string& input_y,
+                       const string& op, DataType type, FunctionDef* fdef) {
+  NodeDef* node = fdef->add_node_def();
+  *node = MakeBinaryNode(input_x, input_y, op, type);
+  function_utils::SetUniqueFunctionNodeName(op, fdef, node);
+
+  return node;
 }
 
 // Adds a Const node to the FunctionDef.
@@ -155,6 +168,30 @@ Status AddConstIntNode(gtl::ArraySlice<int32> values, const TensorShape& shape,
   TF_RETURN_IF_ERROR(NodeDefBuilder("", "Const")
                          .Attr("dtype", DT_INT32)
                          .Attr("value", tensor_proto)
+                         .Finalize(*result));
+  function_utils::SetUniqueFunctionNodeName("rebatch/const", fdef, *result);
+
+  return Status::OK();
+}
+
+Status AddConstInt64Node(int64 value, FunctionDef* fdef, NodeDef** result) {
+  *result = fdef->add_node_def();
+  Tensor t(value);
+  TF_RETURN_IF_ERROR(NodeDefBuilder("", "Const")
+                         .Attr("dtype", DT_INT64)
+                         .Attr("value", t)
+                         .Finalize(*result));
+  function_utils::SetUniqueFunctionNodeName("rebatch/const", fdef, *result);
+
+  return Status::OK();
+}
+
+Status AddConstBoolNode(bool value, FunctionDef* fdef, NodeDef** result) {
+  *result = fdef->add_node_def();
+  Tensor t(value);
+  TF_RETURN_IF_ERROR(NodeDefBuilder("", "Const")
+                         .Attr("dtype", DT_BOOL)
+                         .Attr("value", t)
                          .Finalize(*result));
   function_utils::SetUniqueFunctionNodeName("rebatch/const", fdef, *result);
 
@@ -271,64 +308,250 @@ Status GetBatchDim(AttrValue output_shapes, int* batch_dim) {
 Status UpdateOutputShapes(const string& node_name, int64 num_workers,
                           MutableGraphView* graph) {
   NodeDef* node = graph->GetNode(node_name);
-  if (node->attr().contains("output_shapes")) {
-    AttrValue output_shapes = node->attr().at("output_shapes");
+  if (node->attr().contains(kOutputShapesAttr)) {
+    AttrValue output_shapes = node->attr().at(kOutputShapesAttr);
     for (auto& shape : *output_shapes.mutable_list()->mutable_shape()) {
       if (!shape.unknown_rank() && shape.dim(0).size() != -1) {
         shape.mutable_dim(0)->set_size(shape.dim(0).size() / num_workers);
       }
     }
-    (*node->mutable_attr())["output_shapes"] = output_shapes;
+    (*node->mutable_attr())[kOutputShapesAttr] = output_shapes;
   }
   return Status::OK();
 }
 
+// Helper function to get the batch_size input node for a give batch node.
+int64 GetBatchSizeArgIndex(const NodeDef& batch_node) {
+  if (batch_node.op() == kExperimentalMapAndBatchOp ||
+      batch_node.op() == kMapAndBatchOp) {
+    // For MapAndBatch we take the 3rd last input.
+    return batch_node.input_size() - 3;
+  }
+  // For all the batching datasets the batch_size is input number 1 except for
+  // MapAndBatchDataset.
+  return 1;
+}
+
+Status MakeNewBatchSizeNode(const string& global_batch_size_name,
+                            int64 num_workers, FunctionDef* fdef,
+                            NodeDef** result) {
+  NodeDef* one_node;
+  TF_RETURN_IF_ERROR(AddConstInt64Node(1, fdef, &one_node));
+  NodeDef* num_workers_node;
+  TF_RETURN_IF_ERROR(AddConstInt64Node(num_workers, fdef, &num_workers_node));
+
+  NodeDef* numerator_node =
+      AddBinaryNode(global_batch_size_name,
+                    strings::StrCat(num_workers_node->name(), ":output:0"),
+                    kAddOp, DT_INT64, fdef);
+  numerator_node = AddBinaryNode(
+      strings::StrCat(numerator_node->name(), ":z:0"),
+      strings::StrCat(one_node->name(), ":output:0"), kSubOp, DT_INT64, fdef);
+
+  *result =
+      AddBinaryNode(strings::StrCat(numerator_node->name(), ":z:0"),
+                    strings::StrCat(num_workers_node->name(), ":output:0"),
+                    kTruncateDivOp, DT_INT64, fdef);
+  return Status::OK();
+}
+
 // Given a "batch" dataset node, we replace the `batch_size` input with a new
-// input that corresponds to the original input divided by `num_workers`. If
-// `num_workers` does not divide `batch_size` evenly, the value is rounded up.
+// input that corresponds to the original input divided by `num_workers`.
 Status MutateBatchSize(const NodeDef& node, int64 num_workers,
                        MutableGraphView* graph) {
   // For all the batching datasets the batch_size is input number 1 except for
   // MapAndBatchDataset.
-  int64 batch_size_arg_index = 1;
-  if (node.op() == "ExperimentalMapAndBatchDataset" ||
-      node.op() == "MapAndBatchDataset") {
-    // For MapAndBatch we take the 3rd last input.
-    batch_size_arg_index = node.input_size() - 3;
-  }
+  int64 batch_size_arg_index = GetBatchSizeArgIndex(node);
   NodeDef* batch_size_node =
       graph_utils::GetInputNode(node, *graph, batch_size_arg_index);
-  NodeDef* new_batch_size_node;
-  if (batch_size_node->op() == kConstOp) {
-    Tensor batch_size_tensor;
-    TF_RETURN_IF_ERROR(
-        GetNodeAttr(*batch_size_node, "value", &batch_size_tensor));
-    if (!TensorShapeUtils::IsScalar(batch_size_tensor.shape())) {
-      return errors::Internal("Batch size node shape should be scalar");
-    }
-    int64 batch_size = batch_size_tensor.scalar<int64>()();
-    batch_size = (batch_size + num_workers - 1) / num_workers;
-    new_batch_size_node =
-        graph_utils::AddScalarConstNode<int64>(batch_size, graph);
-  } else {
-    NodeDef* one_node = graph_utils::AddScalarConstNode<int64>(1, graph);
-    NodeDef* num_workers_node =
-        graph_utils::AddScalarConstNode<int64>(num_workers, graph);
-    NodeDef* numerator_node =
-        AddBinaryNode(batch_size_node->name(), num_workers_node->name(), kAddOp,
-                      DT_INT64, graph);
-    numerator_node = AddBinaryNode(numerator_node->name(), one_node->name(),
-                                   kSubOp, DT_INT64, graph);
-    new_batch_size_node =
-        AddBinaryNode(numerator_node->name(), num_workers_node->name(),
-                      kTruncateDivOp, DT_INT64, graph);
-  }
+  int64 batch_size;
+  TF_RETURN_IF_ERROR(
+      graph_utils::GetScalarConstNodeValue(*batch_size_node, &batch_size));
+  DCHECK_EQ(batch_size % num_workers, 0);
+  batch_size = batch_size / num_workers;
+  NodeDef* new_batch_size_node =
+      graph_utils::AddScalarConstNode<int64>(batch_size, graph);
   // We don't call UpdateFanouts here because CSE elimination might lead to
   // multiple nodes sharing the same batch size constant node. This is also
   // why we don't delete batch_size_node as well.
   TF_RETURN_IF_ERROR(graph->UpdateRegularFaninByPort(
       node.name(), batch_size_arg_index, {new_batch_size_node->name(), 0}));
   return Status::OK();
+}
+
+Status AddFlatMapNode(const string& input_dataset,
+                      gtl::ArraySlice<string> other_arguments,
+                      gtl::ArraySlice<DataType> t_arguments,
+                      const FunctionDef& flat_map_fn,
+                      const AttrValue& output_shapes,
+                      const DataTypeVector& output_types,
+                      FunctionLibraryDefinition* flib, MutableGraphView* graph,
+                      NodeDef** result) {
+  TF_RETURN_IF_ERROR(flib->AddFunctionDef(flat_map_fn));
+  AttrValue f;
+  f.mutable_func()->set_name(flat_map_fn.signature().name());
+
+  NodeDef flat_map_node;
+  flat_map_node.set_op("FlatMapDataset");
+  flat_map_node.add_input(input_dataset);
+  for (const auto& arg : other_arguments) {
+    flat_map_node.add_input(arg);
+  }
+  AddNodeAttr("f", f, &flat_map_node);
+  AddNodeAttr("Targuments", t_arguments, &flat_map_node);
+  AddNodeAttr(kOutputShapesAttr, output_shapes, &flat_map_node);
+  AddNodeAttr(kOutputTypesAttr, output_types, &flat_map_node);
+
+  graph_utils::SetUniqueGraphNodeName("rebatch/flat_map", graph->graph(),
+                                      &flat_map_node);
+  *result = graph->AddNode(std::move(flat_map_node));
+  return Status::OK();
+}
+
+// def flat_map_fn(*batched_components):
+//   ds = tf.data.Dataset.from_tensor_slices(batched_components)
+//   return ds.batch(minibatch_size, drop_remainder=False)
+Status CreateFlatMapFnWithBatch(const DataTypeVector& dtypes, int64 num_workers,
+                                FunctionDef* result) {
+  NodeDef* tensor_slice_node = result->add_node_def();
+  tensor_slice_node->set_op("TensorSliceDataset");
+  for (int i = 0; i < dtypes.size(); ++i) {
+    auto* input_arg = function_utils::AddFunctionInput(
+        strings::StrCat("args_", i), result, dtypes.at(i));
+    tensor_slice_node->add_input(input_arg->name());
+  }
+  AddNodeAttr(kTOutputTypesAttr, dtypes, tensor_slice_node);
+
+  // The output_shapes attr here doesn't make a difference, since we
+  // set the output_shapes of the external FlatMap node.
+  AttrValue shapes;
+  SetUnknownShapes(dtypes.size(), &shapes);
+  AddNodeAttr(kOutputShapesAttr, shapes, tensor_slice_node);
+  function_utils::SetUniqueFunctionNodeName("rebatch/from_tensor_slices",
+                                            result, tensor_slice_node);
+
+  NodeDef* false_node;
+  TF_RETURN_IF_ERROR(AddConstBoolNode(false, result, &false_node));
+  NodeDef* batch_node = result->add_node_def();
+  batch_node->set_op(kBatchV2Op);
+  batch_node->add_input(
+      strings::StrCat(tensor_slice_node->name(), ":handle:0"));
+
+  // `batch_size` input
+  // Here, we capture the original batch size from outside the flat map fn.
+  auto* original_batch_size =
+      function_utils::AddFunctionInput("captured_batch_size", result, DT_INT64);
+  NodeDef* new_batch_size;
+  TF_RETURN_IF_ERROR(MakeNewBatchSizeNode(
+      original_batch_size->name(), num_workers, result, &new_batch_size));
+  batch_node->add_input(strings::StrCat(new_batch_size->name(), ":z:0"));
+
+  // `drop_remainder` input
+  batch_node->add_input(strings::StrCat(false_node->name(), ":output:0"));
+  AddNodeAttr(kOutputTypesAttr, dtypes, batch_node);
+  AddNodeAttr(kOutputShapesAttr, shapes, batch_node);
+  function_utils::SetUniqueFunctionNodeName("rebatch/batch", result,
+                                            batch_node);
+  function_utils::AddFunctionOutputWithUniqueName(
+      "output", strings::StrCat(batch_node->name(), ":handle:0"), result,
+      DT_VARIANT);
+  // Because TensorSliceDataset is stateful, we set the function to stateful.
+  result->mutable_signature()->set_is_stateful(true);
+
+  return Status::OK();
+}
+
+// Rewrite graph to add
+// `.flat_map(lambda x: tf.data.Dataset.from_tensor_slices(x).
+//     batch(minibatch_size, drop_remainder=False))`
+// after the batch node. This ensures that the sum of the minibatch sizes
+// in a step adds up to the global batch size. However, since this adds
+// additional data copies (both from_tensor_slices and batch), we only use
+// this approach when necessary, i.e. when we need to drop remainder on the
+// global batch, or when the global batch size does not divide num_workers
+// evenly.
+Status AppendFlatMap(const NodeDef& batch_node, int64 num_workers,
+                     FunctionLibraryDefinition* flib, MutableGraphView* graph) {
+  // `.flat_map(lambda x: tf.data.Dataset.from_tensor_slices(x).
+  //     batch(minibatch_size, drop_remainder=False))`
+  FunctionDef flat_map_fn;
+  FunctionDefLibrary lib = flib->ToProto();
+  graph_utils::SetUniqueGraphFunctionName("rebatch/flat_map_fn", &lib,
+                                          &flat_map_fn);
+  DataTypeVector dtypes;
+  TF_RETURN_IF_ERROR(
+      graph_utils::GetDatasetOutputTypesAttr(batch_node, &dtypes));
+  TF_RETURN_IF_ERROR(
+      CreateFlatMapFnWithBatch(dtypes, num_workers, &flat_map_fn));
+
+  int64 batch_size_index = GetBatchSizeArgIndex(batch_node);
+
+  NodeDef* flat_map_node;
+
+  AttrValue output_shapes = batch_node.attr().at(kOutputShapesAttr);
+  for (auto& shape : *output_shapes.mutable_list()->mutable_shape()) {
+    if (!shape.unknown_rank() && shape.dim(0).size() != -1) {
+      // Because the flat map function uses drop_remainder = False,
+      // the shape might be unknown
+      auto old_dim = shape.dim(0).size();
+      auto new_dim = old_dim % num_workers == 0 ? old_dim / num_workers : -1;
+      shape.mutable_dim(0)->set_size(new_dim);
+    }
+  }
+
+  TF_RETURN_IF_ERROR(AddFlatMapNode(strings::StrCat(batch_node.name(), ":0"),
+                                    {batch_node.input(batch_size_index)},
+                                    {DT_INT64}, flat_map_fn, output_shapes,
+                                    dtypes, flib, graph, &flat_map_node));
+
+  TF_RETURN_IF_ERROR(
+      graph->UpdateFanouts(batch_node.name(), flat_map_node->name()));
+
+  return Status::OK();
+}
+
+// There are several things we do here, depending on the values of
+// batch_size and drop_remainder.
+// (1) If batch size is known and divisible by num_workers, and drop_remainder
+// is known to be False, we mutate the batch size directly.
+//   .batch(global_batch_size) -> .batch(global_batch_size // num_workers)
+// (2) Otherwise, we add a flat_map transformation to preserve the global batch
+// size across the workers and to preserve the drop remainder behavior.
+bool ShouldMutateBatchSizeDirectly(const NodeDef& batch_node, int64 num_workers,
+                                   MutableGraphView* graph) {
+  int64 batch_size_arg_index = GetBatchSizeArgIndex(batch_node);
+  NodeDef* batch_size_node =
+      graph_utils::GetInputNode(batch_node, *graph, batch_size_arg_index);
+
+  int64 batch_size;
+  Status s =
+      graph_utils::GetScalarConstNodeValue(*batch_size_node, &batch_size);
+  // If batch size is unknown or indivisible by num workers, we don't
+  // mutate it directly
+  if (!s.ok() || batch_size % num_workers != 0) return false;
+
+  if (batch_node.op() == kBatchOp || batch_node.op() == kPaddedBatchOp) {
+    // These ops don't have a `drop_remainder` input, and behave like
+    // drop_remainder is False.
+    return true;
+  }
+
+  // drop_remainder is the final input on the other batch nodes.
+  NodeDef* drop_remainder_node = graph_utils::GetInputNode(
+      batch_node, *graph, batch_node.input_size() - 1);
+  bool drop_remainder;
+  s = graph_utils::GetScalarConstNodeValue(*drop_remainder_node,
+                                           &drop_remainder);
+  return s.ok() && !drop_remainder;
+}
+
+Status RewriteBatchNode(const NodeDef& batch_node, int64 num_workers,
+                        FunctionLibraryDefinition* flib,
+                        MutableGraphView* graph) {
+  if (ShouldMutateBatchSizeDirectly(batch_node, num_workers, graph)) {
+    return MutateBatchSize(batch_node, num_workers, graph);
+  }
+  return AppendFlatMap(batch_node, num_workers, flib, graph);
 }
 
 Status OptimizeGraph(const GrapplerItem& item, int64 num_workers,
@@ -346,7 +569,7 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers,
                            bool use_fallback, FunctionLibraryDefinition* flib,
                            MutableGraphView* graph) {
   if (IsDatasetNodeOfType(node, kBatchDatasetOps)) {
-    TF_RETURN_IF_ERROR(MutateBatchSize(node, num_workers, graph));
+    TF_RETURN_IF_ERROR(RewriteBatchNode(node, num_workers, flib, graph));
   } else if (IsDatasetNodeOfType(node, kMultipleInputsDatasetOps)) {
     // For all multiple input datasets, all inputs are datasets themselves.
     for (int i = 0; i < node.input_size(); ++i) {
@@ -403,7 +626,7 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers,
 }
 
 // Add nodes to the function to reshape arg to shape (-1, new_batch_dim, ...)
-Status ReshapeComponent(int new_batch_dim, StringPiece arg, DataType dtype,
+Status ReshapeComponent(int new_batch_dim, const string& arg, DataType dtype,
                         FunctionDef* fdef, string* result) {
   // Const with value [0]
   NodeDef* const_vec_0;
@@ -453,47 +676,50 @@ Status ReshapeComponent(int new_batch_dim, StringPiece arg, DataType dtype,
   return Status::OK();
 }
 
-Status CreateFlatMapFn(int new_batch_dim, const AttrValue& types,
-                       FunctionDef* result) {
+// def flat_map_fn(*batched_components):
+//   return tf.data.Dataset.from_tensor_slices(
+//     [tf.reshape(c, (-1, new_batch_size, ...))
+//      for c in batched_components])
+Status CreateFlatMapFnWithReshape(int new_batch_dim,
+                                  const DataTypeVector& types,
+                                  FunctionDef* result) {
   std::vector<NodeDefBuilder::NodeOut> tensor_slice_dataset_inputs;
 
   // For each component of the dataset, we reshape it from shape
   // (old_batch_size, ...) to (-1, new_batch_size, ...)
   // where new_batch_size = (old_batch_size + num_workers - 1) // num_workers
-  for (int i = 0; i < types.list().type_size(); ++i) {
-    string arg = strings::StrCat("args_", i);
-    auto* input_arg = result->mutable_signature()->mutable_input_arg()->Add();
-    input_arg->set_type(types.list().type(i));
-    input_arg->set_name(arg);
+  for (int i = 0; i < types.size(); ++i) {
+    auto* input_arg = function_utils::AddFunctionInput(
+        strings::StrCat("args_", i), result, types.at(i));
 
     string reshape_node_name;
-    TF_RETURN_IF_ERROR(ReshapeComponent(
-        new_batch_dim, arg, types.list().type(i), result, &reshape_node_name));
+    TF_RETURN_IF_ERROR(ReshapeComponent(new_batch_dim, input_arg->name(),
+                                        types.at(i), result,
+                                        &reshape_node_name));
 
     tensor_slice_dataset_inputs.emplace_back(
-        strings::StrCat(reshape_node_name, ":output"), 0, types.list().type(i));
+        strings::StrCat(reshape_node_name, ":output"), 0, types.at(i));
   }
 
   // The output_shapes attr here doesn't make a difference, since we
   // set the output_shapes of the external FlatMap node.
   AttrValue shapes;
-  SetUnknownShapes(types.list().type_size(), &shapes);
+  SetUnknownShapes(types.size(), &shapes);
 
   NodeDef* tensor_slice_dataset = result->add_node_def();
   TF_RETURN_IF_ERROR(NodeDefBuilder("", "TensorSliceDataset")
                          .Input(tensor_slice_dataset_inputs)
                          .Attr("Toutput_types", types)
-                         .Attr("output_shapes", shapes)
+                         .Attr(kOutputShapesAttr, shapes)
                          .Finalize(tensor_slice_dataset));
   function_utils::SetUniqueFunctionNodeName("rebatch/tensor_slice_dataset",
                                             result, tensor_slice_dataset);
 
-  auto* output_arg = result->mutable_signature()->mutable_output_arg()->Add();
-  output_arg->set_name("output");
-  output_arg->set_type(DT_VARIANT);
+  function_utils::AddFunctionOutputWithUniqueName(
+      "output", strings::StrCat(tensor_slice_dataset->name(), ":handle:0"),
+      result, DT_VARIANT);
+  // Because TensorSliceDataset is stateful, we set the function to stateful.
   result->mutable_signature()->set_is_stateful(true);
-  (*result->mutable_ret())["output"] =
-      strings::StrCat(tensor_slice_dataset->name(), ":handle:0");
 
   return Status::OK();
 }
@@ -525,12 +751,12 @@ Status RebatchWithFallback(const NodeDef* fetch_node, int64 num_workers,
   // because of the use of the "Reshape" op. This ensures that the error is
   // surfaced correctly.
   AttrValue output_shapes;
-  if (!fetch_node->attr().contains("output_shapes")) {
+  if (!fetch_node->attr().contains(kOutputShapesAttr)) {
     return errors::InvalidArgument(
         "Cannot use rebatching fallback without output_shapes attr. Node: ",
         fetch_node->name(), " Op: ", fetch_node->op());
   } else {
-    output_shapes = fetch_node->attr().at("output_shapes");
+    output_shapes = fetch_node->attr().at(kOutputShapesAttr);
   }
   int batch_dim;
   TF_RETURN_IF_ERROR(GetBatchDim(output_shapes, &batch_dim));
@@ -543,35 +769,25 @@ Status RebatchWithFallback(const NodeDef* fetch_node, int64 num_workers,
   // Create the flat map fn
   FunctionDef flat_map_fn;
   FunctionDefLibrary lib = flib->ToProto();
-  graph_utils::SetUniqueGraphFunctionName("flat_map_fn", &lib, &flat_map_fn);
+  graph_utils::SetUniqueGraphFunctionName("rebatch/flat_map_fn", &lib,
+                                          &flat_map_fn);
 
   // Get types of input arguments from the output types of the final dataset.
-  AttrValue output_types;
+  DataTypeVector output_types;
   TF_RETURN_IF_ERROR(
       graph_utils::GetDatasetOutputTypesAttr(*fetch_node, &output_types));
+  TF_RETURN_IF_ERROR(CreateFlatMapFnWithReshape(batch_dim / num_workers,
+                                                output_types, &flat_map_fn));
+
+  NodeDef* flat_map_node;
+  TF_RETURN_IF_ERROR(AddFlatMapNode(strings::StrCat(fetch_node->name(), ":0"),
+                                    {}, {}, flat_map_fn, output_shapes,
+                                    output_types, flib, graph, &flat_map_node));
   TF_RETURN_IF_ERROR(
-      CreateFlatMapFn(batch_dim / num_workers, output_types, &flat_map_fn));
+      UpdateOutputShapes(flat_map_node->name(), num_workers, graph));
 
-  TF_RETURN_IF_ERROR(flib->AddFunctionDef(flat_map_fn));
-  AttrValue fn;
-  fn.mutable_func()->set_name(flat_map_fn.signature().name());
-
-  NodeDef flat_map_node;
   TF_RETURN_IF_ERROR(
-      NodeDefBuilder("", "FlatMapDataset")
-          .Input(fetch_node->name(), 0, DT_VARIANT)
-          .Input(std::vector<NodeDefBuilder::NodeOut>())  // other_arguments
-          .Attr("f", fn)
-          .Attr("Targuments", std::vector<DataType>())
-          .Attr("output_types", output_types)
-          .Attr("output_shapes", output_shapes)
-          .Finalize(&flat_map_node));
-  graph_utils::SetUniqueGraphNodeName("rebatch/flat_map", graph->graph(),
-                                      &flat_map_node);
-  NodeDef* added = graph->AddNode(std::move(flat_map_node));
-  TF_RETURN_IF_ERROR(UpdateOutputShapes(added->name(), num_workers, graph));
-
-  TF_RETURN_IF_ERROR(graph->UpdateFanouts(fetch_node->name(), added->name()));
+      graph->UpdateFanouts(fetch_node->name(), flat_map_node->name()));
 
   return Status::OK();
 }
@@ -593,8 +809,8 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers,
       RecursivelyHandleOp(*sink_node, num_workers, use_fallback, &flib, &graph);
   if (!s.ok()) {
     if (use_fallback) {
-      VLOG(1) << "Couldn't find a batch transformation. Using a fallback method"
-                 " to rebatch dataset.";
+      VLOG(1) << "Failed to rebatch by rewriting the batch transformation ("
+              << s << "). Using a fallback method instead.";
       // If RecursivelyHandleOp fails, we reset `graph` to use the original,
       // graph, since that function may have mutated `graph`.
       *output = item.graph;

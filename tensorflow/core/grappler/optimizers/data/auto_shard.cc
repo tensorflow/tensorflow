@@ -446,7 +446,6 @@ Status AutoShard::OptimizeAndCollectStats(Cluster* /* cluster */,
                                           GraphDef* output,
                                           OptimizationStats* stats) {
   *output = item.graph;
-  LOG(INFO) << "auto_shard";
   TF_RETURN_IF_ERROR(OptimizeGraph(item, num_workers_, index_, output));
   stats->num_changes++;
   return Status::OK();

@@ -2499,6 +2499,21 @@ class TensorFlowTestCase(googletest.TestCase):
       np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
   @py_func_if_in_function
+  def assertNotAllEqual(self, a, b, msg=None):
+    """Asserts that two numpy arrays or Tensors do not have the same values.
+
+    Args:
+      a: the expected numpy ndarray or anything can be converted to one.
+      b: the actual numpy ndarray or anything can be converted to one.
+      msg: Optional message to report on failure.
+    """
+    try:
+      self.assertAllEqual(a, b, msg)
+    except AssertionError:
+      return
+    raise AssertionError("The two values are equal at all elements")
+
+  @py_func_if_in_function
   def assertAllGreater(self, a, comparison_target):
     """Assert element values are all greater than a target value.
 

@@ -561,6 +561,24 @@ class BaseLayerTest(keras_parameterized.TestCase):
     # arguments, no error is thrown:
     self.assertEqual(MyLayerNew2(name='New').get_config()['name'], 'New')
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_count_params(self):
+    dense = keras.layers.Dense(16)
+    dense.build((None, 4))
+    self.assertEqual(dense.count_params(), 16 * 4 + 16)
+
+    dense = keras.layers.Dense(16)
+    with self.assertRaisesRegexp(ValueError, 'call `count_params`'):
+      dense.count_params()
+
+    model = keras.Sequential(keras.layers.Dense(16))
+    with self.assertRaisesRegexp(ValueError, 'call `count_params`'):
+      model.count_params()
+
+    dense = keras.layers.Dense(16, input_dim=4)
+    model = keras.Sequential(dense)
+    self.assertEqual(model.count_params(), 16 * 4 + 16)
+
 
 class SymbolicSupportTest(test.TestCase):
 

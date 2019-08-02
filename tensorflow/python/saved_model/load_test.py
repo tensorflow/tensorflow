@@ -58,6 +58,8 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import tag_constants
@@ -1761,6 +1763,21 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f = outer
     imported = self.cycle(root, cycles)
     self.assertAllClose(2., imported.f(constant_op.constant(1.)))
+
+  def test_ragged_no_signature(self, cycles):
+
+    @def_function.function(input_signature=[
+        ragged_tensor.RaggedTensorSpec(shape=[None, None], dtype=dtypes.int32)
+    ])
+    def f(x):
+      return x + 1
+
+    obj = tracking.AutoTrackable()
+    obj.f = f
+
+    imported = self.cycle(obj, cycles, signatures={})
+    rt = ragged_factory_ops.constant([[1, 2], [3]])
+    self.assertAllEqual(imported.f(rt), [[2, 3], [4]])
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):

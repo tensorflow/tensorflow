@@ -618,7 +618,7 @@ Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
 
   // Get engine cache.
   return ctx->resource_manager()->LookupOrCreate(
-      std::string(kCacheContainerName), std::string(resource_name), cache_res,
+      std::string(kTfTrtContainerName), std::string(resource_name), cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
         if (calibration_mode_) {

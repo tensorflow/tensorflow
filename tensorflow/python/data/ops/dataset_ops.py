@@ -2599,6 +2599,8 @@ class StructuredFunctionWrapper(object):
                          "must be specified.")
       self._input_structure = input_structure
 
+    self._func = func
+
     if defun_kwargs is None:
       defun_kwargs = {}
 

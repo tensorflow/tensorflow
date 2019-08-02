@@ -787,7 +787,7 @@ Status Conditional::BuildIfNode(Graph* graph,
 
   builder.Attr("Tcond", DT_BOOL);
   string outside_compilation;
-  if (GetNodeAttr(predicate_.node->def(), kXlaOutsideCompilationAttrName,
+  if (GetNodeAttr((*switches_.begin())->def(), kXlaOutsideCompilationAttrName,
                   &outside_compilation)
           .ok()) {
     builder.Attr(kXlaOutsideCompilationAttrName, outside_compilation);

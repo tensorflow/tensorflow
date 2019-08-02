@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -695,7 +694,7 @@ Status PostprocessLiftedArgsForWhile(
 Status PostprocessLiftedArgsForIf(
     const std::unordered_map<string, Node*>& outside_compilation_attr_to_node,
     Graph* g, Node* n, FunctionLibraryDefinition* fld) {
-  TF_RET_CHECK(n->type_string() == "If");
+  TF_RET_CHECK(n->IsIfNode());
 
   NameAttrList then_branch_func;
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "then_branch", &then_branch_func));
@@ -913,10 +912,9 @@ xla::StatusOr<std::unordered_map<string, Node*>> OutsideCompilationAttrToNode(
   for (Node* n : g.op_nodes()) {
     bool is_lifted_arg;
     string outside_compilation_attr;
-    if (GetNodeAttr(n->def(), kXlaIsLiftedArgAttrName, &is_lifted_arg).ok() &&
-        GetNodeAttr(n->def(), "_xla_outside_compilation",
-                    &outside_compilation_attr)
-            .ok()) {
+    if (GetNodeAttrSimple(n->def(), kXlaIsLiftedArgAttrName, &is_lifted_arg) &&
+        GetNodeAttrSimple(n->def(), "_xla_outside_compilation",
+                          &outside_compilation_attr)) {
       TF_RET_CHECK(is_lifted_arg);
       TF_RET_CHECK(n->IsIdentity() || n->type_string() == "Placeholder");
       outside_compilation_attr_to_node[outside_compilation_attr] = n;
@@ -941,7 +939,7 @@ Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
           outside_compilation_attr_to_node, g, n, fld));
     }
 
-    if (n->type_string() == "If") {
+    if (n->IsIfNode()) {
       TF_RETURN_IF_ERROR(PostprocessLiftedArgsForIf(
           outside_compilation_attr_to_node, g, n, fld));
     }
@@ -1745,10 +1743,6 @@ Status BuildHostGraphForFuncCallNode(
   call_builder.Attr(kXlaHasHostTransferAttrName, true);
   call_builder.Attr(xla_cluster_attr_name, xla_cluster_name);
   call_builder.Attr(outside_compilation_attr_name, call_builder.node_name());
-  // Make sure control outputs of this function call node will be respected when
-  // this node is lowered.
-  call_builder.Attr(LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr,
-                    true);
   NodeDef call_def;
   TF_RETURN_IF_ERROR(call_builder.Finalize(&call_def));
   Status s;

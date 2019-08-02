@@ -45,9 +45,10 @@ class RPCState : public GrpcClientCQTag {
   RPCState(::grpc::GenericStub* stub, ::grpc::CompletionQueue* cq,
            const ::grpc::string& method, const protobuf::Message& request,
            Response* response, StatusCallback done, CallOptions* call_opts,
-           thread::ThreadPool* threadpool, int32 max_retries = 0)
+           thread::ThreadPool* threadpool, int32 max_retries = 0,
+           bool fail_fast = false)
       : RPCState(stub, cq, method, request, response, std::move(done),
-                 call_opts, threadpool, /*fail_fast=*/false,
+                 call_opts, threadpool, fail_fast,
                  /*timeout_in_ms=*/0, max_retries) {}
 
   template <typename Request>
@@ -80,7 +81,7 @@ class RPCState : public GrpcClientCQTag {
 
   void StartCall() {
     context_.reset(new ::grpc::ClientContext());
-    context_->set_fail_fast(fail_fast_);
+    context_->set_wait_for_ready(!fail_fast_);
 
     if (timeout_in_ms_ > 0) {
       context_->set_deadline(

@@ -370,6 +370,17 @@ class TestLayerCallTracing(test.TestCase):
 
     assert_num_traces(LayerWithKwargs, training_keyword=False)
 
+    class LayerWithChildLayer(keras.engine.base_layer.Layer):
+
+      def __init__(self):
+        self.child = LayerWithKwargs()
+        super(LayerWithChildLayer, self).__init__()
+
+      def call(self, inputs):
+        return self.child(inputs)
+
+    assert_num_traces(LayerWithChildLayer, training_keyword=False)
+
   @test_util.run_in_graph_and_eager_modes
   def test_maintains_losses(self):
     layer = LayerWithLoss()

@@ -33,6 +33,7 @@ using namespace mlir;
 // TODO(antiagainst): generate these strings using ODS.
 static constexpr const char kAlignmentAttrName[] = "alignment";
 static constexpr const char kIndicesAttrName[] = "indices";
+static constexpr const char kIsSpecConstName[] = "is_spec_const";
 static constexpr const char kValueAttrName[] = "value";
 static constexpr const char kValuesAttrName[] = "values";
 static constexpr const char kFnNameAttrName[] = "fn";
@@ -62,6 +63,23 @@ static LogicalResult extractValueFromConstOp(Operation *op,
     return failure();
   }
   indexValue = integerValueAttr.getInt();
+  return success();
+}
+
+static ParseResult parseBinaryLogicalOp(OpAsmParser *parser,
+                                        OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> ops;
+  Type type;
+  if (parser->parseOperandList(ops, 2) || parser->parseColonType(type) ||
+      parser->resolveOperands(ops, type, result->operands)) {
+    return failure();
+  }
+  // Result must be a scalar or vector of boolean type.
+  Type resultType = parser->getBuilder().getIntegerType(1);
+  if (auto opsType = type.dyn_cast<VectorType>()) {
+    resultType = VectorType::get(opsType.getNumElements(), resultType);
+  }
+  result->addTypes(resultType);
   return success();
 }
 
@@ -133,6 +151,12 @@ static ParseResult parseNoIOOp(OpAsmParser *parser, OperationState *state) {
   if (parser->parseOptionalAttributeDict(state->attributes))
     return failure();
   return success();
+}
+
+static void printBinaryLogicalOp(Operation *logicalOp, OpAsmPrinter *printer) {
+  *printer << logicalOp->getName() << ' ' << *logicalOp->getOperand(0) << ", "
+           << *logicalOp->getOperand(1);
+  *printer << " : " << logicalOp->getOperand(0)->getType();
 }
 
 template <typename LoadStoreOpTy>
@@ -443,6 +467,9 @@ static LogicalResult verify(spirv::CompositeExtractOp compExOp) {
 //===----------------------------------------------------------------------===//
 
 static ParseResult parseConstantOp(OpAsmParser *parser, OperationState *state) {
+  if (succeeded(parser->parseOptionalKeyword("spec")))
+    state->addAttribute(kIsSpecConstName, parser->getBuilder().getUnitAttr());
+
   Attribute value;
   if (parser->parseAttribute(value, kValueAttrName, state->attributes))
     return failure();
@@ -459,7 +486,8 @@ static ParseResult parseConstantOp(OpAsmParser *parser, OperationState *state) {
 }
 
 static void print(spirv::ConstantOp constOp, OpAsmPrinter *printer) {
-  *printer << spirv::ConstantOp::getOperationName() << " " << constOp.value();
+  *printer << spirv::ConstantOp::getOperationName()
+           << (constOp.is_spec_const() ? " spec " : " ") << constOp.value();
   if (constOp.getType().isa<spirv::ArrayType>()) {
     *printer << " : " << constOp.getType();
   }

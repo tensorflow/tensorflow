@@ -362,8 +362,23 @@ def _is_known_loaded_type(f, module_name, entity_name):
   return False
 
 
-def converted_call(f, options, args, kwargs):
-  """Compiles a function call inline. For internal use only."""
+def converted_call(f, options, args, kwargs, caller_fn_scope=None):
+  """Compiles a function call inline.
+
+  For internal use only.
+
+  Args:
+    f: The function to convert.
+    options: converter.ConversionOptions
+    args: Tuple, the original positional arguments of f
+    kwargs: Dict, the original keyword arguments of f
+    caller_fn_scope: Optional[function_wrappers.FunctionScope], the function
+      scope of the converted function in which this call was originally made.
+
+  Returns:
+    Any, the result of executing a possibly-converted `f` with the given
+      arguments.
+  """
   logging.log(1, 'Converted call: %s\n    args: %s\n    kwargs: %s\n', f, args,
               kwargs)
 
@@ -372,9 +387,9 @@ def converted_call(f, options, args, kwargs):
 
   if inspect_utils.isbuiltin(f):
     if f is eval:
-      return py_builtins.eval_in_original_context(f, args, 1)
+      return py_builtins.eval_in_original_context(f, args, caller_fn_scope)
     if f is super:
-      return py_builtins.super_in_original_context(f, args, 1)
+      return py_builtins.super_in_original_context(f, args, caller_fn_scope)
     if kwargs:
       return py_builtins.overload_of(f)(*args, **kwargs)
     else:

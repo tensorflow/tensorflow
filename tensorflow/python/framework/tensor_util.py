@@ -916,12 +916,10 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     # not the fed inputs because those can be fed different values in different
     # instantiations of the function call or different iterations of a
     # tf.while_loop.
-    try:
-      external_capture = tensor.op.graph.external_captures[
-          tensor.op.graph.internal_captures.index(tensor)]
-      return constant_value_as_shape(external_capture)
-    except ValueError:  # `tensor` not in `internal_captures`.
-      pass
+    for i, capture in enumerate(tensor.op.graph.internal_captures):
+      if capture is tensor:
+        external_capture = tensor.op.graph.external_captures[i]
+        return constant_value_as_shape(external_capture)
 
   ret = tensor_shape.unknown_shape(shape.dims[0].value)
   value = constant_value(tensor)

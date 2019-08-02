@@ -99,8 +99,9 @@ def function_def_to_graph(fdef, input_shapes=None, copy_functions=True):
     output_names = {}
     for ret_arg_def, tensor_name in zip(
         fdef.signature.output_arg, output_tensor_names):
-      output_names[func_graph.get_tensor_by_name(tensor_name)] = (
-          ret_arg_def.name)
+      output_names[ops.tensor_id(
+          func_graph.get_tensor_by_name(tensor_name))] = (
+              ret_arg_def.name)
     func_graph._output_names = output_names  # pylint: disable=protected-access
   return func_graph
 

@@ -95,7 +95,7 @@ bool tblgen::DagNode::isNativeCodeCall() const {
 }
 
 bool tblgen::DagNode::isOperation() const {
-  return !(isNativeCodeCall() || isVerifyUnusedValue() || isReplaceWithValue());
+  return !(isNativeCodeCall() || isReplaceWithValue());
 }
 
 llvm::StringRef tblgen::DagNode::getNativeCodeTemplate() const {
@@ -149,11 +149,6 @@ StringRef tblgen::DagNode::getArgName(unsigned index) const {
 bool tblgen::DagNode::isReplaceWithValue() const {
   auto *dagOpDef = cast<llvm::DefInit>(node->getOperator())->getDef();
   return dagOpDef->getName() == "replaceWithValue";
-}
-
-bool tblgen::DagNode::isVerifyUnusedValue() const {
-  auto *dagOpDef = cast<llvm::DefInit>(node->getOperator())->getDef();
-  return dagOpDef->getName() == "verifyUnusedValue";
 }
 
 tblgen::Pattern::Pattern(const llvm::Record *def, RecordOperatorMap *mapper)
@@ -225,7 +220,7 @@ std::vector<tblgen::AppliedConstraint> tblgen::Pattern::getConstraints() const {
       entities.push_back(argName->getValue());
 
     ret.emplace_back(cast<llvm::DefInit>(dagInit->getOperator())->getDef(),
-                     std::move(entities));
+                     dagInit->getNameStr(), std::move(entities));
   }
   return ret;
 }
