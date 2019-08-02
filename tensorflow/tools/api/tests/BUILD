@@ -50,7 +50,6 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "v1only",
-        "no_rocm",
     ],
     deps = [
         "//tensorflow:tensorflow_py",
