@@ -213,6 +213,24 @@ cc_library(
 )
 
 cc_library(
+    name = "redzone_allocator_rocm",
+    srcs = if_rocm_is_configured(["redzone_allocator.cc"]),
+    deps = if_rocm_is_configured([
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+        "//tensorflow/core:allocator",
+        "//tensorflow/stream_executor:gpu_asm_opts",
+        "//tensorflow/stream_executor:redzone_allocator",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:device_memory",
+        "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor:stream_executor_headers",
+    ]),
+)
+
+cc_library(
     name = "miopen_plugin",
     srcs = if_rocm_is_configured(["rocm_dnn.cc"]),
     hdrs = if_rocm_is_configured(["rocm_dnn.h"]),

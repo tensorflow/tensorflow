@@ -37,10 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-
-#if !TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
-#endif
+#include "tensorflow/stream_executor/redzone_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -129,7 +126,6 @@ void PrintPlatformInfo(const se::Stream* stream) {
   }
 }
 
-#if !TENSORFLOW_USE_ROCM
 // Returns true if the redzones in `allocator`'s allocations are unmodified.
 //
 // If the redzones are modified, logs an error, sets the appropriate failure
@@ -140,13 +136,13 @@ void PrintPlatformInfo(const se::Stream* stream) {
 //
 // `name` is a user-friendly name for the set of redzones being checked, e.g.
 // "input/output" or "scratch".
-StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
+StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
                              se::Stream* stream, absl::string_view name,
                              const HloInstruction* instr,
                              AutotuneResult* result) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
-  using RedzoneCheckStatus = se::cuda::RedzoneAllocator::RedzoneCheckStatus;
+  using RedzoneCheckStatus = se::RedzoneAllocator::RedzoneCheckStatus;
 
   TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
                       allocator.CheckRedzones(stream));
@@ -175,7 +171,6 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
   PrintPlatformInfo(stream);
   return false;
 }
-#endif
 
 using ConvCacheKey =
     std::tuple<se::StreamExecutor*,
@@ -273,7 +268,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     const HloCustomCallInstruction& instr, se::DeviceMemoryAllocator* allocator,
     se::Stream* stream) {
 // Right now Redzone allocator is available in Cuda target only
-#if !TENSORFLOW_USE_ROCM
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuConvAlgorithmPicker::PickBestAlgorithmImpl for ", instr.ToString()));
 
@@ -291,8 +285,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   const HloModuleConfig& hlo_module_config = instr.GetModule()->config();
 
   // Allocate space for the input, filter, and output of the convolution.
-  se::cuda::RedzoneAllocator input_output_allocator(
-      device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
+  se::RedzoneAllocator input_output_allocator(
+      device_ordinal, allocator, GpuAsmOptsFromConfig(hlo_module_config));
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr.operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
@@ -331,8 +325,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
                      AlgorithmToString(alg)),
         2);
 
-    se::cuda::RedzoneAllocator scratch_allocator(
-        device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
+    se::RedzoneAllocator scratch_allocator(
+        device_ordinal, allocator, GpuAsmOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr.ToString();
@@ -492,7 +486,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   if (best_result != profile_results.end() && !has_failure(*best_result)) {
     return *best_result;
   }
-#endif
 
   return InternalError(
       "All algorithms tried for convolution %s failed.  Falling back to "
@@ -541,10 +534,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheROCm(
   VLOG(3) << "Auto-tuning for " << instr.ToString();
   RunConvOptions options;
   options.profile_result = &profile_result;
-#if TENSORFLOW_USE_ROCM
   // ROCm: Needs to set the first time caller flag
   options.first_call_from_algorithm_picker = true;
-#endif
 
   bool launch_ok =
       RunCudnnConv(&instr, absl::MakeSpan(operand_buffers), result_buffer,
@@ -599,11 +590,6 @@ StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(HloInstruction* instr) {
                       instr->backend_config<CudnnConvBackendConfig>());
   backend_config.set_algorithm(best_algo.conv().algorithm());
   backend_config.set_tensor_ops_enabled(best_algo.conv().tensor_ops_enabled());
-#if TENSORFLOW_USE_ROCM
-  // ROCm: Needs to set scratch size for ROCm stream executor make sure scratch
-  // space for convolution related calls are correctly allocated
-  backend_config.set_scratch_size(best_algo.scratch_bytes());
-#endif
 
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));

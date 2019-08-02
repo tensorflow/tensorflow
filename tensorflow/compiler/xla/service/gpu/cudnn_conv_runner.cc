@@ -188,9 +188,11 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
   const Shape* filter_shape;
   const Shape* output_shape;
 
-  params.algorithm = se::dnn::AlgorithmConfig(se::dnn::AlgorithmDesc(
-      backend_config.algorithm(), backend_config.tensor_ops_enabled()),
-      backend_config.scratch_size());
+  // The third field is scratch size stored from conv_algorithm_picker
+  params.algorithm = se::dnn::AlgorithmConfig(
+      se::dnn::AlgorithmDesc(backend_config.algorithm(),
+                             backend_config.tensor_ops_enabled()),
+      conv->shape().tuple_shapes(1).dimensions(0));
   params.conv_result_scale = backend_config.conv_result_scale();
 
   switch (params.kind) {

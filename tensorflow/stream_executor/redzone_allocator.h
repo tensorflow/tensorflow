@@ -20,11 +20,10 @@ limitations under the License.
 
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/stream_executor/gpu_asm_opts.h"
 
 namespace stream_executor {
-namespace cuda {
 
 // An allocator that allocates a bit of extra memory around the beginning/end of
 // every allocation and can check that this memory is unmodified.
@@ -105,7 +104,7 @@ class RedzoneAllocator : public ScratchAllocator {
 
   const uint8 redzone_pattern_;
   DeviceMemoryAllocator* memory_allocator_;
-  cuda::PtxCompilationOptions ptx_compilation_opts_;
+  GpuAsmOpts gpu_compilation_opts_;
 
   // The second element of the pair is the size of the user allocation.  This
   // isn't necessarily just first.size() - 2 * redzone_size_ because when the
@@ -116,7 +115,6 @@ class RedzoneAllocator : public ScratchAllocator {
   int64 allocated_bytes_excluding_redzones_ = 0;
 };
 
-}  // namespace cuda
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_REDZONE_ALLOCATOR_H_

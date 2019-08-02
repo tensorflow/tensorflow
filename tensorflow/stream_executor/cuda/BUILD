@@ -584,9 +584,8 @@ cc_library(
 )
 
 cc_library(
-    name = "redzone_allocator",
+    name = "redzone_allocator_cuda",
     srcs = if_cuda_is_configured(["redzone_allocator.cc"]),
-    hdrs = if_cuda_is_configured(["redzone_allocator.h"]),
     deps = if_cuda_is_configured([
         ":ptxas_utils",
         "@com_google_absl//absl/container:fixed_array",
@@ -595,6 +594,8 @@ cc_library(
         "//tensorflow/core:allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:gpu_asm_opts",
+        "//tensorflow/stream_executor:redzone_allocator",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:stream_executor_headers",

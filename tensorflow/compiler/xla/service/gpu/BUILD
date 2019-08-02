@@ -639,7 +639,9 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ] + if_cuda_is_configured([
-        "//tensorflow/stream_executor/cuda:redzone_allocator",
+        "//tensorflow/stream_executor/cuda:redzone_allocator_cuda",
+    ]) + if_rocm_is_configured([
+        "//tensorflow/stream_executor/rocm:redzone_allocator_rocm",
     ]),
 )
 
@@ -1301,7 +1303,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:kernel_spec",
-        "//tensorflow/stream_executor/cuda:ptxas_utils",
+        "//tensorflow/stream_executor:gpu_asm_opts",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

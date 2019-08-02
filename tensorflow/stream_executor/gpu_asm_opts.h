@@ -19,33 +19,30 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
-#include "tensorflow/stream_executor/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
+// Compilation options for compiling ptxas.
+struct GpuAsmOpts {
+  // Disable Cuda ptxas optimizations.
+  bool disable_ptxas_optimizations;
 
-using cuda::PtxCompilationOptions = GpuAsmOpts;
-namespace cuda {
+  // Cuda directory which would be searched first.
+  std::string preferred_cuda_dir;
 
-// Compiles the given PTX string using ptxas and returns the resulting machine
-// code (i.e. a cubin) as a byte array.
-//
-// compile_ptx_options is used to query for the CUDA location in case it is
-// customized in a passed flag, and for controlling ptxas optimizations.
-port::StatusOr<std::vector<uint8>> CompilePtx(int device_ordinal,
-                                              const char* ptx_contents,
-                                              PtxCompilationOptions options);
+  explicit GpuAsmOpts(bool disable_ptxas_optimizations = false,
+                      absl::string_view preferred_cuda_dir = "")
+      : disable_ptxas_optimizations(disable_ptxas_optimizations),
+        preferred_cuda_dir(preferred_cuda_dir) {}
 
-// Same as CompilePtx, but caches the result, and returns unowned view of
-// the compiled binary.
-//
-// A copy of the string provided in ptx will be made.
-port::StatusOr<absl::Span<const uint8>> CompilePtxOrGetCached(
-    int device_ordinal, const char* ptx,
-    PtxCompilationOptions compilation_options);
+  using PtxOptionsTuple = std::tuple<bool, std::string>;
 
-}  // namespace cuda
+  PtxOptionsTuple ToTuple() {
+    return std::make_tuple(disable_ptxas_optimizations, preferred_cuda_dir);
+  }
+};
+
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_PTXAS_UTILS_H_

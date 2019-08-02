@@ -498,6 +498,14 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_asm_opts",
+    hdrs = ["gpu_asm_opts.h"],
+    deps = [
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "stream_executor_internal",
     srcs = [
         "dnn.h",
@@ -706,6 +714,17 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "redzone_allocator",
+    hdrs = ["redzone_allocator.h"],
+    deps = [
+        ":gpu_asm_opts",
+        "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:device_memory_allocator",
     ],
 )
 
