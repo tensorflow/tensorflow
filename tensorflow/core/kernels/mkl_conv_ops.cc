@@ -979,7 +979,8 @@ class MklConvOp : public OpKernel {
 
       // Check if need reorder
       if (add_mkl_shape == output_mkl_shape) {
-        DCHECK((*output_tensor)->CopyFrom(add_tensor, output_tf_shape));
+        auto result = (*output_tensor)->CopyFrom(add_tensor, output_tf_shape);
+        DCHECK(result);
       } else {
         auto add_md =
             add_mkl_shape.IsMklTensor()
