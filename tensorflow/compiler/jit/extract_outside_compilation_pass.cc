@@ -1814,12 +1814,19 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
 
     // Change `n` to call the new function directly.
     NodeDefBuilder replace_builder(n->name(), new_func_name, fld);
+    std::vector<NodeDefBuilder::NodeOut> inputs(n->num_inputs());
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) {
         continue;
       }
-      replace_builder.Input(e->src()->name(), e->src_output(),
-                            e->src()->output_type(e->src_output()));
+
+      TF_RET_CHECK(e->dst_input() >= 0 && e->dst_input() < inputs.size());
+      inputs[e->dst_input()] =
+          NodeDefBuilder::NodeOut{e->src()->name(), e->src_output(),
+                                  e->src()->output_type(e->src_output())};
+    }
+    for (const auto& input : inputs) {
+      replace_builder.Input(input);
     }
     for (const auto& attr : n->attrs()) {
       replace_builder.Attr(attr.first, attr.second);
