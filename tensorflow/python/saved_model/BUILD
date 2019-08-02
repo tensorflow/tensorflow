@@ -327,9 +327,6 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
     ],
-    tags = [
-        "no_cuda",
-    ],
 )
 
 py_library(

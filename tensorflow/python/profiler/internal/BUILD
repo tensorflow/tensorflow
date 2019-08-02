@@ -69,7 +69,6 @@ cuda_py_test(
     tags = [
         "no_gpu",  # b/138442728
         "no_pip",
-        "no_cuda",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )

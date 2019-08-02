@@ -133,7 +133,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     tags = [
-        "no_cuda",
         # XLA is not enabled by default on Mac or Windows.
         "no_mac",
         "no_windows",

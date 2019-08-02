@@ -954,12 +954,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
-    tags = [
-        # Test temporarily disabled due to test application failure (reshape failure)
-        # on both Cuda and ROCm. Should re-enable once get fixed
-        "no_cuda",
-        "notsan",
-    ],
 )
 
 tf_py_test(
@@ -1540,7 +1534,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
-        "no_cuda",
         "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
     ],
@@ -1702,7 +1695,6 @@ tf_py_test(
         "//tensorflow/python:util",
     ],
     shard_count = 4,
-    tags = ["no_cuda"],
 )
 
 tf_py_test(
