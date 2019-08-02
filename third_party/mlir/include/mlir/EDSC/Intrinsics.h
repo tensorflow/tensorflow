@@ -190,6 +190,7 @@ using alloc = ValueBuilder<AllocOp>;
 using affine_apply = ValueBuilder<AffineApplyOp>;
 using affine_load = ValueBuilder<AffineLoadOp>;
 using affine_store = OperationBuilder<AffineStoreOp>;
+using call = OperationBuilder<mlir::CallOp>;
 using constant_float = ValueBuilder<ConstantFloatOp>;
 using constant_index = ValueBuilder<ConstantIndexOp>;
 using constant_int = ValueBuilder<ConstantIntOp>;

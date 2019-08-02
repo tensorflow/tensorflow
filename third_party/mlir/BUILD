@@ -172,6 +172,7 @@ filegroup(
     name = "AffineOpsTdFiles",
     srcs = [
         "include/mlir/AffineOps/AffineOps.td",
+        "include/mlir/AffineOps/AffineOpsBase.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -1691,6 +1692,7 @@ filegroup(
     srcs = [
         "include/mlir/Linalg/IR/LinalgBase.td",
         "include/mlir/Linalg/IR/LinalgLibraryOps.td",
+        ":AffineOpsTdFiles",
         ":OpBaseTdFiles",
     ],
 )

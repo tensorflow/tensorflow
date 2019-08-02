@@ -18,6 +18,7 @@
 #ifndef MLIR_LINALG_LINALGOPS_H_
 #define MLIR_LINALG_LINALGOPS_H_
 
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Linalg/IR/LinalgTraits.h"
