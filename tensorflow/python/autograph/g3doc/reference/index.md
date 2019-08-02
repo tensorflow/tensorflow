@@ -10,7 +10,7 @@ graph.
 *   [Debugging AutoGraph code](debugging.md)
 *   [Control flow](control_flow.md)
 *   [Functions and function calls](functions.md)
-*   Error handling (coming soon)
+*   [Error handling](error_handling.md)
 *   Conversion mechanics (coming soon)
 *   Collections (coming soon)
 *   [Limitations](limitations.md)
