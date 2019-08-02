@@ -2488,8 +2488,11 @@ class TensorFlowOpLayer(Layer):
                constants=None,
                trainable=True,
                dtype=None):
+    # Pass autocast=False, as if inputs are cast, input types might not match
+    # Operation type.
     super(TensorFlowOpLayer, self).__init__(
-        name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype)
+        name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype,
+        autocast=False)
     if not isinstance(node_def, bytes):
       node_def = node_def.encode('utf-8')
     self.node_def = node_def_pb2.NodeDef.FromString(node_def)
