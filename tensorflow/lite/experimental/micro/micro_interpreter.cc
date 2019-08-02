@@ -87,16 +87,6 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   context_.ReportError = ReportOpError;
   context_.recommended_num_threads = 1;
 
-  initialization_status_ = AllocateInputAndActTensors();
-  if (initialization_status_ != kTfLiteOk) {
-    return;
-  }
-
-  initialization_status_ = AllocateTemporaryTensors();
-  if (initialization_status_ != kTfLiteOk) {
-    return;
-  }
-
   // If the system is big endian then convert weights from the flatbuffer from
   // little to big endian on startup so that it does not need to be done during
   // inference.
