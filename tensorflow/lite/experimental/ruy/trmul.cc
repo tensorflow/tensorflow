@@ -36,6 +36,7 @@ enum class PackingStatus : std::uint8_t { kNotStarted, kInProgress, kFinished };
 struct TrMulTask final : Task {
   TrMulTask(TrMulParams* params_, const BlockMap& block_map_,
             std::atomic<int>* atomic_block_id_, int thread_id_,
+            bool need_atomics_,
             SidePair<std::atomic<PackingStatus>*> packing_status_,
             TuningResolver* tuning_resolver_, Allocator* local_allocator_,
             Trace* trace_)
@@ -43,6 +44,7 @@ struct TrMulTask final : Task {
         block_map(block_map_),
         atomic_block_id(atomic_block_id_),
         thread_id(thread_id_),
+        need_atomics(need_atomics_),
         packing_status(packing_status_),
         tuning_resolver(tuning_resolver_),
         local_allocator(local_allocator_),
@@ -113,57 +115,64 @@ struct TrMulTask final : Task {
       return true;
     }
     if (!local_packed[side][block]) {
-      // Explanation of this compare_exchange_strong operation:
-      // This atomically performs all of the following:
-      // 1. Read `status` with "acquire" memory order.
-      //    * That this read uses "acquire" is because both memory orders
-      //      specified have "acquire" as their read-component.
-      // 2. Compare (bitwise) with `exchanged_status`.
-      // 3. If equal, stores the value kInProgress to `status` with "release"
-      //    memory order, and returns true, so we take this 'if' branch.
-      //    * That this store uses "release" is because of the _rel part in
-      //      memory_order_acq_rel passed as the first memory order argument.
-      // 4. If not equal, stores the loaded value of `status` to
-      //    `exchanged_status` with "relaxed" semantics, and returns false,
-      //    so we take the 'else' branch.
-      //    * That this store uses "relaxed" is because the second memory
-      //      order argument, memory_order_acquire, implies no particular store
-      //      semantics. "relaxed" is acceptable here because this stores to
-      //      a local stack variable.
-      //
-      // Rationale for compare_exchange_strong as opposed to
-      // compare_exchange_weak:
-      // The spurious-failure case with compare_exchange_weak will actually
-      // happen a lot here, because the atomic 'status' bytes are stored
-      // contiguously in arrays and neighboring values will be accessed
-      // by multiple threads concurrently. On a typical ARM CPU, an exclusives
-      // reservation granule is 64 bytes, so a lot of false-sharing may happen.
-      // Using compare_exchange_weak would thus result in often having TryPack
-      // return 'false' when it could instead have done the packing work and
-      // returned 'true'. Heuristically, that is not a good thing. Moreover,
-      // this changes the TryPack contract, loosening it and making it harder
-      // for the caller to reason about. Finally, the overhead of atomic
-      // operations is mitigated by the enclosing check on local_packed, so
-      // maybe the overhead of compare_exchange_strong isn't such a problem.
-      // But we don't really know for sure, that would be interesting to
-      // experiment more with.
-      PackingStatus exchanged_status = PackingStatus::kNotStarted;
-      std::atomic<PackingStatus>& status = packing_status[side][block];
-      if (status.compare_exchange_strong(
-              exchanged_status, PackingStatus::kInProgress,
-              std::memory_order_acq_rel, std::memory_order_acquire)) {
-        // In this branch, the status was kNotStarted and we just atomically
-        // changed it to kInProgress as we are about to handle the packing
-        // ourselves.
+      if (need_atomics) {
+        // Explanation of this compare_exchange_strong operation:
+        // This atomically performs all of the following:
+        // 1. Read `status` with "acquire" memory order.
+        //    * That this read uses "acquire" is because both memory orders
+        //      specified have "acquire" as their read-component.
+        // 2. Compare (bitwise) with `exchanged_status`.
+        // 3. If equal, stores the value kInProgress to `status` with "release"
+        //    memory order, and returns true, so we take this 'if' branch.
+        //    * That this store uses "release" is because of the _rel part in
+        //      memory_order_acq_rel passed as the first memory order argument.
+        // 4. If not equal, stores the loaded value of `status` to
+        //    `exchanged_status` with "relaxed" semantics, and returns false,
+        //    so we take the 'else' branch.
+        //    * That this store uses "relaxed" is because the second memory
+        //      order argument, memory_order_acquire, implies no particular
+        //      store semantics. "relaxed" is acceptable here because this
+        //      stores to a local stack variable.
+        //
+        // Rationale for compare_exchange_strong as opposed to
+        // compare_exchange_weak:
+        // The spurious-failure case with compare_exchange_weak will actually
+        // happen a lot here, because the atomic 'status' bytes are stored
+        // contiguously in arrays and neighboring values will be accessed
+        // by multiple threads concurrently. On a typical ARM CPU, an exclusives
+        // reservation granule is 64 bytes, so a lot of false-sharing may
+        // happen. Using compare_exchange_weak would thus result in often having
+        // TryPack return 'false' when it could instead have done the packing
+        // work and returned 'true'. Heuristically, that is not a good thing.
+        // Moreover, this changes the TryPack contract, loosening it and making
+        // it harder for the caller to reason about. Finally, the overhead of
+        // atomic operations is mitigated by the enclosing check on
+        // local_packed, so maybe the overhead of compare_exchange_strong isn't
+        // such a problem. But we don't really know for sure, that would be
+        // interesting to experiment more with.
+        PackingStatus exchanged_status = PackingStatus::kNotStarted;
+        std::atomic<PackingStatus>& status = packing_status[side][block];
+        if (status.compare_exchange_strong(
+                exchanged_status, PackingStatus::kInProgress,
+                std::memory_order_acq_rel, std::memory_order_acquire)) {
+          // In this branch, the status was kNotStarted and we just atomically
+          // changed it to kInProgress as we are about to handle the packing
+          // ourselves.
+          params->RunPack(side, tuning, start, end);
+          TraceRecordBlockPacked(thread_id, side, block, trace);
+          status.store(PackingStatus::kFinished, std::memory_order_release);
+        } else if (exchanged_status == PackingStatus::kInProgress) {
+          // Another thread is currently packing this block.
+          return false;
+        }
+        RUY_DCHECK(status.load(std::memory_order_acquire) ==
+                   PackingStatus::kFinished);
+      } else {
+        // Single-threaded case: no need for expensive atomics, local_packed
+        // is the truth already.
         params->RunPack(side, tuning, start, end);
         TraceRecordBlockPacked(thread_id, side, block, trace);
-        status.store(PackingStatus::kFinished, std::memory_order_release);
-      } else if (exchanged_status == PackingStatus::kInProgress) {
-        // Another thread is currently packing this block.
-        return false;
       }
-      RUY_DCHECK(status.load(std::memory_order_acquire) ==
-                 PackingStatus::kFinished);
       local_packed[side][block] = true;
     }
     return true;
@@ -211,6 +220,7 @@ struct TrMulTask final : Task {
   const BlockMap& block_map;
   std::atomic<int>* atomic_block_id;
   int thread_id;
+  bool need_atomics;
   SidePair<std::atomic<PackingStatus>*> packing_status;
   TuningResolver* tuning_resolver;
   Allocator* local_allocator;
@@ -305,20 +315,24 @@ void TrMul(TrMulParams* params, Context* context) {
 
   // Initialize per-thread state.
   thread_count = clamp(thread_count, 1, NumBlocks(block_map));
+  const bool need_atomics = thread_count > 1;
   context->EnsureNPerThreadStates(thread_count);
   for (auto& per_thread_state : context->per_thread_states) {
     per_thread_state->tuning_resolver.SetTuning(context->explicit_tuning);
   }
 
-  // Allocate and initialize atomic values tracking already-packed blocks.
+  // In the need_atomics case, allocate and initialize atomic values tracking
+  // the packing status of blocks.
   SidePair<std::atomic<PackingStatus>*> packing_status{nullptr, nullptr};
-  for (Side side : {Side::kLhs, Side::kRhs}) {
-    if (!params->is_prepacked[side]) {
-      const int size = NumBlocksPerSide(side, block_map);
-      allocator->Allocate(size, &packing_status[side]);
-      for (int i = 0; i < size; i++) {
-        packing_status[side][i].store(PackingStatus::kNotStarted,
-                                      std::memory_order_relaxed);
+  if (need_atomics) {
+    for (Side side : {Side::kLhs, Side::kRhs}) {
+      if (!params->is_prepacked[side]) {
+        const int size = NumBlocksPerSide(side, block_map);
+        allocator->Allocate(size, &packing_status[side]);
+        for (int i = 0; i < size; i++) {
+          packing_status[side][i].store(PackingStatus::kNotStarted,
+                                        std::memory_order_relaxed);
+        }
       }
     }
   }
@@ -336,10 +350,10 @@ void TrMul(TrMulParams* params, Context* context) {
   atomic_block_id->store(thread_count);
 
   for (int i = 0; i < thread_count; i++) {
-    new (tasks + i)
-        TrMulTask(params, block_map, atomic_block_id, i, packing_status,
-                  &context->per_thread_states[i]->tuning_resolver,
-                  &context->per_thread_states[i]->allocator, trace);
+    new (tasks + i) TrMulTask(params, block_map, atomic_block_id, i,
+                              need_atomics, packing_status,
+                              &context->per_thread_states[i]->tuning_resolver,
+                              &context->per_thread_states[i]->allocator, trace);
   }
 
   // Do the computation.
