@@ -19,6 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 
 class SamplingDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -43,6 +44,7 @@ class SamplingDatasetOp : public UnaryDatasetOpKernel {
   class Dataset;
 };
 
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 constexpr char kNodeName[] = "sampling_dataset";
@@ -727,5 +728,6 @@ INSTANTIATE_TEST_SUITE_P(SamplingDatasetOpTest,
                              {TestCase1(), TestCase2(), TestCase3()})));
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow
