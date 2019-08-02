@@ -240,7 +240,7 @@ class AudioProcessor(object):
       statinfo = os.stat(filepath)
       tf.compat.v1.logging.info('Successfully downloaded %s (%d bytes)',
                                 filename, statinfo.st_size)
-    tarfile.open(filepath, 'r:gz').extractall(dest_directory)
+      tarfile.open(filepath, 'r:gz').extractall(dest_directory)
 
   def prepare_data_index(self, silence_percentage, unknown_percentage,
                          wanted_words, validation_percentage,
