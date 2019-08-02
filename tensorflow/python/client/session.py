@@ -39,6 +39,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.util.compat import collections_abc
 
@@ -470,9 +471,10 @@ class _FetchHandler(object):
     self._fetches = []
     self._targets = []
     self._feeds = feeds
-    self._feed_handles = feed_handles or {}
+    self._feed_handles = (
+        feed_handles or object_identity.ObjectIdentityDictionary())
     self._ops = []
-    self._fetch_handles = {}
+    self._fetch_handles = object_identity.ObjectIdentityDictionary()
     for fetch in self._fetch_mapper.unique_fetches():
       if isinstance(fetch, ops.Operation):
         self._assert_fetchable(graph, fetch)
@@ -1064,7 +1066,8 @@ class BaseSession(SessionInterface):
 
     # Validate and process fetches.
     # TODO(touts): Support feeding and fetching the same tensor.
-    fetch_handler = _FetchHandler(self._graph, fetches, {})
+    fetch_handler = _FetchHandler(self._graph, fetches,
+                                  object_identity.ObjectIdentityDictionary())
 
     # Set up a graph with feeds and fetches for partial run.
     def _setup_fn(session, feed_list, fetch_list, target_list):
@@ -1098,7 +1101,7 @@ class BaseSession(SessionInterface):
                          'graph before calling run().')
 
     # Create request.
-    feed_dict_tensor = {}
+    feed_dict_tensor = object_identity.ObjectIdentityDictionary()
     feed_map = {}
 
     # Validate and process feed_dict.
@@ -1232,7 +1235,8 @@ class BaseSession(SessionInterface):
     self._extend_graph()
 
     # Create a fetch handler to take care of the structure of fetches.
-    fetch_handler = _FetchHandler(self._graph, fetches, {})
+    fetch_handler = _FetchHandler(self._graph, fetches,
+                                  object_identity.ObjectIdentityDictionary())
     # pylint: disable=protected-access
     fetch_list = [t._as_tf_output() for t in fetch_handler.fetches()]
     target_list = [op._c_op for op in fetch_handler.targets()]
