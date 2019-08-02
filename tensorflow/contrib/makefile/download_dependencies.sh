@@ -44,6 +44,8 @@ FFT2D_URL="$(grep -o 'http.*fft2d\.tgz' "${BZL_FILE_PATH}" | grep -v bazel-mirro
 DOUBLE_CONVERSION_URL="$(grep -o "https.*google/double-conversion.*\.zip" "${BZL_FILE_PATH}" | head -n1)"
 ABSL_URL="$(grep -o 'https://github.com/abseil/abseil-cpp/.*tar.gz' "${BZL_FILE_PATH}" | head -n1)"
 CUB_URL="$(grep -o 'https.*cub/archive.*zip' "${BZL_FILE_PATH}" | grep -v mirror.bazel | head -n1)"
+FARMHASH_URL="https://mirror.bazel.build/github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz"
+HIGHWAYHASH_URL="https://mirror.bazel.build/github.com/google/highwayhash/archive/dfcb97ca4fe9277bf9dc1802dd979b071896453b.tar.gz"
 
 # Required for TensorFlow Lite Flex runtime.
 FARMHASH_URL="https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz"
@@ -126,6 +128,8 @@ download_and_extract "${FFT2D_URL}" "${DOWNLOADS_DIR}/fft2d"
 download_and_extract "${DOUBLE_CONVERSION_URL}" "${DOWNLOADS_DIR}/double_conversion"
 download_and_extract "${ABSL_URL}" "${DOWNLOADS_DIR}/absl"
 download_and_extract "${CUB_URL}" "${DOWNLOADS_DIR}/cub/external/cub_archive"
+download_and_extract "${FARMHASH_URL}" "${DOWNLOADS_DIR}/farmhash"
+download_and_extract "${HIGHWAYHASH_URL}" "${DOWNLOADS_DIR}/highwayhash"
 
 # Required for TensorFlow Lite Flex runtime.
 download_and_extract "${FARMHASH_URL}" "${DOWNLOADS_DIR}/farmhash"
