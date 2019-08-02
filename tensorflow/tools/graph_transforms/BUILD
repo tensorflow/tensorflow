@@ -254,6 +254,7 @@ tf_cc_test(
     name = "transform_graph_test",
     size = "medium",
     srcs = ["transform_graph_test.cc"],
+    tags = ["v1only"],
     deps = [
         ":transform_graph_lib",
         ":transform_utils",
