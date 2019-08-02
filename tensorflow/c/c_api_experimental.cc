@@ -1054,7 +1054,7 @@ void TF_DeleteShapeAndTypeListArray(TF_ShapeAndTypeList** shape_list_array,
 }
 
 void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
-                     TF_Tensor** input_tensors, int num_input_tensors,
+                     TF_Tensor** input_tensors,
                      TF_ShapeAndTypeList* input_tensors_as_shapes,
                      TF_ShapeAndTypeList** input_resource_shapes_and_types,
                      TF_ShapeAndTypeList** output_shapes,
