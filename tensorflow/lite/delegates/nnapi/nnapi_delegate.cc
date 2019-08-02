@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
@@ -746,6 +747,9 @@ class NNAPIOpBuilder {
       const std::vector<T>& tensor_value,
       const TfLiteQuantizationParams& quant_params, int* tensor_index) {
     TfLiteIntArray* dim_array = TfLiteIntArrayCreate(dims.size());
+    dim_array->size = dims.size();
+    std::copy(dims.begin(), dims.end(), dim_array->data);
+
     const auto result = AddNewInputConstantTensor(
         nn_type, type, dim_array, tensor_value, quant_params, tensor_index);
     TfLiteIntArrayFree(dim_array);
