@@ -54,6 +54,11 @@ Status ParseHloString(absl::string_view str, HloModule* module);
 // "{replicated}".
 StatusOr<HloSharding> ParseSharding(absl::string_view str);
 
+// Parses frontend attributes from str. str is supposed to contain the body of the
+// frontend attributes , i.e. just the rhs of the "frontend_attributes={...}" attribute string, e.g.,
+// "{attr_a=a,attr_b=b}".
+StatusOr<FrontendAttributes> ParseFrontendAttributes(absl::string_view str);
+
 // Parses parameter replication from str. str is supposed to contain the body of
 // the parameter replication, i.e. just the rhs of the
 // "parameter_replication={...}" attribute string, e.g., "{true, false}".

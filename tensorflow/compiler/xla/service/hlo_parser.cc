@@ -88,6 +88,7 @@ class HloParser {
   // Stand alone parsing utils for various aggregate data types.
   StatusOr<Shape> ParseShapeOnly();
   StatusOr<HloSharding> ParseShardingOnly();
+  StatusOr<FrontendAttributes> ParseFrontendAttributesOnly();
   StatusOr<std::vector<bool>> ParseParameterReplicationOnly();
   StatusOr<Window> ParseWindowOnly();
   StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbersOnly();
@@ -192,6 +193,7 @@ class HloParser {
     kWindow,
     kConvolutionDimensionNumbers,
     kSharding,
+    kFrontendAttributes,
     kParameterReplication,
     kInstructionList,
     kSliceRanges,
@@ -271,6 +273,7 @@ class HloParser {
   bool ParsePaddingConfig(PaddingConfig* padding);
   bool ParseMetadata(OpMetadata* metadata);
   bool ParseSharding(OpSharding* sharding);
+  bool ParseFrontendAttributes(FrontendAttributes *frontend_attributes);
   bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
   bool ParseParameterReplication(ParameterReplication* parameter_replication);
   bool ParseReplicaGroupsOnly(std::vector<ReplicaGroup>* replica_groups);
@@ -677,7 +680,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
   // Add optional attributes.
   std::unordered_map<string, AttrConfig> attrs;
   optional<OpSharding> sharding;
+  optional<FrontendAttributes> frontend_attributes;
   attrs["sharding"] = {/*required=*/false, AttrTy::kSharding, &sharding};
+  attrs["frontend_attributes"] = {/*required=*/false, AttrTy::kFrontendAttributes, &frontend_attributes};
   optional<ParameterReplication> parameter_replication;
   attrs["parameter_replication"] = {/*required=*/false,
                                     AttrTy::kParameterReplication,
@@ -1838,6 +1843,36 @@ bool HloParser::ParseSharding(OpSharding* sharding) {
   return ParseToken(TokKind::kRbrace, "expected '}' to end sharding attribute");
 }
 
+// frontend_attributes ::= '{' attributes '}'
+// attributes
+//   ::= /*empty*/
+//   ::= attribute '=' value (',' attribute '=' value)*
+bool HloParser::ParseFrontendAttributes(FrontendAttributes *frontend_attributes)
+{
+  CHECK(frontend_attributes!= nullptr);
+  if (!ParseToken(TokKind::kLbrace,
+                  "expected '{' to start frontend attributes")) {
+    return false;
+  }
+  if (lexer_.GetKind() == TokKind::kRbrace) {
+    // empty
+  } else {
+    do {
+      LocTy loc = lexer_.GetLoc();
+      string attribute;
+      if(!ParseAttributeName(&attribute)){
+        return false;
+      }
+      if (lexer_.GetKind() != TokKind::kIdent) {
+        return false;
+      }
+      (*frontend_attributes->mutable_map())[attribute] = lexer_.GetStrVal();
+      lexer_.Lex();
+    } while (EatIfPresent(TokKind::kComma));
+  }
+  return ParseToken(TokKind::kRbrace, "expects '}' at the end of frontend attributes");
+}
+
 //  ::= '{' 'replicated'? 'maximal'? ('device=' int)? shape?
 //          ('devices=' ('[' dims ']')* device_list)? '}'
 // dims ::= int_list device_list ::= int_list
@@ -2855,6 +2890,14 @@ bool HloParser::ParseAttributeHelper(
           return false;
         }
         static_cast<optional<OpSharding>*>(attr_out_ptr)->emplace(sharding);
+        return true;
+      }
+      case AttrTy::kFrontendAttributes: {
+        FrontendAttributes frontend_attributes;
+        if(!ParseFrontendAttributes(&frontend_attributes)) {
+          return false;
+        }
+        static_cast<optional<FrontendAttributes>*>(attr_out_ptr)->emplace(frontend_attributes);
         return true;
       }
       case AttrTy::kParameterReplication: {
@@ -4113,6 +4156,18 @@ StatusOr<HloSharding> HloParser::ParseShardingOnly() {
   return HloSharding::FromProto(op_sharding);
 }
 
+StatusOr<FrontendAttributes> HloParser::ParseFrontendAttributesOnly() {
+  lexer_.Lex();
+  FrontendAttributes attributes;
+  if (!ParseFrontendAttributes(&attributes)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after frontend attributes");
+  }
+  return attributes;
+}
+
 StatusOr<std::vector<bool>> HloParser::ParseParameterReplicationOnly() {
   lexer_.Lex();
   ParameterReplication parameter_replication;
@@ -4259,6 +4314,11 @@ Status ParseHloString(absl::string_view str, HloModule* module) {
 StatusOr<HloSharding> ParseSharding(absl::string_view str) {
   HloParser parser(str);
   return parser.ParseShardingOnly();
+}
+
+StatusOr<FrontendAttributes> ParseFrontendAttributes(absl::string_view str) {
+  HloParser parser(str);
+  return parser.ParseFrontendAttributesOnly();
 }
 
 StatusOr<std::vector<bool>> ParseParameterReplication(absl::string_view str) {

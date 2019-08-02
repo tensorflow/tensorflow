@@ -2327,6 +2327,12 @@ TEST_F(HloParserTest, ParseSharding) {
   EXPECT_EQ(sharding.ToString(), original);
 }
 
+TEST_F(HloParserTest, ParseFrontendAttributes) {
+  const string original = "{attr_a=test_a,attr_b=b}";
+  TF_ASSERT_OK_AND_ASSIGN(FrontendAttributes frontend_attributes, ParseFrontendAttributes(original));
+  EXPECT_EQ(FrontendAttributesToString(frontend_attributes), original);
+}
+
 TEST_F(HloParserTest, ParseWindow) {
   Window original = window_util::MakeWindow({1, 2, 3});
   TF_ASSERT_OK_AND_ASSIGN(Window parsed,
