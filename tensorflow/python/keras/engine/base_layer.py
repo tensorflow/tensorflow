@@ -1730,7 +1730,7 @@ class Layer(module.Module):
           return math_ops.cast(x, compute_dtype)
         else:
           return x
-      return nest.map_structure(f, inputs)
+      return nest.map_structure(f, inputs, expand_composites=True)
     else:
       return inputs
 
