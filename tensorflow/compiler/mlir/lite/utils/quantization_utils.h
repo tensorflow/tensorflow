@@ -101,6 +101,16 @@ TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, IntegerAttr num_bits,
                               BoolAttr narrow_range);
 
+// Casts the `target` type to a quantized type by using the quantization
+// parameters from the type in the `source` type attribute.
+// Examples:
+//   f32 -> !quant.uniform<i8:f32, 1.0>
+//   tensor<4xf32> -> tensor<4x!quant.uniform<i8:f32, 1.0>>
+// The result is wrapped by a type attribute. Returns nullptr if the cast isn't
+// valid.
+TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
+                                                TypeAttr source, Type target);
+
 // Quantizes the elements in the attribute `real_value` by the quantization
 // parameters in `tensor_type`. Returns empty Attribute if the
 // `tensor_type` is not a QuantizedType or the quantization fails.
