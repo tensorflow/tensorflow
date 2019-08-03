@@ -1,0 +1,24 @@
+op {
+  graph_op_name: "ReadVariableOp"
+  in_arg {
+    name: "resource"
+    description: <<END
+handle to the resource in which to store the variable.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+the dtype of the value.
+END
+  }
+  summary: "Reads the value of a variable."
+  description: <<END
+The tensor returned by this operation is immutable.
+
+The value returned by this operation is guaranteed to be influenced by all the
+writes on which this operation depends directly or indirectly, and to not be
+influenced by any of the writes which depend directly or indirectly on this
+operation.
+END
+}

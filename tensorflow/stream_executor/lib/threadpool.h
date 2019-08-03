@@ -18,17 +18,15 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/stream_executor/lib/env.h"
-#include "tensorflow/stream_executor/lib/notification.h"
 #include "tensorflow/stream_executor/lib/thread_options.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
+using tensorflow::Thread;
 using tensorflow::thread::ThreadPool;
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_THREADPOOL_H_

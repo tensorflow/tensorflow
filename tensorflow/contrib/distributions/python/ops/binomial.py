@@ -27,6 +27,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 _binomial_sample_note = """
@@ -42,6 +43,14 @@ to integer values.
 """
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _bdtr(k, n, p):
   """The binomial cumulative distribution function.
 
@@ -59,9 +68,9 @@ def _bdtr(k, n, p):
   #   where(unsafe, safe_output, betainc(where(unsafe, safe_input, input)))
   ones = array_ops.ones_like(n - k)
   k_eq_n = math_ops.equal(k, n)
-  safe_dn = array_ops.where(k_eq_n, ones, n - k)
+  safe_dn = array_ops.where_v2(k_eq_n, ones, n - k)
   dk = math_ops.betainc(a=safe_dn, b=k + 1, x=1 - p)
-  return array_ops.where(k_eq_n, ones, dk)
+  return array_ops.where_v2(k_eq_n, ones, dk)
 
 
 class Binomial(distribution.Distribution):
@@ -130,6 +139,14 @@ class Binomial(distribution.Distribution):
   ```
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                total_count,
                logits=None,
@@ -163,8 +180,8 @@ class Binomial(distribution.Distribution):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[total_count, logits, probs]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[total_count, logits, probs]) as name:
       self._total_count = self._maybe_assert_valid_total_count(
           ops.convert_to_tensor(total_count, name="total_count"),
           validate_args)
@@ -213,7 +230,7 @@ class Binomial(distribution.Distribution):
     return constant_op.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   @distribution_util.AppendDocstring(_binomial_sample_note)
   def _log_prob(self, counts):

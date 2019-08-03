@@ -28,7 +28,7 @@ REGISTER_KERNEL_BUILDER(Name("Copy").Device(DEVICE_CPU), CopyOp);
 
 REGISTER_KERNEL_BUILDER(Name("CopyHost").Device(DEVICE_CPU), CopyOp);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(Name("Copy").Device(DEVICE_GPU), CopyOp);
 
 REGISTER_KERNEL_BUILDER(Name("CopyHost")
@@ -36,7 +36,7 @@ REGISTER_KERNEL_BUILDER(Name("CopyHost")
                             .HostMemory("input")
                             .HostMemory("output"),
                         CopyOp);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("Copy").Device(DEVICE_SYCL), CopyOp);
@@ -46,13 +46,13 @@ REGISTER_KERNEL_BUILDER(Name("CopyHost")
                             .HostMemory("input")
                             .HostMemory("output"),
                         CopyOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Register debug identity (non-ref and ref) ops.
 REGISTER_KERNEL_BUILDER(Name("DebugIdentity").Device(DEVICE_CPU),
                         DebugIdentityOp);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(Name("DebugIdentity")
                             .Device(DEVICE_GPU)
                             .HostMemory("input")
@@ -66,7 +66,7 @@ REGISTER_KERNEL_BUILDER(Name("DebugIdentity")
                             .HostMemory("input")
                             .HostMemory("output"),
                         DebugIdentityOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Register debug NaN-counter (non-ref and ref) ops.
 #define REGISTER_DEBUG_NAN_COUNT(type)                                    \
@@ -75,7 +75,7 @@ REGISTER_KERNEL_BUILDER(Name("DebugIdentity")
       DebugNanCountOp<type>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_DEBUG_NAN_COUNT);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_DEBUG_NAN_COUNT(type)                \
   REGISTER_KERNEL_BUILDER(Name("DebugNanCount")           \
                               .Device(DEVICE_GPU)         \
@@ -98,7 +98,7 @@ REGISTER_GPU_DEBUG_NAN_COUNT(double);
                           DebugNanCountOp<type>);
 REGISTER_GPU_DEBUG_NAN_COUNT(float);
 REGISTER_GPU_DEBUG_NAN_COUNT(double);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Register debug numeric summary ops.
 #define REGISTER_DEBUG_NUMERIC_SUMMARY_COUNT(type)        \
@@ -111,7 +111,7 @@ TF_CALL_INTEGRAL_TYPES(REGISTER_DEBUG_NUMERIC_SUMMARY_COUNT);
 TF_CALL_float(REGISTER_DEBUG_NUMERIC_SUMMARY_COUNT);
 TF_CALL_double(REGISTER_DEBUG_NUMERIC_SUMMARY_COUNT);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_DEBUG_NUMERIC_SUMMARY_COUNT(type)    \
   REGISTER_KERNEL_BUILDER(Name("DebugNumericSummary")     \
                               .Device(DEVICE_GPU)         \
@@ -123,7 +123,7 @@ TF_CALL_bool(REGISTER_GPU_DEBUG_NUMERIC_SUMMARY_COUNT);
 TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_DEBUG_NUMERIC_SUMMARY_COUNT);
 TF_CALL_float(REGISTER_GPU_DEBUG_NUMERIC_SUMMARY_COUNT);
 TF_CALL_double(REGISTER_GPU_DEBUG_NUMERIC_SUMMARY_COUNT);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_DEBUG_NUMERIC_SUMMARY_COUNT(type)   \

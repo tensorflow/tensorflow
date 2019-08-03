@@ -13,18 +13,46 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_
+#define TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace grappler {
 
-// Sort a graph in topological order.
-void TopologicalSort(GraphDef* graph);
+// TODO(ezhulenev, b/121379902): We should be consistent with GraphTopologyView
+// and use `GraphView::Edge` to pass extra dependencies.
+struct TopologicalDependency {
+  TopologicalDependency(const NodeDef* from, const NodeDef* to)
+      : from(from), to(to) {}
+  const NodeDef* from;
+  const NodeDef* to;
+};
+
+// Computes a topological ordering for the graph nodes and outputs nodes in the
+// topological order to the `topo_order` output argument.
+//
+// It's possible to pass additional edges that do not exists in a graph, but
+// must be respected when computing graph topological order. Example: Tensorflow
+// runtime allows concurrent execution of dequeue/enqueue ops from the same
+// queue resource, but we might want to enforce ordering between them.
+Status ComputeTopologicalOrder(
+    const GraphDef& graph,
+    absl::Span<const TopologicalDependency> extra_dependencies,
+    std::vector<const NodeDef*>* topo_order);
+Status ComputeTopologicalOrder(const GraphDef& graph,
+                               std::vector<const NodeDef*>* topo_order);
+
+// Sorts a graph in topological order.
+Status TopologicalSort(GraphDef* graph);
+
+// Sorts a graph in topological order and reverse it.
+Status ReversedTopologicalSort(GraphDef* graph);
 
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_

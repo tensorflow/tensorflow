@@ -99,7 +99,7 @@ class GmmOpsTest(test.TestCase):
     logging.info('Numpy took %f', time.time() - start_time)
 
     start_time = time.time()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       op = gmm_ops._covariance(
           constant_op.constant(
               data.T, dtype=dtypes.float32), False)
@@ -120,25 +120,31 @@ class GmmOpsTest(test.TestCase):
     graph = ops.Graph()
     with graph.as_default() as g:
       g.seed = 5
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         data = constant_op.constant(self.data, dtype=dtypes.float32)
-        _, assignments, _, training_op, init_op, _ = gmm_ops.gmm(
+        loss_op, scores, assignments, training_op, init_op, _ = gmm_ops.gmm(
             data, 'random', num_classes, random_seed=self.seed)
 
         variables.global_variables_initializer().run()
         sess.run(init_op)
+        first_loss = sess.run(loss_op)
         for _ in xrange(self.iterations):
           sess.run(training_op)
         assignments = sess.run(assignments)
+        end_loss = sess.run(loss_op)
+        scores = sess.run(scores)
+        self.assertEqual((self.num_examples, 1), scores.shape)
         accuracy = np.mean(
             np.asarray(self.true_assignments) == np.squeeze(assignments))
         logging.info('Accuracy: %f', accuracy)
+        logging.info('First loss: %f, end loss: %f', first_loss, end_loss)
+        self.assertGreater(end_loss, first_loss)
         self.assertGreater(accuracy, 0.98)
 
   def testParams(self):
     """Tests that the params work as intended."""
     num_classes = 2
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Experiment 1. Update weights only.
       data = constant_op.constant(self.data, dtype=dtypes.float32)
       gmm_tool = gmm_ops.GmmAlgorithm([data], num_classes,

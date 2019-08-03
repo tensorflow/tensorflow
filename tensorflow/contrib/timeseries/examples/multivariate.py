@@ -66,11 +66,11 @@ def multivariate_train_and_sample(
   if export_directory is None:
     export_directory = tempfile.mkdtemp()
   input_receiver_fn = estimator.build_raw_serving_input_receiver_fn()
-  export_location = estimator.export_savedmodel(
-      export_directory, input_receiver_fn)
+  export_location = estimator.export_saved_model(export_directory,
+                                                 input_receiver_fn)
   with tf.Graph().as_default():
     numpy.random.seed(1)  # Make the example a bit more deterministic
-    with tf.Session() as session:
+    with tf.compat.v1.Session() as session:
       signatures = tf.saved_model.loader.load(
           session, [tf.saved_model.tag_constants.SERVING], export_location)
       for _ in range(100):
@@ -80,8 +80,8 @@ def multivariate_train_and_sample(
                 session=session, steps=1))
         next_sample = numpy.random.multivariate_normal(
             # Squeeze out the batch and series length dimensions (both 1).
-            mean=numpy.squeeze(current_prediction["mean"], axis=[0, 1]),
-            cov=numpy.squeeze(current_prediction["covariance"], axis=[0, 1]))
+            mean=numpy.squeeze(current_prediction["mean"], axis=(0, 1)),
+            cov=numpy.squeeze(current_prediction["covariance"], axis=(0, 1)))
         # Update model state so that future predictions are conditional on the
         # value we just sampled.
         filtering_features = {
@@ -114,4 +114,4 @@ def main(unused_argv):
 
 
 if __name__ == "__main__":
-  tf.app.run(main=main)
+  tf.compat.v1.app.run(main=main)

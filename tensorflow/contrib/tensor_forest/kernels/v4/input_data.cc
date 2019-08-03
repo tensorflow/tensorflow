@@ -21,8 +21,6 @@ namespace tensorflow {
 namespace tensorforest {
 namespace {
 
-const int32 SPARSE_DEFAULT = 0;
-
 bool DecideInequalityTest(const decision_trees::InequalityTest& test,
                           float value) {
   float bias = test.threshold().float_value();
@@ -111,10 +109,10 @@ void TensorDataSet::set_input_tensors(const Tensor& dense,
     dense_data_.reset(new DenseStorageType(dense.tensor<float, 2>()));
   }
   if (sparse_indices.shape().dims() == 2) {
-    sparse_indices_.reset(new SparseIndicesStorageType(
-        sparse_indices.tensor<int64, 2>()));
-    sparse_values_.reset(new SparseValuesStorageType(
-        sparse_values.tensor<float, 1>()));
+    sparse_indices_.reset(
+        new SparseIndicesStorageType(sparse_indices.tensor<int64, 2>()));
+    sparse_values_.reset(
+        new SparseValuesStorageType(sparse_values.tensor<float, 1>()));
     sparse_batch_size_ = sparse_shape.tensor<int64, 1>()(0);
   }
   original_dense_tensor_ = dense;
@@ -132,7 +130,11 @@ void TensorDataSet::RandomSample(int example,
       num_total_features += num_sparse;
     }
   }
-  int rand_feature = rng_->Uniform(num_total_features);
+  int rand_feature = 0;
+  {
+    mutex_lock lock(mu_);
+    rand_feature = rng_->Uniform(num_total_features);
+  }
   if (rand_feature < available_features_.size()) {  // it's dense.
     *feature_id = available_features_[rand_feature];
     *type = input_spec_.GetDenseFeatureType(rand_feature);

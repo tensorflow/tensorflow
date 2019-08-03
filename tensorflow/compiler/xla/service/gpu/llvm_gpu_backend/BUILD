@@ -1,7 +1,8 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 package_group(
@@ -15,12 +16,12 @@ cc_library(
     name = "llvm_gpu_backend",
     srcs = [
         "dump_ir_pass.cc",
-        "gpu_backend_lib.cc",
+        "nvptx_backend_lib.cc",
         "utils.cc",
     ],
     hdrs = [
         "dump_ir_pass.h",
-        "gpu_backend_lib.h",
+        "nvptx_backend_lib.h",
         "utils.h",
     ],
     deps = [
@@ -29,9 +30,15 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service/gpu:gpu_types",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm//:amdgpu_code_gen",
         "@llvm//:analysis",
         "@llvm//:bit_reader",
         "@llvm//:bit_writer",
@@ -45,11 +52,10 @@ cc_library(
         "@llvm//:scalar",
         "@llvm//:support",
         "@llvm//:target",
-        "@llvm//:transform_utils",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "utils_test",
     size = "small",
     srcs = ["utils_test.cc"],
@@ -59,24 +65,10 @@ cc_test(
     deps = [
         ":llvm_gpu_backend",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "@llvm//:core",
         "@llvm//:support",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER5(BinaryOp, CPU, "SquaredDifference", functor::squared_difference,
-          float, Eigen::half, double, int32, int64);
-#if GOOGLE_CUDA
+REGISTER7(BinaryOp, CPU, "SquaredDifference", functor::squared_difference,
+          float, Eigen::half, double, int32, int64, complex64, complex128);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER4(BinaryOp, GPU, "SquaredDifference", functor::squared_difference,
           float, Eigen::half, double, int64);
 #endif

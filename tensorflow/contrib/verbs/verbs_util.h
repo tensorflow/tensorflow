@@ -13,18 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_RDMA_UTIL_H_
-#define TENSORFLOW_CONTRIB_RDMA_UTIL_H_
+#ifndef TENSORFLOW_CONTRIB_VERBS_VERBS_UTIL_H_
+#define TENSORFLOW_CONTRIB_VERBS_VERBS_UTIL_H_
 
 #include <string>
 
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
-
-class TensorProto;
 
 class VerbsUtil {
  public:
@@ -34,4 +30,4 @@ class VerbsUtil {
 };
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CONTRIB_RDMA_UTIL_H_
+#endif  // TENSORFLOW_CONTRIB_VERBS_VERBS_UTIL_H_

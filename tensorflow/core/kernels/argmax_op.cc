@@ -17,21 +17,22 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/argmax_op.h"
 
 #include <memory>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -59,7 +60,7 @@ class ArgOp : public OpKernel {
 
     int axis = dim < 0 ? dim + input_dims : dim;
 
-    OP_REQUIRES(context, axis >= 0 && axis < input_dims,
+    OP_REQUIRES(context, FastBoundsCheck(axis, input_dims),
                 errors::InvalidArgument("Expected dimension in the range [",
                                         -input_dims, ", ", input_dims,
                                         "), but got ", dim));
@@ -75,6 +76,10 @@ class ArgOp : public OpKernel {
     }
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+
+    if (output_shape.num_elements() == 0) {
+      return;
+    }
 
 #define HANDLE_DIM(NDIM)                                        \
   case NDIM:                                                    \
@@ -146,7 +151,8 @@ class ArgMinOp
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_ARGMAX);
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
@@ -222,6 +228,6 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_ARGMAX_GPU);
 
 #undef REGISTER_ARGMAX_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

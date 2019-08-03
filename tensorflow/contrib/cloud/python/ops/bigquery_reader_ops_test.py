@@ -197,7 +197,7 @@ class BigQueryReaderOpsTest(test.TestCase):
   def _ReadAndCheckRowsUsingFeatures(self, num_rows):
     self.server.handler.num_rows = num_rows
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       feature_configs = {
           "int64_col":
               parsing_ops.FixedLenFeature(
@@ -254,7 +254,7 @@ class BigQueryReaderOpsTest(test.TestCase):
     num_rows = 10
     self.server.handler.num_rows = num_rows
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = cloud.BigQueryReader(
           project_id=_PROJECT,
           dataset_id=_DATASET,

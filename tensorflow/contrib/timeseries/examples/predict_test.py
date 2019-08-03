@@ -43,10 +43,6 @@ class PeriodTrendExampleTest(test.TestCase):
     self.assertAllEqual([700], mean.shape)
     self.assertAllEqual([700], upper_limit.shape)
     self.assertAllEqual([700], lower_limit.shape)
-    # Check that variance hasn't blown up too much. This is a relatively good
-    # indication that training was successful.
-    self.assertLess(upper_limit[-1] - lower_limit[-1],
-                    1.5 * (upper_limit[0] - lower_limit[0]))
 
   def test_ar(self):
     (times, observed, all_times, mean,
@@ -55,7 +51,6 @@ class PeriodTrendExampleTest(test.TestCase):
     self.assertAllEqual(all_times.shape, mean.shape)
     self.assertAllEqual(all_times.shape, upper_limit.shape)
     self.assertAllEqual(all_times.shape, lower_limit.shape)
-    self.assertLess((upper_limit - lower_limit).mean(), 4.)
 
 
 if __name__ == "__main__":

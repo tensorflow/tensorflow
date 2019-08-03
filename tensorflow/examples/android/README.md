@@ -26,7 +26,7 @@ on API >= 14 devices.
         in an overlay on the camera image.
 2. [TF Detect](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/android/src/org/tensorflow/demo/DetectorActivity.java):
         Demonstrates an SSD-Mobilenet model trained using the
-        [Tensorflow Object Detection API](https://github.com/tensorflow/models/tree/master/object_detection/)
+        [Tensorflow Object Detection API](https://github.com/tensorflow/models/tree/master/research/object_detection/)
         introduced in [Speed/accuracy trade-offs for modern convolutional object detectors](https://arxiv.org/abs/1611.10012) to
         localize and track objects (from 80 categories) in the camera preview
         in real-time.
@@ -45,11 +45,7 @@ on API >= 14 devices.
 
 ## Prebuilt Components:
 
-If you just want the fastest path to trying the demo, you may download the
-nightly build
-[here](https://ci.tensorflow.org/view/Nightly/job/nightly-android/). Expand the
-"View" and then the "out" folders under "Last Successful Artifacts" to find
-tensorflow_demo.apk.
+The fastest path to trying the demo is to download the [prebuilt demo APK](https://storage.googleapis.com/download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk).
 
 Also available are precompiled native libraries, and a jcenter package that you
 may simply drop into your own applications. See
@@ -113,8 +109,9 @@ protobuf compilation.
 
 NOTE: Bazel does not currently support building for Android on Windows. Full
 support for gradle/cmake builds is coming soon, but in the meantime we suggest
-that Windows users download the [prebuilt
-binaries](https://ci.tensorflow.org/view/Nightly/job/nightly-android/) instead.
+that Windows users download the
+[prebuilt demo APK](https://storage.googleapis.com/download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk)
+instead.
 
 ##### Install Bazel and Android Prerequisites
 
@@ -134,6 +131,10 @@ the Android NDK and SDK must be installed on your system.
     devices).
 
 ##### Edit WORKSPACE
+
+NOTE: As long as you have the SDK and NDK installed, the `./configure` script
+will create these rules for you. Answer "Yes" when the script asks to
+automatically configure the `./WORKSPACE`.
 
 The Android entries in
 [`<workspace_root>/WORKSPACE`](../../../WORKSPACE#L19-L36) must be uncommented
@@ -156,7 +157,7 @@ download-models.gradle.
 
 **Optional**: If you wish to place the models in your assets manually, remove
 all of the `model_files` entries from the `assets` list in `tensorflow_demo`
-found in the `[BUILD](BUILD)` file. Then download and extract the archives
+found in the [`BUILD`](BUILD#L92) file. Then download and extract the archives
 yourself to the `assets` directory in the source tree:
 
 ```bash
@@ -181,7 +182,7 @@ After editing your WORKSPACE file to update the SDK/NDK configuration, you may
 build the APK. Run this from your workspace root:
 
 ```bash
-bazel build -c opt //tensorflow/examples/android:tensorflow_demo
+bazel build --cxxopt='--std=c++11' -c opt //tensorflow/examples/android:tensorflow_demo
 ```
 
 ##### Install

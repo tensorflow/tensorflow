@@ -12,9 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_TESTLIB_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_TESTLIB_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_TESTLIB_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_TESTLIB_H_
 
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/framework/function.h"
 
 namespace tensorflow {
@@ -24,8 +25,29 @@ namespace function {
 // {} -> y:DT_STRING (device where this op runs).
 FunctionDef FindDevice();
 
+class BlockingOpState {
+ public:
+  void AwaitState(int awaiting_state);
+
+  void MoveToState(int expected_current, int next);
+
+ private:
+  mutex mu_;
+  condition_variable cv_;
+  int state_ = 0;
+};
+
+extern BlockingOpState* blocking_op_state;
+
+FunctionDef BlockingOpFn();
+
+// Adds a function call to the given scope and returns the output for the node.
+// TODO(phawkins): replace with C++ API for calling functions, when that exists.
+Output Call(Scope* scope, const string& op_name, const string& fn_name,
+            gtl::ArraySlice<Input> inputs);
+
 }  // namespace function
 }  // namespace test
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_TESTLIB_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_TESTLIB_H_

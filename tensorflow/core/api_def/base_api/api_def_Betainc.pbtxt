@@ -1,0 +1,19 @@
+op {
+  graph_op_name: "Betainc"
+  summary: "Compute the regularized incomplete beta integral \\\\(I_x(a, b)\\\\)."
+  description: <<END
+The regularized incomplete beta integral is defined as:
+
+
+\\(I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}\\)
+
+where
+
+
+\\(B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt\\)
+
+
+is the incomplete beta function and \\(B(a, b)\\) is the *complete*
+beta function.
+END
+}

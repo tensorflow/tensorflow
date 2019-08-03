@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if !GOOGLE_CUDA
-#error This file must only be included when building with Cuda support
+#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
+#error This file must only be included when building with Cuda or ROCm support
 #endif
 
-#ifndef TENSORFLOW_CORE_KERNELS_POOLING_OP_3D_GPU_H_
-#define TENSORFLOW_CORE_KERNELS_POOLING_OP_3D_GPU_H_
+#ifndef TENSORFLOW_CORE_KERNELS_POOLING_OPS_3D_GPU_H_
+#define TENSORFLOW_CORE_KERNELS_POOLING_OPS_3D_GPU_H_
 
 #define EIGEN_USE_GPU
 
@@ -45,4 +45,4 @@ struct MaxPool3dGradBackward {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_POOLING_OP_3D_H_
+#endif  // TENSORFLOW_CORE_KERNELS_POOLING_OPS_3D_GPU_H_

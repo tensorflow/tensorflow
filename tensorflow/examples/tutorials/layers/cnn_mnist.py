@@ -97,9 +97,7 @@ def cnn_model_fn(features, labels, mode):
     return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
   # Calculate Loss (for both TRAIN and EVAL modes)
-  onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
-  loss = tf.losses.softmax_cross_entropy(
-      onehot_labels=onehot_labels, logits=logits)
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
   # Configure the Training Op (for TRAIN mode)
   if mode == tf.estimator.ModeKeys.TRAIN:
@@ -136,7 +134,7 @@ def main(unused_argv):
       tensors=tensors_to_log, every_n_iter=50)
 
   # Train the model
-  train_input_fn = tf.estimator.inputs.numpy_input_fn(
+  train_input_fn = tf.compat.v1.estimator.inputs.numpy_input_fn(
       x={"x": train_data},
       y=train_labels,
       batch_size=100,
@@ -148,11 +146,8 @@ def main(unused_argv):
       hooks=[logging_hook])
 
   # Evaluate the model and print results
-  eval_input_fn = tf.estimator.inputs.numpy_input_fn(
-      x={"x": eval_data},
-      y=eval_labels,
-      num_epochs=1,
-      shuffle=False)
+  eval_input_fn = tf.compat.v1.estimator.inputs.numpy_input_fn(
+      x={"x": eval_data}, y=eval_labels, num_epochs=1, shuffle=False)
   eval_results = mnist_classifier.evaluate(input_fn=eval_input_fn)
   print(eval_results)
 

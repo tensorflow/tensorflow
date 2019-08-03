@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/abi.h"
 
-#if defined(PLATFORM_WINDOWS)
+#if defined(_MSC_VER)
 #include <windows.h>
 #include <cstring>
 #else
@@ -26,24 +26,24 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#if defined(PLATFORM_WINDOWS)
+#if defined(_MSC_VER)
 
 extern "C" char* __unDName(char* output_string, const char* name,
                            int max_string_length, void* (*p_alloc)(std::size_t),
                            void (*p_free)(void*), unsigned short disable_flags);
 
-#endif  // defined(PLATFORM_WINDOWS)
+#endif  // defined(_MSC_VER)
 
 namespace tensorflow {
 namespace port {
 
-std::string MaybeAbiDemangle(const char* name) {
-#if defined(PLATFORM_WINDOWS)
+string MaybeAbiDemangle(const char* name) {
+#if defined(_MSC_VER)
   std::unique_ptr<char> demangled{__unDName(nullptr, name, 0, std::malloc,
                                             std::free,
                                             static_cast<unsigned short>(0))};
 
-  return std::string(demangled.get() != nullptr ? demangled.get() : name);
+  return string(demangled.get() != nullptr ? demangled.get() : name);
 #else
   int status = 0;
   std::unique_ptr<char, void (*)(void*)> res{

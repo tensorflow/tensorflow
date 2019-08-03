@@ -13,37 +13,49 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cmath>
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include <cmath>
 
 namespace tensorflow {
 namespace test {
 
 template <typename T>
-bool IsClose(const T& x, const T& y, double atol, double rtol) {
-  // Need x == y so that infinities are close to themselves
-  return x == y || std::abs(x - y) < atol + rtol * std::abs(x);
-}
-
-template <typename T>
 void ExpectClose(const Tensor& x, const Tensor& y, double atol, double rtol) {
-  auto Tx = x.flat<T>();
-  auto Ty = y.flat<T>();
-  for (int i = 0; i < Tx.size(); ++i) {
-    if (!IsClose(Tx(i), Ty(i), atol, rtol)) {
-      LOG(ERROR) << "x = " << x.DebugString();
-      LOG(ERROR) << "y = " << y.DebugString();
-      LOG(ERROR) << "atol = " << atol << " rtol = " << rtol
-                 << " tol = " << atol + rtol * std::abs(Tx(i));
-      EXPECT_TRUE(false) << i << "-th element is not close " << Tx(i) << " vs. "
-                         << Ty(i);
-    }
+  const T* Tx = x.flat<T>().data();
+  const T* Ty = y.flat<T>().data();
+  const auto size = x.NumElements();
+
+  // Tolerance's type (RealType) can be different from T.
+  // For example, if T = std::complex<float>, then RealType = float.
+  // Did not use std::numeric_limits<T> because
+  // 1) It returns 0 for Eigen::half.
+  // 2) It doesn't support T=std::complex<RealType>.
+  //    (Would have to write a templated struct to handle this.)
+  typedef decltype(Eigen::NumTraits<T>::epsilon()) RealType;
+  const RealType kSlackFactor = static_cast<RealType>(5.0);
+  const RealType kDefaultTol = kSlackFactor * Eigen::NumTraits<T>::epsilon();
+  const RealType typed_atol =
+      (atol < 0) ? kDefaultTol : static_cast<RealType>(atol);
+  const RealType typed_rtol =
+      (rtol < 0) ? kDefaultTol : static_cast<RealType>(rtol);
+  ASSERT_GE(typed_atol, static_cast<RealType>(0.0))
+      << "typed_atol is negative: " << typed_atol;
+  ASSERT_GE(typed_rtol, static_cast<RealType>(0.0))
+      << "typed_rtol is negative: " << typed_rtol;
+  for (int i = 0; i < size; ++i) {
+    EXPECT_TRUE(
+        internal::Helper<T>::IsClose(Tx[i], Ty[i], typed_atol, typed_rtol))
+        << "index = " << i << " x = " << Tx[i] << " y = " << Ty[i]
+        << " typed_atol = " << typed_atol << " typed_rtol = " << typed_rtol;
   }
 }
 
 void ExpectClose(const Tensor& x, const Tensor& y, double atol, double rtol) {
   internal::AssertSameTypeDims(x, y);
   switch (x.dtype()) {
+    case DT_HALF:
+      ExpectClose<Eigen::half>(x, y, atol, rtol);
+      break;
     case DT_FLOAT:
       ExpectClose<float>(x, y, atol, rtol);
       break;

@@ -50,9 +50,9 @@ class StringJoinOp : public OpKernel {
         } else {
           OP_REQUIRES(
               context, input_shape == input.shape(),
-              errors::InvalidArgument("Input shapes do not match: ",
-                                      input_shape.DebugString(), " vs. ",
-                                      input.shape().DebugString()));
+              errors::InvalidArgument(
+                  "Input shapes do not match: ", input_shape.DebugString(),
+                  " vs. ", input.shape().DebugString()));
         }
       }
     }
@@ -67,7 +67,7 @@ class StringJoinOp : public OpKernel {
       for (int j = 0; j < input_list.size(); ++j) {
         strings[j] = (is_scalar[j]) ? inputs[j](0) : inputs[j](i);
       }
-      output_flat(i) = str_util::Join(strings, separator_.c_str());
+      output_flat(i) = absl::StrJoin(strings, separator_);
     }
   }
 

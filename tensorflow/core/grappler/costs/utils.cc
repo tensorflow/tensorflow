@@ -20,27 +20,29 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 
-#if GOOGLE_CUDA
-#include "cuda/include/cuda.h"
-#include "cuda/include/cuda_runtime_api.h"
-#include "cuda/include/cudnn.h"
-#endif
-
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -66,7 +68,8 @@ static std::vector<TensorProto> ExtractTensors(const AttrValue& attr_value) {
       }
       break;
     }
-    default: {}
+    default: {
+    }
   }
   return tensors;
 }
@@ -91,7 +94,7 @@ static void ExtractExtraProperties(
       continue;
     }
     TensorId input_tensor_id = ParseTensorName(input_name);
-    const string input_node_name = input_tensor_id.first.ToString();
+    const string input_node_name(input_tensor_id.first);
 
     auto iter = name_to_node.find(input_node_name);
     if (iter == name_to_node.end()) continue;
@@ -119,7 +122,7 @@ static void ExtractExtraProperties(
 
       // For filename input, the file size can also be useful.
       if (op_def && i < op_def->input_arg_size() &&
-          op_def->input_arg(i).name().find("filename") != std::string::npos) {
+          op_def->input_arg(i).name().find("filename") != string::npos) {
         Tensor tensor;
         if (!tensor.FromProto(t)) {
           continue;
@@ -145,7 +148,7 @@ static void ExtractExtraProperties(
     // When the input is a handle (e.g. look up table handle), the information
     // in the op itself is not sufficient to predict the op memory.
     if (op_def && i < op_def->input_arg_size() &&
-        op_def->input_arg(i).name().find("handle") != std::string::npos) {
+        op_def->input_arg(i).name().find("handle") != string::npos) {
       string new_key = strings::StrCat("parent_", i, "_op");
       AttrValue attr;
       attr.set_s(input_node->op());
@@ -164,7 +167,7 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
   for (const auto& input_name : node.input()) {
     CHECK(!input_name.empty());
     TensorId input_tensor_id = ParseTensorName(input_name);
-    const string input_node_name = input_tensor_id.first.ToString();
+    const string input_node_name(input_tensor_id.first);
     const int output_index = input_tensor_id.second;
 
     // Skip control inputs.
@@ -193,18 +196,63 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
   return inputs;
 }
 
+int64 CalculateTensorSize(const OpInfo::TensorProperties& prop) {
+  int64 size = DataTypeSize(BaseType(prop.dtype()));
+  TensorShapeProto shape = prop.shape();
+
+  // Can't infer the size if the rank is unknown. It has to be at least a
+  // scalar though.
+  if (shape.unknown_rank()) {
+    VLOG(2) << "CalculateTensorSize() -- unknown rank";
+    return size;
+  }
+
+  // If one of the dimensions is unknown statically, assume it's at least one.
+  for (int i = 0; i < shape.dim_size(); ++i) {
+    if (shape.dim(i).size() < 0) {
+      shape.mutable_dim(i)->set_size(1);
+      VLOG(2) << "CalculateTensorSize() -- unknown dim: " << i;
+    }
+  }
+
+  int64 num_elems = TensorShape(shape).num_elements();
+  return num_elems * size;
+}
+
+int64 CalculateOutputSize(
+    const std::vector<OpInfo::TensorProperties>& output_properties,
+    const int port_num) {
+  if (port_num < 0) return 4;  // 4B for control dependency.
+
+  if (port_num >= output_properties.size()) {
+    LOG(ERROR) << "CalculateOutputSize() -- port_num: " << port_num
+               << " >= output_properties.size(): " << output_properties.size();
+    return 0;
+  }
+
+  return CalculateTensorSize(output_properties[port_num]);
+}
+
 DeviceProperties GetDeviceInfo(const string& device_str) {
+  DeviceProperties unknown;
+  unknown.set_type("UNKNOWN");
+
   DeviceNameUtils::ParsedName parsed;
   if (DeviceNameUtils::ParseFullName(device_str, &parsed)) {
     if (parsed.type == "GPU") {
-      return GetLocalGPUInfo(parsed.id);
+      TfGpuId tf_gpu_id(parsed.id);
+      PlatformGpuId platform_gpu_id;
+      Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
+      if (!s.ok()) {
+        // We are probably running simulation without linking cuda libraries.
+        platform_gpu_id = PlatformGpuId(parsed.id);
+      }
+      return GetLocalGPUInfo(platform_gpu_id);
     } else if (parsed.type == "CPU") {
       return GetLocalCPUInfo();
     }
   }
-  DeviceProperties device;
-  device.set_type("UNKNOWN");
-  return device;
+  return unknown;
 }
 
 DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node) {
@@ -279,16 +327,181 @@ OpPerformanceList CostGraphToOpPerformanceData(const CostGraphDef& cost_graph,
       perf->mutable_op_memory()->add_output_memory(output_info.size());
     }
 
-    perf->mutable_op_memory()->set_host_temp_memory(
-        cost_node->host_temp_memory_size());
-    perf->mutable_op_memory()->set_device_temp_memory(
-        cost_node->device_temp_memory_size());
-    perf->mutable_op_memory()->set_host_persistent_memory(
-        cost_node->host_persistent_memory_size());
-    perf->mutable_op_memory()->set_device_persistent_memory(
-        cost_node->device_persistent_memory_size());
+    perf->mutable_op_memory()->set_temp_memory(
+        cost_node->temporary_memory_size());
+    perf->mutable_op_memory()->set_persistent_memory(
+        cost_node->persistent_memory_size());
   }
   return ret;
+}
+
+void TensorSizeHistogram::Add(const uint64 value) {
+  num_elem_++;
+  sum_elem_ += value;
+  min_ = std::min(min_, value);
+  max_ = std::max(max_, value);
+  buckets_[Index(value)]++;
+}
+
+void TensorSizeHistogram::Merge(const TensorSizeHistogram& src) {
+  num_elem_ += src.num_elem_;
+  sum_elem_ += src.sum_elem_;
+  min_ = std::min(min_, src.min_);
+  max_ = std::max(max_, src.max_);
+  std::transform(buckets_.begin(), buckets_.end(), src.buckets_.begin(),
+                 buckets_.begin(), std::plus<uint64>());
+}
+
+string TensorSizeHistogram::ToString() const {
+  string r;
+  char buf[200];
+  snprintf(buf, sizeof(buf), "Count: %lld, Average: ", num_elem_);
+  r.append(buf);
+  r.append(strings::HumanReadableNumBytes(Average()));
+  r.append(", Min: ");
+  r.append(strings::HumanReadableNumBytes(min_));
+  r.append(", Max: ");
+  r.append(strings::HumanReadableNumBytes(max_));
+  r.append("\n------------------------------------------------------\n");
+  const double mult = num_elem_ > 0 ? 100.0 / num_elem_ : 0.0;
+  uint64 cumul_sum = 0;
+
+  const int size_string_width = 12;
+  for (int i = 0; i < buckets_.size(); i++) {
+    if (buckets_[i] == 0) continue;
+    cumul_sum += buckets_[i];
+    r.append("[ ");
+    if (i == 0) {
+      r.append(size_string_width - 2, ' ');
+      r.append("0B");
+    } else {
+      uint64 left = 1ULL << (i - 1);
+      const auto left_string = strings::HumanReadableNumBytes(left);
+      r.append(size_string_width - left_string.size(), ' ');
+      r.append(left_string);
+    }
+    r.append(", ");
+    uint64 right = 1ULL << i;
+    const auto right_string = strings::HumanReadableNumBytes(right);
+    r.append(size_string_width - right_string.size(), ' ');
+    r.append(right_string);
+    snprintf(buf, sizeof(buf), ") %7lld %7.3f%% %7.3f%% ",
+             buckets_[i],         // count
+             mult * buckets_[i],  // percentage
+             mult * cumul_sum);   // cum percentage
+    r.append(buf);
+
+    // Add hash marks based on percentage; 40 marks for 100%.
+    auto marks = static_cast<int>(
+        (static_cast<double>(40 * buckets_[i] + (num_elem_ >> 1)) / num_elem_));
+    r.append(marks, '#');
+    r.push_back('\n');
+  }
+  return r;
+}
+
+const int TensorSizeHistogram::Index(const uint64 value) const {
+  // Log2Floor64 returns -1 for 0, 0 for 1, 1 for 2-3, 2 for 4-7, ...
+  const auto index = Log2Floor64(value) + 1;
+  return std::min(index, kMaxBuckets - 1);
+}
+
+string GetDeviceClassForNonChannelDevice(const string& device_name) {
+  DeviceNameUtils::ParsedName parsed_name;
+  bool parsed = DeviceNameUtils::ParseFullName(device_name, &parsed_name);
+  if (!parsed) {
+    string name = str_util::StringReplace(device_name, "/job_", "/job:", true);
+    name = str_util::StringReplace(name, "/replica_", "/replica:", true);
+    name = str_util::StringReplace(name, "/task_", "/task:", true);
+    name = str_util::StringReplace(name, "/device_", "/device:", true);
+    name = str_util::StringReplace(name, "GPU_", "GPU:", true);
+    name = str_util::StringReplace(name, "CPU_", "CPU:", true);
+    name = str_util::StringReplace(name, "gpu_", "gpu:", true);
+    name = str_util::StringReplace(name, "cpu_", "cpu:", true);
+    parsed = DeviceNameUtils::ParseFullName(name, &parsed_name);
+  }
+  if (parsed) {
+    const string jobname = parsed_name.has_job ? parsed_name.job : "";
+    return strings::StrCat("/", jobname, "/", parsed_name.type);
+  } else {
+    return "Unclassified";
+  }
+}
+
+string GetDeviceClass(const string& device_name) {
+  // TODO(dyoon): channel device name follows the convention we currently have
+  // in VirtualScheduler. This should be revised with VirtualScheduler as well
+  // as VirtualPlacer in the future.
+  if (device_name.find("Channel") != string::npos) {
+    const string from = "_from_";
+    const string to = "_to_";
+    const auto from_loc = device_name.find(from);
+    const auto to_loc = device_name.find(to);
+    const auto src_device_full = device_name.substr(
+        from_loc + from.size(), to_loc - (from_loc + from.size()));
+    const auto dst_device_full = device_name.substr(to_loc + to.size());
+    return strings::StrCat(
+        "Channel", ": ", GetDeviceClassForNonChannelDevice(src_device_full),
+        " -> ", GetDeviceClassForNonChannelDevice(dst_device_full));
+  } else {
+    return GetDeviceClassForNonChannelDevice(device_name);
+  }
+}
+
+string GetStatsStringFromRunMetadata(const RunMetadata& run_metadata,
+                                     bool verbosity) {
+  // TODO(dyoon): print out other stats as needed.
+  std::ostringstream output;
+
+  // Tensor size histogram:
+  // if verbosity, it outputs per-device histogram,
+  // otherwise, only per-class histogram.
+  std::unordered_map<string, TensorSizeHistogram> device_to_hist_map;
+  const auto& step_stats = run_metadata.step_stats();
+  for (const auto& dev_stat : step_stats.dev_stats()) {
+    const auto& device_name = dev_stat.device();
+    auto& hist = device_to_hist_map[device_name];
+    for (const auto& node_stat : dev_stat.node_stats()) {
+      for (const auto& node_output : node_stat.output()) {
+        // TODO(dyoon): Calculate tensor size from tensor_description's dtype
+        // and shape, instead of using optional allocation_description.
+        const auto size = node_output.tensor_description()
+                              .allocation_description()
+                              .allocated_bytes();
+        hist.Add(size);
+      }
+    }
+  }
+  if (verbosity) {
+    output << "\n";
+    output << "Per device tensor size histogram.\n";
+  }
+
+  std::unordered_map<string, TensorSizeHistogram> device_class_to_hist_map;
+  for (const auto& device_hist : device_to_hist_map) {
+    const auto& device_name = device_hist.first;
+    const auto& hist = device_hist.second;
+    if (verbosity) {
+      output << "Device: " << device_name << "\n" << hist.ToString() << "\n";
+    }
+    const auto device_class = GetDeviceClass(device_name);
+    auto it = device_class_to_hist_map.find(device_class);
+    if (it == device_class_to_hist_map.end()) {
+      device_class_to_hist_map.emplace(device_class, TensorSizeHistogram(hist));
+    } else {
+      it->second.Merge(hist);
+    }
+  }
+  output << "\n";
+  output << "Aggregated per device / channel type tensor size histogram:\n";
+  for (const auto& device_hist : device_class_to_hist_map) {
+    const auto& device_name = device_hist.first;
+    const auto& hist = device_hist.second;
+    output << "Device: " << device_name << "\n" << hist.ToString() << "\n";
+  }
+  output << "\n";
+
+  return output.str();
 }
 
 }  // end namespace grappler

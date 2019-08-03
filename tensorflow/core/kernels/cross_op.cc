@@ -87,7 +87,7 @@ class CrossOp : public OpKernel {
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the function specializations for GPU (to prevent
 // building the GPU versions here, they will be built compiling _gpu.cu.cc).
 namespace functor {
@@ -105,6 +105,7 @@ TF_CALL_REAL_NUMBER_TYPES(DECLARE_GPU_KERNEL);
   REGISTER_KERNEL_BUILDER(                                        \
       Name("Cross").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       CrossOp<GPUDevice, type>);
+
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #endif

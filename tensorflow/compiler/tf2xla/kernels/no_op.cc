@@ -13,19 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
+
+namespace {
+
+class NoOp : public OpKernel {
+ public:
+  explicit NoOp(OpKernelConstruction* context) : OpKernel(context) {}
+  void Compute(OpKernelContext* context) override {}
+  bool IsExpensive() override { return false; }
+};
+
+}  // namespace
 
 // XLA_* devices also register a "real" NoOp operator so we suppress the
 // dummy operator using CompilationOnly().
 REGISTER_XLA_OP(Name("NoOp").CompilationOnly(), NoOp);
 
 // We register ControlTrigger as a no-op. This is correct since nodes seen
-// by the XLA compiler are never dead. This may need rethinking when we add
-// support for conditionals to XLA.
-REGISTER_XLA_OP(Name("ControlTrigger"), NoOp);
+// by the XLA compiler are never dead.
+REGISTER_XLA_OP(Name("ControlTrigger").CompilationOnly(), NoOp);
 
 }  // namespace tensorflow

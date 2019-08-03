@@ -18,21 +18,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.ops.gen_array_ops import _broadcast_args
-from tensorflow.python.ops.gen_array_ops import _broadcast_gradient_args
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops.gen_array_ops import broadcast_args
+from tensorflow.python.ops.gen_array_ops import broadcast_gradient_args
 from tensorflow.python.platform import test
 
 
 class BcastOpsTest(test.TestCase):
 
   def _GetBroadcastShape(self, xs, ys):
-    with self.test_session() as sess:
-      return sess.run(_broadcast_args(xs, ys))
+    with self.cached_session() as sess:
+      return sess.run(broadcast_args(xs, ys))
 
   def _GetGradientArgs(self, xs, ys):
-    with self.test_session() as sess:
-      return sess.run(_broadcast_gradient_args(xs, ys))
+    with self.cached_session() as sess:
+      return sess.run(broadcast_gradient_args(xs, ys))
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     r = self._GetBroadcastShape([2, 3, 5], [1])
     self.assertAllEqual(r, [2, 3, 5])
@@ -64,6 +68,7 @@ class BcastOpsTest(test.TestCase):
     r = self._GetBroadcastShape([3, 1], [2, 1, 5])
     self.assertAllEqual(r, [2, 3, 5])
 
+  @test_util.run_deprecated_v1
   def testBasicGradient(self):
     r0, r1 = self._GetGradientArgs([2, 3, 5], [1])
     self.assertAllEqual(r0, [])
@@ -105,6 +110,7 @@ class BcastOpsTest(test.TestCase):
     self.assertAllEqual(r0, [0, 2])
     self.assertAllEqual(r1, [1])
 
+  @test_util.run_deprecated_v1
   def testZeroDims(self):
     r = self._GetBroadcastShape([2, 0, 3, 0, 5], [3, 0, 5])
     self.assertAllEqual(r, [2, 0, 3, 0, 5])
@@ -118,6 +124,7 @@ class BcastOpsTest(test.TestCase):
     r = self._GetBroadcastShape([3, 1, 5], [2, 0, 3, 0, 5])
     self.assertAllEqual(r, [2, 0, 3, 0, 5])
 
+  @test_util.run_deprecated_v1
   def testZeroDimsGradient(self):
     r0, r1 = self._GetGradientArgs([2, 0, 3, 0, 5], [3, 0, 5])
     self.assertAllEqual(r0, [])
@@ -134,6 +141,20 @@ class BcastOpsTest(test.TestCase):
     r0, r1 = self._GetGradientArgs([3, 1, 5], [2, 0, 3, 0, 5])
     self.assertAllEqual(r0, [0, 1, 3])
     self.assertAllEqual(r1, [])
+
+  @test_util.run_deprecated_v1
+  def testDataTypes(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      r = self._GetBroadcastShape(
+          constant_op.constant([2, 3, 5], dtype=dtype),
+          constant_op.constant([1], dtype=dtype))
+      self.assertAllEqual(r, [2, 3, 5])
+
+      r0, r1 = self._GetGradientArgs(
+          constant_op.constant([2, 3, 5], dtype=dtype),
+          constant_op.constant([1], dtype=dtype))
+      self.assertAllEqual(r0, [])
+      self.assertAllEqual(r1, [0, 1, 2])
 
 
 if __name__ == "__main__":

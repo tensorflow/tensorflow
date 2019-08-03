@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_OPS_H_
-#define THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_OPS_H_
+#ifndef TENSORFLOW_CC_FRAMEWORK_OPS_H_
+#define TENSORFLOW_CC_FRAMEWORK_OPS_H_
 
 #include <type_traits>
 
@@ -150,7 +150,7 @@ class Input {
     Initializer(const std::initializer_list<T>& v, const TensorShape& shape) {
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), shape);
-      if (t.NumElements() != v.size()) {
+      if (t.NumElements() != static_cast<int64>(v.size())) {
         status = errors::InvalidArgument(
             "Cannot construct a tensor with ", t.NumElements(),
             " from an initializer list with ", v.size(), " elements");
@@ -296,4 +296,4 @@ class InputList {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_OPS_H_
+#endif  // TENSORFLOW_CC_FRAMEWORK_OPS_H_

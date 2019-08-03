@@ -28,15 +28,16 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace tensorflow {
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename T>
-void DnnPooling3dOp<T>::Compute(
-    OpKernelContext* context,
-    perftools::gputools::dnn::PoolingMode pooling_mode,
-    const std::array<int64, 3>& window, const std::array<int64, 3>& stride,
-    const std::array<int64, 3>& padding, TensorFormat data_format,
-    const Tensor& tensor_in, Tensor* output) {
+void DnnPooling3dOp<T>::Compute(OpKernelContext* context,
+                                se::dnn::PoolingMode pooling_mode,
+                                const std::array<int64, 3>& window,
+                                const std::array<int64, 3>& stride,
+                                const std::array<int64, 3>& padding,
+                                TensorFormat data_format,
+                                const Tensor& tensor_in, Tensor* output) {
   const auto in_shape = tensor_in.shape();
   const auto out_shape = output->shape();
 
@@ -67,18 +68,18 @@ void DnnPooling3dOp<T>::Compute(
     transformed_output = *output;
   }
 
-  perftools::gputools::dnn::PoolingDescriptor pooling_desc(3);
+  se::dnn::PoolingDescriptor pooling_desc(3);
   pooling_desc.set_pooling_mode(pooling_mode);
-  perftools::gputools::dnn::BatchDescriptor input_desc(3);
+  se::dnn::BatchDescriptor input_desc(3);
   input_desc.set_count(in_batch)
       .set_feature_map_count(in_features)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-  perftools::gputools::dnn::BatchDescriptor output_desc(3);
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+  se::dnn::BatchDescriptor output_desc(3);
   output_desc.set_count(in_batch)
       .set_feature_map_count(in_features)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
   for (size_t i = 0; i < window.size(); ++i) {
-    const auto dim_i = static_cast<perftools::gputools::dnn::DimIndex>(i);
+    const auto dim_i = static_cast<se::dnn::DimIndex>(i);
     pooling_desc.set_window(dim_i, window[i]);
     pooling_desc.set_stride(dim_i, stride[i]);
     pooling_desc.set_padding(dim_i, padding[i]);
@@ -102,7 +103,7 @@ void DnnPooling3dOp<T>::Compute(
                                       output_desc, &output_data)
                     .ok();
   OP_REQUIRES(context, status,
-              errors::Internal("cudnn PoolForward launch failed"));
+              errors::Internal("dnn PoolForward launch failed"));
 
   if (data_format == FORMAT_NHWC) {
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
@@ -115,14 +116,13 @@ void DnnPooling3dOp<T>::Compute(
 
 template <typename T>
 void DnnPooling3dGradOp<T>::Compute(
-    OpKernelContext* context,
-    perftools::gputools::dnn::PoolingMode pooling_mode,
+    OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
     const std::array<int64, 3>& window, const std::array<int64, 3>& stride,
     const std::array<int64, 3>& padding,
     const std::array<int64, 3>& output_size, TensorFormat data_format,
     const Tensor& out_backprop, const TensorShape& tensor_in_shape,
     const Tensor* tensor_in, const Tensor* tensor_out, Tensor* input_backprop) {
-  CHECK((pooling_mode != perftools::gputools::dnn::PoolingMode::kMaximum) ||
+  CHECK((pooling_mode != se::dnn::PoolingMode::kMaximum) ||
         (tensor_in && tensor_out))
       << "For MaxPoolGrad, both tensor_in and tensor_out needs to be "
          "specified";
@@ -186,21 +186,21 @@ void DnnPooling3dGradOp<T>::Compute(
         transformed_output_backprop.tensor<T, 5>());
   }
 
-  perftools::gputools::dnn::PoolingDescriptor pooling_desc(3);
+  se::dnn::PoolingDescriptor pooling_desc(3);
   pooling_desc.set_pooling_mode(pooling_mode);
 
-  perftools::gputools::dnn::BatchDescriptor orig_output_desc(3);
+  se::dnn::BatchDescriptor orig_output_desc(3);
   orig_output_desc.set_count(in_batch)
       .set_feature_map_count(in_features)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
-  perftools::gputools::dnn::BatchDescriptor orig_input_desc(3);
+  se::dnn::BatchDescriptor orig_input_desc(3);
   orig_input_desc.set_count(in_batch)
       .set_feature_map_count(in_features)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
   for (size_t i = 0; i < window.size(); ++i) {
-    const auto dim_i = static_cast<perftools::gputools::dnn::DimIndex>(i);
+    const auto dim_i = static_cast<se::dnn::DimIndex>(i);
     pooling_desc.set_window(dim_i, window[i]);
     pooling_desc.set_stride(dim_i, stride[i]);
     pooling_desc.set_padding(dim_i, padding[i]);
@@ -232,7 +232,7 @@ void DnnPooling3dGradOp<T>::Compute(
                              output_backprop_data, &input_backprop_data)
           .ok();
   OP_REQUIRES(context, status,
-              errors::Internal("cudnn PoolBackward launch failed"));
+              errors::Internal("dnn PoolBackward launch failed"));
 
   if (data_format == FORMAT_NHWC) {
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
@@ -249,6 +249,6 @@ void DnnPooling3dGradOp<T>::Compute(
 TF_CALL_float(DEFINE_DNN_OPS) TF_CALL_half(DEFINE_DNN_OPS)
 #undef DEFINE_DNN_OPS
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

@@ -2,21 +2,22 @@
 #   contains parts of TensorFlow that are experimental or unstable and which
 #   are not supported.
 
-package(default_visibility = [
-    "//learning/brain:__subpackages__",
-    "//tensorflow:__subpackages__",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "py_test",
     "tf_custom_op_library",
-    "tf_custom_op_py_library",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
+)
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+
+package(
+    default_visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_custom_op_py_library(
@@ -36,15 +37,21 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":gen_skip_gram_ops",
+        "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:random_seed",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -91,6 +98,7 @@ py_test(
     name = "skip_gram_ops_test",
     size = "medium",
     srcs = ["python/ops/skip_gram_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":text_py",
@@ -104,15 +112,4 @@ py_test(
         "//tensorflow/python:random_seed",
         "//tensorflow/python:training",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

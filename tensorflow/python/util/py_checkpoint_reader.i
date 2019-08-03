@@ -68,22 +68,54 @@ limitations under the License.
   $result = output_map.release();
 }
 
+%typemap(out) const tensorflow::checkpoint::TensorSliceReader::VarToDataTypeMap& {
+  tensorflow::Safe_PyObjectPtr output_map(tensorflow::make_safe(PyDict_New()));
+  for (auto v : *$1) {
+%#if PY_MAJOR_VERSION >= 3
+    tensorflow::Safe_PyObjectPtr key(
+        tensorflow::make_safe(PyUnicode_FromStringAndSize(v.first.c_str(), v.first.size())));
+%#else
+    tensorflow::Safe_PyObjectPtr key(
+        tensorflow::make_safe(PyString_FromStringAndSize(v.first.c_str(), v.first.size())));
+%#endif
+    if (!key) {
+      SWIG_fail;
+    }
+%#if PY_MAJOR_VERSION >= 3
+    tensorflow::Safe_PyObjectPtr value(tensorflow::make_safe(PyLong_FromLong(v.second)));
+%#else
+    tensorflow::Safe_PyObjectPtr value(tensorflow::make_safe(PyInt_FromLong(v.second)));
+%#endif
+    if (!value) {
+      SWIG_fail;
+    }
+    if (PyDict_SetItem(output_map.get(), key.get(), value.get()) == -1) {
+      SWIG_fail;
+    } else {
+      key.release();
+      value.release();
+    }
+  }
+
+  $result = output_map.release();
+}
+
 %{
 static PyObject* CheckpointReader_GetTensor(
       tensorflow::checkpoint::CheckpointReader* reader,
       const string& name,
-      TF_Status* out_status) {
+      TF_Status* status) {
   PyObject* py_obj = Py_None;
   std::unique_ptr<tensorflow::Tensor> tensor;
-  reader->GetTensor(name, &tensor, out_status);
-  if (TF_GetCode(out_status) == TF_OK) {
-    tensorflow::Status status =
-        tensorflow::ConvertTensorToNdarray(*tensor.get(), &py_obj);
-    if (!status.ok()) {
-      Set_TF_Status_from_Status(out_status, status);
+  reader->GetTensor(name, &tensor, status);
+  if (TF_GetCode(status) == TF_OK) {
+    tensorflow::Status s =
+        tensorflow::TensorToNdarray(*tensor.get(), &py_obj);
+    if (!s.ok()) {
+      Set_TF_Status_from_Status(status, s);
     }
   }
-  return py_obj;
+  return PyArray_Return(reinterpret_cast<PyArrayObject*>(py_obj));
 }
 %}
 
@@ -91,7 +123,7 @@ static PyObject* CheckpointReader_GetTensor(
 PyObject* CheckpointReader_GetTensor(
     tensorflow::checkpoint::CheckpointReader* reader,
     const string& name,
-    TF_Status* out_status);
+    TF_Status* status);
 
 %ignoreall
 
@@ -102,30 +134,34 @@ PyObject* CheckpointReader_GetTensor(
 %unignore tensorflow::checkpoint::CheckpointReader::~CheckpointReader;
 %rename("debug_string") tensorflow::checkpoint::CheckpointReader::DebugString;
 %rename("get_variable_to_shape_map") tensorflow::checkpoint::CheckpointReader::GetVariableToShapeMap;
+%rename("_GetVariableToDataTypeMap") tensorflow::checkpoint::CheckpointReader::GetVariableToDataTypeMap;
 %rename("_HasTensor") tensorflow::checkpoint::CheckpointReader::HasTensor;
 %unignore CheckpointReader_GetTensor;
 
 %extend tensorflow::checkpoint::CheckpointReader {
 %insert("python") %{
+  def get_variable_to_dtype_map(self):
+    from tensorflow.python.framework import dtypes
+    return {name: dtypes.DType(type_enum)
+            for name, type_enum in self._GetVariableToDataTypeMap().items()}
+
   def has_tensor(self, tensor_str):
     from tensorflow.python.util import compat
     return self._HasTensor(compat.as_bytes(tensor_str))
 
   def get_tensor(self, tensor_str):
-    from tensorflow.python.framework import errors
-    with errors.raise_exception_on_not_ok_status() as status:
-      from tensorflow.python.util import compat
-      return CheckpointReader_GetTensor(self, compat.as_bytes(tensor_str),
-                                        status)
+    from tensorflow.python.util import compat
+
+    return CheckpointReader_GetTensor(self, compat.as_bytes(tensor_str))
 %}
 }
 
 %insert("python") %{
 def NewCheckpointReader(filepattern):
-  from tensorflow.python.framework import errors
-  with errors.raise_exception_on_not_ok_status() as status:
-    from tensorflow.python.util import compat
-    return CheckpointReader(compat.as_bytes(filepattern), status)
+  from tensorflow.python.util import compat
+  return CheckpointReader(compat.as_bytes(filepattern))
+
+NewCheckpointReader._tf_api_names_v1 = ['train.NewCheckpointReader']
 %}
 
 %include "tensorflow/c/checkpoint_reader.h"

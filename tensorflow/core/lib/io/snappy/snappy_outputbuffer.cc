@@ -161,7 +161,7 @@ Status SnappyOutputBuffer::Deflate() {
   }
 
   // Write length of compressed block to output buffer.
-  char* compressed_length_array = new char[4];
+  char compressed_length_array[4];
   std::fill(compressed_length_array, compressed_length_array + 4, 0);
   for (int i = 0; i < 4; i++) {
     // Little endian.
@@ -173,7 +173,6 @@ Status SnappyOutputBuffer::Deflate() {
   TF_RETURN_IF_ERROR(AddToOutputBuffer(output.data(), output.size()));
   next_in_ += avail_in_;
   avail_in_ = 0;
-  delete[] compressed_length_array;
 
   return Status::OK();
 }

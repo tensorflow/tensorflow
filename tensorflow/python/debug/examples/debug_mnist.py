@@ -26,6 +26,7 @@ from __future__ import print_function
 
 import argparse
 import sys
+import tempfile
 
 import tensorflow as tf
 
@@ -120,9 +121,20 @@ def main(_):
 
   sess.run(tf.global_variables_initializer())
 
+  if FLAGS.debug and FLAGS.tensorboard_debug_address:
+    raise ValueError(
+        "The --debug and --tensorboard_debug_address flags are mutually "
+        "exclusive.")
   if FLAGS.debug:
-    sess = tf_debug.LocalCLIDebugWrapperSession(sess, ui_type=FLAGS.ui_type)
-    sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
+    config_file_path = (tempfile.mktemp(".tfdbg_config")
+                        if FLAGS.use_random_config_path else None)
+    sess = tf_debug.LocalCLIDebugWrapperSession(
+        sess,
+        ui_type=FLAGS.ui_type,
+        config_file_path=config_file_path)
+  elif FLAGS.tensorboard_debug_address:
+    sess = tf_debug.TensorBoardDebugWrapperSession(
+        sess, FLAGS.tensorboard_debug_address)
 
   # Add this point, sess is a debug wrapper around the actual Session if
   # FLAGS.debug is true. In that case, calling run() will launch the CLI.
@@ -174,6 +186,23 @@ if __name__ == "__main__":
       nargs="?",
       const=True,
       default=False,
-      help="Use debugger to track down bad values during training")
+      help="Use debugger to track down bad values during training. "
+      "Mutually exclusive with the --tensorboard_debug_address flag.")
+  parser.add_argument(
+      "--tensorboard_debug_address",
+      type=str,
+      default=None,
+      help="Connect to the TensorBoard Debugger Plugin backend specified by "
+      "the gRPC address (e.g., localhost:1234). Mutually exclusive with the "
+      "--debug flag.")
+  parser.add_argument(
+      "--use_random_config_path",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="""If set, set config file path to a random file in the temporary
+      directory.""")
   FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  with tf.Graph().as_default():
+    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

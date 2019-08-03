@@ -36,7 +36,7 @@ public class PrimitiveOpTest {
   @Test
   public void equalsHashcode() {
     try (Graph g = new Graph()) {
-      Output array = TestUtil.constant(g, "array", new int[2]);
+      Output<Integer> array = TestUtil.constant(g, "array", new int[2]);
 
       PrimitiveOp test1 =
           new PrimitiveOp(g.opBuilder("Shape", "shape1").addInput(array).build()) {};

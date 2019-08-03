@@ -1,0 +1,7 @@
+path: "tensorflow.keras.estimator"
+tf_module {
+  member_method {
+    name: "model_to_estimator"
+    argspec: "args=[\'keras_model\', \'keras_model_path\', \'custom_objects\', \'model_dir\', \'config\', \'checkpoint_format\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'saver\'], "
+  }
+}

@@ -42,7 +42,7 @@ import java.io.InputStream;
 final class NativeLibrary {
   private static final boolean DEBUG =
       System.getProperty("org.tensorflow.NativeLibrary.DEBUG") != null;
-  private static final String LIBNAME = "tensorflow_jni";
+  private static final String JNI_LIBNAME = "tensorflow_jni";
 
   public static void load() {
     if (isLoaded() || tryLoadLibrary()) {
@@ -57,11 +57,22 @@ final class NativeLibrary {
       return;
     }
     // Native code is not present, perhaps it has been packaged into the .jar file containing this.
-    final String resourceName = makeResourceName();
-    log("resourceName: " + resourceName);
-    final InputStream resource =
-        NativeLibrary.class.getClassLoader().getResourceAsStream(resourceName);
-    if (resource == null) {
+    // Extract the JNI library itself
+    final String jniLibName = System.mapLibraryName(JNI_LIBNAME);
+    final String jniResourceName = makeResourceName(jniLibName);
+    log("jniResourceName: " + jniResourceName);
+    final InputStream jniResource =
+        NativeLibrary.class.getClassLoader().getResourceAsStream(jniResourceName);
+    // Extract the JNI's dependency
+    final String frameworkLibName =
+        getVersionedLibraryName(System.mapLibraryName("tensorflow_framework"));
+    final String frameworkResourceName = makeResourceName(frameworkLibName);
+    log("frameworkResourceName: " + frameworkResourceName);
+    final InputStream frameworkResource =
+        NativeLibrary.class.getClassLoader().getResourceAsStream(frameworkResourceName);
+    // Do not complain if the framework resource wasn't found. This may just mean that we're
+    // building with --config=monolithic (in which case it's not needed and not included).
+    if (jniResource == null) {
       throw new UnsatisfiedLinkError(
           String.format(
               "Cannot find TensorFlow native library for OS: %s, architecture: %s. See "
@@ -72,7 +83,22 @@ final class NativeLibrary {
               os(), architecture()));
     }
     try {
-      System.load(extractResource(resource));
+      // Create a temporary directory for the extracted resource and its dependencies.
+      final File tempPath = createTemporaryDirectory();
+      // Deletions are in the reverse order of requests, so we need to request that the directory be
+      // deleted first, so that it is empty when the request is fulfilled.
+      tempPath.deleteOnExit();
+      final String tempDirectory = tempPath.getCanonicalPath();
+      if (frameworkResource != null) {
+        extractResource(frameworkResource, frameworkLibName, tempDirectory);
+      } else {
+        log(
+            frameworkResourceName
+                + " not found. This is fine assuming "
+                + jniResourceName
+                + " is not built to depend on it.");
+      }
+      System.load(extractResource(jniResource, jniLibName, tempDirectory));
     } catch (IOException e) {
       throw new UnsatisfiedLinkError(
           String.format(
@@ -82,7 +108,7 @@ final class NativeLibrary {
 
   private static boolean tryLoadLibrary() {
     try {
-      System.loadLibrary(LIBNAME);
+      System.loadLibrary(JNI_LIBNAME);
       return true;
     } catch (UnsatisfiedLinkError e) {
       log("tryLoadLibraryFailed: " + e.getMessage());
@@ -100,15 +126,73 @@ final class NativeLibrary {
     }
   }
 
-  private static String extractResource(InputStream resource) throws IOException {
-    final String sampleFilename = System.mapLibraryName(LIBNAME);
-    final int dot = sampleFilename.indexOf(".");
-    final String prefix = (dot < 0) ? sampleFilename : sampleFilename.substring(0, dot);
-    final String suffix = (dot < 0) ? null : sampleFilename.substring(dot);
+  private static boolean resourceExists(String baseName) {
+    return NativeLibrary.class.getClassLoader().getResource(makeResourceName(baseName)) != null;
+  }
 
-    final File dst = File.createTempFile(prefix, suffix);
-    final String dstPath = dst.getAbsolutePath();
+  private static String getVersionedLibraryName(String libFilename) {
+    // If the resource exists as an unversioned file, return that.
+    if (resourceExists(libFilename)) {
+      return libFilename;
+    }
+
+    final String versionName = getMajorVersionNumber();
+
+    // If we're on darwin, the versioned libraries look like blah.1.dylib.
+    final String darwinSuffix = ".dylib";
+    if (libFilename.endsWith(darwinSuffix)) {
+      final String prefix = libFilename.substring(0, libFilename.length() - darwinSuffix.length());
+      if (versionName != null) {
+        final String darwinVersionedLibrary = prefix + "." + versionName + darwinSuffix;
+        if (resourceExists(darwinVersionedLibrary)) {
+          return darwinVersionedLibrary;
+        }
+      } else {
+        // If we're here, we're on darwin, but we couldn't figure out the major version number. We
+        // already tried the library name without any changes, but let's do one final try for the
+        // library with a .so suffix.
+        final String darwinSoName = prefix + ".so";
+        if (resourceExists(darwinSoName)) {
+          return darwinSoName;
+        }
+      }
+    } else if (libFilename.endsWith(".so")) {
+      // Libraries ending in ".so" are versioned like "libfoo.so.1", so try that.
+      final String versionedSoName = libFilename + "." + versionName;
+      if (versionName != null && resourceExists(versionedSoName)) {
+        return versionedSoName;
+      }
+    }
+
+    // Otherwise, we've got no idea.
+    return libFilename;
+  }
+
+  /**
+   * Returns the major version number of this TensorFlow Java API, or {@code null} if it cannot be
+   * determined.
+   */
+  private static String getMajorVersionNumber() {
+    String version = NativeLibrary.class.getPackage().getImplementationVersion();
+    // expecting a string like 1.14.0, we want to get the first '1'.
+    int dotIndex;
+    if (version == null || (dotIndex = version.indexOf('.')) == -1) {
+      return null;
+    }
+    String majorVersion = version.substring(0, dotIndex);
+    try {
+      Integer.parseInt(majorVersion);
+      return majorVersion;
+    } catch (NumberFormatException unused) {
+      return null;
+    }
+  }
+
+  private static String extractResource(
+      InputStream resource, String resourceName, String extractToDirectory) throws IOException {
+    final File dst = new File(extractToDirectory, resourceName);
     dst.deleteOnExit();
+    final String dstPath = dst.toString();
     log("extracting native library to: " + dstPath);
     final long nbytes = copy(resource, dst);
     log(String.format("copied %d bytes to %s", nbytes, dstPath));
@@ -139,10 +223,8 @@ final class NativeLibrary {
     }
   }
 
-  private static String makeResourceName() {
-    return "org/tensorflow/native/"
-        + String.format("%s-%s/", os(), architecture())
-        + System.mapLibraryName(LIBNAME);
+  private static String makeResourceName(String baseName) {
+    return "org/tensorflow/native/" + String.format("%s-%s/", os(), architecture()) + baseName;
   }
 
   private static long copy(InputStream src, File dstFile) throws IOException {
@@ -160,6 +242,23 @@ final class NativeLibrary {
       dst.close();
       src.close();
     }
+  }
+
+  // Shamelessly adapted from Guava to avoid using java.nio, for Android API
+  // compatibility.
+  private static File createTemporaryDirectory() {
+    File baseDirectory = new File(System.getProperty("java.io.tmpdir"));
+    String directoryName = "tensorflow_native_libraries-" + System.currentTimeMillis() + "-";
+    for (int attempt = 0; attempt < 1000; attempt++) {
+      File temporaryDirectory = new File(baseDirectory, directoryName + attempt);
+      if (temporaryDirectory.mkdir()) {
+        return temporaryDirectory;
+      }
+    }
+    throw new IllegalStateException(
+        "Could not create a temporary directory (tried to make "
+            + directoryName
+            + "*) to extract TensorFlow native libraries.");
   }
 
   private NativeLibrary() {}

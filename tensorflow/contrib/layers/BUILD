@@ -1,22 +1,20 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
-package(default_visibility = [
-    "//learning/brain:__subpackages__",
-    "//tensorflow:__subpackages__",
-])
-
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_custom_op_library", "tf_gen_op_libs", "tf_gen_op_wrapper_py", "tf_kernel_library")
+
+package(
+    default_visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+        "//tensorflow_model_optimization:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 tf_custom_op_library(
     # TODO(sibyl-Mooth6ku,ptucker): Understand why 'python/ops/_' is needed and fix it.
@@ -58,8 +56,10 @@ tf_custom_op_py_library(
         "python/layers/feature_column_ops.py",
         "python/layers/initializers.py",
         "python/layers/layers.py",
+        "python/layers/normalization.py",
         "python/layers/optimizers.py",
         "python/layers/regularizers.py",
+        "python/layers/rev_block_lib.py",
         "python/layers/summaries.py",
         "python/layers/target_column.py",
         "python/layers/utils.py",
@@ -75,6 +75,14 @@ tf_custom_op_py_library(
         ":sparse_feature_cross_op_op_lib",
     ],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//learning/lib/ami/simple_ml/link_other_ml_tools/tensorflow:__subpackages__",
+        "//tensorflow:__subpackages__",
+        "//tensorflow_model_optimization:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+        "//video/youtube/personalization:__subpackages__",
+    ],
     deps = [
         ":sparse_feature_cross_op",
         "//tensorflow/contrib/framework:framework_py",
@@ -87,17 +95,21 @@ tf_custom_op_py_library(
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:common_shapes",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
+        "//tensorflow/python:layers_base",
+        "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:standard_ops",
@@ -108,6 +120,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/feature_column",
         "@six_archive//:six",
     ],
@@ -148,14 +161,15 @@ py_test(
     name = "regularizers_test",
     size = "small",
     srcs = ["python/layers/regularizers_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
         "//third_party/py/numpy",
     ],
 )
@@ -164,12 +178,13 @@ py_test(
     name = "initializers_test",
     size = "small",
     srcs = ["python/layers/initializers_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:session",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
@@ -177,9 +192,28 @@ py_test(
 )
 
 py_test(
+    name = "normalization_test",
+    size = "medium",
+    srcs = ["python/layers/normalization_test.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    deps = [
+        ":layers_py",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "optimizers_test",
-    size = "small",
     srcs = ["python/layers/optimizers_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -201,6 +235,7 @@ py_test(
     name = "summaries_test",
     size = "small",
     srcs = ["python/layers/summaries_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -216,18 +251,20 @@ py_test(
     name = "feature_column_test",
     size = "small",
     srcs = ["python/layers/feature_column_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
     ],
 )
@@ -236,6 +273,7 @@ py_test(
     name = "feature_column_ops_test",
     size = "medium",
     srcs = ["python/layers/feature_column_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -251,7 +289,7 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
     ],
 )
@@ -260,12 +298,13 @@ py_test(
     name = "target_column_test",
     size = "small",
     srcs = ["python/layers/target_column_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:session",
         "//tensorflow/python:variables",
     ],
 )
@@ -274,12 +313,13 @@ py_test(
     name = "sparse_feature_cross_op_test",
     size = "medium",
     srcs = ["python/kernel_tests/sparse_feature_cross_op_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:session",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//third_party/py/numpy",
@@ -291,6 +331,7 @@ py_test(
     size = "small",
     timeout = "moderate",
     srcs = ["python/layers/embedding_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -313,6 +354,7 @@ py_test(
     name = "utils_test",
     size = "small",
     srcs = ["python/layers/utils_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -328,7 +370,9 @@ py_test(
     name = "sparse_ops_test",
     size = "small",
     srcs = ["python/ops/sparse_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":layers_py",
         "//tensorflow/python:array_ops",
@@ -343,6 +387,7 @@ py_test(
     name = "encoders_test",
     size = "small",
     srcs = ["python/layers/encoders_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",
@@ -353,14 +398,17 @@ py_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+py_test(
+    name = "rev_block_lib_test",
+    size = "medium",
+    srcs = ["python/layers/rev_block_lib_test.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+    ],
 )

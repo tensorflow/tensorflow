@@ -23,9 +23,12 @@ namespace tensorflow {
 
 TEST(CandidateSamplerOpsTest, CandidateSampler_ShapeFn) {
   for (const char* op_name : {
-           "AllCandidateSampler", "FixedUnigramCandidateSampler",
-           "LearnedUnigramCandidateSampler", "LogUniformCandidateSampler",
-           "ThreadUnsafeUnigramCandidateSampler", "UniformCandidateSampler",
+           "AllCandidateSampler",
+           "FixedUnigramCandidateSampler",
+           "LearnedUnigramCandidateSampler",
+           "LogUniformCandidateSampler",
+           "ThreadUnsafeUnigramCandidateSampler",
+           "UniformCandidateSampler",
        }) {
     ShapeInferenceTestOp op(op_name);
     TF_ASSERT_OK(NodeDefBuilder("test", op.name)

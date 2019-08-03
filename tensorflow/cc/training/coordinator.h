@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_TRAINING_COORDINATOR_H_
-#define THIRD_PARTY_TENSORFLOW_CC_TRAINING_COORDINATOR_H_
+#ifndef TENSORFLOW_CC_TRAINING_COORDINATOR_H_
+#define TENSORFLOW_CC_TRAINING_COORDINATOR_H_
 
 #include <atomic>
 #include <memory>
@@ -128,4 +128,4 @@ class Coordinator {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_TRAINING_COORDINATOR_H_
+#endif  // TENSORFLOW_CC_TRAINING_COORDINATOR_H_

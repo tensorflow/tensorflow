@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "Sinh"
+  endpoint {
+    name: "math.sinh"
+  }
+  endpoint {
+    name: "sinh"
+  }
+}

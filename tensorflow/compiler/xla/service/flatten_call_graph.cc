@@ -26,7 +26,10 @@ namespace xla {
 
 namespace {
 
-// Helper to replace the called computation at a while- or call-instruction.
+// Helper to replace the called computation at a while-, call-, case-, or
+// conditional-instruction. This function replaces exactly one instance of
+// 'computation' with 'new_computation' even if 'instruction' calls
+// 'computation' more than once.
 void ReplaceCalledComputation(HloInstruction* instruction,
                               HloComputation* computation,
                               HloComputation* new_computation) {
@@ -43,6 +46,18 @@ void ReplaceCalledComputation(HloInstruction* instruction,
     case HloOpcode::kCall: {
       CHECK_EQ(instruction->to_apply(), computation);
       instruction->set_to_apply(new_computation);
+      break;
+    }
+    case HloOpcode::kConditional: {
+      for (int b = 0; b < instruction->branch_count(); ++b) {
+        if (b == instruction->branch_count() - 1) {
+          CHECK_EQ(computation, instruction->branch_computation(b));
+        }
+        if (computation == instruction->branch_computation(b)) {
+          instruction->set_branch_computation(b, new_computation);
+          break;
+        }
+      }
       break;
     }
     default:
@@ -80,15 +95,15 @@ Status FlattenNode(const CallGraphNode& node) {
     while (!worklist.empty()) {
       auto current = worklist.back();
       worklist.pop_back();
-      for (auto& instruction : current->instructions()) {
-        if (GetInstructionCallContext(instruction.get()) !=
+      for (auto* instruction : current->instructions()) {
+        if (GetInstructionCallContext(instruction->opcode()) !=
             CallContext::kSequential) {
           continue;
         }
         for (auto callee : instruction->called_computations()) {
           HloComputation* callee_clone =
               module->AddEmbeddedComputation(callee->Clone());
-          ReplaceCalledComputation(instruction.get(), callee, callee_clone);
+          ReplaceCalledComputation(instruction, callee, callee_clone);
           worklist.push_back(callee_clone);
         }
       }

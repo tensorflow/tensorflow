@@ -19,10 +19,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_tensor_dense_matmul_op.h"
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 
 namespace tensorflow {
 
@@ -173,8 +174,9 @@ REGISTER_KERNELS_CPU(double);
 REGISTER_KERNELS_CPU(int32);
 REGISTER_KERNELS_CPU(complex64);
 REGISTER_KERNELS_CPU(complex128);
+REGISTER_KERNELS_CPU(bfloat16);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
 #define DECLARE_GPU_SPEC(T, Tindices, ADJ_A, ADJ_B)                       \
@@ -221,7 +223,7 @@ DECLARE_ADJOINT_GPU_SPEC(float);
 REGISTER_KERNELS_GPU(float);
 #undef REGISTER_GPU
 #undef REGISTER_KERNELS_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
 

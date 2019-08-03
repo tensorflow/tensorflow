@@ -18,8 +18,10 @@ limitations under the License.
 
 // TensorFlow uses semantic versioning, see http://semver.org/.
 
+// Also update tensorflow/tensorflow.bzl and
+// tensorflow/tools/pip_package/setup.py
 #define TF_MAJOR_VERSION 1
-#define TF_MINOR_VERSION 3
+#define TF_MINOR_VERSION 14
 #define TF_PATCH_VERSION 0
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
@@ -33,8 +35,6 @@ limitations under the License.
 #define TF_VERSION_STRING                                            \
   (TF_STR(TF_MAJOR_VERSION) "." TF_STR(TF_MINOR_VERSION) "." TF_STR( \
       TF_PATCH_VERSION) TF_VERSION_SUFFIX)
-
-// TODO(josh11b): Public API functions for exporting the above.
 
 // GraphDef compatibility versions (the versions field in graph.proto).
 //
@@ -90,10 +90,25 @@ limitations under the License.
 // 23. Remove NonMaxSuppression in favor of NonMaxSuppressionV2.
 // 24. Deprecate lookup ops (v1) ops in favor of v2 (30may2017)
 // 25. Deprecate stack (v1) ops in favor of v2 (2017/6/15).
+// 25. Deprecate RandomPoisson (v1) ops in favor of v2 (2017/10/25).
+// 26. Add a bool 'stripped_default_attrs' to MetaInfoDef indicating
+//     whether default-valued attrs have been stripped from the nodes in the
+//     GraphDef. (7dec2017)
+// 27. Deprecate TensorArray ops v2 in favor of v3 and deprecated io_ops
+//     deprecated in favor of V2 ops. (2018/01/23)
+// 28. Deprecate MatrixExponential op in favor of Python implementation.
+//     (2018/08/21).
+// (2019/02/15). Added `control_ret` field to FunctionDef proto, and
+//     `control_output` field to OpDef proto.
+// 29. Deprecate StatefulStandardNormal op in favor of StatefulStandardNormalV2.
+//     (2019/03/25).
+// (2019/04/17). Added `arg_attr` field to FunctionDefProto.
+// 30. (2019/05/09) First date based GraphDef version. GraphDef
+//     versions advance by 1 each day after this point.
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 24
+#define TF_GRAPH_DEF_VERSION 115  // Updated: 2019/8/2
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //
@@ -116,5 +131,9 @@ extern const char* tf_compiler_version();
 // The git commit designator when tensorflow was built
 // If no git repository, this will be "internal".
 extern const char* tf_git_version();
+// Value of the _GLIBCXX_USE_CXX11_ABI flag, or 0 if it's not set.
+extern int tf_cxx11_abi_flag();
+// Returns 1 if build is monolithic, or 0 otherwise.
+extern int tf_monolithic_build();
 
 #endif  // TENSORFLOW_CORE_PUBLIC_VERSION_H_

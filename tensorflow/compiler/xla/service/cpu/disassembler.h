@@ -37,7 +37,7 @@ struct DisassemblerResult {
   DisassemblerResult(const string& text, size_t code_size_bytes)
       : text(text), code_size_bytes(code_size_bytes) {}
 
-  // The dissassembled text sections of the object file.
+  // The disassembled text sections of the object file.
   string text;
   // The total number of bytes of executable code in the object file.
   uint64_t code_size_bytes;
@@ -53,7 +53,7 @@ class Disassembler {
   // Returns a DisassemblerResult for the given object file, containing the
   // disassembled code.
   //
-  // If we couldnt' retrieve a disassembler for this platform, an error status
+  // If we couldn't retrieve a disassembler for this platform, an error status
   // is returned.
   StatusOr<DisassemblerResult> DisassembleObjectFile(
       const llvm::object::ObjectFile& object_file) const;

@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "TensorArrayGradV2"
+  visibility: HIDDEN
+}

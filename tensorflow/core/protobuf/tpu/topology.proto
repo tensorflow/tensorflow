@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+option cc_enable_arenas = true;
+
+package tensorflow.tpu;
+
+// Describes the geometry of a TPU mesh.
+message TopologyProto {
+  // The dimensions of the TPU topology, in cores. Typically, this is a 3D
+  // topology [x, y, core], where the major dimensions correspond to TPU chips,
+  // and the minor dimension describes the number of cores on a multicore chip.
+  repeated int32 mesh_shape = 1;
+
+  // Number of TensorFlow tasks in the cluster.
+  int32 num_tasks = 2;
+
+  // Number of TPU devices per task.
+  int32 num_tpu_devices_per_task = 3;
+
+  // A flattened rank 3 int32 array with shape
+  // [num_tasks, num_tpu_devices_per_task, len(mesh_shape)].
+  // `tasks` is the number of tasks in the TPU cluster, `devices` is the number
+  // of TPU devices per task, and the minor dimension corresponds to a position
+  // in the TPU mesh topology. Each entry [task, device, axis] gives the
+  // `axis`-th coordinate in the topology of a task/device pair.
+  repeated int32 device_coordinates = 4;
+}

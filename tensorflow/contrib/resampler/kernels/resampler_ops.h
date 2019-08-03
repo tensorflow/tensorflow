@@ -13,8 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_RESAMPLER_KERNELS_RESAMPLER_OPS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_RESAMPLER_KERNELS_RESAMPLER_OPS_H_
+#ifndef TENSORFLOW_CONTRIB_RESAMPLER_KERNELS_RESAMPLER_OPS_H_
+#define TENSORFLOW_CONTRIB_RESAMPLER_KERNELS_RESAMPLER_OPS_H_
 
 #if PLATFORM_WINDOWS
 #define __restrict__ __restrict
@@ -29,40 +29,26 @@ namespace functor {
 
 // Helper functor for the Resampler Op in 2D
 template <typename Device, typename T>
-struct Resampler2DFunctor{
-  void operator ()(::tensorflow::OpKernelContext* ctx,
-                   const Device& d,
-                   const T* __restrict__ data,
-                   const T* __restrict__ warp,
-                   T* __restrict__ output,
-                   const int batch_size,
-                   const int data_height,
-                   const int data_width,
-                   const int data_channels,
-                   const int num_sampling_points);
+struct Resampler2DFunctor {
+  void operator()(::tensorflow::OpKernelContext* ctx, const Device& d,
+                  const T* __restrict__ data, const T* __restrict__ warp,
+                  T* __restrict__ output, const int batch_size,
+                  const int data_height, const int data_width,
+                  const int data_channels, const int num_sampling_points);
 };
-
 
 // Helper functor for the Resampler Gradient Op in 2D
 template <typename Device, typename T>
-struct ResamplerGrad2DFunctor{
-  void operator ()(::tensorflow::OpKernelContext* ctx,
-                   const Device& d,
-                   const T* __restrict__ data,
-                   const T* __restrict__ warp,
-                   const T* __restrict__ grad_output,
-                   T* __restrict__ grad_data,
-                   T* __restrict__ grad_warp,
-                   const int batch_size,
-                   const int data_height,
-                   const int data_width,
-                   const int data_channels,
-                   const int num_sampling_points);
+struct ResamplerGrad2DFunctor {
+  void operator()(::tensorflow::OpKernelContext* ctx, const Device& d,
+                  const T* __restrict__ data, const T* __restrict__ warp,
+                  const T* __restrict__ grad_output, T* __restrict__ grad_data,
+                  T* __restrict__ grad_warp, const int batch_size,
+                  const int data_height, const int data_width,
+                  const int data_channels, const int num_sampling_points);
 };
-
 
 }  // namespace functor
 }  // namespace tensorflow
 
-
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_RESAMPLER_KERNELS_RESAMPLER_OPS_H_
+#endif  // TENSORFLOW_CONTRIB_RESAMPLER_KERNELS_RESAMPLER_OPS_H_

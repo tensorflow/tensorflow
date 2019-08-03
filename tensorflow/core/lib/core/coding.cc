@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/coding.h"
 
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 
 namespace tensorflow {
 namespace core {
@@ -131,6 +131,17 @@ int VarintLength(uint64_t v) {
     len++;
   }
   return len;
+}
+
+const char* GetVarint32Ptr(const char* p, const char* limit, uint32* value) {
+  if (p < limit) {
+    uint32 result = *(reinterpret_cast<const unsigned char*>(p));
+    if ((result & 128) == 0) {
+      *value = result;
+      return p + 1;
+    }
+  }
+  return GetVarint32PtrFallback(p, limit, value);
 }
 
 const char* GetVarint32PtrFallback(const char* p, const char* limit,

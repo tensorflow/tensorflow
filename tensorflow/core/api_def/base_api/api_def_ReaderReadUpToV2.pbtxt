@@ -1,0 +1,43 @@
+op {
+  graph_op_name: "ReaderReadUpToV2"
+  endpoint {
+    name: "ReaderReadUpTo"
+  }
+  in_arg {
+    name: "reader_handle"
+    description: <<END
+Handle to a `Reader`.
+END
+  }
+  in_arg {
+    name: "queue_handle"
+    description: <<END
+Handle to a `Queue`, with string work items.
+END
+  }
+  in_arg {
+    name: "num_records"
+    description: <<END
+number of records to read from `Reader`.
+END
+  }
+  out_arg {
+    name: "keys"
+    description: <<END
+A 1-D tensor.
+END
+  }
+  out_arg {
+    name: "values"
+    description: <<END
+A 1-D tensor.
+END
+  }
+  summary: "Returns up to `num_records` (key, value) pairs produced by a Reader."
+  description: <<END
+Will dequeue from the input queue if necessary (e.g. when the
+Reader needs to start reading from a new file since it has finished
+with the previous file).
+It may return less than `num_records` even before the last batch.
+END
+}

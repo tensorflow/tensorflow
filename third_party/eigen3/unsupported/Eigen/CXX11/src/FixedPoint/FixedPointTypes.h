@@ -7,8 +7,8 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-#ifndef EIGEN_CXX11_FIXED_POINT_TYPES_H
-#define EIGEN_CXX11_FIXED_POINT_TYPES_H
+#ifndef CXX11_SRC_FIXEDPOINT_FIXEDPOINTTYPES_H_
+#define CXX11_SRC_FIXEDPOINT_FIXEDPOINTTYPES_H_
 
 #include <cmath>
 #include <iostream>
@@ -249,9 +249,7 @@ EIGEN_STRONG_INLINE QInt32& operator/=(QInt32& a, const QInt32 b) {
   a.value /= b.value;
   return a;
 }
-EIGEN_STRONG_INLINE QInt32 operator-(const QInt32 a) {
-  return -a.value;
-}
+EIGEN_STRONG_INLINE QInt32 operator-(const QInt32 a) { return -a.value; }
 
 // Scaling QInt32 by double. We do the arithmetic in double because
 // float only has 23 bits of mantissa, so casting QInt32 to float might reduce
@@ -339,4 +337,4 @@ EIGEN_STRONG_INLINE std::ostream& operator<<(std::ostream& os, QInt32 a) {
 
 }  // namespace Eigen
 
-#endif  // EIGEN_CXX11_FIXED_POINT_TYPES_H
+#endif  // CXX11_SRC_FIXEDPOINT_FIXEDPOINTTYPES_H_

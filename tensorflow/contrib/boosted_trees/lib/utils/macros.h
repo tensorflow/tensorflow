@@ -13,8 +13,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_MACROS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_MACROS_H_
+#ifndef TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_MACROS_H_
+#define TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_MACROS_H_
 
 #include "tensorflow/core/platform/macros.h"
 
@@ -23,4 +23,4 @@
     return (STATUS);                              \
   }
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_MACROS_H_
+#endif  // TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_MACROS_H_

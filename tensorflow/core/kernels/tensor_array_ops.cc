@@ -23,13 +23,13 @@ limitations under the License.
 #include <numeric>  // clang-format off
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/kernels/tensor_array.h"
@@ -40,11 +40,12 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 typedef Eigen::GpuDevice GPUDevice;
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // clang-format on
 
@@ -162,6 +163,14 @@ class TensorArrayOp : public TensorArrayCreationOp {
     OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
     OP_REQUIRES_OK(context, context->GetAttr("element_shape", &element_shape_));
     OP_REQUIRES_OK(context, context->GetAttr("dynamic_size", &dynamic_size_));
+    // The HasAttr check is for backwards compatibility with older op
+    // versions which do not have this attribute.
+    if (context->HasAttr("identical_element_shapes")) {
+      OP_REQUIRES_OK(context, context->GetAttr("identical_element_shapes",
+                                               &identical_element_shapes_));
+    } else {
+      identical_element_shapes_ = false;
+    }
     OP_REQUIRES_OK(context,
                    context->GetAttr("clear_after_read", &clear_after_read_));
     OP_REQUIRES_OK(context,
@@ -196,8 +205,9 @@ class TensorArrayOp : public TensorArrayCreationOp {
 
     TensorArray* tensor_array = new TensorArray(
         key, dtype_, *tensor_array_output_handle, size, element_shape_,
-        dynamic_size_, false /* multiple_writes_aggregate */,
-        false /* is_grad */, -1 /* marked_size */, clear_after_read_);
+        identical_element_shapes_, dynamic_size_,
+        false /* multiple_writes_aggregate */, false /* is_grad */,
+        -1 /* marked_size */, clear_after_read_);
 
     TF_RETURN_IF_ERROR(
         rm->Create(ctx->step_container()->name(), key, tensor_array));
@@ -210,6 +220,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
  private:
   DataType dtype_;
   PartialTensorShape element_shape_;
+  bool identical_element_shapes_;
   bool dynamic_size_;
   bool clear_after_read_;
   string tensor_array_name_;  // The name used to create the TensorArray.
@@ -223,7 +234,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayV2").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("TensorArrayV3").Device(DEVICE_CPU),
                         TensorArrayOp);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(type)                                   \
   REGISTER_KERNEL_BUILDER(Name("TensorArray")                \
@@ -248,13 +259,17 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayV3").Device(DEVICE_CPU),
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // GRADIENT *******************************************************************
-
+// Note that this op may have an optional third input. If present, it represents
+// a shape value. It indicates that element shape of this gradient array is that
+// shape value concatenated with the element shape of the original tensor array.
+// See TensorArrayGradWithShape.
 class TensorArrayGradOp : public TensorArrayCreationOp {
  public:
   explicit TensorArrayGradOp(OpKernelConstruction* context)
@@ -276,14 +291,14 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
       }
     } else {
       container = "_tensor_arrays";
-      auto resource = ctx->input(0).flat<ResourceHandle>()(0);
+      const auto& resource = ctx->input(0).flat<ResourceHandle>()(0);
       if (StringPiece(resource.name()).substr(0, container.size()) !=
           container) {
         return errors::InvalidArgument("Wrong input container. ",
                                        resource.name());
       }
       tensor_array_name =
-          StringPiece(resource.name()).substr(container.size()).ToString();
+          string(StringPiece(resource.name()).substr(container.size()));
     }
 
     auto output_handle = tensor_array_output_handle->flat<string>();
@@ -315,18 +330,38 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
           "previous write?  Gradient calculation is impossible when multiple "
           "writes are performed to the same index.");
     }
+    TensorShape shape_to_prepend;
+    auto element_shape = PartialTensorShape();
+    if (ctx->num_inputs() > 2) {
+      TF_RETURN_IF_ERROR(
+          ctx->op_kernel().MakeShape(ctx->input(2), &shape_to_prepend));
+      auto ta_element_shape = tensor_array->ElemShape();
+      if (!ta_element_shape.unknown_rank()) {
+        std::vector<int64> dims;
+        for (auto dim : shape_to_prepend) {
+          dims.push_back(dim.size);
+        }
+        for (auto dim : ta_element_shape) {
+          dims.push_back(dim.size);
+        }
+        TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
+            gtl::ArraySlice<int64>(dims), &element_shape));
+      }
+    } else {
+      element_shape = tensor_array->ElemShape();
+    }
 
     const auto key = strings::StrCat(output_handle(0), output_handle(1));
-    auto creator = [this, key, tensor_array, array_size, marked_size,
-                    tensor_array_output_handle,
-                    output_handle](TensorArray** ret) -> Status {
+    auto creator = [key, tensor_array, array_size, marked_size, element_shape,
+                    shape_to_prepend,
+                    tensor_array_output_handle](TensorArray** ret) -> Status {
       *ret = new TensorArray(
           key, tensor_array->ElemType(), *tensor_array_output_handle,
-          array_size, tensor_array->ElemShape(), false /* dynamic_size */,
-          true /* multiple_writes_aggregate */, true /* is_grad */,
-          marked_size /* marked_size */, true /* close_after_read */);
-      TF_RETURN_IF_ERROR((*ret)->CopyShapesFrom(tensor_array));
-      return Status::OK();
+          array_size, element_shape, tensor_array->HasIdenticalElementShapes(),
+          false /* dynamic_size */, true /* multiple_writes_aggregate */,
+          true /* is_grad */, marked_size /* marked_size */,
+          true /* close_after_read */);
+      return (*ret)->CopyShapesFrom(tensor_array, &shape_to_prepend);
     };
 
     Status s = rm->LookupOrCreate<TensorArray>(
@@ -351,7 +386,8 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV2").Device(DEVICE_CPU),
                         TensorArrayGradOp);
 REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV3").Device(DEVICE_CPU),
                         TensorArrayGradOp);
-
+REGISTER_KERNEL_BUILDER(Name("TensorArrayGradWithShape").Device(DEVICE_CPU),
+                        TensorArrayGradOp);
 REGISTER_KERNEL_BUILDER(Name("TensorArrayGrad")
                             .Device(DEVICE_GPU)
                             .HostMemory("handle")
@@ -365,6 +401,12 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV2")
 REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV3")
                             .Device(DEVICE_GPU)
                             .HostMemory("handle")
+                            .HostMemory("grad_handle"),
+                        TensorArrayGradOp);
+REGISTER_KERNEL_BUILDER(Name("TensorArrayGradWithShape")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("handle")
+                            .HostMemory("shape_to_prepend")
                             .HostMemory("grad_handle"),
                         TensorArrayGradOp);
 
@@ -421,7 +463,7 @@ TF_CALL_ALL_TYPES(REGISTER_WRITE);
 
 #undef REGISTER_WRITE
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(type)                                      \
   REGISTER_KERNEL_BUILDER(Name("TensorArrayWrite")              \
@@ -449,7 +491,7 @@ TF_CALL_complex128(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // READ ***********************************************************************
 
@@ -510,7 +552,7 @@ TF_CALL_ALL_TYPES(REGISTER_READ)
 
 #undef REGISTER_READ
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(type)                                     \
   REGISTER_KERNEL_BUILDER(Name("TensorArrayRead")              \
@@ -535,10 +577,11 @@ TF_CALL_ALL_TYPES(REGISTER_READ)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // PACK and GATHER ************************************************************
 
@@ -643,7 +686,7 @@ class TensorArrayPackOrGatherOp : public OpKernel {
         output_tensor->shaped<T, 2>({1, output_shape.num_elements()});
 
     // Insert the first value
-    input_tensors_flat.emplace_back(new ConstMatrix(
+    input_tensors_flat.push_back(MakeUnique<ConstMatrix>(
         value_0_t->shaped<T, 2>({1, value_0_t->NumElements()})));
 
     for (int i = 1; i < num_indices; ++i) {
@@ -654,16 +697,16 @@ class TensorArrayPackOrGatherOp : public OpKernel {
               "TensorArray has inconsistent shapes.  Index 0 has shape: ",
               value_0_t->shape().DebugString(), " but index ", i,
               " has shape: ", value_t->shape().DebugString()));
-      input_tensors_flat.emplace_back(
-          new ConstMatrix(value_t->shaped<T, 2>({1, value_t->NumElements()})));
+      input_tensors_flat.push_back(MakeUnique<ConstMatrix>(
+          value_t->shaped<T, 2>({1, value_t->NumElements()})));
     }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     if (std::is_same<Device, GPUDevice>::value) {
       ConcatGPU<T>(ctx, input_tensors_flat, output_tensor, &output_flat);
       return;
     }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     ConcatCPU<T>(ctx->device(), input_tensors_flat, &output_flat);
   }
 
@@ -695,14 +738,14 @@ class TensorArrayPackOrGatherOp : public OpKernel {
       TensorArrayPackOrGatherOp<CPUDevice, type, false /* LEGACY_PACK */>);
 
 TF_CALL_POD_STRING_TYPES(REGISTER_GATHER_AND_PACK);
+TF_CALL_variant(REGISTER_GATHER_AND_PACK);
 REGISTER_GATHER_AND_PACK(quint8);
 REGISTER_GATHER_AND_PACK(qint8);
 REGISTER_GATHER_AND_PACK(qint32);
-REGISTER_GATHER_AND_PACK(bfloat16);
 
 #undef REGISTER_GATHER_AND_PACK
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(type)                                                  \
   REGISTER_KERNEL_BUILDER(                                                  \
@@ -764,7 +807,7 @@ REGISTER_KERNEL_BUILDER(
         .HostMemory("handle"),
     TensorArrayPackOrGatherOp<CPUDevice, int32, false /* LEGACY_PACK */>);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // CONCAT *********************************************************************
 
@@ -882,7 +925,7 @@ class TensorArrayConcatOp : public OpKernel {
     for (size_t i = 0; i < values.size(); ++i) {
       const Tensor* value_t = value_tensors[i];
       if (value_t->NumElements() > 0) {
-        input_tensors_flat.emplace_back(new ConstMatrix(
+        input_tensors_flat.push_back(MakeUnique<ConstMatrix>(
             value_t->shaped<T, 2>({1, value_t->NumElements()})));
       }
     }
@@ -890,12 +933,12 @@ class TensorArrayConcatOp : public OpKernel {
     if (output_shape.num_elements() > 0) {
       auto output_flat =
           output_tensor->shaped<T, 2>({1, output_shape.num_elements()});
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       if (std::is_same<Device, GPUDevice>::value) {
         ConcatGPU<T>(ctx, input_tensors_flat, output_tensor, &output_flat);
         return;
       }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       ConcatCPU<T>(ctx->device(), input_tensors_flat, &output_flat);
     }
   }
@@ -929,11 +972,10 @@ TF_CALL_POD_STRING_TYPES(REGISTER_CONCAT);
 REGISTER_CONCAT(quint8);
 REGISTER_CONCAT(qint8);
 REGISTER_CONCAT(qint32);
-REGISTER_CONCAT(bfloat16);
 
 #undef REGISTER_CONCAT
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(type)                                       \
   REGISTER_KERNEL_BUILDER(Name("TensorArrayConcat")              \
@@ -983,7 +1025,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV3")
                             .HostMemory("handle"),
                         TensorArrayConcatOp<CPUDevice, int32>);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // UNPACK and SCATTER *********************************************************
 
@@ -1003,8 +1045,9 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("value", &tensor_value));
     TensorShape element_shape(tensor_value->shape());
 
-    OP_REQUIRES(ctx, FastBoundsCheck(element_shape.dim_size(0),
-                                     std::numeric_limits<int32>::max()),
+    OP_REQUIRES(ctx,
+                FastBoundsCheck(element_shape.dim_size(0),
+                                std::numeric_limits<int32>::max()),
                 errors::InvalidArgument("tensor dim0 too large to unpack"));
 
     OP_REQUIRES(
@@ -1078,8 +1121,8 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
         {1, num_values, element_shape.num_elements()});
 
     Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, 0, 0};
-    Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, 1,
-                                              element_shape.num_elements()};
+    Eigen::DSizes<Eigen::DenseIndex, 3> sizes{
+        1, 1, static_cast<Eigen::DenseIndex>(element_shape.num_elements())};
 
     std::vector<PersistentTensor> write_values;
     write_values.reserve(num_values);
@@ -1095,9 +1138,9 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
       indices[1] = i;
 
       if (element_shape.num_elements() > 0) {
-        functor::Split<Device, T>()(ctx->eigen_device<Device>(),
-                                    tensor_value_i_t, tensor_value_t, indices,
-                                    sizes);
+        functor::Split<Device, T, 3>()(ctx->eigen_device<Device>(),
+                                       tensor_value_i_t, tensor_value_t,
+                                       indices, sizes);
       }
 
       write_values.push_back(persistent_tensor);
@@ -1139,7 +1182,7 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
 TF_CALL_ALL_TYPES(REGISTER_SCATTER_AND_UNPACK);
 #undef REGISTER_SCATTER_AND_UNPACK
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(type)                                      \
   REGISTER_KERNEL_BUILDER(                                      \
@@ -1177,9 +1220,10 @@ TF_CALL_ALL_TYPES(REGISTER_SCATTER_AND_UNPACK);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // SPLIT *********************************************************************
 
@@ -1204,8 +1248,9 @@ class TensorArraySplitOp : public OpKernel {
                 errors::InvalidArgument(
                     "Expected lengths to be a vector, received shape: ",
                     tensor_lengths->shape().DebugString()));
-    OP_REQUIRES(ctx, FastBoundsCheck(tensor_lengths->NumElements(),
-                                     std::numeric_limits<int32>::max()),
+    OP_REQUIRES(ctx,
+                FastBoundsCheck(tensor_lengths->NumElements(),
+                                std::numeric_limits<int32>::max()),
                 errors::InvalidArgument(
                     "Expected lengths to have < max int32 entries"));
 
@@ -1273,9 +1318,11 @@ class TensorArraySplitOp : public OpKernel {
       PersistentTensor persistent_tensor;
 
       int64 previous_length = (i == 0) ? 0 : cumulative_lengths[i - 1];
-      Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, previous_length, 0};
-      Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, tensor_lengths_t(i),
-                                                elements_per_row};
+      Eigen::DSizes<Eigen::DenseIndex, 3> indices{
+          0, static_cast<Eigen::DenseIndex>(previous_length), 0};
+      Eigen::DSizes<Eigen::DenseIndex, 3> sizes{
+          1, static_cast<Eigen::DenseIndex>(tensor_lengths_t(i)),
+          static_cast<Eigen::DenseIndex>(elements_per_row)};
 
       OP_REQUIRES_OK(ctx, ctx->allocate_persistent(
                               tensor_array->ElemType(), element_shapes[i],
@@ -1285,9 +1332,9 @@ class TensorArraySplitOp : public OpKernel {
         auto tensor_value_i_t = tensor_value_i->shaped<T, 3>(
             {1, tensor_lengths_t(i), elements_per_row});
 
-        functor::Split<Device, T>()(ctx->eigen_device<Device>(),
-                                    tensor_value_i_t, tensor_value_t, indices,
-                                    sizes);
+        functor::Split<Device, T, 3>()(ctx->eigen_device<Device>(),
+                                       tensor_value_i_t, tensor_value_t,
+                                       indices, sizes);
       }
 
       write_values.push_back(persistent_tensor);
@@ -1319,7 +1366,7 @@ class TensorArraySplitOp : public OpKernel {
 TF_CALL_ALL_TYPES(REGISTER_SPLIT);
 #undef REGISTER_SPLIT
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(type)                                      \
   REGISTER_KERNEL_BUILDER(Name("TensorArraySplit")              \
@@ -1346,7 +1393,7 @@ TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // SIZE ***********************************************************************
 

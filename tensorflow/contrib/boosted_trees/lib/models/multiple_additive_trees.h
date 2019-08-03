@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_MODELS_MULTIPLE_ADDITIVE_TREES_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_MODELS_MULTIPLE_ADDITIVE_TREES_H_
+#ifndef TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_MODELS_MULTIPLE_ADDITIVE_TREES_H_
+#define TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_MODELS_MULTIPLE_ADDITIVE_TREES_H_
 
 #include <vector>
 
@@ -32,19 +32,22 @@ namespace models {
 class MultipleAdditiveTrees {
  public:
   // Predict runs tree ensemble on the given batch and updates
-  // output predictions accordingly. The method also returns predictions that
-  // we would get if no dropout was applied.
+  // output predictions accordingly, for the given list of trees.
+  // output_leaf_indices is a pointer to a 2 dimensional tensor. If it is not
+  // nullptr, this method fills output_leaf_indices with a per-tree leaf id
+  // where each of the instances from 'features' ended up in. Its shape is num
+  // examples X num of trees.
   static void Predict(
       const boosted_trees::trees::DecisionTreeEnsembleConfig& config,
-      const bool only_finalized_trees, const std::vector<int32>& trees_to_drop,
+      const std::vector<int32>& trees_to_include,
       const boosted_trees::utils::BatchFeatures& features,
-      thread::ThreadPool* const thread_pool,
-      TTypes<float>::Matrix output_predictions,
-      TTypes<float>::Matrix no_dropout_predictions);
+      tensorflow::thread::ThreadPool* const worker_threads,
+      tensorflow::TTypes<float>::Matrix output_predictions,
+      Tensor* const output_leaf_index);
 };
 
 }  // namespace models
 }  // namespace boosted_trees
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_MODELS_MULTIPLE_ADDITIVE_TREES_H_
+#endif  // TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_MODELS_MULTIPLE_ADDITIVE_TREES_H_

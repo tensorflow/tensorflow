@@ -125,11 +125,13 @@ class WALSMatrixFactorizationTest(test.TestCase):
       nz_row_ids = np.arange(np.shape(np_matrix)[0])
       nz_col_ids = np.arange(np.shape(np_matrix)[1])
 
-    def extract_features(row_batch, col_batch, shape):
+    def extract_features(row_batch, col_batch, num_rows, num_cols):
       row_ids = row_batch[0]
       col_ids = col_batch[0]
-      rows = self.remap_sparse_tensor_rows(row_batch[1], row_ids, shape)
-      cols = self.remap_sparse_tensor_rows(col_batch[1], col_ids, shape)
+      rows = self.remap_sparse_tensor_rows(
+          row_batch[1], row_ids, shape=[num_rows, num_cols])
+      cols = self.remap_sparse_tensor_rows(
+          col_batch[1], col_ids, shape=[num_cols, num_rows])
       features = {
           wals_lib.WALSMatrixFactorization.INPUT_ROWS: rows,
           wals_lib.WALSMatrixFactorization.INPUT_COLS: cols,
@@ -154,7 +156,7 @@ class WALSMatrixFactorizationTest(test.TestCase):
           capacity=10,
           enqueue_many=True)
 
-      features = extract_features(row_batch, col_batch, sp_mat.dense_shape)
+      features = extract_features(row_batch, col_batch, num_rows, num_cols)
 
       if mode == model_fn.ModeKeys.INFER or mode == model_fn.ModeKeys.EVAL:
         self.assertTrue(
@@ -334,7 +336,7 @@ class WALSMatrixFactorizationTest(test.TestCase):
     loss = self._model.evaluate(
         input_fn=eval_input_fn_row, steps=self._num_rows)['loss']
 
-    with self.test_session():
+    with self.cached_session():
       true_loss = self.calculate_loss()
 
     self.assertNear(
@@ -352,12 +354,12 @@ class WALSMatrixFactorizationTest(test.TestCase):
     loss = self._model.evaluate(
         input_fn=eval_input_fn_col, steps=self._num_cols)['loss']
 
-    with self.test_session():
+    with self.cached_session():
       true_loss = self.calculate_loss()
 
     self.assertNear(
         loss, true_loss, err=.001,
-        msg="""After row update, eval loss = {}, does not match the true
+        msg="""After col update, eval loss = {}, does not match the true
         loss = {}.""".format(loss, true_loss))
 
 
@@ -417,89 +419,79 @@ class WALSMatrixFactorizationUnsupportedTest(test.TestCase):
 
 class SweepHookTest(test.TestCase):
 
-  def setUp(self):
-    self._num_rows = 5
-    self._num_cols = 7
-    self._train_op = control_flow_ops.no_op()
-    self._row_prep_done = variables.Variable(False)
-    self._col_prep_done = variables.Variable(False)
-    self._init_done = variables.Variable(False)
-    self._row_prep_ops = [state_ops.assign(self._row_prep_done, True)]
-    self._col_prep_ops = [state_ops.assign(self._col_prep_done, True)]
-    self._init_ops = [state_ops.assign(self._init_done, True)]
-    self._input_row_indices_ph = array_ops.placeholder(dtypes.int64)
-    self._input_col_indices_ph = array_ops.placeholder(dtypes.int64)
-
   def test_sweeps(self):
-    def ind_feed(row_indices, col_indices):
-      return {
-          self._input_row_indices_ph: row_indices,
-          self._input_col_indices_ph: col_indices
-      }
+    is_row_sweep_var = variables.VariableV1(True)
+    is_sweep_done_var = variables.VariableV1(False)
+    init_done = variables.VariableV1(False)
+    row_prep_done = variables.VariableV1(False)
+    col_prep_done = variables.VariableV1(False)
+    row_train_done = variables.VariableV1(False)
+    col_train_done = variables.VariableV1(False)
 
-    with self.test_session() as sess:
-      is_row_sweep_var = variables.Variable(True)
-      completed_sweeps_var = variables.Variable(0)
+    init_op = state_ops.assign(init_done, True)
+    row_prep_op = state_ops.assign(row_prep_done, True)
+    col_prep_op = state_ops.assign(col_prep_done, True)
+    row_train_op = state_ops.assign(row_train_done, True)
+    col_train_op = state_ops.assign(col_train_done, True)
+    train_op = control_flow_ops.no_op()
+    switch_op = control_flow_ops.group(
+        state_ops.assign(is_sweep_done_var, False),
+        state_ops.assign(is_row_sweep_var,
+                         math_ops.logical_not(is_row_sweep_var)))
+    mark_sweep_done = state_ops.assign(is_sweep_done_var, True)
+
+    with self.cached_session() as sess:
       sweep_hook = wals_lib._SweepHook(
           is_row_sweep_var,
-          self._train_op,
-          self._num_rows,
-          self._num_cols,
-          self._input_row_indices_ph,
-          self._input_col_indices_ph,
-          self._row_prep_ops,
-          self._col_prep_ops,
-          self._init_ops,
-          completed_sweeps_var)
+          is_sweep_done_var,
+          init_op,
+          [row_prep_op],
+          [col_prep_op],
+          row_train_op,
+          col_train_op,
+          switch_op)
       mon_sess = monitored_session._HookedSession(sess, [sweep_hook])
       sess.run([variables.global_variables_initializer()])
 
-      # Init ops should run before the first run. Row sweep not completed.
-      mon_sess.run(self._train_op, ind_feed([0, 1, 2], []))
-      self.assertTrue(sess.run(self._init_done),
-                      msg='init ops not run by the sweep_hook')
-      self.assertTrue(sess.run(self._row_prep_done),
-                      msg='row_prep not run by the sweep_hook')
-      self.assertTrue(sess.run(is_row_sweep_var),
-                      msg='Row sweep is not complete but is_row_sweep is '
-                      'False.')
-      # Row sweep completed.
-      mon_sess.run(self._train_op, ind_feed([3, 4], [0, 1, 2, 3, 4, 5, 6]))
-      self.assertFalse(sess.run(is_row_sweep_var),
-                       msg='Row sweep is complete but is_row_sweep is True.')
-      self.assertTrue(sess.run(completed_sweeps_var) == 1,
-                      msg='Completed sweeps should be equal to 1.')
-      self.assertTrue(sweep_hook._is_sweep_done,
-                      msg='Sweep is complete but is_sweep_done is False.')
-      # Col init ops should run. Col sweep not completed.
-      mon_sess.run(self._train_op, ind_feed([], [0, 1, 2, 3, 4]))
-      self.assertTrue(sess.run(self._col_prep_done),
-                      msg='col_prep not run by the sweep_hook')
-      self.assertFalse(sess.run(is_row_sweep_var),
-                       msg='Col sweep is not complete but is_row_sweep is '
-                       'True.')
-      self.assertFalse(sweep_hook._is_sweep_done,
-                       msg='Sweep is not complete but is_sweep_done is True.')
-      # Col sweep completed.
-      mon_sess.run(self._train_op, ind_feed([], [4, 5, 6]))
-      self.assertTrue(sess.run(is_row_sweep_var),
-                      msg='Col sweep is complete but is_row_sweep is False')
-      self.assertTrue(sweep_hook._is_sweep_done,
-                      msg='Sweep is complete but is_sweep_done is False.')
-      self.assertTrue(sess.run(completed_sweeps_var) == 2,
-                      msg='Completed sweeps should be equal to 2.')
+      # Row sweep.
+      mon_sess.run(train_op)
+      self.assertTrue(sess.run(init_done),
+                      msg='init op not run by the Sweephook')
+      self.assertTrue(sess.run(row_prep_done),
+                      msg='row_prep_op not run by the SweepHook')
+      self.assertTrue(sess.run(row_train_done),
+                      msg='row_train_op not run by the SweepHook')
+      self.assertTrue(
+          sess.run(is_row_sweep_var),
+          msg='Row sweep is not complete but is_row_sweep_var is False.')
+      # Col sweep.
+      mon_sess.run(mark_sweep_done)
+      mon_sess.run(train_op)
+      self.assertTrue(sess.run(col_prep_done),
+                      msg='col_prep_op not run by the SweepHook')
+      self.assertTrue(sess.run(col_train_done),
+                      msg='col_train_op not run by the SweepHook')
+      self.assertFalse(
+          sess.run(is_row_sweep_var),
+          msg='Col sweep is not complete but is_row_sweep_var is True.')
+      # Row sweep.
+      mon_sess.run(mark_sweep_done)
+      mon_sess.run(train_op)
+      self.assertTrue(
+          sess.run(is_row_sweep_var),
+          msg='Col sweep is complete but is_row_sweep_var is False.')
 
 
 class StopAtSweepHookTest(test.TestCase):
 
   def test_stop(self):
     hook = wals_lib._StopAtSweepHook(last_sweep=10)
-    completed_sweeps = variables.Variable(
+    completed_sweeps = variables.VariableV1(
         8, name=wals_lib.WALSMatrixFactorization.COMPLETED_SWEEPS)
     train_op = state_ops.assign_add(completed_sweeps, 1)
     hook.begin()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run([variables.global_variables_initializer()])
       mon_sess = monitored_session._HookedSession(sess, [hook])
       mon_sess.run(train_op)

@@ -13,11 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for contrib.seq2seq.python.ops.attention_wrapper."""
-# pylint: disable=unused-import,g-bad-import-order
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-# pylint: enable=unused-import
 
 import collections
 import functools
@@ -30,9 +28,13 @@ from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.contrib.seq2seq.python.ops import basic_decoder
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
+from tensorflow.python.layers import core as layers_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope as vs
@@ -63,12 +65,13 @@ def get_result_summary(x):
   return x
 
 
+@test_util.run_v1_only('contrib code not supported in TF2.0')
 class AttentionWrapperTest(test.TestCase):
 
   def assertAllCloseOrEqual(self, x, y, **kwargs):
     if isinstance(x, np.ndarray) or isinstance(x, float):
       return super(AttentionWrapperTest, self).assertAllClose(
-          x, y, atol=1e-4, **kwargs)
+          x, y, atol=1e-3, **kwargs)
     else:
       self.assertAllEqual(x, y, **kwargs)
 
@@ -79,6 +82,28 @@ class AttentionWrapperTest(test.TestCase):
     self.assertEqual(state.time, None)
     self.assertEqual(new_state.time, 1)
 
+  def testAttentionWrapperStateShapePropgation(self):
+    batch_size = 5
+    max_time = 5
+    num_units = 5
+
+    memory = random_ops.random_uniform(
+        [batch_size, max_time, num_units], seed=1)
+    mechanism = wrapper.LuongAttention(num_units, memory)
+    cell = wrapper.AttentionWrapper(rnn_cell.LSTMCell(num_units), mechanism)
+
+    # Create zero state with static batch size.
+    static_state = cell.zero_state(batch_size, dtypes.float32)
+    # Create zero state without static batch size.
+    state = cell.zero_state(array_ops.shape(memory)[0], dtypes.float32)
+
+    state = static_state.clone(
+        cell_state=state.cell_state, attention=state.attention)
+
+    self.assertEqual(state.cell_state.c.shape, static_state.cell_state.c.shape)
+    self.assertEqual(state.cell_state.h.shape, static_state.cell_state.h.shape)
+    self.assertEqual(state.attention.shape, static_state.attention.shape)
+
   def _testWithAttention(self,
                          create_attention_mechanism,
                          expected_final_output,
@@ -87,7 +112,12 @@ class AttentionWrapperTest(test.TestCase):
                          alignment_history=False,
                          expected_final_alignment_history=None,
                          attention_layer_size=6,
+                         attention_layer=None,
                          name=''):
+    attention_layer_sizes = (
+        [attention_layer_size] if attention_layer_size is not None else None)
+    attention_layers = (
+        [attention_layer] if attention_layer is not None else None)
     self._testWithMaybeMultiAttention(
         is_multi=False,
         create_attention_mechanisms=[create_attention_mechanism],
@@ -96,7 +126,8 @@ class AttentionWrapperTest(test.TestCase):
         attention_mechanism_depths=[attention_mechanism_depth],
         alignment_history=alignment_history,
         expected_final_alignment_history=expected_final_alignment_history,
-        attention_layer_sizes=[attention_layer_size],
+        attention_layer_sizes=attention_layer_sizes,
+        attention_layers=attention_layers,
         name=name)
 
   def _testWithMaybeMultiAttention(self,
@@ -108,6 +139,7 @@ class AttentionWrapperTest(test.TestCase):
                                    alignment_history=False,
                                    expected_final_alignment_history=None,
                                    attention_layer_sizes=None,
+                                   attention_layers=None,
                                    name=''):
     # Allow is_multi to be True with a single mechanism to enable test for
     # passing in a single mechanism in a list.
@@ -121,12 +153,18 @@ class AttentionWrapperTest(test.TestCase):
     encoder_output_depth = 10
     cell_depth = 9
 
-    if attention_layer_sizes is None:
-      attention_depth = encoder_output_depth * len(create_attention_mechanisms)
-    else:
+    if attention_layer_sizes is not None:
       # Compute sum of attention_layer_sizes. Use encoder_output_depth if None.
-      attention_depth = sum([attention_layer_size or encoder_output_depth
-                             for attention_layer_size in attention_layer_sizes])
+      attention_depth = sum(attention_layer_size or encoder_output_depth
+                            for attention_layer_size in attention_layer_sizes)
+    elif attention_layers is not None:
+      # Compute sum of attention_layers output depth.
+      attention_depth = sum(
+          attention_layer.compute_output_shape(
+              [batch_size, cell_depth + encoder_output_depth]).dims[-1].value
+          for attention_layer in attention_layers)
+    else:
+      attention_depth = encoder_output_depth * len(create_attention_mechanisms)
 
     decoder_inputs = array_ops.placeholder_with_default(
         np.random.randn(batch_size, decoder_max_time,
@@ -144,17 +182,24 @@ class AttentionWrapperTest(test.TestCase):
         for creator, depth in zip(create_attention_mechanisms,
                                   attention_mechanism_depths)]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       with vs.variable_scope(
           'root',
           initializer=init_ops.random_normal_initializer(stddev=0.01, seed=3)):
+        attention_layer_size = attention_layer_sizes
+        attention_layer = attention_layers
+        if not is_multi:
+          if attention_layer_size is not None:
+            attention_layer_size = attention_layer_size[0]
+          if attention_layer is not None:
+            attention_layer = attention_layer[0]
         cell = rnn_cell.LSTMCell(cell_depth)
         cell = wrapper.AttentionWrapper(
             cell,
             attention_mechanisms if is_multi else attention_mechanisms[0],
-            attention_layer_size=(attention_layer_sizes if is_multi
-                                  else attention_layer_sizes[0]),
-            alignment_history=alignment_history)
+            attention_layer_size=attention_layer_size,
+            alignment_history=alignment_history,
+            attention_layer=attention_layer)
         helper = helper_py.TrainingHelper(decoder_inputs,
                                           decoder_sequence_length)
         my_decoder = basic_decoder.BasicDecoder(
@@ -199,6 +244,9 @@ class AttentionWrapperTest(test.TestCase):
           self.assertEqual(
               (None, batch_size, None),
               tuple(state_alignment_history.get_shape().as_list()))
+        nest.assert_same_structure(
+            cell.state_size,
+            cell.zero_state(batch_size, dtypes.float32))
         # Remove the history from final_state for purposes of the
         # remainder of the tests.
         final_state = final_state._replace(alignment_history=())  # pylint: disable=protected-access
@@ -234,6 +282,41 @@ class AttentionWrapperTest(test.TestCase):
             expected_final_alignment_history,
             final_alignment_history_info)
 
+  def testBahdanauNormalizedDType(self):
+    for dtype in [np.float16, np.float32, np.float64]:
+      num_units = 128
+      encoder_outputs = array_ops.placeholder(dtype, shape=[64, None, 256])
+      encoder_sequence_length = array_ops.placeholder(dtypes.int32, shape=[64])
+      decoder_inputs = array_ops.placeholder(dtype, shape=[64, None, 128])
+      decoder_sequence_length = array_ops.placeholder(dtypes.int32, shape=[64])
+      batch_size = 64
+      attention_mechanism = wrapper.BahdanauAttention(
+          num_units=num_units,
+          memory=encoder_outputs,
+          memory_sequence_length=encoder_sequence_length,
+          normalize=True,
+          dtype=dtype,
+      )
+      cell = rnn_cell.LSTMCell(num_units)
+      cell = wrapper.AttentionWrapper(cell, attention_mechanism)
+
+      helper = helper_py.TrainingHelper(decoder_inputs,
+                                        decoder_sequence_length)
+      my_decoder = basic_decoder.BasicDecoder(
+          cell=cell,
+          helper=helper,
+          initial_state=cell.zero_state(
+              dtype=dtype, batch_size=batch_size))
+
+      final_outputs, final_state, _ = decoder.dynamic_decode(my_decoder)
+      self.assertTrue(
+          isinstance(final_outputs, basic_decoder.BasicDecoderOutput))
+      self.assertEqual(final_outputs.rnn_output.dtype, dtype)
+      self.assertTrue(
+          isinstance(final_state, wrapper.AttentionWrapperState))
+      self.assertTrue(
+          isinstance(final_state.cell_state, rnn_cell.LSTMStateTuple))
+
   def testBahdanauNotNormalized(self):
     create_attention_mechanism = wrapper.BahdanauAttention
 
@@ -252,6 +335,8 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 6), dtype=dtype('float32'), mean=-0.0052052638),
         time=3,
         alignments=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+        attention_state=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
@@ -285,6 +370,8 @@ class AttentionWrapperTest(test.TestCase):
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+        attention_state=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
         alignment_history=())
 
     self._testWithAttention(
@@ -300,7 +387,7 @@ class AttentionWrapperTest(test.TestCase):
         rnn_output=ResultSummary(
             shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.0052615386),
         sample_id=ResultSummary(
-            shape=(5, 3), dtype=dtype('int32'), mean=1.4666666666666666))
+            shape=(5, 3), dtype=dtype('int32'), mean=1.4))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
             c=ResultSummary(
@@ -312,6 +399,8 @@ class AttentionWrapperTest(test.TestCase):
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+        attention_state=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
         alignment_history=())
 
     self._testWithAttention(
@@ -321,6 +410,42 @@ class AttentionWrapperTest(test.TestCase):
         attention_mechanism_depth=9,
         name='testLuongNotNormalized')
 
+  def testLuongScaledDType(self):
+    # Test case for GitHub issue 18099
+    for dt in [np.float16, np.float32, np.float64]:
+      num_units = 128
+      encoder_outputs = array_ops.placeholder(dt, shape=[64, None, 256])
+      encoder_sequence_length = array_ops.placeholder(dtypes.int32, shape=[64])
+      decoder_inputs = array_ops.placeholder(dt, shape=[64, None, 128])
+      decoder_sequence_length = array_ops.placeholder(dtypes.int32, shape=[64])
+      batch_size = 64
+      attention_mechanism = wrapper.LuongAttention(
+          num_units=num_units,
+          memory=encoder_outputs,
+          memory_sequence_length=encoder_sequence_length,
+          scale=True,
+          dtype=dt,
+      )
+      cell = rnn_cell.LSTMCell(num_units)
+      cell = wrapper.AttentionWrapper(cell, attention_mechanism)
+
+      helper = helper_py.TrainingHelper(decoder_inputs,
+                                        decoder_sequence_length)
+      my_decoder = basic_decoder.BasicDecoder(
+          cell=cell,
+          helper=helper,
+          initial_state=cell.zero_state(
+              dtype=dt, batch_size=batch_size))
+
+      final_outputs, final_state, _ = decoder.dynamic_decode(my_decoder)
+      self.assertTrue(
+          isinstance(final_outputs, basic_decoder.BasicDecoderOutput))
+      self.assertEqual(final_outputs.rnn_output.dtype, dt)
+      self.assertTrue(
+          isinstance(final_state, wrapper.AttentionWrapperState))
+      self.assertTrue(
+          isinstance(final_state.cell_state, rnn_cell.LSTMStateTuple))
+
   def testLuongScaled(self):
     create_attention_mechanism = functools.partial(
         wrapper.LuongAttention, scale=True)
@@ -329,7 +454,7 @@ class AttentionWrapperTest(test.TestCase):
         rnn_output=ResultSummary(
             shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.0052615386),
         sample_id=ResultSummary(
-            shape=(5, 3), dtype=dtype('int32'), mean=1.4666666666666666))
+            shape=(5, 3), dtype=dtype('int32'), mean=1.4))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
             c=ResultSummary(
@@ -340,6 +465,8 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 6), dtype=dtype('float32'), mean=-0.0051812846),
         time=3,
         alignments=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+        attention_state=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
         alignment_history=())
 
@@ -369,6 +496,8 @@ class AttentionWrapperTest(test.TestCase):
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+        attention_state=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
         alignment_history=())
 
     self._testWithAttention(
@@ -384,8 +513,8 @@ class AttentionWrapperTest(test.TestCase):
 
     for axis in [0, 1]:
       for exclusive in [True, False]:
-        with self.test_session():
-          # Compute cumprod with regular tf.cumprod
+        with self.cached_session():
+          # Compute cumprod with regular tf.math.cumprod
           cumprod_output = math_ops.cumprod(
               test_input, axis=axis, exclusive=exclusive).eval()
           # Compute cumprod with safe_cumprod
@@ -420,7 +549,7 @@ class AttentionWrapperTest(test.TestCase):
         for p, a in zip(p_choose_i, previous_attention)])
 
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       recursive_output = wrapper.monotonic_attention(
           p_choose_i, previous_attention, 'recursive').eval()
 
@@ -441,7 +570,7 @@ class AttentionWrapperTest(test.TestCase):
         for p, a in zip(p_choose_i, previous_attention)])
 
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       parallel_output = wrapper.monotonic_attention(
           p_choose_i, previous_attention, 'parallel').eval()
 
@@ -466,7 +595,7 @@ class AttentionWrapperTest(test.TestCase):
         for p, a in zip(p_choose_i, previous_attention)])
 
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       hard_output = wrapper.monotonic_attention(
           # TensorFlow is unhappy when these are not wrapped as tf.constant
           constant_op.constant(p_choose_i),
@@ -506,7 +635,7 @@ class AttentionWrapperTest(test.TestCase):
     recursive_output = [np.array([1] + [0]*(p_choose_i.shape[1] - 1),
                                  np.float32)]
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       for j in range(p_choose_i.shape[0]):
         # Compute attention distribution for this output time step
         recursive_output.append(wrapper.monotonic_attention(
@@ -544,6 +673,8 @@ class AttentionWrapperTest(test.TestCase):
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.032228071),
+        attention_state=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.032228071),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
         shape=(3, 5, 8), dtype=dtype('float32'), mean=0.050430927)
@@ -565,7 +696,7 @@ class AttentionWrapperTest(test.TestCase):
         rnn_output=ResultSummary(
             shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.0025896581),
         sample_id=ResultSummary(
-            shape=(5, 3), dtype=dtype('int32'), mean=1.8666666666666667))
+            shape=(5, 3), dtype=dtype('int32'), mean=1.73333333))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
             c=ResultSummary(
@@ -576,10 +707,12 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 6), dtype=dtype('float32'), mean=-0.00069823361),
         time=3,
         alignments=ResultSummary(
-            shape=(5, 8), dtype=dtype('float32'), mean=0.028698336),
+            shape=(5, 8), dtype=dtype('float32'), mean=0.029914695),
+        attention_state=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.029914695),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
-        shape=(3, 5, 8), dtype=dtype('float32'), mean=0.046009291)
+        shape=(3, 5, 8), dtype=dtype('float32'), mean=0.0465225502849)
 
     self._testWithAttention(
         create_attention_mechanism,
@@ -588,6 +721,25 @@ class AttentionWrapperTest(test.TestCase):
         alignment_history=True,
         expected_final_alignment_history=expected_final_alignment_history,
         name='testBahdanauMonotonicNormalized')
+
+  def testBahdanauMonotonicHard(self):
+    # Run attention mechanism with mode='hard', make sure probabilities are hard
+    b, t, u, d = 10, 20, 30, 40
+    with self.session(use_gpu=True) as sess:
+      a = wrapper.BahdanauMonotonicAttention(
+          d,
+          random_ops.random_normal((b, t, u)),
+          mode='hard')
+      # Just feed previous attention as [1, 0, 0, ...]
+      attn, unused_state = a(
+          random_ops.random_normal((b, d)), array_ops.one_hot([0]*b, t))
+      sess.run(variables.global_variables_initializer())
+      attn_out = attn.eval()
+      # All values should be 0 or 1
+      self.assertTrue(np.all(np.logical_or(attn_out == 0, attn_out == 1)))
+      # Sum of distributions should be 0 or 1 (0 when all p_choose_i are 0)
+      self.assertTrue(np.all(np.logical_or(attn_out.sum(axis=1) == 1,
+                                           attn_out.sum(axis=1) == 0)))
 
   def testLuongMonotonicNotNormalized(self):
     create_attention_mechanism = functools.partial(
@@ -609,6 +761,8 @@ class AttentionWrapperTest(test.TestCase):
             shape=(5, 6), dtype=dtype('float32'), mean=-5.2024145e-05),
         time=3,
         alignments=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.032198936),
+        attention_state=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.032198936),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
@@ -644,6 +798,8 @@ class AttentionWrapperTest(test.TestCase):
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.032198936),
+        attention_state=ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.032198936),
         alignment_history=())
     expected_final_alignment_history = ResultSummary(
         shape=(3, 5, 8), dtype=dtype('float32'), mean=0.050387777)
@@ -678,6 +834,9 @@ class AttentionWrapperTest(test.TestCase):
         alignments=(
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
+        attention_state=(
+            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
         alignment_history=())
 
     expected_final_alignment_history = (
@@ -695,28 +854,94 @@ class AttentionWrapperTest(test.TestCase):
         expected_final_alignment_history=expected_final_alignment_history,
         name='testMultiAttention')
 
+  def testMultiAttentionWithLayerInstances(self):
+    create_attention_mechanisms = (
+        wrapper.BahdanauAttention, wrapper.LuongAttention)
+
+    expected_final_output = BasicDecoderOutput(
+        rnn_output=ResultSummary(
+            shape=(5, 3, 7), dtype=dtype('float32'), mean=0.0011709079),
+        sample_id=ResultSummary(
+            shape=(5, 3), dtype=dtype('int32'), mean=3.2000000000000002))
+    expected_final_state = AttentionWrapperState(
+        cell_state=LSTMStateTuple(
+            c=ResultSummary(
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0038725811),
+            h=ResultSummary(
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0019329828)),
+        attention=ResultSummary(
+            shape=(5, 7), dtype=dtype('float32'), mean=0.001174294),
+        time=3,
+        alignments=(
+            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
+        attention_state=(
+            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
+        alignment_history=())
+
+    expected_final_alignment_history = (
+        ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125),
+        ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125))
+
+    self._testWithMaybeMultiAttention(
+        True,
+        create_attention_mechanisms,
+        expected_final_output,
+        expected_final_state,
+        attention_mechanism_depths=[9, 9],
+        attention_layers=[layers_core.Dense(3, use_bias=False),
+                          layers_core.Dense(4, use_bias=False)],
+        alignment_history=True,
+        expected_final_alignment_history=expected_final_alignment_history,
+        name='testMultiAttention')
+
+  def testLuongMonotonicHard(self):
+    # Run attention mechanism with mode='hard', make sure probabilities are hard
+    b, t, u, d = 10, 20, 30, 40
+    with self.session(use_gpu=True) as sess:
+      a = wrapper.LuongMonotonicAttention(
+          d,
+          random_ops.random_normal((b, t, u)),
+          mode='hard')
+      # Just feed previous attention as [1, 0, 0, ...]
+      attn, unused_state = a(
+          random_ops.random_normal((b, d)), array_ops.one_hot([0]*b, t))
+      sess.run(variables.global_variables_initializer())
+      attn_out = attn.eval()
+      # All values should be 0 or 1
+      self.assertTrue(np.all(np.logical_or(attn_out == 0, attn_out == 1)))
+      # Sum of distributions should be 0 or 1 (0 when all p_choose_i are 0)
+      self.assertTrue(np.all(np.logical_or(attn_out.sum(axis=1) == 1,
+                                           attn_out.sum(axis=1) == 0)))
+
   def testMultiAttentionNoAttentionLayer(self):
     create_attention_mechanisms = (
         wrapper.BahdanauAttention, wrapper.LuongAttention)
 
     expected_final_output = BasicDecoderOutput(
         rnn_output=ResultSummary(
-            shape=(5, 3, 20), dtype=dtype('float32'), mean=0.11691988),
+            shape=(5, 3, 20), dtype=dtype('float32'), mean=0.115853324533),
         sample_id=ResultSummary(
-            shape=(5, 3), dtype=dtype('int32'), mean=7.2666666666666666))
+            shape=(5, 3), dtype=dtype('int32'), mean=8.6))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
             c=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0036486709),
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.003545674),
             h=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0018835809)),
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0018327223)),
         attention=ResultSummary(
-            shape=(5, 20), dtype=dtype('float32'), mean=0.11680689),
+            shape=(5, 20), dtype=dtype('float32'), mean=0.11462739855),
         time=3,
-        alignments=(
-            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
-            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
-        alignment_history=())
+        alignments=(ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+                    ResultSummary(
+                        shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
+        alignment_history=(),
+        attention_state=(ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+                         ResultSummary(
+                             shape=(5, 8), dtype=dtype('float32'), mean=0.125)))
     expected_final_alignment_history = (
         ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125),
         ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125))
@@ -750,6 +975,8 @@ class AttentionWrapperTest(test.TestCase):
         time=3,
         alignments=(
             ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),),
+        attention_state=(
+            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),),
         alignment_history=())
 
     expected_final_alignment_history = (
@@ -765,6 +992,68 @@ class AttentionWrapperTest(test.TestCase):
         alignment_history=True,
         expected_final_alignment_history=expected_final_alignment_history,
         name='testMultiAttention')
+
+  def testCustomizedAttention(self):
+    batch_size = 2
+    max_time = 3
+    num_units = 2
+    memory = constant_op.constant([[[1., 1.], [2., 2.], [3., 3.]],
+                                   [[4., 4.], [5., 5.], [6., 6.]]])
+    memory_sequence_length = constant_op.constant([3, 2])
+    attention_mechanism = wrapper.BahdanauAttention(num_units, memory,
+                                                    memory_sequence_length)
+
+    # Sets all returned values to be all ones.
+    def _customized_attention(unused_attention_mechanism, unused_cell_output,
+                              unused_attention_state, unused_attention_layer):
+      """Customized attention.
+
+      Returns:
+        attention: `Tensor` of shape [batch_size, num_units], attention output.
+        alignments: `Tensor` of shape [batch_size, max_time], sigma value for
+          each input memory (prob. function of input keys).
+        next_attention_state: A `Tensor` representing the next state for the
+          attention.
+      """
+      attention = array_ops.ones([batch_size, num_units])
+      alignments = array_ops.ones([batch_size, max_time])
+      next_attention_state = alignments
+      return attention, alignments, next_attention_state
+
+    attention_cell = wrapper.AttentionWrapper(
+        rnn_cell.LSTMCell(2),
+        attention_mechanism,
+        attention_layer_size=None,  # don't use attention layer.
+        output_attention=False,
+        alignment_history=(),
+        attention_fn=_customized_attention,
+        name='attention')
+    self.assertEqual(num_units, attention_cell.output_size)
+
+    initial_state = attention_cell.zero_state(
+        batch_size=2, dtype=dtypes.float32)
+    source_input_emb = array_ops.ones([2, 3, 2])
+    source_input_length = constant_op.constant([3, 2])
+
+    # 'state' is a tuple of
+    # (cell_state, h, attention, alignments, alignment_history, attention_state)
+    output, state = rnn.dynamic_rnn(
+        attention_cell,
+        inputs=source_input_emb,
+        sequence_length=source_input_length,
+        initial_state=initial_state,
+        dtype=dtypes.float32)
+
+    with self.session() as sess:
+      sess.run(variables.global_variables_initializer())
+      output_value, state_value = sess.run([output, state], feed_dict={})
+      self.assertAllEqual(np.array([2, 3, 2]), output_value.shape)
+      self.assertAllClose(np.array([[1., 1.], [1., 1.]]), state_value.attention)
+      self.assertAllClose(
+          np.array([[1., 1., 1.], [1., 1., 1.]]), state_value.alignments)
+      self.assertAllClose(
+          np.array([[1., 1., 1.], [1., 1., 1.]]), state_value.attention_state)
+
 
 if __name__ == '__main__':
   test.main()

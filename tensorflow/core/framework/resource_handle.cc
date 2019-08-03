@@ -33,6 +33,11 @@ void ResourceHandle::AsProto(ResourceHandleProto* proto) const {
   proto->set_name(name());
   proto->set_hash_code(hash_code());
   proto->set_maybe_type_name(maybe_type_name());
+  for (const auto& dtype_and_shape_pair : dtypes_and_shapes_) {
+    auto dtype_and_shape = proto->add_dtypes_and_shapes();
+    dtype_and_shape->set_dtype(dtype_and_shape_pair.dtype);
+    dtype_and_shape_pair.shape.AsProto(dtype_and_shape->mutable_shape());
+  }
 }
 
 void ResourceHandle::FromProto(const ResourceHandleProto& proto) {
@@ -41,6 +46,13 @@ void ResourceHandle::FromProto(const ResourceHandleProto& proto) {
   set_name(proto.name());
   set_hash_code(proto.hash_code());
   set_maybe_type_name(proto.maybe_type_name());
+  std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
+  for (const auto& dtype_and_shape : proto.dtypes_and_shapes()) {
+    DataType dtype = dtype_and_shape.dtype();
+    PartialTensorShape shape(dtype_and_shape.shape());
+    dtypes_and_shapes.push_back(DtypeAndPartialTensorShape{dtype, shape});
+  }
+  dtypes_and_shapes_ = std::move(dtypes_and_shapes);
 }
 
 string ResourceHandle::SerializeAsString() const {
@@ -64,6 +76,31 @@ string ResourceHandle::DebugString() const {
 
 string ProtoDebugString(const ResourceHandle& handle) {
   return handle.DebugString();
+}
+
+void EncodeResourceHandleList(const ResourceHandle* p, int64 n,
+                              std::unique_ptr<port::StringListEncoder> e) {
+  ResourceHandleProto proto;
+  for (int i = 0; i < n; ++i) {
+    p[i].AsProto(&proto);
+    e->Append(proto);
+  }
+  e->Finalize();
+}
+
+bool DecodeResourceHandleList(std::unique_ptr<port::StringListDecoder> d,
+                              ResourceHandle* ps, int64 n) {
+  std::vector<uint32> sizes(n);
+  if (!d->ReadSizes(&sizes)) return false;
+
+  ResourceHandleProto proto;
+  for (int i = 0; i < n; ++i) {
+    if (!proto.ParseFromArray(d->Data(sizes[i]), sizes[i])) {
+      return false;
+    }
+    ps[i].FromProto(proto);
+  }
+  return true;
 }
 
 }  // namespace tensorflow

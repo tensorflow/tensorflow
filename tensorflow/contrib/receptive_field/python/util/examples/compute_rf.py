@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Computes Receptive Field (RF) information given a graph protobuf.
-
-For an example of usage, see accompanying file compute_rf.sh
-"""
+"""Computes Receptive Field (RF) information given a graph protobuf."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -26,7 +23,7 @@ import sys
 
 from google.protobuf import text_format
 
-from tensorflow.contrib import receptive_field
+from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile

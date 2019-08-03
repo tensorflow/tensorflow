@@ -47,6 +47,9 @@ class DeviceAssignment : public Array2D<int> {
   int replica_count() const { return height(); }
   int computation_count() const { return width(); }
 
+  // Finds the replica ID for the given device.
+  StatusOr<int> ReplicaIdForDeviceOrdinal(int device_ordinal) const;
+
   // Protocol buffer serialization and deserialization.
   Status Serialize(DeviceAssignmentProto* proto) const;
 
@@ -55,6 +58,8 @@ class DeviceAssignment : public Array2D<int> {
   // due to a StatusOr of an incomplete type (DeviceAssignment).
   static StatusOr<std::unique_ptr<DeviceAssignment>> Deserialize(
       const DeviceAssignmentProto& proto);
+
+  string ToString() const;
 };
 
 // A generic implementation of the XLA computation placer, which assigns device
@@ -80,20 +85,17 @@ class ComputationPlacer {
 
   // Registers a computation placer creation function for a particular platform.
   static void RegisterComputationPlacer(
-      perftools::gputools::Platform::Id platform_id,
+      se::Platform::Id platform_id,
       ComputationPlacerCreationFunction creation_function);
 
   // Returns the computation placer singleton pointer if it is available for the
   // given platform, or an error status if it is not.
   static StatusOr<ComputationPlacer*> GetForPlatform(
-      const perftools::gputools::Platform* platform);
+      const se::Platform* platform);
 
  private:
-  // Routine that returns the mutex that guards the platform-to-computation
-  // placer map. Done as a routine to ensure correct initialization ordering,
-  // since RegisterComputationPlacer can be called during program initialization
-  // time.
-  static tensorflow::mutex* platform_computation_placer_mutex();
+  // The mutex that guards the platform-to-computation placer map.
+  static tensorflow::mutex platform_computation_placer_mutex_;
 
   // State kept for each kind of ComputationPlacer. Registration functions set
   // up creation_function, and then we use that to lazily create "placer" the
@@ -104,10 +106,7 @@ class ComputationPlacer {
   };
 
   // Map from platform kind to computation placer singleton.
-  static std::map<perftools::gputools::Platform::Id, State>*
-  GetPlatformComputationPlacers();
-
-  perftools::gputools::Platform::Id platform_id_;
+  static std::map<se::Platform::Id, State>* GetPlatformComputationPlacers();
 
   TF_DISALLOW_COPY_AND_ASSIGN(ComputationPlacer);
 };

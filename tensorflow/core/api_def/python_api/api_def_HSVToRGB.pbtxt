@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "HSVToRGB"
+  endpoint {
+    name: "image.hsv_to_rgb"
+  }
+}

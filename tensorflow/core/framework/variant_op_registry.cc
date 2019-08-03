@@ -13,16 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/variant_op_registry.h"
+
 #include <string>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
+
+std::unordered_set<string>* UnaryVariantOpRegistry::PersistentStringStorage() {
+  static std::unordered_set<string>* string_storage =
+      new std::unordered_set<string>();
+  return string_storage;
+}
 
 // static
 UnaryVariantOpRegistry* UnaryVariantOpRegistry::Global() {
@@ -31,42 +39,8 @@ UnaryVariantOpRegistry* UnaryVariantOpRegistry::Global() {
   return global_unary_variant_op_registry;
 }
 
-UnaryVariantOpRegistry::VariantShapeFn* UnaryVariantOpRegistry::GetShapeFn(
-    const string& type_name) {
-  auto found = shape_fns.find(type_name);
-  if (found == shape_fns.end()) return nullptr;
-  return &found->second;
-}
-
-void UnaryVariantOpRegistry::RegisterShapeFn(const string& type_name,
-                                             const VariantShapeFn& shape_fn) {
-  CHECK(!type_name.empty()) << "Need a valid name for UnaryVariantShape";
-  VariantShapeFn* existing = GetShapeFn(type_name);
-  CHECK_EQ(existing, nullptr)
-      << "Unary VariantShapeFn for type_name: " << type_name
-      << " already registered";
-  shape_fns.insert(std::pair<string, VariantShapeFn>(type_name, shape_fn));
-}
-
-Status GetUnaryVariantShape(const Tensor& variant_tensor, TensorShape* shape) {
-  CHECK_EQ(variant_tensor.dtype(), DT_VARIANT);
-  CHECK_EQ(variant_tensor.dims(), 0);
-  // Use a mutable Variant because shape_fn will first call
-  // MaybeDecodeAndGet, which in turn may mutate the underlying object
-  // (if a Decode is called).
-  const Variant& v = variant_tensor.scalar<Variant>()();
-  UnaryVariantOpRegistry::VariantShapeFn* shape_fn =
-      UnaryVariantOpRegistry::Global()->GetShapeFn(v.TypeName());
-  if (shape_fn == nullptr) {
-    return errors::Internal(
-        "No unary variant shape function found for Variant type_name: ",
-        v.TypeName());
-  }
-  return (*shape_fn)(v, shape);
-}
-
 UnaryVariantOpRegistry::VariantDecodeFn* UnaryVariantOpRegistry::GetDecodeFn(
-    const string& type_name) {
+    StringPiece type_name) {
   auto found = decode_fns.find(type_name);
   if (found == decode_fns.end()) return nullptr;
   return &found->second;
@@ -79,10 +53,23 @@ void UnaryVariantOpRegistry::RegisterDecodeFn(
   CHECK_EQ(existing, nullptr)
       << "Unary VariantDecodeFn for type_name: " << type_name
       << " already registered";
-  decode_fns.insert(std::pair<string, VariantDecodeFn>(type_name, decode_fn));
+  decode_fns.insert(std::pair<StringPiece, VariantDecodeFn>(
+      GetPersistentStringPiece(type_name), decode_fn));
 }
 
 bool DecodeUnaryVariant(Variant* variant) {
+  CHECK_NOTNULL(variant);
+  if (variant->TypeName().empty()) {
+    VariantTensorDataProto* t = variant->get<VariantTensorDataProto>();
+    if (t == nullptr || !t->metadata().empty() || !t->tensors().empty()) {
+      // Malformed variant.
+      return false;
+    } else {
+      // Serialization of an empty Variant.
+      variant->clear();
+      return true;
+    }
+  }
   UnaryVariantOpRegistry::VariantDecodeFn* decode_fn =
       UnaryVariantOpRegistry::Global()->GetDecodeFn(variant->TypeName());
   if (decode_fn == nullptr) {
@@ -103,13 +90,6 @@ bool DecodeUnaryVariant(Variant* variant) {
 
 // Add some basic registrations for use by others, e.g., for testing.
 
-namespace {
-string MaybeRemoveTFPrefix(const StringPiece& str) {
-  return str.starts_with("::tensorflow::") ? str.substr(14).ToString()
-                                           : str.ToString();
-}
-}  // namespace
-
 #define REGISTER_VARIANT_DECODE_TYPE(T) \
   REGISTER_UNARY_VARIANT_DECODE_FUNCTION(T, TF_STR(T));
 
@@ -122,30 +102,96 @@ REGISTER_VARIANT_DECODE_TYPE(double);
 
 #undef REGISTER_VARIANT_DECODE_TYPE
 
-// Special casing ZerosLikeFn per device.
-UnaryVariantOpRegistry::VariantZerosLikeFn*
-UnaryVariantOpRegistry::GetZerosLikeFn(const string& device,
-                                       const string& type_name) {
-  auto found = zeros_like_fns.find(std::make_pair(device, type_name));
-  if (found == zeros_like_fns.end()) return nullptr;
+UnaryVariantOpRegistry::AsyncVariantDeviceCopyFn*
+UnaryVariantOpRegistry::GetDeviceCopyFn(
+    const VariantDeviceCopyDirection direction, const TypeIndex& type_index) {
+  auto found = device_copy_fns.find(std::make_pair(direction, type_index));
+  if (found == device_copy_fns.end()) return nullptr;
   return &found->second;
 }
 
-void UnaryVariantOpRegistry::RegisterZerosLikeFn(
-    const string& device, const string& type_name,
-    const VariantZerosLikeFn& zeros_like_fn) {
-  CHECK(!type_name.empty()) << "Need a valid name for UnaryVariantZerosLike";
-  VariantZerosLikeFn* existing = GetZerosLikeFn(device, type_name);
+void UnaryVariantOpRegistry::RegisterDeviceCopyFn(
+    const VariantDeviceCopyDirection direction, const TypeIndex& type_index,
+    const AsyncVariantDeviceCopyFn& device_copy_fn) {
+  AsyncVariantDeviceCopyFn* existing = GetDeviceCopyFn(direction, type_index);
   CHECK_EQ(existing, nullptr)
-      << "Unary VariantZerosLikeFn for type_name: " << type_name
-      << " already registered for device type: " << device;
-  zeros_like_fns.insert(
-      std::pair<std::pair<string, string>, VariantZerosLikeFn>(
-          std::make_pair(device, type_name), zeros_like_fn));
+      << "UnaryVariantDeviceCopy for direction: " << direction
+      << " and type_index: " << port::MaybeAbiDemangle(type_index.name())
+      << " already registered";
+  device_copy_fns.insert(
+      std::pair<std::pair<VariantDeviceCopyDirection, TypeIndex>,
+                AsyncVariantDeviceCopyFn>(std::make_pair(direction, type_index),
+                                          device_copy_fn));
+}
+
+Status VariantDeviceCopy(
+    const VariantDeviceCopyDirection direction, const Variant& from,
+    Variant* to,
+    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy_fn) {
+  UnaryVariantOpRegistry::AsyncVariantDeviceCopyFn* device_copy_fn =
+      UnaryVariantOpRegistry::Global()->GetDeviceCopyFn(direction,
+                                                        from.TypeId());
+  if (device_copy_fn == nullptr) {
+    return errors::Internal(
+        "No unary variant device copy function found for direction: ",
+        direction, " and Variant type_index: ",
+        port::MaybeAbiDemangle(from.TypeId().name()));
+  }
+  return (*device_copy_fn)(from, to, copy_fn);
 }
 
 namespace {
+template <typename T>
+Status DeviceCopyPrimitiveType(
+    const T& in, T* out,
+    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copier) {
+  // Dummy copy, we don't actually bother copying to the device and back for
+  // testing.
+  *out = in;
+  return Status::OK();
+}
+}  // namespace
 
+#define REGISTER_VARIANT_DEVICE_COPY_TYPE(T)            \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
+      T, VariantDeviceCopyDirection::HOST_TO_DEVICE,    \
+      DeviceCopyPrimitiveType<T>);                      \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
+      T, VariantDeviceCopyDirection::DEVICE_TO_HOST,    \
+      DeviceCopyPrimitiveType<T>);                      \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
+      T, VariantDeviceCopyDirection::DEVICE_TO_DEVICE,  \
+      DeviceCopyPrimitiveType<T>);
+
+// No zeros_like registered for std::complex<> or Eigen::half objects yet.
+REGISTER_VARIANT_DEVICE_COPY_TYPE(int);
+REGISTER_VARIANT_DEVICE_COPY_TYPE(float);
+REGISTER_VARIANT_DEVICE_COPY_TYPE(double);
+REGISTER_VARIANT_DEVICE_COPY_TYPE(bool);
+
+#undef REGISTER_VARIANT_DEVICE_COPY_TYPE
+
+// Special casing UnaryOpFn per op and per device.
+UnaryVariantOpRegistry::VariantUnaryOpFn* UnaryVariantOpRegistry::GetUnaryOpFn(
+    VariantUnaryOp op, StringPiece device, const TypeIndex& type_index) {
+  auto found = unary_op_fns.find({op, device, type_index});
+  if (found == unary_op_fns.end()) return nullptr;
+  return &found->second;
+}
+
+void UnaryVariantOpRegistry::RegisterUnaryOpFn(
+    VariantUnaryOp op, const string& device, const TypeIndex& type_index,
+    const VariantUnaryOpFn& unary_op_fn) {
+  VariantUnaryOpFn* existing = GetUnaryOpFn(op, device, type_index);
+  CHECK_EQ(existing, nullptr)
+      << "Unary VariantUnaryOpFn for type_index: "
+      << port::MaybeAbiDemangle(type_index.name())
+      << " already registered for device type: " << device;
+  unary_op_fns.insert(std::pair<FuncTuple<VariantUnaryOp>, VariantUnaryOpFn>(
+      {op, GetPersistentStringPiece(device), type_index}, unary_op_fn));
+}
+
+namespace {
 template <typename T>
 Status ZerosLikeVariantPrimitiveType(OpKernelContext* ctx, const T& t,
                                      T* t_out) {
@@ -154,9 +200,10 @@ Status ZerosLikeVariantPrimitiveType(OpKernelContext* ctx, const T& t,
 }
 }  // namespace
 
-#define REGISTER_VARIANT_ZEROS_LIKE_TYPE(T)   \
-  REGISTER_UNARY_VARIANT_ZEROS_LIKE_FUNCTION( \
-      DEVICE_CPU, T, TF_STR(T), ZerosLikeVariantPrimitiveType<T>);
+#define REGISTER_VARIANT_ZEROS_LIKE_TYPE(T)                             \
+  REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP, \
+                                           DEVICE_CPU, T,               \
+                                           ZerosLikeVariantPrimitiveType<T>);
 
 // No zeros_like registered for std::complex<> or Eigen::half objects yet.
 REGISTER_VARIANT_ZEROS_LIKE_TYPE(int);
@@ -165,5 +212,47 @@ REGISTER_VARIANT_ZEROS_LIKE_TYPE(double);
 REGISTER_VARIANT_ZEROS_LIKE_TYPE(bool);
 
 #undef REGISTER_VARIANT_ZEROS_LIKE_TYPE
+
+// Special casing BinaryOpFn per op and per device.
+UnaryVariantOpRegistry::VariantBinaryOpFn*
+UnaryVariantOpRegistry::GetBinaryOpFn(VariantBinaryOp op, StringPiece device,
+                                      const TypeIndex& type_index) {
+  auto found = binary_op_fns.find({op, device, type_index});
+  if (found == binary_op_fns.end()) return nullptr;
+  return &found->second;
+}
+
+void UnaryVariantOpRegistry::RegisterBinaryOpFn(
+    VariantBinaryOp op, const string& device, const TypeIndex& type_index,
+    const VariantBinaryOpFn& add_fn) {
+  VariantBinaryOpFn* existing = GetBinaryOpFn(op, device, type_index);
+  CHECK_EQ(existing, nullptr)
+      << "Unary VariantBinaryOpFn for type_index: "
+      << port::MaybeAbiDemangle(type_index.name())
+      << " already registered for device type: " << device;
+  binary_op_fns.insert(std::pair<FuncTuple<VariantBinaryOp>, VariantBinaryOpFn>(
+      {op, GetPersistentStringPiece(device), type_index}, add_fn));
+}
+
+namespace {
+template <typename T>
+Status AddVariantPrimitiveType(OpKernelContext* ctx, const T& a, const T& b,
+                               T* out) {
+  *out = a + b;
+  return Status::OK();
+}
+}  // namespace
+
+#define REGISTER_VARIANT_ADD_TYPE(T)                                           \
+  REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_CPU, \
+                                            T, AddVariantPrimitiveType<T>);
+
+// No add registered for std::complex<> or Eigen::half objects yet.
+REGISTER_VARIANT_ADD_TYPE(int);
+REGISTER_VARIANT_ADD_TYPE(float);
+REGISTER_VARIANT_ADD_TYPE(double);
+REGISTER_VARIANT_ADD_TYPE(bool);
+
+#undef REGISTER_VARIANT_ADD_TYPE
 
 }  // namespace tensorflow

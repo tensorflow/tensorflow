@@ -46,12 +46,8 @@ def my_model(features, labels, mode):
     }
     return tf.estimator.EstimatorSpec(mode, predictions=predictions)
 
-  # Convert the labels to a one-hot tensor of shape (length of features, 3) and
-  # with a on-value of 1 for each one-hot vector of length 3.
-  onehot_labels = tf.one_hot(labels, 3, 1, 0)
   # Compute loss.
-  loss = tf.losses.softmax_cross_entropy(
-      onehot_labels=onehot_labels, logits=logits)
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
   # Create training op with exponentially decaying learning rate.
   if mode == tf.estimator.ModeKeys.TRAIN:
@@ -80,12 +76,12 @@ def main(unused_argv):
   classifier = tf.estimator.Estimator(model_fn=my_model)
 
   # Train.
-  train_input_fn = tf.estimator.inputs.numpy_input_fn(
+  train_input_fn = tf.compat.v1.estimator.inputs.numpy_input_fn(
       x={X_FEATURE: x_train}, y=y_train, num_epochs=None, shuffle=True)
   classifier.train(input_fn=train_input_fn, steps=1000)
 
   # Predict.
-  test_input_fn = tf.estimator.inputs.numpy_input_fn(
+  test_input_fn = tf.compat.v1.estimator.inputs.numpy_input_fn(
       x={X_FEATURE: x_test}, y=y_test, num_epochs=1, shuffle=False)
   predictions = classifier.predict(input_fn=test_input_fn)
   y_predicted = np.array(list(p['class'] for p in predictions))

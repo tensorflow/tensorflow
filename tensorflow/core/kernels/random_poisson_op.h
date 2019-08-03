@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_RANDOM_POISSON_OP_H_
-#define TENSORFLOW_KERNELS_RANDOM_POISSON_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_RANDOM_POISSON_OP_H_
+#define TENSORFLOW_CORE_KERNELS_RANDOM_POISSON_OP_H_
 
 namespace tensorflow {
 
 namespace functor {
 
 // Generic helper functor for the Random Poisson Op.
-template <typename Device, typename T>
+template <typename Device, typename T /* rate */, typename U /* output */>
 struct PoissonFunctor;
 
 }  // namespace functor
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_RANDOM_POISSON_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_RANDOM_POISSON_OP_H_

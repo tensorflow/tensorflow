@@ -13,14 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_LOGGING_H_
-#define TENSORFLOW_PLATFORM_LOGGING_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_LOGGING_H_
+#define TENSORFLOW_CORE_PLATFORM_LOGGING_H_
 
 #include "tensorflow/core/platform/platform.h"  // To pick up PLATFORM_define
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-    defined(GOOGLE_LOGGING)
+    defined(GOOGLE_LOGGING) || defined(__EMSCRIPTEN__)
 #include "tensorflow/core/platform/google/build_config/logging.h"
+namespace tensorflow {
+// Adapt Google LogSink interface to the TF interface.
+using TFLogSink = ::absl::LogSink;
+using TFLogEntry = ::absl::LogEntry;
+
+inline void TFAddLogSink(TFLogSink* sink) { ::absl::AddLogSink(sink); }
+inline void TFRemoveLogSink(TFLogSink* sink) { ::absl::RemoveLogSink(sink); }
+
+}  // namespace tensorflow
+
 #else
 #include "tensorflow/core/platform/default/logging.h"
 #endif
@@ -36,4 +46,4 @@ void LogString(const char* fname, int line, int severity,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_LOGGING_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_LOGGING_H_

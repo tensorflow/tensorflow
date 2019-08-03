@@ -41,11 +41,6 @@ template <typename Device, typename T>
 class DequantizeOp : public OpKernel {
  public:
   explicit DequantizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    half_range_ = !std::is_signed<T>::value
-                      ? 0.0f
-                      : (static_cast<float>(std::numeric_limits<T>::max()) -
-                         std::numeric_limits<T>::min() + 1) /
-                            2.0f;
     string mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
     OP_REQUIRES(ctx,
@@ -67,6 +62,12 @@ class DequantizeOp : public OpKernel {
     const Tensor& input = ctx->input(0);
     const float min_range = ctx->input(1).flat<float>()(0);
     const float max_range = ctx->input(2).flat<float>()(0);
+    const float half_range =
+        !std::is_signed<T>::value
+            ? 0.0f
+            : (static_cast<float>(std::numeric_limits<T>::max()) -
+               std::numeric_limits<T>::min() + 1) /
+                  2.0f;
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
@@ -76,15 +77,11 @@ class DequantizeOp : public OpKernel {
           (static_cast<float>(std::numeric_limits<T>::max()) -
            std::numeric_limits<T>::min());
 
-      float* out_ptr = output->flat<float>().data();
-      const T* in_ptr = input.flat<T>().data();
+      const auto& input_tensor = input.flat<T>();
+      output->flat<float>() =
+          ((input_tensor.template cast<float>() + half_range) * scale_factor) +
+          min_range;
 
-      const int64 num_elements = input.NumElements();
-      for (int i = 0; i < num_elements; ++i) {
-        out_ptr[i] =
-            ((static_cast<int>(in_ptr[i]) + half_range_) * scale_factor) +
-            min_range;
-      }
     } else if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
       if (meta::IsSupportedAndEnabled() && std::is_same<T, quint8>()) {
         auto input_ui8_array = input.flat<quint8>();
@@ -96,34 +93,19 @@ class DequantizeOp : public OpKernel {
             output);
       }
     } else if (mode_ == QUANTIZE_MODE_SCALED) {
-      // The quantization logic for mode SCALED matches that of
-      // QuantizeAndDequantizeV2 and QuantizeAndDequantizeV3.
-      static constexpr int num_bits = sizeof(T) * 8;
-      const float max_abs = std::max(std::abs(min_range), std::abs(max_range));
-      bool is_signed = std::is_signed<T>::value;
-      // If it is signed, we try to keep 0.0 being 0 and drop one bucket. For
-      // example, if it is 8 bits, we have the range [-127, 127]. So for input
-      // range of [-x, x], the scale should be 254/(2*x).
-      //
-      // If it is unsigned and num_bits == 8, the range with 8 bits is [0, 255].
-      // If the input range is [0, x], then the scale is x/255 instead of 254 as
-      // in the case above.
-      const int target_bits = is_signed ? (num_bits - 1) : num_bits;
-      const float target_range =
-          static_cast<float>((uint64_t{1} << target_bits) - 1);
-      const float scale_factor = max_abs / target_range;
-      float* out_ptr = output->flat<float>().data();
-      const T* in_ptr = input.flat<T>().data();
-
-      const int64 num_elements = input.NumElements();
-      for (int i = 0; i < num_elements; ++i) {
-        out_ptr[i] = static_cast<int>(in_ptr[i]) * scale_factor;
-      }
+      const float scale_factor =
+          std::numeric_limits<T>::min() == 0
+              ? (max_range / std::numeric_limits<T>::max())
+              : std::max(min_range / std::numeric_limits<T>::min(),
+                         max_range / std::numeric_limits<T>::max());
+      const auto& input_tensor = input.flat<T>();
+      output->flat<float>() =
+          input_tensor.template cast<int>().template cast<float>() *
+          scale_factor;
     }
   }
 
  private:
-  float half_range_;
   int mode_;
 };
 

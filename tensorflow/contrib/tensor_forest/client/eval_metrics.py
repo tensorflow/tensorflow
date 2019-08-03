@@ -21,10 +21,11 @@ import numpy as np
 
 from tensorflow.contrib import losses
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
-from tensorflow.contrib.metrics.python.ops import metric_ops
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 
 INFERENCE_PROB_NAME = prediction_key.PredictionKey.PROBABILITIES
@@ -35,34 +36,36 @@ FEATURE_IMPORTANCE_NAME = 'global_feature_importance'
 
 def _top_k_generator(k):
   def _top_k(probabilities, targets):
-    targets = math_ops.to_int32(targets)
+    targets = math_ops.cast(targets, dtypes.int32)
     if targets.get_shape().ndims > 1:
-      targets = array_ops.squeeze(targets, squeeze_dims=[1])
-    return metric_ops.streaming_mean(nn.in_top_k(probabilities, targets, k))
+      targets = array_ops.squeeze(targets, axis=[1])
+    return metrics.mean(nn.in_top_k(probabilities, targets, k))
   return _top_k
 
 
 def _accuracy(predictions, targets, weights=None):
-  return metric_ops.streaming_accuracy(predictions, targets, weights=weights)
+  return metrics.accuracy(
+      labels=targets, predictions=predictions, weights=weights)
 
 
 def _r2(probabilities, targets, weights=None):
-  targets = math_ops.to_float(targets)
+  targets = math_ops.cast(targets, dtypes.float32)
   y_mean = math_ops.reduce_mean(targets, 0)
-  squares_total = math_ops.reduce_sum(math_ops.square(targets - y_mean), 0)
+  squares_total = math_ops.reduce_sum(
+      math_ops.squared_difference(targets, y_mean), 0)
   squares_residuals = math_ops.reduce_sum(
-      math_ops.square(targets - probabilities), 0)
+      math_ops.squared_difference(targets, probabilities), 0)
   score = 1 - math_ops.reduce_sum(squares_residuals / squares_total)
-  return metric_ops.streaming_mean(score, weights=weights)
+  return metrics.mean(score, weights=weights)
 
 
 def _squeeze_and_onehot(targets, depth):
-  targets = array_ops.squeeze(targets, squeeze_dims=[1])
-  return array_ops.one_hot(math_ops.to_int32(targets), depth)
+  targets = array_ops.squeeze(targets, axis=[1])
+  return array_ops.one_hot(math_ops.cast(targets, dtypes.int32), depth)
 
 
 def _sigmoid_entropy(probabilities, targets, weights=None):
-  return metric_ops.streaming_mean(
+  return metrics.mean(
       losses.sigmoid_cross_entropy(probabilities,
                                    _squeeze_and_onehot(
                                        targets,
@@ -71,9 +74,9 @@ def _sigmoid_entropy(probabilities, targets, weights=None):
 
 
 def _softmax_entropy(probabilities, targets, weights=None):
-  return metric_ops.streaming_mean(
+  return metrics.mean(
       losses.sparse_softmax_cross_entropy(probabilities,
-                                          math_ops.to_int32(targets)),
+                                          math_ops.cast(targets, dtypes.int32)),
       weights=weights)
 
 
@@ -82,7 +85,7 @@ def _predictions(predictions, unused_targets, **unused_kwargs):
 
 
 def _class_log_loss(probabilities, targets, weights=None):
-  return metric_ops.streaming_mean(
+  return metrics.mean(
       losses.log_loss(probabilities,
                       _squeeze_and_onehot(targets,
                                           array_ops.shape(probabilities)[1])),
@@ -90,34 +93,36 @@ def _class_log_loss(probabilities, targets, weights=None):
 
 
 def _precision(predictions, targets, weights=None):
-  return metric_ops.streaming_precision(predictions, targets, weights=weights)
+  return metrics.precision(
+      labels=targets, predictions=predictions, weights=weights)
 
 
 def _precision_at_thresholds(predictions, targets, weights=None):
-  return metric_ops.streaming_precision_at_thresholds(
-      array_ops.slice(predictions, [0, 1], [-1, 1]),
-      targets,
-      np.arange(
-          0, 1, 0.01, dtype=np.float32),
+  return metrics.precision_at_thresholds(
+      labels=targets,
+      predictions=array_ops.slice(predictions, [0, 1], [-1, 1]),
+      thresholds=np.arange(0, 1, 0.01, dtype=np.float32),
       weights=weights)
 
 
 def _recall(predictions, targets, weights=None):
-  return metric_ops.streaming_recall(predictions, targets, weights=weights)
+  return metrics.recall(
+      labels=targets, predictions=predictions, weights=weights)
 
 
 def _recall_at_thresholds(predictions, targets, weights=None):
-  return metric_ops.streaming_recall_at_thresholds(
-      array_ops.slice(predictions, [0, 1], [-1, 1]),
-      targets,
-      np.arange(
-          0, 1, 0.01, dtype=np.float32),
+  return metrics.recall_at_thresholds(
+      labels=targets,
+      predictions=array_ops.slice(predictions, [0, 1], [-1, 1]),
+      thresholds=np.arange(0, 1, 0.01, dtype=np.float32),
       weights=weights)
 
 
 def _auc(probs, targets, weights=None):
-  return metric_ops.streaming_auc(array_ops.slice(probs, [0, 1], [-1, 1]),
-                                  targets, weights=weights)
+  return metrics.auc(
+      labels=targets,
+      predictions=array_ops.slice(probs, [0, 1], [-1, 1]),
+      weights=weights)
 
 
 _EVAL_METRICS = {

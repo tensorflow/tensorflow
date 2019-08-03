@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_LOCAL_MASTER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_LOCAL_MASTER_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_LOCAL_MASTER_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_LOCAL_MASTER_H_
 
 #include <memory>
 
@@ -71,6 +71,16 @@ class LocalMaster : public MasterInterface {
   Status Reset(CallOptions* call_options, const ResetRequest* request,
                ResetResponse* response) override;
 
+  Status MakeCallable(CallOptions* call_options,
+                      const MakeCallableRequest* request,
+                      MakeCallableResponse* response) override;
+  Status RunCallable(CallOptions* call_options,
+                     const RunCallableRequest* request,
+                     RunCallableResponse* response) override;
+  Status ReleaseCallable(CallOptions* call_options,
+                         const ReleaseCallableRequest* request,
+                         ReleaseCallableResponse* response) override;
+
   // Registers the mapping from the given `target` to the given `master`.
   //
   // WARNING: The `master` pointer remains owned by the caller. It is
@@ -98,4 +108,4 @@ class LocalMaster : public MasterInterface {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_LOCAL_MASTER_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_LOCAL_MASTER_H_

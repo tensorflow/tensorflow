@@ -14,78 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/training_op_helpers.h"
-#include "tensorflow/core/kernels/variable_ops.h"
+
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
-mutex* GetTrainingVariableMutex(OpKernelContext* ctx, int input) {
-  if (ctx->input_dtype(input) == DT_RESOURCE) {
-    Var* var;
-    if (LookupResource(ctx, HandleFromInput(ctx, input), &var).ok()) {
-      return var->mu();
-    } else {
-      ctx->CtxFailureWithWarning(
-          errors::Internal("Invalid variable reference."));
-      return nullptr;
-    }
-  }
-  return ctx->input_ref_mutex(input);
-}
-
-// MaybeLockVariableInputMutexesInOrder is a helper function to acquire mutexes
-// in address order to mitigate deadlock.  Returns a vector of acquired mutexes.
-// Safe to pass duplicates - will only lock each distinct mutex once.  If
-// do_lock is false, returns immediately.  Note that this silently doesn't lock
-// mutexes for invalid variable references; in all usages this is followed by
-// GetInputTensor which will signal a failure.
-std::vector<mutex_lock> MaybeLockVariableInputMutexesInOrder(
-    OpKernelContext* ctx, bool do_lock, const std::vector<int>& input_ids) {
-  std::vector<mutex_lock> locks;
-  if (!do_lock) {
-    return locks;
-  }
-  std::vector<mutex*> mutexes;
-  std::vector<int> acquire_order;
-  for (auto input : input_ids) {
-    mutex* mutex = GetTrainingVariableMutex(ctx, input);
-    // Only lock each mutex once if duplicates exist (n^2 but n is 2 or 3).
-    if (std::find(mutexes.begin(), mutexes.end(), mutex) == mutexes.end()) {
-      acquire_order.push_back(mutexes.size());
-      mutexes.push_back(mutex);
-    }
-  }
-  std::sort(acquire_order.begin(), acquire_order.end(),
-            [&mutexes](int a, int b) { return mutexes[a] < mutexes[b]; });
-
-  for (auto input : acquire_order) {
-    mutex* mu = GetTrainingVariableMutex(ctx, input);
-    if (mu != nullptr) {
-      locks.emplace_back(*mu);
-    }
-  }
-  return locks;
-}
-
-Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
-                                  bool lock_held, Tensor* out) {
-  if (ctx->input_dtype(input) == DT_RESOURCE) {
-    Var* var;
-    if (LookupResource(ctx, HandleFromInput(ctx, input), &var).ok()) {
-      core::ScopedUnref unref_var(var);
-      if (lock_held) {
-        *out = *var->tensor();
-      } else {
-        mutex_lock ml(*var->mu());
-        *out = *var->tensor();
-      }
-      return Status::OK();
-    } else {
-      return errors::Internal("Invalid variable reference.");
-    }
-  }
-  *out = ctx->mutable_input(input, lock_held);
-  return Status::OK();
-}
 
 void MaybeForwardRefInputToRefOutput(OpKernelContext* ctx, int input,
                                      int output) {

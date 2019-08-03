@@ -190,8 +190,6 @@ class ScrollBar(object):
     return layout
 
   def get_click_command(self, mouse_y):
-    # TODO(cais): Support continuous scrolling when the mouse button is held
-    # down.
     if self._output_num_rows <= 1:
       return None
     elif mouse_y == self._min_y:
@@ -271,16 +269,22 @@ class CursesUI(base_ui.BaseUI):
 
   _UI_WAIT_MESSAGE = "Processing..."
 
+  # The delay (in ms) between each update of the scroll bar when the mouse
+  # button is held down on the scroll bar. Controls how fast the screen scrolls.
+  _MOUSE_SCROLL_DELAY_MS = 100
+
   _single_instance_lock = threading.Lock()
 
-  def __init__(self, on_ui_exit=None):
+  def __init__(self, on_ui_exit=None, config=None):
     """Constructor of CursesUI.
 
     Args:
       on_ui_exit: (Callable) Callback invoked when the UI exits.
+      config: An instance of `cli_config.CLIConfig()` carrying user-facing
+        configurations.
     """
 
-    base_ui.BaseUI.__init__(self, on_ui_exit=on_ui_exit)
+    base_ui.BaseUI.__init__(self, on_ui_exit=on_ui_exit, config=config)
 
     self._screen_init()
     self._screen_refresh_size()
@@ -445,8 +449,11 @@ class CursesUI(base_ui.BaseUI):
     curses.cbreak()
     self._stdscr.keypad(1)
 
-    self._mouse_enabled = enable_mouse_on_start
+    self._mouse_enabled = self.config.get("mouse_mode")
     self._screen_set_mousemask()
+    self.config.set_callback(
+        "mouse_mode",
+        lambda cfg: self._set_mouse_enabled(cfg.get("mouse_mode")))
 
     self._screen_create_command_window()
 
@@ -850,7 +857,30 @@ class CursesUI(base_ui.BaseUI):
       except curses.error:
         mouse_event_type = None
 
-      if mouse_event_type == curses.BUTTON1_RELEASED:
+      if mouse_event_type == curses.BUTTON1_PRESSED:
+        # Logic for held mouse-triggered scrolling.
+        if mouse_x >= self._max_x - 2:
+          # Disable blocking on checking for user input.
+          self._command_window.nodelay(True)
+
+          # Loop while mouse button is pressed.
+          while mouse_event_type == curses.BUTTON1_PRESSED:
+            # Sleep for a bit.
+            curses.napms(self._MOUSE_SCROLL_DELAY_MS)
+            scroll_command = self._scroll_bar.get_click_command(mouse_y)
+            if scroll_command in (_SCROLL_UP_A_LINE, _SCROLL_DOWN_A_LINE):
+              self._scroll_output(scroll_command)
+
+            # Check to see if different mouse event is in queue.
+            self._command_window.getch()
+            try:
+              _, _, _, _, mouse_event_type = self._screen_getmouse()
+            except curses.error:
+              pass
+
+          self._command_window.nodelay(False)
+          return x
+      elif mouse_event_type == curses.BUTTON1_RELEASED:
         # Logic for mouse-triggered scrolling.
         if mouse_x >= self._max_x - 2:
           scroll_command = self._scroll_bar.get_click_command(mouse_y)
@@ -1180,6 +1210,22 @@ class CursesUI(base_ui.BaseUI):
       self._main_menu = None
       self._main_menu_pad = None
 
+  def _pad_line_end_with_whitespace(self, pad, row, line_end_x):
+    """Pad the whitespace at the end of a line with the default color pair.
+
+    Prevents spurious color pairs from appearing at the end of the lines in
+    certain text terimnals.
+
+    Args:
+      pad: The curses pad object to operate on.
+      row: (`int`) row index.
+      line_end_x: (`int`) column index of the end of the line (beginning of
+        the whitespace).
+    """
+    if line_end_x < self._max_x - 2:
+      pad.addstr(row, line_end_x, " " * (self._max_x - 3 - line_end_x),
+                 self._default_color_pair)
+
   def _screen_add_line_to_output_pad(self, pad, row, txt, color_segments=None):
     """Render a line in a text pad.
 
@@ -1203,6 +1249,7 @@ class CursesUI(base_ui.BaseUI):
 
     if not color_segments:
       pad.addstr(row, 0, txt, self._default_color_pair)
+      self._pad_line_end_with_whitespace(pad, row, len(txt))
       return
 
     if not isinstance(color_segments, list):
@@ -1243,6 +1290,8 @@ class CursesUI(base_ui.BaseUI):
     for segment, color_pair in zip(all_segments, all_color_pairs):
       if segment[1] < self._max_x:
         pad.addstr(row, segment[0], txt[segment[0]:segment[1]], color_pair)
+    if all_segments:
+      self._pad_line_end_with_whitespace(pad, row, all_segments[-1][1])
 
   def _screen_scroll_output_pad(self, pad, viewport_top, viewport_left,
                                 screen_location_top, screen_location_left,
@@ -1653,4 +1702,7 @@ class CursesUI(base_ui.BaseUI):
       self._redraw_output()
 
   def _screen_set_mousemask(self):
-    curses.mousemask(self._mouse_enabled)
+    if self._mouse_enabled:
+      curses.mousemask(curses.BUTTON1_RELEASED | curses.BUTTON1_PRESSED)
+    else:
+      curses.mousemask(0)

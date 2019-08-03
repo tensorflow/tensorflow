@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE__CALL_INLINER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE__CALL_INLINER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CALL_INLINER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CALL_INLINER_H_
 
 #include <deque>
 
@@ -25,24 +25,21 @@ namespace xla {
 
 // For every kCall operation in the main computation, we inline the body of the
 // called function, and proceed recursively.
-class CallInliner : public HloPassInterface {
+class CallInliner : public HloModulePass {
  public:
+  using InlinedInstructionMap =
+      std::unordered_map<HloInstruction*, HloInstruction*>;
+
+  // Inlines one call instruction.  Returns a mapping from the original
+  // instructions to their inlined versions.
+  static StatusOr<InlinedInstructionMap> Inline(HloInstruction* call);
+
   ~CallInliner() override = default;
-  tensorflow::StringPiece name() const override { return "CallInliner"; }
+  absl::string_view name() const override { return "CallInliner"; }
 
   StatusOr<bool> Run(HloModule* module) override;
-
- private:
-  // Replaces the given call operation -- which must be an operation inside the
-  // entry computation with opcode kCall -- with the called computation's body,
-  // such that the called computation is inline in the entry computation.
-  //
-  // On successful inlining, the inlined computation may have itself contained
-  // calls; if so, they are added to the work_queue.
-  Status ReplaceWithInlinedBody(HloInstruction* call,
-                                std::deque<HloInstruction*>* work_queue);
 };
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE__CALL_INLINER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CALL_INLINER_H_

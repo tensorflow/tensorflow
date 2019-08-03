@@ -1,20 +1,20 @@
 # Description:
 #   JNI-based Java inference interface for TensorFlow.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_copts",
     "if_android",
-    "if_android_mips",
+    "tf_copts",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files([
+    "LICENSE",
     "jni/version_script.lds",
 ])
 
@@ -39,20 +39,6 @@ cc_library(
     alwayslink = 1,
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "bin/**",
-            "gen/**",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 # JAR with Java bindings to TF.
 android_library(
     name = "android_tensorflow_inference_java",
@@ -72,22 +58,21 @@ LINKER_SCRIPT = "//tensorflow/contrib/android:jni/version_script.lds"
 
 cc_binary(
     name = "libtensorflow_inference.so",
-    srcs = [],
     copts = tf_copts() + [
         "-ffunction-sections",
         "-fdata-sections",
     ],
     linkopts = if_android([
         "-landroid",
+        "-latomic",
         "-ldl",
         "-llog",
         "-lm",
         "-z defs",
         "-s",
         "-Wl,--gc-sections",
-        "-Wl,--version-script",  # This line must be directly followed by LINKER_SCRIPT.
-        LINKER_SCRIPT,
-    ]) + if_android_mips(["-latomic"]),
+        "-Wl,--version-script,$(location {})".format(LINKER_SCRIPT),
+    ]),
     linkshared = 1,
     linkstatic = 1,
     tags = [

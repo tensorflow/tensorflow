@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "AdjustContrastv2"
+  visibility: HIDDEN
+}

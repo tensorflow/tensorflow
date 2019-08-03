@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_PAD_OP_H_
-#define TENSORFLOW_KERNELS_PAD_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_PAD_OP_H_
+#define TENSORFLOW_CORE_KERNELS_PAD_OP_H_
 // Functor definition for PadOp, must be compilable by nvcc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -25,13 +25,13 @@ namespace tensorflow {
 namespace functor {
 
 // Functor used by PadOp to do the computations.
-template <typename Device, typename T, int Dims>
+template <typename Device, typename T, typename Tpadding, int Dims>
 struct Pad {
   // Pad "input" into "output", as specified by "paddings" and "pad_value".
   // See pad_op.cc for details.
   void operator()(const Device& d, typename TTypes<T, Dims>::Tensor output,
                   typename TTypes<T, Dims>::ConstTensor input,
-                  Eigen::array<Eigen::IndexPair<int32>, Dims> paddings,
+                  Eigen::array<Eigen::IndexPair<Tpadding>, Dims> paddings,
                   T pad_value) {
     if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value &&
         (output.size() <= std::numeric_limits<int32>::max())) {
@@ -42,16 +42,16 @@ struct Pad {
   }
 };
 
-template <typename Device, typename T>
-struct Pad<Device, T, 0> {
+template <typename Device, typename T, typename Tpadding>
+struct Pad<Device, T, Tpadding, 0> {
   // In the scalar case we simply copy the input.
   void operator()(const Device& d, typename TTypes<T, 0>::Tensor output,
                   typename TTypes<T, 0>::ConstTensor input,
-                  Eigen::array<Eigen::IndexPair<int32>, 0>, T) {
+                  Eigen::array<Eigen::IndexPair<Tpadding>, 0>, T) {
     output.device(d) = input;
   }
 };
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_PAD_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_PAD_OP_H_

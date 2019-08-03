@@ -144,12 +144,16 @@ class ResizeAreaOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    ImageResizerState st(align_corners_);
+    // The op always did the correct thing with regard to pixel centers, so we
+    // always pass false here for half_pixel_centers since ImageResizerState
+    // enforces that if align_corners_ is true, half_pixel_centers must be
+    // false.
+    ImageResizerState st(align_corners_, /*unused half_pixel_centers=*/false);
     st.ValidateAndCreateOutput(context, input);
 
     if (!context->status().ok()) return;
 
-    typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
+    typename TTypes<T, 4>::ConstTensor input_data(input.tensor<T, 4>());
 
     // Precompute values used when iterating over x coordinates within a row.
     // Note that it may be useful to cache x_interps for a given
@@ -161,14 +165,14 @@ class ResizeAreaOp : public OpKernel {
       const float in_x1 = (x + 1) * st.width_scale;
       // The start and end width indices of all the cells that could
       // contribute to the target cell.
-      int64 v = floor(in_x);
+      int64 v = std::floor(in_x);
       x_interp.start = v;
       // TODO(cwhipkey): simplify this logic.
       x_interp.start_scale =
           v < in_x ? (v + 1 > in_x1 ? st.width_scale : v + 1 - in_x)
                    : (v + 1 > in_x1 ? in_x1 - v : 1.0);
 
-      v = ceil(in_x1);
+      v = std::ceil(in_x1);
       x_interp.end = v;
       v = x_interp.end - 1;
       x_interp.end_minus_one_scale =
@@ -190,8 +194,7 @@ class ResizeAreaOp : public OpKernel {
   void ComputeLoop(const ImageResizerState& st,
                    const std::vector<CachedInterpolation>& x_interps,
                    typename TTypes<T, 4>::ConstTensor input_data) {
-    typename TTypes<float, 4>::Tensor output_data =
-        st.output->tensor<float, 4>();
+    TTypes<float, 4>::Tensor output_data = st.output->tensor<float, 4>();
 
     // When using this algorithm for downsizing, the target pixel value is the
     // weighted average of all the source pixels. The weight is determined by
@@ -223,8 +226,8 @@ class ResizeAreaOp : public OpKernel {
         const float in_y1 = (y + 1) * st.height_scale;
         // The start and end height indices of all the cells that could
         // contribute to the target cell.
-        const int64 y_start = floor(in_y);
-        const int64 y_end = ceil(in_y1);
+        const int64 y_start = std::floor(in_y);
+        const int64 y_end = std::ceil(in_y1);
         y_scales.clear();
         y_ptrs.clear();
         for (int64 i = y_start; i < y_end; ++i) {
@@ -272,7 +275,7 @@ class ResizeAreaOp : public OpKernel {
 
  private:
   static EIGEN_ALWAYS_INLINE int64 Bound(int64 val, int64 limit) {
-    return std::min(limit - 1ll, std::max(0ll, val));
+    return std::min(limit - 1ll, std::max(int64{0}, val));
   }
 
   bool align_corners_;

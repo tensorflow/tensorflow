@@ -182,7 +182,7 @@ class StringCrosser {
     }
     // TODO(zakaria): this will copy the string twice, might effect
     // performance.
-    return str_util::Join(cross_vec, k_feature_separator);
+    return absl::StrJoin(cross_vec, k_feature_separator);
   }
 
  private:
@@ -423,8 +423,9 @@ class SparseFeatureCrossOp : public OpKernel {
               "Input values should be a std::vector but received shape ",
               values_list_in[i].shape().DebugString(), " at position ", i));
       OP_REQUIRES(
-          context, indices_list_in[i].shape().dim_size(0) ==
-                       values_list_in[i].shape().dim_size(0),
+          context,
+          indices_list_in[i].shape().dim_size(0) ==
+              values_list_in[i].shape().dim_size(0),
           errors::InvalidArgument(
               "Expected size of values to be ",
               indices_list_in[i].shape().dim_size(0), " got ",

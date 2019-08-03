@@ -55,7 +55,7 @@ class MathUtilsTest(test.TestCase):
       running_sum = running_sum + current_contribution
       # pylint: enable=g-no-augmented-assignment
       transition_power = numpy.dot(transition, transition_power)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(result,
                           math_utils.power_sums_tensor(
                               array_size, transition, addition).eval())
@@ -66,7 +66,7 @@ class MathUtilsTest(test.TestCase):
     result = []
     for i in range(powers.shape[0]):
       result.append(numpy.linalg.matrix_power(matrix, powers[i]))
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(result,
                           math_utils.matrix_to_powers(matrix, powers).eval(),
                           rtol=1e-5,
@@ -78,7 +78,7 @@ class MathUtilsTest(test.TestCase):
     result = []
     for i in range(batch.shape[0]):
       result.append(numpy.linalg.matrix_power(batch[i], powers[i]))
-    with self.test_session():
+    with self.cached_session():
       # TODO(allenl): Numerical errors seem to be creeping in. Maybe it can be
       # made slightly more stable?
       self.assertAllClose(result,
@@ -91,7 +91,7 @@ class MathUtilsTest(test.TestCase):
     left_transpose = numpy.transpose(left, [0, 2, 1])
     right = numpy.random.normal(size=[2, 3]).astype(numpy.float32)
     expected_result = numpy.dot(left, right)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(expected_result,
                           math_utils.batch_times_matrix(
                               left, right).eval())
@@ -114,7 +114,7 @@ class MathUtilsTest(test.TestCase):
     right_transpose = numpy.transpose(right, [0, 2, 1])
     expected_result = numpy.transpose(numpy.dot(right_transpose, left.T),
                                       [0, 2, 1])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(expected_result,
                           math_utils.matrix_times_batch(
                               left, right).eval())
@@ -132,7 +132,7 @@ class MathUtilsTest(test.TestCase):
                               adj_x=True, adj_y=True).eval())
 
   def test_make_diagonal_undefined_shapes(self):
-    with self.test_session():
+    with self.cached_session():
       completely_undefined = array_ops.placeholder(dtype=dtypes.float32)
       partly_undefined = array_ops.placeholder(
           shape=[None, None], dtype=dtypes.float32)
@@ -152,7 +152,7 @@ class MathUtilsTest(test.TestCase):
                                  [5., 6.]]}))
 
   def test_make_diagonal_mostly_defined_shapes(self):
-    with self.test_session():
+    with self.cached_session():
       mostly_defined = array_ops.placeholder(
           shape=[None, 2], dtype=dtypes.float32)
       blocked = math_utils.block_diagonal([[[2.]],
@@ -192,7 +192,7 @@ class TestMakeToeplitzMatrix(test.TestCase):
 
   def _test_make_toeplitz_matrix(self, inputs, output_expected):
     output_tf = math_utils.make_toeplitz_matrix(inputs)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       output_tf_np = sess.run(output_tf)
     self.assertAllClose(output_tf_np, output_expected)
 
@@ -201,13 +201,13 @@ class TestMakeCovarianceMatrix(test.TestCase):
 
   def test_zero_size_matrix(self):
     raw = numpy.zeros([0, 0])
-    with self.test_session():
+    with self.cached_session():
       constructed = math_utils.sign_magnitude_positive_definite(raw=raw).eval()
     self.assertEqual((0, 0), constructed.shape)
 
   def test_sign_magnitude_positive_definite(self):
     for dtype in [dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         matrix_tensor = math_utils.sign_magnitude_positive_definite(
             raw=constant_op.constant([[-1., -2.], [3., 4.]], dtype=dtype),
             off_diagonal_scale=constant_op.constant(-1., dtype=dtype),
@@ -223,14 +223,17 @@ class TestLookupTable(test.TestCase):
     hash_table = math_utils.TupleOfTensorsLookup(
         key_dtype=dtypes.int64,
         default_values=[[
-            array_ops.ones([3, 2], dtype=dtypes.float32), array_ops.zeros(
-                [5], dtype=dtypes.float64)
-        ], array_ops.ones([7, 7], dtype=dtypes.int64)],
+            array_ops.ones([3, 2], dtype=dtypes.float32),
+            array_ops.zeros([5], dtype=dtypes.float64)
+        ],
+                        array_ops.ones([7, 7], dtype=dtypes.int64)],
         empty_key=-1,
+        deleted_key=-2,
         name="test_lookup")
     def stack_tensor(base_tensor):
       return array_ops.stack([base_tensor + 1, base_tensor + 2])
-    with self.test_session() as session:
+
+    with self.cached_session() as session:
       ((float_output, double_output), int_output) = session.run(
           hash_table.lookup([2, 1, 0]))
       def expected_output_before_insert(base_tensor):
@@ -290,7 +293,7 @@ class InputStatisticsTests(test.TestCase):
           time_series_reader=input_pipeline.NumpyReader(features))
       statistics = stat_object.initialize_graph(
           features=input_fn()[0])
-      with self.test_session(graph=graph) as session:
+      with self.session(graph=graph) as session:
         variables.global_variables_initializer().run()
         coordinator = coordinator_lib.Coordinator()
         queue_runner_impl.start_queue_runners(session, coord=coordinator)

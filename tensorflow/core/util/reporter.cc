@@ -47,12 +47,24 @@ Status TestReporter::Benchmark(int64 iters, double cpu_time, double wall_time,
   return Status::OK();
 }
 
+Status TestReporter::SetProperty(const string& name, const string& value) {
+  if (closed_) return Status::OK();
+  (*benchmark_entry_.mutable_extras())[name].set_string_value(value);
+  return Status::OK();
+}
+
+Status TestReporter::SetProperty(const string& name, double value) {
+  if (closed_) return Status::OK();
+  (*benchmark_entry_.mutable_extras())[name].set_double_value(value);
+  return Status::OK();
+}
+
 Status TestReporter::Initialize() {
   if (fname_.empty()) {
     return Status::OK();
   }
   string mangled_fname = strings::StrCat(
-      fname_, str_util::Join(str_util::Split(test_name_, '/'), "__"));
+      fname_, absl::StrJoin(str_util::Split(test_name_, '/'), "__"));
   Env* env = Env::Default();
   if (env->FileExists(mangled_fname).ok()) {
     return errors::InvalidArgument("Cannot create TestReporter, file exists: ",

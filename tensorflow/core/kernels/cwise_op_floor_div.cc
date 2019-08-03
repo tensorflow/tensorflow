@@ -16,19 +16,19 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER5(BinaryOp, CPU, "FloorDiv", functor::safe_floor_div, uint8, uint16,
-          int16, int32, int64);
+REGISTER6(BinaryOp, CPU, "FloorDiv", functor::safe_floor_div, uint8, uint16,
+          int8, int16, int32, int64);
 REGISTER3(BinaryOp, CPU, "FloorDiv", functor::floor_div_real, float,
           Eigen::half, double);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER4(BinaryOp, GPU, "FloorDiv", functor::floor_div, uint8, uint16, int16,
           int64);
 REGISTER3(BinaryOp, GPU, "FloorDiv", functor::floor_div_real, float,
           Eigen::half, double);
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
@@ -49,5 +49,5 @@ REGISTER_KERNEL_BUILDER(Name("FloorDiv")
                             .HostMemory("z")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::safe_floor_div<int32>>);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

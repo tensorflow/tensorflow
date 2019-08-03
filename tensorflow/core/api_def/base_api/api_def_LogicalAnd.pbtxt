@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "LogicalAnd"
+  summary: "Returns the truth value of x AND y element-wise."
+  description: <<END
+*NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+END
+}

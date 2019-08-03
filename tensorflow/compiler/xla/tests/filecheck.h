@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_TESTS_FILECHECK_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_TESTS_FILECHECK_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TESTS_FILECHECK_H_
+#define TENSORFLOW_COMPILER_XLA_TESTS_FILECHECK_H_
 
 #include <string>
 
@@ -26,8 +26,8 @@ namespace xla {
 // Runs FileCheck with the given pattern over given input string. Provided that
 // FileCheck can execute, returns true if and only if FileCheck succeeded in
 // matching the input.
-StatusOr<bool> RunFileCheck(const string& input, const string& pattern);
+StatusOr<bool> RunFileCheck(const string& input, absl::string_view pattern);
 
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_TESTS_FILECHECK_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TESTS_FILECHECK_H_

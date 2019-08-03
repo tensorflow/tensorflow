@@ -36,12 +36,14 @@ ExamplesIterable::ExamplesIterable(
   // Create sparse float column iterables and values.
   sparse_float_column_iterables_.reserve(sparse_float_feature_columns.size());
   sparse_float_column_values_.reserve(sparse_float_feature_columns.size());
+  sparse_float_dimensions_.reserve(sparse_float_feature_columns.size());
   for (auto& sparse_float_column : sparse_float_feature_columns) {
     sparse_float_column_iterables_.emplace_back(
         sparse_float_column.indices().template matrix<int64>(), example_start,
         example_end);
     sparse_float_column_values_.emplace_back(
         sparse_float_column.values().template vec<float>());
+    sparse_float_dimensions_.push_back(sparse_float_column.shape()[1]);
   }
 
   // Create sparse int column iterables and values.
@@ -73,9 +75,9 @@ Iterator::Iterator(ExamplesIterable* iter, int64 example_idx)
   // Pre-size example features.
   example_.dense_float_features.resize(
       iter_->dense_float_column_values_.size());
+  example_.sparse_int_features.resize(iter_->sparse_int_column_values_.size());
   example_.sparse_float_features.resize(
       iter_->sparse_float_column_values_.size());
-  example_.sparse_int_features.resize(iter_->sparse_int_column_values_.size());
 }
 
 }  // namespace utils

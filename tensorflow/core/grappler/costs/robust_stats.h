@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_COSTS_ROBUST_STATS_H_
-#define TENSORFLOW_GRAPPLER_COSTS_ROBUST_STATS_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_ROBUST_STATS_H_
+#define TENSORFLOW_CORE_GRAPPLER_COSTS_ROBUST_STATS_H_
 
 #include <vector>
 namespace tensorflow {
 namespace grappler {
 class RobustStats {
  public:
-  RobustStats(const std::vector<double>& values);
-  RobustStats(std::vector<double>&& values);
+  explicit RobustStats(const std::vector<double>& values);
+  explicit RobustStats(std::vector<double>&& values);
 
   double lo() const { return lo_; }
   double hi() const { return hi_; }
@@ -39,4 +39,4 @@ class RobustStats {
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_COSTS_ROBUST_STATS_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_ROBUST_STATS_H_

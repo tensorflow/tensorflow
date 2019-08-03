@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_CLOUD_BIGQUERY_PARTITION_ACCESSOR_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_CLOUD_BIGQUERY_PARTITION_ACCESSOR_H_
+#ifndef TENSORFLOW_CONTRIB_CLOUD_KERNELS_BIGQUERY_TABLE_ACCESSOR_H_
+#define TENSORFLOW_CONTRIB_CLOUD_KERNELS_BIGQUERY_TABLE_ACCESSOR_H_
 
 #include <map>
 #include <memory>
@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/contrib/cloud/kernels/bigquery_table_partition.pb.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
-#include "tensorflow/core/platform/cloud/http_request.h"
 
 namespace tensorflow {
 
@@ -109,24 +109,17 @@ class BigQueryTableAccessor {
                     const std::vector<string>& columns,
                     const BigQueryTablePartition& partition,
                     std::unique_ptr<AuthProvider> auth_provider,
-                    std::unique_ptr<HttpRequest::Factory> http_request_factory,
+                    std::shared_ptr<HttpRequest::Factory> http_request_factory,
                     std::unique_ptr<BigQueryTableAccessor>* accessor);
 
   /// \brief Constructs an object for a given table and partition.
-  BigQueryTableAccessor(const string& project_id, const string& dataset_id,
-                        const string& table_id, int64 timestamp_millis,
-                        int64 row_buffer_size, const string& end_point,
-                        const std::vector<string>& columns,
-                        const BigQueryTablePartition& partition);
-
-  /// Used for unit testing.
   BigQueryTableAccessor(
       const string& project_id, const string& dataset_id,
       const string& table_id, int64 timestamp_millis, int64 row_buffer_size,
       const string& end_point, const std::vector<string>& columns,
       const BigQueryTablePartition& partition,
       std::unique_ptr<AuthProvider> auth_provider,
-      std::unique_ptr<HttpRequest::Factory> http_request_factory);
+      std::shared_ptr<HttpRequest::Factory> http_request_factory);
 
   /// \brief Parses column values for a given row.
   Status ParseColumnValues(const Json::Value& value,
@@ -199,10 +192,10 @@ class BigQueryTableAccessor {
   SchemaNode schema_root_;
 
   std::unique_ptr<AuthProvider> auth_provider_;
-  std::unique_ptr<HttpRequest::Factory> http_request_factory_;
+  std::shared_ptr<HttpRequest::Factory> http_request_factory_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BigQueryTableAccessor);
 };
 
 }  // namespace tensorflow
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_CLOUD_BIGQUERY_PARTITION_ACCESSOR_H_
+#endif  // TENSORFLOW_CONTRIB_CLOUD_KERNELS_BIGQUERY_TABLE_ACCESSOR_H_

@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_LOOKUP_TABLE_OP_H_
-#define TENSORFLOW_KERNELS_LOOKUP_TABLE_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_
+#define TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/lookup_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -57,19 +57,21 @@ class LookupTableOp : public OpKernel {
                                       use_node_name_sharing_));
     }
 
-    auto creator = [ctx, this](lookup::LookupInterface** ret) {
-      lookup::LookupInterface* container = new Container(ctx, this);
-      if (!ctx->status().ok()) {
-        container->Unref();
-        return ctx->status();
-      }
-      if (ctx->track_allocations()) {
-        ctx->record_host_persistent_memory_allocation(
-            container->MemoryUsed() + table_handle_.AllocatedBytes());
-      }
-      *ret = container;
-      return Status::OK();
-    };
+    auto creator =
+        [ctx, this](lookup::LookupInterface** ret)
+            EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+              lookup::LookupInterface* container = new Container(ctx, this);
+              if (!ctx->status().ok()) {
+                container->Unref();
+                return ctx->status();
+              }
+              if (ctx->track_allocations()) {
+                ctx->record_persistent_memory_allocation(
+                    container->MemoryUsed() + table_handle_.AllocatedBytes());
+              }
+              *ret = container;
+              return Status::OK();
+            };
 
     lookup::LookupInterface* table = nullptr;
     OP_REQUIRES_OK(ctx,
@@ -102,9 +104,12 @@ class LookupTableOp : public OpKernel {
   ~LookupTableOp() override {
     // If the table object was not shared, delete it.
     if (table_handle_set_ && cinfo_.resource_is_private_to_kernel()) {
-      TF_CHECK_OK(
-          cinfo_.resource_manager()->template Delete<lookup::LookupInterface>(
-              cinfo_.container(), cinfo_.name()));
+      if (!cinfo_.resource_manager()
+               ->template Delete<lookup::LookupInterface>(cinfo_.container(),
+                                                          cinfo_.name())
+               .ok()) {
+        // Do nothing; the resource can have been deleted by session resets.
+      }
     }
   }
 
@@ -125,19 +130,21 @@ namespace lookup {
 // integral types. However non-integer variables are not allowed and therefore
 // the local copy is unnecessary.
 template <typename T>
-T SubtleMustCopyUnlessStringOrFloat(const T& value) {
+T SubtleMustCopyIfIntegral(const T& value) {
   return internal::SubtleMustCopy(value);
 }
 
-inline const string& SubtleMustCopyUnlessStringOrFloat(const string& value) {
+inline const string& SubtleMustCopyIfIntegral(const string& value) {
   return value;
 }
 
-inline const float SubtleMustCopyUnlessStringOrFloat(const float value) {
+inline const float SubtleMustCopyIfIntegral(const float value) { return value; }
+
+inline const double SubtleMustCopyIfIntegral(const double value) {
   return value;
 }
 
-inline const double SubtleMustCopyUnlessStringOrFloat(const double value) {
+inline const Variant& SubtleMustCopyIfIntegral(const Variant& value) {
   return value;
 }
 
@@ -175,6 +182,30 @@ class HashTable : public InitializableLookupTable {
     return table_ ? table_->size() : 0;
   }
 
+  Status ExportValues(OpKernelContext* context) override {
+    if (!is_initialized_) {
+      return errors::Aborted("HashTable is not initialized.");
+    }
+
+    const int64 size = table_->size();
+
+    Tensor* keys;
+    Tensor* values;
+    TF_RETURN_IF_ERROR(
+        context->allocate_output("keys", TensorShape({size}), &keys));
+    TF_RETURN_IF_ERROR(
+        context->allocate_output("values", TensorShape({size}), &values));
+
+    auto keys_data = keys->flat<K>();
+    auto values_data = values->flat<V>();
+    int64 i = 0;
+    for (auto it = table_->begin(); it != table_->end(); ++it, ++i) {
+      keys_data(i) = it->first;
+      values_data(i) = it->second;
+    }
+    return Status::OK();
+  }
+
   DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
 
   DataType value_dtype() const override { return DataTypeToEnum<V>::v(); }
@@ -191,6 +222,11 @@ class HashTable : public InitializableLookupTable {
     return Status::OK();
   };
 
+  Status DoLazyPrepare(std::function<int64(void)> unused) override {
+    constexpr size_t kUnusedSize = 0;
+    return DoPrepare(kUnusedSize);
+  }
+
   Status DoInsert(const Tensor& keys, const Tensor& values) override {
     if (!table_) {
       return errors::FailedPrecondition("HashTable is not prepared.");
@@ -199,8 +235,8 @@ class HashTable : public InitializableLookupTable {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
     for (int64 i = 0; i < key_values.size(); ++i) {
-      const K key = SubtleMustCopyUnlessStringOrFloat(key_values(i));
-      const V value = SubtleMustCopyUnlessStringOrFloat(value_values(i));
+      const K key = SubtleMustCopyIfIntegral(key_values(i));
+      const V value = SubtleMustCopyIfIntegral(value_values(i));
       const V& previous_value = gtl::LookupOrInsert(table_.get(), key, value);
       if (previous_value != value) {
         return errors::FailedPrecondition(
@@ -219,8 +255,7 @@ class HashTable : public InitializableLookupTable {
 
     for (int64 i = 0; i < key_values.size(); ++i) {
       value_values(i) = gtl::FindWithDefault(
-          *table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)),
-          default_val);
+          *table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
     }
     return Status::OK();
   }
@@ -242,4 +277,4 @@ class HashTable : public InitializableLookupTable {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_LOOKUP_TABLE_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_

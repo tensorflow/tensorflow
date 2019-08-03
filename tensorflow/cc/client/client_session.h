@@ -27,6 +27,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace thread {
+
+struct ThreadPoolOptions;
+
+}
+
 /// @addtogroup core
 /// @{
 
@@ -87,7 +93,47 @@ class ClientSession {
              const std::vector<Operation>& run_outputs,
              std::vector<Tensor>* outputs, RunMetadata* run_metadata) const;
 
-  // TODO(keveman): Add support for partial run.
+  /// \brief A handle to a subgraph, created with
+  /// `ClientSession::MakeCallable()`.
+  typedef int64 CallableHandle;
+
+  /// \brief Creates a `handle` for invoking the subgraph defined by
+  /// `callable_options`.
+  /// NOTE: This API is still experimental and may change.
+  Status MakeCallable(const CallableOptions& callable_options,
+                      CallableHandle* out_handle);
+
+  /// \brief Invokes the subgraph named by `handle` with the given options and
+  /// input tensors.
+  ///
+  /// The order of tensors in `feed_tensors` must match the order of names in
+  /// `CallableOptions::feed()` and the order of tensors in `fetch_tensors` will
+  /// match the order of names in `CallableOptions::fetch()` when this subgraph
+  /// was created.
+  /// NOTE: This API is still experimental and may change.
+  Status RunCallable(CallableHandle handle,
+                     const std::vector<Tensor>& feed_tensors,
+                     std::vector<Tensor>* fetch_tensors,
+                     RunMetadata* run_metadata);
+
+  /// \brief Invokes the subgraph named by `handle` with the given options and
+  /// input tensors.
+  ///
+  /// The order of tensors in `feed_tensors` must match the order of names in
+  /// `CallableOptions::feed()` and the order of tensors in `fetch_tensors` will
+  /// match the order of names in `CallableOptions::fetch()` when this subgraph
+  /// was created.
+  /// NOTE: This API is still experimental and may change.
+  Status RunCallable(CallableHandle handle,
+                     const std::vector<Tensor>& feed_tensors,
+                     std::vector<Tensor>* fetch_tensors,
+                     RunMetadata* run_metadata,
+                     const thread::ThreadPoolOptions& options);
+
+  /// \brief Releases resources associated with the given `handle` in this
+  /// session.
+  /// NOTE: This API is still experimental and may change.
+  Status ReleaseCallable(CallableHandle handle);
 
  private:
   class Impl;

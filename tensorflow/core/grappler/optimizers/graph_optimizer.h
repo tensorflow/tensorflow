@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_H_
 
+#include <string>
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -29,25 +31,51 @@ struct GrapplerItem;
 // optimization of a GrapplerItem for running on a cluster.
 class GraphOptimizer {
  public:
+  GraphOptimizer() : deadline_usec_(0) {}
   virtual ~GraphOptimizer() {}
 
   virtual string name() const = 0;
 
   // Routine called to allow an algorithm to propose a rewritten graph
   // for the graph, feeds and fetches in "item" to run more efficiently
-  // on "cluster".
-  // Returns true iff it managed to generate a solution, false otherwise.
+  // on "cluster". If the returned status is Status::OK() then
+  // *optimized_graph contains the rewritten graph.
+  // Returns an error status if it failed to generate a solution.
+  //
+  // A return value of error::Aborted() can be used signal early termination of
+  // the optimizer, e.g. if the optimization turned out to be a no-op. In this
+  // case the content of *optimized_graph is undefined.
   virtual Status Optimize(Cluster* cluster, const GrapplerItem& item,
                           GraphDef* optimized_graph) = 0;
 
   // Method invoked by the framework so that it can provide feedback
-  // on how well the "optimize_output" (produced as *output from a
+  // on how well the "optimized_graph" (produced as *optimized_graph from a
   // call to Optimize) performed.  Lower "result" scores are better.
   virtual void Feedback(Cluster* cluster, const GrapplerItem& item,
                         const GraphDef& optimized_graph, double result) = 0;
+
+  // Set deadline in microseconds since epoch. A value of zero means no
+  // deadline.
+  void set_deadline_usec(uint64 deadline_usec) {
+    deadline_usec_ = deadline_usec;
+  }
+  uint64 deadline_usec() const { return deadline_usec_; }
+  bool DeadlineExceeded() const {
+    return deadline_usec_ > 0 && Env::Default()->NowMicros() > deadline_usec_;
+  }
+
+ private:
+  uint64 deadline_usec_;
 };
+
+#define GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED()                              \
+  do {                                                                      \
+    if (this->DeadlineExceeded()) {                                         \
+      return errors::DeadlineExceeded(this->name(), " exceeded deadline."); \
+    }                                                                       \
+  } while (0)
 
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_H_

@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LIB_UTILS_RANDOM_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LIB_UTILS_RANDOM_H_
+#ifndef TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_RANDOM_H_
+#define TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_RANDOM_H_
+
+#include <cmath>
 
 #include "tensorflow/core/lib/random/simple_philox.h"
 
@@ -24,7 +26,7 @@ namespace utils {
 // Generates a poisson distributed number with mean 1 for use in bootstrapping.
 inline int32 PoissonBootstrap(random::SimplePhilox* rng) {
   // Knuth, special cased for lambda = 1.0 for efficiency.
-  static const float lbound = exp(-1.0f);
+  static const float lbound = std::exp(-1.0f);
   int32 n = 0;
   for (float r = 1; r > lbound; r *= rng->RandFloat()) {
     ++n;
@@ -36,4 +38,4 @@ inline int32 PoissonBootstrap(random::SimplePhilox* rng) {
 }  // namespace boosted_trees
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LIB_UTILS_RANDOM_H_
+#endif  // TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_RANDOM_H_

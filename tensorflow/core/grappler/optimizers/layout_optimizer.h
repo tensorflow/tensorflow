@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_LAYOUT_OPTIMIZER_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_LAYOUT_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_LAYOUT_OPTIMIZER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_LAYOUT_OPTIMIZER_H_
 
+#include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 
 namespace tensorflow {
 namespace grappler {
-
 // Convert the NHWC layout to NCHW for Conv-related ops on GPUs.
 class LayoutOptimizer : public GraphOptimizer {
  public:
@@ -29,8 +30,16 @@ class LayoutOptimizer : public GraphOptimizer {
 
   string name() const override { return "layout"; };
 
-  // This is for testing only.
-  void set_num_gpus(int num_gpus) { num_gpus_ = num_gpus; };
+  struct TuningConfig {
+    // If true, do not use the NHWC GEMM implementation. When filter size is
+    // one or filter size is equal to input image size,
+    // the NHWC implementation of Conv2D, Conv2DBackpropInput, and
+    // Conv2DBackpropFilter will use a specialized GEMM implementation, which is
+    // usually faster than the NCHW implementation. The downside is that this
+    // might result in more non-cancellable layout conversion nodes (implemented
+    // by the Transpose op).
+    bool no_gemm;
+  };
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* output) override;
@@ -39,11 +48,13 @@ class LayoutOptimizer : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
-  Status InferOutputShapes(GrapplerItem* item);
-  int num_gpus_ = 0;
+  std::unique_ptr<VirtualPlacer> virtual_placer_;
+  std::unordered_set<string> nodes_to_preserve_;
+  Status Tune(const GrapplerItem& item, const GraphProperties& graph_properties,
+              const TuningConfig& config, GraphDef* output);
 };
 
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_LAYOUT_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_LAYOUT_OPTIMIZER_H_

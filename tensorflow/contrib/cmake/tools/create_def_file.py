@@ -31,7 +31,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import io
+import codecs
 import os
 import re
 import subprocess
@@ -44,7 +44,8 @@ UNDNAME = "undname.exe"
 DUMPBIN = "dumpbin.exe"
 
 # Exclude if matched
-EXCLUDE_RE = re.compile(r"RTTI|deleting destructor|::internal::")
+EXCLUDE_RE = re.compile(r"RTTI|deleting destructor|::internal::|Internal|"
+                        r"python_op_gen_internal|grappler")
 
 # Include if matched before exclude
 INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
@@ -56,6 +57,10 @@ INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
                            r"tensorflow::ops::internal::Enter|"
                            r"tensorflow::strings::internal::AppendPieces|"
                            r"tensorflow::strings::internal::CatPieces|"
+                           r"tensorflow::errors::Internal|"
+                           r"tensorflow::Tensor::CopyFromInternal|"
+                           r"tensorflow::kernel_factory::"
+                           r"OpKernelRegistrar::InitInternal|"
                            r"tensorflow::io::internal::JoinPathImpl")
 
 # Include if matched after exclude
@@ -63,12 +68,13 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"^(TFE_\w*)$|"
                         r"tensorflow::|"
                         r"functor::|"
-                        r"perftools::gputools")
+                        r"\?nsync_|"
+                        r"stream_executor::")
 
 # We want to identify data members explicitly in the DEF file, so that no one
 # can implicitly link against the DLL if they use one of the variables exported
 # from the DLL and the header they use does not decorate the symbol with
-# __declspec(dllimport). It is easier to detect what a data symbol does 
+# __declspec(dllimport). It is easier to detect what a data symbol does
 # NOT look like, so doing it with the below regex.
 DATA_EXCLUDE_RE = re.compile(r"[)(]|"
                              r"vftable|"
@@ -76,7 +82,7 @@ DATA_EXCLUDE_RE = re.compile(r"[)(]|"
                              r"vcall|"
                              r"RTTI|"
                              r"protobuf::internal::ExplicitlyConstructed")
-      
+
 def get_args():
   """Parse command line."""
   filename_list = lambda x: x.split(";")
@@ -86,6 +92,7 @@ def get_args():
                       required=True)
   parser.add_argument("--output", help="output deffile", required=True)
   parser.add_argument("--target", help="name of the target", required=True)
+  parser.add_argument("--bitness", help="build target bitness", required=True)
   args = parser.parse_args()
   return args
 
@@ -102,7 +109,7 @@ def main():
   for lib_path in args.input:
     proc = subprocess.Popen([DUMPBIN, "/nologo", "/linkermember:1", lib_path],
                             stdout=subprocess.PIPE)
-    for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):
+    for line in codecs.getreader("utf-8")(proc.stdout):
       cols = line.split()
       if len(cols) < 2:
         continue
@@ -124,13 +131,16 @@ def main():
     # Header for the def file.
     def_fp.write("LIBRARY " + args.target + "\n")
     def_fp.write("EXPORTS\n")
-    def_fp.write("\t ??1OpDef@tensorflow@@UEAA@XZ\n")
+    if args.bitness == "64":
+      def_fp.write("\t??1OpDef@tensorflow@@UEAA@XZ\n")
+    else:
+      def_fp.write("\t??1OpDef@tensorflow@@UAE@XZ\n")
 
     # Each symbols returned by undname matches the same position in candidates.
     # We compare on undname but use the decorated name from candidates.
     dupes = 0
     proc = subprocess.Popen([UNDNAME, tmpfile.name], stdout=subprocess.PIPE)
-    for idx, line in enumerate(io.TextIOWrapper(proc.stdout, encoding="utf-8")):
+    for idx, line in enumerate(codecs.getreader("utf-8")(proc.stdout)):
       decorated = candidates[idx]
       if decorated in taken:
         # Symbol is already in output, done.

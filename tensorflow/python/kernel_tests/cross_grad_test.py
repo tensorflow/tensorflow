@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
@@ -26,8 +27,9 @@ from tensorflow.python.platform import test
 
 class CrossOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testGradientRandomValues(self):
-    with self.test_session():
+    with self.cached_session():
       us = [2, 3]
       u = array_ops.reshape(
           [0.854, -0.616, 0.767, 0.725, -0.927, 0.159], shape=us)

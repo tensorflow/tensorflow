@@ -1,55 +1,43 @@
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_custom_op_library",
+    "tf_gen_op_wrapper_py",
+)
+
 package(
-    default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
-
-cc_library(
-    name = "functional_ops",
-    srcs = ["functional_ops.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-    ],
-    alwayslink = 1,
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
-    name = "sendrecv_ops",
-    srcs = ["sendrecv_ops.cc"],
+    name = "xla_ops",
+    srcs = ["xla_ops.cc"],
     deps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
 
 tf_gen_op_wrapper_py(
-    name = "gen_functional_ops",
-    out = "gen_functional_ops.py",
+    name = "gen_xla_ops",
+    out = "gen_xla_ops.py",
     deps = [
-        ":functional_ops",
+        ":xla_ops",
     ],
 )
 
-tf_gen_op_wrapper_py(
-    name = "gen_sendrecv_ops",
-    out = "gen_sendrecv_ops.py",
-    deps = [
-        ":sendrecv_ops",
+tf_custom_op_library(
+    name = "_xla_ops.so",
+    srcs = [
+        "xla_ops.cc",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+    ],
 )

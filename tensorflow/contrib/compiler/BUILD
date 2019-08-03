@@ -1,14 +1,19 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-package(default_visibility = [":friends"])
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
     includes = ["//tensorflow/compiler/jit:friends"],
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//tensorflow/...",
+        "//tensorflow_models/...",
+        "//third_party/py/tensor2tensor/...",
+    ],
 )
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "compiler_py",
@@ -18,43 +23,44 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework_for_generated_wrappers",
+        ":xla",
+        "//tensorflow/python/compiler/xla:compiler_py",
+    ],
+)
+
+py_library(
+    name = "xla",
+    srcs = ["xla.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
+        "//tensorflow/python/compiler/xla:compiler_py",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
 cuda_py_test(
-    name = "jit_test",
-    size = "small",
-    srcs = ["jit_test.py"],
+    name = "xla_test",
+    srcs = ["xla_test.py"],
     additional_deps = [
-        ":compiler_py",
-        "//third_party/py/numpy",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
+        ":xla",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/contrib/tpu:tpu_estimator",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+    tags = [
+        "no_mac",
+        "no_windows",
     ],
     xla_enabled = True,
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

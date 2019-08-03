@@ -16,8 +16,12 @@ limitations under the License.
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#if defined(__linux__)
+#include <sys/sendfile.h>
+#endif
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -28,11 +32,15 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/posix/error.h"
 #include "tensorflow/core/platform/posix/posix_file_system.h"
 
 namespace tensorflow {
+
+// 128KB of copy buffer
+constexpr size_t kPosixCopyFileBufferSize = 128 * 1024;
 
 // pread() based random-access
 class PosixRandomAccessFile : public RandomAccessFile {
@@ -45,12 +53,26 @@ class PosixRandomAccessFile : public RandomAccessFile {
       : filename_(fname), fd_(fd) {}
   ~PosixRandomAccessFile() override { close(fd_); }
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     Status s;
     char* dst = scratch;
     while (n > 0 && s.ok()) {
-      ssize_t r = pread(fd_, dst, n, static_cast<off_t>(offset));
+      // Some platforms, notably macs, throw EINVAL if pread is asked to read
+      // more than fits in a 32-bit integer.
+      size_t requested_read_length;
+      if (n > INT32_MAX) {
+        requested_read_length = INT32_MAX;
+      } else {
+        requested_read_length = n;
+      }
+      ssize_t r =
+          pread(fd_, dst, requested_read_length, static_cast<off_t>(offset));
       if (r > 0) {
         dst += r;
         n -= r;
@@ -84,7 +106,7 @@ class PosixWritableFile : public WritableFile {
     }
   }
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     size_t r = fwrite(data.data(), 1, data.size(), file_);
     if (r != data.size()) {
       return IOError(filename_, errno);
@@ -93,6 +115,9 @@ class PosixWritableFile : public WritableFile {
   }
 
   Status Close() override {
+    if (file_ == nullptr) {
+      return IOError(filename_, EBADF);
+    }
     Status result;
     if (fclose(file_) != 0) {
       result = IOError(filename_, errno);
@@ -108,11 +133,27 @@ class PosixWritableFile : public WritableFile {
     return Status::OK();
   }
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   Status Sync() override {
     Status s;
     if (fflush(file_) != 0) {
       s = IOError(filename_, errno);
     }
+    return s;
+  }
+
+  Status Tell(int64* position) override {
+    Status s;
+    *position = ftell(file_);
+
+    if (*position == -1) {
+      s = IOError(filename_, errno);
+    }
+
     return s;
   }
 };
@@ -219,6 +260,11 @@ Status PosixFileSystem::GetChildren(const string& dir,
   return Status::OK();
 }
 
+Status PosixFileSystem::GetMatchingPaths(const string& pattern,
+                                         std::vector<string>* results) {
+  return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
+}
+
 Status PosixFileSystem::DeleteFile(const string& fname) {
   Status result;
   if (unlink(TranslateName(fname).c_str()) != 0) {
@@ -228,11 +274,14 @@ Status PosixFileSystem::DeleteFile(const string& fname) {
 }
 
 Status PosixFileSystem::CreateDir(const string& name) {
-  Status result;
-  if (mkdir(TranslateName(name).c_str(), 0755) != 0) {
-    result = IOError(name, errno);
+  string translated = TranslateName(name);
+  if (translated.empty()) {
+    return errors::AlreadyExists(name);
   }
-  return result;
+  if (mkdir(translated.c_str(), 0755) != 0) {
+    return IOError(name, errno);
+  }
+  return Status::OK();
 }
 
 Status PosixFileSystem::DeleteDir(const string& name) {
@@ -273,6 +322,73 @@ Status PosixFileSystem::RenameFile(const string& src, const string& target) {
   if (rename(TranslateName(src).c_str(), TranslateName(target).c_str()) != 0) {
     result = IOError(src, errno);
   }
+  return result;
+}
+
+Status PosixFileSystem::CopyFile(const string& src, const string& target) {
+  string translated_src = TranslateName(src);
+  struct stat sbuf;
+  if (stat(translated_src.c_str(), &sbuf) != 0) {
+    return IOError(src, errno);
+  }
+  int src_fd = open(translated_src.c_str(), O_RDONLY);
+  if (src_fd < 0) {
+    return IOError(src, errno);
+  }
+  string translated_target = TranslateName(target);
+  // O_WRONLY | O_CREAT | O_TRUNC:
+  //   Open file for write and if file does not exist, create the file.
+  //   If file exists, truncate its size to 0.
+  // When creating file, use the same permissions as original
+  mode_t mode = sbuf.st_mode & (S_IRWXU | S_IRWXG | S_IRWXO);
+  int target_fd =
+      open(translated_target.c_str(), O_WRONLY | O_CREAT | O_TRUNC, mode);
+  if (target_fd < 0) {
+    close(src_fd);
+    return IOError(target, errno);
+  }
+  int rc = 0;
+  off_t offset = 0;
+  std::unique_ptr<char[]> buffer(new char[kPosixCopyFileBufferSize]);
+  while (offset < sbuf.st_size) {
+    // Use uint64 for safe compare SSIZE_MAX
+    uint64 chunk = sbuf.st_size - offset;
+    if (chunk > SSIZE_MAX) {
+      chunk = SSIZE_MAX;
+    }
+#if defined(__linux__) && !defined(__ANDROID__)
+    rc = sendfile(target_fd, src_fd, &offset, static_cast<size_t>(chunk));
+#else
+    if (chunk > kPosixCopyFileBufferSize) {
+      chunk = kPosixCopyFileBufferSize;
+    }
+    rc = read(src_fd, buffer.get(), static_cast<size_t>(chunk));
+    if (rc <= 0) {
+      break;
+    }
+    rc = write(target_fd, buffer.get(), static_cast<size_t>(chunk));
+    offset += chunk;
+#endif
+    if (rc <= 0) {
+      break;
+    }
+  }
+
+  Status result = Status::OK();
+  if (rc < 0) {
+    result = IOError(target, errno);
+  }
+
+  // Keep the error code
+  rc = close(target_fd);
+  if (rc < 0 && result == Status::OK()) {
+    result = IOError(target, errno);
+  }
+  rc = close(src_fd);
+  if (rc < 0 && result == Status::OK()) {
+    result = IOError(target, errno);
+  }
+
   return result;
 }
 

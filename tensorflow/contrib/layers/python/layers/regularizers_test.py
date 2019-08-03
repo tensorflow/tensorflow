@@ -71,7 +71,7 @@ class RegularizerTest(test.TestCase):
     with self.assertRaises(ValueError):
       regularizers.l1_l2_regularizer(0.5, 0)
 
-    with self.test_session():
+    with self.cached_session():
       shape = [5, 5, 5]
       num_elem = 5 * 5 * 5
       tensor = constant_op.constant(1.0, shape=shape)
@@ -84,7 +84,7 @@ class RegularizerTest(test.TestCase):
     num_elem = 5 * 5 * 5
     tensor = constant_op.constant(1.0, shape=shape)
     loss = regularizers.l1_l2_regularizer(0.0, 1.0)(tensor)
-    with self.test_session():
+    with self.cached_session():
       self.assertEquals(loss.op.name, 'l1_l2_regularizer')
       self.assertAlmostEqual(loss.eval(), num_elem / 2, 5)
 
@@ -93,7 +93,7 @@ class RegularizerTest(test.TestCase):
     num_elem = 5 * 5 * 5
     tensor = constant_op.constant(1.0, shape=shape)
     loss = regularizers.l1_l2_regularizer(1.0, 0.0)(tensor)
-    with self.test_session():
+    with self.cached_session():
       self.assertEquals(loss.op.name, 'l1_l2_regularizer')
       self.assertAlmostEqual(loss.eval(), num_elem, 5)
 
@@ -104,7 +104,7 @@ class RegularizerTest(test.TestCase):
     self.assertEquals(loss, None)
 
   def testL1L2RegularizerWithScope(self):
-    with self.test_session():
+    with self.cached_session():
       shape = [5, 5, 5]
       num_elem = 5 * 5 * 5
       tensor = constant_op.constant(1.0, shape=shape)
@@ -118,6 +118,8 @@ class RegularizerTest(test.TestCase):
     l2_function = regularizers.l2_regularizer(.2)
     self.assertIsNone(regularizers.sum_regularizer([]))
     self.assertIsNone(regularizers.sum_regularizer([None]))
+    self.assertIsNone(
+        regularizers.sum_regularizer([regularizers.l1_regularizer(.0)])(None))
 
     values = np.array([-3.])
     weights = constant_op.constant(values)
@@ -128,11 +130,16 @@ class RegularizerTest(test.TestCase):
       l1_reg2 = regularizers.sum_regularizer([l1_function, None])
       l1_result2 = sess.run(l1_reg2(weights))
 
+      l1_reg3 = regularizers.sum_regularizer(
+          [l1_function, regularizers.l2_regularizer(.0)])
+      l1_result3 = sess.run(l1_reg3(weights))
+
       l1_l2_reg = regularizers.sum_regularizer([l1_function, l2_function])
       l1_l2_result = sess.run(l1_l2_reg(weights))
 
     self.assertAllClose(.1 * np.abs(values).sum(), l1_result1)
     self.assertAllClose(.1 * np.abs(values).sum(), l1_result2)
+    self.assertAllClose(.1 * np.abs(values).sum(), l1_result3)
     self.assertAllClose(
         .1 * np.abs(values).sum() + .2 * np.power(values, 2).sum() / 2.0,
         l1_l2_result)
@@ -141,8 +148,8 @@ class RegularizerTest(test.TestCase):
     dummy_regularizer = lambda x: math_ops.reduce_sum(2 * x)
     array_weights_list = [[1.5], [2, 3, 4.2], [10, 42, 666.6]]
     tensor_weights_list = [constant_op.constant(x) for x in array_weights_list]
-    expected = sum([2 * x for l in array_weights_list for x in l])
-    with self.test_session():
+    expected = sum(2 * x for l in array_weights_list for x in l)
+    with self.cached_session():
       result = regularizers.apply_regularization(dummy_regularizer,
                                                  tensor_weights_list)
       self.assertAllClose(expected, result.eval())
@@ -151,7 +158,7 @@ class RegularizerTest(test.TestCase):
     regularizer = regularizers.l2_regularizer(0.0)
     array_weights_list = [[1.5], [2, 3, 4.2], [10, 42, 666.6]]
     tensor_weights_list = [constant_op.constant(x) for x in array_weights_list]
-    with self.test_session():
+    with self.cached_session():
       result = regularizers.apply_regularization(regularizer,
                                                  tensor_weights_list)
       self.assertAllClose(0.0, result.eval())
@@ -161,7 +168,7 @@ class RegularizerTest(test.TestCase):
     tensor_weights_list = [
         constant_op.constant(x) for x in [[1.5], [2, 3, 4.2], [10, 42, 666.6]]
     ]
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         regularizers.apply_regularization(non_scalar_regularizer,
                                           tensor_weights_list)

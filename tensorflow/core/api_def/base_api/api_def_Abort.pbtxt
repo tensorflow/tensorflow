@@ -1,0 +1,16 @@
+op {
+  graph_op_name: "Abort"
+  attr {
+    name: "error_msg"
+    description: <<END
+A string which is the message associated with the exception.
+END
+  }
+  summary: "Raise a exception to abort the process when called."
+  description: <<END
+If exit_without_error is true, the process will exit normally,
+otherwise it will exit with a SIGABORT signal.
+
+Returns nothing but an exception.
+END
+}

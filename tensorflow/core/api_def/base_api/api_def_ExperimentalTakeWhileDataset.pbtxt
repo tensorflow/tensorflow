@@ -1,0 +1,25 @@
+op {
+  graph_op_name: "ExperimentalTakeWhileDataset"
+  visibility: HIDDEN
+  in_arg {
+    name: "other_arguments"
+    description: <<END
+A list of tensors, typically values that were captured when
+building a closure for `predicate`.
+END
+  }
+  attr {
+    name: "predicate"
+    description: <<END
+A function returning a scalar boolean.
+END
+  }
+  summary: "Creates a dataset that stops iteration when predicate` is false."
+  description: <<END
+The `predicate` function must return a scalar boolean and accept the
+following arguments:
+
+* One tensor for each component of an element of `input_dataset`.
+* One tensor for each value in `other_arguments`.
+END
+}

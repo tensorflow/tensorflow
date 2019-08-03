@@ -32,6 +32,9 @@ from tensorflow.python.util import compat
 
 
 # TODO(josh11b): add tests with lists/tuples, Shape.
+# TODO(ashankar): Collapse with tests in constant_op_test.py and use something
+# like the test_util.run_in_graph_and_eager_modes decorator to confirm
+# equivalence between graph and eager execution.
 class ConstantTest(test.TestCase):
 
   def _testCpu(self, x):
@@ -64,23 +67,69 @@ class ConstantTest(test.TestCase):
         np.random.normal(size=30).reshape([2, 3, 5]).astype(np.float32))
     self._testAll(np.empty((2, 0, 5)).astype(np.float32))
 
+    orig = [-1.0, 2.0, 0.0]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.float32, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    # Mix floats and ints
+    orig = [-1.5, 2, 0]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.float32, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    orig = [-5, 2.5, 0]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.float32, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    # Mix floats and ints that don't fit in int32
+    orig = [1, 2**42, 0.5]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.float32, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
   def testDouble(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.float64))
     self._testAll(
         np.random.normal(size=30).reshape([2, 3, 5]).astype(np.float64))
     self._testAll(np.empty((2, 0, 5)).astype(np.float64))
 
+    orig = [-5, 2.5, 0]
+    tf_ans = constant_op.constant(orig, dtypes_lib.float64)
+    self.assertEqual(dtypes_lib.float64, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    # This integer is not exactly representable as a double, gets rounded.
+    tf_ans = constant_op.constant(2**54 + 1, dtypes_lib.float64)
+    self.assertEqual(2**54, tf_ans.numpy())
+
+    # This integer is larger than all non-infinite numbers representable
+    # by a double, raises an exception.
+    with self.assertRaisesRegexp(ValueError, "out-of-range integer"):
+      constant_op.constant(10**310, dtypes_lib.float64)
+
   def testInt32(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.int32))
     self._testAll(
         (100 * np.random.normal(size=30)).reshape([2, 3, 5]).astype(np.int32))
     self._testAll(np.empty((2, 0, 5)).astype(np.int32))
+    self._testAll([-1, 2])
 
   def testInt64(self):
     self._testAll(np.arange(-15, 15).reshape([2, 3, 5]).astype(np.int64))
     self._testAll(
         (100 * np.random.normal(size=30)).reshape([2, 3, 5]).astype(np.int64))
     self._testAll(np.empty((2, 0, 5)).astype(np.int64))
+    # Should detect out of range for int32 and use int64 instead.
+    orig = [2, 2**48, -2**48]
+    tf_ans = constant_op.constant(orig)
+    self.assertEqual(dtypes_lib.int64, tf_ans.dtype)
+    self.assertAllClose(np.array(orig), tf_ans.numpy())
+
+    # Out of range for an int64
+    with self.assertRaisesRegexp(ValueError, "out-of-range integer"):
+      constant_op.constant([2**72])
 
   def testComplex64(self):
     self._testAll(
@@ -170,16 +219,97 @@ class ConstantTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, None):
       constant_op.constant([1, 2, 3, 4, 5, 6, 7], shape=[5])
 
+  def testShape(self):
+    self._testAll(constant_op.constant([1]).get_shape())
+
+  def testDimension(self):
+    x = constant_op.constant([1]).shape[0]
+    self._testAll(x)
+
+  def testDimensionList(self):
+    x = [constant_op.constant([1]).shape[0]]
+    self._testAll(x)
+
+    # Mixing with regular integers is fine too
+    self._testAll([1] + x)
+    self._testAll(x + [1])
+
+  def testDimensionTuple(self):
+    x = constant_op.constant([1]).shape[0]
+    self._testAll((x,))
+    self._testAll((1, x))
+    self._testAll((x, 1))
+
+  def testInvalidLength(self):
+
+    class BadList(list):
+
+      def __init__(self):
+        super(BadList, self).__init__([1, 2, 3])  # pylint: disable=invalid-length-returned
+
+      def __len__(self):
+        return -1
+
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([BadList()])
+    with self.assertRaisesRegexp(ValueError, "mixed types"):
+      constant_op.constant([1, 2, BadList()])
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant(BadList())
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([[BadList(), 2], 3])
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([BadList(), [1, 2, 3]])
+    with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+      constant_op.constant([BadList(), []])
+
+    # TODO(allenl, josh11b): These cases should return exceptions rather than
+    # working (currently shape checking only checks the first element of each
+    # sequence recursively). Maybe the first one is fine, but the second one
+    # silently truncating is rather bad.
+
+    # with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    #   constant_op.constant([[3, 2, 1], BadList()])
+    # with self.assertRaisesRegexp(ValueError, "should return >= 0"):
+    #   constant_op.constant([[], BadList()])
+
   def testSparseValuesRaiseErrors(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 "setting an array element with a sequence"):
+    with self.assertRaisesRegexp(ValueError, "non-rectangular Python sequence"):
       constant_op.constant([[1, 2], [3]], dtype=dtypes_lib.int32)
 
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, None):
+    with self.assertRaisesRegexp(ValueError, None):
       constant_op.constant([[1, 2], [3]])
 
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, None):
+    with self.assertRaisesRegexp(ValueError, None):
       constant_op.constant([[1, 2], [3], [4, 5]])
+
+  # TODO(ashankar): This test fails with graph construction since
+  # tensor_util.make_tensor_proto (invoked from constant_op.constant)
+  # does not handle iterables (it relies on numpy conversion).
+  # For consistency, should graph construction handle Python objects
+  # that implement the sequence protocol (but not numpy conversion),
+  # or should eager execution fail on such sequences?
+  def testCustomSequence(self):
+
+    # This is inspired by how many objects in pandas are implemented:
+    # - They implement the Python sequence protocol
+    # - But may raise a KeyError on __getitem__(self, 0)
+    # See https://github.com/tensorflow/tensorflow/issues/20347
+    class MySeq(object):
+
+      def __getitem__(self, key):
+        if key != 1 and key != 3:
+          raise KeyError(key)
+        return key
+
+      def __len__(self):
+        return 2
+
+      def __iter__(self):
+        l = list([1, 3])
+        return l.__iter__()
+
+    self.assertAllEqual([1, 3], self.evaluate(constant_op.constant(MySeq())))
 
 
 class AsTensorTest(test.TestCase):
@@ -393,7 +523,7 @@ class OnesLikeTest(test.TestCase):
 class FillTest(test.TestCase):
 
   def _compare(self, dims, val, np_ans, use_gpu):
-    ctx = context.get_default_context()
+    ctx = context.context()
     device = "GPU:0" if (use_gpu and ctx.num_gpus()) else "CPU:0"
     with ops.device(device):
       tf_ans = array_ops.fill(dims, val, name="fill")

@@ -36,7 +36,7 @@ from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 from tensorflow.contrib.metrics.python.ops import metric_ops
-from tensorflow.python.feature_column import feature_column as fc_core
+from tensorflow.python.feature_column import feature_column_lib as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -807,7 +807,7 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
     def _my_metric_op(predictions, labels):
       # For the case of binary classification, the 2nd column of "predictions"
       # denotes the model predictions.
-      labels = math_ops.to_float(labels)
+      labels = math_ops.cast(labels, dtypes.float32)
       predictions = array_ops.strided_slice(
           predictions, [0, 1], [-1, 2], end_mask=1)
       return math_ops.reduce_sum(math_ops.multiply(predictions, labels))
@@ -1046,11 +1046,14 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
 
     if global_step == 100:
       # Expected is 100, but because of the global step increment bug, is 50.
-      self.assertEqual(50, step_counter.steps)
+      # Occasionally, step increments one more time due to a race condition,
+      # reaching 51 steps.
+      self.assertIn(step_counter.steps, [50, 51])
     else:
-      # Occasionally, training stops when global_step == 101, due to a race
-      # condition.
-      self.assertEqual(51, step_counter.steps)
+      # Occasionally, training stops when global_step == 102, due to a race
+      # condition. In addition, occasionally step increments one more time due
+      # to a race condition reaching 52 steps.
+      self.assertIn(step_counter.steps, [51, 52])
 
   def testGlobalStepDNNLinearCombinedBugFixed(self):
     """Tests global step update for dnn-linear combined model."""

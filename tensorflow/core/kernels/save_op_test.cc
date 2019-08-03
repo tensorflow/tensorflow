@@ -676,7 +676,7 @@ static void BM_LargeTensorWrite(int iters, int num_elements) {
   SessionOptions session_options;
   session_options.config.mutable_graph_options()
       ->mutable_optimizer_options()
-      ->set_opt_level(tensorflow::OptimizerOptions_Level_L0);
+      ->set_opt_level(tensorflow::OptimizerOptions::L0);
 
   TF_CHECK_OK(root.status());
   Graph* g = new Graph(OpRegistry::Global());

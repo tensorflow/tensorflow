@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SCATTER_ND_OP_CPU_IMPL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SCATTER_ND_OP_CPU_IMPL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SCATTER_ND_OP_CPU_IMPL_H_
+#define TENSORFLOW_CORE_KERNELS_SCATTER_ND_OP_CPU_IMPL_H_
 
 // Functor definitions for ScatterND ops, must be compilable by nvcc.
 
@@ -24,11 +24,11 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -40,7 +40,7 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class OpKernelContext;
 
@@ -79,24 +79,6 @@ class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::SUB> {
   EIGEN_STRONG_INLINE static void Execute(Input /* input */, Update update,
                                           Output output) {
     output -= update;
-  }
-};
-
-template <typename Input, typename Update, typename Output>
-class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::MUL> {
- public:
-  EIGEN_STRONG_INLINE static void Execute(Input input, Update update,
-                                          Output output) {
-    output = input * update;
-  }
-};
-
-template <typename Input, typename Update, typename Output>
-class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::DIV> {
- public:
-  EIGEN_STRONG_INLINE static void Execute(Input input, Update update,
-                                          Output output) {
-    output = input / update;
   }
 };
 
@@ -176,21 +158,19 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
 #define REGISTER_SCATTER_ND_MATH(type)                           \
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::ADD); \
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::SUB);
-// TODO(simister): Re-enable after identifying a way to reduce the binary size
-// due to too many template instantiations.
-//  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::MUL);
-//  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::DIV);
 
 TF_CALL_ALL_TYPES(REGISTER_SCATTER_ND_UPDATE);
-TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_MATH)
-
+REGISTER_SCATTER_ND_INDEX(string, scatter_nd_op::UpdateOp::ADD);
+TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_MATH);
+TF_CALL_bool(REGISTER_SCATTER_ND_MATH);
 #undef REGISTER_SCATTER_ND_MATH
 #undef REGISTER_SCATTER_ND_UPDATE
 #undef REGISTER_SCATTER_ND_INDEX
 #undef REGISTER_SCATTER_ND_FULL
 
-#ifdef TENSORFLOW_USE_SYCL
 // Implementation of update functor for SYCL.
+#ifdef TENSORFLOW_USE_SYCL
+
 template <typename T, typename Index, scatter_nd_op::UpdateOp OP, int IXDIM>
 struct ScatterNdFunctor<SYCLDevice, T, Index, OP, IXDIM> {
   Index operator()(
@@ -273,10 +253,10 @@ REGISTER_SCATTER_ND_MATH_SYCL(int32);
 #undef REGISTER_SCATTER_ND_INDEX_SYCL
 #undef REGISTER_SCATTER_ND_FULL_SYCL
 
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SCATTER_ND_OP_CPU_IMPL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SCATTER_ND_OP_CPU_IMPL_H_

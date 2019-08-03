@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_UTILS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_UTILS_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_UTILS_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_UTILS_H_
 
 #include <string>
 #include <vector>
@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -66,7 +66,10 @@ Status ReadProtoFile(Env* env, const string& fname, T* proto,
 
 void PrintHelp();
 
+// Generate helper message based on the command and options.
+string QueryDoc(const string& cmd, const Options& opts);
+
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_UTILS_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_UTILS_H_

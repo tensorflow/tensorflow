@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -41,7 +42,7 @@ class ResizeAreaOpTest : public OpsTestBase {
     bool is_ref = IsRefType(input_types_[inputs_.size()]);
     Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
                                DataTypeToEnum<float>::v(), shape);
-    input->flat<float>().setZero();
+    input->flat<float>().setRandom();
     tensors_.push_back(input);
     if (is_ref) {
       CHECK_EQ(RemoveRefType(input_types_[inputs_.size()]),
@@ -103,16 +104,16 @@ class ResizeAreaOpTest : public OpsTestBase {
         const float in_y1 = (y + 1) * height_scale;
         // The start and end height indices of all the cells that could
         // contribute to the target cell.
-        int64 y_start = floor(in_y);
-        int64 y_end = ceil(in_y1);
+        int64 y_start = std::floor(in_y);
+        int64 y_end = std::ceil(in_y1);
 
         for (int64 x = 0; x < out_width; ++x) {
           const float in_x = x * width_scale;
           const float in_x1 = (x + 1) * width_scale;
           // The start and end width indices of all the cells that could
           // contribute to the target cell.
-          int64 x_start = floor(in_x);
-          int64 x_end = ceil(in_x1);
+          int64 x_start = std::floor(in_x);
+          int64 x_end = std::ceil(in_x1);
 
           sum_data.setConstant(0.0);
           for (int64 i = y_start; i < y_end; ++i) {
@@ -124,7 +125,8 @@ class ResizeAreaOpTest : public OpsTestBase {
                                   ? (j + 1 > in_x1 ? width_scale : j + 1 - in_x)
                                   : (j + 1 > in_x1 ? in_x1 - j : 1.0);
               for (int64 c = 0; c < channels; ++c) {
-#define BOUND(val, limit) std::min(((limit)-1ll), (std::max(0ll, (val))))
+#define BOUND(val, limit) \
+  std::min(((limit)-int64{1}), (std::max(int64{0}, (val))))
                 sum_data(c) +=
                     static_cast<float>(input_data(b, BOUND(i, in_height),
                                                   BOUND(j, in_width), c)) *

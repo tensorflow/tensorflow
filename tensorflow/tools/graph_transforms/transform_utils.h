@@ -133,6 +133,9 @@ Status IsGraphValid(const GraphDef& graph_def);
 Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
                      DataTypeVector* outputs);
 
+// Takes a comma-separated string of numbers and parses them into a shape.
+Status TensorShapeFromString(const string& shape_string, TensorShape* result);
+
 // This is used to spot particular subgraphs in a larger model. To use it,
 // create a pattern like:
 // OpTypePattern pattern({"Conv2D", {{"ResizeBilinear", {{"MirrorPad"}}}}});

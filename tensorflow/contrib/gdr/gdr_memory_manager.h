@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef GDR_MEMORY_MANAGER_H_
-#define GDR_MEMORY_MANAGER_H_
+#ifndef TENSORFLOW_CONTRIB_GDR_GDR_MEMORY_MANAGER_H_
+#define TENSORFLOW_CONTRIB_GDR_GDR_MEMORY_MANAGER_H_
 
 #include "google/protobuf/any.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -39,15 +39,17 @@ class RemoteMemoryManager {
 
   // Encodes the tensor information to an arbitrary protocol buffer
   // The protocol buffer needs to be transmitted via some other channel
-  virtual Status TransportOptionsFromTensor(
+  virtual void TransportOptionsFromTensor(
       ::google::protobuf::Any* mutable_transport_options, const Tensor& tensor,
-      Device* device, DeviceContext* device_context, bool on_host) = 0;
+      Device* device, DeviceContext* device_context, bool on_host,
+      StatusCallback done) = 0;
 
   // Retrieve the tensor from the encoded protocol buffer
   // Note that the tensor has to be allocated, but not initialized
-  virtual Status TensorFromTransportOptions(
+  virtual void TensorFromTransportOptions(
       Tensor* tensor, const ::google::protobuf::Any& transport_options,
-      Device* device, DeviceContext* device_context, bool on_host) = 0;
+      Device* device, DeviceContext* device_context, bool on_host,
+      StatusCallback done) = 0;
 };
 
 RemoteMemoryManager* CreateRemoteMemoryManager(const string& host,
@@ -55,4 +57,4 @@ RemoteMemoryManager* CreateRemoteMemoryManager(const string& host,
 
 }  // namespace tensorflow
 
-#endif  // GDR_MEMORY_MANAGER_H_
+#endif  // TENSORFLOW_CONTRIB_GDR_GDR_MEMORY_MANAGER_H_

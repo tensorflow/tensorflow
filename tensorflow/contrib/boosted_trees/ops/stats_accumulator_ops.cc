@@ -18,10 +18,10 @@
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
-namespace gtflow {
+namespace boosted_trees {
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
-using shape_inference::DimensionHandle;
 
 REGISTER_RESOURCE_HANDLE_OP(StatsAccumulatorScalarResource);
 
@@ -73,9 +73,7 @@ REGISTER_OP("StatsAccumulatorScalarAdd")
                                        1, &partition_ids_shape));
         ShapeHandle feature_ids_shape;
         TF_RETURN_IF_ERROR(c->WithRank(
-            c->input(num_resource_handles * 2 + i + 1), 1, &feature_ids_shape));
-        TF_RETURN_IF_ERROR(c->Merge(c->Dim(partition_ids_shape, 0),
-                                    c->Dim(feature_ids_shape, 0), &unused_dim));
+            c->input(num_resource_handles * 2 + i + 1), 2, &feature_ids_shape));
         ShapeHandle gradients_shape;
         TF_RETURN_IF_ERROR(c->WithRank(
             c->input(num_resource_handles * 3 + i + 1), 1, &gradients_shape));
@@ -96,11 +94,11 @@ stamp_token: Stamp token for Read/Write operations.
              Any operation with a mismatching token will be dropped.
 stats_accumulator_handles: A list of handles to the stats accumulator.
 partition_ids: A list of vectors of partition_ids.
-feature_ids: A list of vectors of feature_ids.
+feature_ids: Rank 2 tensor of feature id and feature dimension ids.
 gradients: A list of vectors of gradients for each slot in
-    <partition_id, feature_id>.
+    <partition_id, feature_id, feature_dimension_id>.
 hessians: A list of vectors of hessians for each slot in
-    <partition_id, feature_id>.
+    <partition_id, feature_id, feature_dimension_id>.
 )doc");
 
 REGISTER_OP("StatsAccumulatorScalarFlush")
@@ -119,7 +117,7 @@ REGISTER_OP("StatsAccumulatorScalarFlush")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused_input));
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Vector(c->UnknownDim()));
-      c->set_output(2, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->UnknownShape());
       c->set_output(3, c->Vector(c->UnknownDim()));
       c->set_output(4, c->Vector(c->UnknownDim()));
       return Status::OK();
@@ -134,7 +132,7 @@ next_stamp_token: Stamp token for the next iteration.
 num_updates: Number of times stats were added to this accumulator since last
     flush.
 output_partition_ids A vector of partition_ids for the slots.
-output_feature_ids: A vector of feature_ids for the slots.
+output_feature_ids: Rank 2 tensor of feature id and feature dimension ids.
 output_gradients: A vector of gradients, with a value for each slot
                   in <output_partition_id, output_feature_id>.
 output_hessians: A vector of hessians, with a value for each slot
@@ -161,9 +159,7 @@ REGISTER_OP("StatsAccumulatorScalarDeserialize")
       ShapeHandle partition_ids_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &partition_ids_shape));
       ShapeHandle feature_ids_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 1, &feature_ids_shape));
-      TF_RETURN_IF_ERROR(c->Merge(c->Dim(partition_ids_shape, 0),
-                                  c->Dim(feature_ids_shape, 0), &unused_dim));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 2, &feature_ids_shape));
       ShapeHandle gradients_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 1, &gradients_shape));
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(partition_ids_shape, 0),
@@ -183,9 +179,11 @@ stamp_token: Stamp token for Read/Write operations.
 num_updates: Number of times stats were added to this accumulator since last
     flush.
 partition_ids: A vector of partition_ids.
-feature_ids: A vector of feature_ids.
-gradients: A vector of gradients for each slot in <partition_id, feature_id>.
-hessians: A vector of hessians for each slot in <partition_id, feature_id>.
+feature_ids: Rank 2 tensor of feature id and feature dimension ids.
+gradients: A vector of gradients for each slot in <partition_id, feature_id,
+feature_dimension_id>.
+hessians: A vector of hessians for each slot in <partition_id, feature_id,
+feature_dimension_id>
 )doc");
 
 REGISTER_OP("StatsAccumulatorScalarSerialize")
@@ -204,7 +202,7 @@ REGISTER_OP("StatsAccumulatorScalarSerialize")
       // num_updates
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Vector(c->UnknownDim()));
-      c->set_output(3, c->Vector(c->UnknownDim()));
+      c->set_output(3, c->UnknownShape());
       c->set_output(4, c->Vector(c->UnknownDim()));
       c->set_output(5, c->Vector(c->UnknownDim()));
       return Status::OK();
@@ -217,7 +215,7 @@ stamp_token: The current stamp token for the resource.
 num_updates: Number of times stats were added to this accumulator since last
     flush.
 output_partition_ids A vector of partition_ids for the slots.
-output_feature_ids: A vector of feature_ids for the slots.
+output_feature_ids: Rank 2 tensor of feature id and feature dimension ids.
 output_gradients: A vector of gradients, with a value for each slot
                   in <output_partition_id, output_feature_id>.
 output_hessians: A vector of hessians, with a value for each slot
@@ -293,9 +291,7 @@ REGISTER_OP("StatsAccumulatorTensorAdd")
                                        1, &partition_ids_shape));
         ShapeHandle feature_ids_shape;
         TF_RETURN_IF_ERROR(c->WithRank(
-            c->input(num_resource_handles * 2 + i + 1), 1, &feature_ids_shape));
-        TF_RETURN_IF_ERROR(c->Merge(c->Dim(partition_ids_shape, 0),
-                                    c->Dim(feature_ids_shape, 0), &unused_dim));
+            c->input(num_resource_handles * 2 + i + 1), 2, &feature_ids_shape));
         ShapeHandle gradients_shape;
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(
             c->input(num_resource_handles * 3 + i + 1), 2, &gradients_shape));
@@ -316,11 +312,11 @@ stats_accumulator_handles: A list of handles to the stats accumulator.
 stamp_token: Stamp token for Read/Write operations.
              Any operation with a mismatching token will be dropped.
 partition_ids: A list of vectors of partition_ids.
-feature_ids: A list of vectors of feature_ids.
+feature_ids: Rank 2 tensor of feature id and feature dimension ids.
 gradients: A list of vectors of gradients for each slot in
-    <partition_id, feature_id>.
+    <partition_id, feature_id, feature_dimension_id>.
 hessians: A list of vectors of hessians for each slot in
-    <partition_id, feature_id>.
+    <partition_id, feature_id, feature_dimension_id>.
 )doc");
 
 REGISTER_OP("StatsAccumulatorTensorFlush")
@@ -340,7 +336,7 @@ REGISTER_OP("StatsAccumulatorTensorFlush")
       // num_updates
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Vector(c->UnknownDim()));
-      c->set_output(2, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->UnknownShape());
       c->set_output(3, c->UnknownShape());
       c->set_output(4, c->UnknownShape());
       return Status::OK();
@@ -355,11 +351,11 @@ next_stamp_token: Stamp token to be used for the next iteration.
 num_updates: Number of times stats were added to this accumulator since last
     flush.
 output_partition_ids: A vector of partition_ids for the slots.
-output_feature_ids: A vector of feature_ids for the slots.
+output_feature_ids: Rank 2 tensor of feature id and feature dimension ids.
 output_gradients: A tensor of gradients, first dimension matches slots
-                  in <partition_id, feature_id>.
+                  in <partition_id, feature_id, feature_dimension_id>.
 output_hessians: A tensor of hessians, first dimension matches slots
-                 in <partition_id, feature_id>.
+                 in <partition_id, feature_id, feature_dimension_id>>.
 )doc");
 
 REGISTER_OP("StatsAccumulatorTensorDeserialize")
@@ -382,9 +378,7 @@ REGISTER_OP("StatsAccumulatorTensorDeserialize")
       ShapeHandle partition_ids_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &partition_ids_shape));
       ShapeHandle feature_ids_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 1, &feature_ids_shape));
-      TF_RETURN_IF_ERROR(c->Merge(c->Dim(partition_ids_shape, 0),
-                                  c->Dim(feature_ids_shape, 0), &unused_dim));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 2, &feature_ids_shape));
       ShapeHandle gradients_shape;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(5), 2, &gradients_shape));
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(partition_ids_shape, 0),
@@ -405,9 +399,11 @@ stamp_token: Stamp token for Read/Write operations.
 num_updates: Number of times stats were added to this accumulator since last
     flush.
 partition_ids: A vector of partition_ids.
-feature_ids: A vector of feature_ids.
-gradients: A vector of gradients for each slot in <partition_id, feature_id>.
-hessians: A vector of hessians for each slot in <partition_id, feature_id>.
+feature_ids: Rank 2 tensor of feature id and feature dimension ids.
+gradients: A vector of gradients for each slot in <partition_id, feature_id,
+feature_dimension_id>
+hessians: A vector of hessians for each slot in <partition_id, feature_id,
+feature_dimension_id>.
 )doc");
 
 REGISTER_OP("StatsAccumulatorTensorSerialize")
@@ -426,7 +422,7 @@ REGISTER_OP("StatsAccumulatorTensorSerialize")
       // num_updates
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Vector(c->UnknownDim()));
-      c->set_output(3, c->Vector(c->UnknownDim()));
+      c->set_output(3, c->UnknownShape());
       c->set_output(4, c->UnknownShape());
       c->set_output(5, c->UnknownShape());
       return Status::OK();
@@ -440,11 +436,11 @@ stamp_token: Stamp token for Read/Write operations.
 num_updates: Number of times stats were added to this accumulator since last
     flush.
 output_partition_ids: A vector of partition_ids for the slots.
-output_feature_ids: A vector of feature_ids for the slots.
+output_feature_ids: Rank 2 tensor of feature id and feature dimension ids.
 output_gradients: A tensor of gradients, first dimension matches slots
-                  in <partition_id, feature_id>.
+                  in <partition_id, feature_id, feature_dimension_id>.
 output_hessians: A tensor of hessians, first dimension matches slots
-                 in <partition_id, feature_id>.
+                 in <partition_id, feature_id, feature_dimension_id>.
 )doc");
 
 REGISTER_OP("StatsAccumulatorTensorMakeSummary")
@@ -458,18 +454,20 @@ REGISTER_OP("StatsAccumulatorTensorMakeSummary")
     .Output("output_hessians: float")
     .Doc(R"doc(
 Summarizes the stats by summing the <gradients, hessians> that are for the same
-<partition_id, feature_id>.
+<partition_id, feature_id, feature_dimension_id>.
 
 partition_ids: A vector of partition_ids.
-feature_ids: A vector of feature_ids.
-gradients: A vector of gradients for each slot in <partition_id, feature_id>.
-hessians: A vector of hessians for each slot in <partition_id, feature_id>.
+feature_ids: Rank 2 tensor of feature id and feature dimension ids.
+gradients: A vector of gradients for each slot in <partition_id, feature_id,
+feature_dimension_id>.
+hessians: A vector of hessians for each slot in <partition_id, feature_id,
+feature_dimension_id>.
 output_partition_ids: A vector of partition_ids for the slots.
-output_feature_ids: A vector of feature_ids for the slots.
+output_feature_ids: A rank2 tensor of feature_ids and dimensions for the slots.
 output_gradients: A tensor of gradients, first dimension matches slots
-                  in <partition_id, feature_id>.
+                  in <partition_id, feature_id, feature_dimension_id>.
 output_hessians: A tensor of hessians, first dimension matches slots
-                 in <partition_id, feature_id>.
+                 in <partition_id, feature_id, feature_dimension_id>.
 )doc");
-}  // namespace gtflow
+}  // namespace boosted_trees
 }  // namespace tensorflow

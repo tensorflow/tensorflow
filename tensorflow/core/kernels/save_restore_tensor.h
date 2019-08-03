@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SAVE_RESTORE_TENSOR_H_
-#define TENSORFLOW_KERNELS_SAVE_RESTORE_TENSOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SAVE_RESTORE_TENSOR_H_
+#define TENSORFLOW_CORE_KERNELS_SAVE_RESTORE_TENSOR_H_
 
 #include "tensorflow/core/util/tensor_slice_reader.h"
 #include "tensorflow/core/util/tensor_slice_writer.h"
@@ -37,18 +37,21 @@ void SaveTensors(
     checkpoint::TensorSliceWriter::CreateBuilderFunction builder_func,
     bool save_slices);
 
-// Reads a tensor from the reader built from open_func() and produces it as
-// context->output(0).  "preferred_shard" is the same the TensorSliceReader
-// preferred_shard parameter.
+// Reads a single tensor from the reader built from open_func() and produces
+// it as context->output(restore_index).  "preferred_shard" is the same the
+// TensorSliceReader preferred_shard parameter.
 //
 // context must have the following inputs:
 //  0: a single element string tensor that contains the file name.
-//  1: a single element string tensor that names the output to be restored.
+//  1: string tensor that names the outputs to be restored.
 // If restore_slice is true:
-//  2: shape and slice specification of the tensor to restore.
+//  2: shape and slice specification of the tensors to restore.
+//
+// restore_index indicates the variable name and slice to lookup
+// in context(1) and (2).
 void RestoreTensor(OpKernelContext* context,
                    checkpoint::TensorSliceReader::OpenTableFunction open_func,
-                   int preferred_shard, bool restore_slice);
+                   int preferred_shard, bool restore_slice, int restore_index);
 
 // V2 checkpoint format.
 
@@ -67,4 +70,4 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SAVE_RESTORE_TENSOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SAVE_RESTORE_TENSOR_H_

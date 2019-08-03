@@ -13,24 +13,36 @@
 # limitations under the License.
 # ==============================================================================
 include (ExternalProject)
+include (GNUInstallDirs)
 
 set(png_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/png_archive)
-set(png_URL https://storage.googleapis.com/libpng-public-archive/libpng-1.2.53.tar.gz)
-set(png_HASH SHA256=e05c9056d7f323088fd7824d8c6acc03a4a758c4b4916715924edc5dd3223a72)
+set(png_URL https://mirror.bazel.build/github.com/glennrp/libpng/archive/v1.6.37.tar.gz)
+set(png_HASH SHA256=ca74a0dace179a8422187671aee97dd3892b53e168627145271cad5b5ac81307)
 set(png_BUILD ${CMAKE_BINARY_DIR}/png/src/png)
 set(png_INSTALL ${CMAKE_BINARY_DIR}/png/install)
 
 if(WIN32)
-  set(png_STATIC_LIBRARIES 
-    debug ${CMAKE_BINARY_DIR}/png/install/lib/libpng12_staticd.lib
-    optimized ${CMAKE_BINARY_DIR}/png/install/lib/libpng12_static.lib)
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+    set(png_STATIC_LIBRARIES 
+      debug ${CMAKE_BINARY_DIR}/png/install/lib/libpng16_staticd.lib
+      optimized ${CMAKE_BINARY_DIR}/png/install/lib/libpng16_static.lib)
+  else()
+    if(CMAKE_BUILD_TYPE EQUAL Debug)
+      set(png_STATIC_LIBRARIES 
+        ${CMAKE_BINARY_DIR}/png/install/lib/libpng16_staticd.lib)
+    else()
+      set(png_STATIC_LIBRARIES 
+        ${CMAKE_BINARY_DIR}/png/install/lib/libpng16_static.lib)
+    endif()
+  endif()
 else()
-  set(png_STATIC_LIBRARIES ${CMAKE_BINARY_DIR}/png/install/lib/libpng12.a)
+  set(png_STATIC_LIBRARIES ${CMAKE_BINARY_DIR}/png/install/${CMAKE_INSTALL_LIBDIR}/libpng16.a)
 endif()
 
 set(png_HEADERS
-    "${png_INSTALL}/include/libpng12/png.h"
-    "${png_INSTALL}/include/libpng12/pngconf.h"
+    "${png_INSTALL}/include/libpng16/png.h"
+    "${png_INSTALL}/include/libpng16/pngconf.h"
+    "${png_INSTALL}/include/libpng16/pnglibconf.h"
 )
 
 ExternalProject_Add(png
@@ -38,14 +50,16 @@ ExternalProject_Add(png
     DEPENDS zlib
     URL ${png_URL}
     URL_HASH ${png_HASH}
+    BUILD_BYPRODUCTS ${png_STATIC_LIBRARIES}
     INSTALL_DIR ${png_INSTALL}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     CMAKE_CACHE_ARGS
+        -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=${tensorflow_ENABLE_POSITION_INDEPENDENT_CODE}
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DCMAKE_INSTALL_PREFIX:STRING=${png_INSTALL}
-	-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
 	-DZLIB_ROOT:STRING=${ZLIB_INSTALL}
+  -DPNG_TESTS:BOOL=OFF
 )
 
 ## put png includes in the directory where they are expected

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
@@ -37,34 +38,18 @@ bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
   return (serialized1 == serialized2);
 }
 
-StatusOr<string> ToJson(const tensorflow::protobuf::Message& message) {
-  string json_output;
-  tensorflow::protobuf::util::JsonPrintOptions json_options;
-  json_options.add_whitespace = true;
-  json_options.always_print_primitive_fields = true;
-  auto status = tensorflow::protobuf::util::MessageToJsonString(
-      message, &json_output, json_options);
-  if (!status.ok()) {
-    return InternalError("MessageToJsonString failed: %s",
-                         status.error_message().data());
-  }
-  return json_output;
-}
-
-Status DumpJsonToDirectory(const tensorflow::protobuf::Message& message,
-                           const string& directory, const string& file_name) {
-  TF_ASSIGN_OR_RETURN(const string json_output, ToJson(message));
-
+Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
+                            const string& directory, const string& file_name,
+                            string* full_path) {
   tensorflow::Env* env = tensorflow::Env::Default();
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
-  string safe_file_name = file_name + ".json";
-  for (char& c : safe_file_name) {
-    if (c == '/' || c == '\\') {
-      c = '_';
-    }
+  string safe_file_name = SanitizeFileName(file_name) + ".pb";
+  string full_path_impl;
+  if (!full_path) {
+    full_path = &full_path_impl;
   }
-  const string path = tensorflow::io::JoinPath(directory, safe_file_name);
-  return tensorflow::WriteStringToFile(env, path, json_output);
+  *full_path = tensorflow::io::JoinPath(directory, safe_file_name);
+  return tensorflow::WriteBinaryProto(env, *full_path, message);
 }
 
 }  // namespace protobuf_util

@@ -1,0 +1,46 @@
+op {
+  graph_op_name: "MaxPool3D"
+  in_arg {
+    name: "input"
+    description: <<END
+Shape `[batch, depth, rows, cols, channels]` tensor to pool over.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The max pooled output tensor.
+END
+  }
+  attr {
+    name: "ksize"
+    description: <<END
+1-D tensor of length 5. The size of the window for each dimension of
+the input tensor. Must have `ksize[0] = ksize[4] = 1`.
+END
+  }
+  attr {
+    name: "strides"
+    description: <<END
+1-D tensor of length 5. The stride of the sliding window for each
+dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+END
+  }
+  attr {
+    name: "padding"
+    description: <<END
+The type of padding algorithm to use.
+END
+  }
+  attr {
+    name: "data_format"
+    description: <<END
+The data format of the input and output data. With the
+default format "NDHWC", the data is stored in the order of:
+    [batch, in_depth, in_height, in_width, in_channels].
+Alternatively, the format could be "NCDHW", the data storage order is:
+    [batch, in_channels, in_depth, in_height, in_width].
+END
+  }
+  summary: "Performs 3D max pooling on the input."
+}

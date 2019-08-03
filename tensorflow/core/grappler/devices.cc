@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/grappler/devices.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 
 #if GOOGLE_CUDA
@@ -26,40 +27,51 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-int GetNumAvailableGPUs() {
+int GetNumAvailableGPUs(
+    const std::pair<int, int>& min_cuda_compute_capability) {
   int num_eligible_gpus = 0;
 #if GOOGLE_CUDA
   if (ValidateGPUMachineManager().ok()) {
-    perftools::gputools::Platform* gpu_manager = GPUMachineManager();
+    se::Platform* gpu_manager = GPUMachineManager();
     if (gpu_manager != nullptr) {
       int num_gpus = gpu_manager->VisibleDeviceCount();
       for (int i = 0; i < num_gpus; i++) {
-        auto exec_status = gpu_manager->ExecutorForDevice(i);
-        if (exec_status.ok()) {
-          perftools::gputools::StreamExecutor* se = exec_status.ValueOrDie();
-          const perftools::gputools::DeviceDescription& desc =
-              se->GetDeviceDescription();
+        auto desc_status = gpu_manager->DescriptionForDevice(i);
+        if (desc_status.ok()) {
+          auto desc = desc_status.ConsumeValueOrDie();
+          int cc_major = 0;
+          int cc_minor = 0;
+          desc->cuda_compute_capability(&cc_major, &cc_minor);
+          std::pair<int, int> cuda_compute_capability(cc_major, cc_minor);
           int min_gpu_core_count = 8;
-          if (desc.core_count() >= min_gpu_core_count) {
+          if (desc->core_count() >= min_gpu_core_count &&
+              cuda_compute_capability >= min_cuda_compute_capability) {
             num_eligible_gpus++;
           }
         }
       }
     }
   }
+  LOG(INFO)
+      << "Number of eligible GPUs (core count >= 8, compute capability >= "
+      << min_cuda_compute_capability.first << "."
+      << min_cuda_compute_capability.second << "): " << num_eligible_gpus;
+#else
+  LOG(INFO)
+      << "Number of eligible GPUs (core count >= 8, compute capability >= "
+      << min_cuda_compute_capability.first << "."
+      << min_cuda_compute_capability.second << "): " << num_eligible_gpus
+      << " (Note: TensorFlow was not compiled with CUDA support)";
 #endif  // GOOGLE_CUDA
-  LOG(INFO) << "Number of eligible GPUs (core count >= 8): "
-            << num_eligible_gpus;
   return num_eligible_gpus;
 }
 
 int64 AvailableGPUMemory(int gpu_id) {
 #if GOOGLE_CUDA
   // Look up the device, to see its attributes.
-  perftools::gputools::Platform* gpu_platform = GPUMachineManager();
+  se::Platform* gpu_platform = GPUMachineManager();
   CHECK_LT(gpu_id, gpu_platform->VisibleDeviceCount());
-  perftools::gputools::StreamExecutor* se =
-      gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
+  se::StreamExecutor* se = gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
   int64 total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
 

@@ -20,12 +20,16 @@
 @@ARModel
 
 @@CSVReader
+@@NumpyReader
 @@RandomWindowInputFn
 @@WholeDatasetInputFn
 @@predict_continuation_input_fn
 
 @@TrainEvalFeatures
 @@FilteringResults
+
+@@TimeSeriesRegressor
+@@OneShotPredictionHead
 """
 
 from __future__ import absolute_import

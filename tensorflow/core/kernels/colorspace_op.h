@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_COLORSPACE_OP_H_
-#define TENSORFLOW_KERNELS_COLORSPACE_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_COLORSPACE_OP_H_
+#define TENSORFLOW_CORE_KERNELS_COLORSPACE_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -54,10 +54,9 @@ struct RGBToHSV {
     // TODO(wicke): all these assignments are only necessary because a combined
     // expression is larger than kernel parameter space. A custom kernel is
     // probably in order.
-    H.device(d) = (R == V).select(norm * (G - B),
-                                  (G == V).select(
-                                      norm * (B - R) + T(2) / T(6),
-                                      norm * (R - G) + T(4) / T(6)));
+    H.device(d) = (R == V).select(
+        norm * (G - B), (G == V).select(norm * (B - R) + T(2) / T(6),
+                                        norm * (R - G) + T(4) / T(6)));
     H.device(d) = (range > T(0)).select(H, H.constant(T(0)));
     H.device(d) = (H < T(0)).select(H + T(1), H);
   }
@@ -92,4 +91,4 @@ struct HSVToRGB {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_COLORSPACE_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_COLORSPACE_OP_H_

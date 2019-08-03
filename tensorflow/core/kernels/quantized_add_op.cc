@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/bcast.h"
 
@@ -489,7 +488,7 @@ class QuantizedAddOp : public OpKernel {
     // adding zero leaves the result unchanged, and to contain the largest of
     // the two input values with some room to spare.
     const float smallest_min = std::min(min_x, min_y);
-    const float largest_max = std::min(max_x, max_y);
+    const float largest_max = std::max(max_x, max_y);
     const float biggest_range =
         std::max(std::abs(smallest_min), std::abs(largest_max));
     const float output_range = (biggest_range * (1 << 14));

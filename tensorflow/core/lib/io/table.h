@@ -13,20 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_IO_TABLE_H_
-#define TENSORFLOW_LIB_IO_TABLE_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_TABLE_H_
+#define TENSORFLOW_CORE_LIB_IO_TABLE_H_
 
 #include <stdint.h>
+
 #include "tensorflow/core/lib/io/iterator.h"
 
 namespace tensorflow {
+
 class RandomAccessFile;
 
 namespace table {
 
-class Block;
-class BlockHandle;
-class Footer;
 struct Options;
 
 // A Table is a sorted map from strings to strings.  Tables are
@@ -84,4 +83,4 @@ class Table {
 }  // namespace table
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_IO_TABLE_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_TABLE_H_

@@ -24,7 +24,11 @@ from six import iteritems
 from six import string_types
 
 from tensorflow.contrib.graph_editor import util
+from tensorflow.python.ops import op_selector
 from tensorflow.python.framework import ops as tf_ops
+from tensorflow.python.util import deprecation
+
+
 
 __all__ = [
     "can_be_regex",
@@ -383,6 +387,7 @@ def get_within_boundary_ops(ops,
 def get_forward_walk_ops(seed_ops,
                          inclusive=True,
                          within_ops=None,
+                         within_ops_fn=None,
                          stop_at_ts=(),
                          control_outputs=None):
   """Do a forward graph walk and return all the visited ops.
@@ -395,6 +400,9 @@ def get_forward_walk_ops(seed_ops,
     within_ops: an iterable of `tf.Operation` within which the search is
       restricted. If `within_ops` is `None`, the search is performed within
       the whole graph.
+    within_ops_fn: if provided, a function on ops that should return True iff
+      the op is within the graph traversal. This can be used along within_ops,
+      in which case an op is within if it is also in within_ops.
     stop_at_ts: an iterable of tensors at which the graph walk stops.
     control_outputs: a `util.ControlOutputs` instance or None.
       If not `None`, it will be used while walking the graph forward.
@@ -423,7 +431,8 @@ def get_forward_walk_ops(seed_ops,
     seed_ops &= within_ops
 
   def is_within(op):
-    return within_ops is None or op in within_ops
+    return (within_ops is None or op in within_ops) and (
+        within_ops_fn is None or within_ops_fn(op))
 
   result = list(seed_ops)
   wave = set(seed_ops)
@@ -447,9 +456,14 @@ def get_forward_walk_ops(seed_ops,
   return result
 
 
+@deprecation.deprecated(
+    "2019-06-06",
+    "Please use tensorflow.python.ops.op_selector.get_backward_walk_ops.",
+    warn_once=True)
 def get_backward_walk_ops(seed_ops,
                           inclusive=True,
                           within_ops=None,
+                          within_ops_fn=None,
                           stop_at_ts=(),
                           control_inputs=False):
   """Do a backward graph walk and return all the visited ops.
@@ -462,6 +476,9 @@ def get_backward_walk_ops(seed_ops,
     within_ops: an iterable of `tf.Operation` within which the search is
       restricted. If `within_ops` is `None`, the search is performed within
       the whole graph.
+    within_ops_fn: if provided, a function on ops that should return True iff
+      the op is within the graph traversal. This can be used along within_ops,
+      in which case an op is within if it is also in within_ops.
     stop_at_ts: an iterable of tensors at which the graph walk stops.
     control_inputs: if True, control inputs will be used while moving backward.
   Returns:
@@ -470,45 +487,13 @@ def get_backward_walk_ops(seed_ops,
     TypeError: if `seed_ops` or `within_ops` cannot be converted to a list of
       `tf.Operation`.
   """
-  if not util.is_iterable(seed_ops):
-    seed_ops = [seed_ops]
-  if not seed_ops:
-    return []
-  if isinstance(seed_ops[0], tf_ops.Tensor):
-    ts = util.make_list_of_t(seed_ops, allow_graph=False)
-    seed_ops = util.get_generating_ops(ts)
-  else:
-    seed_ops = util.make_list_of_op(seed_ops, allow_graph=False)
-
-  stop_at_ts = frozenset(util.make_list_of_t(stop_at_ts))
-  seed_ops = frozenset(util.make_list_of_op(seed_ops))
-  if within_ops:
-    within_ops = util.make_list_of_op(within_ops, allow_graph=False)
-    within_ops = frozenset(within_ops)
-    seed_ops &= within_ops
-
-  def is_within(op):
-    return within_ops is None or op in within_ops
-
-  result = list(seed_ops)
-  wave = set(seed_ops)
-  while wave:
-    new_wave = set()
-    for op in wave:
-      for new_t in op.inputs:
-        if new_t in stop_at_ts:
-          continue
-        if new_t.op not in result and is_within(new_t.op):
-          new_wave.add(new_t.op)
-      if control_inputs:
-        for new_op in op.control_inputs:
-          if new_op not in result and is_within(new_op):
-            new_wave.add(new_op)
-    util.concatenate_unique(result, new_wave)
-    wave = new_wave
-  if not inclusive:
-    result = [op for op in result if op not in seed_ops]
-  return result
+  return op_selector.get_backward_walk_ops(
+      seed_ops,
+      inclusive=inclusive,
+      within_ops=within_ops,
+      within_ops_fn=within_ops_fn,
+      stop_at_ts=stop_at_ts,
+      control_inputs=control_inputs)
 
 
 def get_walks_intersection_ops(forward_seed_ops,
@@ -516,6 +501,7 @@ def get_walks_intersection_ops(forward_seed_ops,
                                forward_inclusive=True,
                                backward_inclusive=True,
                                within_ops=None,
+                               within_ops_fn=None,
                                control_inputs=False,
                                control_outputs=None,
                                control_ios=None):
@@ -535,6 +521,9 @@ def get_walks_intersection_ops(forward_seed_ops,
     within_ops: an iterable of tf.Operation within which the search is
       restricted. If within_ops is None, the search is performed within
       the whole graph.
+    within_ops_fn: if provided, a function on ops that should return True iff
+      the op is within the graph traversal. This can be used along within_ops,
+      in which case an op is within if it is also in within_ops.
     control_inputs: A boolean indicating whether control inputs are enabled.
     control_outputs: An instance of util.ControlOutputs or None. If not None,
       control outputs are enabled.
@@ -555,11 +544,13 @@ def get_walks_intersection_ops(forward_seed_ops,
       forward_seed_ops,
       inclusive=forward_inclusive,
       within_ops=within_ops,
+      within_ops_fn=within_ops_fn,
       control_outputs=control_outputs)
   backward_ops = get_backward_walk_ops(
       backward_seed_ops,
       inclusive=backward_inclusive,
       within_ops=within_ops,
+      within_ops_fn=within_ops_fn,
       control_inputs=control_inputs)
   return [op for op in forward_ops if op in backward_ops]
 
@@ -569,6 +560,7 @@ def get_walks_union_ops(forward_seed_ops,
                         forward_inclusive=True,
                         backward_inclusive=True,
                         within_ops=None,
+                        within_ops_fn=None,
                         control_inputs=False,
                         control_outputs=None,
                         control_ios=None):
@@ -587,6 +579,9 @@ def get_walks_union_ops(forward_seed_ops,
       resulting set.
     within_ops: restrict the search within those operations. If within_ops is
       None, the search is done within the whole graph.
+    within_ops_fn: if provided, a function on ops that should return True iff
+      the op is within the graph traversal. This can be used along within_ops,
+      in which case an op is within if it is also in within_ops.
     control_inputs: A boolean indicating whether control inputs are enabled.
     control_outputs: An instance of util.ControlOutputs or None. If not None,
       control outputs are enabled.
@@ -607,11 +602,13 @@ def get_walks_union_ops(forward_seed_ops,
       forward_seed_ops,
       inclusive=forward_inclusive,
       within_ops=within_ops,
+      within_ops_fn=within_ops_fn,
       control_outputs=control_outputs)
   backward_ops = get_backward_walk_ops(
       backward_seed_ops,
       inclusive=backward_inclusive,
       within_ops=within_ops,
+      within_ops_fn=within_ops_fn,
       control_inputs=control_inputs)
   return util.concatenate_unique(forward_ops, backward_ops)
 

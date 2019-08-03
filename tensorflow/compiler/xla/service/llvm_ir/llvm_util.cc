@@ -16,30 +16,58 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 
 #include <algorithm>
+#include <memory>
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
+#include "tensorflow/compiler/xla/service/dump.h"
+#include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/casts.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/byte_order.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace llvm_ir {
 
-string AsString(const std::string& str) {
-  return string(str.data(), str.length());
+namespace {
+
+// Note, this function is only useful in an insertion context; in a global
+// (e.g. constants) context it will CHECK fail.
+llvm::Module* ModuleFromIRBuilder(llvm::IRBuilder<>* b) {
+  auto block = CHECK_NOTNULL(b->GetInsertBlock());
+  auto fn = CHECK_NOTNULL(block->getParent());
+  auto module = CHECK_NOTNULL(fn->getParent());
+  return module;
 }
 
-llvm::StringRef AsStringRef(tensorflow::StringPiece str) {
-  return llvm::StringRef(str.data(), str.size());
+}  // namespace
+
+std::unique_ptr<llvm::Module> DropConstantInitializers(
+    const llvm::Module& module) {
+  std::unique_ptr<llvm::Module> cloned_module = CloneModule(module);
+  for (llvm::GlobalVariable& global_var : cloned_module->globals()) {
+    global_var.setInitializer(nullptr);
+    global_var.setLinkage(llvm::GlobalValue::LinkageTypes::ExternalLinkage);
+  }
+  return cloned_module;
 }
 
 string DumpModuleToString(const llvm::Module& module) {
@@ -47,30 +75,46 @@ string DumpModuleToString(const llvm::Module& module) {
   llvm::raw_string_ostream ostream(buffer_string);
   module.print(ostream, nullptr);
   ostream.flush();
-  return AsString(buffer_string);
+  return buffer_string;
 }
 
-llvm::Value* EmitCallToIntrinsic(
-    llvm::Intrinsic::ID intrinsic_id,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<llvm::Type*> overloaded_types,
-    llvm::IRBuilder<>* ir_builder) {
-  std::vector<llvm::Type*> types;
-  for (auto type : overloaded_types) {
-    types.push_back(type);
+llvm::CallInst* EmitCallToIntrinsic(
+    llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b) {
+  llvm::Module* module = ModuleFromIRBuilder(b);
+  llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
+      module, intrinsic_id, AsArrayRef(overloaded_types));
+  return b->CreateCall(intrinsic, AsArrayRef(operands));
+}
+
+llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* b) {
+  if (b->getFastMathFlags().noNaNs()) {
+    auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
+    return b->CreateSelect(cmp, lhs_value, rhs_value);
+  } else {
+    auto cmp_ge = b->CreateFCmpOGE(lhs_value, rhs_value);
+    auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
+    auto sel_lhs = b->CreateOr(cmp_ge, lhs_is_nan);
+    return b->CreateSelect(sel_lhs, lhs_value, rhs_value);
   }
-  llvm::Module* module = ir_builder->GetInsertBlock()->getParent()->getParent();
-  llvm::Function* intrinsic =
-      llvm::Intrinsic::getDeclaration(module, intrinsic_id, types);
-  std::vector<llvm::Value*> operands_vec;
-  for (auto operand : operands) {
-    operands_vec.push_back(operand);
+}
+
+llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* b) {
+  if (b->getFastMathFlags().noNaNs()) {
+    auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
+    return b->CreateSelect(cmp, lhs_value, rhs_value);
+  } else {
+    auto cmp_le = b->CreateFCmpOLE(lhs_value, rhs_value);
+    auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
+    auto sel_lhs = b->CreateOr(cmp_le, lhs_is_nan);
+    return b->CreateSelect(sel_lhs, lhs_value, rhs_value);
   }
-  return ir_builder->CreateCall(intrinsic, operands_vec);
 }
 
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
-                                   llvm::IRBuilder<>* ir_builder) {
+                                   llvm::IRBuilder<>* b) {
   llvm::Type* array_type = array->getType();
   CHECK(array_type->isPointerTy());
   llvm::PointerType* array_type_as_pointer =
@@ -80,56 +124,109 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
           << " array=" << llvm_ir::DumpToString(*array)
           << " index=" << llvm_ir::DumpToString(*index);
 
-  return ir_builder->CreateInBoundsGEP(
+  return b->CreateInBoundsGEP(
       array_type_as_pointer->getElementType(), array,
       llvm::isa<llvm::GlobalVariable>(array)
-          ? llvm::ArrayRef<llvm::Value*>({ir_builder->getInt64(0), index})
+          ? llvm::ArrayRef<llvm::Value*>({b->getInt64(0), index})
           : index);
 }
 
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64 index,
-                                   llvm::IRBuilder<>* ir_builder) {
-  return EmitBufferIndexingGEP(array, ir_builder->getInt64(index), ir_builder);
+                                   llvm::IRBuilder<>* b) {
+  return EmitBufferIndexingGEP(array, b->getInt64(index), b);
 }
 
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
-                                  llvm::IRBuilder<>* ir_builder) {
+                                  llvm::Module* module) {
   switch (element_type) {
     case PRED:
     case S8:
     case U8:
-      return ir_builder->getInt8Ty();
+      return llvm::Type::getInt8Ty(module->getContext());
     case S16:
     case U16:
-      return ir_builder->getInt16Ty();
+    case BF16:
+      // For BF16 we just need some type that is 16 bits wide so that it will
+      // take up the right amount of space in memory. LLVM does not have a BF16
+      // type (the LLVM half type is IEEE 16 bit floating point, not bfloat), so
+      // we can't map it directly to an LLVM type. We will not map a BF16
+      // addition to an addition on this type (int16) - this is just the type
+      // used for storage.
+      return llvm::Type::getInt16Ty(module->getContext());
+    case F16:
+      return llvm::Type::getHalfTy(module->getContext());
     case S32:
     case U32:
-      return ir_builder->getInt32Ty();
+      return llvm::Type::getInt32Ty(module->getContext());
     case S64:
     case U64:
-      return ir_builder->getInt64Ty();
+      return llvm::Type::getInt64Ty(module->getContext());
     case F32:
-      return ir_builder->getFloatTy();
+      return llvm::Type::getFloatTy(module->getContext());
     case F64:
-      return ir_builder->getDoubleTy();
-    // A Tuple contains an array of pointers. Use i8*.
+      return llvm::Type::getDoubleTy(module->getContext());
+    case C64: {
+      auto cplx_t = module->getTypeByName("complex64");
+      if (cplx_t == nullptr) {
+        // C++ standard dictates the memory layout of std::complex is contiguous
+        // real followed by imaginary. C++11 section 26.4 [complex.numbers]:
+        // If z is an lvalue expression of type cv std::complex<T> then the
+        // expression reinterpret_cast<cv T(&)[2]>(z) shall be well-formed,
+        // reinterpret_cast<cv T(&)[2]>(z)[0] shall designate the real part of
+        // z, and reinterpret_cast<cv T(&)[2]>(z)[1] shall designate the
+        // imaginary part of z.
+        return llvm::StructType::create(
+            {llvm::Type::getFloatTy(module->getContext()),
+             llvm::Type::getFloatTy(module->getContext())},
+            "complex64", /*isPacked=*/true);
+      }
+      return cplx_t;
+    }
+    case C128: {
+      auto cplx_t = module->getTypeByName("complex128");
+      if (cplx_t == nullptr) {
+        return llvm::StructType::create(
+            {llvm::Type::getDoubleTy(module->getContext()),
+             llvm::Type::getDoubleTy(module->getContext())},
+            "complex128", /*isPacked=*/true);
+      }
+      return cplx_t;
+    }  // A Tuple contains an array of pointers. Use i8*.
     case TUPLE:
     // An Opaque is like a void*, use i8*.
-    case OPAQUE:
-      return ir_builder->getInt8PtrTy();
+    case OPAQUE_TYPE:
+      return llvm::Type::getInt8PtrTy(module->getContext());
+    case TOKEN:
+      // Tokens do not have a physical representation, but the compiler needs
+      // some placeholder type, so use int8*.
+      return llvm::Type::getInt8PtrTy(module->getContext());
     default:
       LOG(FATAL) << "unsupported type " << element_type;
   }
 }
 
-llvm::Type* ShapeToIrType(const Shape& shape, llvm::IRBuilder<>* ir_builder) {
-  llvm::Type* result_type =
-      PrimitiveTypeToIrType(shape.element_type(), ir_builder);
-  if (ShapeUtil::IsTuple(shape)) {
+int GetSizeInBits(llvm::Type* type) {
+  const llvm::StructType* struct_ty = llvm::dyn_cast<llvm::StructType>(type);
+  if (struct_ty) {
+    CHECK(struct_ty->isPacked());
+    int bits = 0;
+    for (auto element_type : struct_ty->elements()) {
+      bits += GetSizeInBits(element_type);
+    }
+    return bits;
+  }
+  int bits = type->getPrimitiveSizeInBits();
+  CHECK_GT(bits, 0) << "type is not sized";
+  return bits;
+}
+
+llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
+  llvm::Type* result_type = PrimitiveTypeToIrType(shape.element_type(), module);
+  if (shape.IsTuple()) {
     // A tuple buffer is an array of pointers.
     result_type = llvm::ArrayType::get(result_type, shape.tuple_shapes_size());
-  } else {
-    for (int64 dimension : shape.layout().minor_to_major()) {
+  } else if (shape.IsArray()) {
+    for (int64 dimension : LayoutUtil::MinorToMajor(shape)) {
       result_type =
           llvm::ArrayType::get(result_type, shape.dimensions(dimension));
     }
@@ -137,221 +234,138 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::IRBuilder<>* ir_builder) {
   return result_type;
 }
 
-StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
-    const Shape& shape, int32* shape_size, llvm::IRBuilder<>* ir_builder) {
+StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
+                                                         int32* shape_size,
+                                                         llvm::IRBuilder<>* b) {
   string encoded_shape = shape.SerializeAsString();
   if (encoded_shape.size() > std::numeric_limits<int32>::max()) {
     return InternalError("Encoded shape size exceeded int32 size limit.");
   }
   *shape_size = static_cast<int32>(encoded_shape.size());
-  return ir_builder->CreateGlobalStringPtr(llvm_ir::AsStringRef(encoded_shape));
+  return b->CreateGlobalStringPtr(encoded_shape);
 }
 
 StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
                                                   int32 size_bytes) {
-  Shape shape;
-  TF_RET_CHECK(shape.ParseFromArray(shape_ptr, size_bytes));
+  ShapeProto shape_proto;
+  TF_RET_CHECK(shape_proto.ParseFromArray(shape_ptr, size_bytes));
+  Shape shape(shape_proto);
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return shape;
+  return std::move(shape);
 }
-
-namespace {
-
-// Recursively construct a multidimensional LLVM constant which represents the
-// given literal. The minor-to-major dimension ordering in the constant matches
-// that of the literal. For example, given a [2 x 3 x 4] Literal (dimension 0
-// has size 4, dimension 1 has size 3, etc) of primitive type F32 with a
-// minor_to_major value of [2, 1, 0] (column major), a LLVM constant of type
-// [4 x [3 x [2 x float]] will be returned.
-//
-// multi_index is a multidimensional index into the array. dimension_index is an
-// index into the minor_to_major field in the literal shape. This determines
-// which dimension is iterated over in this level of the recursion. Dimensions
-// are iterated from most major down to most minor (highest dimension_index
-// value down to zero).
-llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
-                                  std::vector<int64>* multi_index,
-                                  llvm::IRBuilder<>* ir_builder) {
-  const Shape& shape = literal.shape();
-  llvm::Type* ir_element_type =
-      llvm_ir::PrimitiveTypeToIrType(shape.element_type(), ir_builder);
-  if (dimension_index == -1) {
-    // Base case of the recursion. Index into the data field of the protobuf
-    // with the multi index.
-    llvm::Constant* value;
-    switch (shape.element_type()) {
-      case PRED:
-        value = llvm::ConstantInt::get(ir_element_type,
-                                       literal.Get<bool>(*multi_index));
-        break;
-      case U8:
-        value = llvm::ConstantInt::get(ir_element_type,
-                                       literal.Get<uint8>(*multi_index));
-        break;
-      case S32:
-        value = llvm::ConstantInt::get(ir_element_type,
-                                       literal.Get<int32>(*multi_index));
-        break;
-      case U32:
-        value = llvm::ConstantInt::get(ir_element_type,
-                                       literal.Get<uint32>(*multi_index));
-        break;
-      case S64:
-        value = llvm::ConstantInt::get(ir_element_type,
-                                       literal.Get<int64>(*multi_index));
-        break;
-      case U64:
-        value = llvm::ConstantInt::get(ir_element_type,
-                                       literal.Get<uint64>(*multi_index));
-        break;
-      case F32:
-        value = llvm::ConstantFP::get(ir_element_type,
-                                      literal.Get<float>(*multi_index));
-        break;
-      case F64:
-        value = llvm::ConstantFP::get(ir_element_type,
-                                      literal.Get<double>(*multi_index));
-        break;
-      default:
-        LOG(FATAL) << "unsupported type " << shape.element_type();
-    }
-    return value;
-  }
-
-  // The dimension index starts at the one less than the rank of the array and
-  // decrements with each recursive call. We want to iterate through the
-  // dimensions in major-to-minor order as we recurse so just index into
-  // minor_to_major to get the dimension number for this level of the recursion.
-  int64 dimension = shape.layout().minor_to_major(dimension_index);
-
-  // Recursively call LiteralToConstant to construct subarrays for the
-  // more-minor dimensions. Gather the subarrays into a vector for bundling into
-  // a new (higher-dimensional) ConstantArray.
-  std::vector<llvm::Constant*> elements;
-  for (int64 i = 0; i < shape.dimensions(dimension); ++i) {
-    (*multi_index)[dimension] = i;
-    elements.push_back(LiteralToConstant(literal, dimension_index - 1,
-                                         multi_index, ir_builder));
-  }
-
-  llvm::Type* element_type;
-  if (elements.empty()) {
-    element_type = ir_element_type;
-    for (int i = 0; i < dimension_index; ++i) {
-      int64 index = shape.layout().minor_to_major(i);
-      element_type =
-          llvm::ArrayType::get(element_type, shape.dimensions(index));
-    }
-  } else {
-    element_type = elements[0]->getType();
-  }
-  llvm::ArrayType* aggregate_type =
-      llvm::ArrayType::get(element_type, shape.dimensions(dimension));
-  return llvm::ConstantArray::get(aggregate_type, elements);
-}
-
-}  // namespace
 
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
-                                           llvm::IRBuilder<>* ir_builder) {
-  std::vector<int64> multi_index(ShapeUtil::Rank(literal.shape()), 0);
-  llvm::Constant* value = LiteralToConstant(
-      literal, /*dimension_index=*/ShapeUtil::Rank(literal.shape()) - 1,
-      &multi_index, ir_builder);
-  return value;
+                                           llvm::Module* module) {
+  const char* data = static_cast<const char*>(literal.untyped_data());
+  CHECK_EQ(module->getDataLayout().isLittleEndian(),
+           tensorflow::port::kLittleEndian);
+  return llvm::ConstantDataArray::getString(
+      module->getContext(), llvm::StringRef(data, literal.size_bytes()),
+      /*AddNull=*/false);
+}
+
+llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
+                                               llvm::Type* tile_type,
+                                               absl::string_view name) {
+  // Both AMDGPU and NVPTX use the same address space for shared memory.
+  const int kGPUSharedMemoryAddrSpace = 3;
+  return new llvm::GlobalVariable(
+      *module, tile_type,
+      /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
+      llvm::UndefValue::get(tile_type), AsStringRef(name), nullptr,
+      llvm::GlobalValue::NotThreadLocal, kGPUSharedMemoryAddrSpace);
 }
 
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
-                                            tensorflow::StringPiece name,
-                                            llvm::IRBuilder<>* ir_builder,
+                                            absl::string_view name,
+                                            llvm::IRBuilder<>* b,
                                             int alignment) {
-  return EmitAllocaAtFunctionEntryWithCount(type, nullptr, name, ir_builder,
-                                            alignment);
+  return EmitAllocaAtFunctionEntryWithCount(type, nullptr, name, b, alignment);
 }
 
-llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(
-    llvm::Type* type, llvm::Value* element_count, tensorflow::StringPiece name,
-    llvm::IRBuilder<>* ir_builder, int alignment) {
-  llvm::IRBuilder<>::InsertPoint insert_point = ir_builder->saveIP();
-  llvm::Function* function = ir_builder->GetInsertBlock()->getParent();
-  ir_builder->SetInsertPoint(&function->getEntryBlock(),
-                             function->getEntryBlock().getFirstInsertionPt());
+llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
+                                                     llvm::Value* element_count,
+                                                     absl::string_view name,
+                                                     llvm::IRBuilder<>* b,
+                                                     int alignment) {
+  llvm::IRBuilder<>::InsertPointGuard guard(*b);
+  llvm::Function* function = b->GetInsertBlock()->getParent();
+  b->SetInsertPoint(&function->getEntryBlock(),
+                    function->getEntryBlock().getFirstInsertionPt());
   llvm::AllocaInst* alloca =
-      ir_builder->CreateAlloca(type, element_count, AsStringRef(name));
+      b->CreateAlloca(type, element_count, AsStringRef(name));
   if (alignment != 0) {
     alloca->setAlignment(alignment);
   }
-  ir_builder->restoreIP(insert_point);
   return alloca;
 }
 
 llvm::BasicBlock* CreateBasicBlock(llvm::BasicBlock* insert_before,
-                                   tensorflow::StringPiece name,
-                                   llvm::IRBuilder<>* ir_builder) {
+                                   absl::string_view name,
+                                   llvm::IRBuilder<>* b) {
   return llvm::BasicBlock::Create(
-      /*Context=*/ir_builder->getContext(),
+      /*Context=*/b->getContext(),
       /*Name=*/AsStringRef(name),
-      /*Parent=*/ir_builder->GetInsertBlock()->getParent(),
+      /*Parent=*/b->GetInsertBlock()->getParent(),
       /*InsertBefore*/ insert_before);
 }
 
-LlvmIfData EmitIfThenElse(llvm::Value* condition, tensorflow::StringPiece name,
-                          llvm::IRBuilder<>* ir_builder, bool emit_else) {
+LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
+                          llvm::IRBuilder<>* b, bool emit_else) {
   llvm_ir::LlvmIfData if_data;
-  if_data.if_block = ir_builder->GetInsertBlock();
-  if_data.true_block = CreateBasicBlock(
-      nullptr, tensorflow::strings::StrCat(name, "-true"), ir_builder);
+  if_data.if_block = b->GetInsertBlock();
+  if_data.true_block =
+      CreateBasicBlock(nullptr, absl::StrCat(name, "-true"), b);
   if_data.false_block =
-      emit_else ? CreateBasicBlock(nullptr,
-                                   tensorflow::strings::StrCat(name, "-false"),
-                                   ir_builder)
+      emit_else ? CreateBasicBlock(nullptr, absl::StrCat(name, "-false"), b)
                 : nullptr;
 
-  // There is no reason this function cannot work without a
-  // terminator, that is just a different case that has not been
-  // implemented yet. It is a different case because splitBasicBlock
-  // requires a terminator.
-  CHECK_NE(nullptr, if_data.if_block->getTerminator());
-  if_data.after_block = if_data.if_block->splitBasicBlock(
-      ir_builder->GetInsertPoint(),
-      AsStringRef(tensorflow::strings::StrCat(name, "-after")));
-
-  // splitBasicBlock inserts an unconditional terminator that we have
-  // to remove as we want a conditional branch there.
-  if_data.if_block->getTerminator()->eraseFromParent();
-
-  ir_builder->SetInsertPoint(if_data.if_block);
-  ir_builder->CreateCondBr(
-      condition, if_data.true_block,
-      emit_else ? if_data.false_block : if_data.after_block);
-
-  ir_builder->SetInsertPoint(if_data.true_block);
-  ir_builder->CreateBr(if_data.after_block);
-
-  if (emit_else) {
-    ir_builder->SetInsertPoint(if_data.false_block);
-    ir_builder->CreateBr(if_data.after_block);
+  // Add a terminator to the if block, if necessary.
+  if (if_data.if_block->getTerminator() == nullptr) {
+    b->SetInsertPoint(if_data.if_block);
+    if_data.after_block =
+        CreateBasicBlock(nullptr, absl::StrCat(name, "-after"), b);
+    b->CreateBr(if_data.after_block);
+  } else {
+    if_data.after_block = if_data.if_block->splitBasicBlock(
+        b->GetInsertPoint(), absl::StrCat(name, "-after"));
   }
 
-  ir_builder->SetInsertPoint(if_data.after_block,
-                             if_data.after_block->getFirstInsertionPt());
+  // Our basic block should now end with an unconditional branch.  Remove it;
+  // we're going to replace it with a conditional branch.
+  if_data.if_block->getTerminator()->eraseFromParent();
+
+  b->SetInsertPoint(if_data.if_block);
+  b->CreateCondBr(condition, if_data.true_block,
+                  emit_else ? if_data.false_block : if_data.after_block);
+
+  b->SetInsertPoint(if_data.true_block);
+  b->CreateBr(if_data.after_block);
+
+  if (emit_else) {
+    b->SetInsertPoint(if_data.false_block);
+    b->CreateBr(if_data.after_block);
+  }
+
+  b->SetInsertPoint(if_data.after_block,
+                    if_data.after_block->getFirstInsertionPt());
 
   return if_data;
 }
 
 llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
                             llvm::Value* lhs_value, llvm::Value* rhs_value,
-                            llvm::IRBuilder<>* ir_builder) {
+                            llvm::IRBuilder<>* b) {
   llvm::Value* comparison_result;
   if (lhs_value->getType()->isIntegerTy()) {
-    comparison_result = ir_builder->CreateICmp(predicate, lhs_value, rhs_value);
+    comparison_result = b->CreateICmp(predicate, lhs_value, rhs_value);
   } else {
-    comparison_result = ir_builder->CreateFCmp(predicate, lhs_value, rhs_value);
+    comparison_result = b->CreateFCmp(predicate, lhs_value, rhs_value);
   }
   // comparison_result is i1, but the NVPTX codegen incorrectly lowers i1
   // arrays. So we extend it to i8 so that it's addressable.
-  return ir_builder->CreateZExt(
-      comparison_result, llvm_ir::PrimitiveTypeToIrType(PRED, ir_builder));
+  return b->CreateZExt(comparison_result, llvm_ir::PrimitiveTypeToIrType(
+                                              PRED, ModuleFromIRBuilder(b)));
 }
 
 // Internal helper that is called from emitted code to log an int64 value with a
@@ -360,24 +374,13 @@ static void LogS64(const char* tag, int64 value) {
   LOG(INFO) << tag << " (int64): " << value;
 }
 
-void EmitLogging(const char* tag, llvm::Value* value,
-                 llvm::IRBuilder<>* ir_builder) {
+void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b) {
   llvm::FunctionType* log_function_type = llvm::FunctionType::get(
-      ir_builder->getVoidTy(),
-      {ir_builder->getInt64Ty(), ir_builder->getInt64Ty()}, /*isVarArg=*/false);
-  ir_builder->CreateCall(
-      log_function_type,
-      ir_builder->CreateIntToPtr(
-          ir_builder->getInt64(tensorflow::bit_cast<int64>(&LogS64)),
-          log_function_type->getPointerTo()),
-      {ir_builder->getInt64(tensorflow::bit_cast<int64>(tag)), value});
-}
-
-void SetTbaaForInstruction(llvm::Instruction* instruction, Shape shape,
-                           bool is_pointer_to) {
-  // TODO(b/62903316): TBAA metadata causes LLVM to miscompile generated code,
-  // most likely because the generated metadata is incorrect.  Disable TBAA
-  // metadata while we resolve this.
+      b->getVoidTy(), {b->getInt64Ty(), b->getInt64Ty()}, /*isVarArg=*/false);
+  b->CreateCall(log_function_type,
+                b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64>(&LogS64)),
+                                  log_function_type->getPointerTo()),
+                {b->getInt64(absl::bit_cast<int64>(tag)), value});
 }
 
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment) {
@@ -418,16 +421,69 @@ llvm::Instruction* AddRangeMetadata(int64 lower, int64 upper,
   return inst;
 }
 
-string SanitizeIrName(string function_name) {
-  // Replace some characters that cannot occur in LLVM names with '_'
-  std::replace(function_name.begin(), function_name.end(), '.', '_');
-  std::replace(function_name.begin(), function_name.end(), '%', '_');
-  std::replace(function_name.begin(), function_name.end(), '-', '_');
+string IrName(string a) {
+  a.erase(std::remove(a.begin(), a.end(), '%'), a.end());
+  return a;
+}
+
+string IrName(absl::string_view a, absl::string_view b) {
+  if (!a.empty() && !b.empty()) {
+    return IrName(absl::StrCat(a, ".", b));
+  }
+  return IrName(absl::StrCat(a, b));
+}
+
+string IrName(const HloInstruction* a, absl::string_view b) {
+  return IrName(a->name(), b);
+}
+
+string SanitizeFunctionName(string function_name) {
+  // The backend with the strictest requirements on function names is NVPTX, so
+  // we sanitize to its requirements.
+  //
+  // A slightly stricter version of the NVPTX requirements is that names match
+  // /[a-zA-Z_$][a-zA-Z0-9_$]*/, with the exception that the names "_" and "$"
+  // are illegal.
+
+  // Sanitize chars in function_name.
+  std::transform(function_name.begin(), function_name.end(),
+                 function_name.begin(), [](char c) {
+                   if (('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') ||
+                       ('0' <= c && c <= '9') || c == '_' || c == '$') {
+                     return c;
+                   }
+                   return '_';
+                 });
+
+  // Ensure the name isn't empty.
+  if (function_name.empty()) {
+    function_name = "__unnamed";
+  }
+
+  // Ensure the name doesn't start with a number.
+  if (!function_name.empty() && function_name[0] >= '0' &&
+      function_name[0] <= '9') {
+    function_name.insert(function_name.begin(), '_');
+  }
+
+  // Ensure the name isn't "_" or "$".
+  if (function_name == "_" || function_name == "$") {
+    function_name += '_';
+  }
+
   return function_name;
 }
 
 void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder) {
   builder->SetInsertPoint(blk, blk->getFirstInsertionPt());
+}
+
+void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder) {
+  if (llvm::Instruction* terminator = blk->getTerminator()) {
+    builder->SetInsertPoint(terminator);
+  } else {
+    builder->SetInsertPoint(blk);
+  }
 }
 
 llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
@@ -445,23 +501,19 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
   return ShapeUtil::ByteSizeOf(shape, pointer_size);
 }
 
-llvm::FastMathFlags GetFastMathFlags(bool fast_math_enabled) {
+llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config) {
   llvm::FastMathFlags flags;
-  if (fast_math_enabled) {
-    // UnsafeAlgebra implies NoInfs, NoNaNs, NoSignedZeros, and AllowReciprocal.
-    flags.setUnsafeAlgebra();
+  const auto& options = module_config.debug_options();
+  if (!options.xla_cpu_enable_fast_math()) {
+    return flags;
   }
+  // Fast implies AllowReassoc, NoInfs, NoNaNs, NoSignedZeros, AllowReciprocal,
+  // AllowContract, and ApproxFunc.
+  flags.setFast();
+  flags.setNoNaNs(!options.xla_cpu_fast_math_honor_nans());
+  flags.setNoInfs(!options.xla_cpu_fast_math_honor_infs());
+  flags.setAllowReciprocal(!options.xla_cpu_fast_math_honor_division());
   return flags;
-}
-
-void SetTargetOptions(bool fast_math_enabled,
-                      llvm::TargetOptions* target_options) {
-  // In LLVM backend flags, UnsafeFPMath does not explicitly imply
-  // NoInfs, etc.
-  target_options->UnsafeFPMath = fast_math_enabled;
-  target_options->NoInfsFPMath = fast_math_enabled;
-  target_options->NoNaNsFPMath = fast_math_enabled;
-  target_options->NoSignedZerosFPMath = fast_math_enabled;
 }
 
 std::map<int, llvm::MDNode*> MergeMetadata(
@@ -510,6 +562,177 @@ std::map<int, llvm::MDNode*> MergeMetadata(
     }
   }
   return result;
+}
+
+static Status CreateAndWriteStringToFile(const string& directory_name,
+                                         const string& file_name,
+                                         const string& text) {
+  std::unique_ptr<tensorflow::WritableFile> f;
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->RecursivelyCreateDir(directory_name));
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
+  TF_RETURN_IF_ERROR(f->Append(text));
+  TF_RETURN_IF_ERROR(f->Close());
+  return Status::OK();
+}
+
+void DumpIrIfEnabled(const HloModule& hlo_module,
+                     const llvm::Module& llvm_module, bool optimized) {
+  const auto& debug_opts = hlo_module.config().debug_options();
+  if (!DumpingEnabledForHloModule(hlo_module)) {
+    return;
+  }
+  // We can end up compiling different modules with the same name when using
+  // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
+  // dumped from the same process in such cases.
+  string suffix = absl::StrCat("ir-", optimized ? "with" : "no", "-opt");
+  DumpToFileInDirOrStdout(hlo_module, absl::StrCat(suffix, ".ll"),
+                          DumpModuleToString(llvm_module));
+
+  // For some models the embedded constants can be huge, so also dump the module
+  // with the constants stripped to get IR that is easier to manipulate.  Skip
+  // this if we're dumping to stdout; there's no point in duplicating everything
+  // when writing to the terminal.
+  if (!DumpingToStdout(debug_opts)) {
+    DumpToFileInDir(hlo_module, absl::StrCat(suffix, "-noconst.ll"),
+                    DumpModuleToString(*DropConstantInitializers(llvm_module)));
+  }
+}
+
+llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
+                                  llvm::GlobalValue::LinkageTypes linkage,
+                                  const HloModuleConfig& module_config,
+                                  absl::string_view name,
+                                  llvm::Module* module) {
+  llvm::Function* function =
+      llvm::Function::Create(function_type, linkage, AsStringRef(name), module);
+  function->setCallingConv(llvm::CallingConv::C);
+  function->addFnAttr("no-frame-pointer-elim", "false");
+
+  // Generate unwind information so that GDB can crawl through the stack frames
+  // created by the JIT compiled code.
+  function->setHasUWTable();
+
+  if (module_config.debug_options().xla_cpu_enable_fast_math()) {
+    function->addFnAttr("unsafe-fp-math", "true");
+    function->addFnAttr("no-signed-zeros-fp-math", "true");
+    if (!module_config.debug_options().xla_cpu_fast_math_honor_nans()) {
+      function->addFnAttr("no-nans-fp-math", "true");
+    }
+    if (!module_config.debug_options().xla_cpu_fast_math_honor_infs()) {
+      function->addFnAttr("no-infs-fp-math", "true");
+    }
+    if (module_config.debug_options().xla_cpu_fast_math_honor_division()) {
+      function->addFnAttr("reciprocal-estimates", "none");
+    }
+  }
+
+  // Add the optize attribute to the function if optimizing for size. This
+  // controls internal behavior of some optimization passes (e.g. loop
+  // unrolling).
+  if (cpu::options::OptimizeForSizeRequested(module_config)) {
+    function->addFnAttr(llvm::Attribute::OptimizeForSize);
+  }
+
+  return function;
+}
+
+void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
+  auto options = config.debug_options().xla_backend_extra_options();
+  if (!options.empty()) {
+    std::vector<string> fake_argv_storage;
+    fake_argv_storage.push_back("");
+    for (const auto& it : options) {
+      // Skip options the XLA backend itself consumes.
+      if (!absl::StartsWith(it.first, "xla_")) {
+        if (it.second.empty()) {
+          fake_argv_storage.push_back(it.first);
+        } else {
+          fake_argv_storage.push_back(it.first + "=" + it.second);
+        }
+      }
+    }
+
+    VLOG(2) << "Passing argv to LLVM:";
+    std::vector<const char*> fake_argv;
+    for (const auto& s : fake_argv_storage) {
+      fake_argv.push_back(s.c_str());
+      VLOG(2) << s;
+    }
+    llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
+  }
+}
+
+std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilder<>* b,
+                                                    llvm::Value* src0,
+                                                    llvm::Value* src1) {
+  CHECK_EQ(src0->getType()->getPrimitiveSizeInBits(), 32);
+  CHECK_EQ(src1->getType()->getPrimitiveSizeInBits(), 32);
+  llvm::Type* int64_ty = b->getInt64Ty();
+  src0 = b->CreateZExt(src0, int64_ty);
+  src1 = b->CreateZExt(src1, int64_ty);
+  return SplitInt64ToInt32s(b, b->CreateMul(src0, src1));
+}
+
+std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
+    llvm::IRBuilder<>* b, llvm::Value* value_64bits) {
+  CHECK_EQ(value_64bits->getType()->getPrimitiveSizeInBits(), 64);
+  llvm::Type* int32_ty = b->getInt32Ty();
+  llvm::Value* low_32bits = b->CreateTrunc(value_64bits, int32_ty);
+  llvm::Value* high_32bits =
+      b->CreateTrunc(b->CreateLShr(value_64bits, 32), int32_ty);
+  return std::make_pair(low_32bits, high_32bits);
+}
+
+unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module) {
+  const unsigned kAMDGPUGlobalMemoryAddrSpace = 1;
+  llvm::Triple target_triple = llvm::Triple(module.getTargetTriple());
+  if (target_triple.getArch() == llvm::Triple::amdgcn) {
+    // AMDGPU uses 1 for global memory address space.
+    return kAMDGPUGlobalMemoryAddrSpace;
+  }
+  return 0;
+}
+
+llvm::GlobalVariable* GetOrCreateVariableForRngState(llvm::Module* module,
+                                                     llvm::IRBuilder<>* b) {
+  static const char* kRngStateVariableName = "rng_state";
+  llvm::GlobalVariable* state_ptr =
+      module->getNamedGlobal(kRngStateVariableName);
+  if (!state_ptr) {
+    unsigned global_address_space = GetGlobalMemoryAddressSpace(*module);
+    llvm::Type* state_type = b->getInt128Ty();
+    // Use a non-zero initial value as zero state can cause the result of the
+    // first random number generation not passing the chi-square test. The
+    // values used here are arbitrarily chosen, any non-zero values should be
+    // fine.
+    state_ptr = new llvm::GlobalVariable(
+        /*M=*/*module,
+        /*Ty=*/state_type,
+        /*isConstant=*/false,
+        /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
+        /*Initializer=*/llvm::ConstantInt::get(b->getInt128Ty(), 0x7012395ull),
+        /*Name=*/kRngStateVariableName,
+        /*InsertBefore=*/nullptr,
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/global_address_space,
+        /*isExternallyInitialized=*/false);
+  }
+  return state_ptr;
+}
+
+llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
+                                  llvm::IRBuilder<>* builder) {
+  llvm::GlobalVariable* state_ptr =
+      GetOrCreateVariableForRngState(module, builder);
+  llvm::LoadInst* state_value_old =
+      builder->CreateLoad(state_ptr, "load_state");
+  llvm::Value* state_value_new = builder->CreateAdd(
+      state_value_old,
+      llvm::ConstantInt::get(state_value_old->getType(), delta));
+  builder->CreateStore(state_value_new, state_ptr);
+  return state_value_old;
 }
 
 }  // namespace llvm_ir

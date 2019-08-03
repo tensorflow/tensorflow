@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_DEVICES_H_
-#define TENSORFLOW_GRAPPLER_DEVICES_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_DEVICES_H_
+#define TENSORFLOW_CORE_GRAPPLER_DEVICES_H_
 
 #include <functional>
+#include <utility>
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -26,8 +27,10 @@ namespace tensorflow {
 namespace grappler {
 
 // Get the number of available GPUs whose number of multiprocessors is no less
-// than 8.
-int GetNumAvailableGPUs();
+// than 8 and whose CUDA compute capability is no less than
+// min_cuda_compute_capability.
+int GetNumAvailableGPUs(
+    const std::pair<int, int>& min_cuda_compute_capability = {0, 0});
 
 // Maximum amount of gpu memory available per gpu. gpu_id must be in the range
 // [0, num_available_gpu)
@@ -39,4 +42,4 @@ int GetNumAvailableLogicalCPUCores();
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_DEVICES_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_DEVICES_H_

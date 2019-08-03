@@ -22,6 +22,9 @@ import os
 import subprocess
 
 
+os.chdir(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+
+
 def check_output_despite_error(args):
   """Get output of args from command line, even if there are errors.
 
@@ -32,7 +35,7 @@ def check_output_despite_error(args):
     output as string.
   """
   try:
-    output = subprocess.check_output(args, stderr=subprocess.STDOUT)
+    output = subprocess.check_output(args, shell=True, stderr=subprocess.STDOUT)
   except subprocess.CalledProcessError as e:
     output = e.output
   return output.strip()
@@ -49,6 +52,7 @@ def main():
         '//tensorflow/contrib/tensorboard/...)']).strip()
   except subprocess.CalledProcessError as e:
     targets = e.output
+  targets = targets.decode("utf-8") if isinstance(targets, bytes) else targets
 
   # Only keep py_test targets, and filter out targets with 'no_pip' tag.
   valid_targets = []

@@ -22,15 +22,25 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
+
+
+def _AddTest(test_class, op_name, testcase_name, fn):
+  test_name = "_".join(["test", op_name, testcase_name])
+  if hasattr(test_class, test_name):
+    raise RuntimeError("Test %s defined more than once" % test_name)
+  setattr(test_class, test_name, fn)
 
 
 class SelfAdjointEigTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testWrongDimensions(self):
     # The input to self_adjoint_eig should be a tensor of
     # at least rank 2.
@@ -41,6 +51,46 @@ class SelfAdjointEigTest(test.TestCase):
     with self.assertRaises(ValueError):
       linalg_ops.self_adjoint_eig(vector)
 
+  @test_util.run_deprecated_v1
+  def testConcurrentExecutesWithoutError(self):
+    all_ops = []
+    with self.session(use_gpu=True) as sess:
+      for compute_v_ in True, False:
+        matrix1 = random_ops.random_normal([5, 5], seed=42)
+        matrix2 = random_ops.random_normal([5, 5], seed=42)
+        if compute_v_:
+          e1, v1 = linalg_ops.self_adjoint_eig(matrix1)
+          e2, v2 = linalg_ops.self_adjoint_eig(matrix2)
+          all_ops += [e1, v1, e2, v2]
+        else:
+          e1 = linalg_ops.self_adjoint_eigvals(matrix1)
+          e2 = linalg_ops.self_adjoint_eigvals(matrix2)
+          all_ops += [e1, e2]
+      val = self.evaluate(all_ops)
+      self.assertAllEqual(val[0], val[2])
+      # The algorithm is slightly different for compute_v being True and False,
+      # so require approximate equality only here.
+      self.assertAllClose(val[2], val[4])
+      self.assertAllEqual(val[4], val[5])
+      self.assertAllEqual(val[1], val[3])
+
+  def testMatrixThatFailsWhenFlushingDenormsToZero(self):
+    # Test a 32x32 matrix which is known to fail if denorm floats are flushed to
+    # zero.
+    matrix = np.genfromtxt(
+        test.test_src_dir_path(
+            "python/kernel_tests/testdata/"
+            "self_adjoint_eig_fail_if_denorms_flushed.txt")).astype(np.float32)
+    self.assertEqual(matrix.shape, (32, 32))
+    matrix_tensor = constant_op.constant(matrix)
+    with self.session(use_gpu=True) as sess:
+      (e, v) = self.evaluate(linalg_ops.self_adjoint_eig(matrix_tensor))
+      self.assertEqual(e.size, 32)
+      self.assertAllClose(
+          np.matmul(v, v.transpose()), np.eye(32, dtype=np.float32), atol=2e-3)
+      self.assertAllClose(matrix,
+                          np.matmul(np.matmul(v, np.diag(e)), v.transpose()))
+
 
 def SortEigenDecomposition(e, v):
   if v.ndim < 2:
@@ -50,28 +100,30 @@ def SortEigenDecomposition(e, v):
     return np.take(e, perm, -1), np.take(v, perm, -1)
 
 
-def NormalizeEigenvectorsPhase(v):
-  """Normalizes the phase of the Eigenvectors stored in the columns of `v`.
+def EquilibrateEigenVectorPhases(x, y):
+  """Equilibrate the phase of the Eigenvectors in the columns of `x` and `y`.
 
-  (complex) Eigenvectors are only unique up to an arbitrary phase.
-  We normalize the vectors such that the first component has phase 0.
+  Eigenvectors are only unique up to an arbitrary phase. This function rotates x
+  such that it matches y. Precondition: The coluns of x and y differ by a
+  multiplicative complex phase factor only.
 
   Args:
-    v: `np.ndarray` with Eigenvectors as returned from `np.linalg.eigh`.
+    x: `np.ndarray` with Eigenvectors
+    y: `np.ndarray` with Eigenvectors
 
   Returns:
-    `np.ndarray` normalized Eigenvectors.
+    `np.ndarray` containing an equilibrated version of x.
   """
-  reference = v / np.linalg.norm(v[..., 0:1, :], axis=-1, keepdims=True)
-  return v * reference.conj()
+  phases = np.sum(np.conj(x) * y, -2, keepdims=True)
+  phases /= np.abs(phases)
+  return phases * x
 
 
 def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
 
   def CompareEigenVectors(self, x, y, tol):
-    x = NormalizeEigenvectorsPhase(x)
-    y = NormalizeEigenvectorsPhase(y)
-    self.assertAllClose(x, y, atol=tol, rtol=tol)
+    x = EquilibrateEigenVectorPhases(x, y)
+    self.assertAllClose(x, y, atol=tol)
 
   def CompareEigenDecompositions(self, x_e, x_v, y_e, y_v, tol):
     num_batches = int(np.prod(x_e.shape[:-1]))
@@ -103,7 +155,7 @@ def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
     else:
       atol = 1e-12
     np_e, np_v = np.linalg.eigh(a)
-    with self.test_session():
+    with self.session(use_gpu=True):
       if compute_v_:
         tf_e, tf_v = linalg_ops.self_adjoint_eig(constant_op.constant(a))
 
@@ -112,15 +164,15 @@ def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
             math_ops.matmul(tf_v, array_ops.matrix_diag(tf_e)),
             tf_v,
             adjoint_b=True)
-        self.assertAllClose(a_ev.eval(), a, atol=atol)
+        self.assertAllClose(self.evaluate(a_ev), a, atol=atol)
 
         # Compare to numpy.linalg.eigh.
-        CompareEigenDecompositions(self, np_e, np_v,
-                                   tf_e.eval(), tf_v.eval(), atol)
+        CompareEigenDecompositions(self, np_e, np_v, self.evaluate(tf_e),
+                                   self.evaluate(tf_v), atol)
       else:
         tf_e = linalg_ops.self_adjoint_eigvals(constant_op.constant(a))
         self.assertAllClose(
-            np.sort(np_e, -1), np.sort(tf_e.eval(), -1), atol=atol)
+            np.sort(np_e, -1), np.sort(self.evaluate(tf_e), -1), atol=atol)
 
   return Test
 
@@ -136,66 +188,70 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_, compute_v_):
     n = shape_[-1]
     batch_shape = shape_[:-2]
     np_dtype = dtype_.as_numpy_dtype
-    a = np.random.uniform(
-        low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
-    if dtype_.is_complex:
-      a += 1j * np.random.uniform(
+
+    def RandomInput():
+      a = np.random.uniform(
           low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
-    a += np.conj(a.T)
-    a = np.tile(a, batch_shape + (1, 1))
+      if dtype_.is_complex:
+        a += 1j * np.random.uniform(
+            low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
+      a += np.conj(a.T)
+      a = np.tile(a, batch_shape + (1, 1))
+      return a
+
     # Optimal stepsize for central difference is O(epsilon^{1/3}).
     epsilon = np.finfo(np_dtype).eps
     delta = 0.1 * epsilon**(1.0 / 3.0)
     # tolerance obtained by looking at actual differences using
     # np.linalg.norm(theoretical-numerical, np.inf) on -mavx build
+    # after discarding one random input sample
+    _ = RandomInput()
     if dtype_ in (dtypes_lib.float32, dtypes_lib.complex64):
       tol = 1e-2
     else:
       tol = 1e-7
-    with self.test_session():
-      tf_a = constant_op.constant(a)
-      if compute_v_:
-        tf_e, tf_v = linalg_ops.self_adjoint_eig(tf_a)
+    with self.session(use_gpu=True):
+      def Compute(x):
+        e, v = linalg_ops.self_adjoint_eig(x)
         # (complex) Eigenvectors are only unique up to an arbitrary phase
         # We normalize the vectors such that the first component has phase 0.
-        reference = tf_v / linalg_ops.norm(
-            tf_v[..., 0:1, :], axis=-1, keep_dims=True)
-        tf_v *= math_ops.conj(reference)
-        outputs = [tf_e, tf_v]
-      else:
-        tf_e = linalg_ops.self_adjoint_eigvals(tf_a)
-        outputs = [tf_e,]
-      for b in outputs:
-        x_init = np.random.uniform(
-            low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
+        top_rows = v[..., 0:1, :]
         if dtype_.is_complex:
-          x_init += 1j * np.random.uniform(
-              low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(np_dtype)
-        x_init += np.conj(x_init.T)
-        x_init = np.tile(x_init, batch_shape + (1, 1))
-        theoretical, numerical = gradient_checker.compute_gradient(
-            tf_a,
-            tf_a.get_shape().as_list(),
-            b,
-            b.get_shape().as_list(),
-            x_init_value=x_init,
+          angle = -math_ops.angle(top_rows)
+          phase = math_ops.complex(math_ops.cos(angle), math_ops.sin(angle))
+        else:
+          phase = math_ops.sign(top_rows)
+        v *= phase
+        return e, v
+
+      if compute_v_:
+        funcs = [lambda x: Compute(x)[0], lambda x: Compute(x)[1]]
+      else:
+        funcs = [linalg_ops.self_adjoint_eigvals]
+
+      for f in funcs:
+        theoretical, numerical = gradient_checker_v2.compute_gradient(
+            f,
+            [RandomInput()],
             delta=delta)
         self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
 
   return Test
 
 
-if __name__ == '__main__':
-  for compute_v in [True, False]:
-    for dtype in (
-        dtypes_lib.float32, dtypes_lib.float64,
-        dtypes_lib.complex64, dtypes_lib.complex128):
+if __name__ == "__main__":
+  dtypes_to_test = [dtypes_lib.float32, dtypes_lib.float64]
+  if not test.is_built_with_rocm():
+    # ROCm does not support BLAS operations for complex types
+    dtypes_to_test += [dtypes_lib.complex64, dtypes_lib.complex128]
+  for compute_v in True, False:
+    for dtype in dtypes_to_test:
       for size in 1, 2, 5, 10:
         for batch_dims in [(), (3,)] + [(3, 2)] * (max(size, size) < 10):
           shape = batch_dims + (size, size)
-          name = '%s_%s_%s' % (dtype, '_'.join(map(str, shape)), compute_v)
-          setattr(SelfAdjointEigTest, 'testSelfAdjointEig_' + name,
-                  _GetSelfAdjointEigTest(dtype, shape, compute_v))
-          setattr(SelfAdjointEigGradTest, 'testSelfAdjointEigGrad_' + name,
-                  _GetSelfAdjointEigGradTest(dtype, shape, compute_v))
+          name = "%s_%s_%s" % (dtype.name, "_".join(map(str, shape)), compute_v)
+          _AddTest(SelfAdjointEigTest, "SelfAdjointEig", name,
+                   _GetSelfAdjointEigTest(dtype, shape, compute_v))
+          _AddTest(SelfAdjointEigGradTest, "SelfAdjointEigGrad", name,
+                   _GetSelfAdjointEigGradTest(dtype, shape, compute_v))
   test.main()

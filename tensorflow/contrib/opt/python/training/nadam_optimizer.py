@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -34,12 +35,13 @@ class NadamOptimizer(adam.AdamOptimizer):
   def _apply_dense(self, grad, var):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
+    beta1_power, beta2_power = self._get_beta_accumulators()
     return training_ops.apply_adam(
         var,
         m,
         v,
-        math_ops.cast(self._beta1_power, var.dtype.base_dtype),
-        math_ops.cast(self._beta2_power, var.dtype.base_dtype),
+        math_ops.cast(beta1_power, var.dtype.base_dtype),
+        math_ops.cast(beta2_power, var.dtype.base_dtype),
         math_ops.cast(self._lr_t, var.dtype.base_dtype),
         math_ops.cast(self._beta1_t, var.dtype.base_dtype),
         math_ops.cast(self._beta2_t, var.dtype.base_dtype),
@@ -51,12 +53,13 @@ class NadamOptimizer(adam.AdamOptimizer):
   def _resource_apply_dense(self, grad, var):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
+    beta1_power, beta2_power = self._get_beta_accumulators()
     return training_ops.resource_apply_adam(
         var.handle,
         m.handle,
         v.handle,
-        math_ops.cast(self._beta1_power, grad.dtype.base_dtype),
-        math_ops.cast(self._beta2_power, grad.dtype.base_dtype),
+        math_ops.cast(beta1_power, grad.dtype.base_dtype),
+        math_ops.cast(beta2_power, grad.dtype.base_dtype),
         math_ops.cast(self._lr_t, grad.dtype.base_dtype),
         math_ops.cast(self._beta1_t, grad.dtype.base_dtype),
         math_ops.cast(self._beta2_t, grad.dtype.base_dtype),
@@ -66,8 +69,9 @@ class NadamOptimizer(adam.AdamOptimizer):
         use_nesterov=True)
 
   def _apply_sparse_shared(self, grad, var, indices, scatter_add):
-    beta1_power = math_ops.cast(self._beta1_power, var.dtype.base_dtype)
-    beta2_power = math_ops.cast(self._beta2_power, var.dtype.base_dtype)
+    beta1_power, beta2_power = self._get_beta_accumulators()
+    beta1_power = math_ops.cast(beta1_power, var.dtype.base_dtype)
+    beta2_power = math_ops.cast(beta2_power, var.dtype.base_dtype)
     lr_t = math_ops.cast(self._lr_t, var.dtype.base_dtype)
     beta1_t = math_ops.cast(self._beta1_t, var.dtype.base_dtype)
     beta2_t = math_ops.cast(self._beta2_t, var.dtype.base_dtype)
@@ -80,14 +84,14 @@ class NadamOptimizer(adam.AdamOptimizer):
     with ops.control_dependencies([m_t]):
       m_t = scatter_add(m, indices, m_scaled_g_values)
       # m_bar = (1 - beta1) * g_t + beta1 * m_t
-      m_bar = m_scaled_g_values + beta1_t * m_t
+      m_bar = m_scaled_g_values + beta1_t * array_ops.gather(m_t, indices)
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
     v = self.get_slot(var, "v")
     v_scaled_g_values = (grad * grad) * (1 - beta2_t)
     v_t = state_ops.assign(v, v * beta2_t, use_locking=self._use_locking)
     with ops.control_dependencies([v_t]):
       v_t = scatter_add(v, indices, v_scaled_g_values)
-    v_sqrt = math_ops.sqrt(v_t)
-    var_update = state_ops.assign_sub(
-        var, lr * m_bar / (v_sqrt + epsilon_t), use_locking=self._use_locking)
+    v_t_slice = array_ops.gather(v_t, indices)
+    v_sqrt = math_ops.sqrt(v_t_slice)
+    var_update = scatter_add(var, indices, -lr * m_bar / (v_sqrt + epsilon_t))
     return control_flow_ops.group(*[var_update, m_bar, v_t])

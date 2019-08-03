@@ -28,13 +28,25 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 
 
+def has_fully_defined_shape(tensor):
+  """Returns true if tensor has a fully defined shape."""
+  return isinstance(tensor, ops.EagerTensor) or tensor.shape.is_fully_defined()
+
+
+def rank(tensor):
+  """Return a rank if it is a tensor, else return None."""
+  if isinstance(tensor, ops.Tensor):
+    return tensor._rank()  # pylint: disable=protected-access
+  return None
+
+
 def scalar_shape(unused_op):
   """Shape function for ops that output a scalar value."""
-  return [tensor_shape.scalar()]
+  return [tensor_shape.TensorShape([])]
 
 
 def unchanged_shape(op):
-  """Shape function for ops that output an tensor like their first input."""
+  """Shape function for ops that output a tensor like their first input."""
   return [op.inputs[0].get_shape()]
 
 
@@ -680,10 +692,9 @@ def _call_cpp_shape_fn_impl(
 
   missing_shape_fn = False
   try:
-    with errors.raise_exception_on_not_ok_status() as status:
-      output = pywrap_tensorflow.RunCppShapeInference(
-          graph_def_version, node_def_str, input_shapes, input_tensors,
-          input_tensors_as_shapes, status)
+    output = pywrap_tensorflow.RunCppShapeInference(
+        graph_def_version, node_def_str, input_shapes, input_tensors,
+        input_tensors_as_shapes)
   except errors.InvalidArgumentError as err:
     if err.message.startswith("No shape inference function exists for op"):
       missing_shape_fn = True

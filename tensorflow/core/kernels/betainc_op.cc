@@ -122,7 +122,8 @@ REGISTER_KERNELS(float);
 REGISTER_KERNELS(double);
 #undef REGISTER_KERNELS
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC_NDIM(T, NDIM)                               \
@@ -164,6 +165,6 @@ REGISTER_GPU_KERNELS(float);
 REGISTER_GPU_KERNELS(double);
 #undef REGISTER_GPU_KERNELS
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

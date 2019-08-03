@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cudnn_pooling_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_3d_gpu.h"
 #endif
@@ -258,7 +258,7 @@ struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
           Eigen::array<int, 5> bcast = {1, csize, rsize, psize, 1};
 #else
           Eigen::IndexList<Eigen::type2index<1>, int, int, int,
-                           Eigen::type2index<1> >
+                           Eigen::type2index<1>>
               bcast;
           bcast.set(1, csize);
           bcast.set(2, rsize);
@@ -431,7 +431,7 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
           Eigen::array<int, 5> bcast = {1, csize, rsize, psize, 1};
 #else
           Eigen::IndexList<Eigen::type2index<1>, int, int, int,
-                           Eigen::type2index<1> >
+                           Eigen::type2index<1>>
               bcast;
           bcast.set(1, csize);
           bcast.set(2, rsize);
@@ -738,7 +738,7 @@ class MaxPooling3dGradGradOp : public OpKernel {
 TF_CALL_float(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename T>
 struct LaunchPoolingOp<GPUDevice, T, AVG> {
@@ -748,9 +748,8 @@ struct LaunchPoolingOp<GPUDevice, T, AVG> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
-    DnnPooling3dOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kAverage, window,
-        stride, padding, data_format, tensor_in, output);
+    DnnPooling3dOp<T>::Compute(context, se::dnn::PoolingMode::kAverage, window,
+                               stride, padding, data_format, tensor_in, output);
   }
 };
 
@@ -762,9 +761,8 @@ struct LaunchPoolingOp<GPUDevice, T, MAX> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Padding padding_type,
                      Tensor* output) {
-    DnnPooling3dOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kMaximum, window,
-        stride, padding, data_format, tensor_in, output);
+    DnnPooling3dOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, window,
+                               stride, padding, data_format, tensor_in, output);
   }
 };
 
@@ -778,10 +776,10 @@ struct LaunchMaxPooling3dGradOp<GPUDevice, T> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Tensor* input_backprop) {
     const TensorShape output_shape = tensor_in.shape();
-    DnnPooling3dGradOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kMaximum, window,
-        stride, padding, out, data_format, out_backprop, output_shape,
-        &tensor_in, &tensor_out, input_backprop);
+    DnnPooling3dGradOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum,
+                                   window, stride, padding, out, data_format,
+                                   out_backprop, output_shape, &tensor_in,
+                                   &tensor_out, input_backprop);
   }
 };
 
@@ -796,9 +794,8 @@ struct LaunchAvgPooling3dGradOp<GPUDevice, T> {
                      const std::array<int64, 3>& padding,
                      TensorFormat data_format, Tensor* output) {
     DnnPooling3dGradOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kAverage, window,
-        stride, padding, out, data_format, out_backprop, tensor_in_shape,
-        nullptr, nullptr, output);
+        context, se::dnn::PoolingMode::kAverage, window, stride, padding, out,
+        data_format, out_backprop, tensor_in_shape, nullptr, nullptr, output);
   }
 };
 
@@ -829,11 +826,11 @@ struct LaunchMaxPooling3dGradGradOp<GPUDevice, T> {
 TF_CALL_float(REGISTER_GPU_KERNELS) TF_CALL_half(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T)
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS)
+    TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS)
 #undef REGISTER_SYCL_KERNELS
 #endif  // TENSORFLOW_USE_SYCL
 

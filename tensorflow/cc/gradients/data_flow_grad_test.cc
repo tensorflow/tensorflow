@@ -23,9 +23,12 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
-
 namespace {
+
+using ops::Const;
+using ops::DynamicPartition;
+using ops::DynamicStitch;
+using ops::Placeholder;
 
 class DataFlowGradTest : public ::testing::Test {
  protected:
@@ -35,8 +38,8 @@ class DataFlowGradTest : public ::testing::Test {
                const OutputList& ys, const std::vector<TensorShape>& y_shapes) {
     TF_ASSERT_OK(scope_.status());
     float max_error;
-    TF_ASSERT_OK(
-        ComputeGradientError(scope_, xs, x_shapes, ys, y_shapes, &max_error));
+    TF_ASSERT_OK((ComputeGradientError<float, float, float>(
+        scope_, xs, x_shapes, ys, y_shapes, &max_error)));
     EXPECT_LT(max_error, 1e-4);
   }
 

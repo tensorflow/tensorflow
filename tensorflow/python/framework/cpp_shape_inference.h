@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_PYTHON_FRAMEWORK_CPP_SHAPE_INFERENCE_H_
-#define THIRD_PARTY_TENSORFLOW_PYTHON_FRAMEWORK_CPP_SHAPE_INFERENCE_H_
+#ifndef TENSORFLOW_PYTHON_FRAMEWORK_CPP_SHAPE_INFERENCE_H_
+#define TENSORFLOW_PYTHON_FRAMEWORK_CPP_SHAPE_INFERENCE_H_
 
 // Must be included first
 #include "tensorflow/python/lib/core/numpy.h"
@@ -46,9 +46,9 @@ std::vector<string> RunCppShapeInference(
     const std::vector<string>& input_serialized_shapes,
     PyObject* input_constant_tensor_values,
     const std::vector<string>& input_constant_tensor_as_shape_values,
-    TF_Status* out_status);
+    TF_Status* status);
 
 }  // namespace swig
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_PYTHON_FRAMEWORK_CPP_SHAPE_INFERENCE_H_
+#endif  // TENSORFLOW_PYTHON_FRAMEWORK_CPP_SHAPE_INFERENCE_H_

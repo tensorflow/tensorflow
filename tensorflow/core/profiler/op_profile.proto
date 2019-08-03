@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package tensorflow.profiler.op_profile;
+
+// Profile is the top-level data that summarizes a program.
+message Profile {
+  reserved 2;
+  reserved "by_program_structure";
+  reserved 3;
+  reserved "per_program";
+  // Root of a profile broken down by instruction category.
+  Node by_category = 1;
+  // Root of a profile broken down by program.
+  Node by_program = 4;
+}
+
+// An entry in the profile tree. (An instruction, or set of instructions).
+message Node {
+  string name = 1;      // Semantics depend on contents.
+  Metrics metrics = 2;  // May be omitted e.g. for fused instructions.
+  repeated Node children = 3;  // Subjected to pruning.
+
+  // Details about what this node represents.
+  oneof contents {
+    InstructionCategory category = 4;
+    XLAInstruction xla = 5;
+  }
+
+  int32 num_children = 6;  // Total number of children before pruning.
+  // A category of XLA instructions.
+  // name is a descriptive string, like "data formatting".
+  message InstructionCategory {
+  }
+  // A single XLA instruction.
+  // name is the unique instruction id, like "%multiply.5".
+  message XLAInstruction {
+    string op = 1;          // Opcode like %multiply
+    string expression = 2;  // %multiply = [shape]multiply(operand1, operand2)
+    string provenance = 3;  // Typically the TensorFlow operation name.
+    string category = 4;
+    // Describes the physical memory layout of the instruction's primary input.
+    // e.g. for a convolution, this analyzes the image and ignores the kernel.
+    LayoutAnalysis layout = 5;
+    message LayoutAnalysis {
+      // The physical data layout, from most-minor to most-major dimensions.
+      repeated Dimension dimensions = 1;
+      message Dimension {
+        int32 size = 1;       // Size of the data in this dimension.
+        int32 alignment = 2;  // Data must be padded to a multiple of alignment.
+        string semantics = 3;  // What the dimension represents, e.g. "spatial".
+      }
+    }
+  }
+}
+
+// Measurements of an operation (or aggregated set of operations).
+// Metrics are always "total" rather than "self".
+message Metrics {
+  // Core-time taken by this operation, as a fraction of all operations.
+  double time = 1;
+  // Floating point computations performed by this operation, as a fraction of
+  // peak core FLOPS * program time. This representation has useful properties:
+  //  - it is proportional to the number of floating point operations performed
+  //  - utilization is flops/time
+  //  - wasted potential flops is proportional to time - flops
+  //  - it does not reveal the peak core FLOPS of the hardware
+  double flops = 2;
+
+  // The memory bandwidth used to load operands, as a fraction of
+  // thereotical memory bandwidth on the specific hardware.
+  double memory_bandwidth = 3;
+
+  double raw_time = 11;   // Elapsed core-time in picoseconds.
+  double raw_flops = 12;  // Total floating-point operations performed.
+  double raw_bytes_accessed = 13;  // Total bytes accessed (include read/write).
+}

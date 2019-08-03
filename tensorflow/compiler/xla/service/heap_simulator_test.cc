@@ -19,26 +19,212 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/logical_buffer.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
 
+class MinimumMemoryForSequenceTest : public HloTestBase {};
+
+TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
+  auto module = CreateNewVerifiedModule();
+  const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  const Shape tuple_shape =
+      ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
+
+  auto cond_builder = HloComputation::Builder("WhileCond");
+  // Tuple param: 24 bytes (each elem has 8 byte pointer, 4 byte element)
+  HloInstruction* cond_param = cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "cond_param"));
+  HloInstruction* cond_iter = cond_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 0));
+  HloInstruction* cond_data = cond_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 1));
+  // Free cond_param[] (16 bytes), Alloc PRED[] (1 byte)
+  HloInstruction* cond_lt = cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                    cond_data, ComparisonDirection::kLt));
+  HloComputation* cond_computation =
+      module->AddEmbeddedComputation(cond_builder.Build());
+
+  auto body_builder = HloComputation::Builder("WhileBody");
+  // Tuple param: 24 bytes (each elem has 8 byte pointer, 4 byte element)
+  HloInstruction* body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "body_param"));
+  HloComputation* body_computation =
+      module->AddEmbeddedComputation(body_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  // Entry params: 8 bytes (4 bytes per param), TOTAL=8
+  HloInstruction* iter = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "param_iter"));
+  HloInstruction* data = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "param_data"));
+  // Tuple: 16 bytes (8 bytes per pointer), TOTAL=24
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({iter, data}));
+  // While: 8 bytes (4 bytes per element), TOTAL=32
+  // Both cond and body use a max of 24 bytes, TOTAL=56
+  HloInstruction* while_op = builder.AddInstruction(HloInstruction::CreateWhile(
+      tuple_shape, cond_computation, body_computation, tuple));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+
+  auto size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  };
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(cond_computation,
+                        {cond_param, cond_iter, cond_data, cond_lt});
+  schedule.set_sequence(body_computation, {body_param});
+  schedule.set_sequence(entry_computation, {iter, data, tuple, while_op});
+  TF_ASSERT_OK(schedule.Verify());
+
+  EXPECT_EQ(
+      25,
+      HeapSimulator::MinimumMemoryForModule(schedule, size_fn).ValueOrDie());
+}
+
+TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
+  // HloModule SubcomputationAccounting
+
+  // %WhileBody (body_param: f32[4]) -> f32[4] {
+  //   %body_param = f32[4]{0} parameter(0)
+  //   %constant.1 = f32[4]{0} constant({1, 1, 1, 1})
+  //   ROOT %subtract = f32[4]{0} subtract(f32[4]{0} %body_param, f32[4]{0}
+  //   %constant.1)
+  // }
+
+  // %WhileCond (cond_param: f32[4]) -> pred[] {
+  //   %cond_param = f32[4]{0} parameter(0)
+  //   %slice = f32[1]{0} slice(f32[4]{0} %cond_param), slice={[0:1]}
+  //   %reshape = f32[] reshape(f32[1]{0} %slice)
+  //   %constant = f32[] constant(0)
+  //   ROOT %not-equal-to = pred[] compare(f32[] %reshape, f32[] %constant),
+  //   direction=NE
+  // }
+
+  // ENTRY %SubcomputationAccounting () -> f32[2,4] {
+  //   %constant.3 = f32[2,4]{1,0} constant(f32[2,4] { { 1, 2, 3, 4 }, { 1, 2,
+  //   3, 4 } }) %transpose = f32[2,4]{1,0} transpose(f32[2,4]{1,0}
+  //   %constant.3), dimensions={0,1} %constant.2 = f32[4]{0} constant({1, 1, 1,
+  //   1}) %while = f32[4]{0} while(f32[4]{0} %constant.2),
+  //   condition=%WhileCond, body=%WhileBody %broadcast = f32[2,4]{1,0}
+  //   broadcast(f32[4]{0} %while), dimensions={1} ROOT %add = f32[2,4]{1,0}
+  //   add(f32[2,4]{1,0} %transpose, f32[2,4]{1,0} %broadcast)
+  // }
+
+  auto module = CreateNewVerifiedModule();
+  const Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  const Shape r1f32 = ShapeUtil::MakeShape(F32, {4});
+  const Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 4});
+
+  // reshape(slice(param)) != 0
+  // Needs 5 bytes
+  auto cond_builder = HloComputation::Builder("WhileCond");
+  HloInstruction* cond_param = cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "cond_param"));
+  HloInstruction* slice =
+      cond_builder.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {1}), cond_param, {0}, {1}, {1}));
+  HloInstruction* reshape =
+      cond_builder.AddInstruction(HloInstruction::CreateReshape(r0f32, slice));
+  HloInstruction* zero = cond_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
+  HloInstruction* cond_comparison = cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), reshape,
+                                    zero, ComparisonDirection::kNe));
+  auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
+
+  // param - 1
+  // Needs 16 bytes
+  auto body_builder = HloComputation::Builder("WhileBody");
+  HloInstruction* body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "body_param"));
+  HloInstruction* one_vector =
+      body_builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR1<float>({1, 1, 1, 1})));
+  HloInstruction* subtract =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          r1f32, HloOpcode::kSubtract, body_param, one_vector));
+  auto body_computation = module->AddEmbeddedComputation(body_builder.Build());
+
+  // transpose(matrix) + bcast(while)
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* while_init =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR1<float>({1, 1, 1, 1})));
+  // Creates 16 bytes, ignoring subcomputations
+  HloInstruction* while_loop =
+      builder.AddInstruction(HloInstruction::CreateWhile(
+          r1f32, cond_computation, body_computation, while_init));
+
+  // Creates 32 bytes and frees 16
+  HloInstruction* bcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(r2f32, while_loop, {1}));
+
+  HloInstruction* matrix = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>(
+          {{1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}})));
+  // Creates 32 bytes
+  HloInstruction* transpose = builder.AddInstruction(
+      HloInstruction::CreateTranspose(r2f32, matrix, {0, 1}));
+
+  // Creates 32 bytes and frees 64
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(r2f32, HloOpcode::kAdd, transpose, bcast));
+
+  auto entry_computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  std::vector<HloInstruction*> cond_vec = {cond_param, slice, reshape, zero,
+                                           cond_comparison};
+  std::vector<HloInstruction*> while_body_vec = {body_param, one_vector,
+                                                 subtract};
+  std::vector<HloInstruction*> entry_comp_vec = {while_init, while_loop, bcast,
+                                                 matrix,     transpose,  add};
+  schedule.set_sequence(cond_computation, cond_vec);
+  schedule.set_sequence(body_computation, while_body_vec);
+  schedule.set_sequence(entry_computation, entry_comp_vec);
+
+  auto size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape());
+  };
+  absl::flat_hash_map<const HloComputation*, int64> memory_by_computation;
+  memory_by_computation[cond_computation] = 5;
+  memory_by_computation[body_computation] = 16;
+
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module.get()).ValueOrDie();
+
+  // HeapSimulator accounts for subcomputations. The output buffer is aliased,
+  // so we don't double count.
+  EXPECT_EQ(64, HeapSimulator::MinimumMemoryForComputation(
+                    *entry_computation, schedule.sequence(entry_computation),
+                    *alias_analysis, size_fn, &memory_by_computation)
+                    .ValueOrDie());
+}
+
 const char kAlloc[] = "Alloc";
 const char kFree[] = "Free";
+const char kShare[] = "Share";
 const char kFinish[] = "Finish";
 
 // CallSequence records a sequence of Alloc/Free/Finish calls.
-using CallSequence = std::vector<std::pair<string, const LogicalBuffer*>>;
+using CallSequence = std::vector<std::pair<string, const HloValue*>>;
 
 // HeapCallRecorder is a dummy heap algorithm that simply records its calls.
 class HeapCallRecorder : public HeapAlgorithm {
@@ -46,7 +232,7 @@ class HeapCallRecorder : public HeapAlgorithm {
   explicit HeapCallRecorder(CallSequence* calls) : calls_(calls) {}
   ~HeapCallRecorder() override {}
 
-  void Alloc(const LogicalBuffer* buffer, int64 size) override {
+  void Alloc(const HloValue* buffer, int64 size) override {
     calls_->emplace_back(kAlloc, buffer);
     // Instead of assigning a real offset, we set the cardinality of the Alloc
     // call.  This isn't a valid assignment, but allows us to easily test for
@@ -54,7 +240,17 @@ class HeapCallRecorder : public HeapAlgorithm {
     const int64 offset = result_.chunk_map.size();
     result_.chunk_map.emplace(buffer, Chunk{offset, size});
   }
-  void Free(const LogicalBuffer* buffer, int64 size) override {
+
+  void ShareWith(const HloValue* buffer, const HloValue* shared,
+                 int64 size) override {
+    calls_->emplace_back(kShare, buffer);
+    // Instead of assigning a real offset, we set the cardinality of the Alloc
+    // call.  This isn't a valid assignment, but allows us to easily test for
+    // buffer sharing.
+    const int64 offset = result_.chunk_map[shared].offset;
+    result_.chunk_map.emplace(buffer, Chunk{offset, size});
+  }
+  void Free(const HloValue* buffer, int64 size) override {
     calls_->emplace_back(kFree, buffer);
   }
   Result Finish() override {
@@ -75,65 +271,73 @@ class HeapSimulatorTracker {
   // Constructor for testing a single entry computation.
   HeapSimulatorTracker(
       const string& name, std::unique_ptr<HloComputation> computation,
-      const std::vector<const HloInstruction*>& instruction_sequence) {
-    module_ = MakeUnique<HloModule>(name);
+      const std::vector<HloInstruction*>& instruction_sequence,
+      const std::vector<HloInstruction*>& must_alias_set = {}) {
+    HloModuleConfig config;
+    module_ = absl::make_unique<HloModule>(name, config);
     module_->AddEntryComputation(std::move(computation));
-    points_to_analysis_ =
-        TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
+    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).ValueOrDie();
     // Since we're only tracking the sequence of Alloc/Free calls, the actual
     // size of the buffers doesn't matter, so we always return 0.  We rely on
-    // the secondary sorting criteria of DecreasingSizeRunsHeap to sort calls by
-    // buffer id, for determinism in the tests.
-    auto zero_size = [](const LogicalBuffer& buffer) { return 0; };
-    auto algorithm = MakeUnique<DecreasingSizeRunsHeap>(
-        MakeUnique<HeapCallRecorder>(&actual_calls_));
-    result_ = HeapSimulator::Run(
-                  std::move(algorithm), *module_->entry_computation(),
-                  instruction_sequence, *points_to_analysis_, zero_size)
-                  .ConsumeValueOrDie();
+    // the secondary sorting criteria of DecreasingSizeRunsHeap to sort calls
+    // by buffer id, for determinism in the tests.
+    auto zero_size = [](const BufferValue& buffer) { return 0; };
+    auto algorithm = absl::make_unique<HeapCallRecorder>(&actual_calls_);
+
+    HeapSimulator::Options options;
+    result_ =
+        HeapSimulator::Run(std::move(algorithm), *module_->entry_computation(),
+                           HloInstructionSequence(instruction_sequence),
+                           *alias_analysis_, zero_size, options)
+            .ConsumeValueOrDie();
   }
 
   explicit HeapSimulatorTracker(const string& name) {
-    module_ = MakeUnique<HloModule>(name);
+    HloModuleConfig config;
+    module_ = absl::make_unique<HloModule>(name, config);
   }
 
   // Similar to the single entry computation constructor above, but runs the
   // simulation over the entire module.
   void RunWholeModule(
-      const std::vector<const HloInstruction*>& full_module_sequence) {
-    points_to_analysis_ =
-        TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
+      const std::vector<HloInstruction*>& full_module_sequence) {
+    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).ConsumeValueOrDie();
 
     // Construct the module sequence grouped by computation.
-    SequentialHloOrdering::HloModuleSequence module_sequence;
-    tensorflow::gtl::FlatMap<const HloInstruction*, int> reverse_position;
+    HloSchedule schedule(module_.get());
+    absl::flat_hash_map<const HloInstruction*, int> reverse_position;
     for (int i = 0; i < full_module_sequence.size(); ++i) {
-      const HloInstruction* instruction = full_module_sequence[i];
-      module_sequence[instruction->parent()].push_back(instruction);
+      HloInstruction* instruction = full_module_sequence[i];
+      schedule.GetOrCreateSequence(instruction->parent())
+          .push_back(instruction);
       reverse_position[instruction] = full_module_sequence.size() - i;
     }
 
     // Hack the size_fn so that it returns a decreasing value as we step through
     // the sequence. This lets us ensure the Alloc calls are in the sequence
-    // order. The Free calls are sorted by LogicalBuffer.id, which is at least
+    // order. The Free calls are sorted by BufferValue.id, which is at least
     // deterministic.
-    auto size_fn = [&reverse_position](const LogicalBuffer& buffer) {
+    auto size_fn = [&reverse_position](const BufferValue& buffer) {
       return reverse_position[buffer.instruction()];
     };
-    auto algorithm = MakeUnique<DecreasingSizeRunsHeap>(
-        MakeUnique<HeapCallRecorder>(&actual_calls_));
-    result_ = HeapSimulator::Run(std::move(algorithm), *module_,
-                                 module_sequence, *points_to_analysis_, size_fn)
+    auto algorithm = absl::make_unique<HeapCallRecorder>(&actual_calls_);
+    result_ = HeapSimulator::Run(std::move(algorithm), *module_, schedule,
+                                 *alias_analysis_, size_fn)
                   .ConsumeValueOrDie();
   }
 
   HloModule* module() { return module_.get(); }
 
   // Returns the buffer defined at the given instruction and index.
-  const LogicalBuffer* BufferAt(const HloInstruction* instruction,
-                                const ShapeIndex& index) const {
-    return points_to_analysis_->GetBufferDefinedAt(instruction, index)
-        .ConsumeValueOrDie();
+  const HloValue* BufferAt(const HloInstruction* instruction,
+                           const ShapeIndex& index) const {
+    return &alias_analysis_->dataflow_analysis().GetUniqueValueAt(instruction,
+                                                                  index);
+  }
+
+  int64 OffsetAt(const HloInstruction* instruction, const ShapeIndex& index) {
+    const HloValue* buffer = BufferAt(instruction, index);
+    return result_.chunk_map.at(buffer).offset;
   }
 
   // Ensures the expected sequence of Alloc/Free/Finish calls was performed.
@@ -142,20 +346,20 @@ class HeapSimulatorTracker {
   }
 
   // Ensures the buffers defined by the respective (instruction,index) pairs are
-  // shared, relying on the unique offsets assigned in HeapCallRecorder::Alloc.
+  // shared, relying on the unique offsets assigned in
+  // HeapCallRecorder::Alloc.
   void ExpectSharedBuffers(const HloInstruction* instruction_a,
                            const ShapeIndex& index_a,
                            const HloInstruction* instruction_b,
                            const ShapeIndex& index_b) {
-    const LogicalBuffer* a = BufferAt(instruction_a, index_a);
-    const LogicalBuffer* b = BufferAt(instruction_b, index_b);
-    EXPECT_EQ(result_.chunk_map[a].offset, result_.chunk_map[b].offset)
-        << *a << ", " << *b;
+    int64 offset_a = OffsetAt(instruction_a, index_a);
+    int64 offset_b = OffsetAt(instruction_b, index_b);
+    EXPECT_EQ(offset_a, offset_b);
   }
 
  private:
   std::unique_ptr<HloModule> module_;
-  std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
+  std::unique_ptr<HloAliasAnalysis> alias_analysis_;
   CallSequence actual_calls_;
   HeapSimulator::Result result_;
 };
@@ -173,7 +377,7 @@ class HeapSimulatorTest : public HloTestBase {
 TEST_F(HeapSimulatorTest, ScalarConstant) {
   auto builder = HloComputation::Builder(TestName());
   auto const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
 
   // Constants aren't assigned.  See b/32248867
   HeapSimulatorTracker tracker(TestName(), builder.Build(), {const0});
@@ -231,22 +435,62 @@ TEST_F(HeapSimulatorTest, MultiplyAdd) {
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, mul, paramY));
 
-  // The buffer for add is the output, and it's shared with the buffer for mul.
+  // The buffer for add is the output, and it's shared with the buffer for
+  // mul.
   HeapSimulatorTracker tracker(TestName(), builder.Build(),
                                {paramA, paramX, mul, paramY, add});
   tracker.ExpectCallSequence({
       {kAlloc, tracker.BufferAt(paramA, {})},
       {kAlloc, tracker.BufferAt(paramX, {})},
-      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(paramY, {})},
+      {kAlloc, tracker.BufferAt(mul, {})},
+      {kFree, tracker.BufferAt(mul, {})},
+      {kShare, tracker.BufferAt(add, {})},
       // All params and outputs are freed at the end.
       {kFree, tracker.BufferAt(paramA, {})},
       {kFree, tracker.BufferAt(paramX, {})},
-      {kFree, tracker.BufferAt(mul, {})},
       {kFree, tracker.BufferAt(paramY, {})},
+      {kFree, tracker.BufferAt(add, {})},
       {kFinish, nullptr},
   });
   tracker.ExpectSharedBuffers(add, {}, mul, {});
+}
+
+TEST_F(HeapSimulatorTest, BufferReusedOnce) {
+  HeapSimulatorTracker tracker(TestName());
+  auto builder = HloComputation::Builder(TestName());
+
+  HloComputation::Builder fusion_builder("fusion");
+  {
+    HloComputation::Builder& builder = fusion_builder;
+    auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
+        /*parameter_number=*/0, f32vec4_, "A"));
+    auto exp = builder.AddInstruction(
+        HloInstruction::CreateUnary(f32vec4_, HloOpcode::kExp, a_param));
+    auto neg = builder.AddInstruction(
+        HloInstruction::CreateUnary(f32vec4_, HloOpcode::kNegate, a_param));
+
+    builder.AddInstruction(HloInstruction::CreateTuple({exp, neg}));
+  }
+  auto fusion_computation =
+      tracker.module()->AddEmbeddedComputation(fusion_builder.Build());
+  auto a_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec4_, "paramA"));
+  auto neg = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec4_, HloOpcode::kNegate, a_param));
+  auto fusion = builder.AddInstruction(HloInstruction::CreateFusion(
+      ShapeUtil::MakeTupleShape({f32vec4_, f32vec4_}),
+      HloInstruction::FusionKind::kLoop, {neg}, fusion_computation));
+  tracker.module()->AddEntryComputation(builder.Build());
+
+  tracker.RunWholeModule({a_param, neg, fusion});
+
+  auto neg_buffer = tracker.OffsetAt(neg, {});
+  int64 output_buffer_0 = tracker.OffsetAt(fusion, {0});
+  int64 output_buffer_1 = tracker.OffsetAt(fusion, {1});
+  // Only one buffer should be shared.
+  EXPECT_TRUE((neg_buffer == output_buffer_0) ^
+              (neg_buffer == output_buffer_1));
 }
 
 TEST_F(HeapSimulatorTest, MultiplyDot) {
@@ -259,8 +503,11 @@ TEST_F(HeapSimulatorTest, MultiplyDot) {
       HloInstruction::CreateParameter(2, f32scalar_, "paramY"));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec4_, HloOpcode::kMultiply, paramA, paramX));
-  auto dot = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kDot, mul, paramY));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, mul, paramY, dot_dnums, DefaultPrecisionConfig(2)));
 
   // The buffer for dot is the output, and it cannot be shared with the buffer
   // for mul, since dot isn't elementwise.
@@ -269,13 +516,13 @@ TEST_F(HeapSimulatorTest, MultiplyDot) {
   tracker.ExpectCallSequence({
       {kAlloc, tracker.BufferAt(paramA, {})},
       {kAlloc, tracker.BufferAt(paramX, {})},
-      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(paramY, {})},
+      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(dot, {})},
       // All params and outputs are freed at the end.
+      {kFree, tracker.BufferAt(mul, {})},
       {kFree, tracker.BufferAt(paramA, {})},
       {kFree, tracker.BufferAt(paramX, {})},
-      {kFree, tracker.BufferAt(mul, {})},
       {kFree, tracker.BufferAt(paramY, {})},
       {kFree, tracker.BufferAt(dot, {})},
       {kFinish, nullptr},
@@ -292,26 +539,32 @@ TEST_F(HeapSimulatorTest, MultiplyDotAdd) {
       HloInstruction::CreateParameter(2, f32scalar_, "paramY"));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec4_, HloOpcode::kMultiply, paramA, paramX));
-  auto dot = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kDot, mul, paramY));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, mul, paramY, dot_dnums, DefaultPrecisionConfig(2)));
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, dot, paramA));
 
-  // The buffer for add is the output, and it's shared with the buffer for dot.
+  // The buffer for add is the output, and it's shared with the buffer for
+  // dot.
   HeapSimulatorTracker tracker(TestName(), builder.Build(),
                                {paramA, paramX, mul, paramY, dot, add});
   tracker.ExpectCallSequence({
       {kAlloc, tracker.BufferAt(paramA, {})},
       {kAlloc, tracker.BufferAt(paramX, {})},
-      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(paramY, {})},
+      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(dot, {})},
+      {kFree, tracker.BufferAt(mul, {})},
+      {kFree, tracker.BufferAt(dot, {})},
+      {kShare, tracker.BufferAt(add, {})},
       // All params and outputs are freed at the end.
       {kFree, tracker.BufferAt(paramA, {})},
       {kFree, tracker.BufferAt(paramX, {})},
-      {kFree, tracker.BufferAt(mul, {})},
       {kFree, tracker.BufferAt(paramY, {})},
-      {kFree, tracker.BufferAt(dot, {})},
+      {kFree, tracker.BufferAt(add, {})},
       {kFinish, nullptr},
   });
   tracker.ExpectSharedBuffers(add, {}, dot, {});
@@ -327,10 +580,13 @@ TEST_F(HeapSimulatorTest, MultiplyDotDot) {
       HloInstruction::CreateParameter(2, f32scalar_, "paramY"));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec4_, HloOpcode::kMultiply, paramA, paramX));
-  auto dot0 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kDot, mul, paramY));
-  auto dot1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kDot, dot0, paramY));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot0 = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, mul, paramY, dot_dnums, DefaultPrecisionConfig(2)));
+  auto dot1 = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, dot0, paramY, dot_dnums, DefaultPrecisionConfig(2)));
 
   // The buffer for dot1 is the output.  No buffers can be shared.  The buffer
   // for mul is freed before the end, since it's no longer used after dot0
@@ -340,16 +596,16 @@ TEST_F(HeapSimulatorTest, MultiplyDotDot) {
   tracker.ExpectCallSequence({
       {kAlloc, tracker.BufferAt(paramA, {})},
       {kAlloc, tracker.BufferAt(paramX, {})},
-      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(paramY, {})},
+      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(dot0, {})},
       {kFree, tracker.BufferAt(mul, {})},  // mul no longer used
       {kAlloc, tracker.BufferAt(dot1, {})},
+      {kFree, tracker.BufferAt(dot0, {})},
       // All params and outputs are freed at the end.
       {kFree, tracker.BufferAt(paramA, {})},
       {kFree, tracker.BufferAt(paramX, {})},
       {kFree, tracker.BufferAt(paramY, {})},
-      {kFree, tracker.BufferAt(dot0, {})},
       {kFree, tracker.BufferAt(dot1, {})},
       {kFinish, nullptr},
   });
@@ -365,10 +621,13 @@ TEST_F(HeapSimulatorTest, MultiplyDotDotTuple) {
       HloInstruction::CreateParameter(2, f32scalar_, "paramY"));
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec4_, HloOpcode::kMultiply, paramA, paramX));
-  auto dot0 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kDot, mul, paramY));
-  auto dot1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f32vec4_, HloOpcode::kDot, dot0, paramY));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot0 = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, mul, paramY, dot_dnums, DefaultPrecisionConfig(2)));
+  auto dot1 = builder.AddInstruction(HloInstruction::CreateDot(
+      f32vec4_, dot0, paramY, dot_dnums, DefaultPrecisionConfig(2)));
   auto tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({dot0, dot1}));
 
@@ -381,8 +640,8 @@ TEST_F(HeapSimulatorTest, MultiplyDotDotTuple) {
   tracker.ExpectCallSequence({
       {kAlloc, tracker.BufferAt(paramA, {})},
       {kAlloc, tracker.BufferAt(paramX, {})},
-      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(paramY, {})},
+      {kAlloc, tracker.BufferAt(mul, {})},
       {kAlloc, tracker.BufferAt(dot0, {})},
       {kFree, tracker.BufferAt(mul, {})},  // mul no longer used
       {kAlloc, tracker.BufferAt(dot1, {})},
@@ -394,6 +653,56 @@ TEST_F(HeapSimulatorTest, MultiplyDotDotTuple) {
       {kFree, tracker.BufferAt(dot0, {})},
       {kFree, tracker.BufferAt(dot1, {})},
       {kFree, tracker.BufferAt(tuple, {})},
+      {kFinish, nullptr},
+  });
+}
+
+TEST_F(HeapSimulatorTest, IndependentTupleElements) {
+  auto builder = HloComputation::Builder(TestName());
+  auto paramA = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32scalar_, "paramA"));
+  auto paramB = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32scalar_, "paramB"));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32scalar_, HloOpcode::kMultiply, paramA, paramB));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32scalar_, HloOpcode::kAdd, paramA, paramB));
+  auto tuple = builder.AddInstruction(HloInstruction::CreateTuple({mul, add}));
+  auto element0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32scalar_, tuple, 0));
+  auto broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(f32vec4_, element0, {0}));
+  auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32scalar_, HloOpcode::kSubtract, paramA, paramB));
+  auto element1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32scalar_, tuple, 1));
+  auto output = builder.AddInstruction(
+      HloInstruction::CreateTuple({broadcast, sub, element1}));
+
+  HeapSimulatorTracker tracker(TestName(), builder.Build(),
+                               {paramA, paramB, mul, add, tuple, element0,
+                                broadcast, sub, element1, output});
+  tracker.ExpectCallSequence({
+      {kAlloc, tracker.BufferAt(paramA, {})},
+      {kAlloc, tracker.BufferAt(paramB, {})},
+      {kAlloc, tracker.BufferAt(mul, {})},
+      {kAlloc, tracker.BufferAt(add, {})},
+      {kAlloc, tracker.BufferAt(tuple, {})},
+      {kAlloc, tracker.BufferAt(broadcast, {})},
+      // The mul can be freed right after the broadcast happens, even though
+      // The other GetTupleElement is still alive.
+      {kFree, tracker.BufferAt(mul, {})},
+      {kAlloc, tracker.BufferAt(sub, {})},
+      // The temporary tuple is now dead.
+      {kFree, tracker.BufferAt(tuple, {})},
+      {kAlloc, tracker.BufferAt(output, {})},
+      // All params and outputs are freed at the end.
+      {kFree, tracker.BufferAt(paramA, {})},
+      {kFree, tracker.BufferAt(paramB, {})},
+      {kFree, tracker.BufferAt(add, {})},
+      {kFree, tracker.BufferAt(broadcast, {})},
+      {kFree, tracker.BufferAt(sub, {})},
+      {kFree, tracker.BufferAt(output, {})},
       {kFinish, nullptr},
   });
 }
@@ -413,8 +722,8 @@ TEST_F(HeapSimulatorTest, WholeModule) {
   HloInstruction* cond_data = cond_builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 1));
   HloInstruction* cond_lt = cond_builder.AddInstruction(
-      HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
-                                   HloOpcode::kLt, cond_iter, cond_data));
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                    cond_data, ComparisonDirection::kLt));
   HloComputation* cond_computation =
       tracker.module()->AddEmbeddedComputation(cond_builder.Build());
 
@@ -438,42 +747,16 @@ TEST_F(HeapSimulatorTest, WholeModule) {
       {kAlloc, tracker.BufferAt(param, {})},
       {kAlloc, tracker.BufferAt(param, {0})},
       {kAlloc, tracker.BufferAt(param, {1})},
-      {kAlloc, tracker.BufferAt(while_op, {})},
-      {kAlloc, tracker.BufferAt(while_op, {0})},
-      {kAlloc, tracker.BufferAt(while_op, {1})},
-
-      // Now the while body param is allocated and freed.
-      {kAlloc, tracker.BufferAt(body_param, {})},
-      {kAlloc, tracker.BufferAt(body_param, {0})},
-      {kAlloc, tracker.BufferAt(body_param, {1})},
-      {kFree, tracker.BufferAt(body_param, {})},
-      {kFree, tracker.BufferAt(body_param, {0})},
-      {kFree, tracker.BufferAt(body_param, {1})},
-
-      // Now the while cond param is allocated. The GTE instructions just alias
-      // the param elements, so the param tuple can immediately be freed.
-      {kAlloc, tracker.BufferAt(cond_param, {})},
-      {kAlloc, tracker.BufferAt(cond_param, {0})},
-      {kAlloc, tracker.BufferAt(cond_param, {1})},
-      {kFree, tracker.BufferAt(cond_param, {})},
 
       // Now the final cond less-than buffer is allocated.
       {kAlloc, tracker.BufferAt(cond_lt, {})},
 
-      // The order of the remaining Free calls is based on the LogicalBuffer.id,
+      // The order of the remaining Free calls is based on the BufferValue.id,
       // which is deterministic, but not obvious.
+      {kFree, tracker.BufferAt(cond_lt, {})},
       {kFree, tracker.BufferAt(param, {})},
       {kFree, tracker.BufferAt(param, {0})},
       {kFree, tracker.BufferAt(param, {1})},
-
-      {kFree, tracker.BufferAt(while_op, {})},
-      {kFree, tracker.BufferAt(while_op, {0})},
-      {kFree, tracker.BufferAt(while_op, {1})},
-
-      {kFree, tracker.BufferAt(cond_param, {0})},
-      {kFree, tracker.BufferAt(cond_param, {1})},
-      {kFree, tracker.BufferAt(cond_lt, {})},
-
       {kFinish, nullptr},
   });
 }
@@ -482,40 +765,41 @@ TEST_F(HeapSimulatorTest, WholeModule) {
 class HeapAlgorithmTestBase : public ::testing::Test {
  protected:
   HeapAlgorithmTestBase() : builder_("heap_simulator_test") {
-    buffer_a_ = DummyLogicalBuffer();
-    buffer_b_ = DummyLogicalBuffer();
-    buffer_c_ = DummyLogicalBuffer();
-    buffer_d_ = DummyLogicalBuffer();
-    buffer_e_ = DummyLogicalBuffer();
-    buffer_f_ = DummyLogicalBuffer();
-    buffer_g_ = DummyLogicalBuffer();
-    buffer_h_ = DummyLogicalBuffer();
-    buffer_i_ = DummyLogicalBuffer();
+    buffer_a_ = DummyBufferValue();
+    buffer_b_ = DummyBufferValue();
+    buffer_c_ = DummyBufferValue();
+    buffer_d_ = DummyBufferValue();
+    buffer_e_ = DummyBufferValue();
+    buffer_f_ = DummyBufferValue();
+    buffer_g_ = DummyBufferValue();
+    buffer_h_ = DummyBufferValue();
+    buffer_i_ = DummyBufferValue();
   }
   ~HeapAlgorithmTestBase() override {}
 
-  const LogicalBuffer* buffer_a_;
-  const LogicalBuffer* buffer_b_;
-  const LogicalBuffer* buffer_c_;
-  const LogicalBuffer* buffer_d_;
-  const LogicalBuffer* buffer_e_;
-  const LogicalBuffer* buffer_f_;
-  const LogicalBuffer* buffer_g_;
-  const LogicalBuffer* buffer_h_;
-  const LogicalBuffer* buffer_i_;
+  const HloValue* buffer_a_;
+  const HloValue* buffer_b_;
+  const HloValue* buffer_c_;
+  const HloValue* buffer_d_;
+  const HloValue* buffer_e_;
+  const HloValue* buffer_f_;
+  const HloValue* buffer_g_;
+  const HloValue* buffer_h_;
+  const HloValue* buffer_i_;
 
  private:
-  // Create a dummy LogicalBuffer to pass to the heap algorithm.
-  const LogicalBuffer* DummyLogicalBuffer() {
-    const LogicalBuffer::Id id = buffers_.size();
+  // Create a dummy HloValue to pass to the heap algorithm.
+  const HloValue* DummyBufferValue() {
+    const HloValue::Id id = buffers_.size();
     auto const0 = builder_.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
-    buffers_.emplace_back(MakeUnique<LogicalBuffer>(const0, ShapeIndex{}, id));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+    buffers_.emplace_back(
+        absl::make_unique<HloValue>(id, const0, ShapeIndex{}));
     return buffers_.back().get();
   }
 
   HloComputation::Builder builder_;
-  std::vector<std::unique_ptr<LogicalBuffer>> buffers_;
+  std::vector<std::unique_ptr<HloValue>> buffers_;
 };
 
 class NoFragmentationStatsHeapTest : public HeapAlgorithmTestBase {};
@@ -555,294 +839,221 @@ TEST_F(NoFragmentationStatsHeapTest, Mixed) {
   EXPECT_EQ(40, heap.Finish().heap_size);
 }
 
-class DecreasingSizeRunsHeapTest : public HeapAlgorithmTestBase {};
+class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {};
 
-TEST_F(DecreasingSizeRunsHeapTest, Empty) {
-  CallSequence call_sequence;
-  DecreasingSizeRunsHeap heap(MakeUnique<HeapCallRecorder>(&call_sequence));
-  heap.Finish();
-  EXPECT_EQ(call_sequence, CallSequence({
-                               {kFinish, nullptr},
-                           }));
-}
-
-TEST_F(DecreasingSizeRunsHeapTest, Simple) {
-  CallSequence call_sequence;
-  DecreasingSizeRunsHeap heap(MakeUnique<HeapCallRecorder>(&call_sequence));
-  heap.Alloc(buffer_a_, 10);
-  heap.Alloc(buffer_b_, 20);
-  heap.Alloc(buffer_c_, 30);
-  heap.Alloc(buffer_d_, 30);
-  heap.Free(buffer_a_, 10);
-  heap.Free(buffer_b_, 20);
-  heap.Free(buffer_c_, 30);
-  heap.Free(buffer_d_, 30);
-  heap.Finish();
-  // Runs of Allocs and Frees are sorted by decreasing size, with buffer id
-  // tiebreaker.
-  EXPECT_EQ(call_sequence, CallSequence({
-                               {kAlloc, buffer_c_},
-                               {kAlloc, buffer_d_},
-                               {kAlloc, buffer_b_},
-                               {kAlloc, buffer_a_},
-                               {kFree, buffer_c_},
-                               {kFree, buffer_d_},
-                               {kFree, buffer_b_},
-                               {kFree, buffer_a_},
-                               {kFinish, nullptr},
-                           }));
-}
-
-TEST_F(DecreasingSizeRunsHeapTest, Mixed) {
-  CallSequence call_sequence;
-  DecreasingSizeRunsHeap heap(MakeUnique<HeapCallRecorder>(&call_sequence));
-  heap.Alloc(buffer_a_, 10);
-  heap.Alloc(buffer_b_, 20);
-  heap.Free(buffer_b_, 20);
-
-  heap.Alloc(buffer_c_, 30);
-  heap.Free(buffer_c_, 30);
-
-  heap.Alloc(buffer_d_, 5);
-  heap.Free(buffer_d_, 5);
-  heap.Free(buffer_a_, 10);
-  heap.Finish();
-  // Runs of Allocs and Frees are sorted by decreasing size.
-  EXPECT_EQ(call_sequence, CallSequence({
-                               {kAlloc, buffer_b_},
-                               {kAlloc, buffer_a_},
-                               {kFree, buffer_b_},
-
-                               {kAlloc, buffer_c_},
-                               {kFree, buffer_c_},
-
-                               {kAlloc, buffer_d_},
-                               {kFree, buffer_a_},
-                               {kFree, buffer_d_},
-                               {kFinish, nullptr},
-                           }));
-}
-
-class LazyBestFitHeapTest : public HeapAlgorithmTestBase {};
-
-TEST_F(LazyBestFitHeapTest, Empty) {
-  LazyBestFitHeap heap(/*alignment=*/1);
+TEST_F(GlobalDecreasingSizeBestFitHeapTest, Empty) {
+  GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/1);
   const HeapSimulator::Result result = heap.Finish();
   EXPECT_EQ(0, result.heap_size);
   EXPECT_EQ(0, result.chunk_map.size());
 }
 
-TEST_F(LazyBestFitHeapTest, Simple) {
-  LazyBestFitHeap heap(/*alignment=*/1);
+TEST_F(GlobalDecreasingSizeBestFitHeapTest, DecreasingSize) {
+  // space
+  //   ^
+  //   |  +---a---+
+  //   |      +-------+
+  //   |      +---c---+
+  //   |    +-------+
+  //   |    |   b   |
+  //   |    +-------+
+  //   |         +-------+
+  //   |         |       |
+  //   |         |   d   |
+  //   |         +-------+
+  //   -----------------> time
+  GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/1);
   heap.Alloc(buffer_a_, 10);
-  heap.Alloc(buffer_b_, 20);
-  heap.Alloc(buffer_c_, 30);
-  heap.Alloc(buffer_d_, 30);
+  heap.Alloc(buffer_b_, 30);
+  heap.Alloc(buffer_c_, 20);
+  heap.Alloc(buffer_d_, 40);
   heap.Free(buffer_a_, 10);
-  heap.Free(buffer_b_, 20);
-  heap.Free(buffer_c_, 30);
-  heap.Free(buffer_d_, 30);
+  heap.Free(buffer_b_, 30);
+  heap.Free(buffer_c_, 20);
+  heap.Free(buffer_d_, 40);
 
   const HeapSimulator::Result result = heap.Finish();
-  EXPECT_EQ(90, result.heap_size);
+  EXPECT_EQ(100, result.heap_size);
+  EXPECT_EQ(10, result.chunk_map.at(buffer_a_).size);
+  EXPECT_EQ(30, result.chunk_map.at(buffer_b_).size);
+  EXPECT_EQ(20, result.chunk_map.at(buffer_c_).size);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_d_).size);
+
+  EXPECT_EQ(90, result.chunk_map.at(buffer_a_).offset);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_b_).offset);
+  EXPECT_EQ(70, result.chunk_map.at(buffer_c_).offset);
+  EXPECT_EQ(0, result.chunk_map.at(buffer_d_).offset);
+}
+
+TEST_F(GlobalDecreasingSizeBestFitHeapTest, DecreasingSizeWithAlignment) {
+  // space
+  //   ^
+  //   |      +-------+
+  //   |      +---b---+
+  //   |            +-------+
+  //   |            |       |
+  //   |            |   d   |
+  //   |  +---a---+ +-------+
+  //   |
+  //   |         +-------+
+  //   |         |       |
+  //   |         |   c   |
+  //   |         |       |
+  //   |         +-------+
+  //   ---------------------> time
+  GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/20);
+  heap.Alloc(buffer_a_, 10);
+  heap.Alloc(buffer_b_, 20);
+  heap.Alloc(buffer_c_, 50);
+  heap.Free(buffer_a_, 10);
+  heap.Alloc(buffer_d_, 40);
+  heap.Free(buffer_b_, 20);
+  heap.Free(buffer_c_, 50);
+  heap.Free(buffer_d_, 40);
+
+  const HeapSimulator::Result result = heap.Finish();
+  EXPECT_EQ(120, result.heap_size);
   EXPECT_EQ(10, result.chunk_map.at(buffer_a_).size);
   EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
-  EXPECT_EQ(30, result.chunk_map.at(buffer_c_).size);
-  EXPECT_EQ(30, result.chunk_map.at(buffer_d_).size);
+  EXPECT_EQ(50, result.chunk_map.at(buffer_c_).size);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_d_).size);
 
-  EXPECT_EQ(0, result.chunk_map.at(buffer_a_).offset);
-  EXPECT_EQ(10, result.chunk_map.at(buffer_b_).offset);
-  EXPECT_EQ(30, result.chunk_map.at(buffer_c_).offset);
+  EXPECT_EQ(60, result.chunk_map.at(buffer_a_).offset);
+  EXPECT_EQ(100, result.chunk_map.at(buffer_b_).offset);
+  EXPECT_EQ(0, result.chunk_map.at(buffer_c_).offset);
   EXPECT_EQ(60, result.chunk_map.at(buffer_d_).offset);
 }
 
-TEST_F(LazyBestFitHeapTest, Mixed) {
-  LazyBestFitHeap heap(/*alignment=*/1);
-  heap.Alloc(buffer_a_, 10);  // A lazy offset
+TEST_F(GlobalDecreasingSizeBestFitHeapTest, BestFit) {
+  // space
+  //   ^
+  //   |    +-------+
+  //   |    +---b---+
+  //   |         +-------+
+  //   |         |   d   |
+  //   | +--a--+ +-------+
+  //   |      +-------+
+  //   |      |       |
+  //   |      |   c   |
+  //   |      +-------+
+  //   |           +-------+
+  //   |           |       |
+  //   |           |   e   |
+  //   |           |       |
+  //   |           +-------+
+  //   ---------------------> time
+  GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/1);
+  heap.Alloc(buffer_a_, 10);
+  heap.Alloc(buffer_b_, 20);
+  heap.Alloc(buffer_c_, 40);
+  heap.Free(buffer_a_, 10);
+  heap.Alloc(buffer_d_, 30);
+  heap.Alloc(buffer_e_, 50);
+  heap.Free(buffer_b_, 20);
+  heap.Free(buffer_c_, 40);
+  heap.Free(buffer_d_, 30);
+  heap.Free(buffer_e_, 50);
 
-  heap.Alloc(buffer_b_, 20);  // B lazy offset
-  heap.Free(buffer_b_, 20);   // B range = [0, 20)  free = [0, 20)
+  const HeapSimulator::Result result = heap.Finish();
+  EXPECT_EQ(140, result.heap_size);
+  EXPECT_EQ(10, result.chunk_map.at(buffer_a_).size);
+  EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_c_).size);
+  EXPECT_EQ(30, result.chunk_map.at(buffer_d_).size);
+  EXPECT_EQ(50, result.chunk_map.at(buffer_e_).size);
 
-  heap.Alloc(buffer_c_, 30);  // C range = [0, 30)
-  heap.Free(buffer_c_, 30);   //                    free = [0, 30)
+  EXPECT_EQ(90, result.chunk_map.at(buffer_a_).offset);
+  EXPECT_EQ(120, result.chunk_map.at(buffer_b_).offset);
+  EXPECT_EQ(50, result.chunk_map.at(buffer_c_).offset);
+  EXPECT_EQ(90, result.chunk_map.at(buffer_d_).offset);
+  EXPECT_EQ(0, result.chunk_map.at(buffer_e_).offset);
+}
 
-  heap.Alloc(buffer_d_, 5);  // D range = [0, 5)   free = [5, 30)
-  heap.Free(buffer_d_, 5);   //                    free = [0, 30)
+TEST_F(GlobalDecreasingSizeBestFitHeapTest, Colocated) {
+  // space      colocate
+  //   ^   +--------------+
+  //   |   v              v
+  //   |+------+      +-------+
+  //   ||      |      |       |
+  //   ||      |+----+|       |
+  //   |+--a---++-b--++---c---+
+  //   ---------------------> time
+  GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/1);
+  heap.Alloc(buffer_a_, 40);
+  heap.Free(buffer_a_, 40);
+  heap.Alloc(buffer_b_, 20);
+  heap.Free(buffer_b_, 20);
+  heap.ShareWith(buffer_c_, buffer_a_, 40);
+  heap.Free(buffer_c_, 40);
 
-  heap.Free(buffer_a_, 10);  // A range = [30, 10) free = [0, 40)
+  const HeapSimulator::Result result = heap.Finish();
+  EXPECT_EQ(40, result.heap_size);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_a_).size);
+  EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_c_).size);
+
+  EXPECT_EQ(0, result.chunk_map.at(buffer_a_).offset);
+  EXPECT_EQ(0, result.chunk_map.at(buffer_b_).offset);
+  EXPECT_EQ(0, result.chunk_map.at(buffer_c_).offset);
+}
+
+TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedII) {
+  // space
+  //   ^       +---------------+
+  //   |       +-------b-------+
+  //   |+------+      +-------+
+  //   ||      |      |       |
+  //   ||      |      |       | <--- colocate with a
+  //   |+--a---+      +---c---+
+  //   ---------------------> time
+  GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/1);
+  heap.Alloc(buffer_a_, 40);
+  heap.Free(buffer_a_, 40);
+  heap.Alloc(buffer_b_, 20);
+
+  heap.ShareWith(buffer_c_, buffer_a_, 40);
+  heap.Free(buffer_c_, 40);
+  heap.Free(buffer_b_, 20);
+
+  const HeapSimulator::Result result = heap.Finish();
+  EXPECT_EQ(60, result.heap_size);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_a_).size);
+  EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_c_).size);
+
+  EXPECT_EQ(0, result.chunk_map.at(buffer_a_).offset);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_b_).offset);
+  EXPECT_EQ(0, result.chunk_map.at(buffer_c_).offset);
+}
+
+TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedIII) {
+  // space
+  //   ^+------+      +-------+
+  //   ||      |      |       | <--- colocate with a
+  //   |+--a---+      +---c---+
+  //   |       +---------------+
+  //   |       |               |
+  //   |       |               |
+  //   |       +-------b-------+
+  //   ---------------------> time
+  GlobalDecreasingSizeBestFitHeap heap(/*alignment=*/1);
+  heap.Alloc(buffer_a_, 10);
+  heap.Free(buffer_a_, 10);
+  heap.Alloc(buffer_b_, 30);
+
+  heap.ShareWith(buffer_c_, buffer_a_, 10);
+  heap.Free(buffer_c_, 10);
+  heap.Free(buffer_b_, 30);
 
   const HeapSimulator::Result result = heap.Finish();
   EXPECT_EQ(40, result.heap_size);
   EXPECT_EQ(10, result.chunk_map.at(buffer_a_).size);
-  EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
-  EXPECT_EQ(30, result.chunk_map.at(buffer_c_).size);
-  EXPECT_EQ(5, result.chunk_map.at(buffer_d_).size);
+  EXPECT_EQ(30, result.chunk_map.at(buffer_b_).size);
+  EXPECT_EQ(10, result.chunk_map.at(buffer_c_).size);
 
   EXPECT_EQ(30, result.chunk_map.at(buffer_a_).offset);
   EXPECT_EQ(0, result.chunk_map.at(buffer_b_).offset);
-  EXPECT_EQ(0, result.chunk_map.at(buffer_c_).offset);
-  EXPECT_EQ(0, result.chunk_map.at(buffer_d_).offset);
-}
-
-TEST_F(LazyBestFitHeapTest, BestFit) {
-  LazyBestFitHeap heap(/*alignment=*/1);
-
-  // First alloc/free buffer_a_, to force a big free chunk to appear.
-  heap.Alloc(buffer_a_, 200);  // A lazy offset
-  heap.Free(buffer_a_, 200);   // A range = [0, 200)   free = [0, 200)
-
-  // Now alloc a bunch of buffers that are allocated out of the free chunk.
-  heap.Alloc(buffer_b_, 30);  // B range = [0, 30)    free = [30, 200)
-  heap.Alloc(buffer_c_, 30);  // C range = [30, 60)   free = [60, 200)
-  heap.Alloc(buffer_d_, 20);  // D range = [60, 80)   free = [80, 200)
-  heap.Alloc(buffer_e_, 20);  // E range = [80, 100)  free = [100, 200)
-  heap.Alloc(buffer_f_, 10);  // F range = [100, 110) free = [110, 200)
-  heap.Alloc(buffer_g_, 10);  // G range = [110, 120) free = [120, 200)
-  heap.Alloc(buffer_h_, 80);  // H range = [120, 200)
-
-  // Free buffers to create free chunks of different sizes.
-  heap.Free(buffer_c_, 30);  // free = [30, 60)
-  heap.Free(buffer_e_, 20);  // free = [30, 60), [80, 100)
-  heap.Free(buffer_g_, 10);  // free = [30, 60), [80, 100), [110, 120)
-
-  // The best fit is picked out of the existing free chunks.
-  heap.Alloc(buffer_i_, 15);  // I range = [80, 95)
-
-  // The frees here ensure the buffer-coalescing logic is exercised.
-  heap.Free(buffer_b_, 30);
-  heap.Free(buffer_d_, 20);
-  heap.Free(buffer_f_, 10);
-  heap.Free(buffer_h_, 80);
-  heap.Free(buffer_i_, 15);
-
-  const HeapSimulator::Result result = heap.Finish();
-  EXPECT_EQ(200, result.heap_size);
-  EXPECT_EQ(200, result.chunk_map.at(buffer_a_).size);
-  EXPECT_EQ(30, result.chunk_map.at(buffer_b_).size);
-  EXPECT_EQ(30, result.chunk_map.at(buffer_c_).size);
-  EXPECT_EQ(20, result.chunk_map.at(buffer_d_).size);
-  EXPECT_EQ(20, result.chunk_map.at(buffer_e_).size);
-  EXPECT_EQ(10, result.chunk_map.at(buffer_f_).size);
-  EXPECT_EQ(10, result.chunk_map.at(buffer_g_).size);
-  EXPECT_EQ(80, result.chunk_map.at(buffer_h_).size);
-  EXPECT_EQ(15, result.chunk_map.at(buffer_i_).size);
-
-  EXPECT_EQ(0, result.chunk_map.at(buffer_a_).offset);
-  EXPECT_EQ(0, result.chunk_map.at(buffer_b_).offset);
   EXPECT_EQ(30, result.chunk_map.at(buffer_c_).offset);
-  EXPECT_EQ(60, result.chunk_map.at(buffer_d_).offset);
-  EXPECT_EQ(80, result.chunk_map.at(buffer_e_).offset);
-  EXPECT_EQ(100, result.chunk_map.at(buffer_f_).offset);
-  EXPECT_EQ(110, result.chunk_map.at(buffer_g_).offset);
-  EXPECT_EQ(120, result.chunk_map.at(buffer_h_).offset);
-  EXPECT_EQ(80, result.chunk_map.at(buffer_i_).offset);
-}
-
-TEST_F(LazyBestFitHeapTest, Lazy) {
-  LazyBestFitHeap heap(/*alignment=*/1);
-
-  // First alloc some buffers, which are all lazily allocated offsets.
-  heap.Alloc(buffer_a_, 10);
-  heap.Alloc(buffer_b_, 5);
-  heap.Alloc(buffer_c_, 10);
-
-  // Now free some buffers, which forces offset assignment.
-  heap.Free(buffer_a_, 10);  // A range = [0, 10)  free = [0, 10)
-  heap.Free(buffer_c_, 10);  // C range = [10, 20) free = [0, 20)
-
-  // If we hadn't lazily assigned offsets, the free chunk wouldn't be large
-  // enough to hold the entire allocation.
-  heap.Alloc(buffer_d_, 20);  // D range = [0, 20)
-
-  heap.Free(buffer_b_, 5);  // B range = [20, 25)
-  heap.Free(buffer_d_, 20);
-
-  const HeapSimulator::Result result = heap.Finish();
-  EXPECT_EQ(25, result.heap_size);
-  EXPECT_EQ(10, result.chunk_map.at(buffer_a_).size);
-  EXPECT_EQ(5, result.chunk_map.at(buffer_b_).size);
-  EXPECT_EQ(10, result.chunk_map.at(buffer_c_).size);
-  EXPECT_EQ(20, result.chunk_map.at(buffer_d_).size);
-
-  EXPECT_EQ(0, result.chunk_map.at(buffer_a_).offset);
-  EXPECT_EQ(20, result.chunk_map.at(buffer_b_).offset);
-  EXPECT_EQ(10, result.chunk_map.at(buffer_c_).offset);
-  EXPECT_EQ(0, result.chunk_map.at(buffer_d_).offset);
-}
-
-TEST_F(LazyBestFitHeapTest, ReuseLastFreeChunk) {
-  LazyBestFitHeap heap(/*alignment=*/1);
-
-  // First alloc/free buffer_a_, to force a big free chunk to appear.
-  heap.Alloc(buffer_a_, 60);  // A lazy offset
-  heap.Free(buffer_a_, 60);   // A range = [0, 60)   free = [0, 60)
-
-  // Now alloc a bunch of buffers that are allocated out of the free chunk.
-  heap.Alloc(buffer_b_, 10);  // B range = [0, 10)    free = [10, 60)
-  heap.Alloc(buffer_c_, 20);  // C range = [10, 30)   free = [30, 60)
-  heap.Alloc(buffer_d_, 30);  // D range = [30, 60)
-
-  // Free buffers to create free chunks of different sizes.
-  heap.Free(buffer_b_, 10);  // free = [0, 10)
-  heap.Free(buffer_d_, 30);  // free = [0, 10), [30, 60)
-
-  // No free chunks are large enough, but the last free chunk is adjacent to the
-  // end of the heap, so we re-use that chunk.
-  heap.Alloc(buffer_e_, 40);  // E range = [30, 70)
-
-  heap.Free(buffer_c_, 20);
-  heap.Free(buffer_e_, 40);
-
-  const HeapSimulator::Result result = heap.Finish();
-  EXPECT_EQ(70, result.heap_size);
-  EXPECT_EQ(60, result.chunk_map.at(buffer_a_).size);
-  EXPECT_EQ(10, result.chunk_map.at(buffer_b_).size);
-  EXPECT_EQ(20, result.chunk_map.at(buffer_c_).size);
-  EXPECT_EQ(30, result.chunk_map.at(buffer_d_).size);
-  EXPECT_EQ(40, result.chunk_map.at(buffer_e_).size);
-
-  EXPECT_EQ(0, result.chunk_map.at(buffer_a_).offset);
-  EXPECT_EQ(0, result.chunk_map.at(buffer_b_).offset);
-  EXPECT_EQ(10, result.chunk_map.at(buffer_c_).offset);
-  EXPECT_EQ(30, result.chunk_map.at(buffer_d_).offset);
-  EXPECT_EQ(30, result.chunk_map.at(buffer_e_).offset);
-}
-
-TEST_F(LazyBestFitHeapTest, Alignment) {
-  LazyBestFitHeap heap(/*alignment=*/64);
-
-  // First alloc some buffers, which are all lazily allocated offsets.
-  heap.Alloc(buffer_a_, 10);
-  heap.Alloc(buffer_b_, 5);
-  heap.Alloc(buffer_c_, 10);
-
-  // Now free some buffers, which forces offset assignment with alignment.
-  heap.Free(buffer_a_, 10);  //  A range = [0, 10)    free = [0, 10)
-  heap.Free(buffer_c_, 10);  //  C range = [64, 74)   free = [0, 74)
-
-  // If we hadn't lazily assigned offsets, and accounted for alignment, the free
-  // chunk wouldn't be large enough to hold the entire allocation.
-  heap.Alloc(buffer_d_, 74);  // D range = [0, 74)    free = [)
-
-  heap.Free(buffer_b_, 5);    // B range = [128, 133) free = [74, 133)
-  heap.Alloc(buffer_e_, 23);  // E range = [128, 151) free = [74, 128)
-
-  heap.Free(buffer_d_, 74);  //                       free = [0, 128)
-  heap.Free(buffer_e_, 23);  //                       free = [0, 151)
-
-  const HeapSimulator::Result result = heap.Finish();
-  EXPECT_EQ(151, result.heap_size);
-  EXPECT_EQ(10, result.chunk_map.at(buffer_a_).size);
-  EXPECT_EQ(5, result.chunk_map.at(buffer_b_).size);
-  EXPECT_EQ(10, result.chunk_map.at(buffer_c_).size);
-  EXPECT_EQ(74, result.chunk_map.at(buffer_d_).size);
-  EXPECT_EQ(23, result.chunk_map.at(buffer_e_).size);
-
-  EXPECT_EQ(0, result.chunk_map.at(buffer_a_).offset);
-  EXPECT_EQ(128, result.chunk_map.at(buffer_b_).offset);
-  EXPECT_EQ(64, result.chunk_map.at(buffer_c_).offset);
-  EXPECT_EQ(0, result.chunk_map.at(buffer_d_).offset);
-  EXPECT_EQ(128, result.chunk_map.at(buffer_e_).offset);
 }
 
 }  // namespace

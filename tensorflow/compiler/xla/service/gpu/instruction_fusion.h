@@ -27,10 +27,21 @@ class GpuInstructionFusion : public InstructionFusion {
   explicit GpuInstructionFusion(bool may_duplicate)
       : InstructionFusion(GpuInstructionFusion::IsExpensive, may_duplicate) {}
 
+  static bool IsExpensive(const HloInstruction& instruction);
+
   bool ShouldFuse(HloInstruction* consumer, int64 operand_index) override;
+
+  bool ShouldFuseIntoMultiOutput(HloInstruction* consumer,
+                                 int64 operand_index) override;
 
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
+
+ private:
+  // This method is called by ShouldFuse() to do all the computationally
+  // inexpensive checks whether we should fuse the operand into 'consumer'.
+  bool ShouldFuseInexpensiveChecks(HloInstruction* consumer,
+                                   int64 operand_index);
 };
 
 }  // namespace gpu

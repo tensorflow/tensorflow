@@ -12,8 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TFGAN grouped API."""
+"""TF-GAN is a lightweight library for training and evaluating GANs.
+
+In addition to providing the infrastructure for easily training and evaluating
+GANS, this library contains modules for a TFGAN-backed Estimator,
+evaluation metrics, features (such as virtual batch normalization), and losses.
+Please see README.md for details and usage.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+# Collapse TF-GAN into a tiered namespace.
+from tensorflow.contrib.gan.python import estimator
+from tensorflow.contrib.gan.python import eval  # pylint:disable=redefined-builtin
+from tensorflow.contrib.gan.python import features
+from tensorflow.contrib.gan.python import losses
+from tensorflow.contrib.gan.python import namedtuples
+from tensorflow.contrib.gan.python import train
+
+# pylint: disable=unused-import,wildcard-import
+from tensorflow.contrib.gan.python.namedtuples import *
+from tensorflow.contrib.gan.python.train import *
+# pylint: enable=unused-import,wildcard-import
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = [
+    'estimator',
+    'eval',
+    'features',
+    'losses',
+]
+_allowed_symbols += train.__all__
+_allowed_symbols += namedtuples.__all__
+remove_undocumented(__name__, _allowed_symbols)

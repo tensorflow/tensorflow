@@ -5,9 +5,8 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
@@ -39,7 +38,12 @@ py_test(
     name = "state_space_model_test",
     timeout = "long",  # Moderate but for asan
     srcs = ["state_space_model_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_mac",
+        "no_windows",  # TODO: needs investigation on Windows
+    ],
     deps = [
         ":state_space_model",
         "//tensorflow/contrib/layers:layers_py",
@@ -74,7 +78,6 @@ py_library(
     srcs = ["kalman_filter.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/timeseries/python/timeseries:math_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -92,10 +95,12 @@ tf_py_test(
     additional_deps = [
         ":kalman_filter",
         "//third_party/py/numpy",
+        "//tensorflow/contrib/timeseries/python/timeseries:math_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
 )
@@ -173,8 +178,10 @@ py_library(
 
 py_test(
     name = "structural_ensemble_test",
-    timeout = "long",  # Moderate but for asan/tsan timeouts
+    timeout = "long",  # Moderate but for asan/tsan/msan timeouts
     srcs = ["structural_ensemble_test.py"],
+    python_version = "PY2",
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":state_space_model",
@@ -210,6 +217,7 @@ tf_py_test(
     name = "varma_test",
     srcs = ["varma_test.py"],
     additional_deps = [
+        ":state_space_model",
         ":varma",
         "//tensorflow/contrib/timeseries/python/timeseries:feature_keys",
         "//tensorflow/python:client",
@@ -227,7 +235,6 @@ py_library(
     srcs = ["filtering_postprocessor.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/timeseries/python/timeseries:math_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -264,16 +271,4 @@ py_library(
         "//tensorflow/python:random_ops",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

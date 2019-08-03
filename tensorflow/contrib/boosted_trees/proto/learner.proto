@@ -1,8 +1,10 @@
 syntax = "proto3";
 
-option cc_enable_arenas = true;
-
 package tensorflow.boosted_trees.learner;
+
+import "tensorflow/contrib/boosted_trees/proto/tree_config.proto";
+
+option cc_enable_arenas = true;
 
 // Tree regularization config.
 message TreeRegularizationConfig {
@@ -22,6 +24,10 @@ message TreeConstraintsConfig {
 
   // Min hessian weight per node.
   float min_node_weight = 2;
+
+  // Maximum number of unique features used in the tree. Zero means there is no
+  // limit.
+  int64 max_number_of_unique_feature_columns = 3;
 }
 
 // LearningRateConfig describes all supported learning rate tuners.
@@ -104,6 +110,11 @@ message LearnerConfig {
     DIAGONAL_HESSIAN = 3;
   }
 
+  enum WeakLearnerType {
+    NORMAL_DECISION_TREE = 0;
+    OBLIVIOUS_DECISION_TREE = 1;
+  }
+
   // Number of classes.
   uint32 num_classes = 1;
 
@@ -137,4 +148,14 @@ message LearnerConfig {
   // If you want to average the ensembles (for regularization), provide the
   // config below.
   AveragingConfig averaging_config = 11;
+
+  // By default we use NORMAL_DECISION_TREE as weak learner.
+  WeakLearnerType weak_learner_type = 12;
+
+  // If you want to enforce some splits and allow boosting to figure out the
+  // rest, you can provide a tree that represents the starting splits for each
+  // tree in the ensemble.
+  // Set both each_tree_start and each_tree_start_num_layers.
+  tensorflow.boosted_trees.trees.DecisionTreeConfig each_tree_start = 13;
+  int32 each_tree_start_num_layers = 14;
 }

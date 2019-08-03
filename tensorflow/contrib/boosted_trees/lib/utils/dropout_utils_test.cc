@@ -26,9 +26,9 @@
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 
+using std::unordered_set;
 using tensorflow::boosted_trees::learner::LearningRateDropoutDrivenConfig;
 using tensorflow::boosted_trees::trees::DecisionTreeEnsembleConfig;
-using std::unordered_set;
 
 namespace tensorflow {
 namespace boosted_trees {
@@ -195,9 +195,6 @@ TEST_F(DropoutUtilsTest, DropoutSeedTest) {
     std::vector<int32> dropped_trees_2;
     std::vector<float> original_weights_2;
 
-    DecisionTreeEnsembleConfig new_ensemble_1;
-    DecisionTreeEnsembleConfig new_ensemble_2;
-
     TF_EXPECT_OK(DropoutUtils::DropOutTrees(
         kSeed + 1, config, trees_not_to_drop, weights_, &dropped_trees_1,
         &original_weights_1));
@@ -219,8 +216,6 @@ TEST_F(DropoutUtilsTest, DropoutSeedTest) {
     std::vector<int32> dropped_trees_2;
     std::vector<float> original_weights_2;
 
-    DecisionTreeEnsembleConfig new_ensemble_1;
-    DecisionTreeEnsembleConfig new_ensemble_2;
 
     TF_EXPECT_OK(DropoutUtils::DropOutTrees(kSeed, config, trees_not_to_drop,
                                             weights_, &dropped_trees_1,
@@ -264,7 +259,6 @@ TEST_F(DropoutUtilsTest, InvalidConfigTest) {
     config.set_dropout_probability(0.5);
     config.set_probability_of_skipping_dropout(-10);
 
-    DecisionTreeEnsembleConfig new_ensemble;
     EXPECT_FALSE(DropoutUtils::DropOutTrees(kSeed, config, trees_not_to_drop,
                                             weights_, &dropped_trees,
                                             &original_weights)
@@ -276,7 +270,6 @@ TEST_F(DropoutUtilsTest, InvalidConfigTest) {
     config.set_dropout_probability(0.5);
     config.set_probability_of_skipping_dropout(1.2);
 
-    DecisionTreeEnsembleConfig new_ensemble;
     EXPECT_FALSE(DropoutUtils::DropOutTrees(kSeed, config, trees_not_to_drop,
                                             weights_, &dropped_trees,
                                             &original_weights)

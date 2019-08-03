@@ -25,8 +25,8 @@ namespace boosted_trees {
 namespace utils {
 namespace {
 
-using test::AsTensor;
 using errors::InvalidArgument;
+using test::AsTensor;
 
 class BatchFeaturesTest : public ::testing::Test {};
 
@@ -59,7 +59,7 @@ TEST_F(BatchFeaturesTest, DenseFloatFeatures_Multivalent) {
   BatchFeatures batch_features(1);
   auto dense_vec = AsTensor<float>({3.0f, 7.0f}, {1, 2});
   auto expected_error = InvalidArgument(
-      "Dense float features may not be multi-valent: dim_size(1) = 2");
+      "Dense float features may not be multivalent: dim_size(1) = 2");
   EXPECT_EQ(expected_error,
             batch_features.Initialize({dense_vec}, {}, {}, {}, {}, {}, {}));
 }
@@ -123,19 +123,6 @@ TEST_F(BatchFeaturesTest, SparseFloatFeatures_IncompatibleShape) {
   auto sparse_float_feature_shape = AsTensor<int64>({8, 1});
   auto expected_error = InvalidArgument(
       "Sparse float feature shape incompatible with batch size.");
-  EXPECT_EQ(expected_error, batch_features.Initialize(
-                                {}, {sparse_float_feature_indices},
-                                {sparse_float_feature_values},
-                                {sparse_float_feature_shape}, {}, {}, {}));
-}
-
-TEST_F(BatchFeaturesTest, SparseFloatFeatures_Multivalent) {
-  BatchFeatures batch_features(2);
-  auto sparse_float_feature_indices = AsTensor<int64>({0, 0, 1, 0}, {2, 2});
-  auto sparse_float_feature_values = AsTensor<float>({3.0f, 7.0f});
-  auto sparse_float_feature_shape = AsTensor<int64>({2, 2});
-  auto expected_error =
-      InvalidArgument("Sparse float features may not be multi-valent.");
   EXPECT_EQ(expected_error, batch_features.Initialize(
                                 {}, {sparse_float_feature_indices},
                                 {sparse_float_feature_values},

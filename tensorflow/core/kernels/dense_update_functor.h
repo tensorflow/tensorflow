@@ -13,17 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_DENSE_UPDATE_FUNCTOR_H_
-#define TENSORFLOW_KERNELS_DENSE_UPDATE_FUNCTOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DENSE_UPDATE_FUNCTOR_H_
+#define TENSORFLOW_CORE_KERNELS_DENSE_UPDATE_FUNCTOR_H_
 
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
+
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
@@ -89,6 +92,17 @@ struct DenseUpdate<SYCLDevice, T, ASSIGN> {
 #endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace functor
+
+template <typename Device>
+Status VariantCopyFn(OpKernelContext* context, const Tensor& from, Tensor* to);
+
+template <>
+Status VariantCopyFn<CPUDevice>(OpKernelContext* context, const Tensor& from,
+                                Tensor* to);
+template <>
+Status VariantCopyFn<GPUDevice>(OpKernelContext* context, const Tensor& from,
+                                Tensor* to);
+
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_DENSE_UPDATE_FUNCTOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DENSE_UPDATE_FUNCTOR_H_

@@ -120,18 +120,23 @@ def get_tensor_aliases(tensor):
   return aliases
 
 
-def convert_collection_to_dict(collection):
+def convert_collection_to_dict(collection, clear_collection=False):
   """Returns an OrderedDict of Tensors with their aliases as keys.
 
   Args:
     collection: A collection.
+    clear_collection: When True, it clears the collection after converting to
+      OrderedDict.
 
   Returns:
     An OrderedDict of {alias: tensor}
   """
-  return OrderedDict((alias, tensor)
-                     for tensor in ops.get_collection(collection)
-                     for alias in get_tensor_aliases(tensor))
+  output = OrderedDict((alias, tensor)
+                       for tensor in ops.get_collection(collection)
+                       for alias in get_tensor_aliases(tensor))
+  if clear_collection:
+    ops.get_default_graph().clear_collection(collection)
+  return output
 
 
 def constant_value(value_or_tensor_or_var, dtype=None):

@@ -1,0 +1,56 @@
+op {
+  graph_op_name: "InitializeTableFromTextFileV2"
+  endpoint {
+    name: "InitializeTableFromTextFile"
+  }
+  in_arg {
+    name: "table_handle"
+    description: <<END
+Handle to a table which will be initialized.
+END
+  }
+  in_arg {
+    name: "filename"
+    description: <<END
+Filename of a vocabulary text file.
+END
+  }
+  attr {
+    name: "key_index"
+    description: <<END
+Column index in a line to get the table `key` values from.
+END
+  }
+  attr {
+    name: "value_index"
+    description: <<END
+Column index that represents information of a line to get the table
+`value` values from.
+END
+  }
+  attr {
+    name: "vocab_size"
+    description: <<END
+Number of elements of the file, use -1 if unknown.
+END
+  }
+  attr {
+    name: "delimiter"
+    description: <<END
+Delimiter to separate fields in a line.
+END
+  }
+  summary: "Initializes a table from a text file."
+  description: <<END
+It inserts one key-value pair into the table for each line of the file.
+The key and value is extracted from the whole line content, elements from the
+split line based on `delimiter` or the line number (starting from zero).
+Where to extract the key and value from a line is specified by `key_index` and
+`value_index`.
+
+- A value of -1 means use the line number(starting from zero), expects `int64`.
+- A value of -2 means use the whole line content, expects `string`.
+- A value >= 0 means use the index (starting at zero) of the split line based
+  on `delimiter`.
+END
+}

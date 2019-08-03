@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_TILE_OPS_GPU_IMPL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_TILE_OPS_GPU_IMPL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_TILE_OPS_GPU_IMPL_H_
+#define TENSORFLOW_CORE_KERNELS_TILE_OPS_GPU_IMPL_H_
 
 // Header used to split up compilation of GPU tile ops.  For each type you want
 // to have tile ops, create a .cu.cc file containing
 //
-//   #if GOOGLE_CUDA
+//   #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 //   #include "tensorflow/core/kernels/tile_ops_gpu_impl.h"
 //   DEFINE_TILE_OPS(NDIM)
 //   #endif  // GOGLE_CUDA
@@ -28,8 +28,8 @@ limitations under the License.
 //
 // NOTE(keveman): Eigen's int8 and string versions don't compile yet with nvcc.
 
-#ifndef GOOGLE_CUDA
-#error "This header must be included inside #ifdef GOOGLE_CUDA"
+#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
+#error "This header must be included inside with CUDA or ROCm defined"
 #endif
 
 #define EIGEN_USE_GPU
@@ -56,4 +56,4 @@ limitations under the License.
   }                             \
   }
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_TILE_OPS_GPU_IMPL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_TILE_OPS_GPU_IMPL_H_

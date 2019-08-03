@@ -34,21 +34,24 @@ CXXFLAGS := --std=c++11 $(OPTFLAGS)
 LDFLAGS := \
 -L/usr/local/lib \
 -L$(TFLIBDIR) \
+-L$(DOWNLOADSDIR)/nsync/builds/default.linux.c++11/ \
 -Wl,--no-whole-archive
 INCLUDES := \
 -I/usr/local/include \
 -I. \
 -I$(DOWNLOADSDIR) \
 -I$(DOWNLOADSDIR)/eigen/ \
+-I$(DOWNLOADSDIR)/absl/ \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 LIBS := \
--lstdc++ \
--lprotobuf \
 -Wl,--allow-multiple-definition \
 -Wl,--whole-archive \
 -ltensorflow-core \
 -Wl,--no-whole-archive \
+-lstdc++ \
+-lprotobuf \
+-lnsync \
 -ldl \
 -lpthread \
 -lm \
@@ -75,7 +78,7 @@ $(EXECUTABLE_NAME): $(EXECUTABLE_OBJS) $(TFLIBS)
 	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
 
 # Matches on C++ source files.
-$(OBJDIR)%.o: %.cc 
+$(OBJDIR)%.o: %.cc
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 

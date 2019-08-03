@@ -199,7 +199,7 @@ class Block::Iter : public Iterator {
     restart_index_ = num_restarts_;
     status_ = errors::DataLoss("bad entry in block");
     key_.clear();
-    value_.clear();
+    value_ = StringPiece();
   }
 
   bool ParseNextKey() {

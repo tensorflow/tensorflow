@@ -67,13 +67,13 @@ class ClipGradientNormsTest(test.TestCase):
     gradient = constant_op.constant(self._grad_vec, dtype=dtypes.float32)
     variable = variables_lib.Variable(self._zero_vec, dtype=dtypes.float32)
     gradients_to_variables = (gradient, variable)
-    [gradients_to_variables] = learning.clip_gradient_norms(
-        [gradients_to_variables], self._max_norm)
+    [gradients_to_variables
+    ] = learning.clip_gradient_norms([gradients_to_variables], self._max_norm)
 
     # Ensure the variable passed through.
     self.assertEqual(gradients_to_variables[1], variable)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_gradient = sess.run(gradients_to_variables[0])
     np_testing.assert_almost_equal(actual_gradient, self._clipped_grad_vec)
 
@@ -82,8 +82,8 @@ class ClipGradientNormsTest(test.TestCase):
     variable = variables_lib.Variable(self._zero_vec, dtype=dtypes.float32)
 
     gradients_to_variables = (gradient, variable)
-    [gradients_to_variables] = learning.clip_gradient_norms(
-        [gradients_to_variables], self._max_norm)
+    [gradients_to_variables
+    ] = learning.clip_gradient_norms([gradients_to_variables], self._max_norm)
 
     self.assertEqual(gradients_to_variables[0], None)
     self.assertEqual(gradients_to_variables[1], variable)
@@ -164,7 +164,7 @@ class MultiplyGradientsTest(test.TestCase):
     # Ensure the variable passed through.
     self.assertEqual(grad_to_var[1], variable)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_gradient = sess.run(grad_to_var[0])
     np_testing.assert_almost_equal(actual_gradient, self._multiplied_grad_vec,
                                    5)
@@ -172,8 +172,8 @@ class MultiplyGradientsTest(test.TestCase):
   def testIndexedSlicesGradIsMultiplied(self):
     values = constant_op.constant(self._grad_vec, dtype=dtypes.float32)
     indices = constant_op.constant([0, 1, 2], dtype=dtypes.int32)
-    dense_shape = constant_op.constant(
-        [self._grad_vec.size], dtype=dtypes.int32)
+    dense_shape = constant_op.constant([self._grad_vec.size],
+                                       dtype=dtypes.int32)
 
     gradient = ops.IndexedSlices(values, indices, dense_shape)
     variable = variables_lib.Variable(array_ops.zeros((1, 3)))
@@ -188,7 +188,7 @@ class MultiplyGradientsTest(test.TestCase):
     self.assertEqual(grad_to_var[0].indices, indices)
     self.assertEqual(grad_to_var[0].dense_shape, dense_shape)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_gradient = sess.run(grad_to_var[0].values)
     np_testing.assert_almost_equal(actual_gradient, self._multiplied_grad_vec,
                                    5)
@@ -197,26 +197,22 @@ class MultiplyGradientsTest(test.TestCase):
     gradient = constant_op.constant(self._grad_vec, dtype=dtypes.float32)
     variable = variables_lib.Variable(array_ops.zeros_like(gradient))
     multiplier_flag = variables_lib.Variable(True)
-    tensor_multiplier = array_ops.where(multiplier_flag,
-                                        self._multiplier,
-                                        1.0)
+    tensor_multiplier = array_ops.where_v2(multiplier_flag, self._multiplier,
+                                           1.0)
     grad_to_var = (gradient, variable)
     gradient_multipliers = {variable: tensor_multiplier}
 
     [grad_to_var] = learning.multiply_gradients([grad_to_var],
                                                 gradient_multipliers)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables_lib.global_variables_initializer())
       gradient_true_flag = sess.run(grad_to_var[0])
       sess.run(multiplier_flag.assign(False))
       gradient_false_flag = sess.run(grad_to_var[0])
     np_testing.assert_almost_equal(gradient_true_flag,
-                                   self._multiplied_grad_vec,
-                                   5)
-    np_testing.assert_almost_equal(gradient_false_flag,
-                                   self._grad_vec,
-                                   5)
+                                   self._multiplied_grad_vec, 5)
+    np_testing.assert_almost_equal(gradient_false_flag, self._grad_vec, 5)
 
 
 def LogisticClassifier(inputs):
@@ -294,8 +290,8 @@ class CreateTrainOpTest(test.TestCase):
       train_op = learning.create_train_op(total_loss, optimizer)
 
       moving_mean = variables_lib2.get_variables_by_name('moving_mean')[0]
-      moving_variance = variables_lib2.get_variables_by_name('moving_variance')[
-          0]
+      moving_variance = variables_lib2.get_variables_by_name(
+          'moving_variance')[0]
 
       with session.Session() as sess:
         # Initialize all variables
@@ -328,8 +324,8 @@ class CreateTrainOpTest(test.TestCase):
       train_op = learning.create_train_op(total_loss, optimizer, update_ops=[])
 
       moving_mean = variables_lib2.get_variables_by_name('moving_mean')[0]
-      moving_variance = variables_lib2.get_variables_by_name('moving_variance')[
-          0]
+      moving_variance = variables_lib2.get_variables_by_name(
+          'moving_variance')[0]
 
       with session.Session() as sess:
         # Initialize all variables
@@ -497,11 +493,13 @@ class TrainTest(test.TestCase):
     """Test that slim.learning.train can take `session_wrapper` args.
 
     One of the applications of `session_wrapper` is the wrappers of TensorFlow
-    Debugger (tfdbg), which intercept methods calls to `tf.Session` (e.g., run)
+    Debugger (tfdbg), which intercept methods calls to `tf.compat.v1.Session`
+    (e.g., run)
     to achieve debugging. `DumpingDebugWrapperSession` is used here for testing
     purpose.
     """
     dump_root = tempfile.mkdtemp()
+
     def dumping_wrapper(sess):  # pylint: disable=invalid-name
       return dumping_wrapper_lib.DumpingDebugWrapperSession(sess, dump_root)
 
@@ -519,16 +517,13 @@ class TrainTest(test.TestCase):
       train_op = learning.create_train_op(total_loss, optimizer)
 
       loss = learning.train(
-          train_op,
-          None,
-          number_of_steps=1,
-          session_wrapper=dumping_wrapper)
+          train_op, None, number_of_steps=1, session_wrapper=dumping_wrapper)
     self.assertIsNotNone(loss)
 
     run_root = glob.glob(os.path.join(dump_root, 'run_*'))[-1]
     dump = debug_data.DebugDumpDir(run_root)
-    self.assertAllEqual(
-        0, dump.get_tensors('global_step', 0, 'DebugIdentity')[0])
+    self.assertAllEqual(0,
+                        dump.get_tensors('global_step', 0, 'DebugIdentity')[0])
 
   def testTrainWithTrace(self):
     logdir = os.path.join(
@@ -961,8 +956,8 @@ class TrainTest(test.TestCase):
     self.assertGreater(losses[0], losses[1])
 
   def testTrainWithEpochLimit(self):
-    logdir = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
-                          'tmp_logs')
+    logdir = os.path.join(
+        tempfile.mkdtemp(prefix=self.get_temp_dir()), 'tmp_logs')
     with ops.Graph().as_default():
       random_seed.set_random_seed(0)
       tf_inputs = constant_op.constant(self._inputs, dtype=dtypes.float32)
@@ -982,7 +977,8 @@ class TrainTest(test.TestCase):
     self.assertIsNotNone(loss)
     self.assertLess(loss, .015)
     self.assertTrue(os.path.isfile('{}/model.ckpt-300.index'.format(logdir)))
-    self.assertTrue(os.path.isfile('{}/model.ckpt-300.data-00000-of-00001'.format(logdir)))
+    self.assertTrue(
+        os.path.isfile('{}/model.ckpt-300.data-00000-of-00001'.format(logdir)))
 
 
 if __name__ == '__main__':

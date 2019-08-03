@@ -29,19 +29,9 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
+from tensorflow.python.saved_model.load import load
+from tensorflow.python.saved_model.save import save
 # pylint: enable=unused-import
-
-from tensorflow.python.util.all_util import remove_undocumented
-
-
-_allowed_symbols = [
-    "builder",
-    "constants",
-    "loader",
-    "main_op",
-    "signature_constants",
-    "signature_def_utils",
-    "tag_constants",
-    "utils",
-]
-remove_undocumented(__name__, _allowed_symbols)
+# pylint: disable=wildcard-import
+from tensorflow.python.saved_model.simple_save import *
+# pylint: enable=wildcard-import

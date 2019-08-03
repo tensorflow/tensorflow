@@ -18,19 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import linalg
 from tensorflow.contrib.distributions.python.ops import mvn_linear_operator as mvn_linop
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.distributions import util as distribution_util
-
+from tensorflow.python.ops.linalg import linalg
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "MultivariateNormalTriL",
 ]
 
 
-class MultivariateNormalTriL(
-    mvn_linop.MultivariateNormalLinearOperator):
+class MultivariateNormalTriL(mvn_linop.MultivariateNormalLinearOperator):
   """The multivariate normal distribution on `R^k`.
 
   The Multivariate Normal distribution is defined over `R^k` and parameterized
@@ -62,7 +61,7 @@ class MultivariateNormalTriL(
   ```
 
   where `scale_tril` is lower-triangular `k x k` matrix with non-zero diagonal,
-  i.e., `tf.diag_part(scale_tril) != 0`.
+  i.e., `tf.linalg.tensor_diag_part(scale_tril) != 0`.
 
   Additional leading dimensions (if any) will index batches.
 
@@ -76,23 +75,25 @@ class MultivariateNormalTriL(
   ```
 
   Trainable (batch) lower-triangular matrices can be created with
-  `ds.matrix_diag_transform()` and/or `ds.fill_lower_triangular()`
+  `tfp.distributions.matrix_diag_transform()` and/or
+  `tfp.distributions.fill_triangular()`
 
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Initialize a single 3-variate Gaussian.
   mu = [1., 2, 3]
   cov = [[ 0.36,  0.12,  0.06],
          [ 0.12,  0.29, -0.13],
          [ 0.06, -0.13,  0.26]]
-  scale = tf.cholesky(cov)
+  scale = tf.linalg.cholesky(cov)
   # ==> [[ 0.6,  0. ,  0. ],
   #      [ 0.2,  0.5,  0. ],
   #      [ 0.1, -0.3,  0.4]])
-  mvn = ds.MultivariateNormalTriL(
+  mvn = tfd.MultivariateNormalTriL(
       loc=mu,
       scale_tril=scale)
 
@@ -112,7 +113,7 @@ class MultivariateNormalTriL(
   mu = [[1., 2, 3],
         [11, 22, 33]]              # shape: [2, 3]
   tril = ...  # shape: [2, 3, 3], lower triangular, non-zero diagonal.
-  mvn = ds.MultivariateNormalTriL(
+  mvn = tfd.MultivariateNormalTriL(
       loc=mu,
       scale_tril=tril)
 
@@ -121,10 +122,26 @@ class MultivariateNormalTriL(
        [-10, 0, 9]]     # shape: [2, 3]
   mvn.prob(x).eval()    # shape: [2]
 
+  # Instantiate a "learnable" MVN.
+  dims = 4
+  with tf.compat.v1.variable_scope("model"):
+    mvn = tfd.MultivariateNormalTriL(
+        loc=tf.compat.v1.get_variable(shape=[dims], dtype=tf.float32,
+        name="mu"),
+        scale_tril=tfd.fill_triangular(
+            tf.compat.v1.get_variable(shape=[dims * (dims + 1) / 2],
+                            dtype=tf.float32, name="chol_Sigma")))
   ```
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01", "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                scale_tril=None,
@@ -146,7 +163,7 @@ class MultivariateNormalTriL(
     ```
 
     where `scale_tril` is lower-triangular `k x k` matrix with non-zero
-    diagonal, i.e., `tf.diag_part(scale_tril) != 0`.
+    diagonal, i.e., `tf.linalg.tensor_diag_part(scale_tril) != 0`.
 
     Additional leading dimensions (if any) will index batches.
 
@@ -155,27 +172,29 @@ class MultivariateNormalTriL(
         implicitly `0`. When specified, may have shape `[B1, ..., Bb, k]` where
         `b >= 0` and `k` is the event size.
       scale_tril: Floating-point, lower-triangular `Tensor` with non-zero
-        diagonal elements. `scale_tril` has shape `[B1, ..., Bb, k, k]` where
-        `b >= 0` and `k` is the event size.
+        diagonal elements. `scale_tril` has shape `[B1, ..., Bb, k, k]` where `b
+        >= 0` and `k` is the event size.
       validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
         performance. When `False` invalid inputs may silently render incorrect
         outputs.
-      allow_nan_stats: Python `bool`, default `True`. When `True`,
-        statistics (e.g., mean, mode, variance) use the value "`NaN`" to
-        indicate the result is undefined. When `False`, an exception is raised
-        if one or more of the statistic's batch members are undefined.
+      allow_nan_stats: Python `bool`, default `True`. When `True`, statistics
+        (e.g., mean, mode, variance) use the value "`NaN`" to indicate the
+        result is undefined. When `False`, an exception is raised if one or more
+        of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
 
     Raises:
       ValueError: if neither `loc` nor `scale_tril` are specified.
     """
-    parameters = locals()
+    parameters = dict(locals())
+
     def _convert_to_tensor(x, name):
       return None if x is None else ops.convert_to_tensor(x, name=name)
+
     if loc is None and scale_tril is None:
       raise ValueError("Must specify one or both of `loc`, `scale_tril`.")
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[loc, scale_tril]):
         loc = _convert_to_tensor(loc, name="loc")
         scale_tril = _convert_to_tensor(scale_tril, name="scale_tril")
@@ -188,9 +207,9 @@ class MultivariateNormalTriL(
               assert_proper_shapes=validate_args)
         else:
           # No need to validate that scale_tril is non-singular.
-          # LinearOperatorTriL has an assert_non_singular method that is called
-          # by the Bijector.
-          scale = linalg.LinearOperatorTriL(
+          # LinearOperatorLowerTriangular has an assert_non_singular
+          # method that is called by the Bijector.
+          scale = linalg.LinearOperatorLowerTriangular(
               scale_tril,
               is_non_singular=True,
               is_self_adjoint=False,

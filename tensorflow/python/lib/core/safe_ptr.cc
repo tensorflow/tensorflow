@@ -16,18 +16,21 @@ limitations under the License.
 #include "tensorflow/python/lib/core/safe_ptr.h"
 
 namespace tensorflow {
-namespace {
 
-inline void Py_DECREF_wrapper(PyObject* o) { Py_DECREF(o); }
-
-}  // namespace
-
-Safe_PyObjectPtr make_safe(PyObject* o) {
-  return Safe_PyObjectPtr(o, Py_DECREF_wrapper);
+Safe_PyObjectPtr make_safe(PyObject* object) {
+  return Safe_PyObjectPtr(object);
 }
 
 Safe_TF_TensorPtr make_safe(TF_Tensor* tensor) {
-  return Safe_TF_TensorPtr(tensor, TF_DeleteTensor);
+  return Safe_TF_TensorPtr(tensor);
+}
+
+Safe_TFE_TensorHandlePtr make_safe(TFE_TensorHandle* handle) {
+  return Safe_TFE_TensorHandlePtr(handle);
+}
+
+Safe_TF_StatusPtr make_safe(TF_Status* status) {
+  return Safe_TF_StatusPtr(status);
 }
 
 }  // namespace tensorflow

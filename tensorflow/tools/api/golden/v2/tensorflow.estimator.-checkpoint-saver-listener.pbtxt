@@ -1,0 +1,24 @@
+path: "tensorflow.estimator.CheckpointSaverListener"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.basic_session_run_hooks.CheckpointSaverListener\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "after_save"
+    argspec: "args=[\'self\', \'session\', \'global_step_value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "before_save"
+    argspec: "args=[\'self\', \'session\', \'global_step_value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "begin"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "end"
+    argspec: "args=[\'self\', \'session\', \'global_step_value\'], varargs=None, keywords=None, defaults=None"
+  }
+}

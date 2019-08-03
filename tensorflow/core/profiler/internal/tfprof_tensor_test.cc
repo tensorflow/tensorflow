@@ -18,10 +18,10 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 #include "tensorflow/core/profiler/internal/tfprof_stats.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -63,7 +63,6 @@ TEST_F(TFProfTensorTest, Basics) {
                "", {});
   const GraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
 
-  GraphNodeProto expected;
   EXPECT_EQ(root.children(0).name(), "DW");
   EXPECT_GT(root.children(0).tensor_value().value_double_size(), 10);
   EXPECT_EQ(root.children(1).name(), "DW2");

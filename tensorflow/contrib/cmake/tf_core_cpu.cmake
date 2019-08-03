@@ -39,6 +39,8 @@ file(GLOB_RECURSE tf_core_cpu_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/*main.cc"
+    "${tensorflow_source_dir}/tensorflow/core/common_runtime/eager/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/common_runtime/eager/*.h"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu_device_factory.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/direct_session.cc"
@@ -50,18 +52,32 @@ file(GLOB_RECURSE tf_core_cpu_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.cc"
     "${tensorflow_source_dir}/tensorflow/core/graph/graph.h"
     "${tensorflow_source_dir}/tensorflow/core/graph/graph.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/graph_def_builder.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/graph_def_builder.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/node_builder.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/node_builder.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/tensor_id.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/tensor_id.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/while_context.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/while_context.cc"
     "${tensorflow_source_dir}/tensorflow/core/grappler/clusters/single_machine.h"
     "${tensorflow_source_dir}/tensorflow/core/grappler/clusters/single_machine.cc"
     "${tensorflow_source_dir}/tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
     "${tensorflow_source_dir}/tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.cc"
 )
+file(GLOB_RECURSE tf_core_cpu_whitelisted_srcs
+    "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/gpu_id.h"
+    "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/gpu_id.cc"
+    "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/gpu_id_manager.cc"
+)
+list(REMOVE_ITEM tf_core_cpu_exclude_srcs ${tf_core_cpu_whitelisted_srcs})
 list(REMOVE_ITEM tf_core_cpu_srcs ${tf_core_cpu_exclude_srcs})
 
 if (tensorflow_ENABLE_GPU)
   file(GLOB_RECURSE tf_core_gpu_srcs
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/platform/default/gpu/cupti_wrapper.cc"
-    "${tensorflow_source_dir}/tensorflow/core/platform/default/gpu_tracer.cc"
+    "${tensorflow_source_dir}/tensorflow/core/platform/default/device_tracer.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/gpu_device_factory.cc"
     "${tensorflow_source_dir}/tensorflow/core/grappler/devices.h"
     "${tensorflow_source_dir}/tensorflow/core/grappler/devices.cc"
@@ -71,6 +87,7 @@ if (tensorflow_ENABLE_GPU)
      "${tensorflow_source_dir}/tensorflow/core/*test*.cc"
   )
   list(REMOVE_ITEM tf_core_gpu_srcs ${tf_core_gpu_exclude_srcs})
+  list(REMOVE_ITEM tf_core_gpu_srcs ${tf_core_cpu_whitelisted_srcs})
   list(APPEND tf_core_cpu_srcs ${tf_core_gpu_srcs})
 endif()
 

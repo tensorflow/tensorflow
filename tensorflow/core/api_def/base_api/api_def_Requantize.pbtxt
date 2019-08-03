@@ -1,0 +1,62 @@
+op {
+  graph_op_name: "Requantize"
+  in_arg {
+    name: "input_min"
+    description: <<END
+The float value that the minimum quantized input value represents.
+END
+  }
+  in_arg {
+    name: "input_max"
+    description: <<END
+The float value that the maximum quantized input value represents.
+END
+  }
+  in_arg {
+    name: "requested_output_min"
+    description: <<END
+The float value that the minimum quantized output value represents.
+END
+  }
+  in_arg {
+    name: "requested_output_max"
+    description: <<END
+The float value that the maximum quantized output value represents.
+END
+  }
+  out_arg {
+    name: "output_min"
+    description: <<END
+The requested_output_min value is copied into this output.
+END
+  }
+  out_arg {
+    name: "output_max"
+    description: <<END
+The requested_output_max value is copied into this output.
+END
+  }
+  attr {
+    name: "Tinput"
+    description: <<END
+The type of the input.
+END
+  }
+  attr {
+    name: "out_type"
+    description: <<END
+The type of the output. Should be a lower bit depth than Tinput.
+END
+  }
+  summary: 
+"Converts the quantized `input` tensor into a lower-precision `output`."
+  description: <<END
+Converts the quantized `input` tensor into a lower-precision `output`, using the
+output range specified with `requested_output_min` and `requested_output_max`.
+
+`[input_min, input_max]` are scalar floats that specify the range for the float
+interpretation of the `input` data. For example, if `input_min` is -1.0f and
+`input_max` is 1.0f, and we are dealing with `quint16` quantized data, then a 0
+value in the 16-bit data should be interpreted as -1.0f, and a 65535 means 1.0f.
+END
+}

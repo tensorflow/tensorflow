@@ -41,7 +41,7 @@ class KmeansPlusPlusInitializationTest(test.TestCase):
                              [-1., -1.]]).astype(np.float32)
 
   def runTestWithSeed(self, seed):
-    with self.test_session():
+    with self.cached_session():
       sampled_points = clustering_ops.kmeans_plus_plus_initialization(
           self._points, 3, seed, (seed % 5) - 1)
       self.assertAllClose(
@@ -49,6 +49,63 @@ class KmeansPlusPlusInitializationTest(test.TestCase):
                                                    [101., 1.],
                                                    [101., 1.]],
           atol=1.0)
+
+  def testBasic(self):
+    for seed in range(100):
+      self.runTestWithSeed(seed)
+
+
+class KMC2InitializationTest(test.TestCase):
+
+  def runTestWithSeed(self, seed):
+    with self.cached_session():
+      distances = np.zeros(1000).astype(np.float32)
+      distances[6] = 10e7
+      distances[4] = 10e3
+
+      sampled_point = clustering_ops.kmc2_chain_initialization(distances, seed)
+      self.assertEquals(sampled_point.eval(), 6)
+      distances[6] = 0.0
+      sampled_point = clustering_ops.kmc2_chain_initialization(distances, seed)
+      self.assertEquals(sampled_point.eval(), 4)
+
+  def testBasic(self):
+    for seed in range(100):
+      self.runTestWithSeed(seed)
+
+
+class KMC2InitializationLargeTest(test.TestCase):
+
+  def setUp(self):
+    self._distances = np.zeros(1001)
+    self._distances[500] = 100.0
+    self._distances[1000] = 50.0
+
+  def testBasic(self):
+    with self.cached_session():
+      counts = {}
+      seed = 0
+      for i in range(50):
+        sample = clustering_ops.kmc2_chain_initialization(
+            self._distances, seed + i).eval()
+        counts[sample] = counts.get(sample, 0) + 1
+      self.assertEquals(len(counts), 2)
+      self.assertTrue(500 in counts)
+      self.assertTrue(1000 in counts)
+      self.assertGreaterEqual(counts[500], 5)
+      self.assertGreaterEqual(counts[1000], 5)
+
+
+class KMC2InitializationCornercaseTest(test.TestCase):
+
+  def setUp(self):
+    self._distances = np.zeros(10)
+
+  def runTestWithSeed(self, seed):
+    with self.cached_session():
+      sampled_point = clustering_ops.kmc2_chain_initialization(
+          self._distances, seed)
+      self.assertEquals(sampled_point.eval(), 0)
 
   def testBasic(self):
     for seed in range(100):
@@ -71,14 +128,14 @@ class NearestCentersTest(test.TestCase):
                               [1., 1.]]).astype(np.float32)
 
   def testNearest1(self):
-    with self.test_session():
+    with self.cached_session():
       [indices, distances] = clustering_ops.nearest_neighbors(self._points,
                                                               self._centers, 1)
       self.assertAllClose(indices.eval(), [[0], [0], [1], [4]])
       self.assertAllClose(distances.eval(), [[0.], [5.], [1.], [0.]])
 
   def testNearest2(self):
-    with self.test_session():
+    with self.cached_session():
       [indices, distances] = clustering_ops.nearest_neighbors(self._points,
                                                               self._centers, 2)
       self.assertAllClose(indices.eval(), [[0, 1], [0, 1], [1, 0], [4, 3]])
@@ -123,7 +180,7 @@ class NearestCentersLargeTest(test.TestCase):
                    expected_nearest_neighbor_squared_distances))
 
   def testNearest1(self):
-    with self.test_session():
+    with self.cached_session():
       [indices, distances] = clustering_ops.nearest_neighbors(self._points,
                                                               self._centers, 1)
       self.assertAllClose(indices.eval(),
@@ -133,7 +190,7 @@ class NearestCentersLargeTest(test.TestCase):
           self._expected_nearest_neighbor_squared_distances[:, [0]])
 
   def testNearest5(self):
-    with self.test_session():
+    with self.cached_session():
       [indices, distances] = clustering_ops.nearest_neighbors(self._points,
                                                               self._centers, 5)
       self.assertAllClose(indices.eval(),

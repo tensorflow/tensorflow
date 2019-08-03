@@ -5,6 +5,7 @@ tensorflow {
     *TF_*;
     *TFE_*;
     *nsync_*;
+    *stream_executor*;
   local:
     *;
 };

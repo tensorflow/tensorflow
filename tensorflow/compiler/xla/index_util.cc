@@ -18,25 +18,22 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
 /* static */ int64 IndexUtil::MultidimensionalIndexToLinearIndex(
-    const Shape& shape, tensorflow::gtl::ArraySlice<int64> multi_index) {
+    const Shape& shape, absl::Span<const int64> multi_index) {
   DCHECK_EQ(shape.dimensions_size(), multi_index.size());
-  // Padding and nested layouts not supported yet.
-  DCHECK_EQ(0, shape.layout().padded_dimensions_size());
 
   for (size_t i = 0; i < multi_index.size(); ++i) {
     DCHECK_GE(multi_index[i], 0);
     DCHECK_LT(multi_index[i], shape.dimensions(i))
         << "indexing beyond extent in dimension " << i << ":"
-        << "\n\tindex: " << tensorflow::str_util::Join(multi_index, ",")
+        << "\n\tindex: " << absl::StrJoin(multi_index, ",")
         << "\n\tshape: " << ShapeUtil::HumanString(shape);
   }
 
@@ -78,7 +75,7 @@ namespace xla {
   int64 scale = 1;
   int64 linear_index = 0;
   bool first = true;
-  for (auto dimension : shape.layout().minor_to_major()) {
+  for (auto dimension : LayoutUtil::MinorToMajor(shape)) {
     if (first) {
       // Avoid two multiplies on the first loop iteration
       linear_index = multi_index[dimension];
@@ -94,8 +91,6 @@ namespace xla {
 
 /* static */ std::vector<int64> IndexUtil::LinearIndexToMultidimensionalIndex(
     const Shape& shape, int64 linear_index) {
-  // Padding and nested layouts not supported yet.
-  DCHECK_EQ(0, shape.layout().padded_dimensions_size());
   DCHECK_GE(linear_index, 0);
   DCHECK_LT(linear_index, ShapeUtil::ElementsIn(shape));
 
@@ -110,7 +105,7 @@ namespace xla {
 
   // Accumulated product D{L(0)} * D{L(1)} * ...
   int64 divisor = 1;
-  for (auto dimension : shape.layout().minor_to_major()) {
+  for (auto dimension : LayoutUtil::MinorToMajor(shape)) {
     multi_index[dimension] =
         (linear_index / divisor) % shape.dimensions(dimension);
     divisor *= shape.dimensions(dimension);
@@ -118,12 +113,14 @@ namespace xla {
   return multi_index;
 }
 
-/* static */ bool IndexUtil::BumpIndices(
-    const Shape& shape, tensorflow::gtl::MutableArraySlice<int64> indices) {
+/* static */ bool IndexUtil::BumpIndices(const Shape& shape,
+                                         absl::Span<int64> indices) {
   for (int64 dimno = indices.size() - 1; dimno >= 0; --dimno) {
     int64 limit = shape.dimensions(dimno);
     if (indices[dimno] + 1 < limit) {
       indices[dimno]++;
+      // Whenever an index of a dimension is increased, it means that all
+      // following dimensions have maxed out, so they must go to 0.
       std::fill(indices.begin() + dimno + 1, indices.end(), 0);
       return true;
     }
@@ -133,21 +130,42 @@ namespace xla {
 
 /* static */ int64 IndexUtil::GetDimensionStride(const Shape& shape,
                                                  int64 dimension) {
-  const Layout& layout = shape.layout();
-  int64 pdim_size = layout.padded_dimensions_size();
   int64 stride = 1;
-  DCHECK(pdim_size == 0 || pdim_size == shape.dimensions_size());
-  for (auto dim : layout.minor_to_major()) {
+  for (auto dim : LayoutUtil::MinorToMajor(shape)) {
     if (dim == dimension) {
       break;
     }
-    if (pdim_size == 0) {
-      stride *= shape.dimensions(dim);
-    } else {
-      stride *= layout.padded_dimensions(dim);
-    }
+    stride *= shape.dimensions()[dim];
   }
   return stride;
+}
+
+/* static */ bool IndexUtil::IndexInBounds(const Shape& shape,
+                                           absl::Span<const int64> index) {
+  int64 rank = shape.rank();
+  if (rank != index.size()) {
+    return false;
+  }
+  for (int64 d = 0; d < rank; ++d) {
+    if (index[d] >= shape.dimensions(d)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/* static */ int IndexUtil::CompareIndices(absl::Span<const int64> lhs,
+                                           absl::Span<const int64> rhs) {
+  int64 rank = lhs.size();
+  CHECK_EQ(rhs.size(), rank);
+  for (int64 dim = 0; dim < rank; ++dim) {
+    if (lhs[dim] < rhs[dim]) {
+      return -1;
+    } else if (lhs[dim] > rhs[dim]) {
+      return 1;
+    }
+  }
+  return 0;
 }
 
 }  // namespace xla

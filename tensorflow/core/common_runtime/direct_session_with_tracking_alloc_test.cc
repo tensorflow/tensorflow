@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -70,6 +71,15 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
   options.config.mutable_graph_options()->set_build_cost_model(1);
+  options.config.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_constant_folding(RewriterConfig::OFF);
+  options.config.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_min_graph_nodes(-1);
+  options.config.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_pin_to_host_optimization(RewriterConfig::OFF);
   std::unique_ptr<Session> session(NewSession(options));
   TF_ASSERT_OK(session->Create(def));
   std::vector<std::pair<string, Tensor>> inputs;
@@ -97,6 +107,16 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
         EXPECT_EQ(2, shape.dim_size());
         EXPECT_EQ(2, shape.dim(0).size());
         EXPECT_EQ(1, shape.dim(1).size());
+        // if MKL is used, it goes through additional
+        // graph rewrite pass on top of Tensorflow.
+        // In TF, every time a graph pass
+        // happens, "constant" nodes are allocated
+        // and deallocated. Each allocation calls the
+        // (FindChunkPtr of BFCAllocator),
+        // which increments the value of AllocationId.
+        // Thus AllocationId of MKL can differ with TF if
+        // someone changes the relevant codes in BFCAllocator.
+        // Currently they are the same.
         if (node->name() == y->name()) {
           EXPECT_EQ(3, cm->AllocationId(node, 0));
         } else {
@@ -138,7 +158,7 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelWarmup) {
   DirectSession* ds = static_cast<DirectSession*>(session.get());
   CostModelManager::CostModelMap cost_models;
   ds->ExportCostModels(&cost_models);
-  CHECK_EQ(cost_models.size(), 1);
+  CHECK_GE(cost_models.size(), 1);
   const CostModel* cm = (*cost_models.begin()).second;
   EXPECT_EQ(measure_steps, cm->GetUpdateTimes());
 }
@@ -157,14 +177,14 @@ static void TestHWAccelerator(bool enableHWTrace) {
   x->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
 #ifdef TENSORFLOW_USE_SYCL
   x->set_assigned_device_name("/job:localhost/replica:0/task:0/device:SYCL:0");
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
   // y = A * x
   Node* y = test::graph::Matmul(&graph, a, x, false, false);
   y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
 #ifdef TENSORFLOW_USE_SYCL
-y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:SYCL:0");
-#endif // TENSORFLOW_USE_SYCL
+  y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:SYCL:0");
+#endif  // TENSORFLOW_USE_SYCL
 
   Node* y_neg = test::graph::Unary(&graph, "Neg", y);
   y_neg->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
@@ -177,7 +197,7 @@ y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:SYCL:0");
   (*options.config.mutable_device_count())["GPU"] = 1;
 #ifdef TENSORFLOW_USE_SYCL
   (*options.config.mutable_device_count())["SYCL"] = 1;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
   options.config.set_allow_soft_placement(true);
   options.config.mutable_graph_options()->set_build_cost_model(1);
   std::unique_ptr<Session> session(NewSession(options));
@@ -318,6 +338,9 @@ TEST(DirectSessionWithTrackingAllocTest, TrackMemoryAllocation) {
 
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
+  options.config.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_constant_folding(RewriterConfig::OFF);
   std::unique_ptr<Session> session(NewSession(options));
   TF_ASSERT_OK(session->Create(def));
   std::vector<std::pair<string, Tensor>> inputs;

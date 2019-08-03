@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_INIT_MAIN_H_
-#define TENSORFLOW_PLATFORM_INIT_MAIN_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_INIT_MAIN_H_
+#define TENSORFLOW_CORE_PLATFORM_INIT_MAIN_H_
 
 namespace tensorflow {
 namespace port {
 
-// Platform-specific initialization routine that may be invoked by a
+// Platform-specific initialization routine that should be invoked by a
 // main() program that uses TensorFlow.
-//
-// Default implementation does nothing.
+// This performs necessary initialization on some platforms; TensorFlow
+// may not work unless it has been called.
 void InitMain(const char* usage, int* argc, char*** argv);
 
 }  // namespace port
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_INIT_MAIN_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_INIT_MAIN_H_

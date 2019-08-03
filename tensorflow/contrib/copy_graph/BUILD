@@ -1,13 +1,14 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "copy_graph_py",
@@ -27,8 +28,8 @@ py_library(
 
 py_test(
     name = "copy_test",
-    size = "small",
     srcs = glob(["python/util/copy_test.py"]),
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":copy_graph_py",
@@ -41,16 +42,4 @@ py_test(
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

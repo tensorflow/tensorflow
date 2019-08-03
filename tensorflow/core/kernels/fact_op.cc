@@ -122,13 +122,9 @@ static string D(const char* s) {
   return ret;
 }
 
-REGISTER_KERNEL_BUILDER(Name("Fact")
-                            .Device(DEVICE_CPU)
-                            .Label(D("Yoxmos").c_str()),
-                        FactOpKernel2);
-REGISTER_KERNEL_BUILDER(Name("Fact")
-                            .Device(DEVICE_CPU)
-                            .Label(D("yoxmos").c_str()),
-                        FactOpKernel2);
+REGISTER_KERNEL_BUILDER(
+    Name("Fact").Device(DEVICE_CPU).Label(D("Yoxmos").c_str()), FactOpKernel2);
+REGISTER_KERNEL_BUILDER(
+    Name("Fact").Device(DEVICE_CPU).Label(D("yoxmos").c_str()), FactOpKernel2);
 
 }  // namespace tensorflow

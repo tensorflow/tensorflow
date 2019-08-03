@@ -1,11 +1,12 @@
 # Description:
 #   TensorFlow C++ inference example for labeling images.
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
@@ -24,7 +25,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "wav_to_spectrogram",
     srcs = ["main.cc"],
     deps = [
@@ -34,7 +35,7 @@ cc_binary(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "wav_to_spectrogram_test",
     size = "medium",
     srcs = ["wav_to_spectrogram_test.cc"],
@@ -45,18 +46,4 @@ cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "bin/**",
-            "gen/**",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

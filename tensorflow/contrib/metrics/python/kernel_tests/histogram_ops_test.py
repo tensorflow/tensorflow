@@ -31,21 +31,21 @@ class Strict1dCumsumTest(test.TestCase):
   """Test this private function."""
 
   def test_empty_tensor_returns_empty(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = constant_op.constant([])
       result = histogram_ops._strict_1d_cumsum(tensor, 0)
       expected = constant_op.constant([])
       np.testing.assert_array_equal(expected.eval(), result.eval())
 
   def test_length_1_tensor_works(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = constant_op.constant([3], dtype=dtypes.float32)
       result = histogram_ops._strict_1d_cumsum(tensor, 1)
       expected = constant_op.constant([3], dtype=dtypes.float32)
       np.testing.assert_array_equal(expected.eval(), result.eval())
 
   def test_length_3_tensor_works(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = constant_op.constant([1, 2, 3], dtype=dtypes.float32)
       result = histogram_ops._strict_1d_cumsum(tensor, 3)
       expected = constant_op.constant([1, 3, 6], dtype=dtypes.float32)
@@ -58,7 +58,7 @@ class AUCUsingHistogramTest(test.TestCase):
     self.rng = np.random.RandomState(0)
 
   def test_empty_labels_and_scores_gives_nan_auc(self):
-    with self.test_session():
+    with self.cached_session():
       labels = constant_op.constant([], shape=[0], dtype=dtypes.bool)
       scores = constant_op.constant([], shape=[0], dtype=dtypes.float32)
       score_range = [0, 1.]
@@ -155,7 +155,7 @@ class AUCUsingHistogramTest(test.TestCase):
         from synthetic data.
     """
     score_range = [0, 1.] or score_range
-    with self.test_session():
+    with self.cached_session():
       labels = array_ops.placeholder(dtypes.bool, shape=[num_records])
       scores = array_ops.placeholder(dtypes.float32, shape=[num_records])
       auc, update_op = histogram_ops.auc_using_histogram(

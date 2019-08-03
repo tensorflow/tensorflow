@@ -36,8 +36,8 @@ namespace {
 const char* const kGradientSuffix = " (gradient)";
 
 // Convert to Trace proto into a short readable string.
-string GetTraceString(const CodeDef::Trace& trace) {
-  string ntrace = io::Basename(trace.file()).ToString();
+string GetTraceString(const CallStack::Trace& trace) {
+  string ntrace(io::Basename(trace.file()));
   ntrace += strings::StrCat(":", trace.lineno());
   if (trace.function().length() < 20) {
     ntrace += ":" + trace.function();
@@ -112,7 +112,11 @@ class FunctionTable {
     pprof::Function* func_pb = &function_table_[key];
     // function index should start from 1.
     func_pb->set_id(function_table_.size());
-    func_pb->set_name(string_table_->GetIndex(func_name));
+
+    string file_base(io::Basename(file_path));
+    file_base = file_base.substr(0, file_base.find_last_of("."));
+    func_pb->set_name(
+        string_table_->GetIndex(strings::StrCat(file_base, ":", func_name)));
     func_pb->set_filename(string_table_->GetIndex(file_path));
     func_pb->set_start_line(func_start_line);
     return func_pb->id();
@@ -142,6 +146,7 @@ class LocationTable {
                   uint64 called_func_start_line) {
     auto key = std::tuple<string, string, uint64>(
         file_path, called_function_name, line_number);
+
     auto idx = location_table_.find(key);
     if (idx != location_table_.end()) {
       return idx->second.id();
@@ -178,7 +183,7 @@ class Samples {
   // This method adds the statistics of graph nodes created by the python
   // call.
   void Add(const CodeNode* node, const std::vector<uint64>& location_ids) {
-    // displayed leaf might not be true leaf. Retrive the true leaves for
+    // displayed leaf might not be true leaf. Retrieve the true leaves for
     // stats.
     std::vector<const CodeNode*> all_leaf = FetchAllLeaf(node);
     CHECK(!all_leaf.empty()) << node->name();
@@ -290,13 +295,23 @@ class PprofProfileImpl : public PprofProfile {
     io::ZlibOutputBuffer* zlib_output_buffer = new io::ZlibOutputBuffer(
         file.get(), buf_size, buf_size, io::ZlibCompressionOptions::GZIP());
     s = zlib_output_buffer->Init();
-    if (!s.ok()) return s;
+    if (!s.ok()) {
+      delete zlib_output_buffer;
+      return s;
+    }
     s = zlib_output_buffer->Append(profile_pb.SerializeAsString());
-    if (!s.ok()) return s;
+    if (!s.ok()) {
+      delete zlib_output_buffer;
+      return s;
+    }
     s = zlib_output_buffer->Close();
-    if (!s.ok()) return s;
+    if (!s.ok()) {
+      delete zlib_output_buffer;
+      return s;
+    }
     fprintf(stdout, "\nRun pprof -png --nodecount=100 --sample_index=1 <%s>\n",
             filename.c_str());
+    delete zlib_output_buffer;
     return s;
   }
 
@@ -376,10 +391,9 @@ class PprofProfileImpl : public PprofProfile {
 }  // namespace
 
 void TFCode::AddNode(TFGraphNode* node) {
-  if (node->code().traces_size() == 0) {
+  if (!node->call_stack() || node->call_stack()->traces().empty()) {
     return;
   }
-
   // We infer the forward operation name from gradient op name. So, we can
   // map gradient op traces to forward op traces.
   // E.g. gradient node of 'inp_1/Conv2D' would be 'gradients/inp_1/Conv2D_grad.
@@ -397,40 +411,24 @@ void TFCode::AddNode(TFGraphNode* node) {
     forward_nodes_[node->name()] = node;
   }
 
-  // Track if this is the first trace (first node). If true, add all
-  // traces to common_traces_. Otherwise, remove uncommon traces from
-  // common traces_.
-  bool first_trace = false;
   if (!root_) {
     graph_root_.reset(new TFMultiGraphNode(kTFProfRoot));
     root_.reset(new CodeNode(graph_root_.get(), nullptr, ""));
-    first_trace = true;
   }
 
   CodeNode* pre_code_node = root_.get();
   // TODO(xpan): Consider to release CodeDef after TFCode is built. It
   // takes a lot of memory.
   std::set<string> traces;
-  for (int i = 0; i < node->code().traces_size(); ++i) {
+  for (int i = 0; i < node->call_stack()->traces().size(); ++i) {
     // Unlike op name, which is globally unique, trace name is only unique
     // w.r.t. it's parent.
-    const string& trace = GetTraceString(node->code().traces(i));
+    const string& trace = GetTraceString(node->call_stack()->traces().at(i));
     traces.insert(trace);
-    pre_code_node =
-        pre_code_node->AddChildren(trace, &node->code().traces(i), "");
-    if (i == node->code().traces_size() - 1) {
+    pre_code_node = pre_code_node->AddChildren(
+        trace, &node->call_stack()->traces().at(i), "");
+    if (i == node->call_stack()->traces().size() - 1) {
       pre_code_node->node->AddGraphNode(node);
-    }
-  }
-  if (first_trace) {
-    common_traces_.insert(traces.begin(), traces.end());
-  } else {
-    for (auto it = common_traces_.begin(); it != common_traces_.end();) {
-      if (traces.find(*it) == traces.end()) {
-        common_traces_.erase(it++);
-      } else {
-        ++it;
-      }
     }
   }
 }
@@ -447,12 +445,12 @@ void TFCode::Build() {
     TFGraphNode* fn = forward_it->second;
     CodeNode* leaf = nullptr;
     CodeNode* pre_code_node = root_.get();
-    for (int i = 0; i < fn->code().traces_size(); ++i) {
+    for (int i = 0; i < fn->call_stack()->traces().size(); ++i) {
       const string& trace =
-          GetTraceString(fn->code().traces(i)) + kGradientSuffix;
-      pre_code_node = pre_code_node->AddChildren(trace, &fn->code().traces(i),
-                                                 kGradientSuffix);
-      if (i == fn->code().traces_size() - 1) {
+          GetTraceString(fn->call_stack()->traces().at(i)) + kGradientSuffix;
+      pre_code_node = pre_code_node->AddChildren(
+          trace, &fn->call_stack()->traces().at(i), kGradientSuffix);
+      if (i == fn->call_stack()->traces().size() - 1) {
         leaf = pre_code_node;
       }
     }
@@ -462,17 +460,6 @@ void TFCode::Build() {
   }
   if (unaccounted_nodes > 0) {
     fprintf(stderr, "%lld gradient nodes not accounted\n", unaccounted_nodes);
-  }
-
-  // For trace that all traces share, such as "main", "apply_op", people
-  // are unlikely inerested. We track them and hide them from display.
-  if (forward_nodes_.size() > 100) {
-    std::set<string> tmp = common_traces_;
-    for (const string& t : tmp) {
-      common_traces_.insert(t + kGradientSuffix);
-    }
-  } else {
-    common_traces_.clear();
   }
 }
 
@@ -590,8 +577,7 @@ std::vector<CodeNode*> TFCode::PrintScope(const std::vector<CodeNode*> roots,
       continue;
     }
     int ident = last_ident;
-    bool show = ShouldShow(node, opts, depth) &&
-                common_traces_.find(node->name()) == common_traces_.end();
+    bool show = ShouldShow(node, opts, depth);
     if (show) ident += 2;
 
     std::vector<CodeNode*> show_cnodes =
@@ -696,11 +682,11 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts,
 
   if (opts.select.find(kShown[5]) != opts.select.end() &&
       !node->node->devices().empty()) {
-    attrs.push_back(str_util::Join(node->node->devices(), "|"));
+    attrs.push_back(absl::StrJoin(node->node->devices(), "|"));
   }
   if (opts.select.find(kShown[6]) != opts.select.end()) {
     std::set<string> op_types = node->node->op_types();
-    attrs.push_back(str_util::Join(op_types, "|"));
+    attrs.push_back(absl::StrJoin(op_types, "|"));
   }
   if (opts.select.find(kShown[7]) != opts.select.end()) {
     // TODO(xpan): Make op count available in code view?
@@ -712,7 +698,7 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts,
 
   return strings::Printf("%s%s (%s)\n", string(indent, ' ').c_str(),
                          node->name().c_str(),
-                         str_util::Join(attrs, ", ").c_str());
+                         absl::StrJoin(attrs, ", ").c_str());
 }
 }  // namespace tfprof
 }  // namespace tensorflow

@@ -13,10 +13,19 @@
 # limitations under the License.
 # ==============================================================================
 """Keras data preprocessing utils."""
-
+# pylint: disable=g-import-not-at-top
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import keras_preprocessing
+
+from tensorflow.python.keras import backend
+from tensorflow.python.keras import utils
+
+# This exists for compatibility with prior version of keras_preprocessing.
+# TODO(fchollet): remove in the future.
+keras_preprocessing.set_keras_submodules(backend=backend, utils=utils)
 
 from tensorflow.python.keras.preprocessing import image
 from tensorflow.python.keras.preprocessing import sequence

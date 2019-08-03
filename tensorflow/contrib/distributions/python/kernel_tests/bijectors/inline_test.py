@@ -32,16 +32,14 @@ class InlineBijectorTest(test.TestCase):
   """Tests correctness of the inline constructed bijector."""
 
   def testBijector(self):
-    with self.test_session():
-      exp = Exp(event_ndims=1)
+    with self.cached_session():
+      exp = Exp()
       inline = Inline(
           forward_fn=math_ops.exp,
           inverse_fn=math_ops.log,
-          inverse_log_det_jacobian_fn=(
-              lambda y: -math_ops.reduce_sum(  # pylint: disable=g-long-lambda
-                  math_ops.log(y), reduction_indices=-1)),
-          forward_log_det_jacobian_fn=(
-              lambda x: math_ops.reduce_sum(x, reduction_indices=-1)),
+          inverse_log_det_jacobian_fn=lambda y: -math_ops.log(y),
+          forward_log_det_jacobian_fn=lambda x: x,
+          forward_min_event_ndims=0,
           name="exp")
 
       self.assertEqual(exp.name, inline.name)
@@ -51,17 +49,19 @@ class InlineBijectorTest(test.TestCase):
       self.assertAllClose(x, inline.inverse(y).eval())
       self.assertAllClose(
           -np.sum(np.log(y), axis=-1),
-          inline.inverse_log_det_jacobian(y).eval())
-      self.assertAllClose(-inline.inverse_log_det_jacobian(y).eval(),
-                          inline.forward_log_det_jacobian(x).eval())
+          inline.inverse_log_det_jacobian(y, event_ndims=1).eval())
+      self.assertAllClose(
+          -inline.inverse_log_det_jacobian(y, event_ndims=1).eval(),
+          inline.forward_log_det_jacobian(x, event_ndims=1).eval())
 
   def testShapeGetters(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = Inline(
           forward_event_shape_tensor_fn=lambda x: array_ops.concat((x, [1]), 0),
           forward_event_shape_fn=lambda x: x.as_list() + [1],
           inverse_event_shape_tensor_fn=lambda x: x[:-1],
           inverse_event_shape_fn=lambda x: x[:-1],
+          forward_min_event_ndims=0,
           name="shape_only")
       x = tensor_shape.TensorShape([1, 2, 3])
       y = tensor_shape.TensorShape([1, 2, 3, 1])

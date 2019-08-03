@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Estimator for Dynamic RNNs."""
+"""Estimator for Dynamic RNNs (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -540,6 +545,12 @@ def _get_dynamic_rnn_model_fn(
 
 
 class DynamicRnnEstimator(estimator.Estimator):
+  """Dynamically unrolled RNN (deprecated).
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
 
   def __init__(self,
                problem_type,
@@ -614,14 +625,14 @@ class DynamicRnnEstimator(estimator.Estimator):
       optimizer: The type of optimizer to use. Either a subclass of
         `Optimizer`, an instance of an `Optimizer`, a callback that returns an
         optimizer, or a string. Strings must be one of 'Adagrad', 'Adam',
-        'Ftrl', 'Momentum', 'RMSProp' or 'SGD. See `layers.optimize_loss` for
+        'Ftrl', 'Momentum', 'RMSProp' or 'SGD'. See `layers.optimize_loss` for
         more details.
       learning_rate: Learning rate. This argument has no effect if `optimizer`
         is an instance of an `Optimizer`.
       predict_probabilities: A boolean indicating whether to predict
         probabilities for all classes. Used only if `problem_type` is
         `ProblemType.CLASSIFICATION`
-      momentum: Momentum value. Only used if `optimizer_type` is 'Momentum'.
+      momentum: Momentum value. Only used if `optimizer` is 'Momentum'.
       gradient_clipping_norm: Parameter used for gradient clipping. If `None`,
         then no clipping is performed.
       dropout_keep_probabilities: a list of dropout probabilities or `None`.
@@ -639,7 +650,7 @@ class DynamicRnnEstimator(estimator.Estimator):
       ValueError: `problem_type` is not one of
         `ProblemType.LINEAR_REGRESSION` or `ProblemType.CLASSIFICATION`.
       ValueError: `problem_type` is `ProblemType.CLASSIFICATION` but
-        `num_classes` is not specifieProblemType
+        `num_classes` is not specified.
       ValueError: `prediction_type` is not one of
         `PredictionType.MULTIPLE_VALUE` or `PredictionType.SINGLE_VALUE`.
     """

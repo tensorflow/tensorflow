@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_COSTS_MEASURING_COST_ESTIMATOR_H_
-#define TENSORFLOW_GRAPPLER_COSTS_MEASURING_COST_ESTIMATOR_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_MEASURING_COST_ESTIMATOR_H_
+#define TENSORFLOW_CORE_GRAPPLER_COSTS_MEASURING_COST_ESTIMATOR_H_
 
 #include <string>
 #include <utility>
@@ -54,12 +54,12 @@ class MeasuringCostEstimator : public CostEstimator {
   // This implementation always returns OK.
   Status Initialize(const GrapplerItem& item) override;
 
-  // Runs the optimized version of the graph on the cluster, measure
-  // the runtimes of each operation, and annotated the CostGraphDef
-  // with the corresponding measurements.
+  // Runs the optimized version of the graph on the cluster, measures
+  // the runtimes of each operation, and annotates the CostGraphDef of
+  // RunMetadata with the corresponding measurements.
   // Returns the average latency for the whole graph.
-  Status PredictCosts(const GraphDef& optimized_graph, CostGraphDef* cost_graph,
-                      Costs* overall_cost) const override;
+  Status PredictCosts(const GraphDef& optimized_graph,
+                      RunMetadata* run_metadata, Costs* cost) const override;
 
  private:
   Cluster* cluster_;  // Not owned.
@@ -73,4 +73,4 @@ class MeasuringCostEstimator : public CostEstimator {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_COSTS_MEASURING_COST_ESTIMATOR_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_MEASURING_COST_ESTIMATOR_H_

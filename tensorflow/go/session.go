@@ -65,6 +65,64 @@ func NewSession(graph *Graph, options *SessionOptions) (*Session, error) {
 	return s, nil
 }
 
+// Device structure contains information about a device associated with a session, as returned by ListDevices()
+type Device struct {
+	Name, Type       string
+	MemoryLimitBytes int64
+}
+
+// String describes d and implements fmt.Stringer.
+func (d Device) String() string {
+	memStr := "no memory limit"
+	if d.MemoryLimitBytes >= 0 {
+		memStr = fmt.Sprintf("memory limit %d bytes", d.MemoryLimitBytes)
+	}
+	return fmt.Sprintf("(Device: name \"%s\", type %s, %s)", d.Name, d.Type, memStr)
+}
+
+func deviceSliceFromDeviceList(list *C.TF_DeviceList) ([]Device, error) {
+	var devices []Device
+	status := newStatus()
+
+	for i := 0; i < int(C.TF_DeviceListCount(list)); i++ {
+		name := C.TF_DeviceListName(list, C.int(i), status.c)
+		if err := status.Err(); err != nil {
+			return nil, fmt.Errorf("DeviceListName(index=%d) failed: %v", i, err)
+		}
+
+		deviceType := C.TF_DeviceListType(list, C.int(i), status.c)
+		if err := status.Err(); err != nil {
+			return nil, fmt.Errorf("DeviceListType(index=%d) failed: %v", i, err)
+		}
+
+		memoryLimitBytes := C.TF_DeviceListMemoryBytes(list, C.int(i), status.c)
+		if err := status.Err(); err != nil {
+			return nil, fmt.Errorf("DeviceListMemoryBytes(index=%d) failed: %v", i, err)
+		}
+
+		device := Device{
+			Name:             C.GoString(name),
+			Type:             C.GoString(deviceType),
+			MemoryLimitBytes: int64(memoryLimitBytes),
+		}
+
+		devices = append(devices, device)
+	}
+
+	return devices, nil
+}
+
+// ListDevices returns the list of devices associated with a Session.
+func (s *Session) ListDevices() ([]Device, error) {
+	status := newStatus()
+	devicesList := C.TF_SessionListDevices(s.c, status.c)
+	if err := status.Err(); err != nil {
+		return nil, fmt.Errorf("SessionListDevices() failed: %v", err)
+	}
+	defer C.TF_DeleteDeviceList(devicesList)
+	return deviceSliceFromDeviceList(devicesList)
+}
+
 // Run the graph with the associated session starting with the supplied feeds
 // to compute the value of the requested fetches. Runs, but does not return
 // Tensors for operations specified in targets.
@@ -89,6 +147,10 @@ func (s *Session) Run(feeds map[Output]*Tensor, fetches []Output, targets []*Ope
 		ptrOutput(c.fetches), ptrTensor(c.fetchTensors), C.int(len(fetches)),
 		ptrOperation(c.targets), C.int(len(targets)),
 		nil, status.c)
+
+	// Make sure GC won't harvest input tensors until SessionRun() is finished
+	runtime.KeepAlive(feeds)
+
 	if err := status.Err(); err != nil {
 		return nil, err
 	}

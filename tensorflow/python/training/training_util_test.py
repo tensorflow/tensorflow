@@ -20,11 +20,14 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training import training_util
 
 
+@test_util.run_v1_only('b/120545219')
 class GlobalStepTest(test.TestCase):
 
   def _assert_global_step(self, global_step, expected_dtype=dtypes.int64):
@@ -48,7 +51,7 @@ class GlobalStepTest(test.TestCase):
   def test_invalid_shape(self):
     with ops.Graph().as_default() as g:
       self.assertIsNone(training_util.get_global_step())
-      variables.Variable(
+      variables.VariableV1(
           [0],
           trainable=False,
           dtype=dtypes.int32,
@@ -72,7 +75,7 @@ class GlobalStepTest(test.TestCase):
   def test_get_global_step(self):
     with ops.Graph().as_default() as g:
       self.assertIsNone(training_util.get_global_step())
-      variables.Variable(
+      variables.VariableV1(
           0,
           trainable=False,
           dtype=dtypes.int32,
@@ -87,6 +90,37 @@ class GlobalStepTest(test.TestCase):
       self.assertIsNone(training_util.get_global_step())
       self._assert_global_step(training_util.get_or_create_global_step())
       self._assert_global_step(training_util.get_or_create_global_step(g))
+
+
+@test_util.run_v1_only('b/120545219')
+class GlobalStepReadTest(test.TestCase):
+
+  def test_global_step_read_is_none_if_there_is_no_global_step(self):
+    with ops.Graph().as_default():
+      self.assertIsNone(training_util._get_or_create_global_step_read())
+      training_util.create_global_step()
+      self.assertIsNotNone(training_util._get_or_create_global_step_read())
+
+  def test_reads_from_cache(self):
+    with ops.Graph().as_default():
+      training_util.create_global_step()
+      first = training_util._get_or_create_global_step_read()
+      second = training_util._get_or_create_global_step_read()
+      self.assertEqual(first, second)
+
+  def test_reads_before_increments(self):
+    with ops.Graph().as_default():
+      training_util.create_global_step()
+      read_tensor = training_util._get_or_create_global_step_read()
+      inc_op = training_util._increment_global_step(1)
+      inc_three_op = training_util._increment_global_step(3)
+      with monitored_session.MonitoredTrainingSession() as sess:
+        read_value, _ = sess.run([read_tensor, inc_op])
+        self.assertEqual(0, read_value)
+        read_value, _ = sess.run([read_tensor, inc_three_op])
+        self.assertEqual(1, read_value)
+        read_value = sess.run(read_tensor)
+        self.assertEqual(4, read_value)
 
 
 if __name__ == '__main__':

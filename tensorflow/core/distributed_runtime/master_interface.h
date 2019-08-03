@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
+#include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/master.pb.h"
@@ -66,7 +67,9 @@ class MasterInterface {
   // The message returned from this method must only be used in a
   // `RunStep()` call on the same `MasterInterface` instance.
   virtual MutableRunStepRequestWrapper* CreateRunStepRequest() {
-    return new MutableProtoRunStepRequest;
+    MutableProtoRunStepRequest* ret = new MutableProtoRunStepRequest;
+    ret->request_.set_request_id(GetUniqueRequestId());
+    return ret;
   }
 
   // Returns a response object for use in calls to
@@ -88,6 +91,16 @@ class MasterInterface {
 
   virtual Status Reset(CallOptions* call_options, const ResetRequest* request,
                        ResetResponse* response) = 0;
+
+  virtual Status MakeCallable(CallOptions* call_options,
+                              const MakeCallableRequest* request,
+                              MakeCallableResponse* response) = 0;
+  virtual Status RunCallable(CallOptions* call_options,
+                             const RunCallableRequest* request,
+                             RunCallableResponse* response) = 0;
+  virtual Status ReleaseCallable(CallOptions* call_options,
+                                 const ReleaseCallableRequest* request,
+                                 ReleaseCallableResponse* response) = 0;
 
  protected:
   // NOTE: This should only be called by implementations of this

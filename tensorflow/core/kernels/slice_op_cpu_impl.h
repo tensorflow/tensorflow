@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SLICE_OP_CPU_IMPL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SLICE_OP_CPU_IMPL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SLICE_OP_CPU_IMPL_H_
+#define TENSORFLOW_CORE_KERNELS_SLICE_OP_CPU_IMPL_H_
 
 #define EIGEN_USE_THREADS
 
@@ -30,7 +30,6 @@ using CpuDevice = Eigen::ThreadPoolDevice;
   template struct functor::Slice<CpuDevice, T, CPU_PROVIDED_IXDIM>;
 
 TF_CALL_ALL_TYPES(DEFINE_CPU_KERNELS);
-DEFINE_CPU_KERNELS(bfloat16);
 
 #undef DEFINE_CPU_KERNELS
 
@@ -44,8 +43,8 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_SYCL_KERNELS);
 DEFINE_SYCL_KERNELS(int32);
 
 #undef DEFINE_SYCL_KERNELS
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SLICE_OP_CPU_IMPL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SLICE_OP_CPU_IMPL_H_

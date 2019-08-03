@@ -24,6 +24,8 @@ from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn.session_run_hook import SessionRunArgs
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
 from tensorflow.python.training.summary_io import SummaryWriterCache
@@ -149,12 +151,23 @@ class FeedFnHook(session_run_hook.SessionRunHook):
 class StopAfterNTrees(session_run_hook.SessionRunHook):
   """Stop training after building N full trees."""
 
-  def __init__(self, n, num_attempted_trees_tensor, num_finalized_trees_tensor):
+  def __init__(self, n, num_attempted_trees_tensor, num_finalized_trees_tensor,
+               override_global_step_value=None):
     self._num_trees = n
     # num_attempted_trees_tensor and num_finalized_trees_tensor are both
     # tensors.
     self._num_attempted_trees_tensor = num_attempted_trees_tensor
     self._num_finalized_trees_tensor = num_finalized_trees_tensor
+    self._override_global_step_value = override_global_step_value
+
+  def begin(self):
+    self._global_step_tensor = training_util.get_global_step()
+    if self._global_step_tensor is None:
+      raise RuntimeError("Global step should be created.")
+
+    if self._override_global_step_value is not None:
+      self._override_global_step_op = state_ops.assign(
+          self._global_step_tensor, self._override_global_step_value)
 
   def before_run(self, run_context):
     del run_context  # unused by StopTrainingAfterNTrees.
@@ -174,4 +187,44 @@ class StopAfterNTrees(session_run_hook.SessionRunHook):
         num_attempted_trees > 2 * self._num_trees):
       logging.info("Requesting stop since we have reached %d trees.",
                    num_finalized_trees)
+      if self._override_global_step_value is not None:
+        logging.info("Overriding global steps value.")
+        run_context.session.run(self._override_global_step_op)
       run_context.request_stop()
+
+
+class SwitchTrainOp(session_run_hook.SessionRunHook):
+  """Hook that switches the train op after specified number of steps.
+
+  Hook that replaces the train op depending on the number of steps of training
+  that have taken place. The first_train_op is used till train_steps steps
+  are reached. Thereafter the second_train_op is used.
+  """
+
+  def __init__(self, first_train_op, train_steps, second_train_op):
+    """Initializes a `SwitchTrainOp`."""
+    self._first_train_op = first_train_op
+    self._second_train_op = second_train_op
+    self._train_steps = train_steps
+
+  def _get_train_op_for_global_step(self, current_step):
+    """Gets train_op for current global step."""
+    if current_step < self._train_steps:
+      return self._first_train_op
+    return self._second_train_op
+
+  def begin(self):
+    self._global_step_tensor = training_util.get_global_step()
+    self._current_train_op = control_flow_ops.no_op()
+    if self._global_step_tensor is None:
+      raise RuntimeError(
+          "Global step should be created to use SwitchTrainOp.")
+
+  def before_run(self, run_context):  # pylint: disable=unused-argument
+    return session_run_hook.SessionRunArgs(
+        {"global_step": self._global_step_tensor,
+         "train_op": self._current_train_op})
+
+  def after_run(self, run_context, run_values):
+    self._current_train_op = self._get_train_op_for_global_step(
+        run_values.results["global_step"])

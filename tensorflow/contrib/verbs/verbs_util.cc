@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/contrib/verbs/verbs_util.h"
 
-#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/lib/core/notification.h"
+#include <vector>
+
+#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+
 namespace tensorflow {
 
 // static
@@ -40,7 +44,7 @@ void VerbsUtil::GetKeyAndStepId(const string& key_with_step_id, string& key,
   CHECK(parts.size() == 6) << "Key with step_id must have 6 parts";
   strings::safe_strto64(parts[5], &step_id);
   parts.pop_back();                        // remove step_id
-  key.assign(str_util::Join(parts, ";"));  // stitch them together
+  key.assign(absl::StrJoin(parts, ";"));   // stitch them together
 }
 
 }  // namespace tensorflow

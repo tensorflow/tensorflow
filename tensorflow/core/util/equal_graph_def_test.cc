@@ -56,7 +56,18 @@ class EqualGraphDefTest : public ::testing::Test {
     TF_EXPECT_OK(e_.ToGraphDef(&expected));
     GraphDef actual;
     TF_EXPECT_OK(a_.ToGraphDef(&actual));
-    return EqualGraphDef(actual, expected, &diff_);
+    bool match = EqualGraphDef(actual, expected, &diff_);
+    if (match) {
+      EXPECT_EQ(GraphDefHash(expected), GraphDefHash(actual));
+    } else {
+      // While, strictly speaking, this does not have to be the case,
+      // we want to check that our hash is more than "return 0;".
+      // If, in the extremely unlikely case, some different graphs
+      // legitimately produce equal hash values in this test, we can always
+      // tweak them a little to produce different hash values.
+      EXPECT_NE(GraphDefHash(expected), GraphDefHash(actual));
+    }
+    return match;
   }
 
   GraphDefBuilder e_;
@@ -74,7 +85,7 @@ TEST_F(EqualGraphDefTest, NoMatch) {
   Input(e_.opts().WithName("A"));
   Input(a_.opts().WithName("B"));
   EXPECT_FALSE(Match());
-  EXPECT_EQ("Did not find expected node 'A = Input[]()'", diff_);
+  EXPECT_EQ("Did not find expected node '{{node A}} = Input[]()'", diff_);
 }
 
 TEST_F(EqualGraphDefTest, MissingNode) {
@@ -82,7 +93,7 @@ TEST_F(EqualGraphDefTest, MissingNode) {
   Input(e_.opts().WithName("B"));
   Input(a_.opts().WithName("A"));
   EXPECT_FALSE(Match());
-  EXPECT_EQ("Did not find expected node 'B = Input[]()'", diff_);
+  EXPECT_EQ("Did not find expected node '{{node B}} = Input[]()'", diff_);
 }
 
 TEST_F(EqualGraphDefTest, ExtraNode) {
@@ -90,7 +101,7 @@ TEST_F(EqualGraphDefTest, ExtraNode) {
   Input(a_.opts().WithName("A"));
   Input(a_.opts().WithName("B"));
   EXPECT_FALSE(Match());
-  EXPECT_EQ("Found unexpected node 'B = Input[]()'", diff_);
+  EXPECT_EQ("Found unexpected node '{{node B}} = Input[]()'", diff_);
 }
 
 TEST_F(EqualGraphDefTest, NodeOrder) {

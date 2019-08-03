@@ -19,18 +19,15 @@ limitations under the License.
 #include <list>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 
 // This module contains a minimal subset of gmock functionality just
 // sufficient to execute the currently existing tests.
-namespace util {
-class Status;
-}  // namespace util
 
 namespace xla {
 template <typename T>
@@ -40,13 +37,10 @@ class Literal;
 namespace testing {
 
 namespace internal_status {
-inline const ::tensorflow::Status& GetStatus(
-    const ::tensorflow::Status& status) {
-  return status;
-}
+inline const Status& GetStatus(const Status& status) { return status; }
 
 template <typename T>
-inline const ::tensorflow::Status& GetStatus(const StatusOr<T>& status) {
+inline const Status& GetStatus(const StatusOr<T>& status) {
   return status.status();
 }
 }  // namespace internal_status
@@ -57,14 +51,17 @@ inline const ::tensorflow::Status& GetStatus(const StatusOr<T>& status) {
 // The following macros are similar to macros in gmock, but deliberately named
 // differently in order to avoid conflicts in files which include both.
 
-// Macros for testing the results of functions that return tensorflow::Status or
+// Macros for testing the results of functions that return Status or
 // StatusOr<T> (for any type T).
-#define EXPECT_IS_OK(expression)      \
-  EXPECT_EQ(tensorflow::Status::OK(), \
-            xla::testing::internal_status::GetStatus(expression))
+#define EXPECT_IS_OK(expression) \
+  EXPECT_EQ(Status::OK(), xla::testing::internal_status::GetStatus(expression))
+#define EXPECT_IS_NOT_OK(expression) \
+  EXPECT_NE(Status::OK(), xla::testing::internal_status::GetStatus(expression))
 #undef ASSERT_IS_OK
-#define ASSERT_IS_OK(expression)      \
-  ASSERT_EQ(tensorflow::Status::OK(), \
-            xla::testing::internal_status::GetStatus(expression))
+#define ASSERT_IS_OK(expression) \
+  ASSERT_EQ(Status::OK(), xla::testing::internal_status::GetStatus(expression))
+#undef ASSERT_IS_NOT_OK
+#define ASSERT_IS_NOT_OK(expression) \
+  ASSERT_NE(Status::OK(), xla::testing::internal_status::GetStatus(expression))
 
 #endif  // TENSORFLOW_COMPILER_XLA_TEST_HELPERS_H_

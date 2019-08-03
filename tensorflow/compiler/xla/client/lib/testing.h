@@ -20,27 +20,28 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/client.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
-// Generates fake data in a literal of the given shape, or returns an error
-// status if the element type is currently unhandled for fake data generation.
-StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape);
-
 // Generates fake data of the given shape on the device or dies. The fake data
 // is created by performing a computation on the device rather than transferring
 // data from the host to the device.
-std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
-                                              Client* client);
+//
+// The optional DebugOptions are used when generating fake data on the device.
+std::unique_ptr<GlobalData> MakeFakeDataOrDie(
+    const Shape& shape, Client* client, DebugOptions* debug_opts = nullptr);
 
 // Returns vector of GlobalData handles of fake data (created using
 // MakeFakeDataOrDie) that are correctly shaped arguments for the given
-// computation.
+// xla computation.
+//
+// The optional DebugOptions are used when generating fake data on the device.
 std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
-    const Computation& computation, Client* client);
+    const XlaComputation& computation, Client* client,
+    DebugOptions* debug_opts = nullptr);
 
 }  // namespace xla
 

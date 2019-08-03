@@ -13,31 +13,45 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_CORE_THREADPOOL_H_
-#define TENSORFLOW_LIB_CORE_THREADPOOL_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_THREADPOOL_H_
+#define TENSORFLOW_CORE_LIB_CORE_THREADPOOL_H_
 
 #include <functional>
 #include <memory>
+
+#include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
+namespace Eigen {
+class Allocator;
+class ThreadPoolInterface;
+struct ThreadPoolDevice;
+
+template <typename Environment>
+class ThreadPoolTempl;
+}  // namespace Eigen
+
 namespace tensorflow {
 namespace thread {
+
+struct EigenEnvironment;
 
 class ThreadPool {
  public:
   // Constructs a pool that contains "num_threads" threads with specified
   // "name". env->StartThread() is used to create individual threads with the
   // given ThreadOptions. If "low_latency_hint" is true the thread pool
-  // implementation may use it as a hint that lower latency if preferred at the
+  // implementation may use it as a hint that lower latency is preferred at the
   // cost of higher CPU usage, e.g. by letting one or more idle threads spin
   // wait. Conversely, if the threadpool is used to schedule high-latency
   // operations like I/O the hint should be set to false.
   //
   // REQUIRES: num_threads > 0
   ThreadPool(Env* env, const ThreadOptions& thread_options, const string& name,
-             int num_threads, bool low_latency_hint);
+             int num_threads, bool low_latency_hint,
+             Eigen::Allocator* allocator = nullptr);
 
   // Constructs a pool for low-latency ops that contains "num_threads" threads
   // with specified "name". env->StartThread() is used to create individual
@@ -52,12 +66,36 @@ class ThreadPool {
   ThreadPool(Env* env, const ThreadOptions& thread_options, const string& name,
              int num_threads);
 
+  // Constructs a pool that wraps around the thread::ThreadPoolInterface
+  // instance provided by the caller. Caller retains ownership of
+  // `user_threadpool` and must ensure its lifetime is longer than the
+  // ThreadPool instance.
+  explicit ThreadPool(thread::ThreadPoolInterface* user_threadpool);
+
   // Waits until all scheduled work has finished and then destroy the
   // set of threads.
   ~ThreadPool();
 
   // Schedules fn() for execution in the pool of threads.
   void Schedule(std::function<void()> fn);
+
+  void SetStealPartitions(
+      const std::vector<std::pair<unsigned, unsigned>>& partitions);
+
+  void ScheduleWithHint(std::function<void()> fn, int start, int limit);
+  // Requires 0 < block_size <= total.
+  // Spawns k threads and calls fn(i*block_size, (i+1)*block_size) from the
+  // ith thread (i>=0). When (i+1)*block_size > total, fn(i*block_size, total)
+  // is called instead. k = NumShardsUsedByTransformRangeConcurrently(...).
+  // Note that when there aren't enough threads in the pool to achieve full
+  // parallelism, function calls will be automatically queued.
+  void TransformRangeConcurrently(const int64 block_size, const int64 total,
+                                  const std::function<void(int64, int64)>& fn);
+
+  // Returns the number of threads spawned by calling TransformRangeConcurrently
+  // with these parameters.
+  int NumShardsUsedByTransformRangeConcurrently(const int64 block_size,
+                                                const int64 total);
 
   // ParallelFor shards the "total" units of work assuming each unit of work
   // having roughly "cost_per_unit" cost, in cycles. Each unit of work is
@@ -98,14 +136,23 @@ class ThreadPool {
   // thread in the pool. Returns -1 otherwise.
   int CurrentThreadId() const;
 
-  struct Impl;
+  // If ThreadPool implementation is compatible with Eigen::ThreadPoolInterface,
+  // returns a non-null pointer. The caller does not own the object the returned
+  // pointer points to, and should not attempt to delete.
+  Eigen::ThreadPoolInterface* AsEigenThreadPool() const;
 
  private:
-  std::unique_ptr<Impl> impl_;
+  // underlying_threadpool_ is the user_threadpool if user_threadpool is
+  // provided in the constructor. Otherwise it is the eigen_threadpool_.
+  Eigen::ThreadPoolInterface* underlying_threadpool_;
+  // eigen_threadpool_ is instantiated and owned by thread::ThreadPool if
+  // user_threadpool is not in the constructor.
+  std::unique_ptr<Eigen::ThreadPoolTempl<EigenEnvironment>> eigen_threadpool_;
+  std::unique_ptr<Eigen::ThreadPoolDevice> threadpool_device_;
   TF_DISALLOW_COPY_AND_ASSIGN(ThreadPool);
 };
 
 }  // namespace thread
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_THREADPOOL_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_THREADPOOL_H_

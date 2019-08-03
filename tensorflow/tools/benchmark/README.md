@@ -17,6 +17,7 @@ bazel build -c opt \
   --crosstool_top=//external:android/crosstool \
   --cpu=armeabi-v7a \
   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+  --config monolithic \
   tensorflow/tools/benchmark:benchmark_model
 ```
 
@@ -31,7 +32,7 @@ adb push bazel-bin/tensorflow/tools/benchmark/benchmark_model /data/local/tmp
 
 (4) Run the benchmark. For example:
 ```
-adb shell "/data/local/tmp/benchmark_model \
+adb shell /data/local/tmp/benchmark_model \
   --graph=/data/local/tmp/tensorflow_inception_graph.pb \
   --input_layer="input:0" \
   --input_layer_shape="1,224,224,3" \

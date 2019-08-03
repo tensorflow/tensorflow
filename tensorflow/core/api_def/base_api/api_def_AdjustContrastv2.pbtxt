@@ -1,0 +1,36 @@
+op {
+  graph_op_name: "AdjustContrastv2"
+  endpoint {
+    name: "AdjustContrast"
+  }
+  in_arg {
+    name: "images"
+    description: <<END
+Images to adjust.  At least 3-D.
+END
+  }
+  in_arg {
+    name: "contrast_factor"
+    description: <<END
+A float multiplier for adjusting contrast.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The contrast-adjusted image or images.
+END
+  }
+  summary: "Adjust the contrast of one or more images."
+  description: <<END
+`images` is a tensor of at least 3 dimensions.  The last 3 dimensions are
+interpreted as `[height, width, channels]`.  The other dimensions only
+represent a collection of images, such as `[batch, height, width, channels].`
+
+Contrast is adjusted independently for each channel of each image.
+
+For each channel, the Op first computes the mean of the image pixels in the
+channel and then adjusts each component of each pixel to
+`(x - mean) * contrast_factor + mean`.
+END
+}

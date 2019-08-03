@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/reduction_ops_gpu_kernels.h"
+#include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 
 namespace tensorflow {
 namespace functor {
@@ -52,7 +52,8 @@ typedef TTypes<float>::Tensor::Index Index;
   DEFINE_IDENTITY(T, R)
 
 DEFINE_FOR_TYPE_AND_R(complex128, Eigen::internal::SumReducer<complex128>);
-DEFINE_FOR_TYPE_AND_R(complex128, Eigen::internal::MeanReducer<complex128>);
+DEFINE_FOR_TYPE_AND_R(complex128, functor::MeanReducer<complex128>);
+DEFINE_FOR_TYPE_AND_R(complex128, functor::EuclideanNormReducer<complex128>);
 DEFINE_FOR_TYPE_AND_R(complex128, Eigen::internal::ProdReducer<complex128>);
 #undef DEFINE_FOR_TYPE_AND_R
 #undef DEFINE

@@ -35,7 +35,7 @@ import org.tensorflow.demo.env.Logger;
 
 /**
  * Wrapper for frozen detection models trained using the Tensorflow Object Detection API:
- * github.com/tensorflow/models/tree/master/object_detection
+ * github.com/tensorflow/models/tree/master/research/object_detection
  */
 public class TensorFlowObjectDetectionAPIModel implements Classifier {
   private static final Logger LOGGER = new Logger();
@@ -137,7 +137,7 @@ public class TensorFlowObjectDetectionAPIModel implements Classifier {
     Trace.beginSection("recognizeImage");
 
     Trace.beginSection("preprocessBitmap");
-    // Preprocess the image data from 0-255 int to normalized float based
+    // Preprocess the image data to extract R, G and B bytes from int of form 0x00RRGGBB
     // on the provided parameters.
     bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
 

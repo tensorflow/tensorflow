@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_DEBUG_IO_UTILS_H_
-#define TENSORFLOW_DEBUG_IO_UTILS_H_
+#ifndef TENSORFLOW_CORE_DEBUG_DEBUG_IO_UTILS_H_
+#define TENSORFLOW_CORE_DEBUG_DEBUG_IO_UTILS_H_
 
 #include <cstddef>
 #include <functional>
@@ -24,6 +24,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/debug/debug_node_key.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -45,38 +46,18 @@ struct DebugWatchAndURLSpec {
   const bool gated_grpc;
 };
 
-struct DebugNodeKey {
-  DebugNodeKey(const string& device_name, const string& node_name,
-               const int32 output_slot, const string& debug_op);
-
-  // Converts a device name string to a device path string.
-  // E.g., /job:localhost/replica:0/task:0/cpu:0 will be converted to
-  //   ,job_localhost,replica_0,task_0,cpu_0.
-  static const string DeviceNameToDevicePath(const string& device_name);
-
-  bool operator==(const DebugNodeKey& other) const;
-  bool operator!=(const DebugNodeKey& other) const;
-
-  const string device_name;
-  const string node_name;
-  const int32 output_slot;
-  const string debug_op;
-  const string debug_node_name;
-  const string device_path;
-};
-
+// TODO(cais): Put static functions and members in a namespace, not a class.
 class DebugIO {
  public:
   static const char* const kDebuggerPluginName;
 
-  static const char* const kMetadataFilePrefix;
   static const char* const kCoreMetadataTag;
-  static const char* const kDeviceTag;
   static const char* const kGraphTag;
   static const char* const kHashTag;
 
   static const char* const kFileURLScheme;
   static const char* const kGrpcURLScheme;
+  static const char* const kMemoryURLScheme;
 
   static Status PublishDebugMetadata(
       const int64 global_step, const int64 session_run_index,
@@ -97,14 +78,14 @@ class DebugIO {
   static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
-                                   const gtl::ArraySlice<string>& debug_urls,
+                                   const gtl::ArraySlice<string> debug_urls,
                                    const bool gated_grpc);
 
   // Convenience overload of the method above for no gated_grpc by default.
   static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
-                                   const gtl::ArraySlice<string>& debug_urls);
+                                   const gtl::ArraySlice<string> debug_urls);
 
   // Publishes a graph to a set of debug URLs.
   //
@@ -212,6 +193,26 @@ class DebugFileIO {
                                      const string& dir_name,
                                      const string& file_name);
 
+  // Request additional bytes to be dumped to the file system.
+  //
+  // Does not actually dump the bytes, but instead just performs the
+  // bookkeeping necessary to prevent the total dumped amount of data from
+  // exceeding the limit (default 100 GBytes or set customly through the
+  // environment variable TFDBG_DISK_BYTES_LIMIT).
+  //
+  // Args:
+  //   bytes: Number of bytes to request.
+  //
+  // Returns:
+  //   Whether the request is approved given the total dumping
+  //   limit.
+  static bool requestDiskByteUsage(uint64 bytes);
+
+  // Reset the disk byte usage to zero.
+  static void resetDiskByteUsage();
+
+  static uint64 global_disk_bytes_limit_;
+
  private:
   // Encapsulates the Tensor in an Event protobuf and write it to file.
   static Status DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
@@ -223,6 +224,15 @@ class DebugFileIO {
   // TODO(cais): Replace with shared implementation once http://b/30497715 is
   // fixed.
   static Status RecursiveCreateDir(Env* env, const string& dir);
+
+  // Tracks how much disk has been used so far.
+  static uint64 disk_bytes_used_;
+  // Mutex for thread-safe access to disk_bytes_used_.
+  static mutex bytes_mu_;
+  // Default limit for the disk space.
+  static const uint64 kDefaultGlobalDiskBytesLimit;
+
+  friend class DiskUsageLimitTest;
 };
 
 }  // namespace tensorflow
@@ -243,6 +253,7 @@ struct hash<::tensorflow::DebugNodeKey> {
 // TODO(cais): Support grpc:// debug URLs in open source once Python grpc
 //   genrule becomes available. See b/23796275.
 #ifndef PLATFORM_WINDOWS
+#include "grpcpp/channel.h"
 #include "tensorflow/core/debug/debug_service.grpc.pb.h"
 
 namespace tensorflow {
@@ -255,7 +266,7 @@ class DebugGrpcChannel {
   //   server_stream_addr: Address (host name and port) of the debug stream
   //     server implementing the EventListener service (see
   //     debug_service.proto). E.g., "127.0.0.1:12345".
-  DebugGrpcChannel(const string& server_stream_addr);
+  explicit DebugGrpcChannel(const string& server_stream_addr);
 
   virtual ~DebugGrpcChannel() {}
 
@@ -295,6 +306,16 @@ class DebugGrpcChannel {
   //   True iff the read is successful.
   bool ReadEventReply(EventReply* event_reply);
 
+  // Receive and process EventReply protos from the gRPC debug server.
+  //
+  // The processing includes setting debug watch key states using the
+  // DebugOpStateChange fields of the EventReply.
+  //
+  // Args:
+  //   max_replies: Maximum number of replies to receive. Will receive all
+  //     remaining replies iff max_replies == 0.
+  void ReceiveAndProcessEventReplies(size_t max_replies);
+
   // Receive EventReplies from server (if any) and close the stream and the
   // channel.
   Status ReceiveServerRepliesAndClose();
@@ -326,8 +347,19 @@ class DebugGrpcIO {
   // Sends an Event proto through a debug gRPC stream.
   // Thread-safety: Safe with respect to other calls to the same method and
   // calls to CloseGrpcStream().
-  static Status SendEventProtoThroughGrpcStream(const Event& event_proto,
-                                                const string& grpc_stream_url);
+  //
+  // Args:
+  //   event_proto: The Event proto to be sent.
+  //   grpc_stream_url: The grpc:// URL of the stream to use, e.g.,
+  //     "grpc://localhost:11011", "localhost:22022".
+  //   receive_reply: Whether an EventReply proto will be read after event_proto
+  //     is sent and before the function returns.
+  //
+  // Returns:
+  //   The Status of the operation.
+  static Status SendEventProtoThroughGrpcStream(
+      const Event& event_proto, const string& grpc_stream_url,
+      const bool receive_reply = false);
 
   // Receive an EventReply proto through a debug gRPC stream.
   static Status ReceiveEventReplyProtoThroughGrpcStream(
@@ -359,8 +391,21 @@ class DebugGrpcIO {
 
   // Returns a global map from grpc debug URLs to the corresponding
   // DebugGrpcChannels.
-  static std::unordered_map<string, std::shared_ptr<DebugGrpcChannel>>*
+  static std::unordered_map<string, std::unique_ptr<DebugGrpcChannel>>*
   GetStreamChannels();
+
+  // Get a DebugGrpcChannel object at a given URL, creating one if necessary.
+  //
+  // Args:
+  //   grpc_stream_url: grpc:// URL of the stream, e.g., "grpc://localhost:6064"
+  //   debug_grpc_channel: A pointer to the DebugGrpcChannel object, passed as a
+  //     a pointer to the pointer. The DebugGrpcChannel object is owned
+  //     statically elsewhere, not by the caller of this function.
+  //
+  // Returns:
+  //   Status of this operation.
+  static Status GetOrCreateDebugGrpcChannel(
+      const string& grpc_stream_url, DebugGrpcChannel** debug_grpc_channel);
 
   // Returns a map from debug URL to a map from debug op name to enabled state.
   static std::unordered_map<string, DebugNodeName2State>*
@@ -373,8 +418,8 @@ class DebugGrpcIO {
   // Clear enabled debug op state from all debug URLs (if any).
   static void ClearEnabledWatchKeys();
 
-  static mutex streams_mu;
-  static int64 channel_connection_timeout_micros;
+  static mutex streams_mu_;
+  static int64 channel_connection_timeout_micros_;
 
   friend class GrpcDebugTest;
   friend class DebugNumericSummaryOpTest;
@@ -383,4 +428,4 @@ class DebugGrpcIO {
 }  // namespace tensorflow
 #endif  // #ifndef(PLATFORM_WINDOWS)
 
-#endif  // TENSORFLOW_DEBUG_IO_UTILS_H_
+#endif  // TENSORFLOW_CORE_DEBUG_DEBUG_IO_UTILS_H_

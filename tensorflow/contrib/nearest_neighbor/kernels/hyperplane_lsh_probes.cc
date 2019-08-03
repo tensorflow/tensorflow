@@ -45,16 +45,16 @@ class HyperplaneLSHProbesOp : public OpKernel {
     const Tensor& products_tensor = context->input(0);
     OP_REQUIRES(context, products_tensor.dims() == 2,
                 InvalidArgument("Need a two-dimensional products tensor, got ",
-                                products_tensor.dims(), " dimensions."))
+                                products_tensor.dims(), " dimensions."));
 
     const Tensor& num_tables_tensor = context->input(1);
     OP_REQUIRES(context, num_tables_tensor.dims() == 0,
                 InvalidArgument("Need a scalar num_tables tensor, got ",
-                                num_tables_tensor.dims(), " dimensions."))
+                                num_tables_tensor.dims(), " dimensions."));
     int num_tables = num_tables_tensor.scalar<int32>()();
     OP_REQUIRES(context, num_tables >= 1,
                 InvalidArgument("num_tables must be at least 1 but got ",
-                                num_tables, "."))
+                                num_tables, "."));
     OP_REQUIRES(context, num_tables <= 1000,
                 InvalidArgument("Need num_tables <= 1000, got ", num_tables,
                                 ". This is mostly to protect against incorrect "
@@ -66,33 +66,36 @@ class HyperplaneLSHProbesOp : public OpKernel {
                 InvalidArgument("Need a scalar num_hyperplanes_per_table "
                                 "tensor, got ",
                                 num_hyperplanes_per_table_tensor.dims(),
-                                " dimensions."))
+                                " dimensions."));
     int num_hyperplanes_per_table =
         num_hyperplanes_per_table_tensor.scalar<int32>()();
     OP_REQUIRES(context, num_hyperplanes_per_table >= 1,
                 InvalidArgument("num_hyperplanes_per_table must be at least 1 "
-                                "but got ", num_hyperplanes_per_table, "."))
+                                "but got ",
+                                num_hyperplanes_per_table, "."));
     OP_REQUIRES(context, num_hyperplanes_per_table <= 30,
                 InvalidArgument("Need num_hyperplanes_per_table <= 30, got ",
-                                num_hyperplanes_per_table, ". "
+                                num_hyperplanes_per_table,
+                                ". "
                                 "If you need more hyperplanes, change this Op"
                                 " to work for larger integer types (int64)."));
 
     const Tensor& num_probes_tensor = context->input(3);
     OP_REQUIRES(context, num_probes_tensor.dims() == 0,
                 InvalidArgument("Need a scalar num_probes tensor, got ",
-                                num_probes_tensor.dims(), " dimensions."))
+                                num_probes_tensor.dims(), " dimensions."));
     int num_probes = num_probes_tensor.scalar<int32>()();
     OP_REQUIRES(context, num_probes >= 1,
-                InvalidArgument("num_probes must be at least 1."))
+                InvalidArgument("num_probes must be at least 1."));
 
     int expected_num_hyperplanes = num_tables * num_hyperplanes_per_table;
-    OP_REQUIRES(
-        context, products_tensor.dim_size(1) == expected_num_hyperplanes,
-        InvalidArgument("Expected number of hyperplanes is ",
-                        expected_num_hyperplanes, " but received ",
-                        products_tensor.dim_size(1), " inner products per "
-                        "point."));
+    OP_REQUIRES(context,
+                products_tensor.dim_size(1) == expected_num_hyperplanes,
+                InvalidArgument("Expected number of hyperplanes is ",
+                                expected_num_hyperplanes, " but received ",
+                                products_tensor.dim_size(1),
+                                " inner products per "
+                                "point."));
 
     auto products_eigen_tensor = products_tensor.matrix<CoordinateType>();
     ConstMatrixMap products_matrix(products_eigen_tensor.data(),
@@ -115,13 +118,11 @@ class HyperplaneLSHProbesOp : public OpKernel {
     // lschmidt's workstation.
     int64 cost_per_unit = 21 * num_hyperplanes_per_table * num_tables;
     if (num_probes > num_tables) {
-      cost_per_unit += 110 * num_hyperplanes_per_table
-          * (num_probes - num_tables);
+      cost_per_unit +=
+          110 * num_hyperplanes_per_table * (num_probes - num_tables);
     }
     context->device()->tensorflow_cpu_worker_threads()->workers->ParallelFor(
-        batch_size,
-        cost_per_unit,
-        [&](int64 start, int64 end) {
+        batch_size, cost_per_unit, [&](int64 start, int64 end) {
           HyperplaneMultiprobe<CoordinateType, int32> multiprobe(
               num_hyperplanes_per_table, num_tables);
 

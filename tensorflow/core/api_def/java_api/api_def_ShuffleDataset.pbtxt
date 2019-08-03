@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ShuffleDataset"
+  endpoint {
+    name: "data.ShuffleDataset"
+  }
+}

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import pooling as pooling_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
@@ -64,6 +65,7 @@ class PoolingTest(test.TestCase):
     output = layer.apply(images)
     self.assertListEqual(output.get_shape().as_list(), [5, 3, 4, 4])
 
+  @test_util.run_deprecated_v1
   def testCreateMaxPooling2DChannelsFirst(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, 2, height, width))
@@ -73,6 +75,7 @@ class PoolingTest(test.TestCase):
     output = layer.apply(images)
     self.assertListEqual(output.get_shape().as_list(), [5, 2, 6, 8])
 
+  @test_util.run_deprecated_v1
   def testCreateAveragePooling2DChannelsFirst(self):
     height, width = 5, 6
     images = random_ops.random_uniform((3, 4, height, width))
@@ -83,6 +86,7 @@ class PoolingTest(test.TestCase):
     output = layer.apply(images)
     self.assertListEqual(output.get_shape().as_list(), [3, 4, 4, 5])
 
+  @test_util.run_deprecated_v1
   def testCreateAveragePooling2DChannelsFirstWithNoneBatch(self):
     height, width = 5, 6
     images = array_ops.placeholder(dtype='float32',
@@ -96,33 +100,41 @@ class PoolingTest(test.TestCase):
 
   def testCreateMaxPooling1D(self):
     width = 7
-    images = random_ops.random_uniform((5, width, 4))
+    channels = 3
+    images = random_ops.random_uniform((5, width, channels))
     layer = pooling_layers.MaxPooling1D(2, strides=2)
     output = layer.apply(images)
-    self.assertListEqual(output.get_shape().as_list(), [5, 3, 4])
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, width // 2, channels])
 
   def testCreateAveragePooling1D(self):
     width = 7
-    images = random_ops.random_uniform((5, width, 4))
+    channels = 3
+    images = random_ops.random_uniform((5, width, channels))
     layer = pooling_layers.AveragePooling1D(2, strides=2)
     output = layer.apply(images)
-    self.assertListEqual(output.get_shape().as_list(), [5, 3, 4])
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, width // 2, channels])
 
   def testCreateMaxPooling1DChannelsFirst(self):
     width = 7
-    images = random_ops.random_uniform((5, width, 4))
+    channels = 3
+    images = random_ops.random_uniform((5, channels, width))
     layer = pooling_layers.MaxPooling1D(
         2, strides=2, data_format='channels_first')
     output = layer.apply(images)
-    self.assertListEqual(output.get_shape().as_list(), [5, 3, 4])
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, channels, width // 2])
 
   def testCreateAveragePooling1DChannelsFirst(self):
     width = 7
-    images = random_ops.random_uniform((5, width, 4))
+    channels = 3
+    images = random_ops.random_uniform((5, channels, width))
     layer = pooling_layers.AveragePooling1D(
         2, strides=2, data_format='channels_first')
     output = layer.apply(images)
-    self.assertListEqual(output.get_shape().as_list(), [5, 3, 4])
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, channels, width // 2])
 
   def testCreateMaxPooling3D(self):
     depth, height, width = 6, 7, 9

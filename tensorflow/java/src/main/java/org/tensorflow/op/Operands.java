@@ -33,12 +33,12 @@ public final class Operands {
    * @param inputs an iteration of input operands
    * @return an array of outputs
    */
-  public static Output[] asOutputs(Iterable<? extends Operand> inputs) {
-    List<Output> outputList = new ArrayList<>();
-    for (Operand input : inputs) {
+  public static Output<?>[] asOutputs(Iterable<? extends Operand<?>> inputs) {
+    List<Output<?>> outputList = new ArrayList<>();
+    for (Operand<?> input : inputs) {
       outputList.add(input.asOutput());
     }
-    return outputList.toArray(new Output[outputList.size()]);
+    return outputList.toArray(new Output<?>[outputList.size()]);
   }
 
   // Disabled constructor

@@ -1,0 +1,22 @@
+op {
+  graph_op_name: "BoostedTreesQuantileStreamResourceAddSummaries"
+  visibility: HIDDEN
+  in_arg {
+    name: "quantile_stream_resource_handle"
+    description: <<END
+resource handle referring to a QuantileStreamResource.
+END
+  }
+  in_arg {
+    name: "summaries"
+    description: <<END
+string; List of Rank 2 Tensor each containing the summaries for a single feature.
+END
+  }
+  summary: "Add the quantile summaries to each quantile stream resource."
+  description: <<END
+An op that adds a list of quantile summaries to a quantile stream resource. Each
+summary Tensor is rank 2, containing summaries (value, weight, min_rank, max_rank)
+for a single feature.
+END
+}

@@ -14,7 +14,9 @@
 # ==============================================================================
 """Training and input utilities.
 
-See @{$python/contrib.training} guide.
+See
+[Contrib Training](https://tensorflow.org/api_guides/python/contrib.training)
+guide.
 
 @@batch_sequences_with_states
 @@NextQueuedSequenceBatch

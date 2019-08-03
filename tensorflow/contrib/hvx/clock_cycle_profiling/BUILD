@@ -1,30 +1,20 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
     "tf_copts",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
 
-package(default_visibility = ["//visibility:public"])
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-cc_binary(
+tf_cc_binary(
     name = "clock_cycle_profiling",
     testonly = 1,
     srcs = ["clock_cycle_profiling_main.cc"],
@@ -51,13 +41,9 @@ cc_binary(
             "//tensorflow/core:android_tensorflow_test_lib",
         ],
         "//conditions:default": [
-            "//tensorflow/core:core_cpu",
             "//tensorflow/core:lib",
-            "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
-            "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:tensorflow",
-            "//tensorflow/core:test",
         ],
     }),
 )

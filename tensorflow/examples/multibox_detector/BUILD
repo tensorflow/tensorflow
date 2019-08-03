@@ -1,15 +1,16 @@
 # Description:
 #   TensorFlow C++ inference example for labeling images.
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-cc_binary(
+tf_cc_binary(
     name = "detect_objects",
     srcs = [
         "main.cc",
@@ -24,18 +25,4 @@ cc_binary(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "bin/**",
-            "gen/**",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

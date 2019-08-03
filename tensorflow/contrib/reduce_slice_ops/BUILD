@@ -1,15 +1,13 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_custom_op_library", "tf_gen_op_libs", "tf_gen_op_wrapper_py", "tf_kernel_library")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_kernel_tests_linkstatic")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_kernel_tests_linkstatic")
 
 tf_custom_op_library(
     name = "python/ops/_reduce_slice_ops.so",
@@ -71,6 +69,7 @@ tf_custom_op_py_library(
         ":reduce_slice_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -99,16 +98,4 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

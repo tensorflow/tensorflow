@@ -1,16 +1,19 @@
 # Description:
 #   Utilities that perform useful transformations on graphs
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_not_v2",
     "if_not_windows",
-    "tf_copts",
+    "tf_cc_binary",
     "tf_cc_test",
+    "tf_copts",
     "tf_py_test",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
@@ -26,7 +29,6 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -65,10 +67,8 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
     ],
 )
 
@@ -93,29 +93,28 @@ cc_library(
     srcs = [
         "add_default_attributes.cc",
         "backports.cc",
-        "fake_quantize_training.cc",
+        "flatten_atrous.cc",
         "fold_batch_norms.cc",
         "fold_constants_lib.cc",
         "fold_old_batch_norms.cc",
         "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
         "insert_logging.cc",
-        "remove_ema.cc",
         "obfuscate_names.cc",
+        "quantize_nodes.cc",
+        "quantize_weights.cc",
         "remove_attribute.cc",
+        "remove_control_dependencies.cc",
         "remove_device.cc",
         "remove_nodes.cc",
         "rename_attribute.cc",
         "rename_op.cc",
+        "round_weights.cc",
         "set_device.cc",
         "sort_by_execution_order.cc",
         "sparsify_gather.cc",
         "strip_unused_nodes.cc",
-    ] + if_not_windows([
-        "quantize_nodes.cc",
-        "quantize_weights.cc",
-        "round_weights.cc",
-    ]),
+    ],
     hdrs = [
         "fold_constants_lib.h",
     ],
@@ -123,17 +122,43 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":transform_utils",
+        "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/kernels:quantization_utils",
     ] + if_not_windows([
-        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:remote_fused_graph_rewriter_transform",
         "//tensorflow/core/kernels/hexagon:hexagon_rewriter_transform",
+        "//tensorflow/core:sparse_ops_op_lib",
+        "//tensorflow/core:parsing_ops_op_lib",
+        "//tensorflow/core:sendrecv_ops_op_lib",
+        "//tensorflow/core:io_ops_op_lib",
+        "//tensorflow/core:logging_ops_op_lib",
+        "//tensorflow/core:lookup_ops_op_lib",
+        "//tensorflow/core:data_flow_ops_op_lib",
+        "//tensorflow/core:no_op_op_lib",
+        "//tensorflow/core:state_ops_op_lib",
+        "//tensorflow/core:user_ops_op_lib",
+        "//tensorflow/core:training_ops_op_lib",
+        "//tensorflow/core:string_ops_op_lib",
+        "//tensorflow/core:remote_fused_graph_ops_op_lib",
+        "//tensorflow/core:random_ops_op_lib",
+        "//tensorflow/core:rnn_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:manip_ops_op_lib",
+        "//tensorflow/core:list_ops_op_lib",
+        "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:control_flow_ops_op_lib",
+        "//tensorflow/core:candidate_sampling_ops_op_lib",
+        "//tensorflow/core:array_ops_op_lib",
     ]),
     alwayslink = 1,
 )
@@ -144,7 +169,7 @@ tf_cc_test(
     srcs = [
         "add_default_attributes_test.cc",
         "backports_test.cc",
-        "fake_quantize_training_test.cc",
+        "flatten_atrous_test.cc",
         "fold_batch_norms_test.cc",
         "fold_constants_test.cc",
         "fold_old_batch_norms_test.cc",
@@ -156,7 +181,6 @@ tf_cc_test(
         "quantize_weights_test.cc",
         "remove_attribute_test.cc",
         "remove_device_test.cc",
-        "remove_ema_test.cc",
         "remove_nodes_test.cc",
         "rename_attribute_test.cc",
         "rename_op_test.cc",
@@ -171,14 +195,16 @@ tf_cc_test(
         ":transforms_lib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/core:bitwise_ops_op_lib",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:quantization_utils",
         "//tensorflow/core/kernels:quantized_ops",
+        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 
@@ -214,7 +240,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "transform_graph",
     copts = tf_copts(),
     linkstatic = 1,
@@ -260,7 +286,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "summarize_graph",
     copts = tf_copts(),
     linkstatic = 1,
@@ -270,7 +296,7 @@ cc_binary(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "compare_graphs",
     srcs = ["compare_graphs.cc"],
     copts = tf_copts(),
@@ -310,4 +336,5 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     main = "python/transform_graph_test.py",
+    tags = ["v1only"],
 )

@@ -1,0 +1,31 @@
+op {
+  graph_op_name: "TensorArrayReadV3"
+  endpoint {
+    name: "TensorArrayRead"
+  }
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle to a TensorArray.
+END
+  }
+  in_arg {
+    name: "flow_in"
+    description: <<END
+A float scalar that enforces proper chaining of operations.
+END
+  }
+  out_arg {
+    name: "value"
+    description: <<END
+The tensor that is read from the TensorArray.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of the elem that is returned.
+END
+  }
+  summary: "Read an element from the TensorArray into output `value`."
+}

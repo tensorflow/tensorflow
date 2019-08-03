@@ -13,46 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/segment_reduction_ops.h"
+// We need to include gpu_kernel_helper.h before segment_reduction_ops.h
+// See comment in segment_reduction_ops.h for more details.
+// clang-format off
+#include "tensorflow/core/util/gpu_kernel_helper.h"
+// clang-format on
 
+#include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_device_functions.h"
 
 namespace tensorflow {
 
 using GPUDevice = Eigen::GpuDevice;
-
-// Helper for UnusortedSegmentSumCustomKernel that adds value into dest
-// atomically.
-template <typename T>
-static __device__ __forceinline__ void AccumulateInto(T* dest, const T& value) {
-  CudaAtomicAdd(dest, value);
-}
-
-// Specializations of AccumulateInto for complex types, which CudaAtomicAdd does
-// not support. We treat a std::complex<T>* as a T* (the C++ standard section
-// 26.4.4 allows this explicitly) and atomic add the real and imaginary
-// components individually. The operation as a whole is not atomic, but we can
-// safely treat the components independently for the purpose of accumulating.
-template <>
-__device__ __forceinline__ void AccumulateInto(
-    std::complex<float>* dest, const std::complex<float>& value) {
-  auto dest_scalar = reinterpret_cast<float*>(dest);
-  CudaAtomicAdd(dest_scalar, value.real());
-  CudaAtomicAdd(dest_scalar + 1, value.imag());
-}
-
-template <>
-__device__ __forceinline__ void AccumulateInto(
-    std::complex<double>* dest, const std::complex<double>& value) {
-  auto dest_scalar = reinterpret_cast<double*>(dest);
-  CudaAtomicAdd(dest_scalar, value.real());
-  CudaAtomicAdd(dest_scalar + 1, value.imag());
-}
 
 // SortedSegmentSumFunctor kernel reduces input data just as
 // UnsortedSegmentSumCustomKernel does except that input data
@@ -81,7 +58,7 @@ __global__ void SortedSegmentSumCustomKernel(const Index input_outer_dim_size,
                                              const Index* segment_ids,
                                              const T* input, T* output,
                                              const Index total_stripe_count) {
-  CUDA_1D_KERNEL_LOOP(stripe_index, total_stripe_count) {
+  for (int stripe_index : GpuGridRangeX(total_stripe_count)) {
     const Index segment_offset = stripe_index % inner_dim_size;
     const Index input_outer_dim_index_base =
         stripe_index / inner_dim_size * Index(OuterDimTileSize);
@@ -106,7 +83,7 @@ __global__ void SortedSegmentSumCustomKernel(const Index input_outer_dim_size,
         // decide whether to write result to global memory using atomic
         // operations
         if (last_output_segment_id == first_segment_id) {
-          AccumulateInto<T>(output + output_index, sum);
+          GpuAtomicAdd(output + output_index, sum);
         } else {
           *(output + output_index) = sum;
         }
@@ -121,31 +98,31 @@ __global__ void SortedSegmentSumCustomKernel(const Index input_outer_dim_size,
     // the following strip.
     const Index output_index =
         last_output_segment_id * inner_dim_size + segment_offset;
-    AccumulateInto<T>(output + output_index, sum);
+    GpuAtomicAdd(output + output_index, sum);
   }
 }
 
-// UnsortedSegmentSumFunctor kernel processes 'input_total_size' elements.
+// UnsortedSegmentSumKernel processes 'input_total_size' elements.
 // Each element is mapped from input to output by a combination of its
 // 'segment_ids' mapping and 'inner_dim_size'.
-template <typename T, typename Index>
-__global__ void UnsortedSegmentSumCustomKernel(
-    const Index input_outer_dim_size, const Index inner_dim_size,
-    const Index output_outer_dim_size, const Index* segment_ids, const T* input,
-    T* output) {
-  const Index input_total_size = input_outer_dim_size * inner_dim_size;
-  const Index output_total_size = output_outer_dim_size * inner_dim_size;
-  CUDA_1D_KERNEL_LOOP(input_index, input_total_size) {
-    const Index input_segment_index = input_index / inner_dim_size;
-    const Index segment_offset = input_index % inner_dim_size;
+template <typename T, typename Index, typename KernelReductionFunctor>
+__global__ void UnsortedSegmentCustomKernel(const int64 input_outer_dim_size,
+                                            const int64 inner_dim_size,
+                                            const int64 output_outer_dim_size,
+                                            const Index* segment_ids,
+                                            const T* input, T* output) {
+  const int64 input_total_size = input_outer_dim_size * inner_dim_size;
+  for (int64 input_index : GpuGridRangeX(input_total_size)) {
+    const int64 input_segment_index = input_index / inner_dim_size;
+    const int64 segment_offset = input_index % inner_dim_size;
     const Index output_segment_index = segment_ids[input_segment_index];
-
-    if (output_segment_index < 0 || output_segment_index >= output_total_size) {
+    if (output_segment_index < 0 ||
+        output_segment_index >= output_outer_dim_size) {
       continue;
     }
-    const Index output_index =
+    const int64 output_index =
         output_segment_index * inner_dim_size + segment_offset;
-    AccumulateInto<T>(output + output_index, ldg(input + input_index));
+    KernelReductionFunctor()(output + output_index, ldg(input + input_index));
   }
 }
 
@@ -161,9 +138,10 @@ void SegmentSumFunctor<T, Index>::operator()(
     return;
   }
   // Set 'output' to zeros.
-  CudaLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
-  SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-      output.size(), output.data());
+  GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
+  TF_CHECK_OK(GpuLaunchKernel(SetZero<T>, config.block_count,
+                              config.thread_per_block, 0, d.stream(),
+                              output.size(), output.data()));
   if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
     return;
   }
@@ -185,47 +163,49 @@ void SegmentSumFunctor<T, Index>::operator()(
   const Index total_stripe_count =
       input_inner_dim_size * input_outer_dim_num_stripe;
 
-  config = GetCudaLaunchConfig(total_stripe_count, d);
-  SortedSegmentSumCustomKernel<T, Index, OuterDimTileSize>
-      <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          input_outer_dim_size, input_inner_dim_size, output_rows,
-          segment_ids.data(), data, output.data(), total_stripe_count);
-};
+  config = GetGpuLaunchConfig(total_stripe_count, d);
+  TF_CHECK_OK(GpuLaunchKernel(
+      SortedSegmentSumCustomKernel<T, Index, OuterDimTileSize>,
+      config.block_count, config.thread_per_block, 0, d.stream(),
+      input_outer_dim_size, input_inner_dim_size, output_rows,
+      segment_ids.data(), data, output.data(), total_stripe_count));
+}
 
-// UnsortedSegmentSumFunctor implementation for GPUDevice.
-template <typename T, typename Index>
-struct UnsortedSegmentSumFunctor<GPUDevice, T, Index>: UnsortedSegmentBaseFunctor<GPUDevice, T, Index> {
-  void operator()(OpKernelContext* ctx, const GPUDevice& d,
-                  const Index output_rows, const TensorShape& segment_ids_shape,
+template <typename T, typename Index, typename InitialValueF,
+          typename ReductionF>
+struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
+  void operator()(OpKernelContext* ctx, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
-                  const Index data_size, const T* data,
-                  typename TTypes<T, 2>::Tensor output) override {
+                  typename TTypes<T, 2>::ConstTensor data,
+                  typename TTypes<T, 2>::Tensor output) {
     if (output.size() == 0) {
       return;
     }
-    // Set 'output' to zeros.
-    CudaLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
-    SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        output.size(), output.data());
+    // Set 'output' to initial value.
+    GPUDevice d = ctx->template eigen_device<GPUDevice>();
+    GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
+    TF_CHECK_OK(GpuLaunchKernel(
+        SetToValue<T>, config.block_count, config.thread_per_block, 0,
+        d.stream(), output.size(), output.data(), InitialValueF()()));
+    const int64 data_size = data.size();
     if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
       return;
     }
-
-    // Launch kernel to compute unsorted segment sum.
+    // Launch kernel to compute unsorted segment reduction.
     // Notes:
-    // *) 'input_total_size' is the total number of elements to process.
+    // *) 'data_size' is the total number of elements to process.
     // *) 'segment_ids.shape' is a prefix of data's shape.
     // *) 'input_outer_dim_size' is the total number of segments to process.
-    const Index input_total_size = data_size;
-    const Index input_outer_dim_size = segment_ids.dimension(0);
-    const Index input_inner_dim_size = input_total_size / input_outer_dim_size;
+    const int64 input_outer_dim_size = segment_ids.dimension(0);
+    const int64 input_inner_dim_size = data.dimension(1);
+    const int64 output_outer_dim_size = output.dimension(0);
+    config = GetGpuLaunchConfig(data_size, d);
 
-    config = GetCudaLaunchConfig(input_total_size, d);
-    UnsortedSegmentSumCustomKernel<
-        T,
-        Index><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        input_outer_dim_size, input_inner_dim_size, output_rows,
-        segment_ids.data(), data, output.data());
+    TF_CHECK_OK(GpuLaunchKernel(
+        UnsortedSegmentCustomKernel<T, Index, ReductionF>, config.block_count,
+        config.thread_per_block, 0, d.stream(), input_outer_dim_size,
+        input_inner_dim_size, output_outer_dim_size, segment_ids.data(),
+        data.data(), output.data()));
   }
 };
 
@@ -238,21 +218,46 @@ struct UnsortedSegmentSumFunctor<GPUDevice, T, Index>: UnsortedSegmentBaseFuncto
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SORTED_GPU_SPECS);
 
-#define DEFINE_GPU_SPECS_INDEX(T, Index) \
-  template struct UnsortedSegmentSumFunctor<GPUDevice, T, Index>
+#define DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, Index)                         \
+  template struct UnsortedSegmentFunctor<                                      \
+      GPUDevice, T, Index, functor::Lowest<T>, functor::MaxOpGpu<T>>;          \
+  template struct UnsortedSegmentFunctor<                                      \
+      GPUDevice, T, Index, functor::Highest<T>, functor::MinOpGpu<T>>;         \
+  template struct UnsortedSegmentFunctor<GPUDevice, T, Index, functor::One<T>, \
+                                         functor::ProdOpGpu<T>>;
 
-#define DEFINE_GPU_SPECS(T)         \
-  DEFINE_GPU_SPECS_INDEX(T, int32); \
-  DEFINE_GPU_SPECS_INDEX(T, int64);
+// sum is the only op that supports all input types currently
+#define DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, Index) \
+  template struct UnsortedSegmentFunctor<             \
+      GPUDevice, T, Index, functor::Zero<T>, functor::SumOpGpu<T>>;
 
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
-TF_CALL_complex64(DEFINE_GPU_SPECS);
-TF_CALL_complex128(DEFINE_GPU_SPECS);
+#define DEFINE_REAL_GPU_SPECS(T)                  \
+  DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, int32); \
+  DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX(T, int64);
 
-#undef DEFINE_GPU_SPECS
-#undef DEFINE_GPU_SPECS_INDEX
+#define DEFINE_SUM_GPU_SPECS(T)                  \
+  DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, int32); \
+  DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, int64);
+
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_REAL_GPU_SPECS);
+TF_CALL_int32(DEFINE_REAL_GPU_SPECS);
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_SUM_GPU_SPECS);
+TF_CALL_int32(DEFINE_SUM_GPU_SPECS);
+
+// TODO(rocm): support atomicAdd for complex numbers on ROCm
+#if GOOGLE_CUDA
+TF_CALL_complex64(DEFINE_SUM_GPU_SPECS);
+TF_CALL_complex128(DEFINE_SUM_GPU_SPECS);
+#endif
+
+#undef DEFINE_SORTED_GPU_SPECS_INDEX
+#undef DEFINE_SORTED_GPU_SPECS
+#undef DEFINE_REAL_UNSORTED_GPU_SPECS_INDEX
+#undef DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX
+#undef DEFINE_REAL_GPU_SPECS
+#undef DEFINE_SUM_GPU_SPECS
 
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

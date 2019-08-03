@@ -1,0 +1,604 @@
+node {
+  name: "Const/Const"
+  op: "Const"
+  device: "/cpu:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 64
+      }
+    }
+  }
+}
+node {
+  name: "input_0_0"
+  op: "RandomUniform"
+  input: "Const/Const"
+  device: "/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "seed"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "seed2"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "Const_1/Const"
+  op: "Const"
+  device: "/cpu:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 4
+          }
+        }
+        tensor_content: "\001\000\000\000\001\000\000\000\030\000\000\000@\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "input_1_0"
+  op: "RandomUniform"
+  input: "Const_1/Const"
+  device: "/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "seed"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "seed2"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "Const_2/Const"
+  op: "Const"
+  device: "/cpu:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 4
+          }
+        }
+        tensor_content: "\200\000\000\000\340\000\000\000\340\000\000\000\003\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "input_2_0"
+  op: "RandomUniform"
+  input: "Const_2/Const"
+  device: "/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "seed"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "seed2"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "Const_3/Const"
+  op: "Const"
+  device: "/cpu:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 4
+          }
+        }
+        tensor_content: "\007\000\000\000\007\000\000\000\003\000\000\000\010\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "input_3_0"
+  op: "RandomUniform"
+  input: "Const_3/Const"
+  device: "/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "seed"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "seed2"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "y0"
+  op: "BiasAddx1_Conv2Dx1_DepthwiseConv2dNativex1_Relux1_95"
+  input: "input_0_0"
+  input: "input_1_0"
+  input: "input_2_0"
+  input: "input_3_0"
+  input: "^input_0_0"
+  input: "^input_1_0"
+  input: "^input_2_0"
+  input: "^input_3_0"
+  device: "/cpu:0"
+}
+node {
+  name: "shape"
+  op: "Shape"
+  input: "y0"
+  input: "^input_0_0"
+  input: "^input_1_0"
+  input: "^input_2_0"
+  input: "^input_3_0"
+  device: "/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "out_type"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "zeros"
+  op: "ZerosLike"
+  input: "shape"
+  input: "^input_0_0"
+  input: "^input_1_0"
+  input: "^input_2_0"
+  input: "^input_3_0"
+  device: "/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "ones"
+  op: "OnesLike"
+  input: "shape"
+  input: "^input_0_0"
+  input: "^input_1_0"
+  input: "^input_2_0"
+  input: "^input_3_0"
+  device: "/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "slice_0"
+  op: "Slice"
+  input: "y0"
+  input: "zeros"
+  input: "ones"
+  input: "^input_0_0"
+  input: "^input_1_0"
+  input: "^input_2_0"
+  input: "^input_3_0"
+  device: "/cpu:0"
+  attr {
+    key: "Index"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "identity_0"
+  op: "Identity"
+  input: "slice_0"
+  input: "^input_0_0"
+  input: "^input_1_0"
+  input: "^input_2_0"
+  input: "^input_3_0"
+  device: "/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "shape_1"
+  op: "Shape"
+  input: "y0:1"
+  input: "^input_0_0"
+  input: "^input_1_0"
+  input: "^input_2_0"
+  input: "^input_3_0"
+  device: "/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "out_type"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "zeros_1"
+  op: "ZerosLike"
+  input: "shape_1"
+  input: "^input_0_0"
+  input: "^input_1_0"
+  input: "^input_2_0"
+  input: "^input_3_0"
+  device: "/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "ones_1"
+  op: "OnesLike"
+  input: "shape_1"
+  input: "^input_0_0"
+  input: "^input_1_0"
+  input: "^input_2_0"
+  input: "^input_3_0"
+  device: "/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "slice_1"
+  op: "Slice"
+  input: "y0:1"
+  input: "zeros_1"
+  input: "ones_1"
+  input: "^input_0_0"
+  input: "^input_1_0"
+  input: "^input_2_0"
+  input: "^input_3_0"
+  device: "/cpu:0"
+  attr {
+    key: "Index"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "identity_1"
+  op: "Identity"
+  input: "slice_1"
+  input: "^input_0_0"
+  input: "^input_1_0"
+  input: "^input_2_0"
+  input: "^input_3_0"
+  device: "/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+library {
+  function {
+    signature {
+      name: "BiasAddx1_Conv2Dx1_DepthwiseConv2dNativex1_Relux1_95"
+      input_arg {
+        name: "InceptionV2/Conv2d_1a_7x7/biases/read"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "InceptionV2/Conv2d_1a_7x7/pointwise_weights/read"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "random_uniform"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "InceptionV2/Conv2d_1a_7x7/depthwise_weights/read"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "InceptionV2/InceptionV2/Conv2d_1a_7x7/Relu"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "InceptionV2/InceptionV2/Conv2d_1a_7x7/separable_conv2d/depthwise"
+        type: DT_FLOAT
+      }
+    }
+    node_def {
+      name: "InceptionV2/InceptionV2/Conv2d_1a_7x7/BiasAdd"
+      op: "BiasAdd"
+      input: "InceptionV2/InceptionV2/Conv2d_1a_7x7/separable_conv2d:output:0"
+      input: "InceptionV2/Conv2d_1a_7x7/biases/read"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "data_format"
+        value {
+          s: "NHWC"
+        }
+      }
+    }
+    node_def {
+      name: "InceptionV2/InceptionV2/Conv2d_1a_7x7/Relu"
+      op: "Relu"
+      input: "InceptionV2/InceptionV2/Conv2d_1a_7x7/BiasAdd:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+    }
+    node_def {
+      name: "InceptionV2/InceptionV2/Conv2d_1a_7x7/separable_conv2d"
+      op: "Conv2D"
+      input: "InceptionV2/InceptionV2/Conv2d_1a_7x7/separable_conv2d/depthwise:output:0"
+      input: "InceptionV2/Conv2d_1a_7x7/pointwise_weights/read"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "data_format"
+        value {
+          s: "NHWC"
+        }
+      }
+      attr {
+        key: "dilations"
+        value {
+          list {
+            i: 1
+            i: 1
+            i: 1
+            i: 1
+          }
+        }
+      }
+      attr {
+        key: "padding"
+        value {
+          s: "VALID"
+        }
+      }
+      attr {
+        key: "explicit_paddings"
+        value {
+          list {
+          }
+        }
+      }
+      attr {
+        key: "strides"
+        value {
+          list {
+            i: 1
+            i: 1
+            i: 1
+            i: 1
+          }
+        }
+      }
+      attr {
+        key: "use_cudnn_on_gpu"
+        value {
+          b: true
+        }
+      }
+    }
+    node_def {
+      name: "InceptionV2/InceptionV2/Conv2d_1a_7x7/separable_conv2d/depthwise"
+      op: "DepthwiseConv2dNative"
+      input: "random_uniform"
+      input: "InceptionV2/Conv2d_1a_7x7/depthwise_weights/read"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "data_format"
+        value {
+          s: "NHWC"
+        }
+      }
+      attr {
+        key: "dilations"
+        value {
+          list {
+            i: 1
+            i: 1
+            i: 1
+            i: 1
+          }
+        }
+      }
+      attr {
+        key: "padding"
+        value {
+          s: "SAME"
+        }
+      }
+      attr {
+        key: "strides"
+        value {
+          list {
+            i: 1
+            i: 2
+            i: 2
+            i: 1
+          }
+        }
+      }
+    }
+    ret {
+      key: "InceptionV2/InceptionV2/Conv2d_1a_7x7/Relu"
+      value: "InceptionV2/InceptionV2/Conv2d_1a_7x7/Relu:activations:0"
+    }
+    ret {
+      key: "InceptionV2/InceptionV2/Conv2d_1a_7x7/separable_conv2d/depthwise"
+      value: "InceptionV2/InceptionV2/Conv2d_1a_7x7/separable_conv2d/depthwise:output:0"
+    }
+    attr {
+      key: "_noinline"
+      value {
+        b: true
+      }
+    }
+  }
+}
+versions {
+  producer: 26
+  min_consumer: 12
+}

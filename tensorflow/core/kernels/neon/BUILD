@@ -1,27 +1,14 @@
-# Description:
-# Kernel implementations using Neon intrinsics.
-#
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_kernel_library",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+# Description:
+# Kernel implementations using Neon intrinsics.
+#
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_kernel_library(
@@ -36,9 +23,8 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:ops_util",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
     ],
 )

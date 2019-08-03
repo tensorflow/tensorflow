@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_CORE_KERNELS_CONCAT_LIB_CPU_H_
+#define TENSORFLOW_CORE_KERNELS_CONCAT_LIB_CPU_H_
+
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/concat_lib.h"
 #include <vector>
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -73,7 +76,7 @@ void ConcatCPUImpl(
 
   // Sharded mode.
   auto work = [&row_size, &sizes, &inputs, &output, &copier, &num_inputs](
-      int64 start, int64 end) {
+                  int64 start, int64 end) {
     int64 skipped_rows = start / row_size;
     T* out = output->data() + skipped_rows * row_size;
     T* out_start = output->data() + start;
@@ -160,5 +163,7 @@ void ConcatSYCLImpl(
     }
   }
 }
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_KERNELS_CONCAT_LIB_CPU_H_

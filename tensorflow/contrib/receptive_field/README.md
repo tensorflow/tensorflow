@@ -6,6 +6,32 @@ region your output features depend on. Better yet, using the parameters computed
 by the library, you can easily find the exact image region which is used to
 compute each convnet feature.
 
+This library can be used to compute receptive field parameters of popular
+convnets:
+
+<center>
+
+convnet&nbsp;model  | receptive&nbsp;field | effective&nbsp;stride | effective&nbsp;padding | FLOPs&nbsp;(Billion)
+:-----------------: | :------------------: | :-------------------: | :--------------------: | :------------------:
+alexnet_v2          | 195                  | 32                    | 64                     | 1.38
+vgg_16              | 212                  | 32                    | 90                     | 30.71
+inception_v2        | 699                  | 32                    | 318                    | 3.88
+inception_v3        | 1311                 | 32                    | 618                    | 5.69
+inception_v4        | 2071                 | 32                    | 998                    | 12.27
+inception_resnet_v2 | 3039                 | 32                    | 1482                   | 12.96
+mobilenet_v1        | 315                  | 32                    | 126                    | 1.14
+mobilenet_v1_075    | 315                  | 32                    | 126                    | 0.65
+resnet_v1_50        | 483                  | 32                    | 239                    | 6.97
+resnet_v1_101       | 1027                 | 32                    | 511                    | 14.40
+resnet_v1_152       | 1507                 | 32                    | 751                    | 21.82
+resnet_v1_200       | 1763                 | 32                    | 879                    | 28.82
+
+</center>
+
+A comprehensive table with pre-computed receptive field parameters for different
+end-points, input resolutions, and other variants of these networks can be found
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/receptive_field/RECEPTIVE_FIELD_TABLE.md).
+
 ## Basic usage
 
 The main function to be called is `compute_receptive_field_from_graph_def`,
@@ -17,7 +43,6 @@ For example, if your model is constructed using the function
 
 ```python
 import tensorflow as tf
-from tensorflow.contrib import receptive_field
 
 # Construct graph.
 g = tf.Graph()
@@ -27,7 +52,7 @@ with g.as_default():
 
 # Compute receptive field parameters.
 rf_x, rf_y, eff_stride_x, eff_stride_y, eff_pad_x, eff_pad_y = \
-  receptive_field.compute_receptive_field_from_graph_def( \
+  tf.contrib.receptive_field.compute_receptive_field_from_graph_def( \
     g.as_graph_def(), 'input_image', 'my_output_endpoint')
 ```
 
@@ -38,7 +63,7 @@ models are available to you. This can be done in three simple commands:
 
 ```sh
 git clone https://github.com/tensorflow/models
-cd models/slim
+cd models/research/slim
 sudo python setup.py install_lib
 ```
 
@@ -47,7 +72,6 @@ You can then compute the receptive field parameters for Inception-Resnet-v2 as:
 ```python
 from nets import inception
 import tensorflow as tf
-from tensorflow.contrib import receptive_field
 
 # Construct graph.
 g = tf.Graph()
@@ -57,7 +81,7 @@ with g.as_default():
 
 # Compute receptive field parameters.
 rf_x, rf_y, eff_stride_x, eff_stride_y, eff_pad_x, eff_pad_y = \
-  receptive_field.compute_receptive_field_from_graph_def( \
+  tf.contrib.receptive_field.compute_receptive_field_from_graph_def( \
     g.as_graph_def(), 'input_image', 'InceptionResnetV2/Conv2d_7b_1x1/Relu')
 ```
 
@@ -98,9 +122,9 @@ The script will write to stdout the receptive field parameters for many variants
 of several popular convnets: AlexNet, VGG, ResNet, Inception, Mobilenet. They
 are also written to the file `/tmp/rf_benchmark_results.csv`.
 
-TODO: include here a plot for receptive field sizes of different convnets.
-
-TODO: include table/link to pre-computed RF parameters.
+A comprehensive table with pre-computed receptive field parameters for different
+networks can be found
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/receptive_field/RECEPTIVE_FIELD_TABLE.md).
 
 ## Compute RF parameters from a graph pbtxt
 
@@ -161,5 +185,4 @@ Effective padding (vertical) = 1482
 
 ## Authors
 
-Andr&eacute; Araujo (github id: andrefaraujo) and Mark Sandler (github id:
-marksandler)
+Andr&eacute; Araujo (@andrefaraujo) and Mark Sandler (@marksandler)

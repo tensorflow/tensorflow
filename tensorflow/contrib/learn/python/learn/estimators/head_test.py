@@ -33,6 +33,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses as losses_lib
 from tensorflow.python.platform import test
@@ -61,8 +62,8 @@ def _assert_no_variables(test_case):
 def _assert_metrics(test_case, expected_loss, expected_eval_metrics,
                     model_fn_ops):
   test_case.assertAlmostEqual(expected_loss, model_fn_ops.loss.eval(), places=4)
-  for k in six.iterkeys(expected_eval_metrics):
-    test_case.assertIn(k, six.iterkeys(model_fn_ops.eval_metric_ops))
+  for k in expected_eval_metrics:
+    test_case.assertIn(k, model_fn_ops.eval_metric_ops)
   variables.initialize_local_variables().run()
   for key, expected_value in six.iteritems(expected_eval_metrics):
     value_tensor, update_tensor = model_fn_ops.eval_metric_ops[key]
@@ -152,6 +153,25 @@ class RegressionHeadTest(test.TestCase):
       _assert_summary_tags(self, ["loss"])
       _assert_no_variables(self)
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
+
+  def testRegressionWithLogitFn(self):
+    head = head_lib.regression_head(link_fn=math_ops.square)
+    def _assert_preditions(test_case, expected_predictions, model_fn_ops):
+      variables.initialize_local_variables().run()
+      test_case.assertAllClose(expected_predictions,
+                               model_fn_ops.predictions["scores"].eval())
+    with ops.Graph().as_default(), session.Session():
+      model_fn_ops = head.create_model_fn_ops(
+          {},
+          labels=((0.,), (1.,), (1.,)),
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=((1.,), (1.,), (3.,)))
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_summary_tags(self, ["loss"])
+      _assert_no_variables(self)
+      _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
+      _assert_preditions(self, ([1.0, 1.0, 9.0]), model_fn_ops)
 
   def testRegressionWithInvalidLogits(self):
     head = head_lib.regression_head()
@@ -525,19 +545,19 @@ class MultiLabelHeadTest(test.TestCase):
       with session.Session():
         self.assertListEqual(
             [1, 0, 0], model_fn_ops.predictions["classes"].eval().tolist()[0])
-        self.assertItemsEqual(
-            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
+        self.assertItemsEqual(["head_name"],
+                              list(model_fn_ops.output_alternatives))
         self.assertEqual(
             constants.ProblemType.CLASSIFICATION,
             model_fn_ops.output_alternatives["head_name"][0])
 
         predictions_for_serving = (
             model_fn_ops.output_alternatives["head_name"][1])
-        self.assertIn("classes", six.iterkeys(predictions_for_serving))
+        self.assertIn("classes", predictions_for_serving)
         self.assertAllEqual(
             [[b"0", b"1", b"2"], [b"0", b"1", b"2"]],
             predictions_for_serving["classes"].eval())
-        self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
+        self.assertIn("probabilities", predictions_for_serving)
         self.assertAllClose(
             [[0.731059, 0.5, 0.5],
              [0.5, 0.5, 0.731059,]],
@@ -830,18 +850,18 @@ class BinaryClassificationHeadTest(test.TestCase):
       with session.Session():
         self.assertListEqual(
             [1, 1], list(model_fn_ops.predictions["classes"].eval()))
-        self.assertItemsEqual(
-            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
+        self.assertItemsEqual(["head_name"],
+                              list(model_fn_ops.output_alternatives))
         self.assertEqual(
             constants.ProblemType.LOGISTIC_REGRESSION,
             model_fn_ops.output_alternatives["head_name"][0])
         predictions_for_serving = (
             model_fn_ops.output_alternatives["head_name"][1])
-        self.assertIn("classes", six.iterkeys(predictions_for_serving))
+        self.assertIn("classes", predictions_for_serving)
         predicted_classes = predictions_for_serving["classes"].eval().tolist()
         self.assertListEqual(
             [b"0", b"1"], predicted_classes[0])
-        self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
+        self.assertIn("probabilities", predictions_for_serving)
 
   def testBinaryClassificationInferMode_withWeightColumn(self):
     n_classes = 2
@@ -1329,18 +1349,18 @@ class MultiClassHeadTest(test.TestCase):
         self.assertAllEqual(
             [0, 2],
             model_fn_ops.predictions["classes"].eval())
-        self.assertItemsEqual(
-            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
+        self.assertItemsEqual(["head_name"],
+                              list(model_fn_ops.output_alternatives))
         self.assertEqual(
             constants.ProblemType.CLASSIFICATION,
             model_fn_ops.output_alternatives["head_name"][0])
         predictions_for_serving = (
             model_fn_ops.output_alternatives["head_name"][1])
-        self.assertIn("classes", six.iterkeys(predictions_for_serving))
+        self.assertIn("classes", predictions_for_serving)
         self.assertAllEqual(
             [[b"0", b"1", b"2"], [b"0", b"1", b"2"]],
             predictions_for_serving["classes"].eval())
-        self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
+        self.assertIn("probabilities", predictions_for_serving)
         self.assertAllClose(
             [[0.576117, 0.2119416, 0.2119416],
              [0.2119416, 0.2119416, 0.576117]],
@@ -1381,18 +1401,18 @@ class MultiClassHeadTest(test.TestCase):
         self.assertAllEqual(
             [b"key0", b"key2"],
             model_fn_ops.predictions["classes"].eval())
-        self.assertItemsEqual(
-            ["head_name"], six.iterkeys(model_fn_ops.output_alternatives))
+        self.assertItemsEqual(["head_name"],
+                              list(model_fn_ops.output_alternatives))
         self.assertEqual(
             constants.ProblemType.CLASSIFICATION,
             model_fn_ops.output_alternatives["head_name"][0])
         predictions_for_serving = (
             model_fn_ops.output_alternatives["head_name"][1])
-        self.assertIn("classes", six.iterkeys(predictions_for_serving))
+        self.assertIn("classes", predictions_for_serving)
         self.assertAllEqual(
             [[b"key0", b"key1", b"key2"], [b"key0", b"key1", b"key2"]],
             predictions_for_serving["classes"].eval())
-        self.assertIn("probabilities", six.iterkeys(predictions_for_serving))
+        self.assertIn("probabilities", predictions_for_serving)
         self.assertAllClose(
             [[0.576117, 0.2119416, 0.2119416],
              [0.2119416, 0.2119416, 0.576117]],
@@ -1703,7 +1723,7 @@ class MultiHeadTest(test.TestCase):
     self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertTrue(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:
@@ -1728,7 +1748,7 @@ class MultiHeadTest(test.TestCase):
     self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertTrue(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:
@@ -1755,7 +1775,7 @@ class MultiHeadTest(test.TestCase):
     self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertTrue(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:

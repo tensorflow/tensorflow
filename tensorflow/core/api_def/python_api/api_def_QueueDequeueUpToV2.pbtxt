@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "QueueDequeueUpToV2"
+  visibility: HIDDEN
+}

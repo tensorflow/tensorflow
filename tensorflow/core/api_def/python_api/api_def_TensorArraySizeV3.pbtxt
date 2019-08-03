@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "TensorArraySizeV3"
+  visibility: HIDDEN
+}

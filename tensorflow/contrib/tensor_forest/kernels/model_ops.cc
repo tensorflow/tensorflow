@@ -13,6 +13,7 @@
 // limitations under the License.
 // =============================================================================
 #include <functional>
+
 #include "tensorflow/contrib/decision_trees/proto/generic_tree_model.pb.h"
 #include "tensorflow/contrib/decision_trees/proto/generic_tree_model_extensions.pb.h"
 #include "tensorflow/contrib/tensor_forest/kernels/data_spec.h"
@@ -24,6 +25,7 @@
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -76,11 +78,10 @@ class TreeSerializeOp : public OpKernel {
   explicit TreeSerializeOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    DecisionTreeResource* decision_tree_resource;
+    core::RefCountPtr<DecisionTreeResource> decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_resource));
     mutex_lock l(*decision_tree_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_resource);
     Tensor* output_config_t = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(0, TensorShape(), &output_config_t));
@@ -100,12 +101,11 @@ class TreeDeserializeOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    DecisionTreeResource* decision_tree_resource;
+    core::RefCountPtr<DecisionTreeResource> decision_tree_resource;
     auto handle = HandleFromInput(context, 0);
     OP_REQUIRES_OK(context,
                    LookupResource(context, handle, &decision_tree_resource));
     mutex_lock l(*decision_tree_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_resource);
 
     const Tensor* tree_config_t;
     OP_REQUIRES_OK(context, context->input("tree_config", &tree_config_t));
@@ -131,11 +131,10 @@ class TreeSizeOp : public OpKernel {
   explicit TreeSizeOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    DecisionTreeResource* decision_tree_resource;
+    core::RefCountPtr<DecisionTreeResource> decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_resource));
     mutex_lock l(*decision_tree_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_resource);
     Tensor* output_t = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape(), &output_t));
@@ -144,7 +143,7 @@ class TreeSizeOp : public OpKernel {
   }
 };
 
-void TraverseTree(const DecisionTreeResource* tree_resource,
+void TraverseTree(DecisionTreeResource* tree_resource,
                   const std::unique_ptr<TensorDataSet>& data, int32 start,
                   int32 end,
                   const std::function<void(int32, int32)>& set_leaf_id,
@@ -169,10 +168,6 @@ class TreePredictionsV4Op : public OpKernel {
     string serialized_proto;
     OP_REQUIRES_OK(context, context->GetAttr("input_spec", &serialized_proto));
     input_spec_.ParseFromString(serialized_proto);
-
-    data_set_ =
-        std::unique_ptr<TensorDataSet>(new TensorDataSet(input_spec_, 0));
-
     model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(param_proto_);
   }
 
@@ -182,16 +177,16 @@ class TreePredictionsV4Op : public OpKernel {
     const Tensor& sparse_input_values = context->input(3);
     const Tensor& sparse_input_shape = context->input(4);
 
-    data_set_->set_input_tensors(input_data, sparse_input_indices,
-                                 sparse_input_values, sparse_input_shape);
+    std::unique_ptr<TensorDataSet> data_set(new TensorDataSet(input_spec_, 0));
+    data_set->set_input_tensors(input_data, sparse_input_indices,
+                                sparse_input_values, sparse_input_shape);
 
-    DecisionTreeResource* decision_tree_resource;
+    core::RefCountPtr<DecisionTreeResource> resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
-                                           &decision_tree_resource));
-    mutex_lock l(*decision_tree_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_resource);
+                                           &resource));
+    mutex_lock l(*resource->get_mutex());
 
-    const int num_data = data_set_->NumItems();
+    const int num_data = data_set->NumItems();
     const int32 num_outputs = param_proto_.num_outputs();
 
     Tensor* output_predictions = nullptr;
@@ -208,15 +203,16 @@ class TreePredictionsV4Op : public OpKernel {
     auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
     int num_threads = worker_threads->num_threads;
     const int64 costPerTraverse = 500;
-    auto traverse = [this, &out, decision_tree_resource, num_data, &tree_paths](
+    auto traverse = [this, &out, &data_set, &resource, num_data, &tree_paths](
                         int64 start, int64 end) {
       CHECK(start <= end);
       CHECK(end <= num_data);
-      TraverseTree(decision_tree_resource, data_set_, static_cast<int32>(start),
+
+      TraverseTree(resource.get(), data_set, static_cast<int32>(start),
                    static_cast<int32>(end),
                    std::bind(&TreePredictionsV4Op::set_output_value, this,
                              std::placeholders::_1, std::placeholders::_2,
-                             decision_tree_resource, &out),
+                             resource.get(), &out),
                    param_proto_.inference_tree_paths() ? &tree_paths : nullptr);
     };
     Shard(num_threads, worker_threads->workers, num_data, costPerTraverse,
@@ -259,7 +255,6 @@ class TreePredictionsV4Op : public OpKernel {
 
  private:
   tensorforest::TensorForestDataSpec input_spec_;
-  std::unique_ptr<TensorDataSet> data_set_;
   std::unique_ptr<LeafModelOperator> model_op_;
   TensorForestParams param_proto_;
 };
@@ -275,9 +270,6 @@ class TraverseTreeV4Op : public OpKernel {
     string serialized_proto;
     OP_REQUIRES_OK(context, context->GetAttr("input_spec", &serialized_proto));
     input_spec_.ParseFromString(serialized_proto);
-
-    data_set_ =
-        std::unique_ptr<TensorDataSet>(new TensorDataSet(input_spec_, 0));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -286,16 +278,16 @@ class TraverseTreeV4Op : public OpKernel {
     const Tensor& sparse_input_values = context->input(3);
     const Tensor& sparse_input_shape = context->input(4);
 
-    data_set_->set_input_tensors(input_data, sparse_input_indices,
-                                 sparse_input_values, sparse_input_shape);
+    std::unique_ptr<TensorDataSet> data_set(new TensorDataSet(input_spec_, 0));
+    data_set->set_input_tensors(input_data, sparse_input_indices,
+                                sparse_input_values, sparse_input_shape);
 
-    DecisionTreeResource* decision_tree_resource;
+    core::RefCountPtr<DecisionTreeResource> resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
-                                           &decision_tree_resource));
-    mutex_lock l(*decision_tree_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_resource);
+                                           &resource));
+    mutex_lock l(*resource->get_mutex());
 
-    const int num_data = data_set_->NumItems();
+    const int num_data = data_set->NumItems();
 
     Tensor* output_predictions = nullptr;
     TensorShape output_shape;
@@ -310,11 +302,11 @@ class TraverseTreeV4Op : public OpKernel {
     auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
     int num_threads = worker_threads->num_threads;
     const int64 costPerTraverse = 500;
-    auto traverse = [this, &set_leaf_ids, decision_tree_resource, num_data](
-                        int64 start, int64 end) {
+    auto traverse = [&set_leaf_ids, &data_set, &resource, num_data](int64 start,
+                                                                    int64 end) {
       CHECK(start <= end);
       CHECK(end <= num_data);
-      TraverseTree(decision_tree_resource, data_set_, static_cast<int32>(start),
+      TraverseTree(resource.get(), data_set, static_cast<int32>(start),
                    static_cast<int32>(end), set_leaf_ids, nullptr);
     };
     Shard(num_threads, worker_threads->workers, num_data, costPerTraverse,
@@ -323,7 +315,6 @@ class TraverseTreeV4Op : public OpKernel {
 
  private:
   tensorforest::TensorForestDataSpec input_spec_;
-  std::unique_ptr<TensorDataSet> data_set_;
   TensorForestParams param_proto_;
 };
 
@@ -343,11 +334,10 @@ class UpdateModelV4Op : public OpKernel {
     const Tensor& input_labels = context->input(2);
     const Tensor& input_weights = context->input(3);
 
-    DecisionTreeResource* decision_tree_resource;
+    core::RefCountPtr<DecisionTreeResource> decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_resource));
     mutex_lock l(*decision_tree_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_resource);
 
     const int num_data = input_labels.shape().dim_size(0);
     const int32 label_dim =
@@ -363,9 +353,10 @@ class UpdateModelV4Op : public OpKernel {
     UpdateModel(leaf_ids, target, 0, num_data, decision_tree_resource);
   }
 
-  void UpdateModel(const Tensor& leaf_ids, const TensorInputTarget& target,
-                   int32 start, int32 end,
-                   DecisionTreeResource* decision_tree_resource) {
+  void UpdateModel(
+      const Tensor& leaf_ids, const TensorInputTarget& target, int32 start,
+      int32 end,
+      const core::RefCountPtr<DecisionTreeResource>& decision_tree_resource) {
     const auto leaves = leaf_ids.unaligned_flat<int32>();
     for (int i = start; i < end; ++i) {
       model_op_->UpdateModel(
@@ -391,11 +382,10 @@ class FeatureUsageCountsOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    DecisionTreeResource* decision_tree_resource;
+    core::RefCountPtr<DecisionTreeResource> decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_resource));
     mutex_lock l(*decision_tree_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_resource);
 
     const auto& tree = decision_tree_resource->decision_tree();
 

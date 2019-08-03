@@ -32,9 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-
-using namespace ops;  // NOLINT(build/namespaces)
-
+namespace ops {
 namespace {
 
 void TestAdd(const std::vector<int64>& x_shape,
@@ -184,8 +182,6 @@ void TimeAdd(const std::vector<int64>& x_shape,
             << ", total_duration=" << total_duration;
 }
 
-}  // namespace
-
 void TestManualScalar() {
   TestAdd(
       {10}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f}, 0.0f,
@@ -276,10 +272,12 @@ void BenchmarkVectorPlusTensor() {
   TimeAdd({100000, 100}, {100}, 1);
 }
 
-#if !defined(__ANDROID__)
+}  // namespace
+}  // namespace ops
+}  // namespace tensorflow
 
 #define RUN_TEST(t) \
-  TEST(QuantizedAddOpTest, t) { t(); }
+  TEST(QuantizedAddOpTest, t) { tensorflow::ops::t(); }
 
 RUN_TEST(TestManualScalar);
 RUN_TEST(TestManualVector);
@@ -288,24 +286,16 @@ RUN_TEST(TestScalar);
 RUN_TEST(TestVector);
 RUN_TEST(TestVectorPlusTensor);
 
-#undef RUN_TEST
-
-#endif  // __ANDROID__
-
-}  // end namespace tensorflow
-
 #if defined(__ANDROID__)
-int main(int argc, char** argv) {
-  LOG(INFO) << "TestManualScalar:";
-  tensorflow::TestManualScalar();
-  LOG(INFO) << "TestManualVector:";
-  tensorflow::TestManualVector();
-  LOG(INFO) << "TestManualVectorPlusTensor:";
-  tensorflow::TestManualVectorPlusTensor();
-  tensorflow::BenchmarkTensorScalar();
-  tensorflow::BenchmarkVector();
-  tensorflow::BenchmarkVectorPlusTensor();
-  LOG(INFO) << "All tests complete";
-  return 0;
-}
+
+RUN_TEST(BenchmarkTensorScalar);
+RUN_TEST(BenchmarkVector);
+RUN_TEST(BenchmarkVectorPlusTensor);
+
 #endif  // __ANDROID__
+
+int main(int argc, char** argv) {
+  // On Linux, add: FLAGS_logtostderr = true;
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

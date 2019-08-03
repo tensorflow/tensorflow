@@ -49,6 +49,44 @@ function(RELATIVE_PROTOBUF_GENERATE_CPP SRCS HDRS ROOT_DIR)
   set(${HDRS} ${${HDRS}} PARENT_SCOPE)
 endfunction()
 
+if(NOT WIN32)
+  function(RELATIVE_PROTOBUF_GENERATE_GRPC_CPP SRCS HDRS ROOT_DIR)
+    if(NOT ARGN)
+      message(SEND_ERROR "Error: RELATIVE_PROTOBUF_GENERATE_GRPC_CPP() called without any proto files")
+      return()
+    endif()
+
+    set(${SRCS})
+    set(${HDRS})
+    foreach(FIL ${ARGN})
+      set(ABS_FIL ${ROOT_DIR}/${FIL})
+      get_filename_component(FIL_WE ${FIL} NAME_WE)
+      get_filename_component(FIL_DIR ${ABS_FIL} PATH)
+      file(RELATIVE_PATH REL_DIR ${ROOT_DIR} ${FIL_DIR})
+
+      list(APPEND ${SRCS} "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.grpc.pb.cc")
+      list(APPEND ${HDRS} "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.grpc.pb.h")
+      list(APPEND ${SRCS} "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.cc")
+      list(APPEND ${HDRS} "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.h")
+
+      add_custom_command(
+        OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.grpc.pb.cc"
+               "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.grpc.pb.h"
+               "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.cc"
+               "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.h"
+        COMMAND ${PROTOBUF_PROTOC_EXECUTABLE}
+        ARGS --grpc_out ${CMAKE_CURRENT_BINARY_DIR} --cpp_out ${CMAKE_CURRENT_BINARY_DIR} --plugin protoc-gen-grpc=${GRPC_BUILD}/grpc_cpp_plugin -I ${ROOT_DIR} ${ABS_FIL} -I ${PROTOBUF_INCLUDE_DIRS}
+        DEPENDS ${ABS_FIL} protobuf grpc
+        COMMENT "Running C++ protocol buffer grpc compiler on ${FIL}"
+        VERBATIM )
+    endforeach()
+
+    set_source_files_properties(${${SRCS}} ${${HDRS}} PROPERTIES GENERATED TRUE)
+    set(${SRCS} ${${SRCS}} PARENT_SCOPE)
+    set(${HDRS} ${${HDRS}} PARENT_SCOPE)
+  endfunction()
+endif()
+
 function(RELATIVE_PROTOBUF_TEXT_GENERATE_CPP SRCS HDRS ROOT_DIR)
   if(NOT ARGN)
       message(SEND_ERROR "Error: RELATIVE_PROTOBUF_TEXT_GENERATE_CPP() called without any proto files")
@@ -87,17 +125,22 @@ endfunction()
 
 file(GLOB_RECURSE tf_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/*.proto"
+    "${tensorflow_source_dir}/tensorflow/core/protobuf/tpu/*.proto"
+    "${tensorflow_source_dir}/tensorflow/compiler/xla/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/proto/*.proto"
 )
+
 RELATIVE_PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS
     ${tensorflow_source_dir} ${tf_protos_cc_srcs}
 )
+
 
 set(PROTO_TEXT_EXE "proto_text")
 set(tf_proto_text_srcs
     "tensorflow/core/example/example.proto"
     "tensorflow/core/example/feature.proto"
     "tensorflow/core/framework/allocation_description.proto"
+    "tensorflow/core/framework/api_def.proto"
     "tensorflow/core/framework/attr_value.proto"
     "tensorflow/core/framework/cost_graph.proto"
     "tensorflow/core/framework/device_attributes.proto"
@@ -108,6 +151,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/log_memory.proto"
     "tensorflow/core/framework/node_def.proto"
     "tensorflow/core/framework/op_def.proto"
+    "tensorflow/core/framework/reader_base.proto"
     "tensorflow/core/framework/remote_fused_graph_execute_info.proto"
     "tensorflow/core/framework/resource_handle.proto"
     "tensorflow/core/framework/step_stats.proto"
@@ -117,6 +161,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/tensor_shape.proto"
     "tensorflow/core/framework/tensor_slice.proto"
     "tensorflow/core/framework/types.proto"
+    "tensorflow/core/framework/variable.proto"
     "tensorflow/core/framework/versions.proto"
     "tensorflow/core/lib/core/error_codes.proto"
     "tensorflow/core/protobuf/cluster.proto"
@@ -133,7 +178,17 @@ RELATIVE_PROTOBUF_TEXT_GENERATE_CPP(PROTO_TEXT_SRCS PROTO_TEXT_HDRS
     ${tensorflow_source_dir} ${tf_proto_text_srcs}
 )
 
-add_library(tf_protos_cc ${PROTO_SRCS} ${PROTO_HDRS})
+if(WIN32)
+  add_library(tf_protos_cc ${PROTO_SRCS} ${PROTO_HDRS})
+else()
+  file(GLOB_RECURSE tf_protos_grpc_cc_srcs RELATIVE ${tensorflow_source_dir}
+      "${tensorflow_source_dir}/tensorflow/core/debug/*.proto"
+  )
+  RELATIVE_PROTOBUF_GENERATE_GRPC_CPP(PROTO_GRPC_SRCS PROTO_GRPC_HDRS
+      ${tensorflow_source_dir} ${tf_protos_grpc_cc_srcs}
+  )
+  add_library(tf_protos_cc ${PROTO_GRPC_SRCS} ${PROTO_GRPC_HDRS} ${PROTO_SRCS} ${PROTO_HDRS})
+endif()
 
 ########################################################
 # tf_core_lib library
@@ -152,19 +207,15 @@ file(GLOB tf_core_platform_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.cc")
 if (NOT tensorflow_ENABLE_GPU)
-  file(GLOB tf_core_platform_gpu_srcs
+  file(GLOB tf_core_platform_gpu_srcs_exclude
       "${tensorflow_source_dir}/tensorflow/core/platform/cuda_libdevice_path.*"
       "${tensorflow_source_dir}/tensorflow/core/platform/default/cuda_libdevice_path.*")
-  list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_gpu_srcs})
+  list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_gpu_srcs_exclude})
 else()
   file(GLOB tf_core_platform_srcs_exclude
-      "${tensorflow_source_dir}/tensorflow/core/platform/default/gpu_tracer.cc")
+      "${tensorflow_source_dir}/tensorflow/core/platform/default/device_tracer.cc")
   list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_srcs_exclude})
 endif()
-
-file(GLOB tf_core_platform_exclude_srcs
-  "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.cc")
-list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_exclude_srcs})
 
 list(APPEND tf_core_lib_srcs ${tf_core_platform_srcs})
 
@@ -185,15 +236,6 @@ if(WIN32)
   )
   list(APPEND tf_core_lib_srcs ${tf_core_platform_windows_srcs})
 endif(WIN32)
-
-if(tensorflow_ENABLE_SSL_SUPPORT)
-  # Cloud libraries require boringssl.
-  file(GLOB tf_core_platform_cloud_srcs
-      "${tensorflow_source_dir}/tensorflow/core/platform/cloud/*.h"
-      "${tensorflow_source_dir}/tensorflow/core/platform/cloud/*.cc"
-  )
-  list(APPEND tf_core_lib_srcs ${tf_core_platform_cloud_srcs})
-endif()
 
 if (tensorflow_ENABLE_HDFS_SUPPORT)
   list(APPEND tf_core_platform_hdfs_srcs
@@ -219,15 +261,21 @@ add_dependencies(tf_core_lib ${tensorflow_EXTERNAL_DEPENDENCIES} tf_protos_cc)
 # force_rebuild always runs forcing ${VERSION_INFO_CC} target to run
 # ${VERSION_INFO_CC} would cache, but it depends on a phony never produced
 # target.
-set(VERSION_INFO_CC ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
-add_custom_target(force_rebuild_target ALL DEPENDS ${VERSION_INFO_CC})
-add_custom_command(OUTPUT __force_rebuild COMMAND ${CMAKE_COMMAND} -E echo)
-add_custom_command(OUTPUT
-    ${VERSION_INFO_CC}
-    COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
-    --raw_generate ${VERSION_INFO_CC}
-    DEPENDS __force_rebuild)
-set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
+# This code forces rebuild every time, not needed as version from git is fetched only once
+# move to make.bat which mimicks make.sh
+
+if (NOT WIN32)
+
+  set(VERSION_INFO_CC ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
+  add_custom_target(force_rebuild_target ALL DEPENDS ${VERSION_INFO_CC})
+  add_custom_command(OUTPUT __force_rebuild COMMAND ${CMAKE_COMMAND} -E echo)
+  add_custom_command(OUTPUT
+      ${VERSION_INFO_CC}
+      COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
+      ARGS --raw_generate ${VERSION_INFO_CC} --source_dir ${tensorflow_source_dir} --git_tag_override=${GIT_TAG_OVERRIDE}
+      DEPENDS __force_rebuild)
+  set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
+endif()
 
 ########################################################
 # tf_core_framework library
@@ -235,17 +283,25 @@ set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.c
 file(GLOB_RECURSE tf_core_framework_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/*.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/*.cc"
-    "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.h"
-    "${tensorflow_source_dir}/tensorflow/core/platform/variant_coding.cc"
     "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.h"
     "${tensorflow_source_dir}/tensorflow/core/graph/edgeset.cc"
     "${tensorflow_source_dir}/tensorflow/core/graph/graph.h"
     "${tensorflow_source_dir}/tensorflow/core/graph/graph.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/graph_def_builder.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/graph_def_builder.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/node_builder.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/node_builder.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/tensor_id.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/tensor_id.cc"
+    "${tensorflow_source_dir}/tensorflow/core/graph/while_context.h"
+    "${tensorflow_source_dir}/tensorflow/core/graph/while_context.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_factory.cc"
     "${tensorflow_source_dir}/tensorflow/core/common_runtime/session_options.cc"
+    "${tensorflow_source_dir}/tensorflow/core/summary/*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/summary/*.h"
     "${tensorflow_source_dir}/public/*.h"
 )
 
@@ -259,7 +315,15 @@ file(GLOB_RECURSE tf_core_framework_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.h"
     "${tensorflow_source_dir}/tensorflow/core/util/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/core/util/*main.cc"
+    "${tensorflow_source_dir}/tensorflow/core/summary/*test*.cc"
+    "${tensorflow_source_dir}/tensorflow/core/summary/loader.cc"
+    "${tensorflow_source_dir}/tensorflow/core/summary/vacuum.cc"
 )
+
+# TODO(jart): Why doesn't this work?
+# set_source_files_properties(
+#     ${tensorflow_source_dir}/tensorflow/core/lib/db/snapfn.cc
+#     PROPERTIES COMPILE_FLAGS -DSQLITE_OMIT_LOAD_EXTENSION)
 
 list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_exclude_srcs})
 
@@ -272,9 +336,3 @@ add_dependencies(tf_core_framework
     tf_core_lib
     proto_text
 )
-
-if(WIN32)
-  # Cmake > 3.6 will quote this as -D"__VERSION__=\"MSVC\"" which nvcc fails on.
-  # Instead of defining this global, limit it to tf_core_framework where its used.
-  target_compile_definitions(tf_core_framework PRIVATE __VERSION__="MSVC")
-endif()

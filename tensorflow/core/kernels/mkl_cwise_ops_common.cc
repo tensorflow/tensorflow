@@ -1,4 +1,4 @@
-﻿/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0(the "License");
 you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ class MklBinaryOp : public BinaryOp<Device, Functor> {
     auto out = context->mutable_output(0);
     VLOG(1) << "Shapes (output): " << out->shape().DebugString();
 
-    // Pass input shape through to ouput shape
+    // Pass input shape through to output shape
     ForwardMklMetaDataInToOut(context, 0, 0);
 
     out = context->mutable_output(0);
@@ -60,24 +60,25 @@ class MklBinaryOp : public BinaryOp<Device, Functor> {
 // We will need to redefine "REGISTER" to include the mkl_op_registry flag
 #pragma push_macro("REGISTER")
 #undef REGISTER
-#define REGISTER(OP, D, N, F, T)                                    \
-  REGISTER_KERNEL_BUILDER(Name(N)                                   \
-                              .Device(DEVICE_##D)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          OP<D##Device, F<T>>);
+#define REGISTER(OP, D, N, F, T)                               \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name(N)                                                  \
+          .Device(DEVICE_##D)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      OP<D##Device, F<T>>);
 
-REGISTER5(MklBinaryOp, CPU, "_MklAdd", functor::add, float, Eigen::half, double,
-          int32, int64);
-REGISTER7(MklBinaryOp, CPU, "_MklSub", functor::sub, float, Eigen::half, double,
-          int32, int64, complex64, complex128);
-REGISTER5(MklBinaryOp, CPU, "_MklMul", functor::mul, float, Eigen::half, double,
-          uint8, int32);
-REGISTER5(MklBinaryOp, CPU, "_MklMaximum", functor::maximum, float, Eigen::half,
-          double, int32, int64);
-REGISTER5(MklBinaryOp, CPU, "_MklSquaredDifference",
-          functor::squared_difference, float, Eigen::half, double, int32,
-          int64);
+REGISTER6(MklBinaryOp, CPU, "_MklAdd", functor::add, float, Eigen::half, double,
+          int32, int64, bfloat16);
+REGISTER8(MklBinaryOp, CPU, "_MklSub", functor::sub, float, Eigen::half, double,
+          int32, int64, complex64, complex128, bfloat16);
+REGISTER6(MklBinaryOp, CPU, "_MklMul", functor::mul, float, Eigen::half, double,
+          uint8, int32, bfloat16);
+REGISTER6(MklBinaryOp, CPU, "_MklMaximum", functor::maximum, float, Eigen::half,
+          double, int32, int64, bfloat16);
+REGISTER6(MklBinaryOp, CPU, "_MklSquaredDifference",
+          functor::squared_difference, float, Eigen::half, double, int32, int64,
+          bfloat16);
 
 #undef REGISTER
 #pragma pop_macro("REGISTER")

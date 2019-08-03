@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -42,16 +42,15 @@ TEST(TextLiteralReaderTest, ReadsR3File) {
       tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, contents)
           .ok());
 
-  std::unique_ptr<Literal> literal =
-      TextLiteralReader::ReadPath(fname).ConsumeValueOrDie();
+  Literal literal = TextLiteralReader::ReadPath(fname).ConsumeValueOrDie();
   EXPECT_TRUE(
-      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {1, 2, 3}), literal->shape()));
-  EXPECT_EQ(42.5, literal->Get<float>({0, 0, 0}));
-  EXPECT_EQ(43.5, literal->Get<float>({0, 0, 1}));
-  EXPECT_EQ(44.5, literal->Get<float>({0, 0, 2}));
-  EXPECT_EQ(45.5, literal->Get<float>({0, 1, 0}));
-  EXPECT_EQ(46.5, literal->Get<float>({0, 1, 1}));
-  EXPECT_EQ(47.5, literal->Get<float>({0, 1, 2}));
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {1, 2, 3}), literal.shape()));
+  EXPECT_EQ(42.5, literal.Get<float>({0, 0, 0}));
+  EXPECT_EQ(43.5, literal.Get<float>({0, 0, 1}));
+  EXPECT_EQ(44.5, literal.Get<float>({0, 0, 2}));
+  EXPECT_EQ(45.5, literal.Get<float>({0, 1, 0}));
+  EXPECT_EQ(46.5, literal.Get<float>({0, 1, 1}));
+  EXPECT_EQ(47.5, literal.Get<float>({0, 1, 2}));
 }
 
 }  // namespace

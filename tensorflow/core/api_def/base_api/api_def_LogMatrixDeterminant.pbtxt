@@ -1,0 +1,34 @@
+op {
+  graph_op_name: "LogMatrixDeterminant"
+  in_arg {
+    name: "input"
+    description: <<END
+Shape is `[N, M, M]`.
+END
+  }
+  out_arg {
+    name: "sign"
+    description: <<END
+The signs of the log determinants of the inputs. Shape is `[N]`.
+END
+  }
+  out_arg {
+    name: "log_abs_determinant"
+    description: <<END
+The logs of the absolute values of the determinants
+of the N input matrices.  Shape is `[N]`.
+END
+  }
+  summary: "Computes the sign and the log of the absolute value of the determinant of"
+  description: <<END
+one or more square matrices.
+
+The input is a tensor of shape `[N, M, M]` whose inner-most 2 dimensions
+form square matrices. The outputs are two tensors containing the signs and
+absolute values of the log determinants for all N input submatrices
+`[..., :, :]` such that the determinant = sign*exp(log_abs_determinant).
+The log_abs_determinant is computed as det(P)*sum(log(diag(LU))) where LU
+is the LU decomposition of the input and P is the corresponding
+permutation matrix.
+END
+}

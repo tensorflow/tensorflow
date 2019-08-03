@@ -13,19 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/c_api_internal.h"
-
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/strings/match.h"
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/strings/base64.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+
+using tensorflow::errors::InvalidArgument;
 
 namespace tensorflow {
 namespace {
@@ -41,11 +45,19 @@ class NodeNameMapping {
  public:
   NodeNameMapping() = default;
 
-  // Normalize the input/output name and make it unique.
-  string GetIOName(const string& name);
+  // Normalize the input name and make it unique. This is the same as the
+  // function for output, expect that it adds a name mapping for the name.
+  string GetInputName(const string& name);
+
+  // Normalize the output name and make it unique.
+  string GetOutputName(const string& name);
 
   // Make the node name unique.
   string Uniquify(const string& name);
+
+  // Records name as a used name. If this name is already used,
+  // returns an error status.
+  Status UseOutputName(const string& name);
 
   // Look up how a node name was previously normalized/uniquified.
   // Returns empty if name was never seen.
@@ -61,7 +73,7 @@ class NodeNameMapping {
   // This is a superset of values in name_mapping_.
   std::unordered_set<string> used_names_;
   // Mapping from original node name from the graph to the normalized
-  // and uniqified version of it.
+  // and uniquified version of it.
   std::unordered_map<string, string> name_mapping_;
 };
 
@@ -100,7 +112,13 @@ string NodeNameMapping::UniquifyHelper(const string& name) const {
   }
 }
 
-string NodeNameMapping::GetIOName(const string& name) {
+string NodeNameMapping::GetInputName(const string& name) {
+  const string& input_name = GetOutputName(name);
+  name_mapping_[name] = input_name;
+  return input_name;
+}
+
+string NodeNameMapping::GetOutputName(const string& name) {
   const string& input_name = UniquifyHelper(Normalize(name));
   // Record that we used this name, but don't add it to name_mapping_
   // since this name is not for a node.
@@ -115,23 +133,28 @@ string NodeNameMapping::Uniquify(const string& name) {
   return uniqued;
 }
 
+Status NodeNameMapping::UseOutputName(const string& name) {
+  const auto& iter = used_names_.find(name);
+  if (iter != used_names_.end()) {
+    return InvalidArgument("Cannot have duplicate output names. Name '", name,
+                           "' appears more than once in 'output_names' array.");
+  }
+  used_names_.insert(iter, name);
+  return Status::OK();
+}
+
 string NodeNameMapping::Lookup(const string& name) const {
   const auto iter = name_mapping_.find(name);
   if (iter == name_mapping_.end()) return string();
   return iter->second;
 }
 
-Status ValidateNoRefOutputs(const Node* node) {
-  for (int i = 0; i < node->num_outputs(); ++i) {
-    const DataType& dt = node->output_type(i);
-    if (IsRefType(dt)) {
-      return errors::InvalidArgument("Output ", i, " of node '", node->name(),
-                                     "' has a reference "
-                                     "type ",
-                                     DataTypeString(dt));
-    }
-  }
-  return Status::OK();
+Status ValidateNonRefOutput(const Node* node, int idx) {
+  const DataType& dt = node->output_type(idx);
+  return IsRefType(dt)
+             ? InvalidArgument("Output ", idx, " of node '", node->name(),
+                               "' has a reference type ", DataTypeString(dt))
+             : Status::OK();
 }
 
 Status FillFunctionBody(
@@ -139,6 +162,11 @@ Status FillFunctionBody(
     const std::vector<const Node*>& body_nodes,
     const std::unordered_map<string, string>& tensor_renaming,
     FunctionDef* fdef) {
+  std::unordered_set<string> func_attr_names;
+  for (const auto& func_attr : fdef->signature().attr()) {
+    func_attr_names.insert(func_attr.name());
+  }
+
   std::vector<const Edge*> in_edges;
   std::vector<const Edge*> control_edges;
   for (const Node* node : body_nodes) {
@@ -157,7 +185,8 @@ Status FillFunctionBody(
 
     // Collect regular and control inputs. Regular inputs are indexed
     // by the index at which they come into the `node`. Control inputs
-    // don't follow any order.
+    // don't follow any order, and we sort control inputs to make sure generated
+    // NodeDef is deterministic.
     in_edges.clear();
     in_edges.resize(node->num_inputs(), nullptr);
     control_edges.clear();
@@ -169,6 +198,10 @@ Status FillFunctionBody(
         in_edges[edge->dst_input()] = edge;
       }
     }
+    std::sort(control_edges.begin(), control_edges.end(),
+              [](const Edge* a, const Edge* b) {
+                return a->src()->name() < b->src()->name();
+              });
 
     // Add regular inputs.
     for (size_t i = 0; i < in_edges.size(); ++i) {
@@ -178,7 +211,7 @@ Status FillFunctionBody(
         // A backedge might not appear as a regular Edge, but be only present
         // in the node_def. Such edges are referred to as requested_inputs().
         if (i >= node->requested_inputs().size()) {
-          return errors::InvalidArgument(
+          return InvalidArgument(
               "Graph to be converted to function appears to be malformed. ",
               "Node ", node->name(), " is missing input edge ", i);
         }
@@ -191,7 +224,7 @@ Status FillFunctionBody(
 
       const auto iter = tensor_renaming.find(original_input_name);
       if (iter == tensor_renaming.end()) {
-        return errors::InvalidArgument(
+        return InvalidArgument(
             "Input ", i, ", '", original_input_name, "', of node '",
             node->name(), "' in function '", fn_name,
             "' is not available. You might need to include it in inputs "
@@ -202,31 +235,89 @@ Status FillFunctionBody(
 
     // Add control inputs.
     for (const Edge* edge : control_edges) {
-      // Add this control input only if the src node is in the body.
+      // Add this control input only if the src node is in the body or a part of
+      // the inputs.
       const string normalized = node_names.Lookup(edge->src()->name());
       // If we did not find a name for the source of control edge, this
-      // source must be outside of the body. Raise an error.
+      // source must be outside of the body, and not an input. Raise an error.
       if (normalized.empty()) {
-        return errors::InvalidArgument(
+        return InvalidArgument(
             "The source of control edge ", edge->DebugString(),
             " is not in the body. Encountered while creating function '",
             fn_name, "'");
       }
       node_def->add_input(strings::StrCat("^", normalized));
     }
+
+    // A function is stateful if any of its nodes are stateful.
+    if (node->op_def().is_stateful()) {
+      fdef->mutable_signature()->set_is_stateful(true);
+    }
+
+    // If this node has any attributes with placeholder value, add the
+    // attribute to FunctionDef signature.
+    for (const auto& iter : node->attrs()) {
+      if (iter.second.placeholder().empty()) {
+        continue;
+      }
+
+      // If we already added the attribute, skip it.
+      string func_attr_name = iter.second.placeholder();
+      if (func_attr_names.find(func_attr_name) != func_attr_names.end()) {
+        continue;
+      }
+
+      // This node's attribute is a placeholder value, so it does not have type
+      // information. We check node's OpDef for attribute type.
+      string node_attr_name = iter.first;
+      const OpDef::AttrDef* node_attr_def = nullptr;
+      for (const auto& node_attr : node->op_def().attr()) {
+        if (node_attr.name() == node_attr_name) {
+          node_attr_def = &node_attr;
+        }
+      }
+      if (!node_attr_def) {
+#ifdef TENSORFLOW_LITE_PROTOS
+        return errors::Unimplemented(
+            "Placeholder value is not supported for attributes not in OpDef. "
+            "Attribute: ",
+            node_attr_name);
+#else
+        return errors::Unimplemented(
+            "Placeholder value is not supported for attributes not in OpDef. "
+            "Attribute: ",
+            node_attr_name, ", OpDef: ", node->op_def().DebugString());
+#endif
+      }
+      OpDef::AttrDef* attr_def = fdef->mutable_signature()->add_attr();
+      attr_def->set_name(func_attr_name);
+      attr_def->set_type(node_attr_def->type());
+
+      func_attr_names.insert(func_attr_name);
+    }
   }
   return Status::OK();
 }
 
 // Graph to FunctionDef conversion. This code is closely modeled on the Python
-// code in third_party/tensorflow/python/framework/function.py.
+// function graph_to_function_def(), which is located in
+// tensorflow/python/framework/graph_to_function_def.py.
 Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
+                          bool append_hash_to_fn_name,
                           const std::vector<const Node*>& body_nodes,
                           const std::vector<OutputTensor>& inputs,
                           const std::vector<OutputTensor>& outputs,
                           const std::vector<string>& output_names,
-                          FunctionDef* fdef) {
-  fdef->mutable_signature()->set_name(fn_name);
+                          const std::vector<const Node*>& control_outputs,
+                          const std::vector<string>& control_output_names,
+                          const char* description, FunctionDef* fdef) {
+  if (!output_names.empty()) {
+    DCHECK_EQ(output_names.size(), outputs.size());
+  }
+
+  if (description != nullptr) {
+    fdef->mutable_signature()->set_description(description);
+  }
 
   // Keep track of names we used and how we normalized them.
   NodeNameMapping node_names;
@@ -241,24 +332,43 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
   //    e.g. {Add:3 -> add_0:z:1}
   std::unordered_map<string, string> tensor_renaming;
 
+  // Fill outputs in function's signature.
+  // We fill the outputs first to prevent output_names from colliding
+  // with the input names we pick below. With this order, no names are used in
+  // node_names yet, and output_names won't collide with anything (except
+  // potentially with themselves).
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    const Node* node = outputs[i].node;
+    int idx = outputs[i].index;
+    OpDef::ArgDef* argdef = fdef->mutable_signature()->add_output_arg();
+    argdef->set_type(node->output_type(idx));
+    if (!output_names.empty()) {
+      TF_RETURN_IF_ERROR(node_names.UseOutputName(output_names[i]));
+      argdef->set_name(output_names[i]);
+    } else {
+      argdef->set_name(node_names.GetOutputName(node->name()));
+    }
+  }
+
   // Fill inputs in function's signature.
   for (size_t i = 0; i < inputs.size(); ++i) {
     const Node* node = inputs[i].node;
     int idx = inputs[i].index;
     OpDef::ArgDef* argdef = fdef->mutable_signature()->add_input_arg();
     argdef->set_type(node->output_type(idx));
-    const string& input_name = node_names.GetIOName(node->name());
+    const string& input_name = node_names.GetInputName(node->name());
     argdef->set_name(input_name);
+    auto& arg_attrs = (*fdef->mutable_arg_attr())[i];
+    for (const auto& attr : node->attrs()) {
+      // Only copy internal attributes. These attributes will be applied to
+      // _Arg/Placeholder nodes when this FunctionDef is converted to graph, and
+      // normal attributes for nodes cannot be applied to those _Arg/Placeholder
+      // nodes.
+      if (absl::StartsWith(attr.first, "_")) {
+        arg_attrs.mutable_attr()->insert(attr);
+      }
+    }
     tensor_renaming[strings::StrCat(node->name(), ":", idx)] = input_name;
-  }
-
-  // Fill outputs in function's signature.
-  for (size_t i = 0; i < outputs.size(); ++i) {
-    const Node* node = outputs[i].node;
-    int idx = outputs[i].index;
-    OpDef::ArgDef* argdef = fdef->mutable_signature()->add_output_arg();
-    argdef->set_type(node->output_type(idx));
-    argdef->set_name(node_names.GetIOName(node->name()));
   }
 
   // Populate tensor_renaming and node_names.
@@ -279,7 +389,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     TF_RETURN_IF_ERROR(
         NameRangesForNode(*node, node->op_def(), nullptr, &output_ranges));
     for (const auto& output : output_ranges) {
-      const string& output_name = output.first;
+      const StringPiece& output_name = output.first;
       int index_start = output.second.first;
       int index_end = output.second.second;
       for (int i = index_start; i < index_end; ++i) {
@@ -301,19 +411,70 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
   // Remap return values.
   for (int r = 0; r < fdef->signature().output_arg_size(); ++r) {
     const string& ret_name = fdef->signature().output_arg(r).name();
-
     // We convert this flat tensor name to the nested value
     // (e.g. `add:z:1`) that we stored in tensor_renaming.
     const string& return_value =
         strings::StrCat(outputs[r].node->name(), ":", outputs[r].index);
     const auto iter = tensor_renaming.find(return_value);
     if (iter == tensor_renaming.end()) {
-      return errors::InvalidArgument(
+      return InvalidArgument(
           "TF_Output ", return_value, " is neither in the function body ",
           "nor among function inputs. Encountered while creating function '",
           fn_name, "'");
     }
     (*fdef->mutable_ret())[ret_name] = iter->second;
+  }
+
+  if (append_hash_to_fn_name) {
+    const uint64 hash = FunctionDefHash(*fdef);
+    string encoded;
+    TF_RETURN_IF_ERROR(Base64Encode(
+        StringPiece(reinterpret_cast<const char*>(&hash), sizeof(hash)),
+        &encoded));
+    // Besides letters and digits our Base64 encoding uses '_' and '-'.
+    // Dash is invalid in operation names and multiple underscores in random
+    // places look strange. Since we never need to decode the hash back,
+    // replace these chars with with 'a' and 'A'. Replacing with different
+    // letters keeps more entropy.
+    std::replace(encoded.begin(), encoded.end(), '-', 'a');
+    std::replace(encoded.begin(), encoded.end(), '_', 'A');
+    fdef->mutable_signature()->set_name(strings::StrCat(fn_name, "_", encoded));
+  } else {
+    fdef->mutable_signature()->set_name(fn_name);
+  }
+
+  if (!control_output_names.empty() &&
+      (control_outputs.size() != control_output_names.size())) {
+    return InvalidArgument(
+        "Expected number of control outputs (", control_outputs.size(),
+        ") and the number of control output names (",
+        control_output_names.size(), ") to match but they do not.");
+  }
+  std::set<string> control_output_names_set;
+  for (int i = 0; i < control_outputs.size(); ++i) {
+    string signature_name;
+    if (!control_output_names.empty()) {
+      signature_name = control_output_names[i];
+    } else {
+      signature_name = control_outputs[i]->name();
+    }
+    if (signature_name.empty()) {
+      return errors::InvalidArgument("Control output name must be not empty");
+    }
+    if (!control_output_names_set.insert(signature_name).second) {
+      return errors::InvalidArgument("Repeated control output name: ",
+                                     signature_name);
+    }
+    const string control_output_node =
+        node_names.Lookup(control_outputs[i]->name());
+    if (control_output_node.empty()) {
+      return errors::InvalidArgument(
+          "Control output node name must be not empty");
+    }
+    (*fdef->mutable_control_ret())[signature_name] = control_output_node;
+  }
+  for (const string& control_output : control_output_names_set) {
+    fdef->mutable_signature()->add_control_output(control_output);
   }
 
   return Status::OK();
@@ -330,28 +491,27 @@ Status ProcessInputs(
     EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   input_tensors->reserve(ninputs);
   for (int i = 0; i < ninputs; ++i) {
-    const Node& node = inputs[i].oper->node;
+    Node* node = &inputs[i].oper->node;
     int idx = inputs[i].index;
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        fn_body->graph.IsValidOutputTensor(&node, idx),
+        fn_body->graph.IsValidOutputTensor(node, idx),
         "Encountered while processing input ", i, " into function '", fn_name,
         "'");
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNoRefOutputs(&node),
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNonRefOutput(node, idx),
                                     "Encountered while processing input ", i,
                                     " into function '", fn_name, "'");
 
-    input_tensors->emplace_back(&node, idx);
+    input_tensors->emplace_back(node, idx);
 
-    const auto& iter = input_nodes->find(&node);
+    const auto& iter = input_nodes->find(node);
     if (iter == input_nodes->end()) {
-      input_nodes->insert({&node, {idx}});
+      input_nodes->insert({node, {idx}});
     } else {
       auto& indices = iter->second;
       if (std::find(indices.begin(), indices.end(), idx) != indices.end()) {
-        return errors::InvalidArgument(
-            "TF_Output ", node.name(), ":", idx,
-            " appears more than once in the input list");
+        return InvalidArgument("TF_Output ", node->name(), ":", idx,
+                               " appears more than once in the input list");
       }
       indices.push_back(idx);
     }
@@ -367,13 +527,16 @@ Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
     EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   output_tensors->reserve(noutputs);
   for (int i = 0; i < noutputs; ++i) {
-    const Node& node = outputs[i].oper->node;
+    Node* node = &outputs[i].oper->node;
     int idx = outputs[i].index;
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        fn_body->graph.IsValidOutputTensor(&node, idx),
+        fn_body->graph.IsValidOutputTensor(node, idx),
         "Encountered while processing output ", i, " from function '", fn_name,
         "'");
-    output_tensors->emplace_back(&node, idx);
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNonRefOutput(node, idx),
+                                    "Encountered while creating function '",
+                                    fn_name, "'");
+    output_tensors->emplace_back(node, idx);
   }
   return Status::OK();
 }
@@ -391,16 +554,13 @@ Status ComputeBodyNodes(
       const auto& iter = input_nodes.find(node);
       if (iter == input_nodes.end()) {
         // This node is not referenced in inputs. Add it to the body.
-        TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNoRefOutputs(node),
-                                        "Encountered while creating function '",
-                                        fn_name, "'");
         body_nodes->push_back(node);
       } else {
         // This node is referenced in inputs. Currently, we place an
         // artificial restriction and require that when num_opers=-1, such
         // nodes must have a single output.
         if (node->num_outputs() != 1) {
-          return errors::InvalidArgument(
+          return InvalidArgument(
               "When `num_opers` is set to -1, nodes referenced in `inputs` "
               "must have a single output. Node ",
               node->name(), " has ", node->num_outputs(),
@@ -412,28 +572,26 @@ Status ComputeBodyNodes(
     body_nodes->reserve(num_opers);
     for (int i = 0; i < num_opers; ++i) {
       const Node* node = &opers[i]->node;
-      TF_RETURN_WITH_CONTEXT_IF_ERROR(ValidateNoRefOutputs(node),
-                                      "Encountered while creating function '",
-                                      fn_name, "'");
       body_nodes->push_back(node);
     }
   }
   return Status::OK();
 }
 
-}  // anonymous namespace
+}  // namespace
 }  // namespace tensorflow
 
 using tensorflow::Node;
 using tensorflow::string;
 
-TF_Function* TF_GraphToFunction(const TF_Graph* fn_body, const char* fn_name,
-                                int num_opers, const TF_Operation* const* opers,
-                                int ninputs, const TF_Output* inputs,
-                                int noutputs, const TF_Output* outputs,
-                                const char* const* output_names,
-                                const TF_FunctionOptions* opts,
-                                TF_Status* status) {
+TF_Function* TF_GraphToFunctionWithControlOutputs(
+    const TF_Graph* fn_body, const char* fn_name,
+    unsigned char append_hash_to_fn_name, int num_opers,
+    const TF_Operation* const* opers, int ninputs, const TF_Output* inputs,
+    int noutputs, const TF_Output* outputs, const char* const* output_names,
+    int ncontrol_outputs, const TF_Operation* const* control_outputs,
+    const char* const* control_output_names, const TF_FunctionOptions* opts,
+    const char* description, TF_Status* status) {
   tensorflow::mutex_lock l(*const_cast<tensorflow::mutex*>(&fn_body->mu));
 
   // Process inputs.
@@ -441,13 +599,13 @@ TF_Function* TF_GraphToFunction(const TF_Graph* fn_body, const char* fn_name,
   std::unordered_map<const Node*, std::vector<int>> input_nodes;
   status->status = tensorflow::ProcessInputs(fn_body, fn_name, ninputs, inputs,
                                              &input_tensors, &input_nodes);
-  if (!status->status.ok()) return nullptr;
+  if (TF_GetCode(status) != TF_OK) return nullptr;
 
   // Process outputs.
   std::vector<tensorflow::OutputTensor> output_tensors;
   status->status = tensorflow::ProcessOutputs(fn_body, fn_name, noutputs,
                                               outputs, &output_tensors);
-  if (!status->status.ok()) return nullptr;
+  if (TF_GetCode(status) != TF_OK) return nullptr;
 
   // Process output names.
   std::vector<string> output_names_vec;
@@ -458,39 +616,147 @@ TF_Function* TF_GraphToFunction(const TF_Graph* fn_body, const char* fn_name,
     }
   }
 
+  // Process control output names.
+  std::vector<string> control_output_names_vec;
+  if (control_output_names) {
+    control_output_names_vec.reserve(ncontrol_outputs);
+    for (int i = 0; i < ncontrol_outputs; ++i) {
+      control_output_names_vec.push_back(string(output_names[i]));
+    }
+  }
+
   // Compute body nodes.
   std::vector<const Node*> body_nodes;
   status->status = tensorflow::ComputeBodyNodes(
       fn_body, fn_name, num_opers, opers, input_nodes, &body_nodes);
-  if (!status->status.ok()) return nullptr;
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+
+  // Compute body nodes.
+  std::vector<const Node*> control_output_nodes;
+  for (int i = 0; i < ncontrol_outputs; ++i) {
+    control_output_nodes.push_back(&control_outputs[i]->node);
+  }
 
   // Do the actual function creation.
   TF_Function* tf_function = new TF_Function();
+  DCHECK(append_hash_to_fn_name <= 1);
   status->status = tensorflow::GraphToFunctionDef(
-      fn_body->graph, fn_name, body_nodes, input_tensors, output_tensors,
-      output_names_vec, tf_function->fdef_lib.add_function());
-  if (!status->status.ok()) {
+      fn_body->graph, fn_name, append_hash_to_fn_name != 0, body_nodes,
+      input_tensors, output_tensors, output_names_vec, control_output_nodes,
+      control_output_names_vec, description, &tf_function->fdef);
+  if (TF_GetCode(status) != TF_OK) {
     TF_DeleteFunction(tf_function);
     return nullptr;
   }
   return tf_function;
 }
 
-void TF_GraphAddFunction(TF_Graph* g, const TF_Function* function,
-                         TF_Status* status) {
-  tensorflow::mutex_lock l(g->mu);
+TF_Function* TF_GraphToFunction(const TF_Graph* fn_body, const char* fn_name,
+                                unsigned char append_hash_to_fn_name,
+                                int num_opers, const TF_Operation* const* opers,
+                                int ninputs, const TF_Output* inputs,
+                                int noutputs, const TF_Output* outputs,
+                                const char* const* output_names,
+                                const TF_FunctionOptions* opts,
+                                const char* description, TF_Status* status) {
+  return TF_GraphToFunctionWithControlOutputs(
+      fn_body, fn_name, append_hash_to_fn_name, num_opers, opers, ninputs,
+      inputs, noutputs, outputs, output_names, 0, nullptr, nullptr, opts,
+      description, status);
+}
 
-  // At the moment, we have only one function and no gradients in fdef_lib.
-  // This makes the following operation atomic.
-  // TODO(iga): Add an atomic version of AddFunctionLibrary when we support
-  // gradients
-  status->status = g->graph.AddFunctionLibrary(function->fdef_lib);
+const char* TF_FunctionName(TF_Function* func) {
+  return func->fdef.signature().name().c_str();
+}
+
+void TF_GraphCopyFunction(TF_Graph* g, const TF_Function* func,
+                          const TF_Function* grad, TF_Status* status) {
+  if (func == nullptr) {
+    status->status = InvalidArgument(
+        "'func' argument to TF_GraphCopyFunction cannot be null");
+    return;
+  }
+
+  // TODO(iga): Add AddFunctionDef() and AddGradientDef() methods to graph
+  // to avoid the extra copy here.
+  tensorflow::FunctionDefLibrary fdef_lib;
+  *fdef_lib.add_function() = func->fdef;
+  if (grad) {
+    *fdef_lib.add_function() = grad->fdef;
+    tensorflow::GradientDef* gdef = fdef_lib.add_gradient();
+    gdef->set_function_name(func->fdef.signature().name());
+    gdef->set_gradient_func(grad->fdef.signature().name());
+  }
+
+  tensorflow::mutex_lock l(g->mu);
+  status->status = g->graph.AddFunctionLibrary(fdef_lib);
+}
+
+int TF_GraphNumFunctions(TF_Graph* g) {
+  tensorflow::mutex_lock l(g->mu);
+  return g->graph.flib_def().num_functions();
+}
+
+int TF_GraphGetFunctions(TF_Graph* g, TF_Function** funcs, int max_func,
+                         TF_Status* status) {
+  tensorflow::FunctionDefLibrary lib;
+  {
+    tensorflow::mutex_lock l(g->mu);
+    lib = g->graph.flib_def().ToProto();
+  }
+  const auto len = std::min(max_func, static_cast<int>(lib.function_size()));
+  for (int i = 0; i < len; ++i) {
+    TF_Function* func = new TF_Function();
+    func->fdef = lib.function(i);
+    funcs[i] = func;
+  }
+  status->status = tensorflow::Status::OK();
+  return len;
 }
 
 void TF_FunctionToFunctionDef(TF_Function* func, TF_Buffer* output_func_def,
                               TF_Status* status) {
-  DCHECK_EQ(1, func->fdef_lib.function_size());
-  status->status = MessageToBuffer(func->fdef_lib.function(0), output_func_def);
+  status->status = MessageToBuffer(func->fdef, output_func_def);
 }
 
-void TF_DeleteFunction(TF_Function* function) { delete function; }
+TF_Function* TF_FunctionImportFunctionDef(const void* proto, size_t proto_len,
+                                          TF_Status* status) {
+  TF_Function* func = new TF_Function();
+  if (!func->fdef.ParseFromArray(proto, proto_len)) {
+    status->status = InvalidArgument(
+        "Invalid FunctionDef given to TF_FunctionImportFunctionDef");
+    TF_DeleteFunction(func);
+    return nullptr;
+  }
+  status->status = tensorflow::Status::OK();
+  return func;
+}
+
+void TF_FunctionSetAttrValueProto(TF_Function* func, const char* attr_name,
+                                  const void* proto, size_t proto_len,
+                                  TF_Status* status) {
+  tensorflow::AttrValue attr_value;
+  if (!attr_value.ParseFromArray(proto, proto_len)) {
+    status->status = InvalidArgument(
+        "Unparseable AttrValue proto passed to "
+        "TF_FunctionSetAttrValueProto");
+    return;
+  }
+  (*func->fdef.mutable_attr())[string(attr_name)] = attr_value;
+  status->status = tensorflow::Status::OK();
+}
+
+void TF_FunctionGetAttrValueProto(TF_Function* func, const char* attr_name,
+                                  TF_Buffer* output_attr_value,
+                                  TF_Status* status) {
+  const auto& it = func->fdef.attr().find(attr_name);
+  if (it == func->fdef.attr().end()) {
+    status->status =
+        InvalidArgument("Function '", func->fdef.signature().name(),
+                        "' has no attr named '", attr_name, "'.");
+    return;
+  }
+  status->status = MessageToBuffer(it->second, output_attr_value);
+}
+
+void TF_DeleteFunction(TF_Function* func) { delete func; }

@@ -1,0 +1,64 @@
+op {
+  graph_op_name: "ResourceSparseApplyKerasMomentum"
+  in_arg {
+    name: "var"
+    description: <<END
+Should be from a Variable().
+END
+  }
+  in_arg {
+    name: "accum"
+    description: <<END
+Should be from a Variable().
+END
+  }
+  in_arg {
+    name: "lr"
+    description: <<END
+Learning rate. Must be a scalar.
+END
+  }
+  in_arg {
+    name: "grad"
+    description: <<END
+The gradient.
+END
+  }
+  in_arg {
+    name: "indices"
+    description: <<END
+A vector of indices into the first dimension of var and accum.
+END
+  }
+  in_arg {
+    name: "momentum"
+    description: <<END
+Momentum. Must be a scalar.
+END
+  }
+  attr {
+    name: "use_locking"
+    description: <<END
+If `True`, updating of the var and accum tensors will be protected
+by a lock; otherwise the behavior is undefined, but may exhibit less
+contention.
+END
+  }
+  attr {
+    name: "use_nesterov"
+    description: <<END
+If `True`, the tensor passed to compute grad will be
+var + momentum * accum, so in the end, the var you get is actually
+var + momentum * accum.
+END
+  }
+  summary: "Update relevant entries in \'*var\' and \'*accum\' according to the momentum scheme."
+  description: <<END
+Set use_nesterov = True if you want to use Nesterov momentum.
+
+That is for rows we have grad for, we update var and accum as follows:
+
+accum = accum * momentum - lr * grad
+var += accum
+END
+}

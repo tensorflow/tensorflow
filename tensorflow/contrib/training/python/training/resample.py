@@ -77,7 +77,7 @@ def resample_at_rate(inputs, rates, scope=None, seed=None, back_prop=False):
 
   Args:
     inputs: A list of tensors, each of which has a shape of `[batch_size, ...]`
-    rates: A tensor of shape `[batch_size]` contiaining the resampling rates
+    rates: A tensor of shape `[batch_size]` containing the resampling rates
        for each input.
     scope: Scope for the op.
     seed: Random seed to use.
@@ -89,11 +89,9 @@ def resample_at_rate(inputs, rates, scope=None, seed=None, back_prop=False):
   with ops.name_scope(scope, default_name='resample_at_rate',
                       values=list(inputs) + [rates]):
     rates = ops.convert_to_tensor(rates, name='rates')
-    # random_poisson does not support rates of size 0 (b/36076216)
-    sample_counts = math_ops.cast(control_flow_ops.cond(
-        array_ops.shape(rates)[0] > 0,
-        lambda: random_ops.random_poisson(rates, (), rates.dtype, seed=seed),
-        lambda: array_ops.zeros(shape=[0], dtype=rates.dtype)), dtypes.int32)
+    sample_counts = math_ops.cast(
+        random_ops.random_poisson(rates, (), rates.dtype, seed=seed),
+        dtypes.int32)
     sample_indices = _repeat_range(sample_counts)
     if not back_prop:
       sample_indices = array_ops.stop_gradient(sample_indices)

@@ -25,6 +25,14 @@ namespace tensorflow {
 /// access timer related operations.
 class EnvTime {
  public:
+  static constexpr uint64 kMicrosToPicos = 1000ULL * 1000ULL;
+  static constexpr uint64 kMicrosToNanos = 1000ULL;
+  static constexpr uint64 kMillisToMicros = 1000ULL;
+  static constexpr uint64 kMillisToNanos = 1000ULL * 1000ULL;
+  static constexpr uint64 kSecondsToMillis = 1000ULL;
+  static constexpr uint64 kSecondsToMicros = 1000ULL * 1000ULL;
+  static constexpr uint64 kSecondsToNanos = 1000ULL * 1000ULL * 1000ULL;
+
   EnvTime();
   virtual ~EnvTime() = default;
 
@@ -34,11 +42,14 @@ class EnvTime {
   /// The result of Default() belongs to this library and must never be deleted.
   static EnvTime* Default();
 
+  /// \brief Returns the number of nano-seconds since the Unix epoch.
+  virtual uint64 NowNanos() const = 0;
+
   /// \brief Returns the number of micro-seconds since the Unix epoch.
-  virtual uint64 NowMicros() = 0;
+  virtual uint64 NowMicros() const { return NowNanos() / kMicrosToNanos; }
 
   /// \brief Returns the number of seconds since the Unix epoch.
-  virtual uint64 NowSeconds() { return NowMicros() / 1000000L; }
+  virtual uint64 NowSeconds() const { return NowNanos() / kSecondsToNanos; }
 };
 
 }  // namespace tensorflow

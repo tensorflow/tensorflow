@@ -28,7 +28,9 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.cli import analyzer_cli
+from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_shared
+from tensorflow.python.debug.cli import cli_test_utils
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.lib import debug_data
@@ -36,6 +38,7 @@ from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.debug.lib import source_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -44,9 +47,26 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
 
+# Helper function to accommodate MKL-enabled TensorFlow:
+# MatMul op is supported by MKL and its name is prefixed with "_Mkl" during the
+# MKL graph rewrite pass.
+def _matmul_op_name():
+  return "_MklMatMul" if test_util.IsMklEnabled() else "MatMul"
+
+
+def _cli_config_from_temp_file():
+  return cli_config.CLIConfig(
+      config_file_path=os.path.join(tempfile.mkdtemp(), ".tfdbg_config"))
+
+
 def no_rewrite_session_config():
   rewriter_config = rewriter_config_pb2.RewriterConfig(
-      disable_model_pruning=True)
+      disable_model_pruning=True,
+      constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
+      arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+      dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+      pin_to_host_optimization=rewriter_config_pb2.RewriterConfig.OFF)
+
   graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
   return config_pb2.ConfigProto(graph_options=graph_options)
 
@@ -122,14 +142,9 @@ def assert_listed_tensors(tst,
   attr_segs = out.font_attr_segs
   line_counter = 0
 
-  num_tensors = len(expected_tensor_names)
-
-  if tensor_filter_name is None:
-    tst.assertEqual("%d dumped tensor(s):" % num_tensors, next(line_iter))
-  else:
-    tst.assertEqual("%d dumped tensor(s) passing filter \"%s\":" %
-                    (num_tensors, tensor_filter_name), next(line_iter))
+  num_dumped_tensors = int(next(line_iter).split(" ")[0])
   line_counter += 1
+  tst.assertGreaterEqual(num_dumped_tensors, len(expected_tensor_names))
 
   if op_type_regex is not None:
     tst.assertEqual("Op type regex filter: \"%s\"" % op_type_regex,
@@ -498,18 +513,82 @@ def check_menu_item(tst, out, line_index, expected_begin, expected_end,
   tst.assertTrue(found_menu_item)
 
 
+def create_analyzer_cli(dump):
+  """Create an analyzer CLI.
+
+  Args:
+    dump: A `DebugDumpDir` object to base the analyzer CLI on.
+
+  Returns:
+    1) A `DebugAnalyzer` object created based on `dump`.
+    2) A `CommandHandlerRegistry` that is based on the `DebugAnalyzer` object
+       and has the common tfdbg commands, e.g., lt, ni, li, lo, registered.
+  """
+  # Construct the analyzer.
+  analyzer = analyzer_cli.DebugAnalyzer(dump, _cli_config_from_temp_file())
+
+  # Construct the handler registry.
+  registry = debugger_cli_common.CommandHandlerRegistry()
+
+  # Register command handlers.
+  registry.register_command_handler(
+      "list_tensors",
+      analyzer.list_tensors,
+      analyzer.get_help("list_tensors"),
+      prefix_aliases=["lt"])
+  registry.register_command_handler(
+      "node_info",
+      analyzer.node_info,
+      analyzer.get_help("node_info"),
+      prefix_aliases=["ni"])
+  registry.register_command_handler(
+      "list_inputs",
+      analyzer.list_inputs,
+      analyzer.get_help("list_inputs"),
+      prefix_aliases=["li"])
+  registry.register_command_handler(
+      "list_outputs",
+      analyzer.list_outputs,
+      analyzer.get_help("list_outputs"),
+      prefix_aliases=["lo"])
+  registry.register_command_handler(
+      "print_tensor",
+      analyzer.print_tensor,
+      analyzer.get_help("print_tensor"),
+      prefix_aliases=["pt"])
+  registry.register_command_handler(
+      "print_source",
+      analyzer.print_source,
+      analyzer.get_help("print_source"),
+      prefix_aliases=["ps"])
+  registry.register_command_handler(
+      "list_source",
+      analyzer.list_source,
+      analyzer.get_help("list_source"),
+      prefix_aliases=["ls"])
+  registry.register_command_handler(
+      "eval",
+      analyzer.evaluate_expression,
+      analyzer.get_help("eval"),
+      prefix_aliases=["ev"])
+
+  return analyzer, registry
+
+
+@test_util.run_v1_only("b/120545219")
 class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
   @classmethod
   def setUpClass(cls):
     cls._dump_root = tempfile.mkdtemp()
+    cls._dump_root_for_unique = tempfile.mkdtemp()
 
     cls._is_gpu_available = test.is_gpu_available()
     if cls._is_gpu_available:
       gpu_name = test_util.gpu_device_name()
       cls._main_device = "/job:localhost/replica:0/task:0" + gpu_name
     else:
-      cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
+      cls._main_device = "/job:localhost/replica:0/task:0/device:CPU:0"
 
     cls._curr_file_path = os.path.abspath(
         tf_inspect.getfile(tf_inspect.currentframe()))
@@ -523,11 +602,11 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       v_name = "simple_mul_add/v"
 
       u_init = constant_op.constant(u_init_val, shape=[2, 2], name="u_init")
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
       cls._u_line_number = line_number_above()
 
       v_init = constant_op.constant(v_init_val, shape=[2, 1], name="v_init")
-      v = variables.Variable(v_init, name=v_name)
+      v = variables.VariableV1(v_init, name=v_name)
       cls._v_line_number = line_number_above()
 
       w = math_ops.matmul(u, v, name="simple_mul_add/matmul")
@@ -536,8 +615,11 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       x = math_ops.add(w, w, name="simple_mul_add/add")
       cls._x_line_number = line_number_above()
 
+      a = variables.VariableV1([1, 3, 3, 7], name="a")
+
       u.initializer.run()
       v.initializer.run()
+      a.initializer.run()
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       debug_utils.watch_graph(
@@ -548,53 +630,16 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
       # Invoke Session.run().
       run_metadata = config_pb2.RunMetadata()
-      sess.run(x, options=run_options, run_metadata=run_metadata)
-
-    cls._debug_dump = debug_data.DebugDumpDir(
-        cls._dump_root, partition_graphs=run_metadata.partition_graphs)
-
-    # Construct the analyzer.
-    cls._analyzer = analyzer_cli.DebugAnalyzer(cls._debug_dump)
-
-    # Construct the handler registry.
-    cls._registry = debugger_cli_common.CommandHandlerRegistry()
-
-    # Register command handlers.
-    cls._registry.register_command_handler(
-        "list_tensors",
-        cls._analyzer.list_tensors,
-        cls._analyzer.get_help("list_tensors"),
-        prefix_aliases=["lt"])
-    cls._registry.register_command_handler(
-        "node_info",
-        cls._analyzer.node_info,
-        cls._analyzer.get_help("node_info"),
-        prefix_aliases=["ni"])
-    cls._registry.register_command_handler(
-        "print_tensor",
-        cls._analyzer.print_tensor,
-        cls._analyzer.get_help("print_tensor"),
-        prefix_aliases=["pt"])
-    cls._registry.register_command_handler(
-        "print_source",
-        cls._analyzer.print_source,
-        cls._analyzer.get_help("print_source"),
-        prefix_aliases=["ps"])
-    cls._registry.register_command_handler(
-        "list_source",
-        cls._analyzer.list_source,
-        cls._analyzer.get_help("list_source"),
-        prefix_aliases=["ls"])
-    cls._registry.register_command_handler(
-        "eval",
-        cls._analyzer.evaluate_expression,
-        cls._analyzer.get_help("eval"),
-        prefix_aliases=["ev"])
+      sess.run([x], options=run_options, run_metadata=run_metadata)
+      cls._debug_dump = debug_data.DebugDumpDir(
+          cls._dump_root, partition_graphs=run_metadata.partition_graphs)
+      cls._analyzer, cls._registry = create_analyzer_cli(cls._debug_dump)
 
   @classmethod
   def tearDownClass(cls):
     # Tear down temporary dump directory.
     shutil.rmtree(cls._dump_root)
+    shutil.rmtree(cls._dump_root_for_unique)
 
   def testMeasureTensorListColumnWidthsGivesRightAnswerForEmptyData(self):
     timestamp_col_width, dump_size_col_width, op_type_col_width = (
@@ -626,7 +671,10 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         "simple_mul_add/u:0", "simple_mul_add/v:0", "simple_mul_add/u/read:0",
         "simple_mul_add/v/read:0", "simple_mul_add/matmul:0",
         "simple_mul_add/add:0"
-    ], ["VariableV2", "VariableV2", "Identity", "Identity", "MatMul", "Add"])
+    ], [
+        "VariableV2", "VariableV2", "Identity", "Identity",
+        _matmul_op_name(), "Add"
+    ])
 
     # Check the main menu.
     check_main_menu(self, out, list_tensors_enabled=False)
@@ -640,8 +688,10 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/u:0", "simple_mul_add/v:0",
             "simple_mul_add/u/read:0", "simple_mul_add/v/read:0",
             "simple_mul_add/matmul:0", "simple_mul_add/add:0"
+        ], [
+            "VariableV2", "VariableV2", "Identity", "Identity",
+            _matmul_op_name(), "Add"
         ],
-        ["VariableV2", "VariableV2", "Identity", "Identity", "MatMul", "Add"],
         sort_by="timestamp",
         reverse=True)
     check_main_menu(self, out, list_tensors_enabled=False)
@@ -654,8 +704,10 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/u:0", "simple_mul_add/v:0",
             "simple_mul_add/u/read:0", "simple_mul_add/v/read:0",
             "simple_mul_add/matmul:0", "simple_mul_add/add:0"
+        ], [
+            "VariableV2", "VariableV2", "Identity", "Identity",
+            _matmul_op_name(), "Add"
         ],
-        ["VariableV2", "VariableV2", "Identity", "Identity", "MatMul", "Add"],
         sort_by="dump_size")
     check_main_menu(self, out, list_tensors_enabled=False)
 
@@ -667,8 +719,10 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/u:0", "simple_mul_add/v:0",
             "simple_mul_add/u/read:0", "simple_mul_add/v/read:0",
             "simple_mul_add/matmul:0", "simple_mul_add/add:0"
+        ], [
+            "VariableV2", "VariableV2", "Identity", "Identity",
+            _matmul_op_name(), "Add"
         ],
-        ["VariableV2", "VariableV2", "Identity", "Identity", "MatMul", "Add"],
         sort_by="dump_size",
         reverse=True)
     check_main_menu(self, out, list_tensors_enabled=False)
@@ -687,8 +741,10 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/u:0", "simple_mul_add/v:0",
             "simple_mul_add/u/read:0", "simple_mul_add/v/read:0",
             "simple_mul_add/matmul:0", "simple_mul_add/add:0"
+        ], [
+            "VariableV2", "VariableV2", "Identity", "Identity",
+            _matmul_op_name(), "Add"
         ],
-        ["VariableV2", "VariableV2", "Identity", "Identity", "MatMul", "Add"],
         sort_by="op_type",
         reverse=False)
     check_main_menu(self, out, list_tensors_enabled=False)
@@ -702,8 +758,10 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/u:0", "simple_mul_add/v:0",
             "simple_mul_add/u/read:0", "simple_mul_add/v/read:0",
             "simple_mul_add/matmul:0", "simple_mul_add/add:0"
+        ], [
+            "VariableV2", "VariableV2", "Identity", "Identity",
+            _matmul_op_name(), "Add"
         ],
-        ["VariableV2", "VariableV2", "Identity", "Identity", "MatMul", "Add"],
         sort_by="op_type",
         reverse=True)
     check_main_menu(self, out, list_tensors_enabled=False)
@@ -717,8 +775,10 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/u:0", "simple_mul_add/v:0",
             "simple_mul_add/u/read:0", "simple_mul_add/v/read:0",
             "simple_mul_add/matmul:0", "simple_mul_add/add:0"
+        ], [
+            "VariableV2", "VariableV2", "Identity", "Identity",
+            _matmul_op_name(), "Add"
         ],
-        ["VariableV2", "VariableV2", "Identity", "Identity", "MatMul", "Add"],
         sort_by="tensor_name",
         reverse=False)
     check_main_menu(self, out, list_tensors_enabled=False)
@@ -732,8 +792,10 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
             "simple_mul_add/u:0", "simple_mul_add/v:0",
             "simple_mul_add/u/read:0", "simple_mul_add/v/read:0",
             "simple_mul_add/matmul:0", "simple_mul_add/add:0"
+        ], [
+            "VariableV2", "VariableV2", "Identity", "Identity",
+            _matmul_op_name(), "Add"
         ],
-        ["VariableV2", "VariableV2", "Identity", "Identity", "MatMul", "Add"],
         sort_by="tensor_name",
         reverse=True)
     check_main_menu(self, out, list_tensors_enabled=False)
@@ -760,13 +822,13 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         ["Identity", "Identity"],
         op_type_regex="Identity")
 
-    out = self._registry.dispatch_command("list_tensors",
-                                          ["-t", "(Add|MatMul)"])
+    out = self._registry.dispatch_command(
+        "list_tensors", ["-t", "(Add|" + _matmul_op_name() + ")"])
     assert_listed_tensors(
         self,
         out, ["simple_mul_add/add:0", "simple_mul_add/matmul:0"],
-        ["Add", "MatMul"],
-        op_type_regex="(Add|MatMul)")
+        ["Add", _matmul_op_name()],
+        op_type_regex=("(Add|" + _matmul_op_name() + ")"))
     check_main_menu(self, out, list_tensors_enabled=False)
 
   def testListTensorFilterByNodeNameRegexAndOpTypeRegex(self):
@@ -777,6 +839,34 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         out, ["simple_mul_add/add:0"], ["Add"],
         node_name_regex=".*add$",
         op_type_regex="(Add|MatMul)")
+    check_main_menu(self, out, list_tensors_enabled=False)
+
+  def testListTensorWithFilterAndNodeNameExclusionWorks(self):
+    # First, create and register the filter.
+    def is_2x1_vector(datum, tensor):
+      del datum  # Unused.
+      return list(tensor.shape) == [2, 1]
+    self._analyzer.add_tensor_filter("is_2x1_vector", is_2x1_vector)
+
+    # Use shorthand alias for the command prefix.
+    out = self._registry.dispatch_command(
+        "lt", ["-f", "is_2x1_vector", "--filter_exclude_node_names", ".*v.*"])
+
+    # If the --filter_exclude_node_names were not used, then the matching
+    # tensors would be:
+    #   - simple_mul_add/v:0
+    #   - simple_mul_add/v/read:0
+    #   - simple_mul_add/matmul:0
+    #   - simple_mul_add/add:0
+    #
+    # With the --filter_exclude_node_names option, only the last two should
+    # show up in the result.
+    assert_listed_tensors(
+        self,
+        out, ["simple_mul_add/matmul:0", "simple_mul_add/add:0"],
+        [_matmul_op_name(), "Add"],
+        tensor_filter_name="is_2x1_vector")
+
     check_main_menu(self, out, list_tensors_enabled=False)
 
   def testListTensorsFilterNanOrInf(self):
@@ -815,7 +905,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     recipients = [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")]
 
-    assert_node_attribute_lines(self, out, node_name, "MatMul",
+    assert_node_attribute_lines(self, out, node_name, _matmul_op_name(),
                                 self._main_device,
                                 [("Identity", "simple_mul_add/u/read"),
                                  ("Identity", "simple_mul_add/v/read")], [],
@@ -837,17 +927,21 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     node_name = "simple_mul_add/matmul"
     out = self._registry.dispatch_command("node_info", ["-a", node_name])
 
+    test_attr_key_val_pairs = [("transpose_a", "b: false"),
+                               ("transpose_b", "b: false"),
+                               ("T", "type: DT_DOUBLE")]
+    if test_util.IsMklEnabled():
+      test_attr_key_val_pairs.append(("_kernel", 's: "MklNameChangeOp"'))
+
     assert_node_attribute_lines(
         self,
         out,
         node_name,
-        "MatMul",
+        _matmul_op_name(),
         self._main_device, [("Identity", "simple_mul_add/u/read"),
                             ("Identity", "simple_mul_add/v/read")], [],
         [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")], [],
-        attr_key_val_pairs=[("transpose_a", "b: false"),
-                            ("transpose_b", "b: false"),
-                            ("T", "type: DT_DOUBLE")])
+        attr_key_val_pairs=test_attr_key_val_pairs)
     check_main_menu(
         self,
         out,
@@ -864,7 +958,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         self,
         out,
         node_name,
-        "MatMul",
+        _matmul_op_name(),
         self._main_device, [("Identity", "simple_mul_add/u/read"),
                             ("Identity", "simple_mul_add/v/read")], [],
         [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")], [],
@@ -890,11 +984,12 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         self,
         out,
         node_name,
-        "MatMul",
+        _matmul_op_name(),
         self._main_device, [("Identity", "simple_mul_add/u/read"),
                             ("Identity", "simple_mul_add/v/read")], [],
         [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")], [],
-        show_stack_trace=True, stack_trace_available=False)
+        show_stack_trace=True,
+        stack_trace_available=False)
     check_main_menu(
         self,
         out,
@@ -913,11 +1008,12 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         self,
         out,
         node_name,
-        "MatMul",
+        _matmul_op_name(),
         self._main_device, [("Identity", "simple_mul_add/u/read"),
                             ("Identity", "simple_mul_add/v/read")], [],
         [("Add", "simple_mul_add/add"), ("Add", "simple_mul_add/add")], [],
-        show_stack_trace=True, stack_trace_available=True)
+        show_stack_trace=True,
+        stack_trace_available=True)
     check_main_menu(
         self,
         out,
@@ -934,7 +1030,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     assert_node_attribute_lines(self, out, node_name, "Identity",
                                 self._main_device,
                                 [("VariableV2", "simple_mul_add/u")], [],
-                                [("MatMul", "simple_mul_add/matmul")], [])
+                                [(_matmul_op_name(), "simple_mul_add/matmul")],
+                                [])
     check_main_menu(
         self,
         out,
@@ -977,6 +1074,24 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         node_info_node_name=node_name,
         list_inputs_node_name=node_name,
         list_outputs_node_name=node_name)
+
+  def testPrintTensorAndWriteToNpyFile(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
+    npy_path = os.path.join(self._dump_root, "matmul.npy")
+    out = self._registry.dispatch_command(
+        "print_tensor", [tensor_name, "-w", npy_path],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"%s:DebugIdentity\":" % tensor_name,
+        "  dtype: float64",
+        "  shape: (2, 1)",
+        "",
+    ], out.lines[:4])
+    self.assertTrue(out.lines[4].startswith("Saved value to: %s (" % npy_path))
+    # Load the numpy file and verify its contents.
+    self.assertAllClose([[7.0], [-2.0]], np.load(npy_path))
 
   def testPrintTensorHighlightingRanges(self):
     node_name = "simple_mul_add/matmul"
@@ -1168,29 +1283,54 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         "eval", ["np.matmul(`%s`, `%s`.T)" % (tensor_name, tensor_name)],
         screen_info={"cols": 80})
 
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self,
+        ["Tensor \"from eval of expression "
+         "'np.matmul(`simple_mul_add/matmul:0`, "
+         "`simple_mul_add/matmul:0`.T)'\":",
+         "  dtype: float64",
+         "  shape: (2, 2)",
+         "",
+         "Numeric summary:",
+         "| - + | total |",
+         "| 2 2 |     4 |",
+         "|           min           max          mean           std |"],
+        out.lines[:8])
+    cli_test_utils.assert_array_lines_close(
+        self, [-14.0, 49.0, 6.25, 25.7524270701], out.lines[8:9])
+    cli_test_utils.assert_array_lines_close(
+        self, [[49.0, -14.0], [-14.0, 4.0]], out.lines[10:])
+
+  def testEvalExpressionAndWriteToNpyFile(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
+    npy_path = os.path.join(self._dump_root, "matmul_eval.npy")
+    out = self._registry.dispatch_command(
+        "eval",
+        ["np.matmul(`%s`, `%s`.T)" % (tensor_name, tensor_name), "-w",
+         npy_path], screen_info={"cols": 80})
+
     self.assertEqual([
         "Tensor \"from eval of expression "
         "'np.matmul(`simple_mul_add/matmul:0`, "
         "`simple_mul_add/matmul:0`.T)'\":",
         "  dtype: float64",
         "  shape: (2, 2)",
-        "",
-        "Numeric summary:",
-        "| - + | total |",
-        "| 2 2 |     4 |",
-        "|           min           max          mean           std |",
-        "|         -14.0          49.0          6.25 25.7524270701 |",
-        "",
-        "array([[ 49., -14.],",
-        "       [-14.,   4.]])"], out.lines)
+        ""], out.lines[:4])
+
+    self.assertTrue(out.lines[4].startswith("Saved value to: %s (" % npy_path))
+    # Load the numpy file and verify its contents.
+    self.assertAllClose([[49.0, -14.0], [-14.0, 4.0]], np.load(npy_path))
 
   def testAddGetTensorFilterLambda(self):
-    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
+                                          _cli_config_from_temp_file())
     analyzer.add_tensor_filter("foo_filter", lambda x, y: True)
     self.assertTrue(analyzer.get_tensor_filter("foo_filter")(None, None))
 
   def testAddGetTensorFilterNestedFunction(self):
-    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
+                                          _cli_config_from_temp_file())
 
     def foo_filter(unused_arg_0, unused_arg_1):
       return True
@@ -1199,14 +1339,16 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     self.assertTrue(analyzer.get_tensor_filter("foo_filter")(None, None))
 
   def testAddTensorFilterEmptyName(self):
-    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
+                                          _cli_config_from_temp_file())
 
     with self.assertRaisesRegexp(ValueError,
                                  "Input argument filter_name cannot be empty."):
       analyzer.add_tensor_filter("", lambda datum, tensor: True)
 
   def testAddTensorFilterNonStrName(self):
-    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
+                                          _cli_config_from_temp_file())
 
     with self.assertRaisesRegexp(
         TypeError,
@@ -1214,7 +1356,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       analyzer.add_tensor_filter(1, lambda datum, tensor: True)
 
   def testAddGetTensorFilterNonCallable(self):
-    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
+                                          _cli_config_from_temp_file())
 
     with self.assertRaisesRegexp(
         TypeError, "Input argument filter_callable is expected to be callable, "
@@ -1222,7 +1365,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       analyzer.add_tensor_filter("foo_filter", "bar")
 
   def testGetNonexistentTensorFilter(self):
-    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
+                                          _cli_config_from_temp_file())
 
     analyzer.add_tensor_filter("foo_filter", lambda datum, tensor: True)
     with self.assertRaisesRegexp(ValueError,
@@ -1256,7 +1400,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     # Verify the annotation of the line that creates u.
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
-        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+        ["L%d         u = variables.VariableV1(u_init, name=u_name)" %
          self._u_line_number,
          "    simple_mul_add/u",
          "    simple_mul_add/u/Assign",
@@ -1273,7 +1417,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     # Verify the annotation of the line that creates v.
     index = self._findSourceLine(out, self._v_line_number)
     self.assertEqual(
-        ["L%d         v = variables.Variable(v_init, name=v_name)" %
+        ["L%d         v = variables.VariableV1(v_init, name=v_name)" %
          self._v_line_number,
          "    simple_mul_add/v"],
         out.lines[index : index + 2])
@@ -1310,7 +1454,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     # Verify the annotation of the line that creates u.
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
-        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+        ["L%d         u = variables.VariableV1(u_init, name=u_name)" %
          self._u_line_number,
          "    simple_mul_add/u/read:0",
          "    simple_mul_add/u:0"],
@@ -1332,7 +1476,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
-        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+        ["L%d         u = variables.VariableV1(u_init, name=u_name)" %
          self._u_line_number,
          "    simple_mul_add/u",
          "    simple_mul_add/u/Assign",
@@ -1355,7 +1499,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     index = self._findSourceLine(out, self._u_line_number)
     self.assertEqual(
-        ["L%d         u = variables.Variable(u_init, name=u_name)" %
+        ["L%d         u = variables.VariableV1(u_init, name=u_name)" %
          self._u_line_number,
          "    simple_mul_add/u",
          "    (... Omitted 2 of 3 op(s) ...) +5"],
@@ -1461,6 +1605,37 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       self.assertEqual("ps uncompiled.py -b 6",
                        out.font_attr_segs[6][0][2][1].content)
 
+  def testListInputInvolvingNodesWithMultipleOutputs(self):
+    """List an input tree containing tensors from non-:0 output slot."""
+
+    with session.Session(config=no_rewrite_session_config()) as sess:
+      x = variables.VariableV1([1, 3, 3, 7], name="x")
+      _, idx = array_ops.unique(x, name="x_unique")
+      idx_times_two = math_ops.multiply(idx, 2, name="idx_times_two")
+      self.evaluate(x.initializer)
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugIdentity"],
+          debug_urls="file://%s" % self._dump_root_for_unique)
+      run_metadata = config_pb2.RunMetadata()
+      self.assertAllEqual(
+          [0, 2, 2, 4],
+          sess.run(idx_times_two,
+                   options=run_options,
+                   run_metadata=run_metadata))
+      debug_dump = debug_data.DebugDumpDir(
+          self._dump_root_for_unique,
+          partition_graphs=run_metadata.partition_graphs)
+      _, registry = create_analyzer_cli(debug_dump)
+
+      out = registry.dispatch_command("li", ["idx_times_two"])
+      self.assertEqual(
+          ["Inputs to node \"idx_times_two\" (Depth limit = 1):",
+           "|- (1) x_unique:1"], out.lines[:2])
+
 
 class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):
 
@@ -1486,18 +1661,8 @@ class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):
     cls._debug_dump = debug_data.DebugDumpDir(
         cls._dump_root, partition_graphs=run_metadata.partition_graphs)
 
-    # Construct the analyzer.
-    cls._analyzer = analyzer_cli.DebugAnalyzer(cls._debug_dump)
-
-    # Construct the handler registry.
-    cls._registry = debugger_cli_common.CommandHandlerRegistry()
-
-    # Register command handler.
-    cls._registry.register_command_handler(
-        "print_tensor",
-        cls._analyzer.print_tensor,
-        cls._analyzer.get_help("print_tensor"),
-        prefix_aliases=["pt"])
+    # Construct the analyzer and command registry.
+    cls._analyzer, cls._registry = create_analyzer_cli(cls._debug_dump)
 
   @classmethod
   def tearDownClass(cls):
@@ -1532,6 +1697,7 @@ class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):
     self.assertNotIn("...,", out.lines[4])
 
 
+@test_util.run_v1_only("b/120545219")
 class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
 
   @classmethod
@@ -1543,12 +1709,12 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
       gpu_name = test_util.gpu_device_name()
       cls._main_device = "/job:localhost/replica:0/task:0" + gpu_name
     else:
-      cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
+      cls._main_device = "/job:localhost/replica:0/task:0/device:CPU:0"
 
     with session.Session(config=no_rewrite_session_config()) as sess:
       x_init_val = np.array([5.0, 3.0])
       x_init = constant_op.constant(x_init_val, shape=[2])
-      x = variables.Variable(x_init, name="control_deps/x")
+      x = variables.VariableV1(x_init, name="control_deps/x")
 
       y = math_ops.add(x, x, name="control_deps/y")
       y = control_flow_ops.with_dependencies(
@@ -1575,28 +1741,8 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
     debug_dump = debug_data.DebugDumpDir(
         cls._dump_root, partition_graphs=run_metadata.partition_graphs)
 
-    # Construct the analyzer.
-    analyzer = analyzer_cli.DebugAnalyzer(debug_dump)
-
-    # Construct the handler registry.
-    cls._registry = debugger_cli_common.CommandHandlerRegistry()
-
-    # Register command handlers.
-    cls._registry.register_command_handler(
-        "node_info",
-        analyzer.node_info,
-        analyzer.get_help("node_info"),
-        prefix_aliases=["ni"])
-    cls._registry.register_command_handler(
-        "list_inputs",
-        analyzer.list_inputs,
-        analyzer.get_help("list_inputs"),
-        prefix_aliases=["li"])
-    cls._registry.register_command_handler(
-        "list_outputs",
-        analyzer.list_outputs,
-        analyzer.get_help("list_outputs"),
-        prefix_aliases=["lo"])
+    # Construct the analyzer and command handler registry.
+    _, cls._registry = create_analyzer_cli(debug_dump)
 
   @classmethod
   def tearDownClass(cls):
@@ -1879,6 +2025,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
                      out.font_attr_segs[0])
 
 
+@test_util.run_v1_only("b/120545219")
 class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
 
   @classmethod
@@ -1911,18 +2058,7 @@ class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
     cls._debug_dump = debug_data.DebugDumpDir(
         cls._dump_root, partition_graphs=run_metadata.partition_graphs)
 
-    cls._analyzer = analyzer_cli.DebugAnalyzer(cls._debug_dump)
-    cls._registry = debugger_cli_common.CommandHandlerRegistry()
-    cls._registry.register_command_handler(
-        "list_tensors",
-        cls._analyzer.list_tensors,
-        cls._analyzer.get_help("list_tensors"),
-        prefix_aliases=["lt"])
-    cls._registry.register_command_handler(
-        "print_tensor",
-        cls._analyzer.print_tensor,
-        cls._analyzer.get_help("print_tensor"),
-        prefix_aliases=["pt"])
+    cls._analyzer, cls._registry = create_analyzer_cli(cls._debug_dump)
 
   @classmethod
   def tearDownClass(cls):

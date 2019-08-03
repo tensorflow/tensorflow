@@ -1,11 +1,15 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
 
 # Convertor of a frozen graph definition into the memmapped format.
 cc_library(
@@ -13,16 +17,21 @@ cc_library(
     srcs = ["convert_graphdef_memmapped_format_lib.cc"],
     hdrs = ["convert_graphdef_memmapped_format_lib.h"],
     deps = [
+        "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:sendrecv_ops_op_lib",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/kernels:immutable_constant_op",
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "convert_graphdef_memmapped_format",
     srcs = ["convert_graphdef_memmapped_format.cc"],
     deps = [
@@ -32,11 +41,11 @@ cc_binary(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "convert_graphdef_memmapped_format_test",
     srcs = ["convert_graphdef_memmapped_format_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -51,7 +60,7 @@ cc_test(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "inspect_checkpoint",
     srcs = ["inspect_checkpoint.cc"],
     deps = [
@@ -71,16 +80,4 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

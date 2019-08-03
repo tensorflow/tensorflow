@@ -31,6 +31,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
@@ -47,7 +48,6 @@ _dtypes = input_py._dtypes
 _store_sparse_tensors = input_py._store_sparse_tensors
 _validate_keep_input = input_py._validate_keep_input
 _shapes = input_py._shapes
-_smart_cond = input_py._smart_cond
 _which_queue = input_py._which_queue
 
 # pylint: enable=protected-access
@@ -212,7 +212,7 @@ def bucket(tensors,
         else static_batch_size)
 
     bucket_shapes = [
-        tensor_shape.vector(maybe_static_batch_size).concatenate(s)
+        tensor_shape.TensorShape([maybe_static_batch_size]).concatenate(s)
         for s in bucket_queues[0].shapes
     ]
     # top_queue is a PaddingFIFOQueue even if the bucket queues are regular FIFO
@@ -222,7 +222,7 @@ def bucket(tensors,
     top_queue = data_flow_ops.PaddingFIFOQueue(
         capacity=capacity,
         dtypes=[dtypes.int32] + types,
-        shapes=[tensor_shape.scalar()] + bucket_shapes,
+        shapes=[tensor_shape.TensorShape([])] + bucket_shapes,
         shared_name=shared_name,
         name="top_queue")
 
@@ -239,7 +239,7 @@ def bucket(tensors,
       ]
       return control_flow_ops.group(*enqueues, name="group_enqueues")
 
-    maybe_enqueue = _smart_cond(
+    maybe_enqueue = utils.smart_cond(
         keep_input,
         enqueue_which,
         control_flow_ops.no_op)
@@ -265,16 +265,22 @@ def bucket(tensors,
         for i, (q, bs) in enumerate(zip(bucket_queues, batch_size))
     ]
 
-    for i, q in enumerate(bucket_queues):
-      queue_runner.add_queue_runner(
-          queue_runner.QueueRunner(
-              q, [enqueues_to_top[i]],
-              queue_closed_exception_types=(errors.OutOfRangeError,
-                                            errors.CancelledError)))
+    queue_runner.add_queue_runner(
+        queue_runner.QueueRunner(
+            bucket_queues[0], enqueues_to_top,
+            close_op=top_queue.close(),
+            cancel_op=top_queue.close(cancel_pending_enqueues=True),
+            queue_closed_exception_types=(errors.OutOfRangeError,
+                                          errors.CancelledError)))
     queue_runner.add_queue_runner(
         queue_runner.QueueRunner(
             top_queue,
             bucket_enqueue_ops,
+            close_op=control_flow_ops.group(
+                *[q.close() for q in bucket_queues]),
+            cancel_op=control_flow_ops.group(
+                *[q.close(cancel_pending_enqueues=True)
+                  for q in bucket_queues]),
             queue_closed_exception_types=(errors.OutOfRangeError,
                                           errors.CancelledError)))
 
@@ -393,11 +399,11 @@ def bucket_by_sequence_length(input_length,
     conditions_c = math_ops.logical_and(
         math_ops.less_equal(buckets_min, input_length),
         math_ops.less(input_length, buckets_max))
-    which_bucket = math_ops.reduce_min(array_ops.where(conditions_c))
-    which_bucket = math_ops.to_int32(which_bucket)
+    which_bucket = math_ops.reduce_min(array_ops.where_v2(conditions_c))
+    which_bucket = math_ops.cast(which_bucket, dtypes.int32)
 
     if shapes is not None:
-      shapes = [tensor_shape.scalar()] + shapes
+      shapes = [tensor_shape.TensorShape([])] + shapes
 
     _, dequeued = bucket(
         tensors=[input_length] + tensor_list,

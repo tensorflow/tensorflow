@@ -300,6 +300,10 @@ public class ImageUtils {
     final Matrix matrix = new Matrix();
 
     if (applyRotation != 0) {
+      if (applyRotation % 90 != 0) {
+        LOGGER.w("Rotation of %d % 90 != 0", applyRotation);
+      }
+
       // Translate so center of image is at origin.
       matrix.postTranslate(-srcWidth / 2.0f, -srcHeight / 2.0f);
 

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Conv2D"
+  endpoint {
+    name: "nn.Conv2d"
+  }
+}

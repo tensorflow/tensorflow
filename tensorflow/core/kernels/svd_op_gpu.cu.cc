@@ -20,12 +20,17 @@ limitations under the License.
 //                    instead of complex values. The current CPU implementation
 //                    outputs the singular values as complex values and then
 //                    casts them to reals in the python wrapper.
+// TODO(rmlarsen/shamanDevel): This could use a bit of cleanup. We don't need to
+// pass quite as many raw pointers around. Would also be nice to reduce code
+// duplication.
+
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 
 #include <algorithm>
 #include <vector>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -38,8 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -55,14 +59,14 @@ namespace {
 // The result is stored in V[batch] and has the same sign as the
 // real value of V (which should be computed)
 template <class Scalar>
-__global__ void ComputeValueOfVKernel(Cuda2DLaunchConfig config, int64 m,
+__global__ void ComputeValueOfVKernel(Gpu2DLaunchConfig config, int64 m,
                                       int64 ldu, const Scalar* M,
                                       const Scalar* U, const Scalar* S,
                                       Scalar* V) {
-  CUDA_AXIS_KERNEL_LOOP(batch, config.virtual_thread_count, x) {
-    CUDA_AXIS_KERNEL_LOOP(i, config.virtual_thread_count, y) {
+  GPU_AXIS_KERNEL_LOOP(batch, config.virtual_thread_count.x, X) {
+    GPU_AXIS_KERNEL_LOOP(i, config.virtual_thread_count.y, Y) {
       Scalar v = M[i + m * batch] * U[ldu * (i + m * batch)] * S[batch];
-      CudaAtomicAdd(V + batch, v);
+      GpuAtomicAdd(V + batch, v);
     }
   }
 }
@@ -70,12 +74,12 @@ __global__ void ComputeValueOfVKernel(Cuda2DLaunchConfig config, int64 m,
 // Extracts the sign of V
 // V[i] = V[i]>=0 ? 1 : 0
 template <class Scalar>
-__global__ void ExtractSignOfVKernel(CudaLaunchConfig config, Scalar* V) {
-  CUDA_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
+__global__ void ExtractSignOfVKernel(GpuLaunchConfig config, Scalar* V) {
+  GPU_1D_KERNEL_LOOP(i, config.virtual_thread_count) {
     V[i] = V[i] >= 0 ? Scalar(1) : Scalar(-1);
   }
 }
-}
+}  // namespace
 
 // Scalar: The input scalar type (can be complex)
 template <class Scalar>
@@ -89,18 +93,57 @@ class SvdOpGpu : public AsyncOpKernel {
   }
 
   void RunSVD(OpKernelContext* context, DoneCallback done, int64 m, int64 n,
-              int64 p, int64 batch_size, Scalar* input_ptr,
-              RealScalar* outputS_ptr, Scalar* outputU_ptr,
-              Scalar* outputVT_ptr, int* dev_info_ptr, CudaSolver& solver) {
+              int64 p, Tensor& M_copy, Tensor* S, Tensor* U, Tensor* V,
+              std::unique_ptr<CudaSolver> solver) {
+    // Compute U S V* = M.
+    // 1. cuSolver works in column-major rather than row-major.
+    // 2. Gesvd returns V*.
+    // 3. Hence M should be transposed before input and U (rather than V) should
+    // be transposed on output.
+
+    Tensor u_copy;
+    if (compute_uv_) {
+      TensorShape u_shape;
+      if (full_matrices_) {
+        u_shape = U->shape();
+      } else {
+        TensorShape shapeRaw = M_copy.shape();
+        shapeRaw.RemoveLastDims(2);
+        u_shape = shapeRaw;
+        u_shape.AddDim(p);
+        u_shape.AddDim(m);
+      }
+      OP_REQUIRES_OK_ASYNC(
+          context, solver->allocate_scoped_tensor(U->dtype(), u_shape, &u_copy),
+          done);
+    }
+
+    // get the pointers to the data
+    Scalar* input_ptr;
+    RealScalar* outputS_ptr;
+    Scalar* outputU_ptr = NULL;
+    Scalar* outputV_ptr = NULL;
+    auto input_reshaped = M_copy.template flat_inner_dims<Scalar, 3>();
+    input_ptr = input_reshaped.data();
+    outputS_ptr = S->template flat_inner_dims<RealScalar, 2>().data();
+    if (compute_uv_) {
+      outputU_ptr = u_copy.template flat_inner_dims<Scalar, 3>().data();
+      outputV_ptr = V->template flat_inner_dims<Scalar, 3>().data();
+    }
+    const int64 batch_size = input_reshaped.dimension(0);
+    std::vector<DeviceLapackInfo> dev_info;
+    dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "gesvd"));
+    int* dev_info_ptr = dev_info.back().mutable_data();
+
     // Save the input matrix
     // Needed for the n=1 fix, see below, since SVD destroys the input
     Tensor input_copy;
     if (compute_uv_ && n == 1) {
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          context->allocate_temp(DataTypeToEnum<Scalar>::v(),
-                                 TensorShape({batch_size, m}), &input_copy),
-          done);
+      OP_REQUIRES_OK_ASYNC(context,
+                           solver->allocate_scoped_tensor(
+                               DataTypeToEnum<Scalar>::v(),
+                               TensorShape({batch_size, m}), &input_copy),
+                           done);
       const GPUDevice& d = context->eigen_device<GPUDevice>();
       d.memcpy(input_copy.flat<Scalar>().data(), input_ptr,
                batch_size * m * sizeof(Scalar));
@@ -117,20 +160,21 @@ class SvdOpGpu : public AsyncOpKernel {
       if (compute_uv_) {
         if (full_matrices_) {
           outputU = outputU_ptr + batch * m * m;
-          outputVT = outputVT_ptr + batch * n * n;
+          outputVT = outputV_ptr + batch * n * n;
           jobu = 'A';
           jobvt = 'A';
         } else {
           outputU = outputU_ptr + batch * m * p;
-          outputVT = outputVT_ptr + batch * n * p;
+          outputVT = outputV_ptr + batch * n * p;
           jobu = 'S';
           jobvt = 'S';
         }
       }
 
       OP_REQUIRES_OK_ASYNC(
-          context, solver.Gesvd(jobu, jobvt, m, n, input, m, outputS, outputU,
-                                m, outputVT, n, dev_info_ptr + batch),
+          context,
+          solver->Gesvd(jobu, jobvt, m, n, input, m, outputS, outputU, m,
+                        outputVT, n, dev_info_ptr + batch),
           done);
     }
 
@@ -150,24 +194,34 @@ class SvdOpGpu : public AsyncOpKernel {
     if (compute_uv_ && n == 1) {
       // 1. compute the (batched) sum
       const GPUDevice& d = context->eigen_device<GPUDevice>();
-      d.memset(outputVT_ptr, 0, batch_size * sizeof(Scalar));
-      Cuda2DLaunchConfig cfg2D = GetCuda2DLaunchConfig(batch_size, m, d);
-      ComputeValueOfVKernel<<<cfg2D.block_count, cfg2D.thread_per_block, 0,
-                              d.stream()>>>(
-          cfg2D, m, full_matrices_ ? m : p, input_copy.flat<Scalar>().data(),
-          outputU_ptr, outputS_ptr, outputVT_ptr);
+      d.memset(outputV_ptr, 0, batch_size * sizeof(Scalar));
+      Gpu2DLaunchConfig cfg2D = GetGpu2DLaunchConfig(batch_size, m, d);
+      TF_CHECK_OK(GpuLaunchKernel(ComputeValueOfVKernel<Scalar>,
+                                  cfg2D.block_count, cfg2D.thread_per_block, 0,
+                                  d.stream(), cfg2D, m, full_matrices_ ? m : p,
+                                  input_copy.flat<Scalar>().data(), outputU_ptr,
+                                  outputS_ptr, outputV_ptr));
       // 2. clamp V to -1 or +1
-      CudaLaunchConfig cfg1D = GetCudaLaunchConfig(batch_size, d);
-      ExtractSignOfVKernel<<<cfg1D.block_count, cfg1D.thread_per_block, 0,
-                             d.stream()>>>(cfg1D, outputVT_ptr);
+      GpuLaunchConfig cfg1D = GetGpuLaunchConfig(batch_size, d);
+      TF_CHECK_OK(GpuLaunchKernel(ExtractSignOfVKernel<Scalar>,
+                                  cfg1D.block_count, cfg1D.thread_per_block, 0,
+                                  d.stream(), cfg1D, outputV_ptr));
     }
+
+    if (compute_uv_) {
+      auto device = context->eigen_device<GPUDevice>();
+      OP_REQUIRES_OK_ASYNC(context, DoMatrixTranspose(device, u_copy, U), done);
+    }
+
+    CheckResult(context, std::move(done), dev_info, std::move(solver));
   }
 
   void CheckResult(OpKernelContext* context, DoneCallback done,
                    const std::vector<DeviceLapackInfo>& dev_info,
-                   CudaSolver& solver, Tensor& catch1, Tensor& catch2) {
-    auto info_checker = [context, dev_info, done, catch1, catch2](
-        const Status& status, const std::vector<HostLapackInfo>& /* unused */) {
+                   std::unique_ptr<CudaSolver> solver) {
+    auto info_checker = [context, done](
+                            const Status& status,
+                            const std::vector<HostLapackInfo>& /* unused */) {
       Status full_status = status;
       if (!full_status.ok()) {
         full_status.Update(errors::InvalidArgument(kErrMsg));
@@ -176,94 +230,55 @@ class SvdOpGpu : public AsyncOpKernel {
       done();
     };
 
-    OP_REQUIRES_OK_ASYNC(context, solver.CopyLapackInfoToHostAsync(
-                                      dev_info, std::move(info_checker)),
-                         done);
+    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                    std::move(info_checker));
   }
 
   // The SVD if m >= n
   // TODO: can the two cases (MgeqN and MlessN) be simplified,
   //   common boilerplate be reduced, or even combined in one method?
   void PerformSVD_MgeqN(OpKernelContext* context, DoneCallback done, int64 m,
-                        int64 n, int64 p, const gtl::ArraySlice<int32>& perm,
-                        const Tensor& M, Tensor* S, Tensor* U, Tensor* V) {
-    TensorShape shapeRaw = M.shape();
-    shapeRaw.RemoveDim(shapeRaw.dims() - 1);
-    shapeRaw.RemoveDim(shapeRaw.dims() - 1);
-
+                        int64 n, int64 p, const Tensor& M, Tensor* S, Tensor* U,
+                        Tensor* V) {
     // Transpose M, because cuSolver expects it to be column-major
+    TensorShape shapeRaw = M.shape();
+    shapeRaw.RemoveLastDims(2);
     TensorShape input_shape = shapeRaw;
     input_shape.AddDim(n);
     input_shape.AddDim(m);
     Tensor input_copy;
+    // TODO(rmlarsen): Convert to std::make_unique when available.
+    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
     OP_REQUIRES_OK_ASYNC(
-        context, context->allocate_temp(M.dtype(), input_shape, &input_copy),
+        context,
+        solver->allocate_scoped_tensor(M.dtype(), input_shape, &input_copy),
         done);
     auto device = context->eigen_device<GPUDevice>();
-    OP_REQUIRES_OK_ASYNC(context, DoTranspose(device, M, perm, &input_copy),
+    OP_REQUIRES_OK_ASYNC(context, DoMatrixTranspose(device, M, &input_copy),
                          done);
 
-    // I need to transpose U at the end
-    // Not V, because cuSolver work column-major
-    Tensor u_copy;
-    if (compute_uv_) {
-      TensorShape u_shape;
-      if (full_matrices_) {
-        u_shape = U->shape();
-      } else {
-        u_shape = shapeRaw;
-        u_shape.AddDim(p);
-        u_shape.AddDim(m);
-      }
-      OP_REQUIRES_OK_ASYNC(
-          context, context->allocate_temp(U->dtype(), u_shape, &u_copy), done);
-    }
-
-    // get the pointers to the data
-    Scalar* input_ptr;
-    RealScalar* outputS_ptr;
-    Scalar* outputU_ptr = NULL;
-    Scalar* outputV_ptr = NULL;
-    auto input_reshaped = input_copy.template flat_inner_dims<Scalar, 3>();
-    input_ptr = input_reshaped.data();
-    outputS_ptr = S->template flat_inner_dims<RealScalar, 2>().data();
-    if (compute_uv_) {
-      outputU_ptr = u_copy.template flat_inner_dims<Scalar, 3>().data();
-      outputV_ptr = V->template flat_inner_dims<Scalar, 3>().data();
-    }
-
-    // call the SVD
-    const int64 batch_size = input_reshaped.dimension(0);
-    std::vector<DeviceLapackInfo> dev_info;
-    dev_info.emplace_back(context, batch_size, "gesvd");
-    CudaSolver solver(context);
-    RunSVD(context, done, m, n, p, batch_size, input_ptr, outputS_ptr,
-           outputU_ptr, outputV_ptr, dev_info.back().mutable_data(), solver);
-
-    // Transpose U
-    if (compute_uv_) {
-      OP_REQUIRES_OK_ASYNC(context, DoTranspose(device, u_copy, perm, U), done);
-    }
-
-    // now check if the SVD operation succeeded or not
-    CheckResult(context, done, dev_info, solver, input_copy, u_copy);
+    // Call the SVD: compute U S V* = M.
+    RunSVD(context, done, m, n, p, input_copy, S, U, V, std::move(solver));
   }
 
   // The SVD if m < n
   void PerformSVD_MlessN(OpKernelContext* context, DoneCallback done, int64 m,
-                         int64 n, int64 p, const gtl::ArraySlice<int32>& perm,
-                         const Tensor& M, Tensor* S, Tensor* U, Tensor* V) {
-    // Perform the SVD on M'
+                         int64 n, int64 p, const Tensor& M, Tensor* S,
+                         Tensor* U, Tensor* V) {
+    // Perform the SVD on M'. cuSolver works column major so don't need to
+    // transpose M.
 
     // Reuse the input buffer or make a copy for the SVD depending on whether
-    // this op owns the
-    // input buffer exclusively. This is needed because the SVD modifies the
-    // input
+    // this op owns the input buffer exclusively. This is needed because the
+    // SVD modifies the input
+    // TODO(rmlarsen): Convert to std::make_unique when available.
+    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
     Tensor input_copy;
-    OP_REQUIRES_OK_ASYNC(context, context->forward_input_or_allocate_temp(
-                                      {0}, DataTypeToEnum<Scalar>::value,
-                                      M.shape(), &input_copy),
-                         done);
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        solver->forward_input_or_allocate_scoped_tensor(
+            {0}, DataTypeToEnum<Scalar>::value, M.shape(), &input_copy),
+        done);
 
     if (!M.SharesBufferWith(input_copy)) {
       const GPUDevice& d = context->eigen_device<GPUDevice>();
@@ -271,55 +286,8 @@ class SvdOpGpu : public AsyncOpKernel {
                M.NumElements() * sizeof(Scalar));
     }
 
-    // I need to transpose V at the end
-    Tensor v_copy;
-    if (compute_uv_) {
-      TensorShape v_shape;
-      if (full_matrices_) {
-        v_shape = V->shape();
-      } else {
-        TensorShape shapeRaw = M.shape();
-        shapeRaw.RemoveDim(shapeRaw.dims() - 1);
-        shapeRaw.RemoveDim(shapeRaw.dims() - 1);
-        v_shape = shapeRaw;
-        v_shape.AddDim(p);
-        v_shape.AddDim(n);
-      }
-      OP_REQUIRES_OK_ASYNC(
-          context, context->allocate_temp(V->dtype(), v_shape, &v_copy), done);
-    }
-
-    // get the pointers to the data
-    Scalar* input_ptr;
-    RealScalar* outputS_ptr;
-    Scalar* outputU_ptr = NULL;
-    Scalar* outputV_ptr = NULL;
-    auto input_reshaped = input_copy.template flat_inner_dims<Scalar, 3>();
-    input_ptr = input_reshaped.data();
-    outputS_ptr = S->template flat_inner_dims<RealScalar, 2>().data();
-    if (compute_uv_) {
-      // Note that U and V are flipped
-      outputU_ptr = v_copy.template flat_inner_dims<Scalar, 3>().data();
-      outputV_ptr = U->template flat_inner_dims<Scalar, 3>().data();
-    }
-
-    // call the SVD
-    const int64 batch_size = input_reshaped.dimension(0);
-    std::vector<DeviceLapackInfo> dev_info;
-    dev_info.emplace_back(context, batch_size, "gesvd");
-    CudaSolver solver(context);
-    // Note that m and n are flipped
-    RunSVD(context, done, n, m, p, batch_size, input_ptr, outputS_ptr,
-           outputU_ptr, outputV_ptr, dev_info.back().mutable_data(), solver);
-
-    // Transpose V
-    if (compute_uv_) {
-      auto device = context->eigen_device<GPUDevice>();
-      OP_REQUIRES_OK_ASYNC(context, DoTranspose(device, v_copy, perm, V), done);
-    }
-
-    // now check if the SVD operation succeeded or not
-    CheckResult(context, done, dev_info, solver, input_copy, v_copy);
+    // Call the SVD: compute V S U* = M*.
+    RunSVD(context, done, n, m, p, input_copy, S, V, U, std::move(solver));
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
@@ -342,8 +310,7 @@ class SvdOpGpu : public AsyncOpKernel {
 
     // compute  shapes
     TensorShape shapeRaw = input.shape();
-    shapeRaw.RemoveDim(shapeRaw.dims() - 1);
-    shapeRaw.RemoveDim(shapeRaw.dims() - 1);
+    shapeRaw.RemoveLastDims(2);
     TensorShape shapeS = shapeRaw;
     TensorShape shapeU = shapeRaw;
     TensorShape shapeV = shapeRaw;
@@ -380,19 +347,12 @@ class SvdOpGpu : public AsyncOpKernel {
       return;
     }
 
-    // Prepare permutation
-    std::vector<int32> perm;
-    for (size_t i = 0; i < ndims - 2; ++i) perm.push_back(i);
-    perm.push_back(ndims - 1);  // transpose last two dimensions
-    perm.push_back(ndims - 2);
-    gtl::ArraySlice<int32> permAS(perm);
-
     // call implementations
     if (m >= n) {
-      PerformSVD_MgeqN(context, done, m, n, p, permAS, input, outputS, outputU,
+      PerformSVD_MgeqN(context, done, m, n, p, input, outputS, outputU,
                        outputV);
     } else {
-      PerformSVD_MlessN(context, done, m, n, p, permAS, input, outputS, outputU,
+      PerformSVD_MlessN(context, done, m, n, p, input, outputS, outputU,
                         outputV);
     }
   }
@@ -405,6 +365,8 @@ class SvdOpGpu : public AsyncOpKernel {
 // TODO: add support for complex types
 REGISTER_LINALG_OP_GPU("Svd", (SvdOpGpu<float>), float);
 REGISTER_LINALG_OP_GPU("Svd", (SvdOpGpu<double>), double);
+
+// Deprecated kernels.
 REGISTER_LINALG_OP_GPU("BatchSvd", (SvdOpGpu<float>), float);
 REGISTER_LINALG_OP_GPU("BatchSvd", (SvdOpGpu<double>), double);
 

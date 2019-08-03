@@ -18,61 +18,53 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
-std::shared_ptr<Executable> CompilationCache::Insert(
-    std::unique_ptr<Executable> executable,
-    const HloModuleConfig& module_config) {
-  tensorflow::mutex_lock lock(mutex_);
+namespace {
 
-  CacheKey key =
-      BuildKey(executable->entry_computation_handle(), module_config);
-  VLOG(2) << "inserting cache key: " << key;
-  if (cache_.count(key) == 0) {
-    cache_.emplace(key, std::move(executable));
-  } else {
-    // Executable already exists in the cache. This can happen if two Execute
-    // calls for a new computation are received simultaneously by the
-    // service. In this case, we discard the Executable given as a parameter and
-    // return what is in the cache. This is necessary because the service relies
-    // on the cache to keep ownership of the Executable. We only want to store
-    // one Executable for a given computation version and we can't discard the
-    // executable which is in the cache because it may be in use.
-    executable.reset();
-  }
-  return cache_.at(key);
+int64 GetUniqueId() {
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  static int64 counter = 0;
+  tensorflow::mutex_lock loc(mu);
+  const int64 id = counter++;
+  return id;
 }
 
-std::shared_ptr<Executable> CompilationCache::LookUp(
-    const VersionedComputationHandle& versioned_handle,
-    const HloModuleConfig& module_config) const {
+}  // namespace
+
+ExecutionHandle CompilationCache::Insert(
+    std::unique_ptr<Executable> executable) {
   tensorflow::mutex_lock lock(mutex_);
 
-  CacheKey key = BuildKey(versioned_handle, module_config);
+  CacheKey key = GetUniqueId();
+  VLOG(2) << "inserting cache key: " << key;
+  CHECK_EQ(cache_.count(key), 0);
+  cache_.emplace(key, std::move(executable));
+
+  ExecutionHandle handle;
+  handle.set_handle(key);
+  return handle;
+}
+
+StatusOr<std::shared_ptr<Executable>> CompilationCache::LookUp(
+    const ExecutionHandle& handle) const {
+  tensorflow::mutex_lock lock(mutex_);
+
+  CacheKey key = handle.handle();
   VLOG(2) << "looking up cache key: " << key;
   if (cache_.count(key) == 0) {
     VLOG(2) << "cache key not found: " << key;
-    return nullptr;
+    return InvalidArgumentStrCat("can not find executable with handle ", key);
   } else {
-    std::shared_ptr<Executable> result = cache_.at(key);
-    VLOG(2) << "hit executable with module config: "
-            << result->module_config().compilation_cache_key();
+    auto& result = cache_.at(key);
+    VLOG(2) << "hit executable: " << result->module().name();
     return result;
   }
-}
-
-CompilationCache::CacheKey CompilationCache::BuildKey(
-    const VersionedComputationHandle& versioned_handle,
-    const HloModuleConfig& module_config) const {
-  // The computation shape is represented entirely by its ProgramShape member,
-  // so just serialize the proto as part of the key.
-  return tensorflow::strings::StrCat(versioned_handle.handle.handle(), "::",
-                                     versioned_handle.version, "::",
-                                     module_config.compilation_cache_key());
 }
 
 }  // namespace xla

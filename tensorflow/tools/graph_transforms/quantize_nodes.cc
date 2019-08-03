@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -181,22 +180,6 @@ Status ExtractRangeFromParams(const TransformFuncContext& context,
   TF_RETURN_IF_ERROR(context.GetOneFloatParameter(min_name, 0.0f, min_value));
   TF_RETURN_IF_ERROR(context.GetOneFloatParameter(max_name, 0.0f, max_value));
   return Status::OK();
-}
-
-bool AreAttrsEqual(const NodeDef* current_node, const NodeDef* other_node) {
-  if (current_node->attr_size() != other_node->attr_size()) {
-    return false;
-  }
-  string current_serialized;
-  string other_serialized;
-  for (const auto& attr : other_node->attr()) {
-    auto iter = current_node->attr().find(attr.first);
-    if (iter == current_node->attr().end()) return false;
-    iter->second.SerializeToString(&current_serialized);
-    attr.second.SerializeToString(&other_serialized);
-    if (current_serialized != other_serialized) return false;
-  }
-  return true;
 }
 
 }  // namespace
@@ -726,7 +709,12 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
           if (op_info.unquantized_inputs.count(i)) {
             continue;
           }
-          if (input_types[i] != DT_FLOAT) {
+          if (i >= input_types.size()) {
+            LOG(ERROR) << "input_types has incorrect size "
+                       << input_types.size() << " <= " << i
+                       << ". Assuming everything else is floats.";
+          }
+          if (i < input_types.size() && input_types[i] != DT_FLOAT) {
             are_all_float = false;
           }
         }
@@ -759,6 +747,7 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
           NodeDef reshape_dims;
           reshape_dims.set_op("Const");
           reshape_dims.set_name(unique_input_name + "/reshape_dims");
+          AddNodeInput("^" + NodeNameFromInput(input_name), &reshape_dims);
           SetNodeAttr("dtype", DT_INT32, &reshape_dims);
           Tensor reshape_dims_tensor(DT_INT32, {1});
           reshape_dims_tensor.flat<int32>()(0) = -1;
@@ -768,6 +757,7 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
           NodeDef reduction_dims;
           reduction_dims.set_op("Const");
           reduction_dims.set_name(unique_input_name + "/reduction_dims");
+          AddNodeInput("^" + NodeNameFromInput(input_name), &reduction_dims);
           SetNodeAttr("dtype", DT_INT32, &reduction_dims);
           Tensor reduction_dims_tensor(DT_INT32, {1});
           reduction_dims_tensor.flat<int32>()(0) = 0;

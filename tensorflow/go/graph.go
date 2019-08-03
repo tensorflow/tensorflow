@@ -20,6 +20,25 @@ package tensorflow
 //
 // #include <stdlib.h>
 // #include <string.h>
+//
+// void TF_SetAttrShapeList_Helper(TF_OperationDescription* desc,
+//                                 const char* attr_name,
+//                                 const int64_t* flat_dims,
+//                                 const int* num_dims,
+//                                 int num_shapes) {
+//  const int64_t** dims =
+//    (const int64_t**)malloc(sizeof(const int64_t*) * num_shapes);
+//  int i = 0;
+//  for (i = 0; i < num_shapes; i++) {
+//    dims[i] = flat_dims;
+//    if (num_dims[i] > 0) {
+//      // flat_dims will be NULL iff num_shapes is 0 or all elements in num_dims are <= 0.
+//      flat_dims += num_dims[i];
+//    }
+//  }
+//  TF_SetAttrShapeList(desc, attr_name, dims, num_dims, num_shapes);
+//  free(dims);
+// }
 import "C"
 
 import (
@@ -32,6 +51,17 @@ import (
 // Graph represents a computation graph. Graphs may be shared between sessions.
 type Graph struct {
 	c *C.TF_Graph
+}
+
+// The GraphImportOptions struct holds parameters for the ImportWithOptions function.
+type GraphImportOptions struct {
+	// Node prefix
+	Prefix string
+
+	// Execution device
+	Device string
+
+	// TODO: extend this structure to support more options from TF_ImportGraphDefOptions
 }
 
 // NewGraph returns a new Graph.
@@ -69,17 +99,23 @@ func (g *Graph) WriteTo(w io.Writer) (int64, error) {
 	return int64(n), err
 }
 
-// Import imports the nodes and edges from a serialized representation of
+// ImportWithOptions imports the nodes and edges from a serialized representation of
 // another Graph into g.
 //
-// Names of imported nodes will be prefixed with prefix.
-func (g *Graph) Import(def []byte, prefix string) error {
-	cprefix := C.CString(prefix)
+// Multiple options can be specified for the newly imported nodes.
+func (g *Graph) ImportWithOptions(def []byte, options GraphImportOptions) error {
+	cprefix := C.CString(options.Prefix)
 	defer C.free(unsafe.Pointer(cprefix))
 
 	opts := C.TF_NewImportGraphDefOptions()
 	defer C.TF_DeleteImportGraphDefOptions(opts)
 	C.TF_ImportGraphDefOptionsSetPrefix(opts, cprefix)
+
+	if len(options.Device) != 0 {
+		cdev := C.CString(options.Device)
+		defer C.free(unsafe.Pointer(cdev))
+		C.TF_ImportGraphDefOptionsSetDefaultDevice(opts, cdev)
+	}
 
 	buf := C.TF_NewBuffer()
 	defer C.TF_DeleteBuffer(buf)
@@ -95,11 +131,21 @@ func (g *Graph) Import(def []byte, prefix string) error {
 	C.memcpy(buf.data, unsafe.Pointer(&def[0]), buf.length)
 
 	status := newStatus()
+
 	C.TF_GraphImportGraphDef(g.c, buf, opts, status.c)
 	if err := status.Err(); err != nil {
 		return err
 	}
+
 	return nil
+}
+
+// Import imports the nodes and edges from a serialized representation of
+// another Graph into g.
+//
+// Names of imported nodes will be prefixed with prefix.
+func (g *Graph) Import(def []byte, prefix string) error {
+	return g.ImportWithOptions(def, GraphImportOptions{Prefix: prefix})
 }
 
 // Operation returns the Operation named name in the Graph, or nil if no such
@@ -112,6 +158,82 @@ func (g *Graph) Operation(name string) *Operation {
 		return nil
 	}
 	return &Operation{cop, g}
+}
+
+// Operations returns a list of all operations in the graph
+func (g *Graph) Operations() []Operation {
+	var pos C.size_t
+	ops := []Operation{}
+	for {
+		cop := C.TF_GraphNextOperation(g.c, &pos)
+		if cop == nil {
+			break
+		}
+		ops = append(ops, Operation{cop, g})
+	}
+	return ops
+}
+
+// AddGradients adds operations to compute the partial derivatives of the sum of tensors in y
+// with respect to tensors in x, i.e., d(y[0] + y[1] + ...) / d x[0], d(y[0] + y[1] + ... ) / d x[1] etc.
+//
+// prefix, if non-empty, is the name prefix used for all operations added to the graph to compute
+// these gradients.
+func (g *Graph) AddGradients(prefix string, y []Output, x []Output, dx []Output) ([]Output, error) {
+	var (
+		cprefix *C.char
+
+		cy  = make([]C.TF_Output, len(y))
+		cx  = make([]C.TF_Output, len(x))
+		cdx = make([]C.TF_Output, len(dx))
+		cdy = make([]C.TF_Output, len(x))
+
+		pcy  *C.TF_Output
+		pcx  *C.TF_Output
+		pcdx *C.TF_Output
+		pcdy *C.TF_Output
+
+		status = newStatus()
+	)
+
+	if len(y) > 0 {
+		pcy = &cy[0]
+		for i, o := range y {
+			cy[i] = o.c()
+		}
+	}
+	if len(x) > 0 {
+		pcx = &cx[0]
+		for i, o := range x {
+			cx[i] = o.c()
+		}
+		pcdy = &cdy[0]
+	}
+	if len(dx) > 0 {
+		pcdx = &cdx[0]
+		for i, o := range dx {
+			cdx[i] = o.c()
+		}
+	}
+
+	// If prefix is "", the C.TF_AddGradientsWithPrefix need cprefix to be nil but not ""
+	if len(prefix) != 0 {
+		cprefix = C.CString(prefix)
+		defer C.free(unsafe.Pointer(cprefix))
+	}
+
+	C.TF_AddGradientsWithPrefix(g.c, cprefix, pcy, C.int(len(y)), pcx, C.int(len(x)), pcdx, status.c, pcdy)
+
+	if err := status.Err(); err != nil {
+		return nil, err
+	}
+	dy := make([]Output, len(x))
+	for i, co := range cdy {
+		op := &Operation{co.oper, g}
+		dy[i] = Output{op, int(co.index)}
+	}
+
+	return dy, nil
 }
 
 // OpSpec is the specification of an Operation to be added to a Graph
@@ -140,7 +262,18 @@ type OpSpec struct {
 	// operation.
 	Attrs map[string]interface{}
 
-	// Other possible fields: Device, ColocateWith, ControlInputs.
+	// Operations that must be executed before executing the operation
+	// being added.
+	ControlDependencies []*Operation
+
+	// The device on which the operation should be executed.
+	// If omitted, an appropriate device will automatically be selected.
+	//
+	// For example, if set of "/device:GPU:0", then the operation will
+	// execute on GPU #0.
+	Device string
+
+	// Other possible fields: ColocateWith.
 }
 
 // AddOperation adds an operation to g.
@@ -171,6 +304,9 @@ func (g *Graph) AddOperation(args OpSpec) (*Operation, error) {
 			}
 		}
 	}
+	for _, in := range args.ControlDependencies {
+		C.TF_AddControlInput(cdesc, in.c)
+	}
 	status := newStatus()
 	for name, value := range args.Attrs {
 		if err := setAttr(cdesc, status, name, value); err != nil {
@@ -184,6 +320,11 @@ func (g *Graph) AddOperation(args OpSpec) (*Operation, error) {
 			// function to the C API.
 			return nil, fmt.Errorf("%v (memory will be leaked)", err)
 		}
+	}
+	if len(args.Device) > 0 {
+		cdevice := C.CString(args.Device)
+		C.TF_SetDevice(cdesc, cdevice)
+		C.free(unsafe.Pointer(cdevice))
 	}
 	c := C.TF_FinishOperation(cdesc, status.c)
 	if err := status.Err(); err != nil {
@@ -289,41 +430,37 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 			return fmt.Errorf("bad value for attribute %q: %v", name, err)
 		}
 	case Shape:
-		ndims, dims := cshape(value)
+		ndims := C.int(value.NumDimensions())
 		var dimsp *C.int64_t
 		if ndims > 0 {
+			dims := make([]C.int64_t, ndims)
+			for i, d := range value.dims {
+				dims[i] = C.int64_t(d)
+			}
 			dimsp = &dims[0]
 		}
 		C.TF_SetAttrShape(cdesc, cAttrName, dimsp, ndims)
 	case []Shape:
-		ndims := make([]C.int, len(value))
-		dims := make([][]C.int64_t, len(value))
-		dimsp := make([]*C.int64_t, len(value))
-		for i, s := range value {
-			ndims[i], dims[i] = cshape(s)
-			if ndims[i] > 0 {
-				dimsp[i] = &dims[i][0]
-			}
-		}
-		if len(value) > 0 {
-			C.TF_SetAttrShapeList(cdesc, cAttrName, &dimsp[0], &ndims[0], C.int(len(value)))
-		} else {
+		if len(value) == 0 {
 			C.TF_SetAttrShapeList(cdesc, cAttrName, nil, nil, 0)
+		} else {
+			var flatDims []C.int64_t
+			ndims := make([]C.int, len(value))
+			for i, s := range value {
+				nd := s.NumDimensions()
+				ndims[i] = C.int(nd)
+				for _, d := range s.dims {
+					flatDims = append(flatDims, C.int64_t(d))
+				}
+			}
+			var flatDimsp *C.int64_t
+			if len(flatDims) > 0 {
+				flatDimsp = &flatDims[0]
+			}
+			C.TF_SetAttrShapeList_Helper(cdesc, cAttrName, flatDimsp, &ndims[0], C.int(len(value)))
 		}
 	default:
 		return fmt.Errorf("attribute %q has a type (%T) which is not valid for operation attributes", name, value)
 	}
 	return nil
-}
-
-func cshape(s Shape) (C.int, []C.int64_t) {
-	ndims := C.int(s.NumDimensions())
-	if ndims < 0 {
-		return -1, nil
-	}
-	dims := make([]C.int64_t, ndims)
-	for i, s := range s.dims {
-		dims[i] = C.int64_t(s)
-	}
-	return ndims, dims
 }

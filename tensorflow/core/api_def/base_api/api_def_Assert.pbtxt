@@ -1,0 +1,26 @@
+op {
+  graph_op_name: "Assert"
+  in_arg {
+    name: "condition"
+    description: <<END
+The condition to evaluate.
+END
+  }
+  in_arg {
+    name: "data"
+    description: <<END
+The tensors to print out when condition is false.
+END
+  }
+  attr {
+    name: "summarize"
+    description: <<END
+Print this many entries of each tensor.
+END
+  }
+  summary: "Asserts that the given condition is true."
+  description: <<END
+If `condition` evaluates to false, print the list of tensors in `data`.
+`summarize` determines how many entries of the tensors to print.
+END
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,8 +22,4 @@ echo 'deb [arch=armhf] http://ports.ubuntu.com/ trusty-backports main restricted
 sed -i 's#deb http://archive.ubuntu.com/ubuntu/#deb [arch=amd64] http://archive.ubuntu.com/ubuntu/#g' /etc/apt/sources.list
 apt-get update
 apt-get install -y libpython-all-dev:armhf
-echo "deb [arch=amd64] http://storage.googleapis.com/bazel-apt stable jdk1.8" | sudo tee /etc/apt/sources.list.d/bazel.list
-curl https://bazel.build/bazel-release.pub.gpg | sudo apt-key add -
-apt-get update
-rm -rf /usr/local/bin/bazel
-apt-get install -y bazel python python-numpy python-dev python-pip
+apt-get install -y python python-numpy python-dev python-pip

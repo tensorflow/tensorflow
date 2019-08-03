@@ -26,8 +26,8 @@ limitations under the License.
 // * Task numbers are within the specified replica, so there are as
 //   many "task zeros" as replicas.
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_DEVICE_H_
-#define TENSORFLOW_COMMON_RUNTIME_DEVICE_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_H_
 
 #include <memory>
 #include <string>
@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -53,6 +54,9 @@ namespace tensorflow {
 
 class Device : public DeviceBase {
  public:
+  // Callback type that takes a Status and returns void.
+  typedef std::function<void(const Status&)> DoneCallback;
+
   Device(Env* env, const DeviceAttributes& device_attributes);
   ~Device() override;
 
@@ -104,18 +108,44 @@ class Device : public DeviceBase {
   // at completion.
   virtual Status Sync() = 0;
 
+  // Calls the given callback when all operations queued on the device at the
+  // time of the call have completed. The callback is passed any error pending
+  // on the device at completion.
+  // TODO(b/112409994): Consolidate these two APIs, removing the synchronous
+  // version.
+  virtual void Sync(const DoneCallback& done);
+
+  // On session completion, the executor may call Device::Sync() depending on
+  // flag settings. Override this to return false for devices that don't allow
+  // such calls. Instead, these devices must use other mechanisms (such as
+  // num_deferred_ops) to ensure the device has finished processing necessary
+  // work at session completion. In addition, for these devices, RefreshStatus
+  // must be called at session completion to retrieve execution result status.
+  //
+  // Devices that override this function must also implement RefreshStatus.
+  virtual bool AllowsSyncOnCompletion() const { return true; }
+
+  // This is used in conjunction with AllowsSyncOnCompletion to allow the
+  // executor to get execution result status at session completion.
+  //
+  // For supported devices, this call returns the underlying device stream's
+  // current status in a non-blocking way, without using blocking calls such as
+  // Stream::BlockHostUntilDone or Device::Sync. When applicable, the device
+  // status is also updated with the retrieved stream status.
+  virtual Status RefreshStatus() {
+    return errors::Unimplemented(
+        "RefreshStatus is not supported on this device.");
+  }
+
   // Optionally modify the device's GraphDef before execution.
   //
   // This method should be considered experimental and is supplied to enable
   // prototyping of TensorFlow device implementations that need to modify
   // the GraphDef before execution.
   //
-  // 'library' provides access to the function library which is shared
-  // between all device partitions.
   // 'graph' supplies the partition of the graph assigned to this
   // device.
-  virtual Status MaybeRewriteGraph(const FunctionDefLibrary& /*library*/,
-                                   std::unique_ptr<Graph>* /*graph*/) {
+  virtual Status MaybeRewriteGraph(std::unique_ptr<Graph>* /*graph*/) {
     return Status::OK();
   }
 
@@ -134,7 +164,7 @@ class Device : public DeviceBase {
   OpSegment* op_segment() { return &op_seg_; }
 
   // Returns the resource manager associated w/ this device.
-  ResourceMgr* resource_manager() { return rmgr_; }
+  virtual ResourceMgr* resource_manager() { return rmgr_; }
 
   // Summarizes the status of this Device, for debugging.
   string DebugString() const { return ProtoDebugString(device_attributes_); }
@@ -150,6 +180,11 @@ class Device : public DeviceBase {
     // Pass in an empty string as physical device name.
     return BuildDeviceAttributes(name, device, memory_limit, locality, "");
   }
+
+  // Clears the resource manager associated with this device.
+  void ClearResourceMgr() { rmgr_->Clear(); }
+
+  virtual bool IsLocal() const { return true; }
 
  protected:
   void DeleteResourceMgr() {
@@ -172,4 +207,4 @@ class Device : public DeviceBase {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_DEVICE_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_H_

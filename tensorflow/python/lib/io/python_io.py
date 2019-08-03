@@ -13,15 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Python functions for directly manipulating TFRecord-formatted files.
-
-See the @{$python/python_io} guide.
-
-@@TFRecordWriter
-@@tf_record_iterator
-@@TFRecordCompressionType
-@@TFRecordOptions
-"""
+"""Python functions for directly manipulating TFRecord-formatted files."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -31,8 +23,3 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.python.lib.io.tf_record import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import remove_undocumented
-
-_allowed_symbols = []
-
-remove_undocumented(__name__, _allowed_symbols)

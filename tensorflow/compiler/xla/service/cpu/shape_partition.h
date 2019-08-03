@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_SHAPE_PARTITION_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_SHAPE_PARTITION_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_SHAPE_PARTITION_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_SHAPE_PARTITION_H_
 
 #include <vector>
 
@@ -38,7 +38,7 @@ namespace cpu {
 //
 //     [0, 1), [1, 2), [2, 3), [3, 4), [4, 5) [5, 8)
 //
-//   Note that the last partition has residule because the dimension size is
+//   Note that the last partition has residual because the dimension size is
 //   not a multiple of the partition count.
 //
 //
@@ -102,4 +102,4 @@ class ShapePartitionIterator {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_SHAPE_PARTITION_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_SHAPE_PARTITION_H_

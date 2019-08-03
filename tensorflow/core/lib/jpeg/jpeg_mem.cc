@@ -81,6 +81,12 @@ bool IsCropWindowValid(const UncompressFlags& flags, int input_image_width,
          flags.crop_x + flags.crop_width <= input_image_width;
 }
 
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+// If in fuzzing mode, don't print any error message as that slows down fuzzing.
+// See also http://llvm.org/docs/LibFuzzer.html#fuzzer-friendly-build-mode
+void no_print(j_common_ptr cinfo) {}
+#endif
+
 uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   // unpack the argball
   const int datasize = argball->datasize_;
@@ -112,9 +118,14 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   struct jpeg_decompress_struct cinfo;
   struct jpeg_error_mgr jerr;
   cinfo.err = jpeg_std_error(&jerr);
+  jerr.error_exit = CatchError;
+
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+  jerr.output_message = no_print;
+#endif
+
   jmp_buf jpeg_jmpbuf;
   cinfo.client_data = &jpeg_jmpbuf;
-  jerr.error_exit = CatchError;
   if (setjmp(jpeg_jmpbuf)) {
     delete[] tempdata;
     return nullptr;
@@ -152,10 +163,13 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   cinfo.scale_denom = ratio;
   cinfo.dct_method = flags.dct_method;
 
-  jpeg_start_decompress(&cinfo);
+  // Determine the output image size before attempting decompress to prevent
+  // OOM'ing doing the decompress
+  jpeg_calc_output_dimensions(&cinfo);
 
   int64 total_size = static_cast<int64>(cinfo.output_height) *
-                     static_cast<int64>(cinfo.output_width);
+                     static_cast<int64>(cinfo.output_width) *
+                     static_cast<int64>(cinfo.num_components);
   // Some of the internal routines do not gracefully handle ridiculously
   // large images, so fail fast.
   if (cinfo.output_width <= 0 || cinfo.output_height <= 0) {
@@ -170,10 +184,12 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
     return nullptr;
   }
 
+  jpeg_start_decompress(&cinfo);
+
   JDIMENSION target_output_width = cinfo.output_width;
   JDIMENSION target_output_height = cinfo.output_height;
   JDIMENSION skipped_scanlines = 0;
-#if !defined(WIN32)
+#if defined(LIBJPEG_TURBO_VERSION)
   if (flags.crop) {
     // Update target output height and width based on crop window.
     target_output_height = flags.crop_height;
@@ -219,7 +235,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   argball->height_ = target_output_height;
   argball->stride_ = stride;
 
-#if defined(WIN32)
+#if !defined(LIBJPEG_TURBO_VERSION)
   uint8* dstdata = nullptr;
   if (flags.crop) {
     dstdata = new JSAMPLE[stride * target_output_height];
@@ -336,7 +352,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   delete[] tempdata;
   tempdata = nullptr;
 
-#if !defined(WIN32)
+#if defined(LIBJPEG_TURBO_VERSION)
   if (flags.crop && cinfo.output_scanline < cinfo.output_height) {
     // Skip the rest of scanlines, required by jpeg_destroy_decompress.
     jpeg_skip_scanlines(&cinfo,
@@ -393,7 +409,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
       }
       break;
     default:
-      // will never happen, should be catched by the previous switch
+      // will never happen, should be caught by the previous switch
       LOG(ERROR) << "Invalid components value " << components << std::endl;
       jpeg_destroy_decompress(&cinfo);
       return nullptr;
@@ -418,7 +434,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
       break;
   }
 
-#if defined(WIN32)
+#if !defined(LIBJPEG_TURBO_VERSION)
   // TODO(tanmingxing): delete all these code after migrating to libjpeg_turbo
   // for Windows.
   if (flags.crop) {

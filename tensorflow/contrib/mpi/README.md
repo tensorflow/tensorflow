@@ -23,7 +23,7 @@ The following environment variables can be set to modify the behavior at runtime
 
 **MPI_DISABLED=[0,1]**
 
-This environment variable allows you to disable the MPI path before launch (e.g. for performance or correctness testing). 
+This environment variable allows you to disable the MPI path before launch (e.g. for performance or correctness testing).
 
 **MPI_OPTIMAL_PATH=[0,1]**
 
@@ -34,10 +34,10 @@ This path is disabled by default as it requires that the MPI library can directl
 
 ## Known problems
 
-For certain complex neural nets the implementation sometimes crashes inside the MPI libraries. This seems to be related to memory allocations/routines that register the memory for the Infiniband transfers. (The crashes do not happen when all MPI processes are within the same physical machine). 
+For certain complex neural nets the implementation sometimes crashes inside the MPI libraries. This seems to be related to memory allocations/routines that register the memory for the Infiniband transfers. (The crashes do not happen when all MPI processes are within the same physical machine).
 
 **MVAPICH**
-- The problem manifests itself with a segmentation fault inside a memory copy routine and during startup you will get the following warning: "WARNING: Error in initializing MVAPICH2 ptmalloc library. Continuing without InfiniBand registration cache support." 
+- The problem manifests itself with a segmentation fault inside a memory copy routine and during startup you will get the following warning: "WARNING: Error in initializing MVAPICH2 ptmalloc library. Continuing without InfiniBand registration cache support."
 
 **OpenMPI**
 - With OpenMPI corrupt data will be received resulting in an assertion or the MPI library will print an error and exit. The error is "Attempt to free memory that is still in use by an ongoing MPI communication.  MPI job will now abort."
@@ -58,11 +58,11 @@ Once a request has arrived from a remote process the request is forwarded to the
 * Receive tensor request
 The MPI thread will check if there are any incoming tensor request messages on the communication lines using MPI_Iprobe. Once a request has been received it will be passed on to the standard TensorFlow code and eventually will be placed on the sendQueue.
 
-* Receive tensor 
+* Receive tensor
 At some point after a request has been sent the remote process will transmit the tensor. This tensor will be received and we look-up the callback that is associated with this tensor in our request table and execute the callback on the received data.
 
 
-In the implementation all send operations are non-blocking, all probe operations are non-blocking and all receive-operations are blocking. The receive-operations are only executed after the probe has determined that there is something to receive. 
+In the implementation all send operations are non-blocking, all probe operations are non-blocking and all receive-operations are blocking. The receive-operations are only executed after the probe has determined that there is something to receive.
 The MPI processes identify each other using an MPI process ID. The TensorFlow gRPC processes identify each other using a name. During launch we create a mapping between the TensorFlow process name and the MPI process ID to allow the processes to communicate with the correct destinations when using MPI operations.
 
 

@@ -13,14 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_REMOTE_FUSED_GRAPH_EXECUTE_UTILS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_REMOTE_FUSED_GRAPH_EXECUTE_UTILS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_REMOTE_FUSED_GRAPH_EXECUTE_UTILS_H_
+#define TENSORFLOW_CORE_KERNELS_REMOTE_FUSED_GRAPH_EXECUTE_UTILS_H_
 
 #include <unordered_map>
 #include <unordered_set>
 
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
@@ -29,6 +27,17 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+
+enum RemoteFusedGraphNodeType {
+  UNUSED = 0,
+  GRAPH_INPUT = 1,
+  GRAPH_OUTPUT = 2,
+  FUSED_NODE = 3,
+  BORDER_INPUT = 4,
+  BORDER_OUTPUT = 5,
+};
+
+class RemoteFusedGraphExecuteInfo;
 
 // RemoteFusedGraphExecuteUtils provides APIs to register and get builder
 // functions for IRemoteFusedGraphExecutor.
@@ -297,19 +306,18 @@ class RemoteFusedGraphExecuteUtils {
 
   static ExecutorBuildRegistry* GetExecutorBuildRegistry();
 
-  static string BuildNodeTypeAttr(
-      const RemoteFusedGraphExecuteInfo::NodeType node_type, const int port,
-      const int index, const string& executor_name, const string& node_name);
+  static string BuildNodeTypeAttr(const RemoteFusedGraphNodeType node_type,
+                                  const int port, const int index,
+                                  const string& executor_name,
+                                  const string& node_name);
 
-  static string BuildNodeTypeAttr(
-      const RemoteFusedGraphExecuteInfo::NodeType node_type, const int port,
-      const int index);
+  static string BuildNodeTypeAttr(const RemoteFusedGraphNodeType node_type,
+                                  const int port, const int index);
 
-  static string BuildNodeTypeAttr(
-      const RemoteFusedGraphExecuteInfo::NodeType node_type);
+  static string BuildNodeTypeAttr(const RemoteFusedGraphNodeType node_type);
 
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteFusedGraphExecuteUtils);
 };
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_REMOTE_FUSED_GRAPH_EXECUTE_UTILS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_REMOTE_FUSED_GRAPH_EXECUTE_UTILS_H_

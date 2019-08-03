@@ -24,14 +24,15 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/file_statistics.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile
+#undef CopyFile
 #endif
 
 namespace tensorflow {
@@ -139,10 +140,8 @@ class FileSystem {
   ///  * OK - no errors
   ///  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
   ///                    implemented
-  /// The default implementation uses a combination of GetChildren, MatchPath
-  /// and IsDirectory.
   virtual Status GetMatchingPaths(const string& pattern,
-                                  std::vector<string>* results);
+                                  std::vector<string>* results) = 0;
 
   /// \brief Obtains statistics for the given path.
   virtual Status Stat(const string& fname, FileStatistics* stat) = 0;
@@ -169,10 +168,23 @@ class FileSystem {
   virtual Status DeleteDir(const string& dirname) = 0;
 
   /// \brief Deletes the specified directory and all subdirectories and files
-  /// underneath it. undeleted_files and undeleted_dirs stores the number of
-  /// files and directories that weren't deleted (unspecified if the return
-  /// status is not OK).
+  /// underneath it. This is accomplished by traversing the directory tree
+  /// rooted at dirname and deleting entries as they are encountered.
+  ///
+  /// If dirname itself is not readable or does not exist, *undeleted_dir_count
+  /// is set to 1, *undeleted_file_count is set to 0 and an appropriate status
+  /// (e.g. NOT_FOUND) is returned.
+  ///
+  /// If dirname and all its descendants were successfully deleted, TF_OK is
+  /// returned and both error counters are set to zero.
+  ///
+  /// Otherwise, while traversing the tree, undeleted_file_count and
+  /// undeleted_dir_count are updated if an entry of the corresponding type
+  /// could not be deleted. The returned error status represents the reason that
+  /// any one of these entries could not be deleted.
+  ///
   /// REQUIRES: undeleted_files, undeleted_dirs to be not null.
+  ///
   /// Typical return codes:
   ///  * OK - dirname exists and we were able to delete everything underneath.
   ///  * NOT_FOUND - dirname doesn't exist
@@ -188,6 +200,9 @@ class FileSystem {
 
   /// \brief Overwrites the target if it exists.
   virtual Status RenameFile(const string& src, const string& target) = 0;
+
+  /// \brief Copy the src to target.
+  virtual Status CopyFile(const string& src, const string& target);
 
   /// \brief Translate an URI to a filename for the FileSystem implementation.
   ///
@@ -206,6 +221,9 @@ class FileSystem {
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   virtual Status IsDirectory(const string& fname);
 
+  /// \brief Flushes any cached filesystem objects from memory.
+  virtual void FlushCaches();
+
   FileSystem() {}
 
   virtual ~FileSystem();
@@ -216,6 +234,14 @@ class RandomAccessFile {
  public:
   RandomAccessFile() {}
   virtual ~RandomAccessFile();
+
+  /// \brief Returns the name of the file.
+  ///
+  /// This is an optional operation that may not be implemented by every
+  /// filesystem.
+  virtual Status Name(StringPiece* result) const {
+    return errors::Unimplemented("This filesystem does not support Name()");
+  }
 
   /// \brief Reads up to `n` bytes from the file starting at `offset`.
   ///
@@ -235,6 +261,16 @@ class RandomAccessFile {
   virtual Status Read(uint64 offset, size_t n, StringPiece* result,
                       char* scratch) const = 0;
 
+  // TODO(ebrevdo): Remove this ifdef when absl is updated.
+#if defined(PLATFORM_GOOGLE)
+  /// \brief Read up to `n` bytes from the file starting at `offset`.
+  virtual Status Read(uint64 offset, size_t n, absl::Cord* cord) const {
+    return errors::Unimplemented(
+        "Read(uint64, size_t, absl::Cord*) is not "
+        "implemented");
+  }
+#endif
+
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(RandomAccessFile);
 };
@@ -249,7 +285,15 @@ class WritableFile {
   virtual ~WritableFile();
 
   /// \brief Append 'data' to the file.
-  virtual Status Append(const StringPiece& data) = 0;
+  virtual Status Append(StringPiece data) = 0;
+
+  // TODO(ebrevdo): Remove this ifdef when absl is updated.
+#if defined(PLATFORM_GOOGLE)
+  // \brief Append 'data' to the file.
+  virtual Status Append(const absl::Cord& cord) {
+    return errors::Unimplemented("Append(absl::Cord) is not implemented");
+  }
+#endif
 
   /// \brief Close the file.
   ///
@@ -272,6 +316,14 @@ class WritableFile {
   /// persisted, depending on the implementation.
   virtual Status Flush() = 0;
 
+  // \brief Returns the name of the file.
+  ///
+  /// This is an optional operation that may not be implemented by every
+  /// filesystem.
+  virtual Status Name(StringPiece* result) const {
+    return errors::Unimplemented("This filesystem does not support Name()");
+  }
+
   /// \brief Syncs contents of file to filesystem.
   ///
   /// This waits for confirmation from the filesystem that the contents
@@ -279,6 +331,16 @@ class WritableFile {
   /// or machine crashes after a successful Sync, the contents should
   /// be properly saved.
   virtual Status Sync() = 0;
+
+  /// \brief Retrieves the current write position in the file, or -1 on
+  /// error.
+  ///
+  /// This is an optional operation, subclasses may choose to return
+  /// errors::Unimplemented.
+  virtual Status Tell(int64* position) {
+    *position = -1;
+    return errors::Unimplemented("This filesystem does not support Tell()");
+  }
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(WritableFile);
@@ -299,74 +361,6 @@ class ReadOnlyMemoryRegion {
   /// \brief Returns the length of the memory region in bytes.
   virtual uint64 length() = 0;
 };
-
-// START_SKIP_DOXYGEN
-
-#ifndef SWIG
-// Degenerate file system that provides no implementations.
-class NullFileSystem : public FileSystem {
- public:
-  NullFileSystem() {}
-
-  ~NullFileSystem() override = default;
-
-  Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result) override {
-    return errors::Unimplemented("NewRandomAccessFile unimplemented");
-  }
-
-  Status NewWritableFile(const string& fname,
-                         std::unique_ptr<WritableFile>* result) override {
-    return errors::Unimplemented("NewWritableFile unimplemented");
-  }
-
-  Status NewAppendableFile(const string& fname,
-                           std::unique_ptr<WritableFile>* result) override {
-    return errors::Unimplemented("NewAppendableFile unimplemented");
-  }
-
-  Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
-      std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
-    return errors::Unimplemented(
-        "NewReadOnlyMemoryRegionFromFile unimplemented");
-  }
-
-  Status FileExists(const string& fname) override {
-    return errors::Unimplemented("FileExists unimplemented");
-  }
-
-  Status GetChildren(const string& dir, std::vector<string>* result) override {
-    return errors::Unimplemented("GetChildren unimplemented");
-  }
-
-  Status DeleteFile(const string& fname) override {
-    return errors::Unimplemented("DeleteFile unimplemented");
-  }
-
-  Status CreateDir(const string& dirname) override {
-    return errors::Unimplemented("CreateDir unimplemented");
-  }
-
-  Status DeleteDir(const string& dirname) override {
-    return errors::Unimplemented("DeleteDir unimplemented");
-  }
-
-  Status GetFileSize(const string& fname, uint64* file_size) override {
-    return errors::Unimplemented("GetFileSize unimplemented");
-  }
-
-  Status RenameFile(const string& src, const string& target) override {
-    return errors::Unimplemented("RenameFile unimplemented");
-  }
-
-  Status Stat(const string& fname, FileStatistics* stat) override {
-    return errors::Unimplemented("Stat unimplemented");
-  }
-};
-#endif
-
-// END_SKIP_DOXYGEN
 
 /// \brief A registry for file system implementations.
 ///

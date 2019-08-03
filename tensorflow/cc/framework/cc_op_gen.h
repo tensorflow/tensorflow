@@ -13,18 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
-#define THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
+#ifndef TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
+#define TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
 
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 /// Result is written to files dot_h and dot_cc.
-void WriteCCOps(const OpList& ops, const string& dot_h_fname,
-                const string& dot_cc_fname, const string& overrides_fnames);
+void WriteCCOps(const OpList& ops, const ApiDefMap& api_def_map,
+                const string& dot_h_fname, const string& dot_cc_fname);
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_
+#endif  // TENSORFLOW_CC_FRAMEWORK_CC_OP_GEN_H_

@@ -12,14 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_TESTUTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_TESTUTIL_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_TESTUTIL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_TESTUTIL_H_
 
 #include <vector>
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
 
@@ -31,7 +32,7 @@ class Tensor;
 
 struct ShapeInferenceTestOp {
   typedef std::pair<string, DataType> ShapeAndType;
-  explicit ShapeInferenceTestOp(StringPiece name) : name(name.ToString()) {}
+  explicit ShapeInferenceTestOp(StringPiece name) : name(string(name)) {}
   string name;
   NodeDef node_def;
   std::vector<const Tensor*> input_tensors;
@@ -91,11 +92,11 @@ class ShapeInferenceTestutil {
             .error_message();                                               \
     const string& substring = error_substring;                              \
     EXPECT_NE("", error_message);                                           \
-    EXPECT_TRUE(StringPiece(error_message).contains(substring))             \
+    EXPECT_TRUE(absl::StrContains(error_message, substring))                \
         << "Expected to see '" << substring << "' in '" << error_message    \
         << "'";                                                             \
   }
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_TESTUTIL_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_SHAPE_INFERENCE_TESTUTIL_H_

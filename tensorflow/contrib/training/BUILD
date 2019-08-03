@@ -1,16 +1,17 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
-package(default_visibility = [
-    "//tensorflow:internal",
-])
-
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    default_visibility = [
+        "//tensorflow:internal",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 py_library(
     name = "training_py",
@@ -41,6 +42,7 @@ py_library(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:layers_base",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
@@ -58,7 +60,8 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/estimator:inputs_queues",
+        "//tensorflow/python/data",
+        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -68,6 +71,7 @@ py_test(
     name = "device_setter_test",
     size = "small",
     srcs = ["python/training/device_setter_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":training_py",
@@ -83,6 +87,7 @@ py_test(
     name = "sequence_queueing_state_saver_test",
     size = "medium",
     srcs = ["python/training/sequence_queueing_state_saver_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":training_py",
@@ -101,6 +106,7 @@ py_test(
     name = "batch_sequences_with_states_test",
     size = "medium",
     srcs = ["python/training/batch_sequences_with_states_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["manual"],
     deps = [
@@ -111,6 +117,7 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:training",
@@ -123,11 +130,15 @@ py_test(
     name = "feeding_queue_runner_test",
     size = "medium",
     srcs = ["python/training/feeding_queue_runner_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
-        ":training_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator:estimator_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -135,11 +146,11 @@ py_test(
     name = "hparam_test",
     size = "small",
     srcs = ["python/training/hparam_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":training_py",
         "//tensorflow/python:client_testlib",
-        "@six_archive//:six",
     ],
 )
 
@@ -147,6 +158,7 @@ py_test(
     name = "resample_test",
     size = "small",
     srcs = ["python/training/resample_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":training_py",
@@ -162,8 +174,9 @@ py_test(
 
 py_test(
     name = "sampling_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/training/sampling_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":training_py",
@@ -187,6 +200,7 @@ py_test(
     name = "sampling_ops_threading_test",
     size = "small",
     srcs = ["python/training/sampling_ops_threading_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "manual",
@@ -209,6 +223,7 @@ py_test(
     name = "bucket_ops_test",
     size = "medium",
     srcs = ["python/training/bucket_ops_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = ["manual"],
     deps = [
@@ -229,6 +244,7 @@ py_test(
     name = "evaluation_test",
     size = "small",
     srcs = ["python/training/evaluation_test.py"],
+    python_version = "PY2",
     shard_count = 3,
     srcs_version = "PY2AND3",
     tags = [
@@ -243,12 +259,12 @@ py_test(
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:random_seed",
+        "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
@@ -259,16 +275,19 @@ py_test(
 
 py_test(
     name = "training_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/training/training_test.py"],
-    shard_count = 3,
+    python_version = "PY2",
+    shard_count = 8,
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":training_py",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:random_seed",
@@ -279,23 +298,9 @@ py_test(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 tf_proto_library(
     name = "protos_all",
     srcs = glob(["**/*.proto"]),
     cc_api_version = 2,
-    go_api_version = 2,
-    java_api_version = 2,
     visibility = ["//visibility:public"],
 )

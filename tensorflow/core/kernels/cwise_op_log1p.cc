@@ -19,11 +19,11 @@ namespace tensorflow {
 REGISTER5(UnaryOp, CPU, "Log1p", functor::log1p, float, Eigen::half, double,
           complex64, complex128);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER3(UnaryOp, GPU, "Log1p", functor::log1p, float, Eigen::half, double);
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER2(UnaryOp, SYCL, "Log1p", functor::log1p, float, double);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

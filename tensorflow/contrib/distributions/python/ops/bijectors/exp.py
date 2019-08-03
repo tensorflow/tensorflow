@@ -18,12 +18,56 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import
-from tensorflow.contrib.distributions.python.ops.bijectors.exp_impl import *
-# pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.contrib.distributions.python.ops.bijectors import power_transform
+from tensorflow.python.util import deprecation
 
-_allowed_symbols = ["Exp"]
 
-remove_undocumented(__name__, _allowed_symbols)
+__all__ = [
+    "Exp",
+]
+
+
+class Exp(power_transform.PowerTransform):
+  """Compute `Y = g(X) = exp(X)`.
+
+    Example Use:
+
+    ```python
+    # Create the Y=g(X)=exp(X) transform which works only on Tensors with 1
+    # batch ndim 2.
+    exp = Exp()
+    x = [[[1., 2],
+           [3, 4]],
+          [[5, 6],
+           [7, 8]]]
+    exp(x) == exp.forward(x)
+    log(x) == exp.inverse(x)
+    ```
+
+    Note: the exp(.) is applied element-wise but the Jacobian is a reduction
+    over the event space.
+  """
+
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
+  def __init__(self,
+               validate_args=False,
+               name="exp"):
+    """Instantiates the `Exp` bijector.
+
+    Args:
+      validate_args: Python `bool` indicating whether arguments should be
+        checked for correctness.
+      name: Python `str` name given to ops managed by this object.
+    """
+    # forward_min_event_ndims = 0.
+    # No forward_min_event_ndims specified as this is done in PowerTransform.
+    super(Exp, self).__init__(
+        validate_args=validate_args,
+        name=name)

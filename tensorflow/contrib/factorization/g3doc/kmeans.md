@@ -24,7 +24,11 @@ the full-batch version.
 approach for computing the initial cluster assignments that is expensive but is
 typically less prone to getting stuck in bad local minima.
 
-We provide distributed implementations of both full-batch and mini-batch
-K-Means algorithm. Both K-Means++ and random initialization are supported.
-The user can also choose between **Cosine** and **Squared Euclidean** distance
-metrics.
+**[k-MC2](https://www.aaai.org/ocs/index.php/AAAI/AAAI16/paper/view/12147/11759)**
+provides a very fast seeding method that provides high quality centers
+comparable to K-Means++ seeding. k-MC2 works particularly well if it is combined
+with Mini-batch K-Means.
+
+We provide distributed implementations of both full-batch and mini-batch K-Means
+algorithm. K-Means++, k-MC2 and random initialization are supported. The user
+can also choose between **Cosine** and **Squared Euclidean** distance metrics.

@@ -29,7 +29,7 @@ namespace tensorflow {
 namespace {
 
 static mutex* get_session_factory_lock() {
-  static mutex session_factory_lock;
+  static mutex session_factory_lock(LINKER_INITIALIZED);
   return &session_factory_lock;
 }
 
@@ -57,11 +57,11 @@ const string RegisteredFactoriesErrorMessageLocked() {
     factory_types.push_back(session_factory.first);
   }
   return strings::StrCat("Registered factories are {",
-                         str_util::Join(factory_types, ", "), "}.");
+                         absl::StrJoin(factory_types, ", "), "}.");
 }
 string SessionOptionsToString(const SessionOptions& options) {
-  return strings::StrCat("target: \"", options.target, "\" config: ",
-                         ProtoShortDebugString(options.config));
+  return strings::StrCat("target: \"", options.target,
+                         "\" config: ", ProtoShortDebugString(options.config));
 }
 }  // namespace
 
@@ -102,7 +102,7 @@ Status SessionFactory::GetFactory(const SessionOptions& options,
         "Multiple session factories registered for the given session "
         "options: {",
         SessionOptionsToString(options), "} Candidate factories are {",
-        str_util::Join(factory_types, ", "), "}. ",
+        absl::StrJoin(factory_types, ", "), "}. ",
         RegisteredFactoriesErrorMessageLocked());
   } else {
     return errors::NotFound(
