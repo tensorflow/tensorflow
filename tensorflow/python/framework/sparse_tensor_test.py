@@ -122,12 +122,12 @@ class SparseTensorSpecTest(test_util.TensorFlowTestCase,
 
   def testConstruction(self):
     spec1 = sparse_tensor.SparseTensorSpec()
-    self.assertEqual(spec1._shape.rank, None)
-    self.assertEqual(spec1._dtype, dtypes.float32)
+    self.assertEqual(spec1.shape.rank, None)
+    self.assertEqual(spec1.dtype, dtypes.float32)
 
     spec2 = sparse_tensor.SparseTensorSpec([None, None], dtypes.string)
-    self.assertEqual(spec2._shape.as_list(), [None, None])
-    self.assertEqual(spec2._dtype, dtypes.string)
+    self.assertEqual(spec2.shape.as_list(), [None, None])
+    self.assertEqual(spec2.dtype, dtypes.string)
 
   def testValueType(self):
     spec1 = sparse_tensor.SparseTensorSpec()

@@ -1055,7 +1055,6 @@ mlir::Operation* Importer::createOperation(
 
   // Create the operation inside the island now.
   mlir::Operation* inner_op = island_builder.createOperation(result);
-  island.setAttrs(inner_op->getAttrList());
 
   // Add the terminator for the island
   mlir::SmallVector<mlir::Value*, 8> ret_vals(inner_op->getResults());

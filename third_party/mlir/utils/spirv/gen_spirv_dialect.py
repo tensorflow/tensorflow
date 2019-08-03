@@ -109,6 +109,28 @@ def split_list_into_sublists(items, offset):
   return chuncks
 
 
+def uniquify(lst, equality_fn):
+  """Returns a list after pruning duplicate elements.
+
+  Arguments:
+   - lst: List whose elements are to be uniqued.
+   - equality_fn: Function used to compare equality between elements of the
+     list.
+
+  Returns:
+   - A list with all duplicated removed. The order of elements is same as the
+     original list, with only the first occurence of duplicates retained.
+  """
+  keys = set()
+  unique_lst = []
+  for elem in lst:
+    key = equality_fn(elem)
+    if equality_fn(key) not in keys:
+      unique_lst.append(elem)
+      keys.add(key)
+  return unique_lst
+
+
 def gen_operand_kind_enum_attr(operand_kind):
   """Generates the TableGen I32EnumAttr definition for the given operand kind.
 
@@ -123,6 +145,7 @@ def gen_operand_kind_enum_attr(operand_kind):
   kind_acronym = ''.join([c for c in kind_name if c >= 'A' and c <= 'Z'])
   kind_cases = [(case['enumerant'], case['value'])
                 for case in operand_kind['enumerants']]
+  kind_cases = uniquify(kind_cases, lambda x: x[1])
   max_len = max([len(symbol) for (symbol, _) in kind_cases])
 
   # Generate the definition for each enum case

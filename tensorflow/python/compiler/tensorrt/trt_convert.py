@@ -147,11 +147,6 @@ TrtConversionParams = collections.namedtuple(
         # trained with fake quantization.
         "use_calibration",
 
-        # If set to True, it will create a FunctionDef for each subgraph that is
-        # converted to TRT op, and if TRT ops fail to execute at runtime, it'll
-        # invoke that function as a fallback.
-        "use_function_backup",
-
         # Max size for the input batch.
         # This option is deprecated in TF 2.0.
         "max_batch_size",
@@ -165,10 +160,8 @@ DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams(
     is_dynamic_op=False,
     maximum_cached_engines=1,
     use_calibration=True,
-    use_function_backup=True,
     max_batch_size=1)
 
-_TRT_ENGINE_CACHE_CONTAINER_NAME = "TF-TRT-Engine-Cache"
 _TRT_ENGINE_OP_NAME = "TRTEngineOp"
 
 
@@ -272,8 +265,6 @@ def get_tensorrt_rewriter_config(
       "maximum_cached_engines"].i = conversion_params.maximum_cached_engines
   optimizer.parameter_map[
       "use_calibration"].b = conversion_params.use_calibration
-  optimizer.parameter_map[
-      "use_function_backup"].b = conversion_params.use_function_backup
 
   if is_v2:
     # Static mode (a.k.a pre-generating TRT engines and make them node
@@ -344,8 +335,7 @@ class TrtGraphConverter(object):
                minimum_segment_size=3,
                is_dynamic_op=False,
                maximum_cached_engines=1,
-               use_calibration=True,
-               use_function_backup=True):
+               use_calibration=True):
     """Initialize the converter.
 
     Args:
@@ -384,9 +374,6 @@ class TrtGraphConverter(object):
         will occur. Please note that accuracy may be negatively affected if
         there is a mismatch between which tensors TRT quantizes and which
         tensors were trained with fake quantization.
-      use_function_backup: if set to True, it will create a FunctionDef for each
-        subgraph that is converted to TRT op, and if TRT ops fail to execute at
-        runtime, it'll invoke that function as a fallback.
 
     Raises:
       ValueError: if the combination of the parameters is invalid.
@@ -424,12 +411,6 @@ class TrtGraphConverter(object):
           "dynamic TRT ops only. Disregarding is_dynamic_op parameter.")
       is_dynamic_op = True
 
-    # TODO(laigd): consider provide a mechanism to remove the fallback path
-    # after calibration is done.
-    if self._need_calibration and not use_function_backup:
-      raise ValueError(
-          "Calibration requires enabling fallback to TF function execution.")
-
     # TODO(laigd):
     # - Verify in int8 mode that maximum_cached_engines is set properly.
     # - If it fails to build the int8 engine it should return error.
@@ -446,7 +427,6 @@ class TrtGraphConverter(object):
         is_dynamic_op=is_dynamic_op,
         maximum_cached_engines=maximum_cached_engines,
         use_calibration=use_calibration,
-        use_function_backup=use_function_backup,
         max_batch_size=max_batch_size)
     _check_conversion_params(self._conversion_params)
 
@@ -737,8 +717,7 @@ class TrtGraphConverter(object):
 
 def _get_resource_handle(name, device):
   with ops.device(device):
-    return gen_trt_ops.create_trt_engine_cache_handle(
-        container=_TRT_ENGINE_CACHE_CONTAINER_NAME, resource_name=name)
+    return gen_trt_ops.create_trt_resource_handle(resource_name=name)
 
 
 class TRTEngineResourceDeleter(tracking.CapturableResourceDeleter):
@@ -769,14 +748,14 @@ class TRTEngineResource(tracking.TrackableResource):
     self._resource_name = resource_name
     # Track the serialized engine file in the SavedModel.
     self._filename = self._track_trackable(
-        tracking.TrackableAsset(filename), "_serialized_trt_engine_filename")
+        tracking.TrackableAsset(filename), "_serialized_trt_resource_filename")
     self._maximum_cached_engines = maximum_cached_engines
 
   def _create_resource(self):
     return _get_resource_handle(self._resource_name, self._resource_device)
 
   def _initialize(self):
-    gen_trt_ops.populate_trt_engine_cache(
+    gen_trt_ops.initialize_trt_resource(
         self.resource_handle,
         self._filename,
         max_cached_engines_count=self._maximum_cached_engines)
@@ -951,11 +930,10 @@ class TrtGraphConverterV2(object):
       filename = os.path.join(engine_asset_dir,
                               "trt-serialized-engine." + canonical_engine_name)
       try:
-        gen_trt_ops.dump_trt_engine_cache(
-            container=_TRT_ENGINE_CACHE_CONTAINER_NAME,
+        gen_trt_ops.serialize_trt_resource(
             resource_name=canonical_engine_name,
             filename=filename,
-            delete_cache_after_dump=True)
+            delete_resource=True)
       except errors.NotFoundError:
         # If user haven't run the function to populate the engine, it's fine,
         # and we don't need to track any serialized TRT engines.

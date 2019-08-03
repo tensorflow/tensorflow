@@ -3641,7 +3641,8 @@ def streaming_concat(values,
       next_shape = array_ops.stack([next_size] + fixed_shape)
       new_value = array_ops.zeros(next_shape, dtype=values.dtype)
       old_value = array.value()
-      assign_op = state_ops.assign(array, new_value, validate_shape=False)
+      with ops.control_dependencies([old_value]):
+        assign_op = state_ops.assign(array, new_value, validate_shape=False)
       with ops.control_dependencies([assign_op]):
         copy_op = array[:size].assign(old_value[:size])
       # return value needs to be the same dtype as no_op() for cond

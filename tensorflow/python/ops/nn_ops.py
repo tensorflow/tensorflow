@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -42,6 +43,7 @@ from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 
@@ -57,7 +59,7 @@ def _get_sequence(value, n, channel_index, name):
   """Formats a value input for gen_nn_ops."""
   if value is None:
     value = [1]
-  elif not isinstance(value, collections.Sized):
+  elif not isinstance(value, collections_abc.Sized):
     value = [value]
 
   current_n = len(value)
@@ -280,7 +282,7 @@ def dilation2d_v2(
       tensor. Must be: `[1, stride_height, stride_width, 1]`.
     padding: A `string` from: `"SAME", "VALID"`.
       The type of padding algorithm to use.
-    data_format: A `string`, only `"NCHW"` is currently supported.
+    data_format: A `string`, only `"NHWC"` is currently supported.
     dilations: A list of `ints` that has length `>= 4`.
       The input stride for atrous morphological dilation. Must be:
       `[1, rate_height, rate_width, 1]`.
@@ -289,8 +291,8 @@ def dilation2d_v2(
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
-  if data_format != "NCHW":
-    raise ValueError("Data formats other than NCHW are not yet supported")
+  if data_format != "NHWC":
+    raise ValueError("Data formats other than NHWC are not yet supported")
 
   return gen_nn_ops.dilation2d(input=input,
                                filter=filters,
@@ -918,6 +920,22 @@ convolution_v2.__doc__ = deprecation.rewrite_argument_docstring(
     "filter", "filters")
 
 
+# copybara:strip_begin
+# TODO(b/138808492): Remove code inside copybara
+# to make TPU code and CPU code consistent.
+def _enclosing_tpu_context():
+  # pylint: disable=protected-access
+  run_context = ops.get_default_graph()._get_control_flow_context()
+  # pylint: enable=protected-access
+  while run_context is not None and not isinstance(
+      run_context, control_flow_ops.XLAControlFlowContext):
+    run_context = run_context.outer_context
+  return run_context
+
+
+# copybara:strip_end
+
+
 def convolution_internal(
     input,  # pylint: disable=redefined-builtin
     filters,
@@ -957,8 +975,14 @@ def convolution_internal(
 
     conv_ops = {1: conv1d, 2: gen_nn_ops.conv2d, 3: gen_nn_ops.conv3d}
 
-    if all(i == 1 for i in dilations):
-      # fast path if no dilation as gradient only supported on GPU for dilations
+    # copybara:strip_begin
+    # TODO(b/138808492): Remove code inside copybara
+    # to make TPU code and CPU code consistent.
+    if _enclosing_tpu_context() is not None or all(i == 1 for i in dilations):
+      # fast path for TPU or if no dilation as gradient only supported on GPU
+      # for dilations
+    # copybara:strip_end
+    # copybara:insert if all(i == 1 for i in dilations):
       op = conv_ops[n]
       return op(
           input,
@@ -1055,7 +1079,9 @@ class Convolution(object):
     self.filter_shape = filter_shape
     self.data_format = data_format
     self.strides = strides
+    self.padding = padding
     self.name = name
+    self.dilation_rate = dilation_rate
     self.conv_op = _WithSpaceToBatch(
         input_shape,
         dilation_rate=dilation_rate,
@@ -1075,7 +1101,23 @@ class Convolution(object):
         name=self.name)
 
   def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
-    return self.conv_op(inp, filter)
+    # copybara:strip_begin
+    # TODO(b/138808492): Remove code inside copybara
+    # to make TPU code and CPU code consistent.
+    # TPU convolution supports dilations greater than 1.
+    if _enclosing_tpu_context() is not None:
+      return convolution_internal(
+          inp,
+          filter,
+          strides=self.strides,
+          padding=self.padding,
+          data_format=self.data_format,
+          dilations=self.dilation_rate,
+          name=self.name)
+    else:
+      return self.conv_op(inp, filter)
+    # copybara:strip_end
+    # copybara:insert return self.conv_op(inp, filter)
 
 
 @tf_export(v1=["nn.pool"])
@@ -2601,10 +2643,10 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
   """
   with ops.name_scope(name, "conv_transpose",
                       [input, filter, output_shape]) as name:
-    if isinstance(output_shape, collections.Sized):
-      n = len(output_shape) - 2
-    elif isinstance(output_shape, ops.Tensor):
+    if tensor_util.is_tensor(output_shape):
       n = output_shape.shape[0] - 2
+    elif isinstance(output_shape, collections.Sized):
+      n = len(output_shape) - 2
     else:
       raise ValueError("output_shape must be a tensor or sized collection.")
 
@@ -2743,7 +2785,7 @@ def relu6(features, name=None):
 def leaky_relu(features, alpha=0.2, name=None):
   """Compute the Leaky ReLU activation function.
 
-  Source: [Rectifier Nonlinearities Improve Neural Network Acoustic Models. 
+  Source: [Rectifier Nonlinearities Improve Neural Network Acoustic Models.
   AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013](https://ai.stanford.edu/~amaas/papers/relu_hybrid_icml2013_final.pdf).
 
   Args:

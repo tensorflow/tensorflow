@@ -1028,6 +1028,11 @@ XlaOp XlaBuilder::GetTupleElement(const XlaOp& tuple_data, int64 index) {
           "Operand to GetTupleElement() is not a tuple; got %s",
           ShapeUtil::HumanString(tuple_shape));
     }
+    if (index < 0 || index >= ShapeUtil::TupleElementCount(tuple_shape)) {
+      return InvalidArgument(
+          "GetTupleElement() index (%d) out of range for tuple shape %s", index,
+          ShapeUtil::HumanString(tuple_shape));
+    }
     *instr.mutable_shape() =
         ShapeUtil::GetTupleElementShape(tuple_shape, index).ToProto();
 

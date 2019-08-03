@@ -259,8 +259,8 @@ class GRUV2Test(keras_parameterized.TestCase):
       canonical_model.set_weights(weights)
       y_3 = canonical_model.predict(x_train)
 
-    self.assertAllClose(y_1, y_2)
-    self.assertAllClose(y_2, y_3)
+    self.assertAllClose(y_1, y_2, rtol=1e-5, atol=1e-5)
+    self.assertAllClose(y_2, y_3, rtol=1e-5, atol=1e-5)
 
   @parameterized.named_parameters(
       # test_name, time_major, go_backwards
@@ -341,6 +341,19 @@ class GRUV2Test(keras_parameterized.TestCase):
         kwargs={'units': units,
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
+
+  def test_float64_GRU(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        rnn.GRU,
+        kwargs={'units': units,
+                'return_sequences': True,
+                'dtype': 'float64'},
+        input_shape=(num_samples, timesteps, embedding_dim),
+        input_dtype='float64')
 
   def test_return_states_GRU(self):
     layer_class = rnn.GRU
@@ -445,7 +458,7 @@ class GRUV2Test(keras_parameterized.TestCase):
         optimizer=gradient_descent.GradientDescentOptimizer(0.01),
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 
@@ -518,7 +531,7 @@ class GRUV2Test(keras_parameterized.TestCase):
         optimizer='adam',
         loss='sparse_categorical_crossentropy',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(x, y, epochs=1, shuffle=False)
 
   @test_util.run_v2_only
@@ -593,9 +606,10 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
         num_classes=self.output_shape)
     y_train = keras.utils.to_categorical(y_train, self.output_shape)
 
-    model.compile(optimizer='sgd',
-                  loss=['categorical_crossentropy', None],
-                  run_distributed=testing_utils.should_run_distributed())
+    model.compile(
+        optimizer='sgd',
+        loss=['categorical_crossentropy', None],
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     existing_loss = 0
     for _ in range(self.epoch):
@@ -650,10 +664,11 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
         num_classes=self.output_shape)
     y_train = keras.utils.to_categorical(y_train, self.output_shape)
 
-    model.compile(optimizer='sgd',
-                  loss=['categorical_crossentropy', None],
-                  run_eagerly=testing_utils.should_run_eagerly(),
-                  run_distributed=testing_utils.should_run_distributed())
+    model.compile(
+        optimizer='sgd',
+        loss=['categorical_crossentropy', None],
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     model.fit(x_train, y_train)
 

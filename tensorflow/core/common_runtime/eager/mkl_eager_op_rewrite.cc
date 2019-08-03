@@ -45,9 +45,18 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   static Status SetupNewOp(EagerOperation* orig_op, const string mkl_op_name,
                            std::unique_ptr<EagerOperation>* new_mkl_op);
 
+
   // Creates new MKL op for MatMul
   static Status CreateMklMatMul(EagerOperation* orig_op,
                                 std::unique_ptr<EagerOperation>* mkl_matmul_op);
+  
+  // Creates new MKL op for Conv2D, Conv2DBackpropInput and
+  // Conv2DBackpropFilter.
+  static Status CreateMklConv2DOp(
+      EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_conv2d_op);
+
+  // Rewrite rule for Conv2D, Conv2DBackpropInput and Conv2DBackpropFilter.
+  static bool RewriteConv2D(EagerOperation* op);
 
   // Calls op-specific rewrite function to create new MKL op.
   Status RewriteToMklOp(EagerOperation* orig_op,
@@ -67,6 +76,11 @@ REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
     : EagerOpRewrite(name, file, line) {
+  mkl_eager_ops_.push_back({"Conv2D", RewriteConv2D, CreateMklConv2DOp});
+  mkl_eager_ops_.push_back(
+      {"Conv2DBackpropInput", RewriteConv2D, CreateMklConv2DOp});
+  mkl_eager_ops_.push_back(
+      {"Conv2DBackpropFilter", RewriteConv2D, CreateMklConv2DOp});
   mkl_eager_ops_.push_back({"MatMul", AlwaysRewrite, CreateMklMatMul});
 }
 
@@ -126,6 +140,14 @@ Status MklEagerOpRewrite::CreateMklMatMul(
   TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_matmul_op));
   return Status::OK();
 }
+  
+Status MklEagerOpRewrite::CreateMklConv2DOp(
+    EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_conv2d_op) {
+  const string mkl_op_name =
+      mkl_op_registry::GetMklEagerOpName(orig_op->Name());
+  TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_conv2d_op));
+  return Status::OK();
+}
 
 bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op, int* op_idx) {
   // Don't rewrite the op if MKL use is disabled at runtime.
@@ -161,6 +183,14 @@ Status MklEagerOpRewrite::RewriteToMklOp(
     const int op_idx) {
   mkl_eager_ops_[op_idx].CreateMklOp(orig_op, mkl_op);
   return Status::OK();
+}
+
+bool MklEagerOpRewrite::RewriteConv2D(EagerOperation* op) {
+  const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
+  string padding;
+  TF_CHECK_OK(GetNodeAttr(ndef, "padding", &padding));
+  // Right now MKL Conv2D does not support explicit padding.
+  return (padding != "EXPLICIT");
 }
 
 }  // namespace tensorflow

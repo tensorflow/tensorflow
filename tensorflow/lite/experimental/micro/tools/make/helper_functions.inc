@@ -137,7 +137,7 @@ $(PRJDIR)$(2)/arduino/src/third_party/kissfft/kiss_fft.h: tensorflow/lite/experi
 	@mkdir -p $$(dir $$@)
 	@python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
         --third_party_headers="$(4)" < $$< | \
-        sed -E 's/<string.h>/<string.h>\n#include <stdint.h>/g' > $$@
+        sed -E 's@#include <string.h>@//#include <string.h> /* Patched by helper_functions.inc for Arduino compatibility */@g' > $$@
 
 $(PRJDIR)$(2)/arduino/%: tensorflow/lite/experimental/micro/tools/make/templates/%
 	@mkdir -p $$(dir $$@)

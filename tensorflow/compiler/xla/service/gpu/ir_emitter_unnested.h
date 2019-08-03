@@ -273,22 +273,24 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Emits code to process a tensor element in a tile for the given input hlo
   // that is either a unnested kReduce or a kInput fusion.
-  void EmitTileElementForReduction(HloInstruction* unnested_hlo,
-                                   const llvm_ir::IrArray::Index& index,
-                                   const KernelCodegenInfo* kernel_info,
-                                   llvm::Value* y_loc, llvm::Value* x_loc,
-                                   int64 x_iter_num);
+  void EmitTileElementForReduction(
+      HloInstruction* unnested_hlo, const Shape& reduction_operand_shape,
+      absl::Span<HloInstruction* const> output_instructions,
+      const llvm_ir::IrArray::Index& index,
+      const KernelCodegenInfo* kernel_info, int64 x_iter_num);
   // Prepares for the code generation for a tile block of a reduction kernel.
-  void EmitPrologueForReduction(HloInstruction* unnested_hlo,
-                                KernelCodegenInfo* kernel_info);
+  void EmitPrologueForReduction(
+      HloInstruction* unnested_hlo, KernelCodegenInfo* kernel_info,
+      absl::Span<HloInstruction* const> output_instructions);
   void EmitPrologueForOneReduction(HloInstruction* unnested_hlo,
                                    HloInstruction* reduce_inst, int reduce_idx,
                                    KernelCodegenInfo* kernel_info,
                                    GpuElementalIrEmitter* elemental_emitter,
                                    ShapeIndex output_shape_index);
   // Wraps up the code generation for a tile block of a reduction kernel.
-  void EmitEpilogueForReduction(HloInstruction* unnested_hlo,
-                                KernelCodegenInfo* kernel_info);
+  void EmitEpilogueForReduction(
+      HloInstruction* unnested_hlo, KernelCodegenInfo* kernel_info,
+      absl::Span<const HloInstruction* const> reduce_instructions);
   // For each reducer, emits the shuffle-down loop to accumulate the partial
   // result to the global result.
   void EmitFullWarpShuffleDownLoopForAllReduces(

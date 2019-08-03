@@ -41,14 +41,14 @@ from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import tracking
 
 
-@test_util.run_v1_only('Incompatible with 2.0.')
 class FromSessionTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
@@ -75,13 +75,15 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   def testString(self):
-    in_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.string)
-    out_tensor = array_ops.reshape(in_tensor, shape=[2, 2])
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.string)
+      out_tensor = array_ops.reshape(in_tensor, shape=[2, 2])
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
+    converter.experimental_enable_mlir_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -101,13 +103,14 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(([2, 2] == output_details[0]['shape']).all())
 
   def testQuantization(self):
-    in_tensor_1 = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
-    in_tensor_2 = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
-    out_tensor = array_ops.fake_quant_with_min_max_args(
-        in_tensor_1 + in_tensor_2, min=0., max=1., name='output')
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor_1 = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputA')
+      in_tensor_2 = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32, name='inputB')
+      out_tensor = array_ops.fake_quant_with_min_max_args(
+          in_tensor_1 + in_tensor_2, min=0., max=1., name='output')
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess,
@@ -148,13 +151,15 @@ class FromSessionTest(test_util.TensorFlowTestCase):
 
   def testScalarValid(self):
     # Construct a graph using a scalar (empty shape) input.
-    in_tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[])
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[])
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Test conversion with the scalar input shape.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
+    converter.experimental_enable_mlir_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -183,27 +188,31 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue((expected_output == output_data).all())
 
   def testPostTrainingQuantize(self):
+    self.skipTest('b/124315492')
     np.random.seed(0)
-    # We need the tensor to have more than 1024 elements for quantize_weights
-    # to kick in. Thus, the [33, 33] shape.
-    in_tensor_1 = array_ops.placeholder(
-        shape=[33, 33], dtype=dtypes.float32, name='inputA')
-    in_tensor_2 = constant_op.constant(
-        np.random.uniform(low=-10., high=10., size=(33, 33)),
-        shape=[33, 33],
-        dtype=dtypes.float32,
-        name='inputB')
-    out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
-    sess = session.Session()
+    with ops.Graph().as_default():
+      # We need the tensor to have more than 1024 elements for quantize_weights
+      # to kick in. Thus, the [33, 33] shape.
+      in_tensor_1 = array_ops.placeholder(
+          shape=[33, 33], dtype=dtypes.float32, name='inputA')
+      in_tensor_2 = constant_op.constant(
+          np.random.uniform(low=-10., high=10., size=(33, 33)),
+          shape=[33, 33],
+          dtype=dtypes.float32,
+          name='inputB')
+      out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
+      sess = session.Session()
 
     # Convert float model.
     float_converter = lite.TFLiteConverter.from_session(sess, [in_tensor_1],
                                                         [out_tensor])
+    float_converter.experimental_enable_mlir_converter = True
     float_tflite = float_converter.convert()
 
     # Convert quantized weights model.
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [in_tensor_1], [out_tensor])
+    quantized_converter.experimental_enable_mlir_converter = True
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_tflite = quantized_converter.convert()
 
@@ -232,6 +241,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [placeholder],
                                                   [output_node])
+    converter.experimental_enable_mlir_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -419,7 +429,7 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
 
   @test_util.run_v2_only
   def testKerasLSTM(self):
-    self.skipTest('b/138237023')
+    self.skipTest('b/138657502')
     input_data = constant_op.constant(
         np.array(np.random.random_sample((10, 10, 10)), dtype=np.float32))
 
@@ -428,7 +438,7 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
 
     run_model = def_function.function(model.__call__)
     concrete_func = run_model.get_concrete_function(
-        tensor_spec.TensorSpec((10, 10, 10)))
+        tensor_spec.TensorSpec((10, 10, 10), dtype=dtypes.float32))
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
@@ -444,12 +454,12 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
 
 class TestFlexMode(test_util.TensorFlowTestCase):
 
-  @test_util.run_v1_only('Incompatible with 2.0.')
   def testSession(self):
-    in_tensor = array_ops.placeholder(
-        shape=[1, 16, 16, 3], dtype=dtypes.float32)
-    out_tensor = in_tensor + in_tensor
-    sess = session.Session()
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],

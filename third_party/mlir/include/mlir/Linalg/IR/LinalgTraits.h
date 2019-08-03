@@ -41,52 +41,93 @@ public:
   public:
     static unsigned getNumInputs() { return NInputs; }
     static unsigned getNumOutputs() { return NOutputs; }
-    static unsigned getNumInputsAndOutputs() { return NInputs + NOutputs; }
-    Value *getInput(unsigned i) { return this->getOperation()->getOperand(i); }
-    llvm::Optional<unsigned> getIndexOfInput(Value *view) {
-      auto it = llvm::find(getInputs(), view);
-      if (it != getInputs().end())
-        return it - getInputs().begin();
-      return llvm::None;
-    }
-    mlir::linalg::ViewType getInputViewType(unsigned i) {
-      return this->getOperation()
-          ->getOperand(i)
-          ->getType()
-          .template cast<mlir::linalg::ViewType>();
-    }
-    Operation::operand_range getInputs() {
-      auto range = this->getOperation()->getOperands();
-      return {range.begin(), range.begin() + getNumInputs()};
-    }
-    Value *getOutput(unsigned i) {
-      return this->getOperation()->getOperand(getNumInputs() + i);
-    }
-    llvm::Optional<unsigned> getIndexOfOutput(Value *view) {
-      auto it = llvm::find(getOutputs(), view);
-      if (it != getOutputs().end())
-        return it - getOutputs().begin();
-      return llvm::None;
-    }
-    mlir::linalg::ViewType getOutputViewType(unsigned i) {
-      return this->getOperation()
-          ->getOperand(getNumInputs() + i)
-          ->getType()
-          .template cast<mlir::linalg::ViewType>();
-    }
-    Operation::operand_range getOutputs() {
-      auto range = this->getOperation()->getOperands();
-      return {range.begin() + getNumInputs(),
-              range.begin() + getNumInputsAndOutputs()};
-    }
-    Operation::operand_range getInputsAndOutputs() {
-      auto range = this->getOperation()->getOperands();
-      return {range.begin(), range.begin() + getNumInputsAndOutputs()};
-    }
     static LogicalResult verifyTrait(Operation *op) {
       return OpTrait::impl::verifyAtLeastNOperands(op, NInputs + NOutputs);
     }
   };
+};
+
+/// This class provides the API for ops that are known to operate on views. This
+/// trait must be used in conjunction with an op definition or a trait that
+/// provides the methods `getNumInputs` and `getNumOutputs`. This is used as a
+/// trait like this:
+///
+///   class DotOp : public Op<DotOp, OpTrait::ViewTrait> {
+///
+template <typename ConcreteType>
+class ViewTraits : public OpTrait::TraitBase<ConcreteType, ViewTraits> {
+private:
+  /// Return the number of input views. For internal use only.
+  unsigned nInputs() {
+    return cast<ConcreteType>(this->getOperation()).getNumInputs();
+  }
+  /// Return the number of input views. For internal use only.
+  unsigned nOutputs() {
+    return cast<ConcreteType>(this->getOperation()).getNumOutputs();
+  }
+
+public:
+  /// Return the `i`-th input view.
+  Value *getInput(unsigned i) {
+    assert(i < nInputs());
+    return this->getOperation()->getOperand(i);
+  }
+  /// Return the index of `view` in the list of input views if found, llvm::None
+  /// otherwise.
+  llvm::Optional<unsigned> getIndexOfInput(Value *view) {
+    auto it = llvm::find(getInputs(), view);
+    if (it != getInputs().end())
+      return it - getInputs().begin();
+    return llvm::None;
+  }
+  /// Return the `i`-th input view type.
+  mlir::linalg::ViewType getInputViewType(unsigned i) {
+    return getInput(i)->getType().template cast<mlir::linalg::ViewType>();
+  }
+  /// Return the range over input views.
+  Operation::operand_range getInputs() {
+    auto range = this->getOperation()->getOperands();
+    return {range.begin(), range.begin() + nInputs()};
+  }
+  /// Return the `i`-th output view.
+  Value *getOutput(unsigned i) {
+    return this->getOperation()->getOperand(nInputs() + i);
+  }
+  /// Return the index of `view` in the list of output views if found,
+  /// llvm::None otherwise.
+  llvm::Optional<unsigned> getIndexOfOutput(Value *view) {
+    auto it = llvm::find(getOutputs(), view);
+    if (it != getOutputs().end())
+      return it - getOutputs().begin();
+    return llvm::None;
+  }
+  /// Return the `i`-th output view type.
+  mlir::linalg::ViewType getOutputViewType(unsigned i) {
+    return getOutput(i)->getType().template cast<mlir::linalg::ViewType>();
+  }
+  /// Return the range over output views.
+  Operation::operand_range getOutputs() {
+    auto range = this->getOperation()->getOperands();
+    return {range.begin() + nInputs(),
+            range.begin() + getNumInputsAndOutputs()};
+  }
+  /// Return the number of input and output views.
+  unsigned getNumInputsAndOutputs() { return nInputs() + nOutputs(); }
+  /// Return the range over input and output views.
+  Operation::operand_range getInputsAndOutputs() {
+    auto range = this->getOperation()->getOperands();
+    return {range.begin(), range.begin() + getNumInputsAndOutputs()};
+  }
+  static LogicalResult verifyTrait(Operation *op) {
+    auto nViews = cast<ConcreteType>(op).getNumInputsAndOutputs();
+    if (failed(OpTrait::impl::verifyAtLeastNOperands(op, nViews)))
+      return failure();
+    for (unsigned i = 0, e = nViews; i < e; ++i) {
+      if (!op->getOperand(i)->getType().dyn_cast<mlir::linalg::ViewType>())
+        return op->emitOpError("operand ") << i << " must have view type ";
+    }
+    return success();
+  }
 };
 
 /// This class provides the API for ops that are known to have a specified

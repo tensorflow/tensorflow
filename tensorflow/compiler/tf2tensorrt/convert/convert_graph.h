@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -46,8 +47,6 @@ struct ConversionParams {
   // maximum number of cached engines
   int max_cached_engines = 1;
   bool use_calibration = true;
-  // Whether to use function fallback for TRTEngineOp
-  bool use_function_backup = true;
 };
 
 // Method to call from optimization pass
@@ -56,6 +55,11 @@ Status ConvertAfterShapes(const ConversionParams& params);
 // Helper method for the conversion, expose for testing.
 std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
                                                  const EngineInfo& engine);
+
+// Helper method that registers `segment_graph` as a function to the function
+// library in `graph`.
+Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
+                                      Graph* graph, const string& engine_name);
 
 }  // namespace convert
 }  // namespace tensorrt

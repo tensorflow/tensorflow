@@ -621,7 +621,7 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   strings::StrAppend(&out, "\n(");
   auto get_type_and_device = [](const NodeDef& n) {
     DataType dt;
-    if (!GetNodeAttr(n, "T", &dt).ok()) {
+    if (!GetNodeAttrSimple(n, "T", &dt)) {
       dt = DT_INVALID;
     }
     if (!n.device().empty()) {
@@ -1226,6 +1226,7 @@ Status FunctionLibraryDefinition::AddLibrary(
   // the duration of the function could lead to deadlock).
   FunctionLibraryDefinition clone(other);
   mutex_lock l(mu_);
+  mutex_lock l2(clone.mu_);
   // Remember the funcs and grads that we added successfully so that
   // we can roll them back on error.
   std::vector<string> funcs;
@@ -1388,7 +1389,7 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
   // If ndef is SymbolicGradient[f=Foo], we use Foo's gradient or
   // Foo's attributes.
   const NameAttrList* forward_func_attrs;
-  if (!GetNodeAttr(ndef, kFuncAttr, &forward_func_attrs).ok()) {
+  if (!GetNodeAttrSimple(ndef, kFuncAttr, &forward_func_attrs)) {
     return nullptr;
   }
   const string& func_name = forward_func_attrs->name();
@@ -1433,7 +1434,7 @@ template <typename T>
 Status FunctionLibraryDefinition::GetAttr(const NodeDef& ndef,
                                           const string& attr, T* value) const {
   const FunctionDef* fdef = GetAttrImpl(ndef);
-  if (fdef && GetNodeAttr(AttrSlice(&fdef->attr()), attr, value).ok()) {
+  if (fdef && GetNodeAttrSimple(AttrSlice(&fdef->attr()), attr, value)) {
     return Status::OK();
   }
   return errors::InvalidArgument("Attr ", attr, " is not defined.");

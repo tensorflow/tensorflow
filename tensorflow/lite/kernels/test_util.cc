@@ -116,7 +116,8 @@ void SingleOpModel::SetCustomOp(
 
 void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                                      int num_threads,
-                                     bool allow_fp32_relax_to_fp16) {
+                                     bool allow_fp32_relax_to_fp16,
+                                     bool apply_delegate) {
   auto opcodes = builder_.CreateVector(opcodes_);
   auto operators = builder_.CreateVector(operators_);
   auto tensors = builder_.CreateVector(tensors_);
@@ -161,6 +162,13 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
       << "Cannot allocate tensors";
   interpreter_->ResetVariableTensors();
 
+  // In some rare cases a test may need to postpone modifying the graph with
+  // a delegate, e.g. if tensors are not fully specified. In such cases the
+  // test has to explicitly call ApplyDelegate() when necessary.
+  if (apply_delegate) ApplyDelegate();
+}
+
+void SingleOpModel::ApplyDelegate() {
   if (force_use_nnapi) {
     // TODO(b/124505407): Check the result and fail accordingly.
     interpreter_->ModifyGraphWithDelegate(TestNnApiDelegate());
@@ -179,24 +187,31 @@ TfLiteStatus SingleOpModel::InvokeUnchecked() { return interpreter_->Invoke(); }
 void SingleOpModel::BuildInterpreter(
     std::vector<std::vector<int>> input_shapes) {
   BuildInterpreter(input_shapes, /*num_threads=*/-1,
-                   /*allow_fp32_relax_to_fp16=*/false);
+                   /*allow_fp32_relax_to_fp16=*/false,
+                   /*apply_delegate=*/true);
+}
+
+void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                                     bool allow_fp32_relax_to_fp16,
+                                     bool apply_delegate) {
+  BuildInterpreter(input_shapes, /*num_threads=*/-1, allow_fp32_relax_to_fp16,
+                   apply_delegate);
 }
 
 void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                                      int num_threads) {
   BuildInterpreter(input_shapes, num_threads,
-                   /*allow_fp32_relax_to_fp16=*/false);
-}
-
-void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                                     bool allow_fp32_relax_to_fp16) {
-  BuildInterpreter(input_shapes, /*num_threads=*/-1, allow_fp32_relax_to_fp16);
+                   /*allow_fp32_relax_to_fp16=*/false,
+                   /*apply_delegate=*/true);
 }
 
 // static
 void SingleOpModel::SetForceUseNnapi(bool use_nnapi) {
   force_use_nnapi = use_nnapi;
 }
+
+// static
+bool SingleOpModel::GetForceUseNnapi() { return force_use_nnapi; }
 
 int32_t SingleOpModel::GetTensorSize(int index) const {
   TfLiteTensor* t = interpreter_->tensor(index);

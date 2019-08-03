@@ -128,7 +128,7 @@ class TFETest(test_util.TensorFlowTestCase):
       self._test_hashable(variable_a, variable_b, True)
       ops.enable_tensor_equality()
       _v2_check(variable_a, variable_b)
-      self._test_hashable(variable_a, variable_b, True)
+      self._test_hashable(variable_a, variable_b, False)
 
       # We only test numpy behaviour in v2 mode since we'd like to match that.
       numpy_a = np.array(1.0)
@@ -179,7 +179,7 @@ class TFETest(test_util.TensorFlowTestCase):
       self._test_hashable(variable_a, variable_b, True)
       ops.enable_tensor_equality()
       _v2_check(variable_a, variable_b)
-      self._test_hashable(variable_a, variable_b, True)
+      self._test_hashable(variable_a, variable_b, False)
 
       numpy_a = np.array(float('nan'))
       numpy_b = np.array(float('nan'))
@@ -224,12 +224,14 @@ class TFETest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         bool(tf_a == tf_c)
       self.assertAllEqual(tf_a == tf_c, [True, False])
+      self.assertNotAllEqual(tf_a, tf_c)
       with self.assertRaises(ValueError):
         bool(np_a == np_b)
       self.assertAllEqual(np_a == np_b, [True, True])
       with self.assertRaises(ValueError):
         bool(np_a == np_c)
       self.assertAllEqual(np_a == np_c, [True, False])
+      self.assertNotAllEqual(np_a, np_c)
 
       # Warning even though we technically shouldn't be able to compare here,
       # since the id is the same both TF & numpy will handle lists with the same

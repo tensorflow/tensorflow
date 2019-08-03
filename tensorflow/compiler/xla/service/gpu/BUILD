@@ -593,6 +593,7 @@ cc_library(
     deps = [
         ":backend_configs",
         ":buffer_comparator",
+        ":cudnn_conv_blacklist",
         ":cudnn_conv_runner",
         ":gpu_autotuning_proto",
         ":gpu_executable",
@@ -1410,5 +1411,32 @@ xla_proto_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/core:autotuning_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "cudnn_conv_blacklist",
+    srcs = ["cudnn_conv_blacklist.cc"],
+    hdrs = ["cudnn_conv_blacklist.h"],
+    deps = [
+        ":gpu_autotuning_proto",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/core:autotuning_proto_cc",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "cudnn_conv_blacklist_test",
+    srcs = ["cudnn_conv_blacklist_test.cc"],
+    data = ["data/cudnn_conv_blacklist.pbtxt"],
+    deps = [
+        ":cudnn_conv_blacklist",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor:dnn",
     ],
 )

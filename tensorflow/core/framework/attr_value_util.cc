@@ -492,6 +492,13 @@ void SetAttrValue(const gtl::ArraySlice<StringPiece> value, AttrValue* out) {
   }
 }
 
+void MoveAttrValue(std::vector<string>&& value, AttrValue* out) {
+  out->mutable_list()->Clear();  // Create list() even if value empty.
+  for (auto& v : value) {
+    out->mutable_list()->add_s(std::move(v));
+  }
+}
+
 void SetAttrValue(const TensorShape& value, AttrValue* out) {
   value.AsProto(out->mutable_shape());
 }

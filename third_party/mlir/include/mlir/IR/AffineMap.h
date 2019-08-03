@@ -153,11 +153,12 @@ AffineMap simplifyAffineMap(AffineMap map);
 
 /// Returns a map of codomain to domain dimensions such that the first codomain
 /// dimension for a particular domain dimension is selected.
-/// Returns an empty map if the input map is empty.
+/// Returns an empty map if the input map is empty or if `map` is not invertible
+/// (i.e. `map` does not contain a subset that is a permutation of full domain
+/// rank).
 ///
 /// Prerequisites:
-///   1. `map` must contain a subset that is a permutation of full domain rank.
-///   2. `map` has no symbols.
+///   1. `map` has no symbols.
 ///
 /// Example 1:
 ///

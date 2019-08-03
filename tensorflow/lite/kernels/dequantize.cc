@@ -97,18 +97,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                 GetTensorData<float>(op_context.output));
       break;
     case kTfLiteInt8:
-      reference_integer_ops::Dequantize<int8_t>(
-          op_params, GetTensorShape(op_context.input),
-          GetTensorData<int8_t>(op_context.input),
-          GetTensorShape(op_context.output),
-          GetTensorData<float>(op_context.output));
+      optimized_ops::Dequantize(op_params, GetTensorShape(op_context.input),
+                                GetTensorData<int8_t>(op_context.input),
+                                GetTensorShape(op_context.output),
+                                GetTensorData<float>(op_context.output));
       break;
     case kTfLiteInt16:
-      reference_integer_ops::Dequantize<int16_t>(
-          op_params, GetTensorShape(op_context.input),
-          GetTensorData<int16_t>(op_context.input),
-          GetTensorShape(op_context.output),
-          GetTensorData<float>(op_context.output));
+      optimized_ops::Dequantize(op_params, GetTensorShape(op_context.input),
+                                GetTensorData<int16_t>(op_context.input),
+                                GetTensorShape(op_context.output),
+                                GetTensorData<float>(op_context.output));
       break;
     case kTfLiteFloat16: {
       const Eigen::half* half_data = reinterpret_cast<const Eigen::half*>(

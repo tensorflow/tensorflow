@@ -12,6 +12,9 @@ tf_proto_library(
         "learner.proto",
     ],
     cc_api_version = 2,
+    protodeps = [
+        ":tree_config_proto",
+    ],
     visibility = ["//visibility:public"],
 )
 

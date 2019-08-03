@@ -74,7 +74,11 @@ def _AutoShardDatasetV1(input_dataset, num_workers, index):  # pylint: disable=i
 
 
 class _RebatchDataset(dataset_ops.UnaryDataset):
-  """A `Dataset` that divides the batch size by `num_workers`."""
+  """A `Dataset` that divides the batch size by `num_workers`.
+
+  For each batch in the input dataset, the resulting dataset will produce
+  `num_replicas` minibatches whose sizes add up to the original batch size.
+  """
 
   def __init__(self, input_dataset, num_workers, use_fallback=True):
     self._input_dataset = input_dataset
@@ -85,8 +89,14 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
         raise ValueError(
             "Input shape should have at least one dimension. "
             "Perhaps your input dataset is not batched?")
-      output_dims = [d for d in output_shapes.dims]
-      output_dims[0] = (output_dims[0] + num_workers - 1) // num_workers
+      output_dims = [d.value for d in output_shapes.dims]
+
+      if output_dims[0] is not None and output_dims[0] % num_workers == 0:
+        output_dims[0] = output_dims[0] // num_workers
+      else:
+        # Set the batch dimension to unknown. If the global batch size does not
+        # divide num_workers evenly, the minibatches may have different sizes.
+        output_dims[0] = None
       return tensor_shape.TensorShape(output_dims)
 
     input_types = dataset_ops.get_legacy_output_types(self._input_dataset)

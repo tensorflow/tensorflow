@@ -373,6 +373,7 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
   // permutation map (asserted in the inverse calculation).
   auto viewSizesToLoopsMap =
       inversePermutation(concatAffineMaps(loopToOperandRangesMaps(op)));
+  assert(viewSizesToLoopsMap && "expected invertible map");
   auto loopRanges =
       makeTiledLoopRanges(scope.getBuilder(), scope.getLocation(),
                           viewSizesToLoopsMap, viewSizes, tileSizes, folder);

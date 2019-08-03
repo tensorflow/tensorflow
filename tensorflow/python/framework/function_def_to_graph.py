@@ -62,7 +62,7 @@ def function_def_to_graph(fdef, input_shapes=None, copy_functions=True):
 
   with func_graph.as_default():
     # Add all function nodes to the graph.
-    importer.import_graph_def(graph_def, name="")
+    importer.import_graph_def_for_function(graph_def, name="")
 
     # Initialize fields specific to FuncGraph.
 
@@ -99,8 +99,9 @@ def function_def_to_graph(fdef, input_shapes=None, copy_functions=True):
     output_names = {}
     for ret_arg_def, tensor_name in zip(
         fdef.signature.output_arg, output_tensor_names):
-      output_names[func_graph.get_tensor_by_name(tensor_name)] = (
-          ret_arg_def.name)
+      output_names[ops.tensor_id(
+          func_graph.get_tensor_by_name(tensor_name))] = (
+              ret_arg_def.name)
     func_graph._output_names = output_names  # pylint: disable=protected-access
   return func_graph
 

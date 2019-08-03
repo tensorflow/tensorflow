@@ -211,12 +211,18 @@ struct Kernel<Path::kStandardCpp, LhsScalar, RhsScalar, DstScalar, Spec> {
         : Kernel<PARENT, LhsScalar, RhsScalar, DstScalar, Spec>(tuning) {} \
   };
 
+#if RUY_PLATFORM(NEON)
 RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kNeon)
 RUY_INHERIT_KERNEL(Path::kNeon, Path::kNeonDotprod)
+#elif RUY_PLATFORM(AVX512)
+RUY_INHERIT_KERNEL(Path::kStandardCpp, Path::kAvx512)
+#endif
 
-// KernelParams are shared across 32-bit and 64-bit NEON code.
-#if (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32)) && \
-    (RUY_OPT_ENABLED(RUY_OPT_ASM))
+// KernelParams are shared across 32-bit and 64-bit NEON code, and x86 AVX-512
+// code.
+#if (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32) || \
+     RUY_PLATFORM(AVX512)) &&                          \
+    RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 #define RUY_ASM_FLAG_HAS_BIAS 0x1
 #define RUY_ASM_FLAG_HAS_LHS_SUMS 0x2
@@ -362,10 +368,12 @@ void MakeKernelParams8bit(const PackedMatrix<std::int8_t>& lhs,
       dst->data.get() + start_col * dst->layout.stride + start_row;
 }
 
+#if RUY_PLATFORM(NEON)
 void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params);
 void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params);
 void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params);
 void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params);
+#endif
 
 #if RUY_PLATFORM(NEON_64)
 template <typename DstScalar>
@@ -482,10 +490,12 @@ inline void MakeKernelParamsFloat(const PackedMatrix<float>& lhs,
   RUY_DCHECK_LT(params->last_col, params->dst_cols);
 }
 
+#if RUY_PLATFORM(NEON)
 void KernelFloatNeonOutOfOrder(const KernelParamsFloat<8, 8>& params);
 void KernelFloatNeonInOrder(const KernelParamsFloat<8, 8>& params);
 void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params);
 void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params);
+#endif
 
 #if RUY_PLATFORM(NEON_64)
 // A Float kernel for ARM64 Neon.
@@ -531,6 +541,7 @@ struct Kernel<Path::kNeon, float, float, float, BasicSpec<float, float>> {
 };
 #endif
 
+#if RUY_PLATFORM(NEON)
 // While the dotprod NEON extension does not concern floating-point arithmetic,
 // its presence allows us to distinguish, in the in-order tuning case, between
 // A53 and A55r1. TODO: should this be folded into tuning?
@@ -556,9 +567,53 @@ struct Kernel<Path::kNeonDotprod, float, float, float,
     }
   }
 };
+#endif
 
-#endif  // (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32)) &&
-        // (RUY_OPT_ENABLED(RUY_OPT_ASM)
+#if RUY_PLATFORM(AVX512)
+void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params);
+
+template <typename DstScalar>
+struct Kernel<Path::kAvx512, std::int8_t, std::int8_t, DstScalar,
+              BasicSpec<std::int32_t, DstScalar>> {
+  Tuning tuning = Tuning::kAuto;
+  using LhsLayout = FixedKernelLayout<Order::kColMajor, 4, 16>;
+  using RhsLayout = FixedKernelLayout<Order::kColMajor, 4, 16>;
+  explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
+  void Run(const PackedMatrix<std::int8_t>& lhs,
+           const PackedMatrix<std::int8_t>& rhs,
+           const BasicSpec<std::int32_t, DstScalar>& spec, int start_row,
+           int start_col, int end_row, int end_col,
+           Matrix<DstScalar>* dst) const {
+    KernelParams8bit<LhsLayout::kCols, RhsLayout::kCols> params;
+    MakeKernelParams8bit(lhs, rhs, spec, start_row, start_col, end_row, end_col,
+                         dst, &params);
+    Kernel8bitAvx512(params);
+  }
+};
+
+void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params);
+
+template <>
+struct Kernel<Path::kAvx512, float, float, float, BasicSpec<float, float>> {
+  Tuning tuning = Tuning::kAuto;
+  using LhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 16>;
+  using RhsLayout = FixedKernelLayout<Order::kRowMajor, 1, 16>;
+  explicit Kernel(Tuning tuning_) : tuning(tuning_) {}
+  void Run(const PackedMatrix<float>& lhs, const PackedMatrix<float>& rhs,
+           const BasicSpec<float, float>& spec, int start_row, int start_col,
+           int end_row, int end_col, Matrix<float>* dst) const {
+    KernelParamsFloat<LhsLayout::kCols, RhsLayout::kCols> params;
+    MakeKernelParamsFloat(lhs, rhs, spec, start_row, start_col, end_row,
+                          end_col, dst, &params);
+    KernelFloatAvx512(params);
+  }
+};
+#endif
+
+#endif  // (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32) || \
+        //  RUY_PLATFORM(AVX512)) &&                      \
+        // RUY_OPT_ENABLED(RUY_OPT_ASM)
+
 }  // namespace ruy
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_KERNEL_H_

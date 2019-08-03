@@ -795,8 +795,7 @@ class IteratorSpec(type_spec.TypeSpec):
     return IteratorSpec(value.element_spec)  # pylint: disable=protected-access
 
 
-# TODO(b/71645805): Expose trackable stateful objects from dataset
-# attributes(potential).
+# TODO(b/71645805): Expose trackable stateful objects from dataset.
 class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
   """SaveableObject for saving/restoring iterator state."""
 

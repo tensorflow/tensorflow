@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <atomic>
+#include <fstream>
 #include <functional>
 #include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <utility>
@@ -221,6 +222,39 @@ void WarnIfBadDriverJITVersion() {
              "you can point XLA to ptxas 9.2.88 or newer.";
     }
   });
+}
+
+// Try to load ptx from files defined in the FLAGS. If successful, return true.
+bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
+  // If the xla_gpu_ptx_file options is set, be explicit when a file is used
+  // and warn when a file is not used to ease catching typo in filename.
+  std::string prefix = xla::FilenameFor(*module, *ptx);
+  std::string matched_filename;
+  for (const string filename :
+       module->config().debug_options().xla_gpu_ptx_file()) {
+    // To ease comparing many PTX versions, accept different suffixes then
+    // the original filename.
+    if (absl::StartsWith(filename, prefix)) {
+      matched_filename = filename;
+      VLOG(0) << "RunBackend() - Will load PTX from file: " << filename;
+      break;
+    }
+  }
+  if (module->config().debug_options().xla_gpu_ptx_file().size() > 0 &&
+      matched_filename.empty()) {
+    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+            << "', we did not found a PTX file to load.";
+  }
+
+  if (!matched_filename.empty()) {
+    std::ifstream ifs(matched_filename, std::ifstream::in);
+    *ptx = std::string(std::istreambuf_iterator<char>(ifs),
+                       std::istreambuf_iterator<char>());
+    CHECK(!ptx->empty()) << "Empty or non existing PTX file: "
+                         << matched_filename;
+    return true;
+  }
+  return false;
 }
 
 }  // namespace
@@ -604,7 +638,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
            "Rerun with --xla_dump_to to get the IR. ";
   }
 
-  string libdevice_dir;
+  std::string libdevice_dir;
   {
     tensorflow::mutex_lock lock(mutex_);
 
@@ -627,8 +661,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     cc_minor = 0;
   }
 
-  string ptx;
-  {
+  std::string ptx;
+
+  if (!MaybeLoadPtxFromFile(module.get(), &ptx)) {
     XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - CompileToPtx");
     TF_ASSIGN_OR_RETURN(
         ptx, nvptx::CompileToPtx(&llvm_module,

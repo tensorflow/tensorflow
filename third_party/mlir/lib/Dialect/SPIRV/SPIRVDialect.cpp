@@ -72,6 +72,33 @@ static bool parseNumberX(StringRef &spec, int64_t &number) {
   return true;
 }
 
+static bool isValidSPIRVScalarType(Type type) {
+  if (type.isa<FloatType>()) {
+    return !type.isBF16();
+  }
+  if (auto intType = type.dyn_cast<IntegerType>()) {
+    return llvm::is_contained(llvm::ArrayRef<unsigned>({1, 8, 16, 32, 64}),
+                              intType.getWidth());
+  }
+  return false;
+}
+
+bool SPIRVDialect::isValidSPIRVType(Type type) const {
+  // Allow SPIR-V dialect types
+  if (&type.getDialect() == this) {
+    return true;
+  }
+  if (isValidSPIRVScalarType(type)) {
+    return true;
+  }
+  if (auto vectorType = type.dyn_cast<VectorType>()) {
+    return (isValidSPIRVScalarType(vectorType.getElementType()) &&
+            vectorType.getNumElements() >= 2 &&
+            vectorType.getNumElements() <= 4);
+  }
+  return false;
+}
+
 static Type parseAndVerifyType(SPIRVDialect const &dialect, StringRef spec,
                                Location loc) {
   spec = spec.trim();
@@ -102,6 +129,12 @@ static Type parseAndVerifyType(SPIRVDialect const &dialect, StringRef spec,
   } else if (auto t = type.dyn_cast<VectorType>()) {
     if (t.getRank() != 1) {
       emitError(loc, "only 1-D vector allowed but found ") << t;
+      return Type();
+    }
+    if (t.getNumElements() > 4) {
+      emitError(loc,
+                "vector length has to be less than or equal to 4 but found ")
+          << t.getNumElements();
       return Type();
     }
   } else {

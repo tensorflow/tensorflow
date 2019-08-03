@@ -338,7 +338,7 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
   ```python
   # samples has shape [1, 5], where each value is either 0 or 1 with equal
   # probability.
-  samples = tf.random.categorical(tf.math.log([[10., 10.]]), 5)
+  samples = tf.random.categorical(tf.math.log([[0.5, 0.5]]), 5)
   ```
 
   Args:
@@ -366,7 +366,7 @@ def categorical(logits, num_samples, dtype=None, seed=None, name=None):
   ```python
   # samples has shape [1, 5], where each value is either 0 or 1 with equal
   # probability.
-  samples = tf.random.categorical(tf.math.log([[10., 10.]]), 5)
+  samples = tf.random.categorical(tf.math.log([[0.5, 0.5]]), 5)
   ```
 
   Args:

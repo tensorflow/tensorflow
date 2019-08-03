@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
+#include "tensorflow/compiler/xla/service/hlo_live_range.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -250,6 +251,13 @@ void BufferAllocation::AddAssignment(const HloValue& buffer, int64 offset,
   offset_size.offset = offset;
   offset_size.size = size;
   assigned_buffers_.emplace(&buffer, offset_size);
+  // For debugging purposes, store the assigned memory space in the
+  // instruction's layout.
+  HloInstruction* defining_instruction = buffer.defining_instruction();
+  if (defining_instruction->shape().has_layout()) {
+    defining_instruction->mutable_shape()->mutable_layout()->set_memory_space(
+        buffer.color().value());
+  }
 }
 
 BufferAllocationProto BufferAllocation::ToProto() const {
@@ -767,6 +775,60 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
       std::move(color_alignment), std::move(can_share_buffer));
 }
 
+bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
+                                         const HloValue* buffer2,
+                                         BufferAssignment* assignment) {
+  CHECK((assignment->hlo_live_range().total_order_scheduled()));
+  const HloLiveRange& hlo_live_range = assignment->hlo_live_range();
+
+  const auto& buffer_live_ranges = hlo_live_range.buffer_live_ranges();
+
+  CHECK(buffer_live_ranges.contains(buffer1))
+      << "Buffer doesn't have a proper live range:" << buffer1;
+
+  CHECK(buffer_live_ranges.contains(buffer2))
+      << "Buffer doesn't have a proper live range:" << buffer2;
+
+  // Check if a user value can share the same buffer as its operand.
+  auto can_share_as_operand = [&assignment](const HloValue* user_value,
+                                            const HloValue* operand_value) {
+    return user_value->instruction()->IsUserOf(operand_value->instruction()) &&
+           assignment->dataflow_analysis().CanShareOperandBufferWithUser(
+               operand_value->instruction(), operand_value->index(),
+               user_value->instruction(), user_value->index()) &&
+           user_value->instruction()->opcode() != HloOpcode::kCopy;
+  };
+
+  auto live_range_1 = buffer_live_ranges.at(buffer1);
+  auto live_range_2 = buffer_live_ranges.at(buffer2);
+
+  if (!(live_range_1.start > live_range_2.end ||
+        live_range_2.start > live_range_1.end)) {
+    if (live_range_1.end == live_range_2.start) {
+      auto operand_value = buffer1;
+      auto user_value = buffer2;
+      if (!can_share_as_operand(user_value, operand_value)) {
+        return true;
+      }
+    } else if (live_range_2.end == live_range_1.start) {
+      auto operand_value = buffer2;
+      auto user_value = buffer1;
+      if (!can_share_as_operand(user_value, operand_value)) {
+        return true;
+      }
+    } else {
+      VLOG(4) << "Can't assign: assignee " << *buffer1 << " may interfere with "
+              << *buffer2;
+      VLOG(4) << "assigned_buffer.start: " << live_range_1.start;
+      VLOG(4) << "assigned_buffer.end: " << live_range_1.end;
+      VLOG(4) << "live_range_2.start" << live_range_2.start;
+      VLOG(4) << "live_range_2.end" << live_range_2.end;
+      return true;
+    }
+  }
+  return false;
+}
+
 bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
                                        const HloBuffer& hlo_buffer,
                                        BufferAssignment* assignment) {
@@ -834,8 +896,15 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     const HloValue& assigned_buffer =
         *CHECK_NOTNULL(dynamic_cast<const HloValue*>(buffer_offset_size.first));
     for (const HloValue* new_value : hlo_buffer.values()) {
-      if (assignment->hlo_ordering().MayInterfere(
-              assigned_buffer, *new_value, assignment->dataflow_analysis())) {
+      if (assignment->hlo_live_range().total_order_scheduled()) {
+        if (LiveRangeInterferes(new_value, &assigned_buffer, assignment)) {
+          return false;
+        }
+      } else if (assignment->hlo_ordering().MayInterfere(
+                     assigned_buffer, *new_value,
+                     assignment->dataflow_analysis())) {
+        // Fallback to partial order based interference detection (slower) when
+        // we don't have a total order scheduled module.
         VLOG(4) << "Can't assign: assignee " << assigned_buffer
                 << " may interfere with " << new_value->ToShortString();
         return false;
@@ -1138,9 +1207,12 @@ Status BufferAssigner::AssignBuffersForComputations(
     }
   }
 
+  HloSchedule schedule(&assignment->module());
+
   for (const HloComputation* computation : computations) {
-    const bool has_sequential_order =
-        assignment->hlo_ordering().SequentialOrder(*computation) != nullptr;
+    const HloInstructionSequence* instruction_sequence =
+        assignment->hlo_ordering().SequentialOrder(*computation);
+    const bool has_sequential_order = instruction_sequence != nullptr;
     if (has_sequential_order && buffers_to_assign_sequentially != nullptr) {
       // Every sequential computation must get an entry in the
       // buffers_to_assign_sequentially map, even if we end up with an empty
@@ -1148,6 +1220,8 @@ Status BufferAssigner::AssignBuffersForComputations(
       // run whole-module heap simulation.
       buffers_to_assign_sequentially->emplace(computation,
                                               flat_hash_set<const HloValue*>());
+
+      schedule.set_sequence(computation, *instruction_sequence);
     }
   }
 
@@ -1215,8 +1289,13 @@ Status BufferAssigner::AssignPresetBuffers(
       preset_allocations;
   for (auto& color_and_size : preset_assignments_->sizes()) {
     LogicalBuffer::Color color(color_and_size.first);
-    preset_allocations.emplace(
+    auto inserted = preset_allocations.emplace(
         color, assignment->NewEmptyAllocation(color_and_size.second, color));
+    BufferAllocation* inserted_allocation = inserted.first->second;
+    VLOG(3) << "Created preset buffer allocation "
+            << inserted_allocation->index()
+            << ", color: " << inserted_allocation->color()
+            << ", size: " << inserted_allocation->size();
   }
 
   const HloAliasAnalysis& alias_analysis = assignment->alias_analysis();
@@ -1227,8 +1306,12 @@ Status BufferAssigner::AssignPresetBuffers(
         alias_analysis.GetUniqueBufferAt(position.instruction, position.index);
     VLOG(3) << "Preset allocation for buffer: " << buffer;
     const HeapSimulator::Chunk& chunk = position_and_chunk.second;
-    preset_allocations[buffer.color()]->AddAssignment(buffer.GetUniqueValue(),
-                                                      chunk.offset, chunk.size);
+    auto preset_allocations_iter = preset_allocations.find(buffer.color());
+    CHECK(preset_allocations_iter != preset_allocations.end())
+        << "No preset buffer allocation for color " << buffer.color()
+        << " found.";
+    preset_allocations_iter->second->AddAssignment(buffer.GetUniqueValue(),
+                                                   chunk.offset, chunk.size);
     // Ensure that there is at most one preset allocation for each buffer.
     CHECK_EQ(assigned_buffers->count(&buffer), 0);
     assigned_buffers->emplace(&buffer);
@@ -1442,6 +1525,21 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer));
 
+  // Set up a schedule for each computation.
+  HloSchedule schedule(module);
+  for (const HloComputation* computation : module->computations()) {
+    const HloInstructionSequence* instruction_sequence =
+        hlo_ordering->SequentialOrder(*computation);
+    const bool has_sequential_order = instruction_sequence != nullptr;
+    if (has_sequential_order) {
+      schedule.set_sequence(computation, *instruction_sequence);
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                      HloLiveRange::Run(schedule, *alias_analysis,
+                                        module->entry_computation(), true));
+
   VLOG(1) << "Assigning buffers to module " << module->name();
   XLA_VLOG_LINES(3, module->ToString());
   XLA_VLOG_LINES(3, alias_analysis->ToString());
@@ -1453,7 +1551,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   // private.
   std::unique_ptr<BufferAssignment> assignment(new BufferAssignment(
       module, std::move(hlo_ordering), std::move(buffer_size),
-      std::move(color_alignment), std::move(alias_analysis)));
+      std::move(color_alignment), std::move(alias_analysis),
+      std::move(hlo_live_range)));
 
   TF_RETURN_IF_ERROR(
       colorer_(&assignment->alias_analysis(), assignment->hlo_ordering()));

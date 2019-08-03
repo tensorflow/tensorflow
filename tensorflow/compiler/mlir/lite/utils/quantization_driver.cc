@@ -354,10 +354,10 @@ bool QuantizationDriver::SetConstantResultParams(Operation *op) {
   if (!matchPattern(res, m_Constant(&attr))) {
     return false;
   }
-  // TODO(fengliuai): the bit width should be determined by its user.
+  // TODO(fengliuai): make storage_type_width and narrow_range configurable.
   auto final_type =
-      GetUniformQuantizedTypeForElementsAttr(
-          attr, /*storage_type_width=*/8, is_signed_, /*narrow_range_=*/false)
+      GetUniformQuantizedTypeForElementsAttr(attr, /*storage_type_width=*/8,
+                                             is_signed_, /*narrow_range_=*/true)
           .dyn_cast_or_null<quant::QuantizedType>();
   if (!final_type) return false;
   return SetResultParams(op, 0, final_type);
@@ -618,7 +618,7 @@ bool QuantizationDriver::PropagateParams() {
     Operation *op = work_list_.back();
     work_list_.pop_back();
 
-    // This op has been quantized, so we should consider it again.
+    // This op has been quantized, so we should not consider it again.
     if (quantized_.find(op) != quantized_.end()) continue;
     quantized_.insert(op);
 

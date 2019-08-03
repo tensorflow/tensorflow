@@ -85,6 +85,21 @@ download_libtensorflow_jni() {
   curl -L "${RELEASE_URL_PREFIX}/libtensorflow_jni-cpu-darwin-x86_64-${TF_VERSION}.tar.gz" | tar -xvz -C darwin-x86_64
   curl -L "${RELEASE_URL_PREFIX}/libtensorflow_jni-cpu-windows-x86_64-${TF_VERSION}.zip" -o /tmp/windows.zip
 
+  # Get rid of symlinks, those are not supported by jar. As of tensorflow 1.14,
+  # libtensorflow_jni.so expects to find
+  # libtensorflow_framework.so.<majorVersion>.
+  MAJOR_VERSION="${TF_VERSION/\.*/}"
+
+  FRAMEWORK_SO="$(readlink -f linux-x86_64/libtensorflow_framework.so)"
+  rm linux-x86_64/libtensorflow_framework.so
+  rm "linux-x86_64/libtensorflow_framework.so.${MAJOR_VERSION}"
+  mv "${FRAMEWORK_SO}" "linux-x86_64/libtensorflow_framework.so.${MAJOR_VERSION}"
+
+  FRAMEWORK_DYLIB="$(readlink -f darwin-x86_64/libtensorflow_framework.dylib)"
+  rm darwin-x86_64/libtensorflow_framework.dylib
+  rm "darwin-x86_64/libtensorflow_framework.${MAJOR_VERSION}.dylib"
+  mv "${FRAMEWORK_DYLIB}" "darwin-x86_64/libtensorflow_framework.${MAJOR_VERSION}.dylib"
+
   unzip /tmp/windows.zip -d windows-x86_64
   rm -f /tmp/windows.zip
   # Updated timestamps seem to be required to get Maven to pick up the file.

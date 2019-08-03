@@ -282,7 +282,13 @@ message DebugOptions {
 
   bool xla_gpu_force_conv_nchw = 125;
 
-  // Next id: 127
+  // Paths to files with ptx code.
+  repeated string xla_gpu_ptx_file = 127;
+
+  // Blacklist for cuDNN convolutions.
+  string xla_gpu_cudnn_conv_blacklist_path = 128;
+
+  // Next id: 129
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

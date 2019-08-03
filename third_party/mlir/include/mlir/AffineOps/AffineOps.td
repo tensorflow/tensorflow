@@ -1,4 +1,4 @@
-//===- Ops.td - Affine operation definitions ---------------*- tablegen -*-===//
+//===- AffineOps.td - Affine operation definitions ---------*- tablegen -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -27,6 +27,8 @@
 #else
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
+
+include "mlir/AffineOps/AffineOpsBase.td"
 
 def Affine_Dialect : Dialect {
   let name = "affine";

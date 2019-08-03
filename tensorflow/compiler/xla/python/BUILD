@@ -1,5 +1,5 @@
 load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_python_default_plugins")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps", "xla_python_default_plugins")
 load("//tensorflow:tensorflow.bzl", "tf_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
@@ -29,15 +29,14 @@ py_test(
     name = "xla_client_test",
     srcs = ["xla_client_test.py"],
     main = "xla_client_test.py",
-    python_version = "PY2",
     srcs_version = "PY2AND3",
-    tags = ["no_oss"],
+    tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
     deps = [
         ":custom_call_for_test",
         ":xla_client",
-        "//tensorflow/compiler/xla:xla_data_proto_py",
-        "//tensorflow/python:platform_test",
-    ],
+        ":xla_extension",
+        "@absl_py//absl/testing:absltest",
+    ] + xla_py_test_deps(),
 )
 
 cc_library(

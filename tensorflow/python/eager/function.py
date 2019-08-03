@@ -60,6 +60,7 @@ from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
@@ -355,9 +356,11 @@ class _EagerDefinedFunction(object):
     operations = [op for op in graph.get_operations() if op not in input_ops]
 
     graph_output_names = graph._output_names  # pylint: disable=protected-access
-    if (graph_output_names is not None
-        and all(t in graph_output_names for t in outputs)):
-      output_names = [compat.as_bytes(graph_output_names[t]) for t in outputs]
+    if (graph_output_names is not None and
+        all(ops.tensor_id(t) in graph_output_names for t in outputs)):
+      output_names = [
+          compat.as_bytes(graph_output_names[ops.tensor_id(t)]) for t in outputs
+      ]
       if len(set(output_names)) != len(output_names):
         # There are duplicate names for some reason, probably an invalid
         # signature. Revert to auto-naming.
@@ -449,7 +452,8 @@ class _EagerDefinedFunction(object):
     """
     if len(args) != len(self.signature.input_arg):
       raise ValueError(
-          "Arguments and signature arguments do not match: %s %s " %
+          "Arguments and signature arguments do not match. "
+          "got: %s, expected: %s " %
           (len(args), len(list(self.signature.input_arg))))
 
     function_call_options = ctx.function_call_options
@@ -594,7 +598,8 @@ class _DelayedRewriteGradientFunctions(object):
 
       forward_function_name = _forward_name(self._func_graph.name)
 
-      existing_outputs = set(self._func_graph.outputs)
+      existing_outputs = object_identity.ObjectIdentitySet(
+          self._func_graph.outputs)
       for capture in captures_from_forward:
         if capture not in existing_outputs:
           existing_outputs.add(capture)
@@ -634,10 +639,12 @@ class _DelayedRewriteGradientFunctions(object):
       custom_gradient.copy_handle_data(func_graph_output, op.outputs[i])
     # pylint: enable=protected-access
 
-    capture_mapping = dict(zip(self._func_graph.outputs, op.outputs))
-    remapped_captures = []
-    for capture in backwards_function.captured_inputs:
-      remapped_captures.append(capture_mapping.get(capture, capture))
+    capture_mapping = dict(
+        zip([ops.tensor_id(t) for t in self._func_graph.outputs], op.outputs))
+    remapped_captures = [
+        capture_mapping.get(ops.tensor_id(capture), capture)
+        for capture in backwards_function.captured_inputs
+    ]
 
     # Replace Nones with zeros since we're calling a graph function which
     # expects numeric inputs.
@@ -693,7 +700,7 @@ class _DelayedRewriteGradientFunctions(object):
     def _backward_function(*args):
       call_op = outputs[0].op
       return self._rewrite_forward_and_call_backward(call_op, *args)
-    return _backward_function
+    return _backward_function, outputs
 
 
 class _TapeGradientFunctions(object):
@@ -721,15 +728,13 @@ class _TapeGradientFunctions(object):
     """Forward+backward functions where the backward function sees `outputs`."""
     # First figure out which of `outputs` are trainable. We'll accept gradients
     # for each of these in the backward function.
-    handles_to_variables = {self._func_graph.captures[v.handle]: v
-                            for v in self._func_graph.variables
-                            if v.handle in self._func_graph.captures}
+    handles_to_variables = self._func_graph.variable_captures
     trainable_outputs = []
     for output in outputs:
       if gradients_util.IsTrainable(output):
         # Swap in the Variable object for resource handles if we can so
         # sparse gradients work.
-        output = handles_to_variables.get(output, output)
+        output = handles_to_variables.get(ops.tensor_id(output), output)
         trainable_outputs.append(output)
 
     backwards_graph = func_graph_module.FuncGraph(
@@ -753,9 +758,11 @@ class _TapeGradientFunctions(object):
           src_graph=self._func_graph)
 
       captures_from_forward = [
-          c for c in backwards_graph.captures.keys() if
-          not isinstance(c, ops.EagerTensor) and c.graph is self._func_graph]
-      existing_outputs = set(self._func_graph.outputs)
+          c for c in backwards_graph.external_captures
+          if not isinstance(c, ops.EagerTensor) and c.graph is self._func_graph
+      ]
+      existing_outputs = object_identity.ObjectIdentitySet(
+          self._func_graph.outputs)
       for capture in captures_from_forward:
         if capture not in existing_outputs:
           existing_outputs.add(capture)
@@ -770,7 +777,7 @@ class _TapeGradientFunctions(object):
     # `backward_function` correspond to outputs (including
     # side outputs) of `self._tape_forward_function`.
     backwards_graph.inputs = (
-        gradients_wrt_outputs + list(backwards_graph.captures.values()))
+        gradients_wrt_outputs + backwards_graph.internal_captures)
     backwards_graph.outputs.extend(
         grad
         for grad in nest.flatten(gradients_wrt_inputs, expand_composites=True)
@@ -815,19 +822,27 @@ class _TapeGradientFunctions(object):
 
   def backward(self, outputs):
     """Create a backward function given `outputs` from the forward function."""
-    capture_mapping = dict(zip(self._func_graph.outputs, outputs))
+    capture_mapping = dict(
+        zip([ops.tensor_id(t) for t in self._func_graph.outputs], outputs))
     remapped_captures = [
-        capture_mapping.get(capture, capture)
-        for capture in self._backward.captured_inputs]
+        capture_mapping.get(ops.tensor_id(capture), capture)
+        for capture in self._backward.captured_inputs
+    ]
     # We may need to use zeros_like to get a zero for variant Tensors with
     # unconnected gradients. We do that in advance so we don't have to hold on
     # to the outputs themselves, which may not be needed otherwise.
     variant_zeros_like = {}
     backward_function_inputs = (
         len(self._backward.inputs) - len(self._backward.captured_inputs))
+    recorded_outputs = []
+    trainable_recorded_outputs = 0
     skip_positions = []
     for output_index, output in enumerate(outputs):
-      if not gradients_util.IsTrainable(output):
+      if trainable_recorded_outputs < backward_function_inputs:
+        recorded_outputs.append(output)
+      if gradients_util.IsTrainable(output):
+        trainable_recorded_outputs += 1
+      else:
         skip_positions.append(output_index)
       if output.dtype == dtypes.variant:
         variant_zeros_like[output_index] = default_gradient.zeros_like(output)
@@ -859,7 +874,7 @@ class _TapeGradientFunctions(object):
       return self._backward._call_flat(  # pylint: disable=protected-access
           processed_args, remapped_captures)
 
-    return _backward_function_wrapper
+    return _backward_function_wrapper, recorded_outputs
 
 
 class _FirstOrderTapeGradientFunctions(_TapeGradientFunctions):
@@ -980,9 +995,8 @@ class ConcreteFunction(object):
     self._arg_keywords = None
     self._num_positional_args = None
     self._func_graph = func_graph
-    self._captured_inputs = list(self._func_graph.captures.keys())
-    self._captured_closures = [
-        x[0] for x in self._func_graph.deferred_captures.values()]
+    self._captured_inputs = self._func_graph.external_captures
+    self._captured_closures = self._func_graph.deferred_external_captures
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
     attrs = _parse_func_attrs(attrs or {})
@@ -1121,7 +1135,7 @@ class ConcreteFunction(object):
         resource_variable_ops.variable_accessed(v)
 
     tensor_inputs = []
-    variables_used = set([])
+    variables_used = object_identity.ObjectIdentitySet([])
     for i, arg in enumerate(args):
       if isinstance(arg, resource_variable_ops.BaseResourceVariable):
         # We can pass a variable more than once, and in this case we need to
@@ -1176,9 +1190,9 @@ class ConcreteFunction(object):
     if isinstance(flat_outputs, ops.Operation) or flat_outputs is None:
       # We only record function calls which have outputs.
       return self._build_call_outputs(flat_outputs)
-    backward_function = forward_backward.backward(flat_outputs)
+    backward_function, to_record = forward_backward.backward(flat_outputs)
     tape.record_operation(forward_function.signature.name,
-                          flat_outputs, args, backward_function)
+                          to_record, args, backward_function)
     return self._build_call_outputs(flat_outputs)
 
   def _experimental_with_cancellation_manager(self, cancellation_manager):
@@ -1837,7 +1851,8 @@ class Function(object):
       args = self.input_signature
       kwargs = {}
     seen_names = set()
-    captured = frozenset(graph_function.graph.internal_captures)
+    captured = object_identity.ObjectIdentitySet(
+        graph_function.graph.internal_captures)
     # pylint: disable=protected-access
     graph_function._arg_keywords = []
     prefix_counts = {}

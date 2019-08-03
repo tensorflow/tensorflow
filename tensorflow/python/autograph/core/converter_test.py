@@ -50,7 +50,7 @@ class ConversionOptionsTest(converter_testing.TestCase):
     reparsed_opts = reparsed.test_fn()
 
     self.assertEqual(opts.recursive, reparsed_opts.recursive)
-    self.assertEqual(opts.force_conversion, reparsed_opts.force_conversion)
+    self.assertEqual(opts.user_requested, False)
     self.assertEqual(
         opts.internal_convert_user_code,
         reparsed_opts.internal_convert_user_code)

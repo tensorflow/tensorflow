@@ -66,6 +66,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.util.compat import collections_abc
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -155,7 +156,7 @@ class Model(network.Network):
     self._compile_distribution = False
 
     self._run_eagerly = None
-    self._run_distributed = False
+    self._experimental_run_tf_function = False
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -244,20 +245,30 @@ class Model(network.Network):
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
     self._run_eagerly = kwargs.pop('run_eagerly', None)
-    self._run_distributed = kwargs.pop('run_distributed', False)
+    self._experimental_run_tf_function = kwargs.pop(
+        'experimental_run_tf_function', False)
+
+    if isinstance(optimizer, (list, tuple)):
+      self.optimizer = [optimizers.get(opt) for opt in optimizer]
+      is_any_optimizer_v1 = any(
+          isinstance(opt, optimizers.Optimizer) for opt in self.optimizer)
+    else:
+      self.optimizer = optimizers.get(optimizer)
+      is_any_optimizer_v1 = isinstance(self.optimizer, optimizers.Optimizer)
 
     if ((sample_weight_mode is not None)
         or (target_tensors is not None)
         or (weighted_metrics is not None)
+        or is_any_optimizer_v1
         or not context.executing_eagerly()):
       # Fallback out of things that aren't supported with v2 loops
-      self._run_distributed = False
+      self._experimental_run_tf_function = False
 
     self._compile_time_distribution_strategy = (
         distribution_strategy_context.get_strategy())
 
     if distribute is not None:
-      if tf2.enabled() or self._run_distributed:
+      if tf2.enabled() or self._experimental_run_tf_function:
         raise ValueError(
             'Distribute argument in compile is not available in TF 2.0 please '
             'create the model under the distribution strategy scope.')
@@ -275,15 +286,11 @@ class Model(network.Network):
           self._distribution_strategy = (
               distribution_strategy_context.get_strategy())
 
-    if not self._run_distributed:
+    if not self._experimental_run_tf_function:
       self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
                                                              sample_weight_mode,
                                                              target_tensors,
                                                              weighted_metrics)
-    if isinstance(optimizer, (list, tuple)):
-      self.optimizer = [optimizers.get(opt) for opt in optimizer]
-    else:
-      self.optimizer = optimizers.get(optimizer)
     # We've disabled automatic dependency tracking for this method, but do want
     # to add a checkpoint dependency on the optimizer if it's trackable.
     if isinstance(self.optimizer, trackable.Trackable):
@@ -476,7 +483,7 @@ class Model(network.Network):
   def run_eagerly(self, value):
     self._run_eagerly = value
 
-  def _select_training_loop(self, inputs):
+  def _select_training_loop(self, inputs, callbacks):
     """Select training loop for fit/eval/predict based on the inputs."""
     # TODO(kaftan) or TODO(scottzhu): This check should eventually be nicely
     #  integrated into the data adapters in the v2 loop. We can't do this yet
@@ -492,11 +499,11 @@ class Model(network.Network):
 
     # Experiment training loop with default DS path.
     if (context.executing_eagerly()
-        and self._run_distributed
-        # TODO(scottzhu): Finish getting sequences working with the v2 loops.
-        and not isinstance(inputs, (data_utils.Sequence))
+        and self._experimental_run_tf_function
         and not distributed_training_utils.is_tpu_strategy(
-            self._distribution_strategy)):
+            self._distribution_strategy)
+        and not training_v2_utils.should_fallback_to_v1_for_callback(
+            inputs, callbacks)):
       try:
         valid_adapter = data_adapter.select_data_adapter(inputs, None)
       except ValueError as data_failure_exception:
@@ -504,12 +511,17 @@ class Model(network.Network):
         logging.warning('Falling back from v2 loop because of error: '
                         '%s' % data_failure_exception)
       if valid_adapter:
-        return training_v2.Loop()
+        if multi_worker_util.in_multi_worker_mode():
+          return training_distributed.DistributionMultiWorkerTrainingLoop(
+              training_v2.Loop())
+        else:
+          return training_v2.Loop()
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
       if multi_worker_util.in_multi_worker_mode():
-        return training_distributed.DistributionMultiWorkerTrainingLoop()
+        return training_distributed.DistributionMultiWorkerTrainingLoop(
+            training_distributed.DistributionSingleWorkerTrainingLoop())
       else:
         return training_distributed.DistributionSingleWorkerTrainingLoop()
 
@@ -657,9 +669,9 @@ class Model(network.Network):
             and 'validation_steps' is None, validation
             will run until the `validation_data` dataset is exhausted.
         validation_freq: Only relevant if validation data is provided. Integer
-            or `collections.Container` instance (e.g. list, tuple, etc.). If an
-            integer, specifies how many training epochs to run before a new
-            validation run is performed, e.g. `validation_freq=2` runs
+            or `collections_abc.Container` instance (e.g. list, tuple, etc.).
+            If an integer, specifies how many training epochs to run before a
+            new validation run is performed, e.g. `validation_freq=2` runs
             validation every 2 epochs. If a Container, specifies the epochs on
             which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
             validation at the end of the 1st, 2nd, and 10th epochs.
@@ -701,7 +713,7 @@ class Model(network.Network):
     self._assert_compile_was_called()
     self._check_call_args('fit')
 
-    func = self._select_training_loop(x)
+    func = self._select_training_loop(x, callbacks)
     return func.fit(
         self,
         x=x,
@@ -814,7 +826,7 @@ class Model(network.Network):
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
 
-    func = self._select_training_loop(x)
+    func = self._select_training_loop(x, callbacks)
     return func.evaluate(
         self,
         x=x,
@@ -892,7 +904,7 @@ class Model(network.Network):
     _keras_api_gauge.get_cell('predict').set(True)
     self._check_call_args('predict')
 
-    func = self._select_training_loop(x)
+    func = self._select_training_loop(x, callbacks)
     return func.predict(
         self,
         x=x,
@@ -963,7 +975,7 @@ class Model(network.Network):
     """
     self._assert_compile_was_called()
     self._check_call_args('train_on_batch')
-    if self._run_distributed:
+    if self._experimental_run_tf_function:
       outputs = training_v2_utils.train_on_batch(
           self, x, y=y, sample_weight=sample_weight,
           class_weight=class_weight, reset_metrics=reset_metrics)
@@ -1056,7 +1068,7 @@ class Model(network.Network):
     """
     self._assert_compile_was_called()
     self._check_call_args('test_on_batch')
-    if self._run_distributed:
+    if self._experimental_run_tf_function:
       outputs = training_v2_utils.test_on_batch(
           self, x, y=y, sample_weight=sample_weight,
           reset_metrics=reset_metrics)
@@ -1119,7 +1131,7 @@ class Model(network.Network):
           expectations of the model.
     """
     self._check_call_args('predict_on_batch')
-    if self._run_distributed:
+    if self._experimental_run_tf_function:
       return training_v2_utils.predict_on_batch(self, x)
 
     if (self._distribution_strategy and
@@ -1134,7 +1146,7 @@ class Model(network.Network):
     # at this point.
     if self.run_eagerly or self._distribution_strategy:
       inputs = training_utils.cast_if_floating_dtype(inputs)
-      if isinstance(inputs, collections.Sequence):
+      if isinstance(inputs, collections_abc.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
         if len(inputs) == 1:
           inputs = inputs[0]
@@ -1212,9 +1224,9 @@ class Model(network.Network):
             Optional for `Sequence`: if unspecified, will use
             the `len(validation_data)` as a number of steps.
         validation_freq: Only relevant if validation data is provided. Integer
-            or `collections.Container` instance (e.g. list, tuple, etc.). If an
-            integer, specifies how many training epochs to run before a new
-            validation run is performed, e.g. `validation_freq=2` runs
+            or `collections_abc.Container` instance (e.g. list, tuple, etc.).
+            If an integer, specifies how many training epochs to run before a
+            new validation run is performed, e.g. `validation_freq=2` runs
             validation every 2 epochs. If a Container, specifies the epochs on
             which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
             validation at the end of the 1st, 2nd, and 10th epochs.
@@ -2493,7 +2505,7 @@ class Model(network.Network):
       y = []
       sample_weights = None
 
-    if self.stateful and batch_size:
+    if self.stateful and batch_size and not is_dataset:
       # Check that for stateful networks, number of samples is a multiple
       # of the static batch size.
       if x[0].shape[0] % batch_size != 0:
@@ -2570,7 +2582,8 @@ class Model(network.Network):
     if target is not None:
       # We need to use `y` to set the model targets.
       if training_utils.has_tensors(target):
-        target = training_utils.cast_if_floating_dtype(target)
+        target = training_utils.cast_if_floating_dtype_and_mismatch(
+            target, self.outputs)
       training_utils.validate_input_types(target, orig_target,
                                           allow_dict=False, field_name='target')
       if isinstance(target, (list, tuple)):
@@ -2608,7 +2621,7 @@ class Model(network.Network):
         target_tensors=target_tensors,
         sample_weight_mode=self.sample_weight_mode,
         run_eagerly=self.run_eagerly,
-        run_distributed=self._run_distributed)
+        experimental_run_tf_function=self._experimental_run_tf_function)
 
   # TODO(omalleyt): Consider changing to a more descriptive function name.
   def _set_inputs(self, inputs, outputs=None, training=None):

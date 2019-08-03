@@ -318,7 +318,7 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     return false;
   }
 
-  if (node.type_string() == "While" &&
+  if (node.IsWhileNode() &&
       !IsCompilableWhile(node, lib_runtime, stack_trace, uncompilable_nodes)) {
     LogNotCompilable(node, "unsupported while");
     return false;

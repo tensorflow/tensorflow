@@ -22,7 +22,6 @@ import gast
 
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct.static_analysis import annos
 
@@ -36,13 +35,6 @@ class _Function(object):
 class FunctionBodyTransformer(converter.Base):
   """Wraps function bodies around autograph-specific boilerplate."""
 
-  def _sanitize(self, name):
-    """See https://www.tensorflow.org/api_docs/python/tf/Graph#name_scope."""
-    # TensorFlow doesn't like leading underscores at the top level.
-    while name[0] == '_':
-      name = name[1:]
-    return name
-
   def visit_Return(self, node):
     if node.value is None:
       return node
@@ -51,13 +43,46 @@ class FunctionBodyTransformer(converter.Base):
         function_context_name=self.state[_Function].context_name,
         value=node.value)
 
+  def visit_Lambda(self, node):
+    self.state[_Function].enter()
+    node = self.generic_visit(node)
+
+    # Only wrap the top-level function. Theoretically, we can and should wrap
+    # everything, but that can lead to excessive boilerplate when lambdas are
+    # nested.
+    # TODO(mdan): Looks more closely for use cases that actually require this.
+    if self.state[_Function].level > 2:
+      self.state[_Function].exit()
+      return node
+
+    scope = anno.getanno(node, anno.Static.SCOPE)
+    function_context_name = self.ctx.namer.new_symbol('lambda_scope',
+                                                      scope.referenced)
+    self.state[_Function].context_name = function_context_name
+    anno.setanno(node, 'function_context_name', function_context_name)
+
+    template = """
+      ag__.with_function_scope(
+          lambda function_context: body, function_context_name, options)
+    """
+    node.body = templates.replace_as_expression(
+        template,
+        options=self.ctx.program.options.to_ast(),
+        function_context=function_context_name,
+        function_context_name=gast.Str(function_context_name),
+        body=node.body)
+
+    self.state[_Function].exit()
+    return node
+
   def visit_FunctionDef(self, node):
     self.state[_Function].enter()
     scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
 
     function_context_name = self.ctx.namer.new_symbol(
-        'fn_context', scope.referenced)
+        '{}_scope'.format(node.name), scope.referenced)
     self.state[_Function].context_name = function_context_name
+    anno.setanno(node, 'function_context_name', function_context_name)
 
     node = self.generic_visit(node)
 
@@ -69,27 +94,17 @@ class FunctionBodyTransformer(converter.Base):
         docstring_node = first_statement
         node.body = node.body[1:]
 
-    if self.ctx.program.options.uses(converter.Feature.NAME_SCOPES):
-      use_name_scopes = parser.parse_expression('True')
-      scope_name = gast.Str(self._sanitize(node.name))
-    else:
-      use_name_scopes = parser.parse_expression('False')
-      scope_name = parser.parse_expression('None')
-
-    use_auto_deps = parser.parse_expression(str(
-        self.ctx.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS)))
-
     template = """
       with ag__.FunctionScope(
-          use_name_scopes, scope_name, use_auto_deps) as function_context_name:
+      function_name, context_name, options) as function_context:
         body
     """
     wrapped_body = templates.replace(
         template,
-        use_name_scopes=use_name_scopes,
-        scope_name=scope_name,
-        use_auto_deps=use_auto_deps,
-        function_context_name=function_context_name,
+        function_name=gast.Str(node.name),
+        context_name=gast.Str(function_context_name),
+        options=self.ctx.program.options.to_ast(),
+        function_context=function_context_name,
         body=node.body)
 
     if docstring_node is not None:

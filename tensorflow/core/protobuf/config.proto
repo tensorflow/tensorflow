@@ -335,6 +335,9 @@ message RPCOptions {
   // while with it we'll be able to complete long steps (like complex
   // initializations) in the face of some network errors during RecvTensor.
   bool cache_rpc_response = 4;
+
+  // Disables TCP connection sharing when opening a new RPC channel.
+  bool disable_session_connection_sharing = 5;
 }
 
 // Metadata about the session.
