@@ -585,11 +585,12 @@ def BoolAttr : Attr<CPred<"$_self.isa<BoolAttr>()">, "bool attribute"> {
 
 // Base class for integer attributes of fixed width.
 class IntegerAttrBase<I attrValType, string descr> :
-    TypedAttrBase<attrValType, "IntegerAttr",
-              And<[CPred<"$_self.isa<IntegerAttr>()">,
-                     CPred<"$_self.cast<IntegerAttr>().getType()."
-                           "isInteger(" # attrValType.bitwidth # ")">]>,
-              descr> {
+    TypedAttrBase<
+      attrValType, "IntegerAttr",
+      And<[CPred<"$_self.isa<IntegerAttr>()">,
+           CPred<"$_self.cast<IntegerAttr>().getType()."
+                 "isInteger(" # attrValType.bitwidth # ")">]>,
+      descr> {
   let returnType = [{ APInt }];
 }
 
@@ -601,6 +602,20 @@ def APIntAttr : Attr<CPred<"$_self.isa<IntegerAttr>()">,
 
 def I32Attr : IntegerAttrBase<I32, "32-bit integer attribute">;
 def I64Attr : IntegerAttrBase<I64, "64-bit integer attribute">;
+
+class NonNegativeIntAttrBase<I attrValType, string descr> :
+    TypedAttrBase<
+      attrValType, "IntegerAttr",
+      And<[IntegerAttrBase<attrValType, "">.predicate,
+           CPred<"!$_self.cast<IntegerAttr>().getValue().isNegative()">]>,
+      descr> {
+  let returnType = [{ APInt }];
+}
+
+def NonNegativeI32Attr : NonNegativeIntAttrBase<
+    I32, "non-negative 32-bit integer attribute">;
+def NonNegativeI64Attr : NonNegativeIntAttrBase<
+    I64, "non-negative 64-bit integer attribute">;
 
 // Base class for float attributes of fixed width.
 class FloatAttrBase<F attrValType, string descr> :

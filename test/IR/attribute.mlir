@@ -1,6 +1,36 @@
 // RUN: mlir-opt %s -split-input-file -verify-diagnostics | FileCheck %s
 
 //===----------------------------------------------------------------------===//
+// Test Non-negative Int Attr
+//===----------------------------------------------------------------------===//
+
+func @non_negative_int_attr_pass() {
+  // CHECK: test.non_negative_int_attr
+  "test.non_negative_int_attr"() {i32attr = 5 : i32, i64attr = 10 : i64} : () -> ()
+  // CHECK: test.non_negative_int_attr
+  "test.non_negative_int_attr"() {i32attr = 0 : i32, i64attr = 0 : i64} : () -> ()
+  return
+}
+
+// -----
+
+func @negative_int_attr_fail() {
+  // expected-error @+1 {{'i32attr' failed to satisfy constraint: non-negative 32-bit integer attribute}}
+  "test.non_negative_int_attr"() {i32attr = -5 : i32, i64attr = 10 : i64} : () -> ()
+  return
+}
+
+// -----
+
+func @negative_int_attr_fail() {
+  // expected-error @+1 {{'i64attr' failed to satisfy constraint: non-negative 64-bit integer attribute}}
+  "test.non_negative_int_attr"() {i32attr = 5 : i32, i64attr = -10 : i64} : () -> ()
+  return
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // Test TypeArrayAttr
 //===----------------------------------------------------------------------===//
 
