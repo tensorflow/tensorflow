@@ -847,11 +847,6 @@ Status Importer::ConvertFunctionArgAndRets(
     builder_->setInsertionPoint(inst);
     auto* input = builder_->createOperation(state);
     arg_def = input->getResult(arg_nodes[i].index);
-    // Verify on the equivalent TF op would have failed, but catching this
-    // earlier for now as this exposed a bug. TODO(jpienaar): remove post
-    // dialect refactoring.
-    DCHECK(input->getResult(0)->getType() == input->getOperand(0)->getType())
-        << "invalid placeholder_input constructed";
 
     for (auto index = 0; index < inst->getNumResults(); index++) {
       inst->getResult(index)->replaceAllUsesWith(arg_def);
