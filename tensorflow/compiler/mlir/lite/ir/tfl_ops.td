@@ -2244,6 +2244,27 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
   let hasOptions = 1;
 }
 
+def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor",
+                                [NoSideEffect]> {
+  let summary = "ResizeNearestNeighbor Op";
+
+  let description = [{
+    Resize `images` to `size` using nearest neighbor interpolation.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, I8, TFL_Uint8]>:$input,
+    TensorOf<[I32]>:$size,
+    BoolAttr:$align_corners
+  );
+
+  let results = (outs
+    TensorOf<[F32, I8, TFL_Uint8]>:$output
+  );
+
+  let hasOptions = 1;
+}
+
 def TFL_StridedSliceOp: TFL_Op<"strided_slice",
   [
     NoSideEffect,
