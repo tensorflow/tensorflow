@@ -392,7 +392,6 @@ class MultiDeviceIterator : public ResourceBase {
   const std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   ResourceMgr resource_mgr_;
   CancellationManager cancellation_manager_;
-  std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
 
   int64 incarnation_id_ GUARDED_BY(mu_) = 0;
   std::unique_ptr<MultiDeviceBuffer> multi_device_buffer_ GUARDED_BY(mu_);

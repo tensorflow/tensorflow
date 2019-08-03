@@ -205,6 +205,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 
   tensorflow::uint64 context_id = tensorflow::random::New64();
+  // Make master eager context accessible by local eager service, which might
+  // receive send tensor requests from remote workers.
+  LOG_AND_RETURN_IF_ERROR(grpc_server->AddMasterEagerContextToEagerService(
+      context_id, ctx->context));
 
   std::vector<string> remote_workers;
   grpc_server->master_env()->worker_cache->ListWorkers(&remote_workers);
@@ -262,8 +266,8 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
-  auto remote_mgr =
-      absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true);
+  auto remote_mgr = absl::make_unique<tensorflow::eager::RemoteMgr>(
+      /*is_master=*/true, ctx->context);
 
   return ctx->context->InitializeRemoteMaster(
       std::move(server), grpc_server->worker_env(), worker_session,

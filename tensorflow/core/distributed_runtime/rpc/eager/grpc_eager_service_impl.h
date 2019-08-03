@@ -44,6 +44,10 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
                        ::grpc::ServerBuilder* server_builder);
   virtual ~GrpcEagerServiceImpl() {}
 
+  // Create a master context in eager service.
+  Status CreateMasterContext(const tensorflow::uint64 context_id,
+                             EagerContext* context);
+
   void HandleRPCsLoop() override;
   void Shutdown() override;
 

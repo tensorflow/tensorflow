@@ -109,9 +109,10 @@ createSimpleParametricTilingPass(ArrayRef<int64_t> outerLoopSizes);
 /// bounds into a single loop.
 FunctionPassBase *createLoopCoalescingPass();
 
-/// Promotes all accessed memref regions to the specified faster memory space
-/// while generating DMAs to move data.
-FunctionPassBase *createDmaGenerationPass(
+/// Performs packing (or explicit copying) of accessed memref regions into
+/// buffers in the specified faster memory space through either pointwise copies
+/// or DMA operations.
+FunctionPassBase *createAffineDataCopyGenerationPass(
     unsigned slowMemorySpace, unsigned fastMemorySpace,
     unsigned tagMemorySpace = 0, int minDmaTransferSize = 1024,
     uint64_t fastMemCapacityBytes = std::numeric_limits<uint64_t>::max());

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_blacklist.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
@@ -235,7 +236,6 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   return result_or;
 }
 
-
 StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     const HloCustomCallInstruction* instr) {
   XLA_SCOPED_LOGGING_TIMER(
@@ -311,11 +311,24 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   const bool crash_on_checking_failure =
       debug_options.xla_gpu_crash_on_verification_failures();
 
+  const auto canonical_hlo =
+      std::get<1>(AutotuneCacheKeyfromInstruction(instr, stream_exec_));
+
+  absl::Span<const AlgorithmDesc> blacklisted_algos =
+      GetBlacklistedAlgorithms(GetComputeCapability(stream_exec_),
+                               GetCudnnVersion(stream_exec_), canonical_hlo);
+
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
         absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
                      AlgorithmToString(alg)),
         2);
+
+    if (absl::c_linear_search(blacklisted_algos, alg)) {
+      LOG(INFO) << "Omitted potentially buggy algorithm "
+                << AlgorithmToString(alg) << " for conv " << instr->ToString();
+      continue;
+    }
 
     se::cuda::RedzoneAllocator scratch_allocator(
         device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
@@ -361,6 +374,22 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
     if (!input_output_allocator_redzone_clear ||
         !scratch_allocator_redzone_clear) {
+      CudnnConvolutionList proto;
+      auto entry = proto.add_entries();
+      entry->set_hlo(canonical_hlo);
+      *entry->mutable_cc() = GetComputeCapability(stream_exec_);
+      *entry->add_cudnn_versions() = GetCudnnVersion(stream_exec_);
+      auto algo = entry->add_algos();
+      algo->set_id(alg.algo_id());
+      algo->set_tensor_ops(alg.tensor_ops_enabled());
+
+      LOG(ERROR)
+          << "To blacklist this algorithm for this convolution, "
+             "copy-paste the following "
+             "proto to the blacklist file pointed by XLA_FLAGS "
+             "--xla_gpu_cudnn_conv_blacklist_path="
+          << GetDebugOptionsFromFlags().xla_gpu_cudnn_conv_blacklist_path()
+          << " : " << proto.ShortDebugString();
       continue;
     }
 

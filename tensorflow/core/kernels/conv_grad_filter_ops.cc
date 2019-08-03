@@ -408,11 +408,15 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
                 errors::InvalidArgument(
                     "Current implementation does not yet support "
                     "dilations in the batch and depth dimensions."));
-    // TODO(yangzihao): Add a CPU implementation for dilated convolution.
-    OP_REQUIRES(context, (dilations_[1] == 1 && dilations_[2] == 1),
-                errors::InvalidArgument(
-                    "Current libxsmm and customized CPU implementations do "
-                    "not yet support dilation rates larger than 1."));
+    if (std::is_same<Device, CPUDevice>::value ||
+        std::is_same<Device, GPUDevice>::value) {
+      // TODO(yangzihao): Add a CPU implementation for dilated convolution.
+      OP_REQUIRES(context, (dilations_[1] == 1 && dilations_[2] == 1),
+                  errors::InvalidArgument(
+                      "Current libxsmm and customized CPU implementations do "
+                      "not yet support dilation rates larger than 1."));
+      dilations_ = {1, 1, 1, 1};
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -434,8 +438,8 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
         context,
         ConvBackpropComputeDimensionsV2(
             "Conv2DCustomBackpropFilter", /*num_spatial_dims=*/2, input.shape(),
-            filter_shape, out_backprop.shape(), /*dilations=*/{1, 1, 1, 1},
-            strides_, padding_, explicit_paddings_, data_format_, &dims));
+            filter_shape, out_backprop.shape(), dilations_, strides_, padding_,
+            explicit_paddings_, data_format_, &dims));
 
     Tensor* filter_backprop;
     OP_REQUIRES_OK(context,

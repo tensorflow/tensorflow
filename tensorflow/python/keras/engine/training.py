@@ -2582,7 +2582,8 @@ class Model(network.Network):
     if target is not None:
       # We need to use `y` to set the model targets.
       if training_utils.has_tensors(target):
-        target = training_utils.cast_if_floating_dtype(target)
+        target = training_utils.cast_if_floating_dtype_and_mismatch(
+            target, self.outputs)
       training_utils.validate_input_types(target, orig_target,
                                           allow_dict=False, field_name='target')
       if isinstance(target, (list, tuple)):

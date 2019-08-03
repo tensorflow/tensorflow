@@ -236,6 +236,12 @@ ArrayAttr Builder::getStrArrayAttr(ArrayRef<StringRef> values) {
   return getArrayAttr(attrs);
 }
 
+ArrayAttr Builder::getAffineMapArrayAttr(ArrayRef<AffineMap> values) {
+  auto attrs = functional::map(
+      [this](AffineMap v) -> Attribute { return getAffineMapAttr(v); }, values);
+  return getArrayAttr(attrs);
+}
+
 Attribute Builder::getZeroAttr(Type type) {
   switch (type.getKind()) {
   case StandardTypes::F16:

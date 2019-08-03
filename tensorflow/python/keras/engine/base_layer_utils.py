@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import threading
 
+from tensorflow.python import tf2
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -27,7 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
@@ -470,12 +471,13 @@ def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
   Raises:
     RuntimeError: In case of an out-of-graph tensor.
   """
-  if (force_raise or (ops.executing_eagerly_outside_functions() and
-                      hasattr(tensor, 'graph') and
-                      isinstance(tensor.graph,
-                                 (control_flow_util_v2.CondBranchFuncGraph,
-                                  control_flow_util_v2.WhileCondFuncGraph,
-                                  control_flow_util_v2.WhileBodyFuncGraph)))):
+  if (force_raise or
+      (ops.executing_eagerly_outside_functions() and
+       hasattr(tensor, 'graph') and
+       isinstance(tensor.graph,
+                  (control_flow_v2_func_graphs.CondBranchFuncGraph,
+                   control_flow_v2_func_graphs.WhileCondFuncGraph,
+                   control_flow_v2_func_graphs.WhileBodyFuncGraph)))):
     if method == 'activity_regularizer':
       bad_example = """
       class TestModel(tf.keras.Model):
@@ -612,15 +614,16 @@ def default(method):
   method._is_default = True  # pylint: disable=protected-access
   return method
 
-# TODO(reedwm): Turn this on by default, then later remove the ability to
-# disable it.
-V2_DTYPE_BEHAVIOR = False
+
+V2_DTYPE_BEHAVIOR = None
 
 
-# These functions are not exported because we plan on removing them soon, after
-# making the V2 dtype behavior the default behavior.
+# These two functions are not exported because we plan on removing them in the
+# future.
 def enable_v2_dtype_behavior():
   """Enable the V2 dtype behavior for Keras layers.
+
+  By default, the V2 dtype behavior is enabled in TensorFlow 2.
 
   When enabled, the dtype of Keras layers defaults to floatx (which is typically
   float32) instead of None. In addition, layers will automatically cast
@@ -639,15 +642,13 @@ def enable_v2_dtype_behavior():
   ```
 
   A layer author can opt-out their layer from the automatic input casting by
-  passing `experimental_autocast=False` to the base Layer's constructor. This
-  disables the autocasting part of the V2 behavior for that layer, but not the
-  defaulting to floatx part of the V2 behavior.
+  passing `autocast=False` to the base Layer's constructor. This disables the
+  autocasting part of the V2 behavior for that layer, but not the defaulting to
+  floatx part of the V2 behavior.
 
   When a global `tf.keras.mixed_precision.experimental.Policy` is set, the
   layer's dtype will default to the global policy instead of floatx. Layers
   will automatically cast inputs to the policy's compute_dtype.
-
-  Soon, V2 behavior will be enabled by default.
   """
   global V2_DTYPE_BEHAVIOR
   V2_DTYPE_BEHAVIOR = True
@@ -666,4 +667,6 @@ def disable_v2_dtype_behavior():
 
 def v2_dtype_behavior_enabled():
   """Returns True if the V2 dtype behavior is enabled."""
+  if V2_DTYPE_BEHAVIOR is None:
+    return tf2.enabled()
   return V2_DTYPE_BEHAVIOR

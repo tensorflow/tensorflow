@@ -34,9 +34,28 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace tf_executor {
+namespace {
+
+// If the given tensor has elements of type variant, then returns a new type
+// after dropping subtypes info. Otherwise, returns the original type as is.
+Type DropVariantSubTypes(Type ty) {
+  ShapedType shaped_ty = ty.cast<ShapedType>();
+  Type element_ty = shaped_ty.getElementType();
+  if (!element_ty.isa<TF::VariantType>()) return ty;
+
+  Type variant_ty = TF::VariantType::get(ty.getContext());
+  if (shaped_ty.hasRank()) {
+    return RankedTensorType::get(shaped_ty.getShape(), variant_ty);
+  }
+
+  return UnrankedTensorType::get(variant_ty);
+}
+
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 // TF Executor Dialect
@@ -483,8 +502,17 @@ LogicalResult Verify(MergeOp merge) {
   Type broadcasted_type = merge.output()->getType();
   for (Type operand_type : merge.getOperandTypes()) {
     if (operand_type.isa<ControlType>()) break;
+
+    // TODO(hinsu): Update ControlOperandsAfterAllData trait to verify this
+    // constraint.
+    if (!operand_type.isa<TensorType>())
+      return merge.emitOpError("expects data operands to have tensor type");
+
+    // Variant types may have opaque subtypes information that need not match
+    // between the two types so drop them before computing the broadcasted type.
     Type new_broadcasted_type =
-        OpTrait::util::getBroadcastedType(broadcasted_type, operand_type);
+        OpTrait::util::getBroadcastedType(DropVariantSubTypes(broadcasted_type),
+                                          DropVariantSubTypes(operand_type));
     if (!new_broadcasted_type)
       return merge.emitOpError()
              << "expects all operands to be broadcastable"
@@ -493,10 +521,8 @@ LogicalResult Verify(MergeOp merge) {
     // This is because for example starting with a result of tensor<4xf32>, if
     // the first operand is unranked, the broadcasted type will be unranked.
     // Then any tensor operand will be broadcastable to this unranked type.
-    if ((broadcasted_type.isa<TensorType>() &&
-         !broadcasted_type.cast<TensorType>().hasRank()) ||
-        (new_broadcasted_type.isa<TensorType>() &&
-         new_broadcasted_type.cast<TensorType>().hasRank()))
+    if (!broadcasted_type.cast<TensorType>().hasRank() ||
+        new_broadcasted_type.cast<TensorType>().hasRank())
       broadcasted_type = new_broadcasted_type;
   }
 
@@ -504,11 +530,33 @@ LogicalResult Verify(MergeOp merge) {
 }
 
 void Print(MergeOp merge, OpAsmPrinter *p) {
+  // Use short form only when there are exactly two data operands and their
+  // type matches the output type. Otherwise, use the generic printer.
+  bool use_short_form = true;
+  int num_data_operands = 0;
+
+  Type output_type = merge.output()->getType();
+  for (Type operand_type : merge.getOperandTypes()) {
+    if (operand_type.isa<ControlType>()) break;
+    num_data_operands++;
+
+    if (operand_type != output_type) {
+      use_short_form = false;
+      break;
+    }
+  }
+
   *p << merge.getOperationName() << ' ';
   p->printOperands(merge.getOperands());
 
   // Print the type signature of the operation.
-  *p << " : " << merge.getType(0);
+  *p << " : ";
+  if (!use_short_form || num_data_operands != 2) {
+    p->printFunctionalType(merge.getOperation());
+  } else {
+    *p << output_type;
+  }
+
   p->printOptionalAttrDict(merge.getAttrs());
 }
 
@@ -522,17 +570,26 @@ ParseResult ParseMergeOp(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc())
            << " expects only a single data type";
 
-  // Expect the type once, but use it for both operands.
-  types.push_back(types.front());
-  // Extra operands are expected to be control inputs.
-  Type control_type = ControlType::get(parser->getBuilder().getContext());
-  types.append(op_infos.size() - 2, control_type);
+  // Support parsing either a functional type (in which case all the types are
+  // fully qualified) or a short form with a single type (in which case the data
+  // inputs and the output are all using this type).
+  if (FunctionType type = types.front().dyn_cast<FunctionType>()) {
+    result->types.assign(type.getResults().begin(), type.getResults().end());
+    types.assign(type.getInputs().begin(), type.getInputs().end());
+  } else {
+    // In case of the short form, use the parsed type for both the operands and
+    // the remaining operands are expected to be control inputs.
+    types.push_back(types.front());
+    Type control_type = ControlType::get(parser->getBuilder().getContext());
+    types.append(op_infos.size() - 2, control_type);
+
+    RankedTensorType i32_tensor =
+        RankedTensorType::get({}, parser->getBuilder().getIntegerType(32));
+    result->types = {types.front(), i32_tensor, control_type};
+  }
 
   if (parser->resolveOperands(op_infos, types, loc, result->operands))
     return failure();
-  RankedTensorType i32_tensor =
-      RankedTensorType::get({}, parser->getBuilder().getIntegerType(32));
-  result->types = {types.front(), i32_tensor, control_type};
 
   return parser->parseOptionalAttributeDict(result->attributes);
 }

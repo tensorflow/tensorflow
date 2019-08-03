@@ -32,9 +32,11 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/arg_min_max.h"
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
+#include "tensorflow/lite/kernels/internal/reference/maximum_minimum.h"
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
 #include "tensorflow/lite/kernels/internal/reference/prelu.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
@@ -2633,8 +2635,8 @@ T FloorMod(T input1, T input2) {
                                             std::modulus<T>, FloatMod>::type;
   ModFunc mod_func;
   T trunc_mod = mod_func(input1, input2);
-  return trunc_mod != 0 && ((input2 < 0) != (trunc_mod < 0))
-             ? trunc_mod + input2
+  return (trunc_mod != 0) && ((input2 < 0) != (trunc_mod < 0))
+             ? (trunc_mod + input2)
              : trunc_mod;
 }
 
@@ -3535,87 +3537,6 @@ inline void Maximum(const RuntimeShape& input1_shape, const T* input1_data,
                     const RuntimeShape& output_shape, T* output_data) {
   // Drop shape of second input: not needed.
   Maximum(input1_shape, input1_data, input2_data, output_shape, output_data);
-}
-
-template <typename T, typename Op>
-void MaximumMinimumBroadcast4DSlow(const RuntimeShape& unextended_input1_shape,
-                                   const T* input1_data,
-                                   const RuntimeShape& unextended_input2_shape,
-                                   const T* input2_data,
-                                   const RuntimeShape& unextended_output_shape,
-                                   T* output_data, Op op) {
-  gemmlowp::ScopedProfilingLabel label("MaximumMinimumBroadcast4DSlow");
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-
-  for (int b = 0; b < output_shape.Dims(0); ++b) {
-    for (int y = 0; y < output_shape.Dims(1); ++y) {
-      for (int x = 0; x < output_shape.Dims(2); ++x) {
-        for (int c = 0; c < output_shape.Dims(3); ++c) {
-          auto out_idx = Offset(output_shape, b, y, x, c);
-          auto in1_idx = SubscriptToIndex(desc1, b, y, x, c);
-          auto in2_idx = SubscriptToIndex(desc2, b, y, x, c);
-          auto in1_val = input1_data[in1_idx];
-          auto in2_val = input2_data[in2_idx];
-          output_data[out_idx] = op(in1_val, in2_val);
-        }
-      }
-    }
-  }
-}
-
-template <typename T1, typename T2, typename T3, typename Cmp>
-void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
-               const T3* input2_data, const RuntimeShape& output_shape,
-               T2* output_data, const Cmp& cmp) {
-  gemmlowp::ScopedProfilingLabel label("ArgMinMax");
-  TFLITE_DCHECK_GT(input1_shape.DimensionsCount(), 0);
-  TFLITE_DCHECK_EQ(input1_shape.DimensionsCount() - 1,
-                   output_shape.DimensionsCount());
-
-  int axis = input2_data[0];
-  if (axis < 0) {
-    axis += input1_shape.DimensionsCount();
-  }
-
-  const int axis_size = input1_shape.Dims(axis);
-
-  int outer_size = 1;
-  for (int i = 0; i < axis; ++i) {
-    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i));
-    outer_size *= input1_shape.Dims(i);
-  }
-
-  int inner_size = 1;
-  const int dims_count = input1_shape.DimensionsCount();
-  for (int i = axis + 1; i < dims_count; ++i) {
-    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i - 1));
-    inner_size *= input1_shape.Dims(i);
-  }
-
-  for (int outer = 0; outer < outer_size; ++outer) {
-    for (int inner = 0; inner < inner_size; ++inner) {
-      auto min_max_value = input1_data[outer * axis_size * inner_size + inner];
-      int min_max_index = 0;
-      for (int i = 1; i < axis_size; ++i) {
-        const auto& curr_value =
-            input1_data[(outer * axis_size + i) * inner_size + inner];
-        if (cmp(curr_value, min_max_value)) {
-          min_max_value = curr_value;
-          min_max_index = i;
-        }
-      }
-      output_data[outer * inner_size + inner] = min_max_index;
-    }
-  }
 }
 
 template <typename T1, typename T2, typename T3>

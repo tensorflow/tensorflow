@@ -172,6 +172,7 @@ filegroup(
     name = "AffineOpsTdFiles",
     srcs = [
         "include/mlir/AffineOps/AffineOps.td",
+        "include/mlir/AffineOps/AffineOpsBase.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -948,10 +949,10 @@ cc_library(
 cc_library(
     name = "Transforms",
     srcs = [
+        "lib/Transforms/AffineDataCopyGeneration.cpp",
         "lib/Transforms/CSE.cpp",
         "lib/Transforms/Canonicalizer.cpp",
         "lib/Transforms/DialectConversion.cpp",
-        "lib/Transforms/DmaGeneration.cpp",
         "lib/Transforms/LoopCoalescing.cpp",
         "lib/Transforms/LoopFusion.cpp",
         "lib/Transforms/LoopInvariantCodeMotion.cpp",
@@ -1691,6 +1692,7 @@ filegroup(
     srcs = [
         "include/mlir/Linalg/IR/LinalgBase.td",
         "include/mlir/Linalg/IR/LinalgLibraryOps.td",
+        ":AffineOpsTdFiles",
         ":OpBaseTdFiles",
     ],
 )

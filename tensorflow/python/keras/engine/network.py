@@ -191,7 +191,7 @@ class Network(base_layer.Layer):
     # self.updates
 
     generic_utils.validate_kwargs(kwargs, {'trainable', 'dtype', 'dynamic',
-                                           'experimental_autocast'})
+                                           'autocast'})
 
     # Object to store all thread local layer properties.
     self._thread_local = threading.local()
@@ -377,7 +377,7 @@ class Network(base_layer.Layer):
     self._base_init(name=name, **kwargs)
     self._is_graph_network = False
     self._init_call_fn_args()
-    self._autocast = kwargs.get('experimental_autocast',
+    self._autocast = kwargs.get('autocast',
                                 base_layer_utils.v2_dtype_behavior_enabled())
     self.outputs = []
     self.inputs = []

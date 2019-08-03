@@ -4,7 +4,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,17 +12,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CORE_KERNELS_COLLECTIVE_NCCL_GATHERER_H_
+#define TENSORFLOW_CORE_KERNELS_COLLECTIVE_NCCL_GATHERER_H_
 
-#ifndef TENSORFLOW_CORE_FRAMEWORK_TSTRING_H_
-#define TENSORFLOW_CORE_FRAMEWORK_TSTRING_H_
-
-#include <string>
+#include "tensorflow/core/kernels/collective_nccl.h"
 
 namespace tensorflow {
+#ifdef GOOGLE_CUDA
 
-// TODO(b/138799229): Stand-in tstring analogue to ease migration.
-typedef std::string tstring;
+class NcclGatherer : public NcclBase {
+ public:
+  NcclGatherer() : NcclBase(GATHER_COLLECTIVE, "NcclGather") {}
+  ~NcclGatherer() override = default;
 
+  // Hands off all-gather to NcclManager.
+  void Run(StatusCallback done) override;
+};
+
+#endif  // GOOGLE_CUDA
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_FRAMEWORK_TSTRING_H_
+#endif  // TENSORFLOW_CORE_KERNELS_COLLECTIVE_NCCL_GATHERER_H_

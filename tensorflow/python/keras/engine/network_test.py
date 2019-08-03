@@ -1713,7 +1713,7 @@ class DTypeTest(keras_parameterized.TestCase):
     self.assertEqual(network.dtype, 'float16')
     self.assertEqual(network(array_ops.constant(1, 'float64')).dtype, 'float16')
 
-    network = IdentityNetwork(experimental_autocast=False)
+    network = IdentityNetwork(autocast=False)
     self.assertEqual(network.dtype, 'float32')
     self.assertEqual(network(array_ops.constant(1, 'float64')).dtype, 'float64')
 

@@ -138,6 +138,8 @@ class TFL_Int8UniformQuantizedType<int zero_pt, int smantissa, int sexp>
 // operand's tensor types.
 def TFL_QUI8 : TFL_QuantizedType<"Uniform", [8], 0>;
 def TFL_QI8 : TFL_QuantizedType<"Uniform", [8], 1>;
+def TFL_QUI16 : TFL_QuantizedType<"Uniform", [16], 0>;
+def TFL_QI16 : TFL_QuantizedType<"Uniform", [16], 1>;
 def TFL_QUI32 : TFL_QuantizedType<"Uniform", [32], 0>;
 def TFL_QI32 : TFL_QuantizedType<"Uniform", [32], 1>;
 
@@ -411,6 +413,33 @@ def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect]> {
   );
 }
 
+def TFL_ReduceAnyOp : TFL_Op<"reduce_any", [NoSideEffect]> {
+  let summary = [{
+Computes the "logical or" of elements across dimensions of a tensor.
+  }];
+
+  let description = [{
+Reduces `input` along the dimensions given in `axis`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`axis`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+  }];
+
+  let arguments = (ins
+    I1Tensor:$input,
+    I32Tensor:$reduction_indices,
+
+    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+  );
+
+  let results = (outs
+    I1Tensor:$output
+  );
+
+  let hasOptions = 1;
+  let customOption = "ReducerOptions";
+}
+
 def TFL_AveragePool2DOp:
     TFL_Op<"average_pool_2d", [NoSideEffect, TFL_SameOperandsAndResultsScale]> {
   let summary = "Average_pool_2d operator";
@@ -586,8 +615,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let summary = "Fully connected op";
 
   let arguments = (ins
-    TensorOf<[F32, TFL_QI8, TFL_QUI8]>:$input,
-    TensorOf<[F32, TFL_QI8, TFL_QUI8]>:$filter,
+    TensorOf<[F32, TFL_QI8, TFL_QUI8, TFL_QI16, TFL_QUI16]>:$input,
+    TensorOf<[F32, TFL_QI8, TFL_QUI8, TFL_QI16, TFL_QUI16]>:$filter,
     TFL_TensorOfOrNone<[F32, TFL_QI32, TFL_QUI32]>:$bias,
 
     TFL_AFAttr:$fused_activation_function,
@@ -597,7 +626,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 
   // Depending on the weights format, this op can have one or two outputs.
   let results = (outs
-    Variadic<TensorOf<[F32, TFL_QI8, TFL_QUI8]>>:$output
+    Variadic<TensorOf<[F32, TFL_QI8, TFL_QUI8, TFL_QI16, TFL_QUI16]>>:$output
   );
 
   let hasOptions = 1;
@@ -1273,6 +1302,22 @@ def TFL_OneHotOp : TFL_Op<"one_hot", [NoSideEffect]> {
   let hasOptions = 1;
 }
 
+def TFL_RoundOp: TFL_Op<"round", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Round operator";
+
+  let description = [{
+Rounds the values of a tensor to the nearest integer, element-wise.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[F32]>:$y
+  );
+}
+
 def TFL_SliceOp : TFL_Op<"slice", [
     NoSideEffect, TFL_SameOperandsAndResultsScale]> {
   let summary = "Return a slice from 'input'.";
@@ -1306,7 +1351,7 @@ def TFL_SumOp: TFL_Op<"sum", [NoSideEffect]> {
 
   let arguments = (ins
     AnyTensor:$input,
-    TFL_I32OrI64Tensor:$axes,
+    I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
@@ -1325,7 +1370,7 @@ def TFL_ReduceMinOp: TFL_Op<"reduce_min", [NoSideEffect]> {
 
   let arguments = (ins
     AnyTensor:$input,
-    TFL_I32OrI64Tensor:$axes,
+    I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
@@ -1344,7 +1389,7 @@ def TFL_ReduceMaxOp: TFL_Op<"reduce_max", [NoSideEffect]> {
 
   let arguments = (ins
     AnyTensor:$input,
-    TFL_I32OrI64Tensor:$axes,
+    I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
@@ -1363,7 +1408,7 @@ def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [NoSideEffect]> {
 
   let arguments = (ins
     TensorOf<[F32, I8, I32, I64]>:$input,
-    TFL_I32OrI64Tensor:$axes,
+    I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
@@ -2006,6 +2051,8 @@ def TFL_TransposeOp : TFL_Op<"transpose",
   let results = (outs
     AnyTensor:$y
   );
+
+  let hasFolder = 1;
 }
 
 def TFL_UnpackOp : TFL_Op<"unpack", [NoSideEffect]> {

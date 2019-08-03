@@ -110,7 +110,8 @@ class Layer(module.Module):
     trainable: Boolean, whether the layer's variables should be trainable.
     name: String name of the layer.
     dtype: The dtype of the layer's computations and weights (default of
-      `None` means use the type of the first input).
+      `None` means use `tf.keras.backend.floatx` in TensorFlow 2, or the type
+      of the first input in TensorFlow 1).
     dynamic: Set this to `True` if your layer should only be run eagerly, and
       should not be used to generate a static computation graph.
       This would be the case for a Tree-RNN or a recursive network,
@@ -136,6 +137,86 @@ class Layer(module.Module):
     trainable: Whether the layer should be trained (boolean).
     input_spec: Optional (list of) `InputSpec` object(s) specifying the
       constraints on inputs that can be accepted by the layer.
+
+  ### Dtypes and casting
+  Each layer has a dtype, which is typically the dtype of the layer's
+  computations and variables. A layer's dtype can be queried via the
+  `Layer.dtype` property. The dtype is specified with the `dtype` constructor
+  argument. In TensorFlow 2, the dtype defaults to `tf.keras.backend.floatx()`
+  if no dtype is passed. `floatx()` itself defaults to "float32". Additionally,
+  layers will cast their inputs to the layer's dtype in TensorFlow 2. For
+  example:
+
+  ```
+  x = tf.ones((4, 4, 4, 4), dtype='float64')
+  layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
+  print(layer.dtype)  # float32
+
+  # `layer` casts it's inputs to layer.dtype, which is float32, and does
+  # computations in float32.
+  y = layer(x)
+  ```
+
+  A layer subclass can prevent its inputs from being autocasted by
+  `autocast=False` to the layer constructor. For example:
+
+  ```
+  class MyLayer(tf.keras.layers.Layer):
+
+    def __init__(**kwargs):
+      kwargs['autocast']=False
+      super(MyLayer, self).__init__(**kwargs)
+
+    def call(inp):
+      return inp
+
+  x = tf.ones((4, 4, 4, 4), dtype='float64')
+  layer = MyLayer()
+  print(layer.dtype)  # float32.
+  y = layer(x)  # MyLayer will not cast inputs to it's dtype of float32
+  print(y.dtype)  # float64
+  ```
+
+  #### Running models in float64 in TensorFlow 2
+
+  If you want to run a Model in float64, you can set floatx to be float64 by
+  calling `tf.keras.backend.set_floatx('float64')`. This will cause all layers
+  to default to float64 instead of float32:
+
+  ```
+  tf.keras.backend.set_floatx('float64')
+  layer1 = tf.keras.layers.Dense(4),
+  layer2 = tf.keras.layers.Dense(4),
+
+  x = tf.ones((4, 4))
+  y = layer2(layer1(x))  # Both layers run in float64
+  ```
+
+  Alternatively, you can pass `dtype='float64'` to each individual layer. Note
+  that if you have any layers which contain other layers as members, you must
+  ensure each sublayer gets `dtype='float64'` passed to it's constructor as
+  well:
+
+  ```
+  layer1 = tf.keras.layers.Dense(4, dtype='float64'),
+  layer2 = tf.keras.layers.Dense(4, dtype='float64),
+
+  x = tf.ones((4, 4))
+  y = layer2(layer1(x))  # Both layers run in float64
+
+  class NestedLayer(tf.keras.layers.Layer):
+    def __init__(**kwargs):
+      super(MyLayer, self).__init__(**kwargs)
+      self.dense = tf.keras.layers.Dense(4, dtype=kwargs.get('dtype'))
+
+    def call(inp):
+      return self.dense(inp)
+
+  layer3 = NestedLayer(dtype='float64')
+  z = layer3(x)  # layer3's dense layer runs in float64, since NestedLayer
+                 # correcty passed it's dtype to it's dense layer
+
+  ```
   """
 
   # See tf.Module for the usage of this property.
@@ -163,7 +244,7 @@ class Layer(module.Module):
         'batch_size',
         'weights',
         'activity_regularizer',
-        'experimental_autocast'
+        'autocast'
     }
     # Validate optional keyword arguments.
     generic_utils.validate_kwargs(kwargs, allowed_kwargs)
@@ -202,7 +283,7 @@ class Layer(module.Module):
     self._set_dtype_policy(dtype)
     # Boolean indicating whether the layer automatically casts its inputs to the
     # layer's compute_dtype.
-    self._autocast = kwargs.get('experimental_autocast',
+    self._autocast = kwargs.get('autocast',
                                 base_layer_utils.v2_dtype_behavior_enabled())
 
     # Dependencies tracked via attribute assignment.
@@ -1649,7 +1730,7 @@ class Layer(module.Module):
           return math_ops.cast(x, compute_dtype)
         else:
           return x
-      return nest.map_structure(f, inputs)
+      return nest.map_structure(f, inputs, expand_composites=True)
     else:
       return inputs
 
@@ -1672,8 +1753,7 @@ class Layer(module.Module):
           "`tf.keras.backend.set_floatx('{input_dtype}')`. To change just this "
           "layer, pass dtype='{input_dtype}' to the layer constructor. If you "
           "are the author of this layer, you can disable autocasting by "
-          "passing experimental_autocast=False to the base Layer "
-          "constructor.\n".format(
+          "passing autocast=False to the base Layer constructor.\n".format(
               self=self,
               input_dtype=input_dtype.name,
               layer_dtype=self._compute_dtype))
@@ -2408,8 +2488,11 @@ class TensorFlowOpLayer(Layer):
                constants=None,
                trainable=True,
                dtype=None):
+    # Pass autocast=False, as if inputs are cast, input types might not match
+    # Operation type.
     super(TensorFlowOpLayer, self).__init__(
-        name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype)
+        name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype,
+        autocast=False)
     if not isinstance(node_def, bytes):
       node_def = node_def.encode('utf-8')
     self.node_def = node_def_pb2.NodeDef.FromString(node_def)

@@ -792,6 +792,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     for (int i = 0; i < op->Inputs().size(); i++) {
       tensorflow::TensorHandle* input = op->Inputs()[i];
       tensorflow::Device* input_device = input->device();
+      const string* input_device_name = &input->DeviceOrHostCPU(ctx)->name();
       if (op->Device() != input_device &&
           // If the expected and actual devices are on the same task, don't
           // explicitly copy, and instead depend on the copy to happen locally
@@ -812,12 +813,13 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
         op->UpdateInput(i, handle);
         input = handle;
         input_device = remote_cpu_device;
+        input_device_name = &remote_cpu_device->name();
         // Unref handle since it has a ref as an input now
         handle->Unref();
       }
 
       TF_RETURN_IF_ERROR(ctx->RemoteMgr()->SerializeRemoteTensorHandle(
-          input, remote_op->add_inputs(), input_device));
+          input, remote_op->add_inputs(), input_device, *input_device_name));
     }
   }
 

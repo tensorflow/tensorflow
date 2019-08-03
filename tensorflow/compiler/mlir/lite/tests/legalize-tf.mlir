@@ -303,6 +303,14 @@ func @abs(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
 // CHECK:  %0 = "tfl.abs"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
 }
 
+func @any(%arg0: tensor<2x2xi1>, %arg1: tensor<i32>) -> tensor<i1> {
+  %0 = "tf.Any"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+
+// CHECK-LABEL:any
+// CHECK:  %0 = "tfl.reduce_any"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
+}
+
 func @ceil(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Ceil"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
   return %0 : tensor<8x16xf32>
@@ -979,4 +987,14 @@ func @space_to_depth(%arg0: tensor<1x2x2x1xf32>) -> tensor<?xf32> {
   // CHECK-LABEL: space_to_depth
   // CHECK: %[[ARG:.*]]: tensor<1x2x2x1xf32>
   // CHECK: "tfl.space_to_depth"(%[[ARG]]) {block_size = 2 : i32} : (tensor<1x2x2x1xf32>) -> tensor<?xf32>
+}
+
+func @round(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Round"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+
+  // CHECK-LABEL: round
+  // CHECK: %[[ARG:.*]]: tensor<8x16xf32>
+  // CHECK: %[[RESULT:.*]] = "tfl.round"(%[[ARG]]) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  // CHECK: return %[[RESULT]] : tensor<8x16xf32>
 }

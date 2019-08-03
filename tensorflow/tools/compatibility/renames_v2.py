@@ -363,6 +363,8 @@ renames = {
         'tf.compat.v1.estimator.tpu.TPUEstimatorSpec',
     'tf.estimator.tpu.experimental.EmbeddingSpec':
         'tf.compat.v1.estimator.tpu.experimental.EmbeddingSpec',
+    'tf.experimental.output_all_intermediates':
+        'tf.compat.v1.experimental.output_all_intermediates',
     'tf.expm1':
         'tf.math.expm1',
     'tf.fake_quant_with_min_max_args':
@@ -1459,10 +1461,6 @@ renames = {
         'tf.compat.v1.train.do_quantize_training_on_graphdef',
     'tf.train.experimental.MixedPrecisionLossScaleOptimizer':
         'tf.compat.v1.train.experimental.MixedPrecisionLossScaleOptimizer',
-    'tf.train.experimental.disable_mixed_precision_graph_rewrite':
-        'tf.compat.v1.train.experimental.disable_mixed_precision_graph_rewrite',
-    'tf.train.experimental.enable_mixed_precision_graph_rewrite':
-        'tf.compat.v1.train.experimental.enable_mixed_precision_graph_rewrite',
     'tf.train.exponential_decay':
         'tf.compat.v1.train.exponential_decay',
     'tf.train.export_meta_graph':

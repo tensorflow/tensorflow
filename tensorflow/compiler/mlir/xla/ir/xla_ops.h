@@ -29,10 +29,10 @@ class Builder;
 
 namespace XLA {
 
-class XLADialect : public Dialect {
+class XlaHloDialect : public Dialect {
  public:
-  XLADialect(MLIRContext *context);
-  static StringRef getDialectNamespace() { return "xla"; }
+  explicit XlaHloDialect(MLIRContext *context);
+  static StringRef getDialectNamespace() { return "xla_hlo"; }
 
   // Registered hook to materialize a constant operation from a given attribute
   // value with the desired resultant type.

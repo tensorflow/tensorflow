@@ -77,9 +77,11 @@ upper_tabs:
       - title: "Post-training quantization"
         path: /lite/performance/post_training_quantization
       - title: "Post-training quantization example"
-        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb
+        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/post_training_quant.ipynb
       - title: "Post-training integer quantization example"
-        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_integer_quant.ipynb
+        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/post_training_integer_quant.ipynb
+      - title: "Post-training float16 quantization example"
+        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/post_training_float16_quant.ipynb
         status: external
       - title: "Delegates"
         path: /lite/performance/delegates

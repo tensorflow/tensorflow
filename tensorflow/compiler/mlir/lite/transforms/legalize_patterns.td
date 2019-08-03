@@ -135,6 +135,7 @@ def : Pat<(TF_ReverseSequenceOp $input, $seq_lengths, $seq_dim, $batch_dim),
           (TFL_ReverseSequenceOp $input, $seq_lengths,
            (convertIntAttrTo32Bit $seq_dim),
            (convertIntAttrTo32Bit $batch_dim))>;
+def : Pat<(TF_RoundOp $arg), (TFL_RoundOp $arg)>;
 def : Pat<(TF_RsqrtOp $arg), (TFL_RsqrtOp $arg)>;
 def : Pat<(TF_SqrtOp $arg), (TFL_SqrtOp $arg)>;
 def : Pat<(TF_SquareOp $arg), (TFL_SquareOp $arg)>;
@@ -267,6 +268,9 @@ def : Pat<(TF_MinOp $arg0, $arg1, BoolAttr:$arg2), (TFL_ReduceMinOp $arg0, $arg1
 def : Pat<(TF_MaxOp $arg0, $arg1, BoolAttr:$arg2), (TFL_ReduceMaxOp $arg0, $arg1, $arg2)>;
 
 def : Pat<(TF_ProdOp $arg0, $arg1, BoolAttr:$arg2), (TFL_ReduceProdOp $arg0, $arg1, $arg2)>;
+
+def : Pat<(TF_AnyOp $input, $reduction_indices, $keep_dims),
+          (TFL_ReduceAnyOp $input, $reduction_indices, $keep_dims)>;
 
 def : Pat<(TF_CastOp $arg0, BoolAttr:$arg1), (TFL_CastOp $arg0)>;
 

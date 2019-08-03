@@ -2599,6 +2599,8 @@ class StructuredFunctionWrapper(object):
                          "must be specified.")
       self._input_structure = input_structure
 
+    self._func = func
+
     if defun_kwargs is None:
       defun_kwargs = {}
 
@@ -2930,6 +2932,47 @@ class RangeDataset(DatasetSource):
     return self._structure
 
 
+class _MemoryCacheDeleter(object):
+  """An object which cleans up an anonymous memory cache resource.
+
+  An alternative to defining a __del__ method on an object. Even if the parent
+  object is part of a reference cycle, the cycle will be collectable.
+  """
+
+  def __init__(self, handle, device, deleter):
+    self._deleter = deleter
+    self._handle = handle
+    self._device = device
+    self._eager_mode = context.executing_eagerly()
+
+  def __del__(self):
+    with ops.device(self._device):
+      # Make sure the resource is deleted in the same mode as it was created in.
+      if self._eager_mode:
+        with context.eager_mode():
+          gen_dataset_ops.delete_memory_cache(
+              handle=self._handle, deleter=self._deleter)
+      else:
+        with context.graph_mode():
+          gen_dataset_ops.delete_memory_cache(
+              handle=self._handle, deleter=self._deleter)
+
+
+class _MemoryCache(object):
+  """Represents a memory cache resource."""
+
+  def __init__(self):
+    super(_MemoryCache, self).__init__()
+    self._device = context.context().device_name
+    self._handle, self._deleter = (gen_dataset_ops.anonymous_memory_cache())
+    self._resource_deleter = _MemoryCacheDeleter(
+        handle=self._handle, device=self._device, deleter=self._deleter)
+
+  @property
+  def handle(self):
+    return self._handle
+
+
 class CacheDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that caches elements of its input."""
 
@@ -2938,10 +2981,19 @@ class CacheDataset(UnaryUnchangedStructureDataset):
     self._input_dataset = input_dataset
     self._filename = ops.convert_to_tensor(
         filename, dtype=dtypes.string, name="filename")
-    variant_tensor = gen_dataset_ops.cache_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        filename=self._filename,
-        **self._flat_structure)
+    if tf2.enabled() and (context.executing_eagerly() or
+                          ops.get_default_graph()._building_function):  # pylint: disable=protected-access
+      self._cache = _MemoryCache()
+      variant_tensor = gen_dataset_ops.cache_dataset_v2(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          filename=self._filename,
+          cache=self._cache.handle,
+          **self._flat_structure)
+    else:
+      variant_tensor = gen_dataset_ops.cache_dataset(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          filename=self._filename,
+          **self._flat_structure)
     super(CacheDataset, self).__init__(input_dataset, variant_tensor)
 
 

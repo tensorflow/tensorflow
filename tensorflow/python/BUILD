@@ -2486,6 +2486,9 @@ tf_py_test(
         ":framework_for_generated_wrappers",
         "//third_party/py/numpy",
     ],
+    tags = [
+        "no_oss",  # TODO(b/138811357): re-enable after fixing flakiness.
+    ],
 )
 
 cuda_py_test(
@@ -2562,11 +2565,23 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":control_flow_util",
+        ":control_flow_v2_func_graphs",
         ":framework_ops",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/keras:base_layer_utils",
+    ],
+)
+
+py_library(
+    name = "control_flow_v2_func_graphs",
+    srcs = ["ops/control_flow_v2_func_graphs.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":func_graph",
     ],
 )
 
@@ -2576,8 +2591,21 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":control_flow_util",
+        ":control_flow_util_v2",
         ":framework_ops",
         ":util",
+    ],
+)
+
+tf_py_test(
+    name = "control_flow_v2_toggles_test",
+    size = "small",
+    srcs = ["ops/control_flow_v2_toggles_test.py"],
+    additional_deps = [
+        ":control_flow_v2_toggles",
+        ":control_flow_util_v2",
+        ":client_testlib",
+        ":platform_test",
     ],
 )
 

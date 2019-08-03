@@ -31,7 +31,9 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -49,6 +51,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -1255,6 +1258,8 @@ class DTypeTest(keras_parameterized.TestCase):
   # This class only have tests relating to layer.dtype. Tests for dtype policies
   # are in mixed_precision/experimental/keras_test.py
 
+  # TODO(reedwm): Maybe have a separate test file for input casting tests.
+
   def _const(self, dtype):
     return array_ops.constant(1, dtype=dtype)
 
@@ -1362,7 +1367,7 @@ class DTypeTest(keras_parameterized.TestCase):
     class IdentityLayerWithoutAutocast(IdentityLayer):
 
       def __init__(self, *args, **kwargs):
-        kwargs['experimental_autocast'] = False
+        kwargs['autocast'] = False
         super(IdentityLayerWithoutAutocast, self).__init__(*args, **kwargs)
 
     layer = IdentityLayerWithoutAutocast(dtype='float64')
@@ -1419,6 +1424,26 @@ class DTypeTest(keras_parameterized.TestCase):
         tensor_spec.TensorSpec(shape=(), dtype='float32'))
     self.assertEqual(output_signature.shape, ())
     self.assertEqual(output_signature.dtype, 'float64')
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_composite_tensors_input_casting(self):
+    sparse = sparse_tensor.SparseTensor(
+        indices=array_ops.constant([[0, 1], [2, 3]], dtype='int64'),
+        values=array_ops.constant([0., 1.], dtype='float32'),
+        dense_shape=array_ops.constant([4, 4], dtype='int64'))
+    indexed = indexed_slices.IndexedSlices(
+        values=array_ops.constant([1., 2.], dtype='float32'),
+        indices=array_ops.constant([2, 4], dtype='int64'))
+    ragged = ragged_tensor.RaggedTensor.from_row_splits(
+        values=array_ops.constant([1., 2., 3.], dtype='float32'),
+        row_splits=array_ops.constant([0, 2, 2, 3], dtype='int64'))
+
+    layer = IdentityLayer(dtype='float16')
+    for x in sparse, indexed, ragged:
+      self.assertEqual(x.dtype, 'float32')
+      y = layer(x)
+      self.assertEqual(y.dtype, 'float16')
+      self.assertEqual(type(x), type(y))
 
   @testing_utils.enable_v2_dtype_behavior
   def test_passing_non_tensor(self):

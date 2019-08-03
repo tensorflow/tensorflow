@@ -514,7 +514,7 @@ class LayerCallCollection(object):
       # Add training arg to wrapper function.
       arg_spec = tf_inspect.getfullargspec(call_fn)
       args = arg_spec.args + ['training']
-      defaults = arg_spec.defaults or []
+      defaults = list(arg_spec.defaults or [])
       defaults.append(False)
       new_arg_spec = tf_inspect.FullArgSpec(
           args=args,

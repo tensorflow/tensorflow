@@ -61,6 +61,17 @@ TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               narrow_range.getValue(), /*is_signed=*/false);
 }
 
+TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
+                                                TypeAttr source, Type target) {
+  if (!source || !source.getValue().isa<TensorType>()) return {};
+  auto ele_type = source.getValue().cast<TensorType>().getElementType();
+  if (auto quantized_type = ele_type.dyn_cast<quant::QuantizedType>()) {
+    Type final_type = quantized_type.castFromExpressedType(target);
+    if (final_type) return builder.getTypeAttr(final_type);
+  }
+  return {};
+}
+
 Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
                                             unsigned storage_type_width,
                                             bool is_signed, bool narrow_range) {

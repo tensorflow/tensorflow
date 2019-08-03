@@ -694,7 +694,7 @@ Status PostprocessLiftedArgsForWhile(
 Status PostprocessLiftedArgsForIf(
     const std::unordered_map<string, Node*>& outside_compilation_attr_to_node,
     Graph* g, Node* n, FunctionLibraryDefinition* fld) {
-  TF_RET_CHECK(n->type_string() == "If");
+  TF_RET_CHECK(n->IsIfNode());
 
   NameAttrList then_branch_func;
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "then_branch", &then_branch_func));
@@ -939,7 +939,7 @@ Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
           outside_compilation_attr_to_node, g, n, fld));
     }
 
-    if (n->type_string() == "If") {
+    if (n->IsIfNode()) {
       TF_RETURN_IF_ERROR(PostprocessLiftedArgsForIf(
           outside_compilation_attr_to_node, g, n, fld));
     }
@@ -1814,12 +1814,19 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
 
     // Change `n` to call the new function directly.
     NodeDefBuilder replace_builder(n->name(), new_func_name, fld);
+    std::vector<NodeDefBuilder::NodeOut> inputs(n->num_inputs());
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) {
         continue;
       }
-      replace_builder.Input(e->src()->name(), e->src_output(),
-                            e->src()->output_type(e->src_output()));
+
+      TF_RET_CHECK(e->dst_input() >= 0 && e->dst_input() < inputs.size());
+      inputs[e->dst_input()] =
+          NodeDefBuilder::NodeOut{e->src()->name(), e->src_output(),
+                                  e->src()->output_type(e->src_output())};
+    }
+    for (const auto& input : inputs) {
+      replace_builder.Input(input);
     }
     for (const auto& attr : n->attrs()) {
       replace_builder.Attr(attr.first, attr.second);
