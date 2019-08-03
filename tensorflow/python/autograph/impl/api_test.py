@@ -929,7 +929,8 @@ class ApiTest(test.TestCase):
         x /= 2
       return x
 
-    self.assertRaises(ValueError, api.to_code(test_fn))
+    with self.assertRaisesRegex(ValueError, 'try passing.*python_function'):
+      api.to_code(test_fn)
 
   def test_tf_convert_direct(self):
 
