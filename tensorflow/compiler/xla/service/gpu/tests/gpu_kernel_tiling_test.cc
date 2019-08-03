@@ -552,7 +552,7 @@ TEST_F(GpuKernelTilingTest, ColumnReductionSmallXTileSize) {
   ROOT %tuple.102 = (f32[2]{0}, f32[2]{0}) tuple(f32[2]{0} %reduce.139, f32[2]{0} %reduce.140.clone.1)
 })";
 
-  // Check that four calls to llvm.nvvm.atomic are generated.
+  // Check that no loop is generated for reduction.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .ValueOrDie();
