@@ -896,7 +896,7 @@ def func_graph_from_py_func(name,
     # Variables in `func_args`, `func_kwargs` should be explicit inputs
     # to the function, not captured inputs.
     graph_variables = list(func_graph._watched_variables)  # pylint: disable=protected-access
-    arg_variables = set()
+    arg_variables = object_identity.ObjectIdentitySet()
     inputs = []
     for arg in (nest.flatten(func_args, expand_composites=True) +
                 nest.flatten(func_kwargs, expand_composites=True)):

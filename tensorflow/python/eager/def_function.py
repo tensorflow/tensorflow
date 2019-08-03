@@ -435,7 +435,7 @@ class Function(object):
       return results
 
     # This is the first call of __call__, so we have to initialize.
-    initializer_map = {}
+    initializer_map = object_identity.ObjectIdentityDictionary()
     self._initialize(args, kwds, add_initializers_to=initializer_map)
     if self._created_variables:
       try:
@@ -574,7 +574,7 @@ class Function(object):
           "has been used")
     # Here we trace the function, collect the initializers, and attempt to
     # extract them and run them eagerly. Fail only if we cannot do so.
-    initializer_map = {}
+    initializer_map = object_identity.ObjectIdentityDictionary()
     self._initialize(args, kwargs, add_initializers_to=initializer_map)
 
     # Note: using defun here avoids an infinite recursion.
@@ -701,7 +701,7 @@ class Function(object):
       ValueError: if this object has not yet been called on concrete values.
     """
     if self._stateful_fn is None:
-      initializer_map = {}
+      initializer_map = object_identity.ObjectIdentityDictionary()
       self._initialize(args, kwargs, add_initializers_to=initializer_map)
       self._initialize_uninitialized_variables(initializer_map)
 
