@@ -1688,6 +1688,14 @@ class Layer(module.Module):
     else:
       self._dtype_policy = policy.global_policy()
 
+    if self._dtype_policy.should_cast_variables and backend.is_tpu_strategy(
+        ds_context.get_strategy()):
+      # TODO(b/137859335): Supoprt this. AutoCastVariables currently do not work
+      # properly when wrapping TPUMirroredVariables.
+      raise ValueError('DType Policies ending in "_with_float32_vars" are '
+                       'not yet supported with TPUStrategy. Got policy: %s' %
+                       self._dtype_policy.name)
+
     # This has no impact on the layer behavior, and is only used for printing
     # warnings.
     self._dtype_defaulted_to_floatx = (not dtype and
