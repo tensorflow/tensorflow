@@ -520,7 +520,7 @@ TEST_F(GpuKernelTilingTest,
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
 }
 
-TEST_F(GpuKernelTilingTest, ColumnReductionSmallXTileSize) {
+TEST_F(GpuKernelTilingTest, ColumnReductionSmallTileSizeX) {
   const char *const kHloString = R"(
   HloModule Test
 
