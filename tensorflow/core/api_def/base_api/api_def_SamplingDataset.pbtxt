@@ -22,8 +22,10 @@ END
   }
   summary: "Creates a dataset that takes a Bernoulli sample of the contents of another dataset."
   description: <<END
-There is no direct Python API for creating Datasets of this type. Rewrite rules in 
-`tensorflow/core/grappler/optimizers/data/filter_with_random_uniform_fusion.cc`
-create instances of this dataset.
+There is no direct Python API for creating Datasets of this type.  
+TensorFlow's graph optimizer creates instances of SamplingDataset by fusing multiple 
+operations together. Use the `experimental_optimization.filter_with_random_uniform_fusion`
+flag in `tf.data.experimental.OptimizationOptions` to control whether this
+optimization happens.
 END
 }
