@@ -1091,7 +1091,7 @@ def freezable_variable(value, shape=None, name=None):
 
     global _FREEZABLE_VARS
     if graph not in _FREEZABLE_VARS:
-      _FREEZABLE_VARS[graph] = weakref.WeakSet()
+      _FREEZABLE_VARS[graph] = object_identity.ObjectIdentityWeakSet()
     _FREEZABLE_VARS[graph].add(x)
   return x
 
