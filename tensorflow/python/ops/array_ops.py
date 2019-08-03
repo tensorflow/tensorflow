@@ -2807,11 +2807,11 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   if mode == "CONSTANT":
     # TODO(rjryan): Once the forward compatibility period (3 weeks) have passed
     # remove the "Pad" fallback here.
-    if constant_values != 0:
+    if not tensor_util.is_tensor(constant_values) and constant_values == 0:
+      result = gen_array_ops.pad(tensor, paddings, name=name)
+    else:
       result = gen_array_ops.pad_v2(
           tensor, paddings, constant_values, name=name)
-    else:
-      result = gen_array_ops.pad(tensor, paddings, name=name)
   elif mode == "REFLECT":
     result = gen_array_ops.mirror_pad(
         tensor, paddings, mode="REFLECT", name=name)
