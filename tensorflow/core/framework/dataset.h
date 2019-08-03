@@ -722,8 +722,12 @@ class DatasetBase : public core::RefCounted {
   virtual Status Save(SerializationContext* ctx,
                       IteratorStateWriter* writer) const;
 
-  // Indicates whether the dataset depends on external state, which is for
-  // instance used to decide whether dataset iterator can be saved.
+  // Indicates whether the dataset depends on external mutable state case in
+  // which case the serialization of the input pipeline graph and the
+  // checkpointing of the input pipeline state will not be supported.
+  //
+  // TODO(jsimsa): Make this method pure virtual once all `DatasetBase`
+  // implementations have an override.
   virtual bool IsStateful() const { return false; }
 
  protected:
