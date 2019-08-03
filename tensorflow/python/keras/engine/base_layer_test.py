@@ -18,12 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-import itertools as it
 import os
 import sys
 import traceback
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
@@ -1462,67 +1459,6 @@ class DTypeTest(keras_parameterized.TestCase):
 
     # Test layer does not cast to dtype
     self.assertEqual(layer(self._const('float32')).dtype, 'float32')
-
-_LAYERS_TO_TEST = [
-    (keras.layers.Dense, (1,), collections.OrderedDict(units=[1])),
-    (keras.layers.Activation, (2, 2),
-     collections.OrderedDict(activation=['relu'])),
-    (keras.layers.Dropout, (16,), collections.OrderedDict(rate=[0.25])),
-    (keras.layers.BatchNormalization, (8, 8, 3), collections.OrderedDict(
-        axis=[3], center=[True, False], scale=[True, False])),
-    (keras.layers.Conv1D, (8, 8), collections.OrderedDict(
-        filters=[1], kernel_size=[1, 3], strides=[1, 2],
-        padding=['valid', 'same'], use_bias=[True, False],
-        kernel_regularizer=[None, 'l2'])),
-    (keras.layers.Conv2D, (8, 8, 3), collections.OrderedDict(
-        filters=[1], kernel_size=[1, 3], strides=[1, 2],
-        padding=['valid', 'same'], use_bias=[True, False],
-        kernel_regularizer=[None, 'l2'])),
-    (keras.layers.LSTM, (8, 8), collections.OrderedDict(
-        units=[1],
-        activation=[None, 'relu'],
-        kernel_regularizer=[None, 'l2'],
-        dropout=[0, 0.5],
-        stateful=[True, False],
-        unroll=[True, False])),
-]
-
-OUTPUT_TEST_CASES = []
-for layer_type, inp_shape, arg_dict in _LAYERS_TO_TEST:
-  arg_combinations = [[(k, i) for i in v] for k, v in arg_dict.items()]  # pylint: disable=g-complex-comprehension
-  for arguments in it.product(*arg_combinations):
-    name = '_{}_{}'.format(layer_type.__name__,
-                           '_'.join('{}_{}'.format(k, v) for k, v in arguments))
-    OUTPUT_TEST_CASES.append(
-        (name, layer_type, inp_shape, {k: v for k, v in arguments}))
-
-
-class OutputTypeTest(keras_parameterized.TestCase):
-  """Test that layers and models produce the correct tensor types."""
-
-  # In v1 graph there are only symbolic tensors.
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  @parameterized.named_parameters(*OUTPUT_TEST_CASES)
-  def test_layer_outputs(self, layer_to_test, input_shape, layer_kwargs):
-    layer = layer_to_test(**layer_kwargs)
-
-    input_data = np.ones(shape=(2,) + input_shape, dtype=np.float32)
-    layer_result = layer(input_data)
-
-    inp = keras.layers.Input(shape=input_shape, batch_size=2)
-    model = keras.models.Model(inp, layer_to_test(**layer_kwargs)(inp))
-    model_result = model(input_data)
-
-    for x in [layer_result, model_result]:
-      if not isinstance(x, ops.Tensor):
-        raise ValueError('Tensor or EagerTensor expected, got type {}'
-                         .format(type(x)))
-
-      if isinstance(x, ops.EagerTensor) != context.executing_eagerly():
-        expected_type = (ops.EagerTensor if context.executing_eagerly()
-                         else ops.Tensor)
-        raise ValueError('Expected type {}, got type {}'
-                         .format(expected_type, type(x)))
 
 
 if __name__ == '__main__':

@@ -1511,6 +1511,23 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "training_integration_test",
+    size = "medium",
+    srcs = ["engine/training_integration_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 30,
+    tags = [
+        "no_rocm",
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+)
+
+tf_py_test(
     name = "feature_columns_integration_test",
     size = "medium",
     srcs = ["engine/feature_columns_integration_test.py"],
