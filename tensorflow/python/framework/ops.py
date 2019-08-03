@@ -5002,9 +5002,10 @@ class Graph(object):
     return self._thread_local._auto_cast_variable_read_dtype  # pylint: disable=protected-access
 
   @_auto_cast_variable_read_dtype.setter
-  def _auto_cast_variable_read_dtype(self, _auto_cast_variable_read_dtype):
-    self._thread_local._auto_cast_variable_read_dtype = (  # pylint: disable=protected-access
-        _auto_cast_variable_read_dtype)
+  def _auto_cast_variable_read_dtype(self, dtype):
+    if dtype:
+      dtype = dtypes.as_dtype(dtype)
+    self._thread_local._auto_cast_variable_read_dtype = dtype  # pylint: disable=protected-access
 
   @tf_contextlib.contextmanager
   def _enable_auto_casting_variables(self, dtype):
