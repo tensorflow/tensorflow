@@ -1195,6 +1195,15 @@ Status Importer::ConvertNode(const Node& node) {
     result.attributes.push_back(builder_->getNamedAttr("is_stateless", val));
   }
 
+  // Map While and StatelessWhile op in TensorFlow to the common While op in
+  // MLIR and add the differentiating attribute.
+  if (node.IsWhileNode()) {
+    result.name = mlir::OperationName(get_full_op_name("While"), context_);
+    mlir::BoolAttr val =
+        builder_->getBoolAttr(node_type_name == "StatelessWhile");
+    result.attributes.push_back(builder_->getNamedAttr("is_stateless", val));
+  }
+
   // Register the mapping between the TF node and the newly created operation.
   node_values_[node.id()] =
       createOperation(node, op_name, result, control_operands);

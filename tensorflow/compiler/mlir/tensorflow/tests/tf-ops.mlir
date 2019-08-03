@@ -641,7 +641,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
 ^bb0(%arg0: tensor<*xf32>):
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
-    body = @testWhileBody
+    body = @testWhileBody,
+    is_stateless = false
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   return %1 : tensor<*xf32>
@@ -658,7 +659,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   // expected-error @+1 {{requires cond function to have exactly one result}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
-    body = @testWhileBody
+    body = @testWhileBody,
+    is_stateless = false
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   return %1 : tensor<*xf32>
@@ -675,7 +677,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xi32>) {
   // expected-error @+1 {{operand type tensor<*xf32> is incompatible with result type}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
-    body = @testWhileBody
+    body = @testWhileBody,
+    is_stateless = false
   } : (tensor<*xf32>) -> (tensor<*xi32>)
 
   return %1 : tensor<*xi32>
@@ -692,7 +695,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   // expected-error @+1 {{operand type tensor<*xf32> is incompatible with cond function input type}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
-    body = @testWhileBody
+    body = @testWhileBody,
+    is_stateless = false
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   return %1 : tensor<*xf32>
@@ -709,7 +713,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   // expected-error @+1 {{requires the number of operands to be equal to the number of body function inputs. Found 1 and 2, respectively}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
-    body = @testWhileBody
+    body = @testWhileBody,
+    is_stateless = false
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   return %1 : tensor<*xf32>
@@ -726,7 +731,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   // expected-error @+1 {{body function result type tensor<*xi32> is incompatible with result type}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
-    body = @testWhileBody
+    body = @testWhileBody,
+    is_stateless = false
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   return %1 : tensor<*xf32>
@@ -743,7 +749,8 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   // expected-error @+1 {{cond function input type tensor<3xf32> is incompatible with body function input type}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
-    body = @testWhileBody
+    body = @testWhileBody,
+    is_stateless = false
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   return %1 : tensor<*xf32>
