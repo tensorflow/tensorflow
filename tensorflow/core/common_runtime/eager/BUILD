@@ -9,12 +9,6 @@ load(
     "mkl_deps",
 )
 
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
-    "mkl_deps",
-)
-
 package(
     default_visibility = [
         "//tensorflow:internal",
@@ -278,7 +272,6 @@ cc_library(
             "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
         ],
     }) + if_mkl([":mkl_eager_op_rewrite"]),
-
 )
 
 cc_library(

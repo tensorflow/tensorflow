@@ -45,7 +45,6 @@ class MklEagerOpRewrite : public EagerOpRewrite {
   static Status SetupNewOp(EagerOperation* orig_op, const string mkl_op_name,
                            std::unique_ptr<EagerOperation>* new_mkl_op);
 
-
   // Creates new MKL op for MatMul
   static Status CreateMklMatMul(EagerOperation* orig_op,
                                 std::unique_ptr<EagerOperation>* mkl_matmul_op);
