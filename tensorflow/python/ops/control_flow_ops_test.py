@@ -39,6 +39,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -1082,6 +1083,8 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.disable_xla("Wants RunMetadata")
   def testParallelExecution(self):
     """Verify disjoint branches across while iterations are run in parallel."""
+    if control_flow_v2_toggles.control_flow_v2_enabled():
+      self.skipTest("b/138870290")
     if test.is_built_with_rocm():
       self.skipTest(
           "Disable subtest on ROCm due to missing Cholesky op support")

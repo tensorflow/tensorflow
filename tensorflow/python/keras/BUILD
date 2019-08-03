@@ -1126,7 +1126,7 @@ tf_py_test(
 
 tf_py_test(
     name = "wrappers_test",
-    size = "medium",
+    size = "large",
     srcs = ["layers/wrappers_test.py"],
     additional_deps = [
         ":keras",
