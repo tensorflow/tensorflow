@@ -2497,7 +2497,7 @@ def concatenate(tensors, axis=-1):
       ```python
       >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
       >>> b = tf.constant([[10, 20, 30], [40, 50, 60], [70, 80, 90]])
-      >>> tf.keras.backend.concatenate((a, b), axis=1)
+      >>> tf.keras.backend.concatenate((a, b), axis=-1)
       <tf.Tensor: id=14, shape=(3, 6), dtype=int32, numpy=
       array([[ 1,  2,  3, 10, 20, 30],
              [ 4,  5,  6, 40, 50, 60],
@@ -4303,7 +4303,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
 
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
-      
+
   Example:
   ```python:
       import tensorflow as tf
