@@ -183,7 +183,9 @@ private:
       (void)resp;
       if (!irTransformer)
         return std::move(module);
-      if (Error err = irTransformer(module.getModule()))
+      Error err = module.withModuleDo(
+          [this](llvm::Module &module) { return irTransformer(&module); });
+      if (err)
         return std::move(err);
       return std::move(module);
     };
