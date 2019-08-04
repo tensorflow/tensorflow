@@ -451,6 +451,11 @@ Service::ExecuteParallelAndRegisterResult(
       options.set_intra_op_thread_pool(
           backend->eigen_intra_op_thread_pool_device());
       options.set_device_assignment(&device_assignment);
+      // Use run-time profile information from execution_profile on the 0th
+      // device.
+      if (i == 0) {
+        options.set_execution_profile(profile);
+      }
       ServiceExecutableRunOptions run_options(options,
                                               backend->StreamBorrower());
 
@@ -489,10 +494,6 @@ Service::ExecuteParallelAndRegisterResult(
     }
     uint64 nanoseconds =
         *std::max_element(timer_nanoseconds.begin(), timer_nanoseconds.end());
-
-    // Merge in run-time profile information from execution_profile on the
-    // zeroth device.
-    profile->MergeFrom(executables[0]->execution_profile());
 
     // Overall execution time (in nanoseconds) from the executor timer.
     profile->set_compute_and_transfer_time_ns(nanoseconds);
@@ -546,13 +547,13 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
     options.set_device_assignment(&device_assignment);
+    options.set_execution_profile(profile);
     run_options.emplace_back(options, backend->StreamBorrower());
   }
 
   if (options_.number_of_replicas() == 1) {
-    TF_ASSIGN_OR_RETURN(
-        auto result, executable->ExecuteOnStreamWrapper(&run_options[0],
-                                                        profile, arguments[0]));
+    TF_ASSIGN_OR_RETURN(auto result, executable->ExecuteOnStreamWrapper(
+                                         &run_options[0], arguments[0]));
     return allocation_tracker_.Register(std::move(result), result_tag);
   }
 
