@@ -2486,9 +2486,6 @@ tf_py_test(
         ":framework_for_generated_wrappers",
         "//third_party/py/numpy",
     ],
-    tags = [
-        "no_oss",  # TODO(b/138811357): re-enable after fixing flakiness.
-    ],
 )
 
 cuda_py_test(
