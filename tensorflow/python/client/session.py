@@ -29,6 +29,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import device
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
@@ -43,6 +44,9 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.util.compat import collections_abc
 
+_python_session_create_counter = monitoring.Counter(
+    '/tensorflow/api/python/session_create_counter',
+    'Counter for number of sessions created in Python.')
 
 class SessionInterface(object):
   """Base class for implementations of TensorFlow client sessions."""
@@ -641,6 +645,7 @@ class BaseSession(SessionInterface):
         creating the TensorFlow session.
       TypeError: If one of the arguments has the wrong type.
     """
+    _python_session_create_counter.get_cell().increase_by(1)
     if graph is None:
       self._graph = ops.get_default_graph()
     else:
