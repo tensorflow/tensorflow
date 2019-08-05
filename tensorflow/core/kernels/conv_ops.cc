@@ -65,7 +65,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
 #include "tensorflow/stream_executor/cuda/ptxas_utils.h"
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
@@ -612,10 +612,11 @@ typedef AutoTuneSingleton<ConvAutoTuneGroup, ConvParameters,
 // Check the passed allocator for redzone violations.
 // If violations have occurred, mark the corresponding autotune result
 // as a failure.
-static void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
+static void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
+                          se::Stream* stream,
                           tensorflow::AutotuneResult* autotune_result) {
-  se::port::StatusOr<se::cuda::RedzoneAllocator::RedzoneCheckStatus> rz_status =
-      rz_allocator.CheckRedzones();
+  se::port::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
+      rz_allocator.CheckRedzones(stream);
   if (!rz_status.ok()) {
     static std::once_flag failure_logged;
     std::call_once(failure_logged, [&]() {
@@ -1006,8 +1007,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     se::TfAllocatorAdapter tf_allocator_adapter(
         stream->parent()->platform(), ctx->device()->GetAllocator({}));
 
-    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                            se::cuda::PtxCompilationOptions());
+    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                      se::cuda::PtxCompilationOptions());
+
     se::DeviceMemory<T> output_tensor;
 
     if (!RedzoneCheckDisabled()) {
@@ -1033,7 +1035,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
-      se::cuda::RedzoneAllocator rz_scratch_allocator(
+      se::RedzoneAllocator rz_scratch_allocator(
           stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions());
       DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
       se::ScratchAllocator* allocator_used =

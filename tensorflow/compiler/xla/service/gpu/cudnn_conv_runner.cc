@@ -80,6 +80,7 @@ Status RunCudnnConvImpl(const CudnnConvParams& params,
   auto output_buf = se::DeviceMemory<T>(params.output_buf);
   AlgorithmConfig algorithm = params.algorithm;
 
+#if TENSORFLOW_USE_ROCM
   if (options.first_call_from_algorithm_picker) {
     // in ROCm mode, the first call to run the convolution needs to trigger the
     // code that calls miopenFind* API. That triggger is implicit, it is based
@@ -91,6 +92,11 @@ Status RunCudnnConvImpl(const CudnnConvParams& params,
   } else if (options.algo_override) {
     algorithm = AlgorithmConfig(*options.algo_override);
   }
+#else
+  if (options.algo_override) {
+    algorithm = AlgorithmConfig(*options.algo_override);
+  }
+#endif
 
   switch (params.kind) {
     case CudnnConvKind::kForward:
