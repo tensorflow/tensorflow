@@ -27,6 +27,7 @@ import threading
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from google.protobuf import json_format
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
@@ -2505,9 +2506,12 @@ class TensorFlowOpLayer(Layer):
     super(TensorFlowOpLayer, self).__init__(
         name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype,
         autocast=False)
-    if not isinstance(node_def, bytes):
-      node_def = node_def.encode('utf-8')
-    self.node_def = node_def_pb2.NodeDef.FromString(node_def)
+    if isinstance(node_def, dict):
+      self.node_def = json_format.ParseDict(node_def, node_def_pb2.NodeDef())
+    else:
+      if not isinstance(node_def, bytes):
+        node_def = node_def.encode('utf-8')
+      self.node_def = node_def_pb2.NodeDef.FromString(node_def)
     # JSON serialization stringifies keys which are integer input indices.
     self.constants = ({
         int(index): constant for index, constant in constants.items()
@@ -2571,7 +2575,7 @@ class TensorFlowOpLayer(Layer):
     config.update({
         # `__init__` prefixes the name. Revert to the constructor argument.
         'name': config['name'][len(_TF_OP_LAYER_NAME_PREFIX):],
-        'node_def': self.node_def.SerializeToString().decode('utf-8'),
+        'node_def': json_format.MessageToDict(self.node_def),
         'constants': {
             i: backend.get_value(c) for i, c in self.constants.items()
         }
