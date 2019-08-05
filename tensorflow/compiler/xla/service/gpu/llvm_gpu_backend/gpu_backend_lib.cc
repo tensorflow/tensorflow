@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 
+#include <fstream>
 #include <map>
 #include <memory>
 #include <string>
@@ -40,6 +41,7 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormattedStream.h"
+#include "llvm/Support/Program.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -558,6 +560,101 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
   return result;
 }
 
+// Emits the given module to HSA Code Object. target_machine is an initialized
+// TargetMachine for the AMDGPU target.
+StatusOr<std::vector<uint8>> EmitModuleToHsaco(
+    Module* module, llvm::TargetMachine* target_machine) {
+  auto* env = tensorflow::Env::Default();
+  std::vector<std::string> tempdir_vector;
+  env->GetLocalTempDirectories(&tempdir_vector);
+  if (tempdir_vector.empty()) {
+    return xla::InternalError(
+        "Unable to locate a temporary directory for compile-time artifacts.");
+  }
+  std::string tempdir_name = tempdir_vector.front();
+  VLOG(1) << "Compile-time artifacts located at: " << tempdir_name;
+
+  // Prepare filenames for all stages of compilation:
+  // IR, binary ISA, and HSACO.
+  std::string ir_filename = absl::StrCat(module->getModuleIdentifier(), ".ll");
+  std::string ir_path = tensorflow::io::JoinPath(tempdir_name, ir_filename);
+
+  std::string isabin_filename =
+      absl::StrCat(module->getModuleIdentifier(), ".o");
+  std::string isabin_path =
+      tensorflow::io::JoinPath(tempdir_name, isabin_filename);
+
+  std::string hsaco_filename =
+      absl::StrCat(module->getModuleIdentifier(), ".hsaco");
+  std::string hsaco_path =
+      tensorflow::io::JoinPath(tempdir_name, hsaco_filename);
+
+  std::error_code ec;
+
+  // Dump LLVM IR.
+  std::unique_ptr<llvm::raw_fd_ostream> ir_fs(
+      new llvm::raw_fd_ostream(ir_path, ec, llvm::sys::fs::F_None));
+  module->print(*ir_fs, nullptr);
+  ir_fs->flush();
+
+  // Emit GCN ISA binary.
+  // The extension is stripped by IrDumpingPassManager, so we need to
+  // get creative to add a suffix.
+  std::string module_id = module->getModuleIdentifier();
+  IrDumpingPassManager codegen_passes(
+      ReplaceFilenameExtension(tensorflow::io::Basename(module_id),
+                               "-amdgpu.dummy"),
+      "", false);
+  codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
+      llvm::Triple(module->getTargetTriple())));
+  llvm::SmallVector<char, 0> stream;
+  llvm::raw_svector_ostream pstream(stream);
+  std::unique_ptr<llvm::raw_fd_ostream> isabin_fs(
+      new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::F_Text));
+  module->setDataLayout(target_machine->createDataLayout());
+  target_machine->addPassesToEmitFile(codegen_passes, *isabin_fs, nullptr,
+                                      llvm::TargetMachine::CGFT_ObjectFile);
+  codegen_passes.run(*module);
+  isabin_fs->flush();
+
+  // Locate lld.
+  // TODO(whchung@gmail.com): change to tensorflow::ROCmRoot() after
+  // ROCm-Device-Libs PR.
+  std::string lld_path = tensorflow::io::JoinPath("/opt/rocm", "hcc/bin");
+  auto lld_program = llvm::sys::findProgramByName("ld.lld", {lld_path});
+  if (!lld_program) {
+    return xla::InternalError("unable to find ld.lld in PATH: %s",
+                              lld_program.getError().message());
+  }
+  std::vector<llvm::StringRef> lld_args{
+      llvm_ir::AsStringRef("ld.lld"),
+      llvm_ir::AsStringRef("-flavor"),
+      llvm_ir::AsStringRef("gnu"),
+      llvm_ir::AsStringRef("-shared"),
+      llvm_ir::AsStringRef(isabin_path),
+      llvm_ir::AsStringRef("-o"),
+      llvm_ir::AsStringRef(hsaco_path),
+  };
+
+  std::string error_message;
+  int lld_result =
+      llvm::sys::ExecuteAndWait(*lld_program, llvm_ir::AsArrayRef(lld_args),
+                                llvm::None, {}, 0, 0, &error_message);
+
+  if (lld_result) {
+    return xla::InternalError("ld.lld execute fail: %s", error_message);
+  }
+
+  // Read HSACO.
+  std::ifstream hsaco_file(hsaco_path, std::ios::binary | std::ios::ate);
+  std::ifstream::pos_type hsaco_file_size = hsaco_file.tellg();
+
+  std::vector<uint8> hsaco(hsaco_file_size);
+  hsaco_file.seekg(0, std::ios::beg);
+  hsaco_file.read(reinterpret_cast<char*>(&hsaco[0]), hsaco_file_size);
+  return hsaco;
+}
+
 // Links ROCm-Device-Libs into the given module if the module needs it.
 Status LinkROCDLIfNecessary(llvm::Module* module, int amdgpu_version,
                             const string& rocdl_dir_path) {
@@ -591,7 +688,65 @@ std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
                           hlo_module_config, "-code-object-v3");
 }
 
+void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
+  llvm_ir::InitializeLLVMCommandLineOptions(hlo_module_config);
+
+  // Initialize the AMDGPU target; it's the only target we link with, so call
+  // its specific initialization functions instead of the catch-all
+  // InitializeAll*.
+#if TENSORFLOW_USE_ROCM
+  LLVMInitializeAMDGPUTarget();
+  LLVMInitializeAMDGPUTargetInfo();
+  LLVMInitializeAMDGPUTargetMC();
+  LLVMInitializeAMDGPUAsmPrinter();
+#endif
+
+  llvm::PassRegistry* registry = llvm::PassRegistry::getPassRegistry();
+  InitializePasses(registry);
+}
+
 }  // namespace
+
+namespace amdgpu {
+StatusOr<std::vector<uint8>> CompileToHsaco(
+    llvm::Module* module, GpuVersion gpu_version,
+    const HloModuleConfig& hlo_module_config, const string& rocdl_dir_path) {
+  static std::once_flag backend_init_flag;
+  std::call_once(backend_init_flag, AMDGPUBackendInit, hlo_module_config);
+
+  std::vector<uint8> hsaco;
+  std::unique_ptr<llvm::TargetMachine> target_machine;
+  {
+    tensorflow::profiler::TraceMe activity(
+        [&] { return absl::StrCat("Compiling IR", module->getName().str()); },
+        tensorflow::profiler::TraceMeLevel::kInfo);
+    XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
+
+    auto amdgpu_version = absl::get_if<int>(&gpu_version);
+    if (!amdgpu_version) {
+      return xla::InternalError(
+          "Incompatible AMD GCN ISA version was specified.");
+    }
+
+    llvm::Triple default_target_triple("amdgcn--amdhsa-amdgiz");
+    // Construct LLVM TargetMachine for AMDGPU.
+    std::unique_ptr<llvm::TargetMachine> target_machine =
+        AMDGPUGetTargetMachine(default_target_triple, *amdgpu_version,
+                               hlo_module_config);
+
+    // Link with ROCm-Device-Libs, and optimize the LLVM module.
+    TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
+        module, gpu_version, hlo_module_config, rocdl_dir_path,
+        AMDGPUTargetModuleLinker, default_target_triple, target_machine.get(),
+        kAMDGPUInlineThreshold));
+
+    // Lower optimized LLVM module to HSA code object.
+    TF_ASSIGN_OR_RETURN(hsaco, EmitModuleToHsaco(module, target_machine.get()));
+  }
+  return hsaco;
+}
+
+}  // namespace amdgpu
 
 }  // namespace gpu
 }  // namespace xla
