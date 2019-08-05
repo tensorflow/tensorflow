@@ -21,7 +21,7 @@ import abc
 
 import six
 
-from tensorflow.python.data.util import structure
+from google3.third_party.tensorflow.python.data.util import structure
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

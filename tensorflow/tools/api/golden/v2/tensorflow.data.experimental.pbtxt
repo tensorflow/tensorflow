@@ -69,6 +69,22 @@ tf_module {
     argspec: "args=[\'start\', \'step\', \'dtype\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \"<dtype: \'int64\'>\"], "
   }
   member_method {
+    name: "RaggedTensorStructure"
+    argspec: "args=[\'dtype\', \'shape\', \'ragged_rank\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "SparseTensorStructure"
+    argspec: "args=[\'dtype\', \'shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "TensorArrayStructure"
+    argspec: "args=[\'dtype\', \'element_shape\', \'dynamic_size\', \'infer_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "TensorStructure"
+    argspec: "args=[\'dtype\', \'shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "bucket_by_sequence_length"
     argspec: "args=[\'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\'], "
   }
