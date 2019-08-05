@@ -287,3 +287,11 @@ func @matmulNoTransposeB(%arg0: tensor<1x1280xf32>, %arg1: tensor<1280x1000xf32>
   // CHECK: %7 = "tf.Transpose"(%arg1, %6) : (tensor<1280x1000xf32>, tensor<?xi32>) -> tensor<*xf32>
   // CHECK: %8 = "tf.MatMul"(%3, %7) {transpose_a = false, transpose_b = true} : (tensor<*xf32>, tensor<*xf32>) -> tensor<1x1000xf32>
 }
+
+func @stop_gradient(%arg0: tensor<3xi32>) -> tensor<3xi32> {
+  %0 = "tf.StopGradient"(%arg0) : (tensor<3xi32>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+  // Should be converted to Identity and then from Identity to value
+  // CHECK-LABEL: stop_gradient
+  // CHECK:  return %arg0 : tensor<3xi32>
+}
