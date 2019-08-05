@@ -28,7 +28,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -1428,15 +1427,12 @@ class DTypeTest(keras_parameterized.TestCase):
         indices=array_ops.constant([[0, 1], [2, 3]], dtype='int64'),
         values=array_ops.constant([0., 1.], dtype='float32'),
         dense_shape=array_ops.constant([4, 4], dtype='int64'))
-    indexed = indexed_slices.IndexedSlices(
-        values=array_ops.constant([1., 2.], dtype='float32'),
-        indices=array_ops.constant([2, 4], dtype='int64'))
     ragged = ragged_tensor.RaggedTensor.from_row_splits(
         values=array_ops.constant([1., 2., 3.], dtype='float32'),
         row_splits=array_ops.constant([0, 2, 2, 3], dtype='int64'))
 
     layer = IdentityLayer(dtype='float16')
-    for x in sparse, indexed, ragged:
+    for x in sparse, ragged:
       self.assertEqual(x.dtype, 'float32')
       y = layer(x)
       self.assertEqual(y.dtype, 'float16')
