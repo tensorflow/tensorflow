@@ -378,53 +378,6 @@ public:
   }
 };
 
-// RangeIntersectOp creates a new range descriptor.
-class RangeIntersectOpConversion : public LLVMOpLowering {
-public:
-  explicit RangeIntersectOpConversion(MLIRContext *context,
-                                      LLVMTypeConverter &lowering_)
-      : LLVMOpLowering(RangeIntersectOp::getOperationName(), context,
-                       lowering_) {}
-
-  PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                  ConversionPatternRewriter &rewriter) const override {
-    auto rangeIntersectOp = cast<RangeIntersectOp>(op);
-    auto rangeDescriptorTy =
-        convertLinalgType(rangeIntersectOp.getResult()->getType(), lowering);
-    auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
-    auto int1Ty = lowering.convertType(rewriter.getIntegerType(1));
-
-    edsc::ScopedContext context(rewriter, op->getLoc());
-    auto min1 = extractvalue(int64Ty, operands[0], positionAttr(rewriter, 0));
-    auto min2 = extractvalue(int64Ty, operands[1], positionAttr(rewriter, 0));
-    auto max1 = extractvalue(int64Ty, operands[0], positionAttr(rewriter, 1));
-    auto max2 = extractvalue(int64Ty, operands[1], positionAttr(rewriter, 1));
-    auto step1 = extractvalue(int64Ty, operands[0], positionAttr(rewriter, 2));
-    auto step2 = extractvalue(int64Ty, operands[1], positionAttr(rewriter, 2));
-
-    // Fill in an aggregate value of the descriptor.
-    auto SLE =
-        rewriter.getI64IntegerAttr(static_cast<int64_t>(CmpIPredicate::SLE));
-    auto SGE =
-        rewriter.getI64IntegerAttr(static_cast<int64_t>(CmpIPredicate::SGE));
-    Value *desc = undef(rangeDescriptorTy);
-    desc = insertvalue(
-        rangeDescriptorTy, desc,
-        llvm_select(int64Ty, llvm_icmp(int1Ty, SGE, min1, min2), min1, min2),
-        positionAttr(rewriter, 0));
-    desc = insertvalue(
-        rangeDescriptorTy, desc,
-        llvm_select(int64Ty, llvm_icmp(int1Ty, SLE, max1, max2), max1, max2),
-        positionAttr(rewriter, 1));
-    // TODO(ntv): this assumes both steps are one for now. Enforce and extend.
-    desc = insertvalue(rangeDescriptorTy, desc, mul(step1, step2),
-                       positionAttr(rewriter, 2));
-    rewriter.replaceOp(op, desc);
-    return matchSuccess();
-  }
-};
-
 class SliceOpConversion : public LLVMOpLowering {
 public:
   explicit SliceOpConversion(MLIRContext *context, LLVMTypeConverter &lowering_)
@@ -728,8 +681,7 @@ populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
   RewriteListBuilder<BufferAllocOpConversion, BufferDeallocOpConversion,
                      BufferSizeOpConversion, DimOpConversion,
                      LinalgOpConversion<DotOp>, LinalgOpConversion<MatmulOp>,
-                     LoadOpConversion, RangeOpConversion,
-                     RangeIntersectOpConversion, SliceOpConversion,
+                     LoadOpConversion, RangeOpConversion, SliceOpConversion,
                      StoreOpConversion, ViewOpConversion>::build(patterns, ctx,
                                                                  converter);
 }

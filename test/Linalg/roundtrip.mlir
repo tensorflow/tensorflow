@@ -75,14 +75,6 @@ func @dim(%arg0: !linalg.view<?x?xf32>) {
 //  CHECK-NEXT:   %{{.*}} = linalg.buffer_alloc %{{.*}} : !linalg.buffer<?xf32>
 //  CHECK-NEXT:   linalg.buffer_dealloc %{{.*}} : !linalg.buffer<?xf32>
 
-func @range_intersect(%arg0: !linalg.range, %arg1: !linalg.range) -> !linalg.range {
-  %0 = linalg.range_intersect %arg0, %arg1 : !linalg.range
-  return %0 : !linalg.range
-}
-// CHECK-LABEL: func @range_intersect(%{{.*}}: !linalg.range, %{{.*}}: !linalg.range) -> !linalg.range {
-//  CHECK-NEXT:   %{{.*}} = linalg.range_intersect %{{.*}}, %{{.*}} : !linalg.range
-//  CHECK-NEXT:   return %{{.*}} : !linalg.range
-
 func @linalg_for(%arg0 : index, %arg1 : index, %arg2 : index) {
   loop.for %i0 = %arg0 to %arg1 step %arg2 {
     loop.for %i1 = %arg0 to %arg1 step %arg2 {

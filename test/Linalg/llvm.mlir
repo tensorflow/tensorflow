@@ -96,28 +96,6 @@ func @dim(%arg0: !linalg.view<?x?xf32>) {
 // CHECK-LABEL: func @dim(%{{.*}}: !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">) {
 //       CHECK:   %{{.*}} = llvm.extractvalue %{{.*}}[2, 1] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
 
-func @range_intersect(%arg0: !linalg.range, %arg1: !linalg.range) -> !linalg.range {
-  %0 = linalg.range_intersect %arg0, %arg1 : !linalg.range
-  return %0 : !linalg.range
-}
-// CHECK-LABEL: func @range_intersect(%{{.*}}: !llvm<"{ i64, i64, i64 }">, %{{.*}}: !llvm<"{ i64, i64, i64 }">) -> !llvm<"{ i64, i64, i64 }"> {
-//       CHECK:   %{{.*}} = llvm.extractvalue %{{.*}}[0] : !llvm<"{ i64, i64, i64 }">
-//       CHECK:   %{{.*}} = llvm.extractvalue %{{.*}}[0] : !llvm<"{ i64, i64, i64 }">
-//       CHECK:   %{{.*}} = llvm.extractvalue %{{.*}}[1] : !llvm<"{ i64, i64, i64 }">
-//       CHECK:   %{{.*}} = llvm.extractvalue %{{.*}}[1] : !llvm<"{ i64, i64, i64 }">
-//       CHECK:   %{{.*}} = llvm.extractvalue %{{.*}}[2] : !llvm<"{ i64, i64, i64 }">
-//       CHECK:   %{{.*}} = llvm.extractvalue %{{.*}}[2] : !llvm<"{ i64, i64, i64 }">
-//       CHECK:   %{{.*}} = llvm.undef : !llvm<"{ i64, i64, i64 }">
-//       CHECK:   %{{.*}} = llvm.icmp "sge" %{{.*}}, %{{.*}} : !llvm.i64
-//       CHECK:   %{{.*}} = llvm.select %{{.*}}, %{{.*}}, %{{.*}} : !llvm.i1, !llvm.i64
-//       CHECK:   %{{.*}} = llvm.insertvalue %{{.*}}, %{{.*}}[0] : !llvm<"{ i64, i64, i64 }">
-//       CHECK:   %{{.*}} = llvm.icmp "sle" %{{.*}}, %{{.*}} : !llvm.i64
-//       CHECK:   %{{.*}} = llvm.select %{{.*}}, %{{.*}}, %{{.*}} : !llvm.i1, !llvm.i64
-//       CHECK:   %{{.*}} = llvm.insertvalue %{{.*}}, %{{.*}}[1] : !llvm<"{ i64, i64, i64 }">
-//       CHECK:   %{{.*}} = llvm.mul %{{.*}}, %{{.*}} : !llvm.i64
-//       CHECK:   %{{.*}} = llvm.insertvalue %{{.*}}, %{{.*}}[2] : !llvm<"{ i64, i64, i64 }">
-//       CHECK:   llvm.return %{{.*}} : !llvm<"{ i64, i64, i64 }">
-
 func @subview(%arg0: !linalg.view<?x?xf32>) {
   %c0 = constant 0 : index
   %0 = linalg.subview %arg0[%c0, %c0, %c0, %c0, %c0, %c0] : !linalg.view<?x?xf32>
