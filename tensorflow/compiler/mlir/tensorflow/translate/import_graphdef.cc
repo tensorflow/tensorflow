@@ -1368,10 +1368,9 @@ StatusOr<mlir::FunctionType> Importer::InferMainFunctionType(
 
   // Output nodes as function returns.
   for (const auto& ret : *ret_nodes) {
-    if (ret.node->num_outputs() < 1) {
-      return errors::FailedPrecondition(
-          "Invalid output node; should have at least 1 output: " +
-          ret.node->name());
+    if (ret.node->num_outputs() <= ret.index) {
+      return errors::InvalidArgument("Invalid output index ", ret.index,
+                                     " specified for node: ", ret.node->name());
     }
     auto* shape_context = shape_refiner_->GetExtendedContext(ret.node);
     TF_ASSIGN_OR_RETURN(auto type,
