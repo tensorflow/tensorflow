@@ -433,8 +433,10 @@ def XLA_CompareOp: XLA_Op<"compare",
 // XLA Slice definitions.
 //===----------------------------------------------------------------------===//
 
-def XLA_SliceOp: XLA_UnaryElementwiseOp<"slice",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+def XLA_SliceOp: XLA_UnaryElementwiseOp<
+      "slice",
+      [NoSideEffect, SameOperandsAndResultElementType,
+       AllTypesMatch<["start_indices", "limit_indices"]>]> {
   let arguments = (
     ins XLA_Tensor:$operand,
     ElementsAttr:$start_indices,
