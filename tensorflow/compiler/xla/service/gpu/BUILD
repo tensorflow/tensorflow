@@ -3,7 +3,7 @@
 
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "if_static",
     "tf_cuda_tests_tags",
 )

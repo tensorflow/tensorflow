@@ -20,15 +20,15 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load(
-    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "if_static",
     "tf_cuda_tests_tags",
 )
