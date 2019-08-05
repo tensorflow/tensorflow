@@ -445,6 +445,44 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
                                AsyncOpKernel::DoneCallback done) {
   auto helper = new AsyncHelper(done);
   core::ScopedUnref sc(helper);
+
+  // Get TRT resource.
+  TRTEngineCacheResource* cache_res = nullptr;
+  OP_REQUIRES_OK_ASYNC(ctx, GetEngineCacheResource(ctx, &cache_res), *helper);
+  core::ScopedUnref unref_cache_res(cache_res);
+
+  // Run calibration if in int8+calibration mode.
+  // * Logic in TF 1.x:
+  //   - During conversion: calibration_mode_ is true and cache size is 0, so it
+  //     will run calibration.
+  //   - During inference: calibration_data will be set, so calibration_mode_ is
+  //     false and it won't trigger calibration.
+  // * Logic in TF 2.0:
+  //   - During conversion: similar to 1.x.
+  //   - During inference: calibration_data will still be empty, but cache will
+  //     contain the the calibrated engine, so it won't trigger calibration.
+  //
+  // TODO(laigd): consider the following alternatives:
+  // 1. Serialize the state (calibration or inference) using
+  //    TRTEngineInstance proto (or a new proto), so we know which mode we're
+  //    in and don't run calibration during inference (which is invalid).
+  // 2. Reuse the calibration_data attribute or use a new attribute in the
+  //    NodeDef to indicate whether it's in calibration mode.
+  if (calibration_mode_ && cache_res->cache_.size() == 0) {
+    if (!cache_res->calib_ctx_) {
+      // TODO(laigd): better encapsulation.
+      mutex_lock lock(engine_mutex_);
+      if (!cache_res->calib_ctx_) {
+        OP_REQUIRES_OK_ASYNC(ctx, AllocateCalibrationResources(ctx, cache_res),
+                             *helper);
+      }
+    }
+    // TODO(laigd): check that the input shapes match the shapes of the
+    // persistent tensor in the calibration resource.
+    ExecuteCalibration(ctx, cache_res, helper);
+    return;
+  }
+
   // Get shapes of inputs to engine.
   std::vector<TensorShape> input_shapes;
   input_shapes.reserve(ctx->num_inputs());
@@ -452,40 +490,15 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     input_shapes.push_back(ctx->input(i).shape());
   }
   OP_REQUIRES_OK_ASYNC(ctx, VerifyInputShapes(input_shapes), *helper);
-
-  TRTEngineCacheResource* cache_res = nullptr;
-  OP_REQUIRES_OK_ASYNC(ctx, GetEngineCacheResource(ctx, &cache_res), *helper);
-  core::ScopedUnref unref_cache_res(cache_res);
-
   StatusOr<EngineContext*> status = GetEngine(input_shapes, ctx, cache_res);
   OP_REQUIRES_OK_ASYNC(ctx, status.status(), *helper);
 
   EngineContext* engine_context = status.ValueOrDie();
   if (!engine_context->cuda_engine) {
-    // TODO(laigd): consider the following alternatives:
-    // 1. Serialize the state (calibration or inference) using
-    //    TRTEngineInstance proto (or a new proto), so we know which mode we're
-    //    in and don't run calibration during inference (which is invalid).
-    // 2. Reuse the calibration_data attribute or use a new attribute in the
-    //    NodeDef to indicate whether it's in calibration mode.
-    if (calibration_mode_) {
-      if (!cache_res->calib_ctx_) {
-        // TODO(laigd): better encapsulation.
-        mutex_lock lock(engine_mutex_);
-        if (!cache_res->calib_ctx_) {
-          OP_REQUIRES_OK_ASYNC(
-              ctx, AllocateCalibrationResources(ctx, cache_res), *helper);
-        }
-      }
-      // TODO(laigd): check that the input shapes match the shapes of the
-      // persistent tensor in the calibration resource.
-      ExecuteCalibration(ctx, cache_res, helper);
-    } else {
-      VLOG(1) << "Engine retrieval for input shapes: "
-              << TensorShapeUtils::ShapeListString(input_shapes)
-              << " failed. Running native segment for " << name();
-      ExecuteNativeSegment(ctx, helper);
-    }
+    VLOG(1) << "Engine retrieval for input shapes: "
+            << TensorShapeUtils::ShapeListString(input_shapes)
+            << " failed. Running native segment for " << name();
+    ExecuteNativeSegment(ctx, helper);
     return;
   }
   const bool retry = ExecuteTrtEngine(ctx, engine_context);
@@ -721,12 +734,6 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   // If matched, use that engine. Otherwise, we will look in cache for that
   // exact shape and possibly create a new engine if it is not in cache.
   if (!cache.count(engine_input_shapes)) {
-    // Don't create new engines if in INT8+calibration mode, since it'll fail
-    // (calibrator was created with empty calibration_data). Instead, it'll
-    // fallback and run calibration. Also see the TODO in ComputeAsync() about
-    // alternatives to checking calibration mode when GetEngine() fails.
-    if (calibration_mode_) return &empty_context;
-
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
     LOG(INFO) << "Building a new TensorRT engine for " << name()

@@ -952,8 +952,8 @@ class CudnnDropoutDescriptor {
       size_t state_sizes_in_bytes = 0;
       RETURN_IF_CUDNN_ERROR(
           cudnnDropoutGetStatesSize(cudnn.handle(), &state_sizes_in_bytes));
-      SE_ASSIGN_OR_RETURN(state_memory, state_allocator->AllocateBytes(
-                                            nullptr, state_sizes_in_bytes));
+      SE_ASSIGN_OR_RETURN(state_memory,
+                          state_allocator->AllocateBytes(state_sizes_in_bytes));
     }
     RETURN_IF_CUDNN_ERROR(cudnnSetDropoutDescriptor(
         handle.get(), cudnn.handle(), dropout, state_memory.opaque(),
@@ -1603,7 +1603,7 @@ port::StatusOr<DeviceMemory<uint8>> CreateRnnWorkspace(
   if (workspace_size_in_bytes == 0) {
     return DeviceMemory<uint8>();
   }
-  return workspace_allocator->AllocateBytes(stream, workspace_size_in_bytes);
+  return workspace_allocator->AllocateBytes(workspace_size_in_bytes);
 }
 
 #if CUDNN_VERSION >= 7402
@@ -1628,7 +1628,7 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
   if (workspace_size_in_bytes == 0) {
     return DeviceMemory<uint8>();
   }
-  return workspace_allocator->AllocateBytes(stream, workspace_size_in_bytes);
+  return workspace_allocator->AllocateBytes(workspace_size_in_bytes);
 }
 
 port::StatusOr<DeviceMemory<uint8>> CreateBatchNormBackwardWorkspace(
@@ -1652,7 +1652,7 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormBackwardWorkspace(
   if (workspace_size_in_bytes == 0) {
     return DeviceMemory<uint8>();
   }
-  return workspace_allocator->AllocateBytes(stream, workspace_size_in_bytes);
+  return workspace_allocator->AllocateBytes(workspace_size_in_bytes);
 }
 #endif
 
@@ -1701,9 +1701,8 @@ port::Status CudnnSupport::DoRnnForwardImpl(
         /*sizeInBytes=*/&reserve_space_size_in_bytes));
 
     if (reserve_space_size_in_bytes > 0) {
-      SE_ASSIGN_OR_RETURN(reserve_space,
-                          reserve_space_allocator->AllocateBytes(
-                              stream, reserve_space_size_in_bytes));
+      SE_ASSIGN_OR_RETURN(reserve_space, reserve_space_allocator->AllocateBytes(
+                                             reserve_space_size_in_bytes));
     }
   }
 
@@ -2401,7 +2400,7 @@ port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
                         "No scratch allocator provided");
   }
 
-  return scratch_allocator->AllocateBytes(stream, size_in_bytes);
+  return scratch_allocator->AllocateBytes(size_in_bytes);
 }
 
 port::StatusOr<DeviceMemory<uint8>>
@@ -2446,7 +2445,7 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
                         "No scratch allocator provided");
   }
 
-  return scratch_allocator->AllocateBytes(stream, size_in_bytes);
+  return scratch_allocator->AllocateBytes(size_in_bytes);
 }
 
 port::StatusOr<DeviceMemory<uint8>>
@@ -2491,7 +2490,7 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
                         "No scratch allocator provided");
   }
 
-  return scratch_allocator->AllocateBytes(stream, size_in_bytes);
+  return scratch_allocator->AllocateBytes(size_in_bytes);
 }
 
 static bool TensorOpMathAvailable(int cc_major) {
@@ -2512,7 +2511,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     bool specify_workspace_limit = scratch_allocator != nullptr;
     auto memory_limit_bytes =
         specify_workspace_limit
-            ? std::max(scratch_allocator->GetMemoryLimitInBytes(stream), 0ll)
+            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), 0ll)
             : 0ll;
     SE_ASSIGN_OR_RETURN(cudnnConvolutionFwdAlgo_t algo,
                         GetCudnnConvolutionForwardAlgo(
@@ -2565,7 +2564,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
     bool specify_workspace_limit = scratch_allocator != nullptr;
     auto memory_limit_bytes =
         specify_workspace_limit
-            ? std::max(scratch_allocator->GetMemoryLimitInBytes(stream), 0ll)
+            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), 0ll)
             : 0ll;
     SE_ASSIGN_OR_RETURN(cudnnConvolutionBwdDataAlgo_t algo,
                         GetCudnnConvolutionBackwardDataAlgo(
@@ -2617,7 +2616,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
     bool specify_workspace_limit = scratch_allocator != nullptr;
     auto memory_limit_bytes =
         specify_workspace_limit
-            ? std::max(scratch_allocator->GetMemoryLimitInBytes(stream), 0ll)
+            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), 0ll)
             : 0ll;
     SE_ASSIGN_OR_RETURN(cudnnConvolutionBwdFilterAlgo_t algo,
                         GetCudnnConvolutionBackwardFilterAlgo(
@@ -3470,9 +3469,8 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
               /*activationDesc=*/activation_desc.handle(),
               /*xDesc=*/x_descriptor.handle(),
               /*sizeInBytes=*/&reserve_space_size_in_bytes));
-      SE_ASSIGN_OR_RETURN(reserve_space,
-                          reserve_space_allocator->AllocateBytes(
-                              stream, reserve_space_size_in_bytes));
+      SE_ASSIGN_OR_RETURN(reserve_space, reserve_space_allocator->AllocateBytes(
+                                             reserve_space_size_in_bytes));
     }
   }
 #endif

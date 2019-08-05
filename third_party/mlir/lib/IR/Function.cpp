@@ -78,9 +78,8 @@ void FuncOp::build(Builder *builder, OperationState *result, StringRef name,
 ParseResult FuncOp::parse(OpAsmParser *parser, OperationState *result) {
   return impl::parseFunctionLikeOp(
       parser, result,
-      [](Builder &builder, ArrayRef<Type> argTypes, ArrayRef<Type> results) {
-        return builder.getFunctionType(argTypes, results);
-      });
+      [](Builder &builder, ArrayRef<Type> argTypes, ArrayRef<Type> results,
+         std::string &) { return builder.getFunctionType(argTypes, results); });
 }
 
 void FuncOp::print(OpAsmPrinter *p) {

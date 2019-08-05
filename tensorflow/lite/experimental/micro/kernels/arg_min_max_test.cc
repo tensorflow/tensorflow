@@ -317,7 +317,7 @@ TF_LITE_MICRO_TEST(GetMinArgMulDimensions) {
   using tflite::testing::F2Q;
   float input_min = 0;
   float input_max = 15.9375;
-  int32_t output_data[1];
+  int32_t output_data[2];
   TfLiteIntArray* input_dims =
       tflite::testing::IntArrayFromInitializer({4, 1, 1, 2, 4});
   auto input_data = {
@@ -341,7 +341,7 @@ TF_LITE_MICRO_TEST(GetMinArgOutput64) {
   using tflite::testing::F2Q;
   float input_min = 0;
   float input_max = 15.9375;
-  int64_t output_data[1];
+  int64_t output_data[2];
   TfLiteIntArray* input_dims =
       tflite::testing::IntArrayFromInitializer({4, 1, 1, 2, 4});
   auto input_data = {
@@ -365,7 +365,7 @@ TF_LITE_MICRO_TEST(GetMinArgAxis64) {
   using tflite::testing::F2Q;
   float input_min = 0;
   float input_max = 15.9375;
-  int32_t output_data[1];
+  int32_t output_data[2];
   TfLiteIntArray* input_dims =
       tflite::testing::IntArrayFromInitializer({4, 1, 1, 2, 4});
   auto input_data = {

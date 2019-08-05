@@ -232,6 +232,7 @@ tensorflow/core/kernels/scatter_nd_op_cpu_impl_6.cc
 tensorflow/core/kernels/scatter_nd_op_cpu_impl_7.cc
 tensorflow/core/kernels/scatter_op.cc
 tensorflow/core/kernels/segment_reduction_ops.cc
+tensorflow/core/kernels/segment_reduction_ops.cc
 tensorflow/core/kernels/sendrecv_ops.cc
 tensorflow/core/kernels/sequence_ops.cc
 tensorflow/core/kernels/session_ops.cc
@@ -249,12 +250,6 @@ tensorflow/core/kernels/softplus_op.cc
 tensorflow/core/kernels/softsign_op.cc
 tensorflow/core/kernels/spacetobatch_functor.cc
 tensorflow/core/kernels/spacetobatch_op.cc
-tensorflow/core/kernels/warn_about_ints.cc
-tensorflow/core/kernels/batch_util.cc
-tensorflow/core/ops/lookup_ops.cc
-tensorflow/core/kernels/as_string_op.cc
-tensorflow/core/kernels/string_to_hash_bucket_op.cc
-tensorflow/core/kernels/snapshot_op.cc
 tensorflow/core/kernels/spacetodepth_op.cc
 tensorflow/core/kernels/sparse_fill_empty_rows_op.cc
 tensorflow/core/kernels/sparse_matmul_op.cc

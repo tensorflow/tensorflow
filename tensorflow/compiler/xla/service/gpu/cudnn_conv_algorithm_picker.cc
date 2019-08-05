@@ -143,10 +143,8 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
   using RedzoneCheckStatus = se::cuda::RedzoneAllocator::RedzoneCheckStatus;
-
   TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
-                      allocator.CheckRedzones(stream));
-
+                      allocator.CheckRedzones());
   if (redzone_check.ok()) {
     return true;
   }
@@ -253,8 +251,6 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   // Create a stream for us to do our work on.
   se::Stream stream{stream_exec_};
   stream.Init();
-  const auto device_ordinal = stream_exec_->device_ordinal();
-
   // allocator either points to this->allocator_ or, if that's null, to a
   // se::StreamExecutorMemoryAllocator for stream_exec_.
   se::DeviceMemoryAllocator* allocator;
@@ -278,18 +274,18 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
   // Allocate space for the input, filter, and output of the convolution.
   se::cuda::RedzoneAllocator input_output_allocator(
-      device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
+      &stream, allocator, PtxOptsFromConfig(hlo_module_config));
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator.AllocateBytes(
-                            &stream, ShapeUtil::ByteSizeOf(operand->shape())));
+                            ShapeUtil::ByteSizeOf(operand->shape())));
     initialize_buffer(buffer);
     operand_buffers.push_back(buffer);
   }
   TF_ASSIGN_OR_RETURN(auto result_buffer,
                       input_output_allocator.AllocateBytes(
-                          &stream, ShapeUtil::ByteSizeOf(result_shape)));
+                          ShapeUtil::ByteSizeOf(result_shape)));
   initialize_buffer(result_buffer);
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
@@ -331,7 +327,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     }
 
     se::cuda::RedzoneAllocator scratch_allocator(
-        device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
+        &stream, allocator, PtxOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
@@ -431,7 +427,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
       comparator.emplace(result_shape, hlo_module_config);
       TF_ASSIGN_OR_RETURN(
           reference_result_buffer,
-          input_output_allocator.AllocateBytes(&stream, result_buffer.size()));
+          input_output_allocator.AllocateBytes(result_buffer.size()));
       stream.ThenMemcpy(&reference_result_buffer, result_buffer,
                         result_buffer.size());
       first_algorithm = alg;

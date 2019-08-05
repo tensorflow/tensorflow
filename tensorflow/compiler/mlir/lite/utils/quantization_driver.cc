@@ -17,7 +17,6 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -42,37 +41,6 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-
-using QuantParams = quant::QuantizedType;
-using AccumulatorScaleFunc =
-    std::function<QuantParams(const std::vector<QuantParams> &)>;
-using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
-using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
-
-// Quantization specs of ops, driving the TF Lite quantization algorithm.
-struct OpQuantSpec {
-  // Whether the op has quantizable result. This flag is set to false if the op
-  // has "TFL::NoQuantizableResult" trait.
-  bool is_quantizable = true;
-
-  // Whether it requires same inputs and result scale. This flag is set to true
-  // if the op has "TFL::SameOperandsAndResultScale" trait.
-  bool requires_same_scale = false;
-
-  // Maps the operand index of a bias input to its quantization specifications,
-  // including the non-bias operand indexes and the method retrieving
-  // quantization parameters from list of parameters of the non-bias operands.
-  // This map is empty if the op doesn't havea bias operand.
-  std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>
-      biases_params;
-
-  // Quantization parameters for value restricted outputs. This is the
-  // "hard-coded" parameters and should be used unconditionally for the
-  // quantized op. This vector is empty if the op doesn't have value resctricted
-  // outputs.
-  llvm::DenseMap<SignedInteger, QuantParamsForResults> restricted_output_params;
-};
-
 static bool EmptyParams(QuantParams p) { return p == quant::QuantizedType(); }
 
 // The state for each op result during the quantization parameters propagation.
@@ -125,8 +93,12 @@ struct RequantizeState {
 //
 class QuantizationDriver {
  public:
-  explicit QuantizationDriver(FuncOp fn, bool is_signed)
-      : fn_(fn), builder_(fn.getBody()), is_signed_(is_signed) {}
+  explicit QuantizationDriver(FuncOp fn, bool is_signed,
+                              OpQuantSpecGetter op_quant_spec_getter)
+      : fn_(fn),
+        builder_(fn.getBody()),
+        is_signed_(is_signed),
+        op_quant_spec_getter_(op_quant_spec_getter) {}
 
   // The entry point of the quantization parameters propagation.
   void Run();
@@ -316,14 +288,13 @@ class QuantizationDriver {
   // This vector is to preserve the arguments order, so the newly inserted
   // quantized ops for the arguments are deterministically ordered.
   llvm::SmallVector<BlockArgument *, 4> args_;
-};
 
-#include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
+  OpQuantSpecGetter op_quant_spec_getter_;
+};
 }  // namespace
 
-// TODO(fengliuai): cache the quantization parameters.
 std::unique_ptr<OpQuantSpec> QuantizationDriver::GetQuantSpec(Operation *op) {
-  return GetOpQuantSpec(op);
+  return op_quant_spec_getter_(op);
 }
 
 bool QuantizationDriver::IsQuantized(Operation *op) {
@@ -722,8 +693,9 @@ void QuantizationDriver::Run() {
   }
 }
 
-void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed) {
-  QuantizationDriver(func, is_signed).Run();
+void ApplyQuantizationParamsPropagation(
+    mlir::FuncOp func, bool is_signed, OpQuantSpecGetter op_quant_spec_getter) {
+  QuantizationDriver(func, is_signed, op_quant_spec_getter).Run();
 }
 
 }  // namespace TFL

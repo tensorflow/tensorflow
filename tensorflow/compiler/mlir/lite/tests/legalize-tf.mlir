@@ -464,12 +464,12 @@ func @less_equal(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x1
 // CHECK:  return %0 : tensor<8x16xi1>
 }
 
-func @rank(%arg0: tensor<11x16xf32>) -> tensor<1xi32> {
-  %0 = "tf.Rank"(%arg0) : (tensor<11x16xf32>) -> tensor<1xi32>
+func @rank(%arg0: tensor<*xf32>) -> tensor<1xi32> {
+  %0 = "tf.Rank"(%arg0) : (tensor<*xf32>) -> tensor<1xi32>
   return %0 : tensor<1xi32>
 
 // CHECK-LABEL:rank
-// CHECK:  %0 = "tfl.rank"(%arg0) : (tensor<11x16xf32>) -> tensor<1xi32>
+// CHECK:  %0 = "tfl.rank"(%arg0) : (tensor<*xf32>) -> tensor<1xi32>
 }
 
 func @floor(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
@@ -997,4 +997,19 @@ func @round(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   // CHECK: %[[ARG:.*]]: tensor<8x16xf32>
   // CHECK: %[[RESULT:.*]] = "tfl.round"(%[[ARG]]) : (tensor<8x16xf32>) -> tensor<8x16xf32>
   // CHECK: return %[[RESULT]] : tensor<8x16xf32>
+}
+
+func @resize_nearest_neighbor(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
+  %0 = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+  // CHECK-LABEL: resize_nearest_neighbor
+  // CHECK: "tfl.resize_nearest_neighbor"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+}
+
+// Note: half_pixel_centers isn't supported by TFLite, so it's not legalized.
+func @resize_nearest_neighbor_with_half_pixel_centers(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
+  %0 = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true, half_pixel_centers = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+  // CHECK-LABEL: resize_nearest_neighbor_with_half_pixel_centers
+  // CHECK: "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true, half_pixel_centers = true}
 }

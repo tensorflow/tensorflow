@@ -150,6 +150,10 @@ void LegalizeControlFlow::runOnFunction() {
 }  // namespace XLA
 }  // namespace mlir
 
+mlir::FunctionPassBase* mlir::XLA::createLegalizeControlFlowPass() {
+  return new LegalizeControlFlow();
+}
+
 static PassRegistration<mlir::XLA::LegalizeControlFlow> legalize_cf_pass(
     "xla-legalize-control-flow",
     "Legalize from XLA control flow to MLIR control flow");

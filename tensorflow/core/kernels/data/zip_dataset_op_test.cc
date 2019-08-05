@@ -91,12 +91,12 @@ TestParam TestCase1() {
   return {/*input_range_dataset_params*/
           {RangeDatasetParam{0, 3, 1}, RangeDatasetParam{10, 13, 1}},
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {10}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {11}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {12})},
+          {CreateTensor<int64>(TensorShape{}, {0}),
+           CreateTensor<int64>(TensorShape{}, {10}),
+           CreateTensor<int64>(TensorShape{}, {1}),
+           CreateTensor<int64>(TensorShape{}, {11}),
+           CreateTensor<int64>(TensorShape{}, {2}),
+           CreateTensor<int64>(TensorShape{}, {12})},
           /*breakpoints*/ {0, 1, 4}};
 }
 
@@ -105,12 +105,12 @@ TestParam TestCase2() {
   return {/*input_range_dataset_params*/
           {RangeDatasetParam{0, 3, 1}, RangeDatasetParam{10, 15, 1}},
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {10}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {11}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {12})},
+          {CreateTensor<int64>(TensorShape{}, {0}),
+           CreateTensor<int64>(TensorShape{}, {10}),
+           CreateTensor<int64>(TensorShape{}, {1}),
+           CreateTensor<int64>(TensorShape{}, {11}),
+           CreateTensor<int64>(TensorShape{}, {2}),
+           CreateTensor<int64>(TensorShape{}, {12})},
           /*breakpoints*/ {0, 1, 4}};
 }
 

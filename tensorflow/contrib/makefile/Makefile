@@ -89,8 +89,6 @@ HOST_INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
--I$(MAKEFILE_DIR)/downloads/farmhash/src \
--I$(MAKEFILE_DIR)/downloads/highwayhash \
 -I$(MAKEFILE_DIR)/downloads/double_conversion \
 -I$(MAKEFILE_DIR)/downloads/absl \
 -I$(HOST_GENDIR)
@@ -199,8 +197,6 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
--I$(MAKEFILE_DIR)/downloads/farmhash/src \
--I$(MAKEFILE_DIR)/downloads/highwayhash \
 -I$(MAKEFILE_DIR)/downloads/double_conversion \
 -I$(MAKEFILE_DIR)/downloads/absl \
 -I$(PROTOGENDIR) \
@@ -367,8 +363,6 @@ $(MARCH_OPTION) \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
--I$(MAKEFILE_DIR)/downloads/farmhash/src \
--I$(MAKEFILE_DIR)/downloads/highhash\
 -I$(MAKEFILE_DIR)/downloads/double_conversion \
 -I$(MAKEFILE_DIR)/downloads/absl \
 -I$(MAKEFILE_DIR)/gen/protobuf_android/$(ANDROID_ARCH)/include \
@@ -737,7 +731,6 @@ endif  # TEGRA
 TF_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 # Add in any extra files that don't fit the patterns easily
 TF_CC_SRCS += tensorflow/contrib/makefile/downloads/fft2d/fftsg.c
-TF_CC_SRCS += tensorflow/contrib/makefile/downloads/farmhash/src/farmhash.cc
 TF_CC_SRCS += tensorflow/core/common_runtime/gpu/gpu_id_manager.cc
 # Also include the op and kernel definitions.
 TF_CC_SRCS += $(shell cat $(MAKEFILE_DIR)/tf_op_files.txt)

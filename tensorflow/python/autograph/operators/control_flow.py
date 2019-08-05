@@ -60,6 +60,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import numpy as np
 
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
@@ -76,6 +77,7 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.util import nest
@@ -381,6 +383,12 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, get_state, set_state,
           iterate_index < n, lambda: extra_test(*loop_vars), lambda: False)
     return iterate_index < n
 
+  opts = {}
+  # TODO(b/134181679): We do not always set maximum_iterations since that
+  # is significantly slower on GPU.
+  if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    opts['maximum_iterations'] = n
+
   results = _tf_while_stmt(
       while_cond,
       while_body,
@@ -389,7 +397,7 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, get_state, set_state,
       (0,) + init_vars,
       None,
       None,
-      opts=dict(maximum_iterations=n),
+      opts=opts,
   )
 
   # Note: the iteration index is not returned by the while loop, however
@@ -422,21 +430,42 @@ def _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state, init_vars,
     return loop_vars
 
   def while_cond(iterate, *loop_vars):
-    main_test = math_ops.logical_or(
-        math_ops.logical_and(delta >= 0, iterate < limit),
-        math_ops.logical_and(delta < 0, iterate > limit))
+    """Cond function for `tf.while_loop`."""
+
+    def build_main_test():
+      """Main iteration condition."""
+      # Note(b/138857806): LogicalAnd is slow on GPU so we avoid adding it if
+      # `delta` is a compile time constant.
+      delta_const = tensor_util.constant_value(delta)
+      if delta_const is not None:
+        # Support single element arrays.
+        delta_const = np.asscalar(delta_const)
+        if delta_const >= 0:
+          return iterate < limit
+        else:
+          return iterate > limit
+      else:
+        return math_ops.logical_or(
+            math_ops.logical_and(delta >= 0, iterate < limit),
+            math_ops.logical_and(delta < 0, iterate > limit))
+
+    main_test = build_main_test()
     if extra_test is not None:
       return control_flow_ops.cond(
           main_test, lambda: extra_test(*loop_vars), lambda: False)
     return main_test
 
-  # This specific dtype is required by while_loop.
-  maximum_iterations = math_ops.cast(
-      misc.get_range_len(start, limit, delta), dtypes.int32)
-
   # The first loopvar corresponds to the iterate variable which is internal.
   if isinstance(basic_symbol_names, tuple):
     basic_symbol_names = (None,) + basic_symbol_names
+
+  opts = {}
+  # TODO(b/134181679): We do not always set maximum_iterations since that
+  # is significantly slower on GPU.
+  if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    # This specific dtype is required by while_loop.
+    opts['maximum_iterations'] = math_ops.cast(
+        misc.get_range_len(start, limit, delta), dtypes.int32)
 
   results = _tf_while_stmt(
       while_cond,
@@ -446,7 +475,7 @@ def _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state, init_vars,
       (start,) + init_vars,
       basic_symbol_names,
       composite_symbol_names,
-      opts=dict(maximum_iterations=maximum_iterations),
+      opts=opts,
   )
 
   # Note: the iteration index is not returned by the while loop, however

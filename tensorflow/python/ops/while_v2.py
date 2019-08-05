@@ -32,6 +32,7 @@ from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -121,19 +122,23 @@ def while_loop(cond,
     # graphs. Propagate that behavior here.
     add_control_dependencies = ops.get_default_graph()._add_control_dependencies
 
-    # Build a `cond` wrapper that can handle the extra counter loop_var.
     def wrapped_cond(loop_counter, maximum_iterations_arg, *args):
+      """Extra `cond` wrapper that can handle the extra counter loop_var."""
       # Convert the flow variables in `args` to TensorArrays. `args` should
       # already have the same structure as `orig_loop_vars` but currently there
       # is no nest.zip so we call `_pack_sequence_as` which flattens both
       # `orig_loop_vars` and `args`, converts flows in `args` to TensorArrays
       # and packs it into the structure of `orig_loop_vars`.
+      pred = cond(*_pack_sequence_as(orig_loop_vars, args))
+      if (tensor_util.is_tensor(pred) and
+          (pred.shape.dims is None or pred.shape.dims)):
+        pred = array_ops.squeeze_v2(pred)
+
       if maximum_iterations is None:
-        return cond(*_pack_sequence_as(orig_loop_vars, args))
+        return pred
       else:
         return math_ops.logical_and(
-            loop_counter < maximum_iterations_arg,
-            cond(*_pack_sequence_as(orig_loop_vars, args)))
+            loop_counter < maximum_iterations_arg, pred)
 
     # NOTE(skyewm): we set collections to the outer graph's collections for
     # compatibility with TPUEstimator.
@@ -926,15 +931,15 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       return captured_tensor
 
     # Do not accumulate loop invariants.
-    if (tensor in self._forward_graph.inputs and
-        tensor in self._forward_graph.outputs):
+    if (any(tensor is t for t in self._forward_graph.inputs) and
+        any(tensor is t for t in self._forward_graph.outputs)):
       captured_tensor = super(_WhileBodyGradFuncGraph,
                               self)._capture_helper(tensor, name)
       # Add to `popped_tensor_lists` so that this gets added to the list of
       # outputs.
       # TODO(srbs): Rename popped_tensor_lists.
-      self.popped_tensor_lists[captured_tensor] = captured_tensor
-      self._indirect_captures[tensor] = captured_tensor
+      self.popped_tensor_lists[ops.tensor_id(captured_tensor)] = captured_tensor
+      self._indirect_captures[ops.tensor_id(tensor)] = captured_tensor
       return captured_tensor
 
     # Resource tensors are not accumulated and handled specially.

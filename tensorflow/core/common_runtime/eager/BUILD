@@ -6,7 +6,6 @@ load(
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
-    "mkl_deps",
 )
 
 package(
@@ -277,8 +276,13 @@ cc_library(
 cc_library(
     name = "mkl_eager_op_rewrite",
     srcs = ["mkl_eager_op_rewrite.cc"],
-    copts = ["-DINTEL_MKL=1"],
-    deps = [":eager_op_rewrite_registry"],
+    deps = [
+        ":eager_op_rewrite_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:mkl_graph_util",
+    ],
 )
 
 cc_library(

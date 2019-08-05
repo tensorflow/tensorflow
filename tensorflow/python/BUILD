@@ -2609,6 +2609,38 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "control_flow_v2_enable_test",
+    size = "small",
+    srcs = ["ops/control_flow_v2_enable_test.py"],
+    additional_deps = [
+        ":tf2",
+        ":control_flow_util",
+        ":client_testlib",
+        ":platform_test",
+    ],
+)
+
+tf_py_test(
+    name = "control_flow_v2_disable_test",
+    size = "small",
+    srcs = ["ops/control_flow_v2_disable_test.py"],
+    additional_deps = [
+        ":tf2",
+        ":control_flow_util",
+        ":client_testlib",
+        ":platform_test",
+    ],
+    # This tests that it is possible to disable cfv2 using env vars.
+    # This does not apply to TF 2.0 nightly builds which enable
+    # v2 behavior using `tf.compat.v1.enable_v2_behavior()` in which case
+    # `tf.compat.v1.disable_control_flow_v2()` needs to be used.
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+)
+
 py_library(
     name = "cond_v2",
     srcs = [
@@ -3926,6 +3958,7 @@ cuda_py_test(
         ":array_ops",
         ":cond_v2",
         ":control_flow_ops",
+        ":control_flow_v2_toggles",
         ":embedding_ops",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",

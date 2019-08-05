@@ -880,7 +880,7 @@ inline int32x4_t RoundToNearest(const float32x4_t input) {
   static const float32x4_t zero_val_dup = vdupq_n_f32(0.0f);
   static const float32x4_t point5_val_dup = vdupq_n_f32(0.5f);
 
-  const int32x4_t mask = static_cast<int32x4_t>(vcltq_f32(input, zero_val_dup));
+  const int32x4_t mask = vreinterpretq_s32_u32(vcltq_f32(input, zero_val_dup));
   const float32x4_t casted_mask = vcvtq_f32_s32(mask);
   const float32x4_t round = vaddq_f32(casted_mask, point5_val_dup);
   return vcvtq_s32_f32(vaddq_f32(input, round));

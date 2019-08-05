@@ -622,18 +622,6 @@ cc_library(
 )
 
 cc_library(
-    name = "scratch_allocator",
-    srcs = ["scratch_allocator.cc"],
-    hdrs = ["scratch_allocator.h"],
-    deps = [
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:device_memory_allocator",
-    ],
-)
-
-cc_library(
     name = "cudnn_conv_runner",
     srcs = ["cudnn_conv_runner.cc"],
     hdrs = ["cudnn_conv_runner.h"],

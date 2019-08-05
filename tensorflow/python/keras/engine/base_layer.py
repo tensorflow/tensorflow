@@ -41,6 +41,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
@@ -64,6 +65,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
@@ -1688,6 +1690,14 @@ class Layer(module.Module):
     else:
       self._dtype_policy = policy.global_policy()
 
+    if self._dtype_policy.should_cast_variables and backend.is_tpu_strategy(
+        ds_context.get_strategy()):
+      # TODO(b/137859335): Supoprt this. AutoCastVariables currently do not work
+      # properly when wrapping TPUMirroredVariables.
+      raise ValueError('DType Policies ending in "_with_float32_vars" are '
+                       'not yet supported with TPUStrategy. Got policy: %s' %
+                       self._dtype_policy.name)
+
     # This has no impact on the layer behavior, and is only used for printing
     # warnings.
     self._dtype_defaulted_to_floatx = (not dtype and
@@ -1723,14 +1733,16 @@ class Layer(module.Module):
     if (self._autocast and compute_dtype and
         dtypes.as_dtype(compute_dtype).is_floating):
       def f(x):
-        if (isinstance(x, ops.Tensor) and x.dtype.is_floating and
+        cast_types = (ops.Tensor, sparse_tensor.SparseTensor,
+                      ragged_tensor.RaggedTensor)
+        if (isinstance(x, cast_types) and x.dtype.is_floating and
             x.dtype.base_dtype.name != compute_dtype):
           if self._dtype_defaulted_to_floatx:
             self._warn_about_input_casting(x.dtype.base_dtype)
           return math_ops.cast(x, compute_dtype)
         else:
           return x
-      return nest.map_structure(f, inputs, expand_composites=True)
+      return nest.map_structure(f, inputs)
     else:
       return inputs
 
@@ -2443,7 +2455,7 @@ class Layer(module.Module):
   def _unique_trainable_weights(self):
     """Dedupe trainable weights while maintaining order as much as possible."""
     trainable_weights = self.trainable_weights
-    output, seen_weights = [], set()
+    output, seen_weights = [], object_identity.ObjectIdentitySet()
     for w in trainable_weights:
       if w not in seen_weights:
         output.append(w)

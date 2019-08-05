@@ -1053,3 +1053,17 @@ func @testRoundInvalidInputType(%arg: tensor<?xi32>) -> tensor<?xi32> {
   %0 = "tfl.round"(%arg) : (tensor<?xi32>) -> tensor<?xi32>
   return %0 : tensor<?xi32>
 }
+
+// -----
+
+func @testSplitWithQuantizedTypes(%arg0 : tensor<i32>, %arg1 : tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 1.0>> {
+  %0 = "tfl.split"(%arg0, %arg1) {num_splits = 1 : i32} : (tensor<i32>, tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 1.0>>
+  return %0 : tensor<10x!quant.uniform<u8:f32, 1.0>>
+}
+
+// -----
+
+func @testSplitVWithQuantizedTypes(%arg0 : tensor<10x!quant.uniform<u8:f32, 1.0>>, %arg1 : tensor<i32>, %arg2 : tensor<i32>) -> tensor<10x!quant.uniform<u8:f32, 1.0>> {
+  %0 = "tfl.split_v"(%arg0, %arg1, %arg2) {num_splits = 1 : i32} : (tensor<10x!quant.uniform<u8:f32, 1.0>>, tensor<i32>, tensor<i32>) -> tensor<10x!quant.uniform<u8:f32, 1.0>>
+  return %0 : tensor<10x!quant.uniform<u8:f32, 1.0>>
+}

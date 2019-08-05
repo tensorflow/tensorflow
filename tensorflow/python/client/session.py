@@ -29,6 +29,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import device
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
@@ -39,9 +40,13 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.util.compat import collections_abc
 
+_python_session_create_counter = monitoring.Counter(
+    '/tensorflow/api/python/session_create_counter',
+    'Counter for number of sessions created in Python.')
 
 class SessionInterface(object):
   """Base class for implementations of TensorFlow client sessions."""
@@ -408,10 +413,9 @@ class _DictFetchMapper(_FetchMapper):
     return self._unique_fetches
 
   def build_results(self, values):
-    results = self._fetch_type()
-    for k, m, vi in zip(self._keys, self._mappers, self._value_indices):
-      results[k] = m.build_results([values[j] for j in vi])
-    return results
+    return self._fetch_type(
+        (k, m.build_results([values[j] for j in vi]))
+        for k, m, vi in zip(self._keys, self._mappers, self._value_indices))
 
 
 class _AttrsFetchMapper(_FetchMapper):
@@ -470,9 +474,10 @@ class _FetchHandler(object):
     self._fetches = []
     self._targets = []
     self._feeds = feeds
-    self._feed_handles = feed_handles or {}
+    self._feed_handles = (
+        feed_handles or object_identity.ObjectIdentityDictionary())
     self._ops = []
-    self._fetch_handles = {}
+    self._fetch_handles = object_identity.ObjectIdentityDictionary()
     for fetch in self._fetch_mapper.unique_fetches():
       if isinstance(fetch, ops.Operation):
         self._assert_fetchable(graph, fetch)
@@ -639,6 +644,7 @@ class BaseSession(SessionInterface):
         creating the TensorFlow session.
       TypeError: If one of the arguments has the wrong type.
     """
+    _python_session_create_counter.get_cell().increase_by(1)
     if graph is None:
       self._graph = ops.get_default_graph()
     else:
@@ -1064,7 +1070,8 @@ class BaseSession(SessionInterface):
 
     # Validate and process fetches.
     # TODO(touts): Support feeding and fetching the same tensor.
-    fetch_handler = _FetchHandler(self._graph, fetches, {})
+    fetch_handler = _FetchHandler(self._graph, fetches,
+                                  object_identity.ObjectIdentityDictionary())
 
     # Set up a graph with feeds and fetches for partial run.
     def _setup_fn(session, feed_list, fetch_list, target_list):
@@ -1098,7 +1105,7 @@ class BaseSession(SessionInterface):
                          'graph before calling run().')
 
     # Create request.
-    feed_dict_tensor = {}
+    feed_dict_tensor = object_identity.ObjectIdentityDictionary()
     feed_map = {}
 
     # Validate and process feed_dict.
@@ -1232,7 +1239,8 @@ class BaseSession(SessionInterface):
     self._extend_graph()
 
     # Create a fetch handler to take care of the structure of fetches.
-    fetch_handler = _FetchHandler(self._graph, fetches, {})
+    fetch_handler = _FetchHandler(self._graph, fetches,
+                                  object_identity.ObjectIdentityDictionary())
     # pylint: disable=protected-access
     fetch_list = [t._as_tf_output() for t in fetch_handler.fetches()]
     target_list = [op._c_op for op in fetch_handler.targets()]

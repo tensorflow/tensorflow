@@ -786,6 +786,18 @@ op {
   is_stateful: true
 }
 op {
+  name: "AnonymousMemoryCache"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
   name: "AnonymousMultiDeviceIterator"
   output_arg {
     name: "handle"
@@ -6018,6 +6030,38 @@ op {
   }
 }
 op {
+  name: "CacheDatasetV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "cache"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "Case"
   input_arg {
     name: "branch_index"
@@ -10473,6 +10517,18 @@ op {
 }
 op {
   name: "DeleteIterator"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
+  name: "DeleteMemoryCache"
   input_arg {
     name: "handle"
     type: DT_RESOURCE

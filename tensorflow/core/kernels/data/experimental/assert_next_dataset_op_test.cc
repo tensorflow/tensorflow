@@ -96,12 +96,11 @@ TestCase TestCase1() {
   return {/*range_dataset_params*/ {/*start*/ 0, /*stop*/ 10, /*step*/ 1},
           /*take_dataset_params*/ {/*count*/ 3},
           /*transformations*/
-          DatasetOpsTestBase::CreateTensor<string>(
-              TensorShape({1}), {TakeDatasetOp::kDatasetType}),
+          CreateTensor<string>(TensorShape({1}), {TakeDatasetOp::kDatasetType}),
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2})},
+          {CreateTensor<int64>(TensorShape({}), {0}),
+           CreateTensor<int64>(TensorShape({}), {1}),
+           CreateTensor<int64>(TensorShape({}), {2})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 3,
@@ -110,49 +109,48 @@ TestCase TestCase1() {
 
 // Test case 2 : assert two transformations.
 TestCase TestCase2() {
-  return {/*range_dataset_params*/ {/*start*/ 0, /*stop*/ 10, /*step*/ 1},
-          /*take_dataset_params*/ {/*count*/ 3},
-          /*transformations*/
-          DatasetOpsTestBase::CreateTensor<string>(
-              TensorShape({2}),
-              {TakeDatasetOp::kDatasetType, RangeDatasetOp::kDatasetType}),
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ 3,
-          /*breakpoints*/ {0, 2, 5}};
-}
-
-TestCase AssertNextInvalid() {
   return {
       /*range_dataset_params*/ {/*start*/ 0, /*stop*/ 10, /*step*/ 1},
       /*take_dataset_params*/ {/*count*/ 3},
       /*transformations*/
-      DatasetOpsTestBase::CreateTensor<string>(TensorShape({1}), {"Whoops"}),
+      CreateTensor<string>(TensorShape({2}), {TakeDatasetOp::kDatasetType,
+                                              RangeDatasetOp::kDatasetType}),
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2})},
+      {CreateTensor<int64>(TensorShape({}), {0}),
+       CreateTensor<int64>(TensorShape({}), {1}),
+       CreateTensor<int64>(TensorShape({}), {2})},
       /*expected_output_dtypes*/ {DT_INT64},
       /*expected_output_shapes*/ {PartialTensorShape({})},
       /*expected_cardinality*/ 3,
       /*breakpoints*/ {0, 2, 5}};
 }
 
+TestCase AssertNextInvalid() {
+  return {/*range_dataset_params*/ {/*start*/ 0, /*stop*/ 10, /*step*/ 1},
+          /*take_dataset_params*/ {/*count*/ 3},
+          /*transformations*/
+          CreateTensor<string>(TensorShape({1}), {"Whoops"}),
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape({}), {0}),
+           CreateTensor<int64>(TensorShape({}), {1}),
+           CreateTensor<int64>(TensorShape({}), {2})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 3,
+          /*breakpoints*/ {0, 2, 5}};
+}
+
 TestCase AssertNextShort() {
   return {/*range_dataset_params*/ {/*start*/ 0, /*stop*/ 10, /*step*/ 1},
           /*take_dataset_params*/ {/*count*/ 3},
           /*transformations*/
-          DatasetOpsTestBase::CreateTensor<string>(
-              TensorShape({3}), {TakeDatasetOp::kDatasetType,
-                                 RangeDatasetOp::kDatasetType, "Whoops"}),
+          CreateTensor<string>(TensorShape({3}),
+                               {TakeDatasetOp::kDatasetType,
+                                RangeDatasetOp::kDatasetType, "Whoops"}),
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2})},
+          {CreateTensor<int64>(TensorShape({}), {0}),
+           CreateTensor<int64>(TensorShape({}), {1}),
+           CreateTensor<int64>(TensorShape({}), {2})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 3,

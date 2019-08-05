@@ -18,7 +18,6 @@ detection model, takes up a total of 22KB.
     *   [Building for Ambiq Micro Apollo3Blue EVB using Make](#building-for-ambiq-micro-apollo3blue-evb-using-make)
         *   [Additional Apollo3 Instructions](#additional-apollo3-instructions)
     *   [Building for the Eta Compute ECM3531 EVB using Make](#Building-for-the-Eta-Compute-ECM3531-EVB-using-Make)
-    *   [Building for NXP FRDM K66F EVB using mbed](#Building-for-NXP-FRDM-K66F-using-mbed)
 
 -   [Goals](#goals)
 
@@ -379,67 +378,6 @@ To flash a part with JFlash Lite, do the following:
     &nbsp;&nbsp;&nbsp;&nbsp;cd
     tensorflow/lite/experimental/micro/tools/make/targets/ecm3531 \
     &nbsp;&nbsp;&nbsp;&nbsp;./flash_program executable_name to load into flash.
-
-## Building for NXP FRDM K66F using mbed
-
-1.  Follow the instructions at
-    [Tensorflow Micro Speech](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_speech#getting-started)
-    to download the Tensorflow source code and the support libraries
-2.  Follow instructions from [mbed website](https://os.mbed.com/docs/mbed-os/v5.13/tools/installation-and-setup.html) to setup and install mbed CLI
-3.  Compile tensorflow with the following command to generate mbed project:
-
-    ```
-    make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=mbed TAGS="nxp_k66f" generate_micro_speech_mbed_project
-    ```
-4.  Go to the location of the generated project. The generated project is usally
-    in tensorflow/lite/experimental/micro/tools/make/gen/mbed_cortex-m4/prj/micro_speech/mbed
-5.  Create a mbed project using the generated files: ```mbed new .```
-6.  Change the project setting to use C++ 11 rather than C++ 14 using
-
-    ```
-    python -c 'import fileinput, glob;
-    for filename in glob.glob("mbed-os/tools/profiles/*.json"):
-      for line in fileinput.input(filename, inplace=True):
-        print line.replace("\"-std=gnu++14\"","\"-std=c++11\", \"-fpermissive\"")'
-    ```
-7.  To compile project, use the following command:
-
-    ```
-    mbed compile --target K66F --toolchain GCC_ARM --profile release
-    ```
-8.  For some mbed compliers, you may get compile error in mbed_rtc_time.cpp.
-    Go to mbed-os/platform/mbed_rtc_time.h and comment line 32 and line 37
-
-    ```
-    //#if !defined(__GNUC__) || defined(__CC_ARM) || defined(__clang__)
-    struct timeval {
-    time_t tv_sec;
-    int32_t tv_usec;
-    };
-    //#endif
-    ```
-9.  Look at helpful resources from NXP website such as [NXP FRDM-K66F User guide](https://www.nxp.com/docs/en/user-guide/FRDMK66FUG.pdf) and [NXP FRDM-K66F Getting Started](https://www.nxp.com/document/guide/get-started-with-the-frdm-k66f:NGS-FRDM-K66F)
-    to understand information about the board.
-10. Connect USB cable to micro USB port. When ethernet port is face towards you,
-    The micro USB port is left of the ethernet port.
-11.  To compile and flash in a single step, add --flash option:
-
-    ```
-    mbed compile --target K66F --toolchain GCC_ARM --profile release --flash
-    ```
-12. Disconnect USB cable from the device to power down the device and connect
-    back the power cable to start running the model
-13. Connect to serial port with baud rate of 9600 and correct serial device
-    to view the output from the MCU. In linux, you can run the following screen
-    command if the serial device is /dev/ttyACM0
-
-    ```
-    sudo screen /dev/ttyACM0 9600
-    ```
-14. Saying "Yes" will print "Yes" and "No" will print "No" on the serial port
-15. A loopback path from microphone to headset jack is enabled. Headset jack is
-    in black color. If there is no output on the serial port, you can connect
-    headphone to headphone port to check if audio loopback path is working
 
 ## Implement target optimized kernels
 

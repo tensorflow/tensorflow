@@ -68,6 +68,10 @@ MIRRORING_ALL = pywrap_tensorflow.TFE_MIRRORING_ALL
 _tf2_gauge = monitoring.BoolGauge("/tensorflow/api/tf2_enable",
                                   "Whether tf2.enable() is called.")
 
+_python_eager_context_create_counter = monitoring.Counter(
+    "/tensorflow/api/python/eager_context_create_counter",
+    "Counter for number of eager contexts created in Python.")
+
 _tf2_gauge.get_cell().set(tf2.enabled())
 
 
@@ -413,6 +417,8 @@ class Context(object):
     self._soft_device_placement = None
     self._log_device_placement = None
     self._optimizer_experimental_options = {}
+
+    _python_eager_context_create_counter.get_cell().increase_by(1)
 
   # pylint: enable=redefined-outer-name
 

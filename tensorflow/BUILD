@@ -607,6 +607,7 @@ tf_cc_shared_object(
         "//tensorflow/c:version_script.lds",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
     ],
 )
 

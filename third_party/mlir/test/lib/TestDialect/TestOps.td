@@ -76,6 +76,13 @@ def MixedNormalVariadicResults : TEST_Op<
 // Test Attributes
 //===----------------------------------------------------------------------===//
 
+def NonNegIntAttrOp : TEST_Op<"non_negative_int_attr"> {
+  let arguments = (ins
+      NonNegativeI32Attr:$i32attr,
+      NonNegativeI64Attr:$i64attr
+  );
+}
+
 def TypeArrayAttrOp : TEST_Op<"type_array_attr"> {
   let arguments = (ins TypeArrayAttr:$attr);
 }

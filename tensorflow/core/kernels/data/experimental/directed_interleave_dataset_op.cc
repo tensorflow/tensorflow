@@ -203,8 +203,8 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
             }
           }
 
-          LOG(WARNING) << "DirectedInterleave selected an exhausted input: "
-                       << selected_input;
+          VLOG(2) << "DirectedInterleave selected an exhausted input: "
+                  << selected_input;
         }
       }
 
