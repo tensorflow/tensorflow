@@ -538,16 +538,6 @@ XLA_TEST_FLOAT_32_BITS_OR_LESS(Lgamma, {
 XLA_TEST_FLOAT_32_BITS_OR_LESS(Round, { Run(Round, std::round); })
 
 #if defined(UNARY_TEST_TARGET_F32_OR_SMALLER)
-std::vector<std::pair<int64, int64>> CreateExhaustiveF32Ranges() {
-  // We break up the 2^32-element space into small'ish chunks to keep peak
-  // memory usage low.
-  std::vector<std::pair<int64, int64>> result;
-  const int64 step = 1 << 25;
-  for (int64 i = 0; i < (1l << 32); i += step) {
-    result.push_back({i, i + step});
-  }
-  return result;
-}
 
 INSTANTIATE_TEST_SUITE_P(F32, ExhaustiveF32UnaryTest,
                          ::testing::ValuesIn(CreateExhaustiveF32Ranges()));

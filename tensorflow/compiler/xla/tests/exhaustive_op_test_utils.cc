@@ -171,6 +171,7 @@ inline typename ExhaustiveOpTestBase<T, N>::ErrorSpec DefaultSpecGenerator(
     typename ExhaustiveOpTestBase<T, N>::NativeT) {
   LOG(FATAL) << "Unhandled Type";
 }
+
 template <PrimitiveType T, size_t N>
 inline typename ExhaustiveOpTestBase<T, N>::ErrorSpec DefaultSpecGenerator(
     typename ExhaustiveOpTestBase<T, N>::NativeT,
@@ -213,6 +214,18 @@ inline ExhaustiveOpTestBase<BF16, 1>::ErrorSpec DefaultSpecGenerator<BF16, 1>(
     bfloat16) {
   return ExhaustiveOpTestBase<BF16, 1>::ErrorSpec{0.002, 0.02};
 }
+
+template <>
+inline ExhaustiveOpTestBase<F16, 2>::ErrorSpec DefaultSpecGenerator<F16, 2>(
+    Eigen::half, Eigen::half) {
+  return ExhaustiveOpTestBase<F16, 2>::ErrorSpec{0.001, 0.001};
+}
+
+template <>
+inline ExhaustiveOpTestBase<BF16, 2>::ErrorSpec DefaultSpecGenerator<BF16, 2>(
+    bfloat16, bfloat16) {
+  return ExhaustiveOpTestBase<BF16, 2>::ErrorSpec{0.002, 0.02};
+}
 }  // namespace
 
 /*static*/
@@ -228,5 +241,8 @@ template class ExhaustiveOpTestBase<F64, 1>;
 template class ExhaustiveOpTestBase<F32, 1>;
 template class ExhaustiveOpTestBase<F16, 1>;
 template class ExhaustiveOpTestBase<BF16, 1>;
+
+template class ExhaustiveOpTestBase<F16, 2>;
+template class ExhaustiveOpTestBase<BF16, 2>;
 
 }  // namespace xla

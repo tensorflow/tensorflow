@@ -85,41 +85,61 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   };
 
   // Native types that correspond to the primtive types above.
-  typedef typename primitive_util::PrimitiveTypeToNative<T>::type NativeT;
-  typedef typename primitive_util::PrimitiveTypeToNative<RefT::value>::type
-      NativeRefT;
-  typedef
-      typename primitive_util::PrimitiveTypeToNative<ComponentT::value>::type
-          ComponentNativeT;
-  typedef
-      typename primitive_util::PrimitiveTypeToNative<ComponentRefT::value>::type
-          ComponentNativeRefT;
-  typedef typename primitive_util::PrimitiveTypeToNative<
-      ComponentIntegralT::value>::type ComponentIntegralNativeT;
+  using NativeT = typename primitive_util::PrimitiveTypeToNative<T>::type;
+  using NativeRefT =
+      typename primitive_util::PrimitiveTypeToNative<RefT::value>::type;
+  using ComponentNativeT =
+      typename primitive_util::PrimitiveTypeToNative<ComponentT::value>::type;
+  using ComponentNativeRefT = typename primitive_util::PrimitiveTypeToNative<
+      ComponentRefT::value>::type;
+  using ComponentIntegralNativeT =
+      typename primitive_util::PrimitiveTypeToNative<
+          ComponentIntegralT::value>::type;
 
-  typedef std::array<Literal, N> InputLiterals;
+  using InputLiterals = std::array<Literal, N>;
 
  private:
   // N spans corresponding to the list of literal data values.
-  typedef std::array<absl::Span<const NativeT>, N> NativeInputsList;
+  using NativeInputsList = std::array<absl::Span<const NativeT>, N>;
 
-  // N data items representing a single input to some XLA function.
-  typedef std::array<NativeT, N> NativeInputs;
+  // N data items representing a single input to an XLA function.
+  using NativeInputs = std::array<NativeT, N>;
 
-  // N data items representing a single input to some interpreter backend
+  // N data items representing a single input to an interpreter backend
   // function.
-  typedef std::array<NativeRefT, N> NativeRefInputs;
+  using NativeRefInputs = std::array<NativeRefT, N>;
+
+  // N data items representing a single input to an XLA function.
+  using XlaInputs = std::array<XlaOp, N>;
 
   // Representations of the reference function passed in by the user.
   template <size_t K>
   struct EvaluateOpWrapper {};
   template <>
   struct EvaluateOpWrapper<1> {
-    typedef NativeRefT (*type)(NativeRefT);
+    using type = NativeRefT (*)(NativeRefT);
   };
   template <>
   struct EvaluateOpWrapper<2> {
-    typedef NativeRefT (*type)(NativeRefT, NativeRefT);
+    using type = NativeRefT (*)(NativeRefT, NativeRefT);
+  };
+
+  // Representations of the reference function passed in by the user.
+  template <size_t K>
+  struct EnqueueOpWrapper {};
+  template <>
+  struct EnqueueOpWrapper<1> {
+    using type = std::function<XlaOp(XlaOp)>;
+    static XlaOp BuildFromInputs(XlaInputs inputs, type ty) {
+      return ty(inputs[0]);
+    }
+  };
+  template <>
+  struct EnqueueOpWrapper<2> {
+    using type = std::function<XlaOp(XlaOp, XlaOp)>;
+    static XlaOp BuildFromInputs(XlaInputs inputs, type ty) {
+      return ty(inputs[0], inputs[1]);
+    }
   };
 
   // Representations of the ErrorSpecGen function passed in by the user.
@@ -127,16 +147,17 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   struct ErrorSpecGenWrapper {};
   template <>
   struct ErrorSpecGenWrapper<1> {
-    typedef ErrorSpec (*type)(NativeT);
+    using type = ErrorSpec (*)(NativeT);
   };
   template <>
   struct ErrorSpecGenWrapper<2> {
-    typedef ErrorSpec (*type)(NativeT, NativeT);
+    using type = ErrorSpec (*)(NativeT, NativeT);
   };
 
  public:
   using ErrorSpecGen = typename ErrorSpecGenWrapper<N>::type;
   using EvaluateOp = typename EvaluateOpWrapper<N>::type;
+  using EnqueueOp = typename EnqueueOpWrapper<N>::type;
 
   explicit ExhaustiveOpTestBase()
       : ty_(T), platform_(client_->platform()->Name()) {
@@ -147,7 +168,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     mutable_debug_options()->clear_xla_disable_hlo_passes();
   }
 
-  void Run(std::function<XlaOp(XlaOp)> enqueue_op, EvaluateOp evaluate_op) {
+  void Run(EnqueueOp enqueue_op, EvaluateOp evaluate_op) {
     Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator());
   }
 
@@ -158,16 +179,18 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // We use a function pointer for evaluate_op for performance because it is
   // called each time an output element is compared inside a loop in routine
   // ExpectNear.
-  void Run(std::function<XlaOp(XlaOp)> enqueue_op, EvaluateOp evaluate_op,
+  void Run(EnqueueOp enqueue_op, EvaluateOp evaluate_op,
            ErrorSpecGen error_spec_gen) {
     InputLiterals input_literals = CreateInputLiterals();
     FillInput(&input_literals);
 
     XlaBuilder builder(TestName());
-
+    XlaInputs xla_inputs;
     for (int i = 0; i < N; ++i) {
-      enqueue_op(Parameter(&builder, i, input_literals[i].shape(), "input"));
+      xla_inputs[i] =
+          Parameter(&builder, i, input_literals[i].shape(), "input");
     }
+    EnqueueOpWrapper<N>::BuildFromInputs(xla_inputs, enqueue_op);
 
     TF_ASSERT_OK_AND_ASSIGN(XlaComputation comp, builder.Build());
     TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
@@ -350,7 +373,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   std::vector<std::complex<ComponentNativeRefT>>
   GetTestValuesWithSubnormalSubstitutions(
       std::complex<ComponentNativeRefT> value) {
-    typedef std::complex<ComponentNativeRefT> complex;
+    using complex = std::complex<ComponentNativeRefT>;
 
     auto real_values = GetTestValuesWithSubnormalSubstitutions(value.real());
     auto imag_values = GetTestValuesWithSubnormalSubstitutions(value.imag());
@@ -738,8 +761,8 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   bool relaxed_denormal_signs_ = platform_ != "CUDA";
 
  private:
-  typedef NativeRefT (*EvaluateOpInternal)(NativeRefInputs);
-  typedef ErrorSpec (*ErrorSpecGenInternal)(NativeInputs);
+  using EvaluateOpInternal = NativeRefT (*)(NativeRefInputs);
+  using ErrorSpecGenInternal = ErrorSpec (*)(NativeInputs);
 
   template <typename Type, typename FuncPtr>
   ErrorSpec CallErrorSpec(FuncPtr* func, const std::array<Type, 1>& in) {
@@ -1026,10 +1049,10 @@ class FpValues {
   std::array<int, kTotalBitChunks + 1> offsets_;
 };
 
-template <typename T>
+template <typename T, typename std::enable_if<
+                          std::is_same<T, float>::value ||
+                          std::is_same<T, double>::value>::type* = nullptr>
 int GetMantissaTotalBits() {
-  static_assert(std::is_same<T, float>::value || std::is_same<T, double>::value,
-                "Only supports float and double.");
   return std::numeric_limits<T>::digits - 1;
 }
 
@@ -1053,10 +1076,10 @@ uint64 GetAllOneExponent() {
   return (1ull << GetExponentTotalBits<T>()) - 1ull;
 }
 
-template <typename T>
+template <typename T, typename std::enable_if<
+                          std::is_same<T, float>::value ||
+                          std::is_same<T, double>::value>::type* = nullptr>
 FpValues GetFpValues(BitChunks mantissa, BitChunks exponent, BitChunks sign) {
-  static_assert(std::is_same<T, float>::value || std::is_same<T, double>::value,
-                "Only supports float and double.");
   int total_bits = GetFpTotalBits<T>();
   return FpValues({mantissa, exponent, sign},
                   {0, GetMantissaTotalBits<T>(), total_bits - 1, total_bits});
@@ -1165,6 +1188,17 @@ template <typename T>
 std::vector<FpValues> CreateFpValuesForBoundaryTest() {
   return {GetZeros<T>(), GetSubnormals<T>(1000), GetInfinites<T>(),
           GetNans<T>(1000)};
+}
+
+inline std::vector<std::pair<int64, int64>> CreateExhaustiveF32Ranges() {
+  // We break up the 2^32-element space into small'ish chunks to keep peak
+  // memory usage low.
+  std::vector<std::pair<int64, int64>> result;
+  const int64 step = 1 << 25;
+  for (int64 i = 0; i < (1l << 32); i += step) {
+    result.push_back({i, i + step});
+  }
+  return result;
 }
 
 }  // namespace xla
