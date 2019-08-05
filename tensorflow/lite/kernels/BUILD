@@ -1287,6 +1287,7 @@ cc_test(
     name = "lstm_test",
     size = "small",
     srcs = ["lstm_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
