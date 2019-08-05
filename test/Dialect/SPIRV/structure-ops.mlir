@@ -107,14 +107,23 @@ spv.module "Logical" "Bla" { }
 
 // -----
 
-// Module_with_multiple_blocks
-// expected-error @+1 {{failed to verify constraint: region with 1 blocks}}
+// Module with multiple blocks
+// expected-error @+1 {{expects region #0 to have 0 or 1 blocks}}
 spv.module "Logical" "VulkanKHR" {
 ^first:
   spv.Return
 ^second:
   spv.Return
 }
+
+// -----
+
+// Module with wrong terminator
+// expected-error@+2 {{expects regions to end with 'spv._module_end'}}
+// expected-note@+1 {{in custom textual format, the absence of terminator implies 'spv._module_end'}}
+"spv.module"() ({
+  %0 = spv.constant true
+}) {addressing_model = 0 : i32, memory_model = 1 : i32} : () -> ()
 
 // -----
 

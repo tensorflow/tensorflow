@@ -683,12 +683,8 @@ static LogicalResult verify(spirv::LoadOp loadOp) {
 // spv.module
 //===----------------------------------------------------------------------===//
 
-static void ensureModuleEnd(Region *region, Builder builder, Location loc) {
-  impl::ensureRegionTerminator<spirv::ModuleEndOp>(*region, builder, loc);
-}
-
 void spirv::ModuleOp::build(Builder *builder, OperationState *state) {
-  ensureModuleEnd(state->addRegion(), *builder, state->location);
+  ensureTerminator(*state->addRegion(), *builder, state->location);
 }
 
 void spirv::ModuleOp::build(Builder *builder, OperationState *state,
@@ -704,7 +700,7 @@ void spirv::ModuleOp::build(Builder *builder, OperationState *state,
     state->addAttribute("extensions", extensions);
   if (extended_instruction_sets)
     state->addAttribute("extended_instruction_sets", extended_instruction_sets);
-  ensureModuleEnd(state->addRegion(), *builder, state->location);
+  ensureTerminator(*state->addRegion(), *builder, state->location);
 }
 
 static ParseResult parseModuleOp(OpAsmParser *parser, OperationState *state) {
@@ -726,8 +722,8 @@ static ParseResult parseModuleOp(OpAsmParser *parser, OperationState *state) {
       return failure();
   }
 
-  ensureModuleEnd(body, parser->getBuilder(), state->location);
-
+  spirv::ModuleOp::ensureTerminator(*body, parser->getBuilder(),
+                                    state->location);
   return success();
 }
 
