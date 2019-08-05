@@ -153,7 +153,7 @@ def _lift_unlifted_variables(graph, variable_holder):
         ops.GraphKeys.LOCAL_VARIABLES)
     existing_captures = object_identity.ObjectIdentitySet(
         graph.internal_captures)
-    lifted_variables = {}
+    lifted_variables = object_identity.ObjectIdentityDictionary()
 
     def _should_lift_variable(v):
       return ((v._in_graph_mode  # pylint: disable=protected-access
