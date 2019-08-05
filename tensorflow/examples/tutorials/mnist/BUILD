@@ -109,18 +109,10 @@ tf_py_test(
         "--max_steps=10",
     ],
     main = "fully_connected_feed.py",
-<<<<<<< HEAD
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":input_data",
-        ":mnist",
-        "//tensorflow:tensorflow_py",
+    tags = [
+        "no_pip",
+        "no_rocm_v2",
     ],
-    tags = ["no_rocm_v2"],
-=======
-    tags = ["no_pip"],
->>>>>>> upstream/master
 )
 
 tf_py_test(
@@ -139,20 +131,9 @@ tf_py_test(
         "--learning_rate=0.00",
     ],
     main = "mnist_with_summaries.py",
-<<<<<<< HEAD
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    tags = [
-        "notsan",  # http://b/29184009
-	"no_rocm_v2",
-    ],
-    deps = [
-        ":input_data",
-        "//tensorflow:tensorflow_py",
-=======
     tags = [
         "no_pip",
         "notsan",  # http://b/29184009
->>>>>>> upstream/master
+        "no_rocm_v2",
     ],
 )

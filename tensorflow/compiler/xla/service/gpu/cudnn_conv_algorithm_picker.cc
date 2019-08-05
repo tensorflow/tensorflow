@@ -191,22 +191,6 @@ CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     }
   }
 
-<<<<<<< HEAD
-  // For now, we ignore WRONG_RESULT failures because false-positives are
-  // possible (e.g. perhaps the reference algorithm is the one that's
-  // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
-  // quite severe and can be detected with high accuracy.
-  auto has_failure = [](const AutotuneResult& r) {
-    return r.has_failure() &&
-           r.failure().kind() != AutotuneResult::WRONG_RESULT;
-  };
-
-  // Choose the fastest convolution that doesn't produce a REDZONE_MODIFIED
-  // error.
-  //
-  // TODO(jlebar): We ought to be able to detect redzone reads by noticing NaNs
-  // in the output of the conv and skip those.
-=======
   StatusOr<AutotuneResult> result_or = PickBestAlgorithmNoCache(instr);
   if (result_or.ok()) {
     tensorflow::mutex_lock lock(autotune_cache_lock);
@@ -220,7 +204,6 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithmImpl for ",
                    instr->ToString()));
->>>>>>> upstream/master
 
   // The successful one should have a smaller key, since we are doing
   // min_element. If they are both unsuccessful, keep the earlier one in
@@ -240,13 +223,6 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     return *best_result;
   }
 
-<<<<<<< HEAD
-  return InternalError(
-      "All algorithms tried for convolution %s failed.  Falling back to "
-      "default algorithm.",
-      instr.ToString());
-}
-=======
   // Create a stream for us to do our work on.
   se::Stream stream{stream_exec_};
   stream.Init();
@@ -260,7 +236,6 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     se_allocator.emplace(stream_exec_);
     allocator = &*se_allocator;
   }
->>>>>>> upstream/master
 
 Status CudnnConvAlgorithmPicker::AllocateInitializeBuffers(
     const HloCustomCallInstruction& instr,
@@ -276,12 +251,6 @@ Status CudnnConvAlgorithmPicker::AllocateInitializeBuffers(
                           buffer);
   };
 
-<<<<<<< HEAD
-  for (const auto* operand : instr.operands()) {
-    TF_ASSIGN_OR_RETURN(auto buffer,
-                        input_output_allocator->AllocateBytes(
-                            stream, ShapeUtil::ByteSizeOf(operand->shape())));
-=======
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
 
   // Allocate space for the input, filter, and output of the convolution.
@@ -292,17 +261,13 @@ Status CudnnConvAlgorithmPicker::AllocateInitializeBuffers(
     TF_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator.AllocateBytes(
                             ShapeUtil::ByteSizeOf(operand->shape())));
->>>>>>> upstream/master
     initialize_buffer(buffer);
     operand_buffers->push_back(buffer);
   }
-<<<<<<< HEAD
-=======
   TF_ASSIGN_OR_RETURN(auto result_buffer,
                       input_output_allocator.AllocateBytes(
                           ShapeUtil::ByteSizeOf(result_shape)));
   initialize_buffer(result_buffer);
->>>>>>> upstream/master
 
   TF_ASSIGN_OR_RETURN(*result_buffer,
                       input_output_allocator->AllocateBytes(
@@ -348,8 +313,6 @@ Status CudnnConvAlgorithmPicker::ProfileConvCandidates(
                      AlgorithmToString(alg)),
         2);
 
-<<<<<<< HEAD
-=======
     if (absl::c_linear_search(blacklisted_algos, alg)) {
       LOG(INFO) << "Omitted potentially buggy algorithm "
                 << AlgorithmToString(alg) << " for conv " << instr->ToString();
@@ -358,7 +321,6 @@ Status CudnnConvAlgorithmPicker::ProfileConvCandidates(
 
     se::cuda::RedzoneAllocator scratch_allocator(
         &stream, allocator, PtxOptsFromConfig(hlo_module_config));
->>>>>>> upstream/master
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr.ToString();
@@ -460,15 +422,9 @@ Status CudnnConvAlgorithmPicker::ProfileConvCandidates(
       comparator.emplace(result_shape, hlo_module_config);
       TF_ASSIGN_OR_RETURN(
           reference_result_buffer,
-<<<<<<< HEAD
-          input_output_allocator->AllocateBytes(stream, result_buffer->size()));
-      stream->ThenMemcpy(&reference_result_buffer, *result_buffer,
-                         result_buffer->size());
-=======
           input_output_allocator.AllocateBytes(result_buffer.size()));
       stream.ThenMemcpy(&reference_result_buffer, result_buffer,
                         result_buffer.size());
->>>>>>> upstream/master
       first_algorithm = alg;
     }
   }

@@ -66,16 +66,13 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss_py2",
-<<<<<<< HEAD
-        "no_cuda",
-        "no_rocm",
-=======
         "no_oss_py35",
         # TODO(mdan): Remove this tag once no_oss_py35 is properly supported.
         "no_oss",
         "no_pip",
         "nopip",
->>>>>>> upstream/master
+        "no_cuda",
+        "no_rocm",
     ],
     deps = [
         ":activity_test_lib",

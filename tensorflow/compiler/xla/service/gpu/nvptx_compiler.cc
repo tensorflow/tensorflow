@@ -390,23 +390,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
   }
   VLOG(2) << "Libdevice dir = " << libdevice_dir << "\n";
 
-<<<<<<< HEAD
-  string ptx;
-  {
-=======
-  int cc_major, cc_minor;
-  if (!stream_exec->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                                   &cc_minor)) {
-    LOG(WARNING)
-        << "Couldn't get compute capability for device; assuming sm_20.";
-    cc_major = 2;
-    cc_minor = 0;
-  }
-
   std::string ptx;
 
-  if (!MaybeLoadPtxFromFile(module.get(), &ptx)) {
->>>>>>> upstream/master
+  if (!MaybeLoadPtxFromFile(module, &ptx)) {
     XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - CompileToPtx");
     TF_ASSIGN_OR_RETURN(
         ptx, nvptx::CompileToPtx(llvm_module, gpu_version, module->config(),

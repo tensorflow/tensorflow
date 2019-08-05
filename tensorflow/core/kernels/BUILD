@@ -4387,14 +4387,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "lrn_op",
     prefix = "lrn_op",
-<<<<<<< HEAD
-    deps = NN_DEPS
-          + if_rocm([
-           "conv_ops_gpu_hdrs",
-          ]),
-=======
     deps = NN_DEPS + if_rocm([":conv_ops_gpu_hdrs"]),
->>>>>>> upstream/master
 )
 
 tf_kernel_library(

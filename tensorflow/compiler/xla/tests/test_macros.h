@@ -59,12 +59,8 @@ limitations under the License.
 #if TENSORFLOW_USE_ROCM
 # undef DISABLED_ON_GPU_ROCM
 # define DISABLED_ON_GPU_ROCM(X) XLA_TEST_PASTE(DISABLED_, X)
-<<<<<<< HEAD
 #define XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX
-#endif // TENSORFLOW_USE_ROCM
-=======
 #endif  // TENSORFLOW_USE_ROCM
->>>>>>> upstream/master
 
 #endif  // XLA_TEST_BACKEND_GPU
 
