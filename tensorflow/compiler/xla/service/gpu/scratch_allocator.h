@@ -32,19 +32,18 @@ class ScratchAllocator : public se::ScratchAllocator {
                    se::DeviceMemoryAllocator* memory_allocator)
       : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
 
-  int64 GetMemoryLimitInBytes(se::Stream* stream) override {
+  int64 GetMemoryLimitInBytes() override {
     return 1LL << 32;  // 4GB.  TODO(jlebar): Tune this?
   }
   int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
 
-  StatusOr<se::DeviceMemory<uint8>> AllocateBytes(se::Stream* stream,
-                                                  int64 byte_size) override;
+  StatusOr<se::DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override;
 
   template <typename T>
   StatusOr<se::DeviceMemory<T>> Allocate(se::Stream* stream,
                                          int64 num_elements) {
     TF_ASSIGN_OR_RETURN(se::DeviceMemory<uint8> bytes,
-                        AllocateBytes(stream, num_elements * sizeof(T)));
+                        AllocateBytes(num_elements * sizeof(T)));
     return se::DeviceMemory<T>(bytes);
   }
 

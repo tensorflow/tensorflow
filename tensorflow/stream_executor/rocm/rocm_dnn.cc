@@ -1985,7 +1985,7 @@ bool CreateRnnWorkspace(Stream* stream, miopenHandle_t miopen_handle,
   // Allocate the workspace.
   if (workspace_size_in_bytes > 0) {
     auto allocated =
-        workspace_allocator->AllocateBytes(stream, workspace_size_in_bytes);
+        workspace_allocator->AllocateBytes(workspace_size_in_bytes);
     if (!allocated.ok() || (*workspace = allocated.ValueOrDie()) == nullptr) {
       LOG(ERROR) << "Failed to allocate RNN workspace";
 
@@ -2062,8 +2062,8 @@ bool MIOpenSupport::DoRnnForwardImpl(
     }
 
     if (reserve_space_size_in_bytes > 0) {
-      auto allocated = reserve_space_allocator->AllocateBytes(
-          stream, reserve_space_size_in_bytes);
+      auto allocated =
+          reserve_space_allocator->AllocateBytes(reserve_space_size_in_bytes);
       if (!allocated.ok() ||
           (reserve_space = allocated.ValueOrDie()) == nullptr) {
         LOG(ERROR) << "Fail to allocate RNN reserve space";
@@ -2575,8 +2575,7 @@ struct MIOpenAllocatorContext {
 
 void* MIOpenAllocatorCallback(void* ctx, size_t size_in_bytes) {
   auto* mac = static_cast<MIOpenAllocatorContext*>(ctx);
-  auto allocated =
-      mac->scratch_allocator_->AllocateBytes(mac->stream_, size_in_bytes);
+  auto allocated = mac->scratch_allocator_->AllocateBytes(size_in_bytes);
 
   DeviceMemory<uint8> scratch;
   if (allocated.ok()) {
@@ -2659,7 +2658,7 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
     }
 
     if (status == miopenStatusSuccess && size_in_bytes != 0) {
-      auto allocated = scratch_allocator->AllocateBytes(stream, size_in_bytes);
+      auto allocated = scratch_allocator->AllocateBytes(size_in_bytes);
       if (allocated.ok()) {
         scratch_memory_temp = allocated.ValueOrDie();
       }
@@ -2744,8 +2743,7 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
           absl::StrCat("An allocator must be specified when scratch memory is "
                        "needed"));
     }
-    auto allocated =
-        scratch_allocator->AllocateBytes(stream, scratch_memory_size);
+    auto allocated = scratch_allocator->AllocateBytes(scratch_memory_size);
     if (!allocated.ok()) {
       return port::InternalError(absl::StrCat(
           "Failed to allocate scratch memory of size: ", scratch_memory_size));
@@ -3600,7 +3598,7 @@ bool MIOpenSupport::DoPoolBackward(
   if (workspace_size_in_bytes > 0) {
     assert(workspace_allocator);
     auto allocated =
-        workspace_allocator->AllocateBytes(stream, workspace_size_in_bytes);
+        workspace_allocator->AllocateBytes(workspace_size_in_bytes);
     if (!allocated.ok() || (workspace = allocated.ValueOrDie()) == nullptr) {
       LOG(ERROR) << "Failed to allocate backward pooling workspace";
       return false;
@@ -3624,7 +3622,7 @@ bool MIOpenSupport::DoPoolBackward(
 
   if (dest2_size > 0) {
     assert(workspace_allocator);
-    auto allocated = workspace_allocator->AllocateBytes(stream, dest2_size);
+    auto allocated = workspace_allocator->AllocateBytes(dest2_size);
     if (!allocated.ok() || (dest2 = allocated.ValueOrDie()) == nullptr) {
       LOG(ERROR) << "Failed to allocate backward pooling workspace";
       return false;
@@ -3696,7 +3694,7 @@ bool MIOpenSupport::DoPoolBackward(
   if (workspace_size_in_bytes > 0) {
     assert(workspace_allocator);
     auto allocated =
-        workspace_allocator->AllocateBytes(stream, workspace_size_in_bytes);
+        workspace_allocator->AllocateBytes(workspace_size_in_bytes);
     if (!allocated.ok() || (workspace = allocated.ValueOrDie()) == nullptr) {
       LOG(ERROR) << "Failed to allocate backward pooling workspace";
       return false;
@@ -3720,7 +3718,7 @@ bool MIOpenSupport::DoPoolBackward(
 
   if (dest2_size > 0) {
     assert(workspace_allocator);
-    auto allocated = workspace_allocator->AllocateBytes(stream, dest2_size);
+    auto allocated = workspace_allocator->AllocateBytes(dest2_size);
     if (!allocated.ok() || (dest2 = allocated.ValueOrDie()) == nullptr) {
       LOG(ERROR) << "Failed to allocate backward pooling workspace";
       return false;
@@ -3831,7 +3829,7 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
   if (workspace_size_in_bytes > 0) {
     assert(workspace_allocator);
     auto allocated =
-        workspace_allocator->AllocateBytes(stream, workspace_size_in_bytes);
+        workspace_allocator->AllocateBytes(workspace_size_in_bytes);
     if (!allocated.ok() || (workspace = allocated.ValueOrDie()) == nullptr) {
       LOG(ERROR) << "Failed to allocate backward pooling workspace";
       return false;
@@ -3856,7 +3854,7 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
 
   if (dest2_size > 0) {
     assert(workspace_allocator);
-    auto allocated = workspace_allocator->AllocateBytes(stream, dest2_size);
+    auto allocated = workspace_allocator->AllocateBytes(dest2_size);
     if (!allocated.ok() || (dest2 = allocated.ValueOrDie()) == nullptr) {
       LOG(ERROR)
           << "Failed to allocate tensor to chain forward and backward LRN";
