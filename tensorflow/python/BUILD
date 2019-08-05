@@ -2631,6 +2631,14 @@ tf_py_test(
         ":client_testlib",
         ":platform_test",
     ],
+    # This tests that it is possible to disable cfv2 using env vars.
+    # This does not apply to TF 2.0 nightly builds which enable
+    # v2 behavior using `tf.compat.v1.enable_v2_behavior()` in which case
+    # `tf.compat.v1.disable_control_flow_v2()` needs to be used.
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
 )
 
 py_library(
