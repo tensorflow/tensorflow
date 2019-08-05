@@ -627,6 +627,12 @@ TfLiteStatus InterpreterBuilder::operator()(
     return kTfLiteError;
   }
 
+  if (num_threads < -1) {
+    error_reporter_->Report(
+        "num_threads should be greater than -1(default value).");
+    return kTfLiteError;
+  }
+
   // Safe exit by deleting partially created interpreter, to reduce verbosity
   // on error conditions. Use by return cleanup_on_error();
   auto cleanup_and_error = [&interpreter]() {

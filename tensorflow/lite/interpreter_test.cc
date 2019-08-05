@@ -1064,6 +1064,15 @@ TEST_F(InterpreterTest, GetSetResetExternalContexts) {
   interpreter_.SetNumThreads(5);
   EXPECT_EQ(external_context.num_refreshes, 2);
 
+  // Reset refresh count to 0
+  external_context.num_refreshes = 0;
+  // Below should not call external context refresh
+  interpreter_.SetNumThreads(-2);
+  EXPECT_EQ(external_context.num_refreshes, 0);
+
+  interpreter_.SetNumThreads(-1);
+  EXPECT_EQ(external_context.num_refreshes, 1);
+
   TestExternalContext::Set(context, nullptr);
   EXPECT_EQ(TestExternalContext::Get(context), nullptr);
   interpreter_.SetNumThreads(4);

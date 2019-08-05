@@ -247,6 +247,14 @@ TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {
 void Interpreter::UseNNAPI(bool enable) { primary_subgraph().UseNNAPI(enable); }
 
 void Interpreter::SetNumThreads(int num_threads) {
+  // num_threads should be greater than -1.
+  // User may use -1, to reset to default values.
+  if (num_threads < -1) {
+    context_->ReportError(
+        context_, "num_threads should be greater than -1(default value).");
+    return;
+  }
+
   for (auto& subgraph : subgraphs_) {
     subgraph->context()->recommended_num_threads = num_threads;
   }
