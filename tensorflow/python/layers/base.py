@@ -31,6 +31,7 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
@@ -587,7 +588,7 @@ def _add_elements_to_collection(elements, collection_list):
   collection_list = nest.flatten(collection_list)
   for name in collection_list:
     collection = ops.get_collection_ref(name)
-    collection_set = set(collection)
+    collection_set = object_identity.ObjectIdentitySet(collection)
     for element in elements:
       if element not in collection_set:
         collection.append(element)
