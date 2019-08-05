@@ -57,87 +57,78 @@ struct TestCase {
 };
 
 TestCase TwoDimsTestCase() {
-  return {
-      /*input_sparse_tensor*/
-      {/*indices*/ DatasetOpsTestBase::CreateTensor<int64>({2, 2},
-                                                           {0, 0, 1, 1}),
-       /*values*/ DatasetOpsTestBase::CreateTensor<int32>({2}, {888, 999}),
-       /*dense_shape*/ DatasetOpsTestBase::CreateTensor<int64>({2}, {2, 2})},
-      /*expected_outputs*/
-      {{/*indices*/ DatasetOpsTestBase::CreateTensor<int64>({1, 1}, {0}),
-        /*values*/ DatasetOpsTestBase::CreateTensor<int32>({1}, {888}),
-        /*dense_shape*/ DatasetOpsTestBase::CreateTensor<int64>({1}, {2})},
-       {/*indices*/ DatasetOpsTestBase::CreateTensor<int64>({1, 1}, {1}),
-        /*values*/ DatasetOpsTestBase::CreateTensor<int32>({1}, {999}),
-        /*dense_shape*/ DatasetOpsTestBase::CreateTensor<int64>({1}, {2})}},
-      /*breakpoints*/ {0, 1, 2}};
+  return {/*input_sparse_tensor*/
+          {/*indices*/ CreateTensor<int64>({2, 2}, {0, 0, 1, 1}),
+           /*values*/ CreateTensor<int32>({2}, {888, 999}),
+           /*dense_shape*/ CreateTensor<int64>({2}, {2, 2})},
+          /*expected_outputs*/
+          {{/*indices*/ CreateTensor<int64>({1, 1}, {0}),
+            /*values*/ CreateTensor<int32>({1}, {888}),
+            /*dense_shape*/ CreateTensor<int64>({1}, {2})},
+           {/*indices*/ CreateTensor<int64>({1, 1}, {1}),
+            /*values*/ CreateTensor<int32>({1}, {999}),
+            /*dense_shape*/ CreateTensor<int64>({1}, {2})}},
+          /*breakpoints*/ {0, 1, 2}};
 }
 
 TestCase ThreeDimsTestCase() {
-  return {
-      /*input_sparse_tensor*/
-      {/*indices*/ DatasetOpsTestBase::CreateTensor<int64>({2, 3},
-                                                           {0, 0, 0, 1, 1, 1}),
-       /*values*/ DatasetOpsTestBase::CreateTensor<double>({2}, {888.0, 999.0}),
-       /*dense_shape*/ DatasetOpsTestBase::CreateTensor<int64>({3}, {2, 2, 2})},
-      /*expected_outputs*/
-      {{/*indices*/ DatasetOpsTestBase::CreateTensor<int64>({1, 2}, {0, 0}),
-        /*values*/ DatasetOpsTestBase::CreateTensor<double>({1}, {888.0}),
-        /*dense_shape*/ DatasetOpsTestBase::CreateTensor<int64>({2}, {2, 2})},
-       {{/*indices*/ DatasetOpsTestBase::CreateTensor<int64>({1, 2}, {1, 1})},
-        {/*values*/ DatasetOpsTestBase::CreateTensor<double>({1}, {999.0})},
-        {/*dense_shape*/ DatasetOpsTestBase::CreateTensor<int64>({2},
-                                                                 {2, 2})}}},
-      /*breakpoints*/ {0, 1, 2}};
+  return {/*input_sparse_tensor*/
+          {/*indices*/ CreateTensor<int64>({2, 3}, {0, 0, 0, 1, 1, 1}),
+           /*values*/ CreateTensor<double>({2}, {888.0, 999.0}),
+           /*dense_shape*/ CreateTensor<int64>({3}, {2, 2, 2})},
+          /*expected_outputs*/
+          {{/*indices*/ CreateTensor<int64>({1, 2}, {0, 0}),
+            /*values*/ CreateTensor<double>({1}, {888.0}),
+            /*dense_shape*/ CreateTensor<int64>({2}, {2, 2})},
+           {{/*indices*/ CreateTensor<int64>({1, 2}, {1, 1})},
+            {/*values*/ CreateTensor<double>({1}, {999.0})},
+            {/*dense_shape*/ CreateTensor<int64>({2}, {2, 2})}}},
+          /*breakpoints*/ {0, 1, 2}};
 }
 
 TestCase FourDimsTestCase() {
-  return {
-      /*input_sparse_tensor*/
-      {/*indices*/ DatasetOpsTestBase::CreateTensor<int64>(
-           {2, 4}, {0, 0, 0, 0, 1, 1, 1, 1}),
-       /*values*/ DatasetOpsTestBase::CreateTensor<string>({2}, {"a", "b"}),
-       /*dense_shape*/
-       DatasetOpsTestBase::CreateTensor<int64>({4}, {3, 2, 2, 2})},
-      /*expected_outputs*/
-      {{/*indices*/ DatasetOpsTestBase::CreateTensor<int64>({1, 3}, {0, 0, 0}),
-        /*values*/ DatasetOpsTestBase::CreateTensor<string>({1}, {"a"}),
-        /*dense_shape*/
-        DatasetOpsTestBase::CreateTensor<int64>({3}, {2, 2, 2})},
-       {/*indices*/ DatasetOpsTestBase::CreateTensor<int64>({1, 3}, {1, 1, 1}),
-        /*values*/ DatasetOpsTestBase::CreateTensor<string>({1}, {"b"}),
-        /*dense_shape*/
-        DatasetOpsTestBase::CreateTensor<int64>({3}, {2, 2, 2})},
-       {/*indices*/ DatasetOpsTestBase::CreateTensor<int64>({0, 3}, {}),
-        /*values*/ DatasetOpsTestBase::CreateTensor<string>({0}, {}),
-        /*dense_shape*/
-        DatasetOpsTestBase::CreateTensor<int64>({3}, {2, 2, 2})}},
-      /*breakpoints*/ {0, 1, 3}};
+  return {/*input_sparse_tensor*/
+          {/*indices*/ CreateTensor<int64>({2, 4}, {0, 0, 0, 0, 1, 1, 1, 1}),
+           /*values*/ CreateTensor<string>({2}, {"a", "b"}),
+           /*dense_shape*/
+           CreateTensor<int64>({4}, {3, 2, 2, 2})},
+          /*expected_outputs*/
+          {{/*indices*/ CreateTensor<int64>({1, 3}, {0, 0, 0}),
+            /*values*/ CreateTensor<string>({1}, {"a"}),
+            /*dense_shape*/
+            CreateTensor<int64>({3}, {2, 2, 2})},
+           {/*indices*/ CreateTensor<int64>({1, 3}, {1, 1, 1}),
+            /*values*/ CreateTensor<string>({1}, {"b"}),
+            /*dense_shape*/
+            CreateTensor<int64>({3}, {2, 2, 2})},
+           {/*indices*/ CreateTensor<int64>({0, 3}, {}),
+            /*values*/ CreateTensor<string>({0}, {}),
+            /*dense_shape*/
+            CreateTensor<int64>({3}, {2, 2, 2})}},
+          /*breakpoints*/ {0, 1, 3}};
 }
 
 TestCase FiveDimsTestCase() {
-  return {/*input_sparse_tensor*/
-          {/*indices*/ DatasetOpsTestBase::CreateTensor<int64>(
-               {2, 5}, {0, 0, 0, 0, 0, 1, 1, 1, 1, 1}),
-           /*values*/ DatasetOpsTestBase::CreateTensor<int32>({2}, {888, 999}),
-           /*dense_shape*/
-           DatasetOpsTestBase::CreateTensor<int64>({5}, {3, 2, 2, 2, 2})},
-          /*expected_outputs*/
-          {{/*indices*/ DatasetOpsTestBase::CreateTensor<int64>({1, 4},
-                                                                {0, 0, 0, 0}),
-            /*values*/ DatasetOpsTestBase::CreateTensor<int32>({1}, {888}),
-            /*dense_shape*/
-            DatasetOpsTestBase::CreateTensor<int64>({4}, {2, 2, 2, 2})},
-           {/*indices*/ DatasetOpsTestBase::CreateTensor<int64>({1, 4},
-                                                                {1, 1, 1, 1}),
-            /*values*/ DatasetOpsTestBase::CreateTensor<int32>({1}, {999}),
-            /*dense_shape*/
-            DatasetOpsTestBase::CreateTensor<int64>({4}, {2, 2, 2, 2})},
-           {/*indices*/ DatasetOpsTestBase::CreateTensor<int64>({0, 4}, {}),
-            /*values*/ DatasetOpsTestBase::CreateTensor<int32>({0}, {}),
-            /*dense_shape*/
-            DatasetOpsTestBase::CreateTensor<int64>({4}, {2, 2, 2, 2})}},
-          /*breakpoints*/ {0, 1, 3}};
+  return {
+      /*input_sparse_tensor*/
+      {/*indices*/ CreateTensor<int64>({2, 5}, {0, 0, 0, 0, 0, 1, 1, 1, 1, 1}),
+       /*values*/ CreateTensor<int32>({2}, {888, 999}),
+       /*dense_shape*/
+       CreateTensor<int64>({5}, {3, 2, 2, 2, 2})},
+      /*expected_outputs*/
+      {{/*indices*/ CreateTensor<int64>({1, 4}, {0, 0, 0, 0}),
+        /*values*/ CreateTensor<int32>({1}, {888}),
+        /*dense_shape*/
+        CreateTensor<int64>({4}, {2, 2, 2, 2})},
+       {/*indices*/ CreateTensor<int64>({1, 4}, {1, 1, 1, 1}),
+        /*values*/ CreateTensor<int32>({1}, {999}),
+        /*dense_shape*/
+        CreateTensor<int64>({4}, {2, 2, 2, 2})},
+       {/*indices*/ CreateTensor<int64>({0, 4}, {}),
+        /*values*/ CreateTensor<int32>({0}, {}),
+        /*dense_shape*/
+        CreateTensor<int64>({4}, {2, 2, 2, 2})}},
+      /*breakpoints*/ {0, 1, 3}};
 }
 
 class ParameterizedSparseTensorSliceDatasetOpTest

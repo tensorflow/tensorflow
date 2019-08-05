@@ -131,12 +131,14 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
 
     BigtableTableResource* table() const { return table_; }
 
+    bool IsStateful() const override { return true; }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented("%s does not support serialization",
-                                   DebugString());
+      return errors::Unimplemented(DebugString(),
+                                   " does not support serialization");
     }
 
    private:

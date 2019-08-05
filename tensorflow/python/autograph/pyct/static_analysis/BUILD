@@ -66,8 +66,16 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss_py2",
+<<<<<<< HEAD
         "no_cuda",
         "no_rocm",
+=======
+        "no_oss_py35",
+        # TODO(mdan): Remove this tag once no_oss_py35 is properly supported.
+        "no_oss",
+        "no_pip",
+        "nopip",
+>>>>>>> upstream/master
     ],
     deps = [
         ":activity_test_lib",
@@ -107,7 +115,11 @@ py_test(
     srcs = ["liveness_py3_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["no_oss_py2"],
+    tags = [
+        "no_oss_py2",
+        "no_pip",
+        "nopip",
+    ],
     deps = [
         ":liveness_test_lib",
         ":static_analysis",
@@ -144,7 +156,11 @@ py_test(
     srcs = ["reaching_definitions_py3_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = ["no_oss_py2"],
+    tags = [
+        "no_oss_py2",
+        "no_pip",
+        "nopip",
+    ],
     deps = [
         ":reaching_definitions_test_lib",
         ":static_analysis",

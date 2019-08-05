@@ -32,8 +32,8 @@ void WaitUntil(const std::function<bool()>& condition,
   }
 
   // Then try busy-waiting.
-  const TimePoint wait_start = Clock::now();
-  while (Clock::now() - wait_start < spin_duration) {
+  const TimePoint wait_start = Now();
+  while (Now() - wait_start < spin_duration) {
     if (condition()) {
       return;
     }
@@ -67,8 +67,7 @@ void WaitUntil(const std::function<bool()>& condition,
   // a little while, then start on a new GEMM. In that case the wait interval
   // may be a little longer. There may also not be another GEMM for a long time,
   // in which case we'll end up passively waiting below.
-  const double kMaxBusyWaitSeconds = 2e-3;
-  const Duration spin_duration = DurationFromSeconds(kMaxBusyWaitSeconds);
+  const Duration spin_duration = DurationFromMilliseconds(2);
   WaitUntil(condition, spin_duration, condvar, mutex);
 }
 

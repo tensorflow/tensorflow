@@ -205,6 +205,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 
   tensorflow::uint64 context_id = tensorflow::random::New64();
+  // Make master eager context accessible by local eager service, which might
+  // receive send tensor requests from remote workers.
+  LOG_AND_RETURN_IF_ERROR(grpc_server->AddMasterEagerContextToEagerService(
+      context_id, ctx->context));
 
   std::vector<string> remote_workers;
   grpc_server->master_env()->worker_cache->ListWorkers(&remote_workers);
@@ -262,8 +266,8 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
-  auto remote_mgr =
-      absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true);
+  auto remote_mgr = absl::make_unique<tensorflow::eager::RemoteMgr>(
+      /*is_master=*/true, ctx->context);
 
   return ctx->context->InitializeRemoteMaster(
       std::move(server), grpc_server->worker_env(), worker_session,
@@ -566,7 +570,8 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
     const tensorflow::Tensor* t = nullptr;
     tensorflow::TensorHandle* h_cpu = nullptr;
     status->status = EagerCopyToDevice(
-        handle, handle->Context(), handle->Context()->HostCPU(), false, &h_cpu);
+        handle, handle->Context(), handle->Context()->Executor(),
+        handle->Context()->HostCPU(), false, &h_cpu);
     if (!status->status.ok()) {
       return nullptr;
     }
@@ -918,6 +923,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return nullptr;
   }
   status->status = tensorflow::EagerCopyToDevice(h->handle, ctx->context,
+                                                 ctx->context->Executor(),
                                                  device, false, &handle);
   if (status->status.ok()) {
     return new TFE_TensorHandle(handle);

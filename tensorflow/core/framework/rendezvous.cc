@@ -187,7 +187,7 @@ class LocalRendezvousImpl : public Rendezvous {
 
     // Delete the queue when the last element has been consumed.
     if (queue->size() == 1) {
-      VLOG(2) << "Clean up Send/Recv queu (key:" << key.FullKey() << "). ";
+      VLOG(2) << "Clean up Send/Recv queue (key:" << key.FullKey() << "). ";
       table_.erase(key_hash);
     } else {
       queue->pop_front();

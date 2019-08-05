@@ -211,9 +211,15 @@ developers should use the
 
 ### Linux
 
-Embedded Linux is an important platform for deploying machine learning. We
-provide build instructions for both [Raspberry Pi](build_rpi.md) and
-[Arm64-based boards](build_arm64.md) such as Odroid C2, Pine64, and NanoPi.
+Embedded Linux is an important platform for deploying machine learning. To get
+started using Python to perform inference with your TensorFlow Lite models,
+follow the [Python quickstart](python.md).
+
+To instead install the C++ library, see the
+build instructions for [Raspberry Pi](build_rpi.md) or
+[Arm64-based boards](build_arm64.md) (for boards such as Odroid C2, Pine64, and
+NanoPi).
+
 
 ### Microcontrollers
 
@@ -266,10 +272,15 @@ following Python code quantizes a `SavedModel` and saves it to disk:
 import tensorflow as tf
 
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-converter.optimizations = [tf.lite.Optimize.OPTIMIZE_FOR_SIZE]
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
 tflite_quant_model = converter.convert()
 open("converted_model.tflite", "wb").write(tflite_quantized_model)
 ```
+
+TensorFlow Lite supports reducing precision of values from full floating point
+to half-precision floats (float16) or 8-bit integers. There are trade-offs in
+model size and accuracy for each choice, and some operations have optimized
+implementations for these reduced precision types.
 
 To learn more about quantization, see
 [Post-training quantization](../performance/post_training_quantization.md).
@@ -289,5 +300,8 @@ resources:
 
 *   If you're a mobile developer, visit [Android quickstart](android.md) or
     [iOS quickstart](ios.md).
+*   If you're building Linux embedded devices, see the [Python quickstart](
+    python.md) or C++ build instructions for [Raspberry Pi](build_rpi.md) and
+    [Arm64-based boards](build_arm64.md).
 *   Explore our [pre-trained models](../models).
 *   Try our [example apps](https://www.tensorflow.org/lite/examples).

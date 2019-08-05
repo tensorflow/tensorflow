@@ -89,8 +89,7 @@ std::vector<Tensor> ConvertToTensorVec(std::vector<T> values) {
   std::vector<Tensor> tensors;
   tensors.reserve(values.size());
   for (auto &value : values) {
-    tensors.emplace_back(
-        DatasetOpsTestBase::CreateTensor<T>(TensorShape({1}), {value}));
+    tensors.emplace_back(CreateTensor<T>(TensorShape({1}), {value}));
   }
   return tensors;
 }
@@ -107,105 +106,105 @@ FunctionDefHelper::AttrValueWrapper MakeTensorSliceDatasetFunc(
 // test case 1: cycle_length = 1, block_length = 1, num_parallel_calls = 1,
 // sloppy = false
 TestCase TestCase1() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
-          /*func*/
-          MakeTensorSliceDatasetFunc(
-              DataTypeVector({DT_INT64}),
-              std::vector<PartialTensorShape>({PartialTensorShape({1})})),
-          /*func_lib*/ {test::function::MakeTensorSliceDataset()},
-          /*cycle_length*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-          /*block_length*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-          /*num_parallel_calls*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-          /*sloppy*/ false,
-          /*expected_outputs*/
-          ConvertToTensorVec<int64>({0, 1, 2, 3, 4, 5, 6, 7, 8}),
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
-          /*breakpoints*/ {0, 4, 11}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*func*/
+      MakeTensorSliceDatasetFunc(
+          DataTypeVector({DT_INT64}),
+          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+      /*func_lib*/ {test::function::MakeTensorSliceDataset()},
+      /*cycle_length*/
+      CreateTensor<int64>(TensorShape({}), {1}),
+      /*block_length*/
+      CreateTensor<int64>(TensorShape({}), {1}),
+      /*num_parallel_calls*/
+      CreateTensor<int64>(TensorShape({}), {1}),
+      /*sloppy*/ false,
+      /*expected_outputs*/
+      ConvertToTensorVec<int64>({0, 1, 2, 3, 4, 5, 6, 7, 8}),
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
+      /*breakpoints*/ {0, 4, 11}};
 }
 
 // test case 2: cycle_length = 2, block_length = 1, num_parallel_calls = 2,
 // sloppy = false
 TestCase TestCase2() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
-          /*func*/
-          MakeTensorSliceDatasetFunc(
-              DataTypeVector({DT_INT64}),
-              std::vector<PartialTensorShape>({PartialTensorShape({1})})),
-          /*func_lib*/ {test::function::MakeTensorSliceDataset()},
-          /*cycle_length*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-          /*block_length*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-          /*num_parallel_calls*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-          /*sloppy*/ false,
-          /*expected_outputs*/
-          ConvertToTensorVec<int64>({0, 3, 1, 4, 2, 5, 6, 7, 8}),
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
-          /*breakpoints*/ {0, 4, 11}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*func*/
+      MakeTensorSliceDatasetFunc(
+          DataTypeVector({DT_INT64}),
+          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+      /*func_lib*/ {test::function::MakeTensorSliceDataset()},
+      /*cycle_length*/
+      CreateTensor<int64>(TensorShape({}), {2}),
+      /*block_length*/
+      CreateTensor<int64>(TensorShape({}), {1}),
+      /*num_parallel_calls*/
+      CreateTensor<int64>(TensorShape({}), {2}),
+      /*sloppy*/ false,
+      /*expected_outputs*/
+      ConvertToTensorVec<int64>({0, 3, 1, 4, 2, 5, 6, 7, 8}),
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
+      /*breakpoints*/ {0, 4, 11}};
 }
 
 // test case 3: cycle_length = 3, block_length = 1, num_parallel_calls = 2,
 // sloppy = true
 TestCase TestCase3() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
-          /*func*/
-          MakeTensorSliceDatasetFunc(
-              DataTypeVector({DT_INT64}),
-              std::vector<PartialTensorShape>({PartialTensorShape({1})})),
-          /*func_lib*/ {test::function::MakeTensorSliceDataset()},
-          /*cycle_length*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
-          /*block_length*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-          /*num_parallel_calls*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-          /*sloppy*/ true,
-          /*expected_outputs*/
-          ConvertToTensorVec<int64>({0, 3, 6, 1, 4, 7, 2, 5, 8}),
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
-          /*breakpoints*/ {0, 4, 11}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*func*/
+      MakeTensorSliceDatasetFunc(
+          DataTypeVector({DT_INT64}),
+          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+      /*func_lib*/ {test::function::MakeTensorSliceDataset()},
+      /*cycle_length*/
+      CreateTensor<int64>(TensorShape({}), {3}),
+      /*block_length*/
+      CreateTensor<int64>(TensorShape({}), {1}),
+      /*num_parallel_calls*/
+      CreateTensor<int64>(TensorShape({}), {2}),
+      /*sloppy*/ true,
+      /*expected_outputs*/
+      ConvertToTensorVec<int64>({0, 3, 6, 1, 4, 7, 2, 5, 8}),
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
+      /*breakpoints*/ {0, 4, 11}};
 }
 
 // test case 4: cycle_length = 5, block_length = 1, num_parallel_calls = 4,
 // sloppy = true
 TestCase TestCase4() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
-          /*func*/
-          MakeTensorSliceDatasetFunc(
-              DataTypeVector({DT_INT64}),
-              std::vector<PartialTensorShape>({PartialTensorShape({1})})),
-          /*func_lib*/ {test::function::MakeTensorSliceDataset()},
-          /*cycle_length*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
-          /*block_length*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-          /*num_parallel_calls*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
-          /*sloppy*/ true,
-          /*expected_outputs*/
-          ConvertToTensorVec<int64>({0, 3, 6, 1, 4, 7, 2, 5, 8}),
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
-          /*breakpoints*/ {0, 4, 11}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*func*/
+      MakeTensorSliceDatasetFunc(
+          DataTypeVector({DT_INT64}),
+          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+      /*func_lib*/ {test::function::MakeTensorSliceDataset()},
+      /*cycle_length*/
+      CreateTensor<int64>(TensorShape({}), {5}),
+      /*block_length*/
+      CreateTensor<int64>(TensorShape({}), {1}),
+      /*num_parallel_calls*/
+      CreateTensor<int64>(TensorShape({}), {4}),
+      /*sloppy*/ true,
+      /*expected_outputs*/
+      ConvertToTensorVec<int64>({0, 3, 6, 1, 4, 7, 2, 5, 8}),
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
+      /*breakpoints*/ {0, 4, 11}};
 }
 
 // test case 5: cycle_length = 2, block_length = 2, num_parallel_calls = 1,
@@ -213,19 +212,19 @@ TestCase TestCase4() {
 TestCase TestCase5() {
   return {
       /*input_tensors*/
-      {DatasetOpsTestBase::CreateTensor<string>(
-          TensorShape{3, 3, 1}, {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
+      {CreateTensor<string>(TensorShape{3, 3, 1},
+                            {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
       /*func*/
       MakeTensorSliceDatasetFunc(
           DataTypeVector({DT_STRING}),
           std::vector<PartialTensorShape>({PartialTensorShape({1})})),
       /*func_lib*/ {test::function::MakeTensorSliceDataset()},
       /*cycle_length*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
+      CreateTensor<int64>(TensorShape({}), {2}),
       /*block_length*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
+      CreateTensor<int64>(TensorShape({}), {2}),
       /*num_parallel_calls*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
+      CreateTensor<int64>(TensorShape({}), {1}),
       /*sloppy*/ false,
       /*expected_outputs*/
       ConvertToTensorVec<string>({"a", "b", "d", "e", "c", "f", "g", "h", "i"}),
@@ -240,19 +239,19 @@ TestCase TestCase5() {
 TestCase TestCase6() {
   return {
       /*input_tensors*/
-      {DatasetOpsTestBase::CreateTensor<string>(
-          TensorShape{3, 3, 1}, {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
+      {CreateTensor<string>(TensorShape{3, 3, 1},
+                            {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
       /*func*/
       MakeTensorSliceDatasetFunc(
           DataTypeVector({DT_STRING}),
           std::vector<PartialTensorShape>({PartialTensorShape({1})})),
       /*func_lib*/ {test::function::MakeTensorSliceDataset()},
       /*cycle_length*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
+      CreateTensor<int64>(TensorShape({}), {2}),
       /*block_length*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
+      CreateTensor<int64>(TensorShape({}), {3}),
       /*num_parallel_calls*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
+      CreateTensor<int64>(TensorShape({}), {2}),
       /*sloppy*/ true,
       /*expected_outputs*/
       ConvertToTensorVec<string>({"a", "b", "c", "d", "e", "f", "g", "h", "i"}),
@@ -267,19 +266,19 @@ TestCase TestCase6() {
 TestCase TestCase7() {
   return {
       /*input_tensors*/
-      {DatasetOpsTestBase::CreateTensor<string>(
-          TensorShape{3, 3, 1}, {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
+      {CreateTensor<string>(TensorShape{3, 3, 1},
+                            {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
       /*func*/
       MakeTensorSliceDatasetFunc(
           DataTypeVector({DT_STRING}),
           std::vector<PartialTensorShape>({PartialTensorShape({1})})),
       /*func_lib*/ {test::function::MakeTensorSliceDataset()},
       /*cycle_length*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
+      CreateTensor<int64>(TensorShape({}), {3}),
       /*block_length*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
+      CreateTensor<int64>(TensorShape({}), {2}),
       /*num_parallel_calls*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
+      CreateTensor<int64>(TensorShape({}), {2}),
       /*sloppy*/ false,
       /*expected_outputs*/
       ConvertToTensorVec<string>({"a", "b", "d", "e", "g", "h", "c", "f", "i"}),
@@ -294,19 +293,19 @@ TestCase TestCase7() {
 TestCase TestCase8() {
   return {
       /*input_tensors*/
-      {DatasetOpsTestBase::CreateTensor<string>(
-          TensorShape{3, 3, 1}, {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
+      {CreateTensor<string>(TensorShape{3, 3, 1},
+                            {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
       /*func*/
       MakeTensorSliceDatasetFunc(
           DataTypeVector({DT_STRING}),
           std::vector<PartialTensorShape>({PartialTensorShape({1})})),
       /*func_lib*/ {test::function::MakeTensorSliceDataset()},
       /*cycle_length*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
+      CreateTensor<int64>(TensorShape({}), {3}),
       /*block_length*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
+      CreateTensor<int64>(TensorShape({}), {3}),
       /*num_parallel_calls*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
+      CreateTensor<int64>(TensorShape({}), {3}),
       /*sloppy*/ true,
       /*expected_outputs*/
       ConvertToTensorVec<string>({"a", "b", "c", "d", "e", "f", "g", "h", "i"}),
@@ -321,19 +320,19 @@ TestCase TestCase8() {
 TestCase TestCase9() {
   return {
       /*input_tensors*/
-      {DatasetOpsTestBase::CreateTensor<string>(
-          TensorShape{3, 3, 1}, {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
+      {CreateTensor<string>(TensorShape{3, 3, 1},
+                            {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
       /*func*/
       MakeTensorSliceDatasetFunc(
           DataTypeVector({DT_STRING}),
           std::vector<PartialTensorShape>({PartialTensorShape({1})})),
       /*func_lib*/ {test::function::MakeTensorSliceDataset()},
       /*cycle_length*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
+      CreateTensor<int64>(TensorShape({}), {4}),
       /*block_length*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
+      CreateTensor<int64>(TensorShape({}), {4}),
       /*num_parallel_calls*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
+      CreateTensor<int64>(TensorShape({}), {4}),
       /*sloppy*/ true,
       /*expected_outputs*/
       ConvertToTensorVec<string>({"a", "b", "c", "d", "e", "f", "g", "h", "i"}),
@@ -348,20 +347,19 @@ TestCase TestCase9() {
 TestCase TestCase10() {
   return {
       /*input_tensors*/
-      {DatasetOpsTestBase::CreateTensor<string>(
-          TensorShape{3, 3, 1}, {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
+      {CreateTensor<string>(TensorShape{3, 3, 1},
+                            {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
       /*func*/
       MakeTensorSliceDatasetFunc(
           DataTypeVector({DT_STRING}),
           std::vector<PartialTensorShape>({PartialTensorShape({1})})),
       /*func_lib*/ {test::function::MakeTensorSliceDataset()},
       /*cycle_length*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
+      CreateTensor<int64>(TensorShape({}), {4}),
       /*block_length*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
+      CreateTensor<int64>(TensorShape({}), {4}),
       /*num_parallel_calls*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}),
-                                              {model::kAutotune}),
+      CreateTensor<int64>(TensorShape({}), {model::kAutotune}),
       /*sloppy*/ true,
       /*expected_outputs*/
       ConvertToTensorVec<string>({"a", "b", "c", "d", "e", "f", "g", "h", "i"}),
@@ -374,79 +372,79 @@ TestCase TestCase10() {
 // test case 11: cycle_length = 0, block_length = 1, num_parallel_calls = 2,
 // sloppy = true
 TestCase InvalidCycleLengthTestCase() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
-          /*func*/
-          MakeTensorSliceDatasetFunc(
-              DataTypeVector({DT_INT64}),
-              std::vector<PartialTensorShape>({PartialTensorShape({1})})),
-          /*func_lib*/ {test::function::MakeTensorSliceDataset()},
-          /*cycle_length*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-          /*block_length*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-          /*num_parallel_calls*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-          /*sloppy*/ true,
-          /*expected_outputs*/
-          ConvertToTensorVec<int64>({}),
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
-          /*breakpoints*/ {}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*func*/
+      MakeTensorSliceDatasetFunc(
+          DataTypeVector({DT_INT64}),
+          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+      /*func_lib*/ {test::function::MakeTensorSliceDataset()},
+      /*cycle_length*/
+      CreateTensor<int64>(TensorShape({}), {0}),
+      /*block_length*/
+      CreateTensor<int64>(TensorShape({}), {1}),
+      /*num_parallel_calls*/
+      CreateTensor<int64>(TensorShape({}), {2}),
+      /*sloppy*/ true,
+      /*expected_outputs*/
+      ConvertToTensorVec<int64>({}),
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
+      /*breakpoints*/ {}};
 }
 
 // test case 12: cycle_length = 1, block_length = -1, num_parallel_calls = 2,
 // sloppy = true
 TestCase InvalidBlockLengthTestCase() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
-          /*func*/
-          MakeTensorSliceDatasetFunc(
-              DataTypeVector({DT_INT64}),
-              std::vector<PartialTensorShape>({PartialTensorShape({1})})),
-          /*func_lib*/ {test::function::MakeTensorSliceDataset()},
-          /*cycle_length*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-          /*block_length*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {-1}),
-          /*num_parallel_calls*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-          /*sloppy*/ true,
-          /*expected_outputs*/
-          ConvertToTensorVec<int64>({}),
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
-          /*breakpoints*/ {}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*func*/
+      MakeTensorSliceDatasetFunc(
+          DataTypeVector({DT_INT64}),
+          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+      /*func_lib*/ {test::function::MakeTensorSliceDataset()},
+      /*cycle_length*/
+      CreateTensor<int64>(TensorShape({}), {1}),
+      /*block_length*/
+      CreateTensor<int64>(TensorShape({}), {-1}),
+      /*num_parallel_calls*/
+      CreateTensor<int64>(TensorShape({}), {2}),
+      /*sloppy*/ true,
+      /*expected_outputs*/
+      ConvertToTensorVec<int64>({}),
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
+      /*breakpoints*/ {}};
 }
 
 // test case 13: cycle_length = 1, block_length = 1, num_parallel_calls = -5,
 // sloppy = true
 TestCase InvalidNumParallelCallsTestCase() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
-          /*func*/
-          MakeTensorSliceDatasetFunc(
-              DataTypeVector({DT_INT64}),
-              std::vector<PartialTensorShape>({PartialTensorShape({1})})),
-          /*func_lib*/ {test::function::MakeTensorSliceDataset()},
-          /*cycle_length*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-          /*block_length*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-          /*num_parallel_calls*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {-5}),
-          /*sloppy*/ true,
-          /*expected_outputs*/
-          ConvertToTensorVec<int64>({}),
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
-          /*breakpoints*/ {}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*func*/
+      MakeTensorSliceDatasetFunc(
+          DataTypeVector({DT_INT64}),
+          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+      /*func_lib*/ {test::function::MakeTensorSliceDataset()},
+      /*cycle_length*/
+      CreateTensor<int64>(TensorShape({}), {1}),
+      /*block_length*/
+      CreateTensor<int64>(TensorShape({}), {1}),
+      /*num_parallel_calls*/
+      CreateTensor<int64>(TensorShape({}), {-5}),
+      /*sloppy*/ true,
+      /*expected_outputs*/
+      ConvertToTensorVec<int64>({}),
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ tensorflow::data::kUnknownCardinality,
+      /*breakpoints*/ {}};
 }
 
 class ParameterizedParallelInterleaveDatasetOpTest

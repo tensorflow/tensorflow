@@ -366,7 +366,7 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
     incscore = _run_with_mock(classifier_metrics.inception_score, unused_image)
 
     with self.cached_session(use_gpu=True) as sess:
-      incscore_np = sess.run(incscore, {'concat:0': logits})
+      incscore_np = sess.run(incscore, {'concat/concat:0': logits})
 
     self.assertAllClose(_expected_inception_score(logits), incscore_np)
 

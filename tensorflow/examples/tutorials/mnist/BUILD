@@ -1,7 +1,7 @@
 # Description:
 # Example TensorFlow models for MNIST used in tutorials
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -94,17 +94,22 @@ py_binary(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "fully_connected_feed_test",
-    size = "medium",
     srcs = [
         "fully_connected_feed.py",
+    ],
+    additional_deps = [
+        ":input_data",
+        ":mnist",
+        "//tensorflow:tensorflow_py",
     ],
     args = [
         "--fake_data",
         "--max_steps=10",
     ],
     main = "fully_connected_feed.py",
+<<<<<<< HEAD
     python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
@@ -113,13 +118,20 @@ py_test(
         "//tensorflow:tensorflow_py",
     ],
     tags = ["no_rocm_v2"],
+=======
+    tags = ["no_pip"],
+>>>>>>> upstream/master
 )
 
-py_test(
+tf_py_test(
     name = "mnist_with_summaries_test",
     size = "small",
     srcs = [
         "mnist_with_summaries.py",
+    ],
+    additional_deps = [
+        ":input_data",
+        "//tensorflow:tensorflow_py",
     ],
     args = [
         "--fake_data",
@@ -127,6 +139,7 @@ py_test(
         "--learning_rate=0.00",
     ],
     main = "mnist_with_summaries.py",
+<<<<<<< HEAD
     python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
@@ -136,5 +149,10 @@ py_test(
     deps = [
         ":input_data",
         "//tensorflow:tensorflow_py",
+=======
+    tags = [
+        "no_pip",
+        "notsan",  # http://b/29184009
+>>>>>>> upstream/master
     ],
 )

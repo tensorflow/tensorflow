@@ -73,9 +73,13 @@ using llvm::isa_and_nonnull;
 
 // Containers.
 using llvm::ArrayRef;
-using llvm::DenseMap;
 using llvm::DenseMapInfo;
-using llvm::DenseSet;
+template <typename KeyT, typename ValueT,
+          typename KeyInfoT = DenseMapInfo<KeyT>,
+          typename BucketT = llvm::detail::DenseMapPair<KeyT, ValueT>>
+using DenseMap = llvm::DenseMap<KeyT, ValueT, KeyInfoT, BucketT>;
+template <typename ValueT, typename ValueInfoT = DenseMapInfo<ValueT>>
+using DenseSet = llvm::DenseSet<ValueT, ValueInfoT>;
 using llvm::MutableArrayRef;
 using llvm::None;
 using llvm::Optional;

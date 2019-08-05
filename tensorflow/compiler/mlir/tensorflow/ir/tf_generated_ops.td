@@ -123,6 +123,32 @@ def TF_AddV2Op : TF_Op<"AddV2", [Broadcastable, Commutative, NoSideEffect]>,
   let hasCanonicalizer = 1;
 }
 
+def TF_AnyOp : TF_Op<"Any", [NoSideEffect]> {
+  let summary = [{
+Computes the "logical or" of elements across dimensions of a tensor.
+  }];
+
+  let description = [{
+Reduces `input` along the dimensions given in `axis`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`axis`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+  }];
+
+  let arguments = (ins
+    I1Tensor:$input,
+    TF_I32OrI64Tensor:$reduction_indices,
+
+    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+  );
+
+  let results = (outs
+    I1Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_ArgMaxOp : TF_Op<"ArgMax", [NoSideEffect]> {
   let summary = [{
 Returns the index with the largest value across dimensions of a tensor.
@@ -136,7 +162,7 @@ Usage:
   import tensorflow as tf
   a = [1, 10, 26.9, 2.8, 166.32, 62.3]
   b = tf.math.argmax(input = a)
-  c = tf.keras.backend.eval(b)  
+  c = tf.keras.backend.eval(b)
   # c = 4
   # here a[4] = 166.32 which is the largest element of a across axis 0
   ```
@@ -169,7 +195,7 @@ Usage:
   import tensorflow as tf
   a = [1, 10, 26.9, 2.8, 166.32, 62.3]
   b = tf.math.argmin(input = a)
-  c = tf.keras.backend.eval(b)  
+  c = tf.keras.backend.eval(b)
   # c = 0
   # here a[0] = 1 which is the smallest element of a across axis 0
   ```
@@ -1000,7 +1026,7 @@ Gather slices from `params` into a Tensor with shape specified by `indices`.
   }];
 
   let description = [{
-`indices` is an K-dimensional integer tensor, best thought of as a
+`indices` is a K-dimensional integer tensor, best thought of as a
 (K-1)-dimensional tensor of indices into `params`, where each element defines a
 slice of `params`:
 
@@ -1279,8 +1305,10 @@ for dtype in dtype_list:
                                       input_tensor, bitwise_ops.invert(input_tensor)),
                                     bitwise_ops.invert(
                                       tf.constant(0, dtype=dtype))]
+
   expected = tf.constant([0, 0, 0, 0], dtype=tf.float32)
   tf.assert_equal(tf.cast(not_a_and_a, tf.float32), expected)
+
   expected = tf.cast([not_0] * 4, tf.float32)
   tf.assert_equal(tf.cast(not_a_or_a, tf.float32), expected)
 
@@ -2455,6 +2483,29 @@ Input images can be of different types but output images are always float.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ResizeNearestNeighborOp : TF_Op<"ResizeNearestNeighbor", [NoSideEffect]> {
+  let summary = [{
+Resize `images` to `size` using nearest neighbor interpolation.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32, F64, I16, I32, I64, I8]>:$images,
+    I32Tensor:$size,
+
+    DefaultValuedAttr<BoolAttr, "false">:$align_corners,
+    DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64, I16, I32, I64, I8]>:$resized_images
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ReverseSequenceOp : TF_Op<"ReverseSequence", [NoSideEffect]> {
   let summary = "Reverses variable length slices.";
 
@@ -2594,6 +2645,27 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_RoundOp : TF_Op<"Round", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+Rounds the values of a tensor to the nearest integer, element-wise.
+  }];
+
+  let description = [{
+Rounds half to even.  Also known as bankers rounding. If you want to round
+according to the current system rounding mode use std::cint.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_RsqrtOp : TF_Op<"Rsqrt", [NoSideEffect, SameOperandsAndResultType]> {
@@ -2847,6 +2919,71 @@ with the following options:
   "NCHW": `[ batch, channels, height, width ]`
   "NCHW_VECT_C":
       `qint8 [ batch, channels / 4, height, width, 4 ]`
+
+It is useful to consider the operation as transforming a 6-D Tensor.
+e.g. for data_format = NHWC,
+     Each element in the input tensor can be specified via 6 coordinates,
+     ordered by decreasing memory layout significance as:
+     n,oY,bY,oX,bX,iC  (where n=batch index, oX, oY means X or Y coordinates
+                        within the output image, bX, bY means coordinates
+                        within the input block, iC means input channels).
+     The output would be a transpose to the following layout:
+     n,oY,oX,bY,bX,iC
+
+This operation is useful for resizing the activations between convolutions
+(but keeping all data), e.g. instead of pooling. It is also useful for training
+purely convolutional models.
+
+For example, given an input of shape `[1, 2, 2, 1]`, data_format = "NHWC" and
+block_size = 2:
+
+```
+x = [[[[1], [2]],
+      [[3], [4]]]]
+```
+
+This operation will output a tensor of shape `[1, 1, 1, 4]`:
+
+```
+[[[[1, 2, 3, 4]]]]
+```
+
+Here, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,
+the corresponding output will have a single element (i.e. width and height are
+both 1) and will have a depth of 4 channels (1 * block_size * block_size).
+The output element shape is `[1, 1, 4]`.
+
+For an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.
+
+```
+x = [[[[1, 2, 3], [4, 5, 6]],
+      [[7, 8, 9], [10, 11, 12]]]]
+```
+
+This operation, for block_size of 2, will return the following tensor of shape
+`[1, 1, 1, 12]`
+
+```
+[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
+```
+
+Similarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:
+
+```
+x = [[[[1],   [2],  [5],  [6]],
+      [[3],   [4],  [7],  [8]],
+      [[9],  [10], [13],  [14]],
+      [[11], [12], [15],  [16]]]]
+```
+
+the operator will return the following tensor of shape `[1 2 2 4]`:
+
+```
+x = [[[[1, 2, 3, 4],
+       [5, 6, 7, 8]],
+      [[9, 10, 11, 12],
+       [13, 14, 15, 16]]]]
+```
   }];
 
   let arguments = (ins
@@ -3232,6 +3369,31 @@ def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   );
 
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_TensorListPushBackOp : TF_Op<"TensorListPushBack", [NoSideEffect]> {
+  let summary = [{
+Returns a list which has the passed-in `Tensor` as last element and the other elements of the given list in `input_handle`.
+  }];
+
+  let description = [{
+tensor: The tensor to put on the list.
+input_handle: The old list.
+output_handle: A list with the elements of the old list followed by tensor.
+element_dtype: the type of elements in the list.
+element_shape: a shape compatible with that of elements in the list.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    TF_Tensor:$tensor
+  );
+
+  let results = (outs
+    TF_VariantTensor:$output_handle
+  );
+
+  TF_DerivedOperandTypeAttr element_dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [NoSideEffect]> {

@@ -223,6 +223,7 @@ StatusOr<std::unique_ptr<HloInstruction>> TryRewriteToCudnnForwardRelu(
   }
   auto new_conv = computation->AddInstruction(HloInstruction::CreateCustomCall(
       conv->shape(), args, kCudnnConvBiasActivationForwardCallTarget));
+  new_conv->set_feature_group_count(conv->feature_group_count());
   new_conv->set_window(conv->window());
   new_conv->set_convolution_dimension_numbers(
       conv->convolution_dimension_numbers());

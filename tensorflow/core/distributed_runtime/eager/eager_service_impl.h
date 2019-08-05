@@ -79,6 +79,10 @@ class EagerServiceImpl {
   Status CreateContext(const CreateContextRequest* request,
                        CreateContextResponse* response);
 
+  // Create a ServerContext for master eager context.
+  Status CreateMasterContext(const tensorflow::uint64 context_id,
+                             EagerContext* context);
+
   Status Enqueue(const EnqueueRequest* request, EnqueueResponse* response);
 
   Status WaitQueueDone(const WaitQueueDoneRequest* request,
@@ -102,16 +106,28 @@ class EagerServiceImpl {
   // and the EagerContext).
   class ServerContext : public core::RefCounted {
    public:
+    // Create a ServerContext for local master.
+    static ServerContext* CreateMasterContext(tensorflow::EagerContext* ctx,
+                                              const WorkerEnv* env) {
+      return new ServerContext(ctx, -1, env, /* is_master= */ true);
+    }
+
     explicit ServerContext(tensorflow::EagerContext* ctx,
-                           int64 destroy_after_secs, const WorkerEnv* env)
-        : ctx_(ctx), env_(env) {
+                           int64 destroy_after_secs, const WorkerEnv* env,
+                           const bool is_master = false)
+        : ctx_(ctx), env_(env), is_master_(is_master) {
+      ctx->Ref();
       destroy_after_micros_ =
           destroy_after_secs * tensorflow::EnvTime::kSecondsToMicros;
       RecordAccess();
     }
+
     ~ServerContext() {
-      ctx_->WaitForAndCloseRemoteContexts();
-      // ctx_->RefCountIsOne() should be true here.
+      // TFE_Context is responsible for shutting down master eager context.
+      if (!is_master_) {
+        ctx_->WaitForAndCloseRemoteContexts();
+      }
+      // ctx_->RefCountIsOne() should be true here when is_master_ = false.
       // TODO(iga): Remove EagerContext refcounting.
       ctx_->Unref();
     }
@@ -139,12 +155,14 @@ class EagerServiceImpl {
     mutex last_accessed_mu_;
     int64 last_accessed_micros_ GUARDED_BY(last_accessed_mu_);
     int64 destroy_after_micros_;
+
+    const bool is_master_;
   };
   // The returned ServerContext will need to be Unrefed.
   tensorflow::Status GetServerContext(uint64, ServerContext**);
 
  private:
-  Status ExecuteOp(const Operation& operation, ServerContext* server_context,
+  Status ExecuteOp(const Operation& operation, EagerContext* eager_context,
                    QueueResponse* queue_response);
   const WorkerEnv* const env_;  // Not owned.
 

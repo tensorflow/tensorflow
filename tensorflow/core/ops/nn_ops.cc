@@ -1652,6 +1652,25 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_MklEagerConv2D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: {bfloat16, float}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
+    .Doc(R"doc(
+    MKL version of Conv2D operator for Eager mode. Uses MKL DNN APIs to perform 2D convolution.
+
+    NOTE Do not invoke this operator directly in Python. Eager Op rewrite is
+    expected to invoke these operators.
+    )doc");
+
 REGISTER_OP("__MklDummyConv2DWithBias")
     .Input("input: T")
     .Input("filter: T")

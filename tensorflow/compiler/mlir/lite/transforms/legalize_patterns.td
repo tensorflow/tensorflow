@@ -135,7 +135,10 @@ def : Pat<(TF_ReverseSequenceOp $input, $seq_lengths, $seq_dim, $batch_dim),
           (TFL_ReverseSequenceOp $input, $seq_lengths,
            (convertIntAttrTo32Bit $seq_dim),
            (convertIntAttrTo32Bit $batch_dim))>;
+def : Pat<(TF_RoundOp $arg), (TFL_RoundOp $arg)>;
 def : Pat<(TF_RsqrtOp $arg), (TFL_RsqrtOp $arg)>;
+def : Pat<(TF_SqrtOp $arg), (TFL_SqrtOp $arg)>;
+def : Pat<(TF_SquareOp $arg), (TFL_SquareOp $arg)>;
 // TODO(jpienaar): this is not true for all selects, TF's select supports rank 0
 // condition
 def : Pat<(TF_SelectOp $cond, $x, $y), (TFL_SelectOp $cond, $x, $y)>;
@@ -266,6 +269,9 @@ def : Pat<(TF_MaxOp $arg0, $arg1, BoolAttr:$arg2), (TFL_ReduceMaxOp $arg0, $arg1
 
 def : Pat<(TF_ProdOp $arg0, $arg1, BoolAttr:$arg2), (TFL_ReduceProdOp $arg0, $arg1, $arg2)>;
 
+def : Pat<(TF_AnyOp $input, $reduction_indices, $keep_dims),
+          (TFL_ReduceAnyOp $input, $reduction_indices, $keep_dims)>;
+
 def : Pat<(TF_CastOp $arg0, BoolAttr:$arg1), (TFL_CastOp $arg0)>;
 
 def : Pat<(TF_BatchToSpaceNDOp $input, $block_shape, $crops), (TFL_BatchToSpaceNdOp $input, $block_shape, $crops)>;
@@ -276,6 +282,7 @@ def : Pat<(TF_SpaceToDepthOp $input, $block_size, IsDataFormatNHWC:$data_format)
           (TFL_SpaceToDepthOp $input, (convertIntAttrTo32Bit $block_size))>;
 
 def : Pat<(TF_ResizeBilinearOp $images, $size, $align_corners, ConstBoolAttrFalse:$half_pixel_centers), (TFL_ResizeBilinearOp $images, $size, $align_corners)>;
+def : Pat<(TF_ResizeNearestNeighborOp $images, $size, $align_corners, ConstBoolAttrFalse:$half_pixel_centers), (TFL_ResizeNearestNeighborOp $images, $size, $align_corners)>;
 
 def : Pat<(TF_MirrorPadOp $arg0, $arg1, $cst), (TFL_MirrorPadOp $arg0, $arg1, $cst)>;
 

@@ -377,6 +377,9 @@ void BenchmarkTfLiteModel::ResetInputsAndOutputs() {
     if (t->type == kTfLiteFloat32) {
       std::memcpy(interpreter_->typed_tensor<float>(i), inputs_data_[j].data.f,
                   inputs_data_[j].bytes);
+    } else if (t->type == kTfLiteInt64) {
+      std::memcpy(interpreter_->typed_tensor<int64_t>(i),
+                  inputs_data_[j].data.i64, inputs_data_[j].bytes);
     } else if (t->type == kTfLiteInt32) {
       std::memcpy(interpreter_->typed_tensor<int32_t>(i),
                   inputs_data_[j].data.i32, inputs_data_[j].bytes);

@@ -42,6 +42,19 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  def test_float64_SimpleRNN(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        keras.layers.SimpleRNN,
+        kwargs={'units': units,
+                'return_sequences': True,
+                'dtype': 'float64'},
+        input_shape=(num_samples, timesteps, embedding_dim),
+        input_dtype='float64')
+
   def test_dynamic_behavior_SimpleRNN(self):
     num_samples = 2
     timesteps = 3
@@ -159,7 +172,7 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
         optimizer=gradient_descent.GradientDescentOptimizer(0.01),
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 

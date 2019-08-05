@@ -825,3 +825,6 @@ def tf_additional_numa_copts():
             "-DTENSORFLOW_USE_NUMA",
         ],
     })
+
+def tf_additional_rpc_deps():
+    return []

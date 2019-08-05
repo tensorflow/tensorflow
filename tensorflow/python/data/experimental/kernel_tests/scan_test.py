@@ -31,6 +31,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -159,6 +160,9 @@ class ScanTest(test_base.DatasetTestBase):
       # Python nesting error
       # Possible commit fix: 2ad44d39d8f8c4df5f507b255c6da00bcfa96dfc
       self.skipTest("Disabling due to python nesting errors with cuda and rocm")
+
+    if control_flow_v2_toggles.control_flow_v2_enabled():
+      self.skipTest("v1 only test")
 
     empty_ta = tensor_array_ops.TensorArray(
         size=0, element_shape=[], dtype=dtypes.int64, dynamic_size=True)

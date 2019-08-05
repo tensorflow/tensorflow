@@ -219,7 +219,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version */ 1,
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_MUL, Register_MUL(), /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2_NORMALIZATION(),
              /* min_version */ 1,
              /* max_version */ 2);
@@ -251,7 +251,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE(),
              /* min_version */ 1,
              /* max_version */ 3);

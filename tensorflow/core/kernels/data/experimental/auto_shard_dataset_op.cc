@@ -63,14 +63,14 @@ RewriterConfig AutoShardDatasetOp::CreateConfig(int64 num_workers,
                                                 int64 index) {
   RewriterConfig rewriter_config;
   rewriter_config.set_fail_on_optimizer_errors(true);
-  rewriter_config.add_optimizers(kOptimizerName);
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
+
+  rewriter_config.add_optimizers(kOptimizerName);
   auto custom_optimizer = rewriter_config.add_custom_optimizers();
   custom_optimizer->set_name(kOptimizerName);
   AttrValue num_workers_attr;
   num_workers_attr.set_i(num_workers);
   (*custom_optimizer->mutable_parameter_map())[kNumWorkers] = num_workers_attr;
-
   AttrValue index_attr;
   index_attr.set_i(index);
   (*custom_optimizer->mutable_parameter_map())[kIndex] = index_attr;

@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
@@ -42,6 +41,7 @@ from tensorflow.python.tpu import tpu_function
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable("TPUReplicatedInput")
@@ -105,6 +105,32 @@ def initialize_system(embedding_config=None, job=None):
                    embedding_config.SerializeToString())
   with ops.device(_tpu_system_device_name(job)):
     return tpu_ops.configure_distributed_tpu(embedding_config=config_string)
+
+
+def initialize_system_for_tpu_embedding(embedding_config, job=None):
+  """Initializes a distributed TPU Embedding system for use with TensorFlow.
+
+  The following two are equivalent:
+  1. initialize_system() with embedding_config.
+  2. initialize_system() without embedding_config, then
+     initialize_system_for_tpu_embedding().
+  initialize_system() should not be called with embedding_config if
+  initialize_system_for_tpu_embedding() is meant to be called later.
+
+  Args:
+    embedding_config: a `TPUEmbeddingConfiguration` proto describing the desired
+      configuration of the hardware embedding lookup tables.
+    job: The job (the XXX in TensorFlow device specification /job:XXX) that
+      contains the TPU devices that will be initialized. If job=None it is
+      assumed there is only one job in the TensorFlow flock, and an error will
+      be returned if this assumption does not hold.
+
+  Returns:
+    A no-op.
+  """
+  config_string = embedding_config.SerializeToString()
+  with ops.device(_tpu_system_device_name(job)):
+    return tpu_ops.configure_tpu_embedding(config=config_string)
 
 
 @tf_export(v1=["tpu.shutdown_system"])
@@ -415,7 +441,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       for index in xrange(len(op.inputs)):
         x = op.inputs[index]
         real_x = self.AddValue(x)
-        if real_x != x:
+        if real_x is not x:
           op._update_input(index, real_x)  # pylint: disable=protected-access
 
     if external_control_inputs:
@@ -1023,7 +1049,7 @@ def _postprocess_flat_outputs(outputs):
   if outputs is None:
     outputs = tuple()
   # If the computation only returned one value, makes it a tuple.
-  if not isinstance(outputs, collections.Sequence):
+  if not isinstance(outputs, collections_abc.Sequence):
     outputs = (outputs,)
 
   # Append `no_op` here so that fetching any return value of this function
@@ -1626,8 +1652,10 @@ def prune_unconnected_ops_from_xla(prune_graph):
   """
   # Scan over the top level graph and all function graphs.
   for graph in [prune_graph] + [
-      f for f in prune_graph._functions.values() if isinstance(f, ops.Graph)  # pylint: disable=protected-access
+      f for f in prune_graph._functions.values()  # pylint: disable=protected-access
   ]:
+    if not isinstance(graph, ops.Graph):
+      continue
     for op in graph.get_operations():
       if op.type not in _UNCONNECTED_OPS_TO_PRUNE:
         continue

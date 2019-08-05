@@ -20,8 +20,10 @@ from __future__ import print_function
 
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import training
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export('keras.experimental.WideDeepModel')
 class WideDeepModel(training.Model):
   r"""Wide & Deep Model for regression and classification problems.
 

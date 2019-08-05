@@ -847,11 +847,6 @@ Status Importer::ConvertFunctionArgAndRets(
     builder_->setInsertionPoint(inst);
     auto* input = builder_->createOperation(state);
     arg_def = input->getResult(arg_nodes[i].index);
-    // Verify on the equivalent TF op would have failed, but catching this
-    // earlier for now as this exposed a bug. TODO(jpienaar): remove post
-    // dialect refactoring.
-    DCHECK(input->getResult(0)->getType() == input->getOperand(0)->getType())
-        << "invalid placeholder_input constructed";
 
     for (auto index = 0; index < inst->getNumResults(); index++) {
       inst->getResult(index)->replaceAllUsesWith(arg_def);
@@ -1055,7 +1050,6 @@ mlir::Operation* Importer::createOperation(
 
   // Create the operation inside the island now.
   mlir::Operation* inner_op = island_builder.createOperation(result);
-  island.setAttrs(inner_op->getAttrList());
 
   // Add the terminator for the island
   mlir::SmallVector<mlir::Value*, 8> ret_vals(inner_op->getResults());
@@ -1193,6 +1187,15 @@ Status Importer::ConvertNode(const Node& node) {
   if (node.IsIfNode()) {
     result.name = mlir::OperationName(get_full_op_name("If"), context_);
     mlir::BoolAttr val = builder_->getBoolAttr(node_type_name == "StatelessIf");
+    result.attributes.push_back(builder_->getNamedAttr("is_stateless", val));
+  }
+
+  // Map While and StatelessWhile op in TensorFlow to the common While op in
+  // MLIR and add the differentiating attribute.
+  if (node.IsWhileNode()) {
+    result.name = mlir::OperationName(get_full_op_name("While"), context_);
+    mlir::BoolAttr val =
+        builder_->getBoolAttr(node_type_name == "StatelessWhile");
     result.attributes.push_back(builder_->getNamedAttr("is_stateless", val));
   }
 
@@ -1365,10 +1368,9 @@ StatusOr<mlir::FunctionType> Importer::InferMainFunctionType(
 
   // Output nodes as function returns.
   for (const auto& ret : *ret_nodes) {
-    if (ret.node->num_outputs() < 1) {
-      return errors::FailedPrecondition(
-          "Invalid output node; should have at least 1 output: " +
-          ret.node->name());
+    if (ret.node->num_outputs() <= ret.index) {
+      return errors::InvalidArgument("Invalid output index ", ret.index,
+                                     " specified for node: ", ret.node->name());
     }
     auto* shape_context = shape_refiner_->GetExtendedContext(ret.node);
     TF_ASSIGN_OR_RETURN(auto type,

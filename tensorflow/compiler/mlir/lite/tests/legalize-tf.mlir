@@ -213,6 +213,20 @@ func @sigmoid(%arg0: tensor<?x88xf16>) -> tensor<?x88xf16> {
 // CHECK:  %0 = "tfl.logistic"(%arg0) : (tensor<?x88xf16>) -> tensor<?x88xf16>
 }
 
+func @sqrt(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Sqrt"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+// CHECK-LABEL: sqrt
+// CHECK:  %0 = "tfl.sqrt"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+}
+
+func @square(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Square"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+// CHECK-LABEL: square
+// CHECK:  %0 = "tfl.square"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+}
+
 func @log_softmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.LogSoftmax"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
   return %0 : tensor<8x16xf32>
@@ -287,6 +301,14 @@ func @abs(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
 
 // CHECK-LABEL:abs
 // CHECK:  %0 = "tfl.abs"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+}
+
+func @any(%arg0: tensor<2x2xi1>, %arg1: tensor<i32>) -> tensor<i1> {
+  %0 = "tf.Any"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+
+// CHECK-LABEL:any
+// CHECK:  %0 = "tfl.reduce_any"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
 }
 
 func @ceil(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
@@ -442,12 +464,12 @@ func @less_equal(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x1
 // CHECK:  return %0 : tensor<8x16xi1>
 }
 
-func @rank(%arg0: tensor<11x16xf32>) -> tensor<1xi32> {
-  %0 = "tf.Rank"(%arg0) : (tensor<11x16xf32>) -> tensor<1xi32>
+func @rank(%arg0: tensor<*xf32>) -> tensor<1xi32> {
+  %0 = "tf.Rank"(%arg0) : (tensor<*xf32>) -> tensor<1xi32>
   return %0 : tensor<1xi32>
 
 // CHECK-LABEL:rank
-// CHECK:  %0 = "tfl.rank"(%arg0) : (tensor<11x16xf32>) -> tensor<1xi32>
+// CHECK:  %0 = "tfl.rank"(%arg0) : (tensor<*xf32>) -> tensor<1xi32>
 }
 
 func @floor(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
@@ -965,4 +987,29 @@ func @space_to_depth(%arg0: tensor<1x2x2x1xf32>) -> tensor<?xf32> {
   // CHECK-LABEL: space_to_depth
   // CHECK: %[[ARG:.*]]: tensor<1x2x2x1xf32>
   // CHECK: "tfl.space_to_depth"(%[[ARG]]) {block_size = 2 : i32} : (tensor<1x2x2x1xf32>) -> tensor<?xf32>
+}
+
+func @round(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Round"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+
+  // CHECK-LABEL: round
+  // CHECK: %[[ARG:.*]]: tensor<8x16xf32>
+  // CHECK: %[[RESULT:.*]] = "tfl.round"(%[[ARG]]) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  // CHECK: return %[[RESULT]] : tensor<8x16xf32>
+}
+
+func @resize_nearest_neighbor(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
+  %0 = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+  // CHECK-LABEL: resize_nearest_neighbor
+  // CHECK: "tfl.resize_nearest_neighbor"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+}
+
+// Note: half_pixel_centers isn't supported by TFLite, so it's not legalized.
+func @resize_nearest_neighbor_with_half_pixel_centers(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
+  %0 = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true, half_pixel_centers = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+  // CHECK-LABEL: resize_nearest_neighbor_with_half_pixel_centers
+  // CHECK: "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true, half_pixel_centers = true}
 }

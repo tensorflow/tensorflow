@@ -374,7 +374,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       // is not mentioned in xla client anywhere or in the hlo of our sample
       // models.
     default: {
-      mlir::OperationState result(loc, "xla.unknown");
+      mlir::OperationState result(loc, "xla_hlo.unknown");
       result.addOperands(operands);
       result.addTypes(result_type);
       for (auto attr : attributes) {

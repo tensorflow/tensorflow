@@ -143,7 +143,6 @@
 /// ```
 
 using llvm::dbgs;
-using llvm::DenseSet;
 using llvm::SetVector;
 
 using namespace mlir;

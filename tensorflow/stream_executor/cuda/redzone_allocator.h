@@ -39,21 +39,20 @@ namespace cuda {
 // memory for cudnn convolutions.
 class RedzoneAllocator : public ScratchAllocator {
  public:
-  RedzoneAllocator(int device_ordinal, DeviceMemoryAllocator* memory_allocator,
+  RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,
                    cuda::PtxCompilationOptions ptx_compilation_opts,
                    uint64 redzone_size = 1 << 23,  // 8MiB per side, 16MiB total
                    uint8 redzone_pattern = -1);
 
   // Redzones don't count towards the memory limit.
-  int64 GetMemoryLimitInBytes(Stream* stream) override {
+  int64 GetMemoryLimitInBytes() override {
     return 1LL << 32;  // 4GB.  TODO(jlebar): Tune this?
   }
   int64 TotalAllocatedBytesExcludingRedzones() const {
     return allocated_bytes_excluding_redzones_;
   }
 
-  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(Stream* stream,
-                                                    int64 byte_size) override;
+  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override;
 
   // Non-empty redzone check status implies that there was a write into a
   // redzone, with a string communicating the location of the write.
@@ -92,10 +91,11 @@ class RedzoneAllocator : public ScratchAllocator {
   //  - RedzoneCheckStatus with a non-empty error message iff a write into a
   //    redzone has been detected.
   //  - A stream error, if loading or launching the kernel has failed.
-  port::StatusOr<RedzoneCheckStatus> CheckRedzones(Stream* stream) const;
+  port::StatusOr<RedzoneCheckStatus> CheckRedzones() const;
 
  private:
   const int device_ordinal_;
+  Stream* stream_;
 
   // Redzone size on *one side* of allocation.
   //

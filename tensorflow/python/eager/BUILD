@@ -14,10 +14,12 @@ cc_library(
     name = "pywrap_tfe_lib",
     srcs = [
         "pywrap_tensor.cc",
+        "pywrap_tensor_conversion.cc",
         "pywrap_tfe_src.cc",
     ],
     hdrs = [
         "pywrap_tensor.h",
+        "pywrap_tensor_conversion.h",
         "pywrap_tfe.h",
     ],
     visibility = [
@@ -42,6 +44,8 @@ cc_library(
         "//tensorflow/python:safe_ptr",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
     ],

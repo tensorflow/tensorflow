@@ -1080,7 +1080,10 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
     setattr(cls, operator, _run_op)
 
   def __hash__(self):
-    return id(self)
+    if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
+      raise TypeError("Variable is unhashable if Tensor equality is enabled.")
+    else:
+      return id(self)
 
   # TODO(gjn): duplicate of math_ops.tensor_equals, consider removing
   def __eq__(self, other):
@@ -2704,7 +2707,7 @@ def _safe_initial_value_from_op(name, op, op_cache):
   """
   op_type = op.node_def.op
   if op_type in ("IsVariableInitialized", "VarIsInitializedOp",
-                 "ReadVariableOp"):
+                 "ReadVariableOp", "If"):
     return op
 
   # Attempt to find the initialized_value of any variable reference / handles.

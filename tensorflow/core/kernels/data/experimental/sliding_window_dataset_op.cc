@@ -26,9 +26,6 @@ namespace data {
 namespace experimental {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
-
 class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit SlidingWindowDatasetOp(OpKernelConstruction* ctx)

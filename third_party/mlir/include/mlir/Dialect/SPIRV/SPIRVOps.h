@@ -31,6 +31,17 @@ namespace spirv {
 #define GET_OP_CLASSES
 #include "mlir/Dialect/SPIRV/SPIRVOps.h.inc"
 
+/// Following methods are auto-generated.
+///
+/// Get the name used in the Op to refer to an enum value of the given
+/// `EnumClass`.
+/// template <typename EnumClass> StringRef attributeName();
+///
+/// Get the function that can be used to symbolize an enum value.
+/// template <typename EnumClass>
+/// llvm::Optional<EnumClass> (*)(StringRef) symbolizeEnum();
+#include "mlir/Dialect/SPIRV/SPIRVOpUtils.inc"
+
 } // end namespace spirv
 } // end namespace mlir
 

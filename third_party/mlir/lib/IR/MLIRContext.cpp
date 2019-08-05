@@ -34,6 +34,7 @@
 #include "mlir/IR/Module.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/STLExtras.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringMap.h"

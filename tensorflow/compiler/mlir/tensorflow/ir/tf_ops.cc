@@ -243,6 +243,22 @@ void DivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// EmptyTensorListOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(EmptyTensorListOp op) {
+  if (!IsOfRankOrUnranked(op.element_shape(), 0) &&
+      !IsOfRankOrUnranked(op.element_shape(), 1)) {
+    return op.emitOpError("requires element_shape operand to be 0D/1D tensor");
+  }
+
+  if (!IsOfRankOrUnranked(op.max_num_elements(), 0)) {
+    return op.emitOpError("requires max_num_elements operand to be 0D tensor");
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // FakeQuantWithMinMaxArgsOp
 //===----------------------------------------------------------------------===//
 static LogicalResult Verify(FakeQuantWithMinMaxArgsOp op) {
@@ -533,6 +549,7 @@ void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // m_Constant.
 static LogicalResult Verify(ReshapeOp op) {
   auto shapeType = op.shape()->getType().cast<TensorType>();
+  if (!shapeType.hasRank()) return success();
   if (shapeType.getRank() != 1)
     return op.emitOpError("shape must be 1D tensor");
   auto rankByShape = shapeType.getShape()[0];

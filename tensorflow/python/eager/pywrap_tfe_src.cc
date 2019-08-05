@@ -1905,6 +1905,12 @@ void TapeSetRecordOperation(
       if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
         return;
       }
+      if (accumulator->accumulator->BusyAccumulating()) {
+        // Ensure inner accumulators don't see outer accumulators' jvps. This
+        // mostly happens on its own, with some potentially surprising
+        // exceptions, so the blanket policy is for consistency.
+        break;
+      }
     }
   }
 }
@@ -2365,7 +2371,6 @@ bool OpGradientDoesntRequireInputIndices(
           {"Relu6", {true, {}}},
           {"Elu", {true, {}}},
           {"Selu", {true, {}}},
-          {"SparseSoftmaxCrossEntropyWithLogits", {true, {}}},
           {"Neg", {true, {}}},
           {"Inv", {true, {}}},
           {"Reciprocal", {true, {}}},
@@ -2383,6 +2388,7 @@ bool OpGradientDoesntRequireInputIndices(
 
           // Ops that don't require a subset of inputs.
           {"FusedBatchNorm", {false, {2}}},
+          {"SparseSoftmaxCrossEntropyWithLogits", {false, {1}}},
       });
 
   auto it = m->find(op_name);

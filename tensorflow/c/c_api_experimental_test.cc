@@ -453,7 +453,7 @@ class ShapeInferenceTest : public ::testing::Test {
                            int64_t expected_second_dim) {
     TF_ShapeAndTypeList* output_shapes;
     TFE_InferShapes(matmul_op_, input_shapes,
-                    /*input_tensors*/ nullptr, /*num_input_tensors*/ 0,
+                    /*input_tensors*/ nullptr,
                     /*input_tensors_as_shapes*/ nullptr,
                     /*input_resource_shapes_and_types*/ nullptr, &output_shapes,
                     /*output_resource_shapes_and_types*/ nullptr, status_);

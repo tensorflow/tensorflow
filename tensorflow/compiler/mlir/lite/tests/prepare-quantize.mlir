@@ -343,7 +343,7 @@ func @QuantizeConstant() -> tensor<2x3xf32> {
   return %cst : tensor<2x3xf32>
 
 // CHECK: %cst = constant dense{{.*}}tensor<2x3xf32>
-// CHECK: %0 = "tfl.quantize"(%cst) {qtype = tensor<2x3x!quant.uniform<u8:f32, 0.023529411764705882:128>>}
+// CHECK: %0 = "tfl.quantize"(%cst) {qtype = tensor<2x3x!quant.uniform<u8<1:255>:f32, 0.023622047244094488:128>>}
 // CHECK: %1 = "tfl.dequantize"(%0)
 // CHECK: return %1 : tensor<2x3xf32>
 }
