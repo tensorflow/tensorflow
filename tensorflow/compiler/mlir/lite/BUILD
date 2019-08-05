@@ -297,6 +297,13 @@ tf_native_cc_binary(
     ],
 )
 
+filegroup(
+    name = "generated_op_quant_spec_getters",
+    srcs = [
+        "utils/generated_op_quant_spec_getters.inc",
+    ],
+)
+
 genrule(
     name = "op_quant_spec_getters_inc",
     srcs = [
