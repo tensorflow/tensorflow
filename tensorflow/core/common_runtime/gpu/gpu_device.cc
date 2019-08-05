@@ -254,6 +254,13 @@ class BaseGPUDevice::StreamGroupFactory {
       VLOG(2) << "Created nccl_stream[" << stream_group_within_gpu
               << "] = " << group->nccl;
 
+      // ROCm streams are lightweight and will not necessarily trigger device
+      // queue init until they are first used. For optimal performance,
+      // compute and nccl streams must be immediate siblings.
+      // Force underlying resource creation now.
+      group->compute->ThenWaitFor(group->nccl);
+      group->nccl->ThenWaitFor(group->compute);
+
       group->host_to_device = new se::Stream(executor);
       group->host_to_device->Init();
       VLOG(2) << "Created host_to_device_stream[" << stream_group_within_gpu
