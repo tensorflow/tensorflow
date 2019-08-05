@@ -77,6 +77,27 @@ Status WriteDataToTFRecordFile(const string& filename,
                                const std::vector<absl::string_view>& records,
                                const CompressionParams& params);
 
+// Creates a tensor with the specified dtype, shape, and value.
+template <typename T>
+static Tensor CreateTensor(const TensorShape& input_shape,
+                           const gtl::ArraySlice<T>& input_data) {
+  Tensor tensor(DataTypeToEnum<T>::value, input_shape);
+  test::FillValues<T>(&tensor, input_data);
+  return tensor;
+}
+
+// Creates a vector of tensors with the specified dtype, shape, and values.
+template <typename T>
+std::vector<Tensor> CreateTensors(
+    const TensorShape& shape, const std::vector<gtl::ArraySlice<T>>& values) {
+  std::vector<Tensor> result;
+  result.reserve(values.size());
+  for (auto& value : values) {
+    result.emplace_back(CreateTensor<T>(shape, value));
+  }
+  return result;
+}
+
 class DatasetParams {
  public:
   DatasetParams(DataTypeVector output_dtypes,
@@ -92,6 +113,28 @@ class DatasetParams {
   DataTypeVector output_dtypes;
   std::vector<PartialTensorShape> output_shapes;
   string node_name;
+};
+
+class RangeDatasetParams : public DatasetParams {
+ public:
+  RangeDatasetParams(int64 start, int64 stop, int64 step,
+                     DataTypeVector output_dtypes,
+                     std::vector<PartialTensorShape> output_shapes,
+                     string node_name)
+      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                      std::move(node_name)),
+        start(CreateTensor<int64>(TensorShape({}), {start})),
+        stop(CreateTensor<int64>(TensorShape({}), {stop})),
+        step(CreateTensor<int64>(TensorShape({}), {step})) {}
+
+  Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
+    *inputs = {TensorValue(&start), TensorValue(&stop), TensorValue(&step)};
+    return Status::OK();
+  }
+
+  Tensor start;
+  Tensor stop;
+  Tensor step;
 };
 
 template <typename T>
@@ -154,7 +197,7 @@ struct IteratorOutputShapesTestCase {
 };
 
 template <typename T>
-struct IteratorOutputPrefixTestCase {
+struct IteratorPrefixTestCase {
   T dataset_params;
   string expected_iterator_prefix;
 };
@@ -165,27 +208,6 @@ struct IteratorSaveAndRestoreTestCase {
   std::vector<int> breakpoints;
   std::vector<Tensor> expected_outputs;
 };
-
-// Creates a tensor with the specified dtype, shape, and value.
-template <typename T>
-static Tensor CreateTensor(const TensorShape& input_shape,
-                           const gtl::ArraySlice<T>& input_data) {
-  Tensor tensor(DataTypeToEnum<T>::value, input_shape);
-  test::FillValues<T>(&tensor, input_data);
-  return tensor;
-}
-
-// Creates a vector of tensors with the specified dtype, shape, and values.
-template <typename T>
-std::vector<Tensor> CreateTensors(
-    const TensorShape& shape, const std::vector<gtl::ArraySlice<T>>& values) {
-  std::vector<Tensor> result;
-  result.reserve(values.size());
-  for (auto& value : values) {
-    result.emplace_back(CreateTensor<T>(shape, value));
-  }
-  return result;
-}
 
 // Helpful functions to test Dataset op kernels.
 class DatasetOpsTestBase : public ::testing::Test {

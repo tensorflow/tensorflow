@@ -37,28 +37,6 @@ class RangeDatasetOpTest : public DatasetOpsTestBase {
   }
 };
 
-class RangeDatasetParams : public DatasetParams {
- public:
-  RangeDatasetParams(int64 start, int64 stop, int64 step,
-                     DataTypeVector output_dtypes,
-                     std::vector<PartialTensorShape> output_shapes,
-                     string node_name)
-      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
-                      std::move(node_name)),
-        start(CreateTensor<int64>(TensorShape({}), {start})),
-        stop(CreateTensor<int64>(TensorShape({}), {stop})),
-        step(CreateTensor<int64>(TensorShape({}), {step})) {}
-
-  Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    *inputs = {TensorValue(&start), TensorValue(&stop), TensorValue(&step)};
-    return Status::OK();
-  }
-
-  Tensor start;
-  Tensor stop;
-  Tensor step;
-};
-
 RangeDatasetParams PositiveStepRangeDataset() {
   return {/*start=*/0,
           /*stop=*/10,
@@ -86,10 +64,9 @@ RangeDatasetParams ZeroStepRangeDataset() {
           /*node_name=*/kNodeName};
 }
 
-class ParameterizedGetNextRangeDatasetOpTest
-    : public RangeDatasetOpTest,
-      public ::testing::WithParamInterface<
-          GetNextTestCase<RangeDatasetParams>> {};
+class ParameterizedGetNextTest : public RangeDatasetOpTest,
+                                 public ::testing::WithParamInterface<
+                                     GetNextTestCase<RangeDatasetParams>> {};
 
 GetNextTestCase<RangeDatasetParams> GetNextTestCase1() {
   return {/*dataset_params=*/PositiveStepRangeDataset(),
@@ -103,7 +80,7 @@ GetNextTestCase<RangeDatasetParams> GetNextTestCase2() {
           CreateTensors<int64>(TensorShape({}), {{10}, {7}, {4}, {1}})};
 }
 
-TEST_P(ParameterizedGetNextRangeDatasetOpTest, GetNext) {
+TEST_P(ParameterizedGetNextTest, GetNext) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -135,7 +112,7 @@ TEST_P(ParameterizedGetNextRangeDatasetOpTest, GetNext) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    RangeDatasetOpTest, ParameterizedGetNextRangeDatasetOpTest,
+    RangeDatasetOpTest, ParameterizedGetNextTest,
     ::testing::ValuesIn(std::vector<GetNextTestCase<RangeDatasetParams>>(
         {GetNextTestCase1(), GetNextTestCase2()})));
 
@@ -252,7 +229,7 @@ TEST_F(RangeDatasetOpTest, DatasetOutputShapes) {
                                         test_case.expected_output_shapes));
 }
 
-class ParameterizedCardinalityRangeDatasetOpTest
+class ParameterizedCardinalityTest
     : public RangeDatasetOpTest,
       public ::testing::WithParamInterface<
           CardinalityTestCase<RangeDatasetParams>> {};
@@ -267,7 +244,7 @@ CardinalityTestCase<RangeDatasetParams> CardinalityTestCase2() {
           /*expected_cardinality=*/4};
 }
 
-TEST_P(ParameterizedCardinalityRangeDatasetOpTest, Cardinality) {
+TEST_P(ParameterizedCardinalityTest, Cardinality) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -291,7 +268,7 @@ TEST_P(ParameterizedCardinalityRangeDatasetOpTest, Cardinality) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    RangeDatasetOpTest, ParameterizedCardinalityRangeDatasetOpTest,
+    RangeDatasetOpTest, ParameterizedCardinalityTest,
     ::testing::ValuesIn(std::vector<CardinalityTestCase<RangeDatasetParams>>(
         {CardinalityTestCase1(), CardinalityTestCase2()})));
 
@@ -397,19 +374,18 @@ TEST_F(RangeDatasetOpTest, IteratorOutputShapes) {
       CheckIteratorOutputShapes(*iterator, test_case.expected_output_shapes));
 }
 
-IteratorOutputPrefixTestCase<RangeDatasetParams>
-IteratorOutputPrefixTestCase1() {
+IteratorPrefixTestCase<RangeDatasetParams> IteratorPrefixTestCase1() {
   return {/*dataset_params=*/PositiveStepRangeDataset(),
           /*expected_iterator_prefix=*/name_utils::IteratorPrefix(
               RangeDatasetOp::kDatasetType, kIteratorPrefix)};
 }
 
-TEST_F(RangeDatasetOpTest, IteratorOutputPrefix) {
+TEST_F(RangeDatasetOpTest, IteratorPrefix) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
-  auto test_case = IteratorOutputPrefixTestCase1();
+  auto test_case = IteratorPrefixTestCase1();
   gtl::InlinedVector<TensorValue, 4> inputs;
   TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
   std::unique_ptr<OpKernel> range_dataset_kernel;
@@ -433,7 +409,7 @@ TEST_F(RangeDatasetOpTest, IteratorOutputPrefix) {
       CheckIteratorPrefix(*iterator, test_case.expected_iterator_prefix));
 }
 
-class ParameterizedIteratorSaveAndRestoreRangeDatasetOpTest
+class ParameterizedIteratorSaveAndRestoreTest
     : public RangeDatasetOpTest,
       public ::testing::WithParamInterface<
           IteratorSaveAndRestoreTestCase<RangeDatasetParams>> {};
@@ -454,8 +430,7 @@ IteratorSaveAndRestoreTestCase2() {
           CreateTensors<int64>(TensorShape({}), {{10}, {7}, {4}, {1}})};
 }
 
-TEST_P(ParameterizedIteratorSaveAndRestoreRangeDatasetOpTest,
-       IteratorSaveAndRestore) {
+TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -486,7 +461,7 @@ TEST_P(ParameterizedIteratorSaveAndRestoreRangeDatasetOpTest,
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    RangeDatasetOpTest, ParameterizedIteratorSaveAndRestoreRangeDatasetOpTest,
+    RangeDatasetOpTest, ParameterizedIteratorSaveAndRestoreTest,
     ::testing::ValuesIn(
         std::vector<IteratorSaveAndRestoreTestCase<RangeDatasetParams>>(
             {IteratorSaveAndRestoreTestCase1(),
