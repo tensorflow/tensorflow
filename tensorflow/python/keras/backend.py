@@ -803,7 +803,7 @@ def track_variable(v):
     return
   graph = v.graph if hasattr(v, 'graph') else get_graph()
   if graph not in _GRAPH_VARIABLES:
-    _GRAPH_VARIABLES[graph] = weakref.WeakSet()
+    _GRAPH_VARIABLES[graph] = object_identity.ObjectIdentityWeakSet()
   _GRAPH_VARIABLES[graph].add(v)
 
 

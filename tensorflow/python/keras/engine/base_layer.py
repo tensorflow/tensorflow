@@ -2451,7 +2451,7 @@ class Layer(module.Module):
   def _unique_trainable_weights(self):
     """Dedupe trainable weights while maintaining order as much as possible."""
     trainable_weights = self.trainable_weights
-    output, seen_weights = [], set()
+    output, seen_weights = [], object_identity.ObjectIdentitySet()
     for w in trainable_weights:
       if w not in seen_weights:
         output.append(w)
