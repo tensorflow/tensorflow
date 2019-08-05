@@ -659,9 +659,6 @@ tf_py_test(
 cuda_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
-    tags = [
-        "no_cuda",
-    ],
     additional_deps = [
         ":def_function",
         "//tensorflow/python:client_testlib",
