@@ -491,6 +491,8 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
     seq_axis, batch_axis = (0, 1)
   else:
     seq_axis, batch_axis = (0, 1) if time_major else (1, 0)
+  # For init_h, cuDNN expects one more dim of num_layers before or after batch
+  # dim for time major or batch major inputs respectively
   init_h = array_ops.expand_dims(init_h, axis=seq_axis)
 
   weights = array_ops.split(kernel, 3, axis=1)
@@ -1137,6 +1139,8 @@ def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
     seq_axis, batch_axis = (0, 1)
   else:
     seq_axis, batch_axis = (0, 1) if time_major else (1, 0)
+  # For init_h and init_c, cuDNN expects one more dim of num_layers before or
+  # after batch dim for time major or batch major inputs respectively
   init_h = array_ops.expand_dims(init_h, axis=seq_axis)
   init_c = array_ops.expand_dims(init_c, axis=seq_axis)
 
