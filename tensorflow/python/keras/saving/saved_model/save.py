@@ -560,20 +560,23 @@ class LayerCallCollection(object):
     return fn
 
 
-def maintain_losses(method):
+def layer_call_wrapper(call_collection, method):
   """Ensures layer losses are kept the same, and runs method in call context."""
-  def wrapper(self, *args, **kwargs):
+  def wrapper(*args, **kwargs):
     """Calls method within call context."""
-    layer = self.call_collection.layer
+    layer = call_collection.layer
     training = None
+    inputs = None
     # pylint: disable=protected-access
-    if (args or kwargs) and self.call_collection.training_arg_was_passed(
+    if (args or kwargs) and call_collection.training_arg_was_passed(
         args, kwargs):
-      training = self.call_collection.get_training_arg_value(args, kwargs)
+      inputs = args[0]
+      training = call_collection.get_training_arg_value(args, kwargs)
     # pylint: enable=protected-access
     original_losses = _reset_layer_losses(layer)
-    with base_layer_utils.call_context().enter(layer, None, True, training):
-      ret = method(self, *args, **kwargs)
+    with base_layer_utils.call_context().enter(
+        layer, inputs=inputs, build_graph=False, training=training):
+      ret = method(*args, **kwargs)
     _restore_layer_losses(original_losses)
     return ret
   return tf_decorator.make_decorator(target=method, decorator_func=wrapper)
@@ -582,18 +585,17 @@ def maintain_losses(method):
 class LayerCall(def_function.Function):
   """Function that triggers traces of other functions in the same collection."""
 
-  def __init__(self, call_collection, *args, **kwargs):
-    super(LayerCall, self).__init__(*args, **kwargs)
+  def __init__(self, call_collection, python_function, *args, **kwargs):
     self.call_collection = call_collection
     self.original_call = call_collection.layer.call
+    python_function = layer_call_wrapper(call_collection, python_function)
+    super(LayerCall, self).__init__(python_function, *args, **kwargs)
 
-  @maintain_losses
   def __call__(self, *args, **kwargs):
     if not self.call_collection.tracing:
       self.call_collection.add_trace(*args, **kwargs)
     return super(LayerCall, self).__call__(*args, **kwargs)
 
-  @maintain_losses
   def get_concrete_function(self, *args, **kwargs):
     if not self.call_collection.tracing:
       self.call_collection.add_trace(*args, **kwargs)

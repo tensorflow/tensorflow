@@ -307,6 +307,21 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertLen(loaded.layers, 2)
     self.assertLen(loaded.losses, 2)
 
+  def testBatchNormUpdates(self):
+    model = keras.models.Sequential(
+        keras.layers.BatchNormalization(input_shape=(1,)))
+    self.evaluate(variables.variables_initializer(model.variables))
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_load.load(saved_model_dir)
+    self.evaluate(variables.variables_initializer(loaded.variables))
+    input_arr_1 = np.array([[11], [12], [13]]).astype('float32')
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0])
+    self.evaluate(loaded(input_arr_1, training=True))
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
+    self.evaluate(loaded(input_arr_1, training=False))
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
+
 
 class TestLayerCallTracing(test.TestCase):
 
