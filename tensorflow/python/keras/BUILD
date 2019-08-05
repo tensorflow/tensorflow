@@ -1588,6 +1588,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
     ],
 )
