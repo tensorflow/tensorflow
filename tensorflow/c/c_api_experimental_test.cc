@@ -439,7 +439,6 @@ class ShapeInferenceTest : public ::testing::Test {
       : status_(TF_NewStatus()), tfe_context_options_(TFE_NewContextOptions()) {
     tfe_context_ = TFE_NewContext(tfe_context_options_, status_);
     CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
-    CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
   }
 
   ~ShapeInferenceTest() override {
@@ -452,7 +451,7 @@ class ShapeInferenceTest : public ::testing::Test {
   void CheckOutputShapes(
       TFE_Op* op,
       const std::vector<absl::optional<std::vector<int64_t>>>& input_shapes_vec,
-      TF_Tensor** input_tensors,
+      const std::vector<TF_Tensor*>& input_tensors,
       const absl::optional<std::vector<int64_t>>& expected_shape) {
     // Create input_shapes.
     TF_ShapeAndTypeList* input_shapes =
@@ -467,7 +466,10 @@ class ShapeInferenceTest : public ::testing::Test {
       }
     }
     TF_ShapeAndTypeList* output_shapes;
-    TFE_InferShapes(op, input_shapes, input_tensors,
+    TFE_InferShapes(op, input_shapes,
+                    input_tensors.empty()
+                        ? nullptr
+                        : const_cast<TF_Tensor**>(input_tensors.data()),
                     /*input_tensors_as_shapes*/ nullptr,
                     /*input_resource_shapes_and_types*/ nullptr, &output_shapes,
                     /*output_resource_shapes_and_types*/ nullptr, status_);
@@ -515,30 +517,64 @@ TEST_F(ShapeInferenceTest, InfersShapesFromInputShapes) {
   // Infer shape when everything is known.
   CheckOutputShapes(matmul_op,
                     /*input_shapes*/ {make_shape({3, 2}), make_shape({2, 4})},
-                    /*input_tensors*/ nullptr,
+                    /*input_tensors*/ {},
                     /*expected_shape*/ make_shape({3, 4}));
 
   // Infer shape when second operand has unknown shape.
   CheckOutputShapes(matmul_op,
                     /*input_shapes*/ {make_shape({3, 2}), unknown_shape()},
-                    /*input_tensors*/ nullptr,
+                    /*input_tensors*/ {},
                     /*expected_shape*/ make_shape({3, kUnknownDim}));
 
   // Infer shape when some dimensions are unknown.
   CheckOutputShapes(
       matmul_op,
       /*input_shapes*/ {make_shape({kUnknownDim, 2}), make_shape({2, 4})},
-      /*input_tensors*/ nullptr,
+      /*input_tensors*/ {},
       /*expected_shape*/ make_shape({kUnknownDim, 4}));
 
   // Infer shape when everything is unknown.
   CheckOutputShapes(matmul_op,
                     /*input_shapes*/ {unknown_shape(), unknown_shape()},
-                    /*input_tensors*/ nullptr,
+                    /*input_tensors*/ {},
                     /*expected_shape*/ make_shape({kUnknownDim, kUnknownDim}));
 
   TFE_DeleteOp(matmul_op);
   // TODO(bgogul): Add some death tests where status is not OK.
+}
+
+TEST_F(ShapeInferenceTest, InfersShapesFromInputTensors) {
+  // Prepare some tensors for shape.
+  TF_Tensor* tensor_1X6 = Int32Tensor({1, 6});
+  CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+  TF_Tensor* tensor_1X1X6 = Int32Tensor({1, 1, 6});
+  CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+
+  TFE_Op* reshape_op = TFE_NewOp(tfe_context_, "Reshape", status_);
+  CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+  TFE_OpSetAttrType(reshape_op, "T", TF_FLOAT);
+  TFE_OpSetAttrType(reshape_op, "Tshape", TF_INT32);
+  CheckOutputShapes(reshape_op,
+                    /* input_shapes*/ {unknown_shape(), unknown_shape()},
+                    /* input_tensors*/ {nullptr, tensor_1X6},
+                    /*expected_shape*/ make_shape({1, 6}));
+  TFE_DeleteOp(reshape_op);
+  reshape_op = nullptr;
+
+  TFE_Op* fill_op = TFE_NewOp(tfe_context_, "Fill", status_);
+  CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+  TFE_OpSetAttrType(fill_op, "T", TF_FLOAT);
+  TFE_OpSetAttrType(fill_op, "Tshape", TF_INT32);
+
+  CheckOutputShapes(fill_op,
+                    /* input_shapes*/ {unknown_shape(), unknown_shape()},
+                    /* input_tensors*/ {tensor_1X1X6, nullptr},
+                    /*expected_shape*/ make_shape({1, 1, 6}));
+  TFE_DeleteOp(fill_op);
+  fill_op = nullptr;
+
+  TF_DeleteTensor(tensor_1X1X6);
+  TF_DeleteTensor(tensor_1X6);
 }
 
 }  // namespace
