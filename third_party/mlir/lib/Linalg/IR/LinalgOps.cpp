@@ -522,13 +522,6 @@ static ParseResult parseDimOp(OpAsmParser *parser, OperationState *result) {
                  parser->addTypeToList(indexType, result->types));
 }
 
-static void print(OpAsmPrinter *p, RangeIntersectOp op) {
-  *p << op.getOperationName() << " " << *op.getOperand(0) << ", "
-     << *op.getOperand(1);
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getOperand(0)->getType();
-}
-
 //===----------------------------------------------------------------------===//
 // GenericOp
 //===----------------------------------------------------------------------===//
@@ -640,17 +633,6 @@ static LogicalResult verify(GenericOp op) {
                         "to be invertible");
 
   return success();
-}
-
-static ParseResult parseRangeIntersectOp(OpAsmParser *parser,
-                                         OperationState *result) {
-  SmallVector<OpAsmParser::OperandType, 2> ops;
-  Type type;
-  return failure(parser->parseOperandList(ops) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonType(type) ||
-                 parser->resolveOperands(ops, type, result->operands) ||
-                 parser->addTypeToList(type, result->types));
 }
 
 static void print(OpAsmPrinter *p, SubViewOp op) {
