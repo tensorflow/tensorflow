@@ -169,7 +169,7 @@ def _enclosing_tpu_context():
 
 @tf_export('einsum', 'linalg.einsum')
 def einsum(equation, *inputs, **kwargs):
-  """Contraction over specified indices and outer product for an arbitrary number of tensors.
+  """Tensor contraction over specified indices and outer product.
 
   This function returns a tensor whose elements are defined by `equation`,
   which is written in a shorthand form inspired by the Einstein summation
