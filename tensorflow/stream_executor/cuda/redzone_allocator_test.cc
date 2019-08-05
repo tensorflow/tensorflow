@@ -55,15 +55,14 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
   cuda::PtxCompilationOptions opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
-  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, opts,
-                             kRedzoneSize, kRedzonePattern);
 
   Stream stream(stream_exec);
   stream.Init();
+  RedzoneAllocator allocator(&stream, &se_allocator, opts, kRedzoneSize,
+                             kRedzonePattern);
   TF_ASSERT_OK_AND_ASSIGN(DeviceMemory<uint8> buf,
-                          allocator.AllocateBytes(&stream,
-                                                  /*byte_size=*/kAllocSize));
-  EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
+                          allocator.AllocateBytes(/*byte_size=*/kAllocSize));
+  EXPECT_REDZONE_OK(allocator.CheckRedzones());
 
   char* buf_addr = reinterpret_cast<char*>(buf.opaque());
   DeviceMemoryBase lhs_redzone(buf_addr - kRedzoneSize, kRedzoneSize);
@@ -100,15 +99,13 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
     DeviceMemoryBase redzone_at_offset(
         reinterpret_cast<char*>(redzone.opaque()) + offset, 1);
     char old_redzone_value = 0;
-    {
-      EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
-    }
+    { EXPECT_REDZONE_OK(allocator.CheckRedzones()); }
     stream.ThenMemcpy(&old_redzone_value, redzone_at_offset, 1)
         .ThenMemZero(&redzone_at_offset, 1);
-    EXPECT_REDZONE_VIOLATION(allocator.CheckRedzones(&stream));
+    EXPECT_REDZONE_VIOLATION(allocator.CheckRedzones());
 
     // Checking reinitializes the redzone.
-    EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
+    EXPECT_REDZONE_OK(allocator.CheckRedzones());
   };
 
   modify_redzone(lhs_redzone, /*offset=*/0, "lhs");
@@ -130,12 +127,12 @@ TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
   cuda::PtxCompilationOptions opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
-  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, opts,
-                             kRedzoneSize, /*redzone_pattern=*/-1);
   Stream stream(stream_exec);
   stream.Init();
-  (void)allocator.AllocateBytes(&stream, /*byte_size=*/1);
-  EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
+  RedzoneAllocator allocator(&stream, &se_allocator, opts, kRedzoneSize,
+                             /*redzone_pattern=*/-1);
+  (void)allocator.AllocateBytes(/*byte_size=*/1);
+  EXPECT_REDZONE_OK(allocator.CheckRedzones());
 }
 
 }  // namespace
