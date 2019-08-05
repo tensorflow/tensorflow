@@ -978,8 +978,8 @@ TEST_F(XlaBuilderTest, CheckInputOutputAlias) {
   EXPECT_EQ(*alias_p1, ShapeIndex({0}));
 }
 
-void CheckAttributesMatch(const FrontendAttributes& attr,
-                          const FrontendAttributes& ref) {
+void ExpectAttributesMatch(const FrontendAttributes& attr,
+                           const FrontendAttributes& ref) {
   EXPECT_EQ(ref.map_size(), attr.map_size());
   for (auto reference : ref.map()) {
     auto other = attr.map().find(reference.first);
@@ -988,13 +988,13 @@ void CheckAttributesMatch(const FrontendAttributes& attr,
   }
 }
 
-void CheckInstructionsAttributesMatch(
+void ExpectInstructionsAttributesMatch(
     HloModule& module, const std::vector<FrontendAttributes>& expected) {
   ASSERT_EQ(module.computation_count(), 1);
   auto expected_it = expected.begin();
   for (auto inst : module.mutable_computation(0)->instructions()) {
     ASSERT_NE(expected_it, expected.end());
-    CheckAttributesMatch(inst->frontend_attributes(), *expected_it);
+    ExpectAttributesMatch(inst->frontend_attributes(), *expected_it);
     expected_it++;
   }
   EXPECT_EQ(expected_it, expected.end());
@@ -1017,7 +1017,7 @@ TEST_F(XlaBuilderTest, SimpleSetFrontendAttributes) {
 
   std::vector<FrontendAttributes> expected{FrontendAttributes(), attributes,
                                            FrontendAttributes()};
-  CheckInstructionsAttributesMatch(*module, expected);
+  ExpectInstructionsAttributesMatch(*module, expected);
 }
 
 TEST_F(XlaBuilderTest, ComplexSetFrontendAttributes) {
@@ -1056,7 +1056,7 @@ TEST_F(XlaBuilderTest, ComplexSetFrontendAttributes) {
   expected.push_back(FrontendAttributes());
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
-  CheckInstructionsAttributesMatch(*module, expected);
+  ExpectInstructionsAttributesMatch(*module, expected);
 }
 
 TEST_F(XlaBuilderTest, AddFrontendAttribute) {
@@ -1121,7 +1121,7 @@ TEST_F(XlaBuilderTest, AddFrontendAttribute) {
   expected.push_back(FrontendAttributes());
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
-  CheckInstructionsAttributesMatch(*module, expected);
+  ExpectInstructionsAttributesMatch(*module, expected);
 }
 }  // namespace
 }  // namespace xla

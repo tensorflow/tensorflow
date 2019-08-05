@@ -172,7 +172,8 @@ class XlaBuilder {
   // Swap the passed FrontendAttributes with the ones currently set.
   //
   // Return the old attributes.
-  FrontendAttributes SwapFrontendAttributes(const FrontendAttributes& frontend_attributes) {
+  FrontendAttributes SwapFrontendAttributes(
+      const FrontendAttributes& frontend_attributes) {
     FrontendAttributes old_attributes = std::move(frontend_attributes_);
     frontend_attributes_ = std::move(frontend_attributes);
     return old_attributes;
@@ -1085,16 +1086,11 @@ class XlaScopedShardingAssignment {
 // Restore the original attributes on destruction.
 class XlaScopedFrontendAttributesAssignment {
  public:
-  XlaScopedFrontendAttributesAssignment(
-      xla::XlaBuilder* builder, FrontendAttributes attributes)
+  XlaScopedFrontendAttributesAssignment(xla::XlaBuilder* builder,
+                                        FrontendAttributes attributes)
       : builder_(builder) {
-      saved_ = builder_->SwapFrontendAttributes(std::move(attributes));
+    saved_ = builder_->SwapFrontendAttributes(std::move(attributes));
   }
-
-  XlaScopedFrontendAttributesAssignment(
-      const XlaScopedFrontendAttributesAssignment&) = delete;
-  XlaScopedFrontendAttributesAssignment& operator=(
-      const XlaScopedFrontendAttributesAssignment&) = delete;
 
   ~XlaScopedFrontendAttributesAssignment() {
     builder_->SetFrontendAttributes(std::move(saved_));
@@ -1103,6 +1099,8 @@ class XlaScopedFrontendAttributesAssignment {
  private:
   xla::XlaBuilder* const builder_;
   FrontendAttributes saved_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(XlaScopedFrontendAttributesAssignment);
 };
 // Free functions for building XlaOps. The intention is that these will
 // become the public API for building XlaOps rather than calling methods on

@@ -2550,9 +2550,8 @@ HloInstructionProto HloInstruction::ToProto() const {
       proto.mutable_outer_dimension_partitions()->Add(idx);
     }
   }
-  if (!frontend_attributes_.map().empty()) {
-    proto.mutable_frontend_attributes()->CopyFrom(frontend_attributes_);
-  }
+
+  proto.mutable_frontend_attributes()->CopyFrom(frontend_attributes_);
 
   return proto;
 }
