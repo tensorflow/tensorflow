@@ -478,6 +478,12 @@ class EinsumOptimizeTest(test.TestCase):
         ),
         r
       )
+      
+  @test_util.run_in_graph_and_eager_modes
+  def test_missing_indices(self):
+    m0 = array_ops.placeholder_with_default([[1],[1]], shape=(2, 1))
+    out = special_math_ops.einsum("ab->b",m0)
+    self.assertAllClose([2], self.evaluate(out))
   
   def test_4(self):
     """
