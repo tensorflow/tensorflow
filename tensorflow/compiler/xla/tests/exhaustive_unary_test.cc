@@ -713,6 +713,11 @@ class ExhaustiveComplexUnaryTestBase
 typedef ExhaustiveComplexUnaryTestBase<C64> ExhaustiveC64UnaryTest;
 typedef ExhaustiveComplexUnaryTestBase<C128> ExhaustiveC128UnaryTest;
 
+// TODO(b/138578594): Enable the test for the CPU backend after fixing the bug.
+XLA_TEST_P(ExhaustiveC64UnaryTest, DISABLED_ON_CPU(Log)) {
+  Run(Log, [](complex64 x) { return std::log<float>(x); });
+}
+
 // The current libc++ implementation of the complex tanh function provides
 // less accurate results when the denomenator of a complex tanh is small, due
 // to floating point precision loss. To avoid this issue for complex64 numbers,
@@ -773,15 +778,13 @@ INSTANTIATE_TEST_SUITE_P(
 
 
 XLA_TEST_P(ExhaustiveC128UnaryTest, Log) {
-  // TODO(bixia): only test values that are not too big and not too small
-  //             for now and will work on fixing the implementation of XLA
-  //             operations to enable test for other values.
+  // TODO(b/138578313): Enable the test for all values after fixing the bug.
   known_incorrect_fn_ = [&](int64 v) {
-    double f = ConvertValue(v);
-    return std::fpclassify(f) == FP_NAN || std::abs(f) > 5 || std::abs(f) < 1;
+    double f = this->ConvertValue(v);
+    return std::fpclassify(f) == FP_NAN || std::abs(f) > 1.0e+300 ||
+           std::abs(f) < 1.0e-300;
   };
-  Run(
-      Log, +[](complex128 x) { return std::log(x); });
+  Run(Log, [](complex128 x) { return std::log<double>(x); });
 }
 
 XLA_TEST_P(ExhaustiveC128UnaryTest, Tanh) {
