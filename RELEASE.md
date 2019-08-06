@@ -19,6 +19,7 @@
 * Update `RaggedTensors` to support int32 `row_splits`.
 * Add `TensorSpec` support for `CompositeTensors`.
 * Add environment variable TF_CUDNN_DETERMINISTIC. Setting to "true" or "1" forces the selection of deterministic cuDNN convolution and max-pooling algorithms. When this is enabled, the algorithm selection procedure itself is also deterministic. This change was already present in release 1.14.0, but this note was missing from the 1.14.0 release notes tagged v1.14.0.
+* Fix potential security vulnerability where decoding variant tensors from proto could result in heap out of bounds memory access.
 
 # Release 1.14.0
 
