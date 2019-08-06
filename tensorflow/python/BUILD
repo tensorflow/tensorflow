@@ -6662,10 +6662,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
     ],
-    tags = [
-        "grappler",
-        "no_rocm",
-    ],
+    tags = ["grappler"],
     # This test analyzes the graph, but XLA changes the names of nodes.
     xla_enable_strict_auto_jit = False,
 )
