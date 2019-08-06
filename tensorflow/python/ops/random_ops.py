@@ -312,7 +312,7 @@ def random_crop(value, size, seed=None, name=None):
       size_dim = size
       value = ops.convert_to_tensor(value, name="value")
       size = ops.convert_to_tensor(size, dtype=dtypes.int32, name="size")
-
+      shape = array_ops.shape(value)
       if value.shape[0].value < size_dim[0]:
           def pad_up_to(t, max_in_dims, constant_values):
               s = array_ops.shape(t)
@@ -326,7 +326,6 @@ def random_crop(value, size, seed=None, name=None):
           value = array_ops.stack(tmp, axis=2)
           return value
       else:
-          x = array_ops.gather_nd(shape, [1])
           limit = shape - size + 1
           offset = random_uniform(
               array_ops.shape(shape),
