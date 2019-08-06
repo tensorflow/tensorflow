@@ -1112,6 +1112,7 @@ distribute_py_test(
     size = "medium",
     srcs = ["saved_model_save_load_test.py"],
     main = "saved_model_save_load_test.py",
+    shard_count = 5,
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/saved_model",
@@ -1139,7 +1140,7 @@ distribute_py_test(
     size = "medium",
     srcs = ["keras_save_load_test.py"],
     main = "keras_save_load_test.py",
-    shard_count = 3,
+    shard_count = 5,
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",
@@ -1151,6 +1152,7 @@ distribute_py_test(
     size = "medium",
     srcs = ["saved_model_mixed_api_test.py"],
     main = "saved_model_mixed_api_test.py",
+    shard_count = 5,
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",
