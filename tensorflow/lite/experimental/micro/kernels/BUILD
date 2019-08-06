@@ -20,6 +20,7 @@ cc_library(
         "elementwise.cc",
         "floor.cc",
         "fully_connected.cc",
+        "logical.cc",
         "maximum_minimum.cc",
         "pooling.cc",
         "prelu.cc",
@@ -64,6 +65,7 @@ cc_library(
         "elementwise.cc",
         "floor.cc",
         "fully_connected.cc",
+        "logical.cc",
         "maximum_minimum.cc",
         "pooling.cc",
         "portable_optimized/depthwise_conv.cc",
@@ -207,6 +209,19 @@ tflite_micro_cc_test(
     name = "floor_test",
     srcs = [
         "floor_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "logical_test",
+    srcs = [
+        "logical_test.cc",
     ],
     deps = [
         ":all_ops_resolver",
