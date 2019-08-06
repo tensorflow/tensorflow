@@ -31,7 +31,7 @@ class MLIRContext;
 class ModuleOp;
 class RewritePattern;
 class Type;
-using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
+class OwningRewritePatternList;
 namespace LLVM {
 class LLVMType;
 } // end namespace LLVM

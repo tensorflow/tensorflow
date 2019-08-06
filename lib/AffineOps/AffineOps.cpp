@@ -708,7 +708,7 @@ struct SimplifyAffineApply : public OpRewritePattern<AffineApplyOp> {
 
 void AffineApplyOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  results.push_back(llvm::make_unique<SimplifyAffineApply>(context));
+  results.insert<SimplifyAffineApply>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -912,8 +912,7 @@ LogicalResult AffineDmaStartOp::verify() {
 void AffineDmaStartOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   /// dma_start(memrefcast) -> dma_start
-  results.push_back(
-      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
+  results.insert<MemRefCastFolder>(getOperationName(), context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -989,8 +988,7 @@ LogicalResult AffineDmaWaitOp::verify() {
 void AffineDmaWaitOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   /// dma_wait(memrefcast) -> dma_wait
-  results.push_back(
-      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
+  results.insert<MemRefCastFolder>(getOperationName(), context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1333,7 +1331,7 @@ struct AffineForLoopBoundFolder : public OpRewritePattern<AffineForOp> {
 
 void AffineForOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                               MLIRContext *context) {
-  results.push_back(llvm::make_unique<AffineForLoopBoundFolder>(context));
+  results.insert<AffineForLoopBoundFolder>(context);
 }
 
 AffineBound AffineForOp::getLowerBound() {
@@ -1659,8 +1657,7 @@ LogicalResult AffineLoadOp::verify() {
 void AffineLoadOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   /// load(memrefcast) -> load
-  results.push_back(
-      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
+  results.insert<MemRefCastFolder>(getOperationName(), context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1752,8 +1749,7 @@ LogicalResult AffineStoreOp::verify() {
 void AffineStoreOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   /// load(memrefcast) -> load
-  results.push_back(
-      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
+  results.insert<MemRefCastFolder>(getOperationName(), context);
 }
 
 #define GET_OP_CLASSES

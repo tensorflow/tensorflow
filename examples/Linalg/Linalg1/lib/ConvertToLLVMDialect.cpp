@@ -395,8 +395,8 @@ public:
 
 void linalg::populateLinalg1ToLLVMConversionPatterns(
     mlir::OwningRewritePatternList &patterns, mlir::MLIRContext *context) {
-  RewriteListBuilder<DropConsumer, RangeOpConversion, SliceOpConversion,
-                     ViewOpConversion>::build(patterns, context);
+  patterns.insert<DropConsumer, RangeOpConversion, SliceOpConversion,
+                  ViewOpConversion>(context);
 }
 
 namespace {

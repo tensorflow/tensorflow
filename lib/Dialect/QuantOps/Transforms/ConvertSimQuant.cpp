@@ -97,8 +97,7 @@ void ConvertSimulatedQuantPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   auto *context = &getContext();
-  patterns.push_back(
-      llvm::make_unique<ConstFakeQuantRewrite>(context, &hadFailure));
+  patterns.insert<ConstFakeQuantRewrite>(context, &hadFailure);
   applyPatternsGreedily(func, std::move(patterns));
   if (hadFailure)
     signalPassFailure();

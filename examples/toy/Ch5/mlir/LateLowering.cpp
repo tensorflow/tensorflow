@@ -352,9 +352,9 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
   void runOnModule() override {
     ToyTypeConverter typeConverter;
     OwningRewritePatternList toyPatterns;
-    RewriteListBuilder<AddOpConversion, PrintOpConversion, ConstantOpConversion,
-                       TransposeOpConversion,
-                       ReturnOpConversion>::build(toyPatterns, &getContext());
+    toyPatterns.insert<AddOpConversion, PrintOpConversion, ConstantOpConversion,
+                       TransposeOpConversion, ReturnOpConversion>(
+        &getContext());
     mlir::populateFuncOpTypeConversionPattern(toyPatterns, &getContext(),
                                               typeConverter);
 

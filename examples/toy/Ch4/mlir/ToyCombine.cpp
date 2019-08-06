@@ -142,14 +142,14 @@ struct SimplifyNullReshape : public mlir::OpRewritePattern<ReshapeOp> {
 // Register our patterns for rewrite by the Canonicalization framework.
 void TransposeOp::getCanonicalizationPatterns(
     mlir::OwningRewritePatternList &results, mlir::MLIRContext *context) {
-  results.push_back(llvm::make_unique<SimplifyRedundantTranspose>(context));
+  results.insert<SimplifyRedundantTranspose>(context);
 }
 
 // Register our patterns for rewrite by the Canonicalization framework.
 void ReshapeOp::getCanonicalizationPatterns(
     mlir::OwningRewritePatternList &results, mlir::MLIRContext *context) {
-  mlir::RewriteListBuilder<SimplifyReshapeConstant, SimplifyReshapeReshape,
-                           SimplifyNullReshape>::build(results, context);
+  results.insert<SimplifyReshapeConstant, SimplifyReshapeReshape,
+                 SimplifyNullReshape>(context);
 }
 
 } // namespace toy

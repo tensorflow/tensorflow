@@ -258,8 +258,7 @@ IfLowering::matchAndRewrite(IfOp ifOp, PatternRewriter &rewriter) const {
 
 void mlir::populateLoopToStdConversionPatterns(
     OwningRewritePatternList &patterns, MLIRContext *ctx) {
-  RewriteListBuilder<ForLowering, IfLowering, TerminatorLowering>::build(
-      patterns, ctx);
+  patterns.insert<ForLowering, IfLowering, TerminatorLowering>(ctx);
 }
 
 void ControlFlowToCFGPass::runOnFunction() {

@@ -145,8 +145,7 @@ struct LinalgTypeConverter : public LLVMTypeConverter {
 // coverters to the list.
 static void populateLinalg3ToLLVMConversionPatterns(
     mlir::OwningRewritePatternList &patterns, mlir::MLIRContext *context) {
-  RewriteListBuilder<LoadOpConversion, StoreOpConversion>::build(patterns,
-                                                                 context);
+  patterns.insert<LoadOpConversion, StoreOpConversion>(context);
 }
 
 LogicalResult linalg::convertLinalg3ToLLVM(ModuleOp module) {

@@ -1243,8 +1243,7 @@ struct FuncOpSignatureConversion : public ConversionPattern {
 void mlir::populateFuncOpTypeConversionPattern(
     OwningRewritePatternList &patterns, MLIRContext *ctx,
     TypeConverter &converter) {
-  RewriteListBuilder<FuncOpSignatureConversion>::build(patterns, ctx,
-                                                       converter);
+  patterns.insert<FuncOpSignatureConversion>(ctx, converter);
 }
 
 /// This function converts the type signature of the given block, by invoking

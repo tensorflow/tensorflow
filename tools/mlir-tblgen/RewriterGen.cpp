@@ -935,8 +935,7 @@ static void emitRewriters(const RecordKeeper &recordKeeper, raw_ostream &os) {
   os << "void populateWithGenerated(MLIRContext *context, "
      << "OwningRewritePatternList *patterns) {\n";
   for (const auto &name : rewriterNames) {
-    os << "  patterns->push_back(llvm::make_unique<" << name
-       << ">(context));\n";
+    os << "  patterns->insert<" << name << ">(context);\n";
   }
   os << "}\n";
 }

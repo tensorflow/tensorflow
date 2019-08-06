@@ -57,9 +57,7 @@ class Value;
 /// either OpTy or OperandAdaptor<OpTy> seamlessly.
 template <typename OpTy> using OperandAdaptor = typename OpTy::OperandAdaptor;
 
-/// This is a vector that owns the patterns inside of it.
-using OwningPatternList = std::vector<std::unique_ptr<Pattern>>;
-using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
+class OwningRewritePatternList;
 
 enum class OperationProperty {
   /// This bit is set for an operation if it is a commutative operation: that

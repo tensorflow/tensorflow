@@ -261,8 +261,8 @@ struct LowerLinalgLoadStorePass
   void runOnFunction() {
     OwningRewritePatternList patterns;
     auto *context = &getContext();
-    patterns.push_back(llvm::make_unique<Rewriter<linalg::LoadOp>>(context));
-    patterns.push_back(llvm::make_unique<Rewriter<linalg::StoreOp>>(context));
+    patterns.insert<Rewriter<linalg::LoadOp>, Rewriter<linalg::StoreOp>>(
+        context);
     applyPatternsGreedily(getFunction(), std::move(patterns));
   }
 };

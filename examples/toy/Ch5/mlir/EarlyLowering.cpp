@@ -132,7 +132,7 @@ struct EarlyLoweringPass : public FunctionPass<EarlyLoweringPass> {
     target.addLegalOp<toy::AllocOp, toy::TypeCastOp>();
 
     OwningRewritePatternList patterns;
-    RewriteListBuilder<MulOpConversion>::build(patterns, &getContext());
+    patterns.insert<MulOpConversion>(&getContext());
     if (failed(applyPartialConversion(getFunction(), target,
                                       std::move(patterns)))) {
       emitError(mlir::UnknownLoc::get(&getContext()), "Error lowering Toy\n");
