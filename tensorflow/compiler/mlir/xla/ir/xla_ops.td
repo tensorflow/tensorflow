@@ -843,9 +843,9 @@ def XLA_GatherOp: XLA_Op<"gather", [NoSideEffect]> {
       ins XLA_Tensor:$operand,
           XLA_IntTensor:$start_indices,
           I64Attr: $index_vector_dim,
-          ElementsAttr: $offsets_dim,
+          ElementsAttr: $offset_dims,
           ElementsAttr: $slice_sizes,
-          ElementsAttr: $collapsed_slice_sizes,
+          ElementsAttr: $collapsed_slice_dims,
           ElementsAttr: $start_index_map
   );
 
