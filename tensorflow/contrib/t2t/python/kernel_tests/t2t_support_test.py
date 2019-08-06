@@ -24,9 +24,10 @@ def testInner(v):
 	eps=np.random.random()
 	scale=np.random.rand(v.shape[-1])
 	bias=np.random.rand(v.shape[-1])
-	intl=tf.convert_to_tensor(tf.random.normal(v.shape, seed=0))
+	intl_rng=np.random.normal(size=v.shape)
+	intl=tf.convert_to_tensor(intl_rng, dtype=v.dtype)
 	result = gen_t2t_ops.custom_l2_norm(v, eps, scale, bias)
-	intl2=tf.convert_to_tensor(tf.random.normal(v.shape, seed=0))
+	intl2=tf.convert_to_tensor(intl_rng, dtype=v.dtype)
 	ref = ref_layer_norm_compute(v, eps, scale, bias)
 	grad_ref=None
 	grad_test=None
@@ -78,6 +79,7 @@ class CustomL2Test(tf.test.TestCase):
 						#print(grad_test[0].eval())
 						#print(grad_ref[0].eval())
 						self.assertAllCloseAccordingToType(grad_test[0], grad_ref[0], float_atol=1e-5, half_rtol=0.005, half_atol=0.005)
+
 	def test1(self):
 		self.doTest(v1)
 	def test2(self):
@@ -91,7 +93,17 @@ class CustomL2Test(tf.test.TestCase):
 	def test6(self):
 		self.doTest(v6)
 	def test7(self):
-		self.doTest(v7)
+		for n in range(5):
+			shape=[np.random.randint(1,100),np.random.randint(1,100),np.random.randint(1,500)] 
+			np.random.shuffle(shape)
+			print(shape)
+			self.doTest(np.random.normal(size=shape))
+	def test8(self):
+		for n in range(5):
+			shape=[np.random.randint(1,20),np.random.randint(1,10),np.random.randint(1024,3072)] 
+			np.random.shuffle(shape)
+			print(shape)
+			self.doTest(np.random.normal(size=shape))
 
 class CustomDropoutTest(tf.test.TestCase):
 	def test1(self):
