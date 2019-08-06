@@ -49,18 +49,11 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
 
     self._element_spec = input_dataset.element_spec
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = ged_ops.auto_shard_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_workers=num_workers,
-          index=index,
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.experimental_auto_shard_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_workers=num_workers,
-          index=index,
-          **self._flat_structure)
+    variant_tensor = ged_ops.auto_shard_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        num_workers=num_workers,
+        index=index,
+        **self._flat_structure)
     super(_AutoShardDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
@@ -112,13 +105,8 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
           num_workers=num_workers,
           use_fallback=use_fallback,
           **self._flat_structure)
-    elif compat.forward_compatible(2019, 8, 3):
-      variant_tensor = ged_ops.rebatch_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_workers=num_workers,
-          **self._flat_structure)
     else:
-      variant_tensor = ged_ops.experimental_rebatch_dataset(
+      variant_tensor = ged_ops.rebatch_dataset(
           self._input_dataset._variant_tensor,  # pylint: disable=protected-access
           num_workers=num_workers,
           **self._flat_structure)
