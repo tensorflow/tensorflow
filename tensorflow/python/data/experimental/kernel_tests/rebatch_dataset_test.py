@@ -58,7 +58,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testBasic(self, drop_remainder):
     dataset = dataset_ops.Dataset.range(1024).batch(
         32, drop_remainder=drop_remainder)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[8] if drop_remainder else [None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
 
@@ -67,15 +67,15 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def testScalarInputError(self):
     dataset = dataset_ops.Dataset.range(1024)
-    distribute._RebatchDataset(dataset.batch(4), num_workers=4)
+    distribute._RebatchDataset(dataset.batch(4), num_replicas=4)
     with self.assertRaisesRegexp(ValueError, "at least one dimension"):
-      distribute._RebatchDataset(dataset, num_workers=4)
+      distribute._RebatchDataset(dataset, num_replicas=4)
 
   @parameterized.named_parameters(drop_remainder_cases)
-  def testBatchNotDivisibleByNumWorkers(self, drop_remainder):
+  def testBatchNotDivisibleByNumReplicas(self, drop_remainder):
     dataset = dataset_ops.Dataset.range(1024).batch(
         32, drop_remainder=drop_remainder)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=5)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=5)
     self.assertEqual([[None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     expected_output = []
@@ -92,7 +92,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def testTupleOutput(self):
     dataset = dataset_ops.Dataset.range(1024).map(lambda x: (x, x)).batch(32)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     expected_output = [([k for k in range(i, i + 8)],  # pylint: disable=g-complex-comprehension
                         [k for k in range(i, i + 8)])
                        for i in range(0, 1024, 8)]
@@ -101,7 +101,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testNestedDictionaryOutput(self):
     dataset = dataset_ops.Dataset.range(1024).map(
         lambda x: {"a": x, "b": {"c": x}}).batch(32)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     expected_output = [{"a": [k for k in range(i, i + 8)],  # pylint: disable=g-complex-comprehension
                         "b": {"c": [k for k in range(i, i + 8)]}}
                        for i in range(0, 1024, 8)]
@@ -111,7 +111,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testFinalPartialBatch(self, drop_remainder):
     dataset = dataset_ops.Dataset.range(1032).batch(
         32, drop_remainder=drop_remainder)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[8] if drop_remainder else [None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
 
@@ -126,7 +126,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testFinalPartialBatchAfterRebatch(self, drop_remainder):
     dataset = dataset_ops.Dataset.range(34).batch(
         32, drop_remainder=drop_remainder)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[8] if drop_remainder else [None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
 
@@ -158,7 +158,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testMapAndBatch(self):
     dataset = dataset_ops.Dataset.range(1024).apply(
         batching.map_and_batch(math_ops.square, 32))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     expected_output = [[k**2 for k in range(i, i + 8)]  # pylint: disable=g-complex-comprehension
@@ -169,7 +169,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     captured_t = variables.Variable(42)
     dataset = dataset_ops.Dataset.range(1024).apply(
         batching.map_and_batch(lambda x: captured_t, 32))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     expected_output = [[42 for _ in range(i, i + 8)]  # pylint: disable=g-complex-comprehension
@@ -182,7 +182,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(128).batch(
         4, drop_remainder=True).padded_batch(
             8, padded_shapes=[5])
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     # Each element is a list of 8 elements in which each element is a list of 5
     # elements, first four are numbers and the last one is a padded zero.
     expected_output = [[[j, j + 1, j + 2, j + 3, 0]  # pylint: disable=g-complex-comprehension
@@ -202,7 +202,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset1 = dataset_ops.Dataset.range(64).batch(8)
     dataset2 = dataset_ops.Dataset.range(32).batch(8)
     dataset = dataset1.concatenate(dataset2)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     expected_output = ([[i, i + 1] for i in range(0, 64, 2)] +
@@ -213,7 +213,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset1 = dataset_ops.Dataset.range(64).batch(16)
     dataset2 = dataset_ops.Dataset.range(32).batch(8)
     dataset = dataset1.concatenate(dataset2)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual(
         [[None]],
         [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
@@ -225,7 +225,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset1 = dataset_ops.Dataset.range(64).batch(8)
     dataset2 = dataset_ops.Dataset.range(32).batch(8)
     dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[None], [None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     expected_output = [([i, i + 1], [i, i + 1]) for i in range(0, 32, 2)]
@@ -235,7 +235,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset1 = dataset_ops.Dataset.range(64).batch(16)
     dataset2 = dataset_ops.Dataset.range(32).batch(8)
     dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[None], [None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     expected_output = [([2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 3], [i, i + 1])
@@ -246,7 +246,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(1024).batch(32).apply(sleep.sleep(10))
     with self.assertRaises(errors.InvalidArgumentError):
       rebatched_dataset = distribute._RebatchDataset(
-          dataset, num_workers=4, use_fallback=False)
+          dataset, num_replicas=4, use_fallback=False)
       next_element = self.getNext(rebatched_dataset)
       self.evaluate(next_element())
 
@@ -256,7 +256,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
             32).apply(sleep.sleep(10)))
     with self.assertRaises(errors.InvalidArgumentError):
       rebatched_dataset = distribute._RebatchDataset(
-          dataset, num_workers=4, use_fallback=False)
+          dataset, num_replicas=4, use_fallback=False)
       next_element = self.getNext(rebatched_dataset)
       self.evaluate(next_element())
 
@@ -268,7 +268,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_output = [[k for k in range(32)] for _ in range(2)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(dataset, expected_output)
 
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     # Two elements where each element is a list of 4 elements where each element
@@ -287,7 +287,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_output = [[k for k in range(32)] for _ in range(2)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(dataset, expected_output)
 
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     # List of 4 elements where each element is a list of 8 numbering from 0 to
@@ -307,7 +307,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_output = [[k for k in range(32)] for _ in range(2)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(dataset, expected_output)
 
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     # List of 4 elements where each element is a list of 8 numbering from 0 to
@@ -325,7 +325,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.apply(
         grouping.group_by_window(
             key_func=lambda x: x[0] % 4, reduce_func=reduce_fn, window_size=10))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=2)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=2)
 
     self.assertEqual([[None, 3]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
@@ -348,7 +348,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.apply(
         grouping.group_by_window(
             key_func=lambda x: x, reduce_func=reduce_fn, window_size=10))
-    dataset = distribute._RebatchDataset(dataset, num_workers=2)
+    dataset = distribute._RebatchDataset(dataset, num_replicas=2)
 
     self.assertEqual([[None]],
                      [ts.as_list() for ts in _flat_shapes(dataset)])
@@ -373,7 +373,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.apply(
         grouping.group_by_window(
             key_func=lambda x: x, reduce_func=reduce_fn, window_size=11))
-    dataset = distribute._RebatchDataset(dataset, num_workers=2)
+    dataset = distribute._RebatchDataset(dataset, num_replicas=2)
 
     self.assertEqual([[None]], [ts.as_list() for ts in _flat_shapes(dataset)])
 
@@ -398,7 +398,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.apply(
         grouping.group_by_window(
             key_func=lambda x: x, reduce_func=reduce_fn, window_size=11))
-    dataset = distribute._RebatchDataset(dataset, num_workers=2)
+    dataset = distribute._RebatchDataset(dataset, num_replicas=2)
 
     self.assertEqual([[None]], [ts.as_list() for ts in _flat_shapes(dataset)])
 
@@ -412,7 +412,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testScanAfterBatch(self):
     dataset = dataset_ops.Dataset.range(40).batch(10).apply(
         scan_ops.scan(np.int64(2), lambda state, value: (state, value * state)))
-    dataset = distribute._RebatchDataset(dataset, num_workers=2)
+    dataset = distribute._RebatchDataset(dataset, num_replicas=2)
 
     self.assertEqual([[None]],
                      [ts.as_list() for ts in _flat_shapes(dataset)])
@@ -442,7 +442,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         num_epochs=1,
         drop_final_batch=False)
 
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
 
     self.assertEqual([[None]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
@@ -459,7 +459,7 @@ class RebatchDatasetFallbackTest(test_base.DatasetTestBase):
   def testWithNoBatchDataset(self):
     dataset = dataset_ops.Dataset.from_tensor_slices(
         [[k for k in range(i, i + 32)] for i in range(0, 1024, 32)])  # pylint: disable=g-complex-comprehension
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[32]], [ts.as_list() for ts in _flat_shapes(dataset)])
     self.assertEqual([[8]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
@@ -470,7 +470,7 @@ class RebatchDatasetFallbackTest(test_base.DatasetTestBase):
   def testWithUnhandledTransformation(self):
     dataset = dataset_ops.Dataset.range(1024).batch(
         32, drop_remainder=True).apply(sleep.sleep(10))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
     self.assertEqual([[32]], [ts.as_list() for ts in _flat_shapes(dataset)])
     self.assertEqual([[8]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
@@ -482,7 +482,7 @@ class RebatchDatasetFallbackTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.range(2).flat_map(
         lambda _: dataset_ops.Dataset.range(32).batch(  # pylint: disable=g-long-lambda
             32, drop_remainder=True).apply(sleep.sleep(10)))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
 
     self.assertEqual([[8]],
                      [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
@@ -500,7 +500,7 @@ class RebatchDatasetFallbackTest(test_base.DatasetTestBase):
 
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "Cannot use rebatching fallback"):
-      rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+      rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
       next_element = self.getNext(rebatched_dataset)
       self.evaluate(next_element())
 
@@ -512,11 +512,11 @@ class RebatchDatasetFallbackTest(test_base.DatasetTestBase):
 
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "Cannot use rebatching fallback"):
-      rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=4)
+      rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
       next_element = self.getNext(rebatched_dataset)
       self.evaluate(next_element())
 
-  def testBatchSizeIndivisibleByNumWorkers(self):
+  def testBatchSizeNotDivisibleByNumReplicas(self):
     # This doesn't work; reshape requires tensor shape to be exactly divisible
     # by the second dim.
     dataset = dataset_ops.Dataset.range(64).batch(
@@ -524,7 +524,7 @@ class RebatchDatasetFallbackTest(test_base.DatasetTestBase):
 
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "Cannot use rebatching fallback"):
-      rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=5)
+      rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=5)
       next_element = self.getNext(rebatched_dataset)
       self.evaluate(next_element())
 
@@ -532,7 +532,7 @@ class RebatchDatasetFallbackTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.from_tensors((np.arange(10), np.arange(5)))
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "Cannot use rebatching fallback"):
-      rebatched_dataset = distribute._RebatchDataset(dataset, num_workers=5)
+      rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=5)
       next_element = self.getNext(rebatched_dataset)
       self.evaluate(next_element())
 
