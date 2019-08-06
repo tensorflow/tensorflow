@@ -235,7 +235,6 @@ cc_library(
         "lib/psl.h",
         "lib/psl.c",
         "lib/vtls/sectransp.h",
-        "lib/vtls/sectransp.c",
         "lib/vtls/mesalink.h",
         "lib/vtls/mesalink.c",
         "lib/curl_get_line.h",
