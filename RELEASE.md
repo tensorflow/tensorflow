@@ -19,6 +19,8 @@
 * Update `RaggedTensors` to support int32 `row_splits`.
 * Add `TensorSpec` support for `CompositeTensors`.
 * Add environment variable TF_CUDNN_DETERMINISTIC. Setting to "true" or "1" forces the selection of deterministic cuDNN convolution and max-pooling algorithms. When this is enabled, the algorithm selection procedure itself is also deterministic. This change was already present in release 1.14.0, but this note was missing from the 1.14.0 release notes tagged v1.14.0.
+* The `precision_mode` argument to `TrtGraphConverter` is now case insensitive.
+* Auto Mixed-Precision graph optimizer simplifies converting models to float16 for acceleration on Volta and Turing Tensor Cores. This feature can be enabled by wrapping an optimizer class with `tf.train.experimental.enable_mixed_precision_graph_rewrite()`.
 
 # Release 1.14.0
 
