@@ -551,10 +551,11 @@ do_check_file_name_test() {
 _check_no_deps() {
   TARGET="$1"
   DISALLOWED_DEP="$2"
+  EXTRA_FLAG="$3"
 
   TMP_FILE="$(mktemp)_tmp.log"
   echo "Checking ${TARGET} does not depend on ${DISALLOWED_DEP} ..."
-  bazel cquery "somepath(${TARGET}, ${DISALLOWED_DEP})" --keep_going> "${TMP_FILE}" 2>&1
+  bazel cquery ${EXTRA_FLAG} "somepath(${TARGET}, ${DISALLOWED_DEP})" --keep_going> "${TMP_FILE}" 2>&1
   if cat "${TMP_FILE}" | grep "Empty query results"; then
       echo "Success."
   else
@@ -568,7 +569,8 @@ _check_no_deps() {
   rm "${TMP_FILE}"
 }
 
-do_pip_no_cuda_deps_check() {
+_do_pip_no_cuda_deps_check() {
+  EXTRA_FLAG="$1"
   DISALLOWED_CUDA_DEPS=("@local_config_cuda//cuda:cudart"
         "@local_config_cuda//cuda:cublas"
         "@local_config_cuda//cuda:cuda_driver"
@@ -578,13 +580,21 @@ do_pip_no_cuda_deps_check() {
         "@local_config_cuda//cuda:cusparse")
   for cuda_dep in "${DISALLOWED_CUDA_DEPS[@]}"
   do
-   _check_no_deps "//tensorflow/tools/pip_package:build_pip_package" "${cuda_dep}"
+   _check_no_deps "//tensorflow/tools/pip_package:build_pip_package" "${cuda_dep}" "${EXTRA_FLAG}"
    RESULT=$?
 
    if [[ ${RESULT} != "0" ]]; then
     exit 1
    fi
   done
+}
+
+do_pip_no_cuda_deps_check_ubuntu() {
+  _do_pip_no_cuda_deps_check "--define using_cuda=true --define using_cuda_nvcc=true"
+}
+
+do_pip_no_cuda_deps_check_windows() {
+  _do_pip_no_cuda_deps_check "--define using_cuda=true --define using_cuda_nvcc=true --define framework_shared_object=false"
 }
 
 do_configure_test() {
@@ -602,8 +612,8 @@ do_configure_test() {
 }
 
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_configure_test" "do_pylint PYTHON2" "do_pylint PYTHON3" "do_check_futures_test" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test" "do_pip_no_cuda_deps_check")
-SANITY_STEPS_DESC=("Run ./configure" "Python 2 pylint" "Python 3 pylint" "Check that python files have certain __future__ imports" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases" "Check gpu pip package does not depend on cuda shared libraries.")
+SANITY_STEPS=("do_configure_test" "do_pylint PYTHON2" "do_pylint PYTHON3" "do_check_futures_test" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test" "do_pip_no_cuda_deps_check_ubuntu" "do_pip_no_cuda_deps_check_windows")
+SANITY_STEPS_DESC=("Run ./configure" "Python 2 pylint" "Python 3 pylint" "Check that python files have certain __future__ imports" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases" "Check Ubuntu gpu pip package does not depend on cuda shared libraries" "Check Windows gpu pip package does not depend on cuda shared libraries")
 
 INCREMENTAL_FLAG=""
 DEFAULT_BAZEL_CONFIGS=""

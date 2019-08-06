@@ -65,13 +65,13 @@ cc_library(
     name = "stream_executor_cuda",
     deps = [
         ":stream_executor_no_cuda",
-    ] + if_static(
-        [
+    ] + select({
+        "//tensorflow:oss": ["//tensorflow/stream_executor/cuda:cudart_stub"],
+        "//conditions:default": [
             "//tensorflow/stream_executor/cuda:all_runtime",
             ":cuda",
         ],
-        ["//tensorflow/stream_executor/cuda:cudart_stub"],
-    ) + select({
+    }) + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
     }),
