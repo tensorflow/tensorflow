@@ -321,7 +321,6 @@ def random_crop(value, size, seed=None, name=None):
 
           tmp = []
           for ch in range(value.shape[2].value):
-              print('tjs s', size_dim)
               v0 = pad_up_to(value[:, :, ch], [size_dim[0], size_dim[1]], 0)
               tmp.append(v0)
           value = array_ops.stack(tmp, axis=2)
