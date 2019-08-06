@@ -221,6 +221,7 @@ distribute_py_test(
         "no_windows_gpu",
         "notsan",
     ],
+    xla_enable_strict_auto_jit = False,  # Tensorflow also fails.
     deps = [
         ":keras_correctness_test_lib",
     ],

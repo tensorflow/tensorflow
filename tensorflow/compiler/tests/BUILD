@@ -1192,6 +1192,7 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -1217,6 +1218,7 @@ cuda_py_test(
         "nogpu",
         "no_cuda_on_cpu_tap",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -1232,6 +1234,7 @@ cuda_py_test(
         "//tensorflow/python:layers",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cc_library(
@@ -1317,6 +1320,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 # An example of ahead-of-time compilation using tfcompile.  The
