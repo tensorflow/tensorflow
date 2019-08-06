@@ -1030,11 +1030,11 @@ class LSTMPerformanceTest(test.Benchmark):
     logging.info('Expect the performance of LSTM V2 is more than 5 times'
                  ' of normal LSTM, got {0:.2f}'.format(v2_vs_normal))
 
-  def test_performance_graph(self):
+  def benchmark_performance_graph(self):
     with context.graph_mode(), session_lib.Session(config=_config):
       self._benchmark_performance_with_standard_cudnn_impl()
 
-  def test_performance_eager(self):
+  def benchmark_performance_eager(self):
     with context.eager_mode():
       self._benchmark_performance_with_standard_cudnn_impl()
 
