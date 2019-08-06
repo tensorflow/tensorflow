@@ -163,20 +163,18 @@ StatusOr<tensorflow::AutotuneResult>
 CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     const HloCustomCallInstruction& instr, se::DeviceMemoryAllocator* allocator,
     se::Stream* stream) {
-  const auto device_ordinal = stream_exec_->device_ordinal();
-
   std::vector<se::DeviceMemoryBase> operand_buffers;
   se::DeviceMemoryBase result_buffer;
 
   const HloModuleConfig& hlo_module_config = instr.GetModule()->config();
   se::cuda::RedzoneAllocator input_output_allocator(
-      device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
+      stream, allocator, PtxOptsFromConfig(hlo_module_config));
   AllocateInitializeBuffers(instr, &input_output_allocator, stream,
                             &operand_buffers, &result_buffer);
 
   std::vector<AutotuneResult> profile_results;
   se::cuda::RedzoneAllocator scratch_allocator(
-      device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
+      stream, allocator, PtxOptsFromConfig(hlo_module_config));
   bool crash_on_checking_failure = false;
   ProfileConvCandidates(instr, stream, &scratch_allocator,
                         &input_output_allocator, &operand_buffers,
@@ -191,19 +189,20 @@ CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     }
   }
 
-  StatusOr<AutotuneResult> result_or = PickBestAlgorithmNoCache(instr);
-  if (result_or.ok()) {
-    tensorflow::mutex_lock lock(autotune_cache_lock);
-    CHECK(autotune_cache.insert({key, result_or.ValueOrDie()}).second);
-  }
-  return result_or;
-}
+  // For now, we ignore WRONG_RESULT failures because false-positives are
+  // possible (e.g. perhaps the reference algorithm is the one that's
+  // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
+  // quite severe and can be detected with high accuracy.
+  auto has_failure = [](const AutotuneResult& r) {
+    return r.has_failure() &&
+           r.failure().kind() != AutotuneResult::WRONG_RESULT;
+  };
 
-StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
-    const HloCustomCallInstruction* instr) {
-  XLA_SCOPED_LOGGING_TIMER(
-      absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithmImpl for ",
-                   instr->ToString()));
+  // Choose the fastest convolution that doesn't produce a REDZONE_MODIFIED
+  // error.
+  //
+  // TODO(jlebar): We ought to be able to detect redzone reads by noticing NaNs
+  // in the output of the conv and skip those.
 
   // The successful one should have a smaller key, since we are doing
   // min_element. If they are both unsuccessful, keep the earlier one in
@@ -223,19 +222,11 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     return *best_result;
   }
 
-  // Create a stream for us to do our work on.
-  se::Stream stream{stream_exec_};
-  stream.Init();
-  // allocator either points to this->allocator_ or, if that's null, to a
-  // se::StreamExecutorMemoryAllocator for stream_exec_.
-  se::DeviceMemoryAllocator* allocator;
-  optional<se::StreamExecutorMemoryAllocator> se_allocator;
-  if (allocator_ != nullptr) {
-    allocator = allocator_;
-  } else {
-    se_allocator.emplace(stream_exec_);
-    allocator = &*se_allocator;
-  }
+  return InternalError(
+      "All algorithms tried for convolution %s failed.  Falling back to "
+      "default algorithm.",
+      instr.ToString());
+}
 
 Status CudnnConvAlgorithmPicker::AllocateInitializeBuffers(
     const HloCustomCallInstruction& instr,
