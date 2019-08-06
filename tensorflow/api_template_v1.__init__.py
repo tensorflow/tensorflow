@@ -134,6 +134,10 @@ if _running_from_pip_package():
     if _fi.file_exists(plugin_dir):
       _ll.load_library(plugin_dir)
 
+# Disable TF2 behavior
+from tensorflow.python.compat import v2_compat as _compat  # pylint: disable=g-import-not-at-top
+_compat.disable_v2_behavior()
+
 # These symbols appear because we import the python package which
 # in turn imports from tensorflow.core and tensorflow.python. They
 # must come from this module. So python adds these symbols for the

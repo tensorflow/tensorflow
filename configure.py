@@ -50,7 +50,7 @@ _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
 _TF_MIN_BAZEL_VERSION = '0.24.1'
-_TF_MAX_BAZEL_VERSION = '0.26.1'
+_TF_MAX_BAZEL_VERSION = '0.28.1'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -1558,9 +1558,6 @@ def main():
   set_system_libs_flag(environ_cp)
   if is_windows():
     set_windows_build_flags(environ_cp)
-
-  # Add a config option to build TensorFlow 2.0 API.
-  write_to_bazelrc('build:v2 --define=tf_api_version=2')
 
   if get_var(environ_cp, 'TF_SET_ANDROID_WORKSPACE', 'android workspace', False,
              ('Would you like to interactively configure ./WORKSPACE for '
