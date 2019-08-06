@@ -29,6 +29,38 @@ limitations under the License.
 
 namespace xla {
 
+StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
+    const ServiceExecutableRunOptions* run_options,
+    absl::Span<const ShapedBuffer* const> arguments,
+    HloExecutionProfile* hlo_execution_profile) {
+  StatusOr<ScopedShapedBuffer> result =
+      ExecuteAsyncOnStream(run_options, arguments, hlo_execution_profile);
+  Status blocking_status = run_options->stream()->BlockHostUntilDone();
+  TF_RETURN_IF_ERROR(result.status());
+  TF_RETURN_IF_ERROR(blocking_status);
+  return result;
+}
+
+StatusOr<ExecutionOutput> Executable::ExecuteOnStream(
+    const ServiceExecutableRunOptions* run_options,
+    std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> arguments,
+    HloExecutionProfile* hlo_execution_profile) {
+  StatusOr<ExecutionOutput> result = ExecuteAsyncOnStream(
+      run_options, std::move(arguments), hlo_execution_profile);
+  Status blocking_status = run_options->stream()->BlockHostUntilDone();
+  TF_RETURN_IF_ERROR(result.status());
+  TF_RETURN_IF_ERROR(blocking_status);
+  return result;
+}
+
+StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStream(
+    const ServiceExecutableRunOptions* /*run_options*/,
+    std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> /*arguments*/,
+    HloExecutionProfile* /*hlo_execution_profile*/) {
+  return Unimplemented(
+      "MaybeOwningDeviceMemory version of overload is not implemented ");
+}
+
 StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
     absl::Span<const ServiceExecutableRunOptions> run_options,
     absl::Span<const absl::Span<const ShapedBuffer* const>> arguments) {
@@ -49,8 +81,9 @@ StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
     // We cannot BlockHostUntilDone() on the already-launched executions in case
     // of error, since if the executions communicate, the initially launched
     // executions may never complete if not all executions are running.
-    TF_ASSIGN_OR_RETURN(auto rv,
-                        ExecuteAsyncOnStream(&run_options[i], arguments[i]));
+    TF_ASSIGN_OR_RETURN(
+        auto rv, ExecuteAsyncOnStream(&run_options[i], arguments[i],
+                                      /*hlo_execution_profile=*/nullptr));
     return_values.push_back(std::move(rv));
   }
   for (const auto& options : run_options) {
@@ -61,10 +94,11 @@ StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
 }
 
 StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
-    const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
+    const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments) {
   se::Stream* stream = run_options->stream();
   std::unique_ptr<se::Timer> timer;
+  ExecutionProfile* profile = run_options->run_options().execution_profile();
   if (profile != nullptr) {
     timer.reset(new se::Timer(stream->parent()));
     stream->InitTimer(timer.get()).ThenStartTimer(timer.get());
@@ -102,11 +136,6 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     VLOG(1) << "done with block-host-until-done";
 
     // Merge in run-time profile information from execution_profile.
-    //
-    // TODO(b/71713097): This is buggy -- even though the mutex takes care of
-    // C++ level races, some other concurrent ExecuteOnStreamWrapper call could
-    // have rewritten the execution_profile before we get to it.
-    profile->MergeFrom(execution_profile());
 
     // Overall execution time (in nanoseconds) from the executor timer.
     if (stream->ok()) {
@@ -128,7 +157,7 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
       profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
     }
 
-    const int64 executable_size_in_bytes = SizeInBytes();
+    const int64 executable_size_in_bytes = SizeOfGeneratedCodeInBytes();
     if (executable_size_in_bytes != 0) {
       profile->set_executable_size_in_bytes(executable_size_in_bytes);
     }
@@ -143,6 +172,6 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
   return return_value;
 }
 
-int64 Executable::SizeInBytes() { return -1; }
+int64 Executable::SizeOfGeneratedCodeInBytes() { return -1; }
 
 }  // namespace xla

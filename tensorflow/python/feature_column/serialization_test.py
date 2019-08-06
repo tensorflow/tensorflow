@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.feature_column import dense_features
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.feature_column import serialization
@@ -125,7 +126,8 @@ class DenseFeaturesSerializationTest(test.TestCase, parameterized.TestCase):
     cols = [fc.numeric_column('a'),
             fc.embedding_column(fc.categorical_column_with_identity(
                 key='b', num_buckets=3), dimension=2)]
-    orig_layer = fc.DenseFeatures(cols, trainable=trainable, name=name)
+    orig_layer = dense_features.DenseFeatures(
+        cols, trainable=trainable, name=name)
     config = orig_layer.get_config()
 
     self.assertEqual(config['name'], orig_layer.name)
@@ -147,10 +149,11 @@ class DenseFeaturesSerializationTest(test.TestCase, parameterized.TestCase):
                 'b', vocabulary_list=['1', '2', '3']), dimension=2),
             fc.indicator_column(fc.categorical_column_with_hash_bucket(
                 key='c', hash_bucket_size=3))]
-    orig_layer = fc.DenseFeatures(cols, trainable=trainable, name=name)
+    orig_layer = dense_features.DenseFeatures(
+        cols, trainable=trainable, name=name)
     config = orig_layer.get_config()
 
-    new_layer = fc.DenseFeatures.from_config(config)
+    new_layer = dense_features.DenseFeatures.from_config(config)
 
     self.assertEqual(new_layer.name, orig_layer.name)
     self.assertEqual(new_layer.trainable, trainable)
@@ -168,10 +171,10 @@ class DenseFeaturesSerializationTest(test.TestCase, parameterized.TestCase):
     ab = fc.crossed_column([a, b], hash_bucket_size=2)
     cols = [fc.indicator_column(ab)]
 
-    orig_layer = fc.DenseFeatures(cols)
+    orig_layer = dense_features.DenseFeatures(cols)
     config = orig_layer.get_config()
 
-    new_layer = fc.DenseFeatures.from_config(config)
+    new_layer = dense_features.DenseFeatures.from_config(config)
 
     self.assertLen(new_layer._feature_columns, 1)
     self.assertEqual(new_layer._feature_columns[0].name, 'a_X_b_indicator')

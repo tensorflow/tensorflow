@@ -18,6 +18,7 @@ from __future__ import print_function
 
 import functools
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
@@ -128,7 +129,7 @@ class BackpropTest(test.TestCase):
         _ = v + 1.0  # This reads the variable inside the loop context
         with backprop.GradientTape() as t:
           result = v * 2
-        self.assertTrue(t.gradient(result, v) is not None)
+        self.assertIsNotNone(t.gradient(result, v))
         return 1.0
 
       control_flow_ops.while_loop(lambda i: False, body, [1.0])
@@ -268,8 +269,8 @@ class BackpropTest(test.TestCase):
 
     grads = backprop.implicit_grad(f)()
     ordered_variables = [x[1] for x in grads]
-    self.assertTrue(ordered_variables[0] is v0)
-    self.assertTrue(ordered_variables[1] is v1)
+    self.assertIs(ordered_variables[0], v0)
+    self.assertIs(ordered_variables[1], v1)
 
   def testTapeNoOpGradient(self):
     x = constant_op.constant(3.0)
@@ -1357,6 +1358,12 @@ class BackpropTest(test.TestCase):
       tf_da = gradients.gradients(tf_max, [tf_aa])
       self.assertAllEqual(da[0], tf_da[0].eval())
 
+  @test_util.run_in_graph_and_eager_modes
+  def testWatchBadThing(self):
+    g = backprop.GradientTape()
+    with self.assertRaisesRegexp(ValueError, 'ndarray'):
+      g.watch(np.array(1.))
+
 
 class JacobianTest(test.TestCase):
 
@@ -1476,7 +1483,7 @@ class JacobianTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class BatchJacobianTest(test.TestCase):
+class BatchJacobianTest(test.TestCase, parameterized.TestCase):
 
   def _batch_jacobian(self, experimental_use_pfor):
     persistent = context.executing_eagerly and not experimental_use_pfor
@@ -1576,6 +1583,23 @@ class BatchJacobianTest(test.TestCase):
       y = math_ops.matmul(x, w)
     self.assertAllClose(g.batch_jacobian(y, x, parallel_iterations=2),
                         g.batch_jacobian(y, x, parallel_iterations=3))
+
+  @parameterized.parameters(
+      (True, True),
+      (True, False),
+      (False, True),
+      (False, False))
+  def test_degenerate_shape(self, use_function, use_pfor):
+
+    def f(x):
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(x)
+        y = x**2
+      return tape.batch_jacobian(y, x, experimental_use_pfor=use_pfor)
+
+    if use_function:
+      f = def_function.function(f)
+    self.assertAllEqual([1, 0, 0], array_ops.shape(f(array_ops.zeros([1, 0]))))
 
 
 class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):

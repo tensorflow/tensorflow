@@ -209,6 +209,9 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
   std::sort(collective->participants.begin(), collective->participants.end(),
             [](const std::unique_ptr<Participant>& a,
                const std::unique_ptr<Participant>& b) {
+              if (a->executor == b->executor) {
+                return a->global_rank < b->global_rank;
+              }
               return a->executor < b->executor;
             });
 
@@ -608,10 +611,31 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         break;
       }
       case kBroadcast: {
-        const Tensor* buf_t = p->input ? p->input : p->output;
-        void* buf = const_cast<char*>(buf_t->tensor_data().data());
-        nccl_result = ncclBcast(buf, buf_t->NumElements(), data_type,
-                                collective->root_rank, nccl_comm, *cu_stream);
+        const void* sendbuff = nullptr;
+        void* recvbuff = nullptr;
+        int num_elements = -1;
+        if (p->input) {
+          sendbuff = p->input->tensor_data().data();
+          num_elements = p->input->NumElements();
+        }
+        if (p->output) {
+          recvbuff = const_cast<char*>(p->output->tensor_data().data());
+          num_elements = p->output->NumElements();
+        }
+        if (num_elements < 0) {
+          p->done_callback(errors::Internal(
+              "Both input and output are null in ncclBroadcast"));
+          collective->Unref();
+          continue;
+        }
+        VLOG(2) << "call NcclBroadcast collective_key "
+                << collective->collective_key << " participant " << p_idx
+                << " sendbuff " << sendbuff << " recvbuff " << recvbuff
+                << " nccl_comm " << nccl_comm << " comm_stream " << comm_stream
+                << " cuda_stream " << cu_stream;
+        nccl_result =
+            ncclBroadcast(sendbuff, recvbuff, num_elements, data_type,
+                          collective->root_rank, nccl_comm, *cu_stream);
         break;
       }
       case kReduce: {

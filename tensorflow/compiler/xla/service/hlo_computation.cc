@@ -142,6 +142,26 @@ HloInstruction* HloComputation::AddEntryComputationParameter(
   return instructions_.back().get();
 }
 
+Status HloComputation::ReplaceEntryComputationParameter(
+    int64 param_no, HloInstruction* old_instruction,
+    std::unique_ptr<HloInstruction> instruction) {
+  CHECK_GE(param_no, 0);
+  CHECK_LT(param_no, param_instructions_.size());
+  CHECK_EQ(instruction->opcode(), HloOpcode::kParameter);
+  CHECK(parent()->entry_computation() == this);
+
+  HloModuleConfig config = parent()->config();
+  *config.mutable_entry_computation_layout()->mutable_parameter_layout(
+      param_no) = ShapeLayout(instruction->shape());
+  parent()->set_config(config);
+
+  instruction->set_parent(this);
+  param_instructions_[param_no] = instruction.get();
+  AddInstructionInternal(std::move(instruction));
+
+  return ForceRemoveInstruction(old_instruction);
+}
+
 Status HloComputation::RemoveParameter(int64 param_no) {
   CHECK_GE(param_no, 0);
   CHECK_LT(param_no, param_instructions_.size());
@@ -229,7 +249,7 @@ bool HloComputation::HasSideEffect() const {
 }
 
 Status HloComputation::RemoveInstructionAndUnusedOperands(
-    HloInstruction* instruction) {
+    HloInstruction* instruction, std::function<void(HloInstruction*)> cleanup) {
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->user_count() == 0);
@@ -251,6 +271,9 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
       worklist.push(item->mutable_operand(i));
     }
 
+    if (cleanup) {
+      cleanup(item);
+    }
     TF_RETURN_IF_ERROR(RemoveInstruction(item));
     removed.insert(item);
   }
@@ -509,11 +532,12 @@ string HloComputation::ToString(
     if (options.print_percent()) {
       s << "%";
     }
-    s << name() << " ";
+    s << PrintName(name(), options.print_ids()) << " ";
   }
 
   if (options.print_program_shape()) {
-    s << ShapeUtil::HumanString(ComputeProgramShape()) << " ";
+    s << ShapeUtil::HumanString(ComputeProgramShape(options.print_ids()))
+      << " ";
   }
   s << "{\n";
   {
@@ -730,12 +754,13 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstructionWithCustomCopier(
   return DeepCopyHelper(instruction, &index, copy_leaf);
 }
 
-ProgramShape HloComputation::ComputeProgramShape() const {
+ProgramShape HloComputation::ComputeProgramShape(bool include_ids) const {
   ProgramShape program_shape;
 
   for (auto* param_instruction : param_instructions_) {
     *program_shape.add_parameters() = param_instruction->shape();
-    *program_shape.add_parameter_names() = param_instruction->name();
+    *program_shape.add_parameter_names() =
+        PrintName(param_instruction->name(), include_ids);
   }
   *program_shape.mutable_result() = root_instruction_->shape();
 
@@ -787,6 +812,13 @@ Status HloComputation::ReplaceWithNewInstruction(
                             AddInstruction(std::move(new_instruction)));
 }
 
+Status HloComputation::ReplaceWithNewEntryComputationParameter(
+    HloInstruction* old_instruction,
+    std::unique_ptr<HloInstruction> new_instruction) {
+  return ReplaceInstruction(old_instruction, AddEntryComputationParameter(
+                                                 std::move(new_instruction)));
+}
+
 Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
                                           HloInstruction* new_instruction) {
   TF_RET_CHECK(
@@ -805,6 +837,14 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
   if (new_instruction->metadata().op_name().empty()) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
+
+  // Like the metadata above, if the user didn't specify any sharding
+  // information on the new instruction we should copy the old sharding
+  // information (if any).
+  if (!new_instruction->has_sharding()) {
+    new_instruction->set_sharding(old_instruction->sharding_ptr());
+  }
+
   TF_RETURN_IF_ERROR(old_instruction->ReplaceAllUsesWith(new_instruction));
   return RemoveInstructionAndUnusedOperands(old_instruction);
 }

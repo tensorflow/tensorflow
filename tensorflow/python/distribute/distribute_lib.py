@@ -63,7 +63,7 @@ the same way with eager and graph execution.
   each replica are aggregated together before updating the model variables. This
   is in contrast to _asynchronous_, or _async_ training, where each replica
   updates the model variables independently. You may also have replicas
-  partitioned into gropus which are in sync within each group but async between
+  partitioned into groups which are in sync within each group but async between
   groups.
 * _Parameter servers_: These are machines that hold a single copy of
   parameters/variables, used by some strategies (right now just
@@ -123,6 +123,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
@@ -410,13 +411,16 @@ class InputContext(object):
 # pylint: disable=line-too-long
 @tf_export("distribute.Strategy", v1=[])
 class Strategy(object):
-  """A list of devices with a state & compute distribution policy.
+  """A state & compute distribution policy on a list of devices.
 
   See [the guide](https://www.tensorflow.org/alpha/guide/distribute_strategy)
   for overview and examples.
 
   In short:
 
+  * To use it with Keras `compile`/`fit`,
+    [please
+    read](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_keras).
   * You may pass descendant of `tf.distribute.Strategy` to
     `tf.estimator.RunConfig` to specify how a `tf.estimator.Estimator`
     should distribute its computation. See
@@ -425,11 +429,10 @@ class Strategy(object):
     strategy should be used when building an executing your model.
     (This puts you in the "cross-replica context" for this strategy, which
     means the strategy is put in control of things like variable placement.)
-  * If using Keras `compile`/`fit`,
-    [that is it](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_keras).
   * If you are writing a custom training loop, you will need to call a few more
     methods,
-    [see the guide](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_custom_training_loops):
+    [see the
+    guide](https://www.tensorflow.org/alpha/guide/distribute_strategy#using_tfdistributestrategy_with_custom_training_loops):
 
       * Start by either creating a `tf.data.Dataset` normally or using
         `tf.distribute.experimental_make_numpy_dataset` to make a dataset out of
@@ -484,7 +487,8 @@ class Strategy(object):
   accumulate metrics across steps in a given epoch.
 
   See the
-  [custom training loop tutorial](https://www.tensorflow.org/alpha/tutorials/distribute/training_loops)
+  [custom training loop
+  tutorial](https://www.tensorflow.org/alpha/tutorials/distribute/training_loops)
   for a more detailed example.
 
   Note: `tf.distribute.Strategy` currently does not support TensorFlow's
@@ -586,9 +590,9 @@ class Strategy(object):
     ```
 
     Args:
-      numpy_input: A nest of NumPy input arrays that will be distributed evenly
-        across all replicas. Note that lists of Numpy arrays are stacked,
-        as that is normal `tf.data.Dataset` behavior.
+      numpy_input: A nest of NumPy input arrays that will be converted into a
+      dataset. Note that lists of Numpy arrays are stacked, as that is normal
+      `tf.data.Dataset` behavior.
 
     Returns:
       A `tf.data.Dataset` representing `numpy_input`.
@@ -628,6 +632,10 @@ class Strategy(object):
       strategy.experimental_run_v2(train_step, args=(x,))
     ```
 
+    We will assume that the input dataset is batched by the
+    global batch size. With this assumption, we will make a best effort to
+    divide each batch across all the replicas (one or more workers).
+
     In a multi-worker setting, we will first attempt to distribute the dataset
     by attempting to detect whether the dataset is being created out of
     ReaderDatasets (e.g. TFRecordDataset, TextLineDataset, etc.) and if so,
@@ -644,12 +652,16 @@ class Strategy(object):
     if this method of sharding is selected. In this case, consider using
     `experimental_distribute_datasets_from_function` instead.
 
-    You can disable dataset distribution using the `auto_shard` option in
-    `tf.data.experimental.DistributeOptions`.
+    You can disable dataset sharding across workers using the `auto_shard`
+    option in `tf.data.experimental.DistributeOptions`.
 
-    Within each host, we will also split the data among all the worker devices
-    (if more than one a present), and this will happen even if multi-worker
-    sharding is disabled using the method above.
+    Within each worker, we will also split the data among all the worker
+    devices (if more than one a present), and this will happen even if
+    multi-worker sharding is disabled using the method above.
+
+    If the above batch splitting and dataset sharding logic is undesirable,
+    please use `experimental_distribute_datasets_from_function` instead, which
+    does not do any automatic splitting or sharding.
 
     Args:
       dataset: `tf.data.Dataset` that will be sharded across all replicas using
@@ -664,8 +676,6 @@ class Strategy(object):
   def experimental_distribute_datasets_from_function(self, dataset_fn):
     """Distributes `tf.data.Dataset` instances created by calls to `dataset_fn`.
 
-    Note: This API can only be used in eager mode.
-
     `dataset_fn` will be called once for each worker in the strategy. Each
     replica on that worker will dequeue one batch of inputs from the local
     `Dataset` (i.e. if a worker has two replicas, two batches will be dequeued
@@ -677,6 +687,9 @@ class Strategy(object):
     fallback behavior in `experimental_distribute_dataset`). In cases where the
     dataset is infinite, this sharding can be done by creating dataset replicas
     that differ only in their random seed.
+    `experimental_distribute_dataset` may also sometimes fail to split the
+    batch across replicas on a worker. In that case, this method can be used
+    where that limitation does not exist.
 
     The `dataset_fn` should take an `tf.distribute.InputContext` instance where
     information about batching and input replication can be accessed:
@@ -707,11 +720,8 @@ class Strategy(object):
       A "distributed `Dataset`", which acts like a `tf.data.Dataset` except
       it produces "per-replica" values.
     """
-    if ops.executing_eagerly_outside_functions():
-      return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
-          dataset_fn)
-    raise RuntimeError("`experimental_distribute_datasets_from_function` is "  # pylint: disable=g-doc-exception
-                       "only supported when eager execution is enabled.")
+    return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
+        dataset_fn)
 
   def experimental_run_v2(self, fn, args=(), kwargs=None):
     """Run `fn` on each replica, with the given arguments.
@@ -719,14 +729,17 @@ class Strategy(object):
     Executes ops specified by `fn` on each replica. If `args` or `kwargs` have
     "per-replica" values, such as those produced by a "distributed `Dataset`",
     when `fn` is executed on a particular replica, it will be executed with the
-    component of those "per-replica" values that corresponds to that replica.
+    component of those "per-replica" values that correspond to that replica.
 
     `fn` may call `tf.distribute.get_replica_context()` to access members such
     as `all_reduce`.
 
-    IMPORTANT: Depending on the `tf.distribute.Strategy` implementation being
-    used, and whether eager execution is enabled, `fn` may be called one or more
-    times (once for each replica).
+    All arguments in `args` or `kwargs` should either be nest of tensors or
+    per-replica objects containing tensors or composite tensors.
+
+    IMPORTANT: Depending on the implementation of `tf.distribute.Strategy` and
+    whether eager execution is enabled, `fn` may be called one or more times (
+    once for each replica).
 
     Args:
       fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
@@ -865,7 +878,7 @@ class Strategy(object):
   def experimental_local_results(self, value):
     """Returns the list of all local per-replica values contained in `value`.
 
-    Note: This only returns values on the workers initiated by this client.
+    Note: This only returns values on the worker initiated by this client.
     When using a `tf.distribute.Strategy` like
     `tf.distribute.experimental.MultiWorkerMirroredStrategy`, each worker
     will be its own client, and this function will only return values
@@ -1032,9 +1045,9 @@ class StrategyV1(Strategy):
     ```
 
     Args:
-      numpy_input: A nest of NumPy input arrays that will be distributed evenly
-        across all replicas. Note that lists of Numpy arrays are stacked,
-        as that is normal `tf.data.Dataset` behavior.
+      numpy_input: A nest of NumPy input arrays that will be converted into a
+      dataset. Note that lists of Numpy arrays are stacked, as that is normal
+      `tf.data.Dataset` behavior.
       session: (TensorFlow v1.x graph execution only) A session used for
         initialization.
 
@@ -1294,9 +1307,18 @@ class StrategyExtendedV2(object):
   def _scope(self, strategy):
     """Implementation of tf.distribute.Strategy.scope()."""
     def creator_with_resource_vars(*args, **kwargs):
+      """Variable creator to use in `_CurrentDistributionContext`."""
       _require_strategy_scope_extended(self)
       kwargs["use_resource"] = True
       kwargs["distribute_strategy"] = strategy
+
+      # Unwrap `initial_value` if it is a `CheckpointInitialValue` to avoid
+      # dereferencing a `Tensor` that is without a `name`.
+      # TODO(b/138130844): Revisit the following check once
+      # `CheckpointInitialValue` class is removed.
+      if isinstance(kwargs["initial_value"], trackable.CheckpointInitialValue):
+        kwargs["initial_value"] = kwargs["initial_value"].wrapped_value
+
       return self._create_variable(*args, **kwargs)
 
     def distributed_getter(getter, *args, **kwargs):
@@ -1425,7 +1447,7 @@ class StrategyExtendedV2(object):
         all-reduction, pass `value` to `destinations`.
 
     Returns:
-      A value mirrored to `destinations`.
+      A tensor or value mirrored to `destinations`.
     """
     # TODO(josh11b): More docstring
     _require_cross_replica_or_default_context_extended(self)
@@ -2284,9 +2306,12 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
     if kwargs.get("trainable", True):
       collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
       l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
-      for v in value_list:
-        if v in l:
-          l.remove(v)
+      for value in value_list:
+        for i, trainable_variable in enumerate(l):
+          if value is trainable_variable:
+            del l[i]
+            break
+
     g.add_to_collections(collections, result)
   elif ops.GraphKeys.GLOBAL_STEP in collections:
     ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, result)

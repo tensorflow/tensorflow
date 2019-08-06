@@ -500,12 +500,10 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual([0, 1], self.evaluate(next_val))
     else:
       dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
-      with self.assertRaisesRegexp(RuntimeError,
-                                   "only supported when eager execution is "
-                                   "enabled"):
-        dist_dataset_from_func = \
-          default_strategy.experimental_distribute_datasets_from_function(
-              dataset_fn)
+      dist_dataset_from_func = \
+        default_strategy.experimental_distribute_datasets_from_function(
+            dataset_fn)
+      dataset_ops.make_initializable_iterator(dist_dataset_from_func)
 
 
 class InputContextTest(test.TestCase):

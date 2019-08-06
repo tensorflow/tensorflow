@@ -177,4 +177,4 @@ def main(unused_argv):
 
 
 if __name__ == "__main__":
-  tf.app.run(main=main)
+  tf.compat.v1.app.run(main=main)

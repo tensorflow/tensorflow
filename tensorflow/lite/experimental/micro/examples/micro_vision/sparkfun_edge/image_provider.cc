@@ -75,6 +75,8 @@ static hm01b0_cfg_t s_HM01B0Cfg = {
   pfnGpioIsr : NULL,
 };
 
+static constexpr int kFramesToInitialize = 4;
+
 bool g_is_camera_initialized = false;
 
 void boost_mode_enable(tflite::ErrorReporter* error_reporter, bool bEnable) {
@@ -118,9 +120,6 @@ void boost_mode_enable(tflite::ErrorReporter* error_reporter, bool bEnable) {
 }  // namespace
 
 TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
-  // Enable the ITM print interface.
-  am_bsp_itm_printf_enable();
-
   error_reporter->Report("Initializing HM01B0...\n");
 
   am_hal_clkgen_control(AM_HAL_CLKGEN_CONTROL_SYSCLK_MAX, 0);
@@ -144,6 +143,10 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
   am_hal_gpio_pinconfig(HM01B0_PIN_DVDD_EN, g_AM_HAL_GPIO_OUTPUT_12);
   am_hal_gpio_output_set(HM01B0_PIN_DVDD_EN);
 
+  // Configure Red LED for debugging.
+  am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_RED, g_AM_HAL_GPIO_OUTPUT_12);
+  am_hal_gpio_output_clear(AM_BSP_GPIO_LED_RED);
+
   hm01b0_power_up(&s_HM01B0Cfg);
 
   // TODO(njeff): check the delay time to just fit the spec.
@@ -154,22 +157,23 @@ TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
   // TODO(njeff): check the delay time to just fit the spec.
   am_util_delay_ms(1);
 
-  hm01b0_init_if(&s_HM01B0Cfg);
+  if (HM01B0_ERR_OK != hm01b0_init_if(&s_HM01B0Cfg)) {
+    return kTfLiteError;
+  }
 
-  hm01b0_init_system(&s_HM01B0Cfg, (hm_script_t*)sHM01B0InitScript,
-                     sizeof(sHM01B0InitScript) / sizeof(hm_script_t));
+  if (HM01B0_ERR_OK !=
+      hm01b0_init_system(&s_HM01B0Cfg, (hm_script_t*)sHM01B0InitScript,
+                         sizeof(sHM01B0InitScript) / sizeof(hm_script_t))) {
+    return kTfLiteError;
+  }
 
   // Put camera into streaming mode - this makes it so that the camera
   // constantly captures images.  It is still OK to read and image since the
   // camera uses a double-buffered input.  This means there is always one valid
   // image to read while the other buffer fills.  Streaming mode allows the
   // camera to perform auto exposure constantly.
-  am_hal_gpio_output_clear(AM_BSP_GPIO_LED_RED);
-  uint32_t error_code =
-      hm01b0_set_mode(&s_HM01B0Cfg, HM01B0_REG_MODE_SELECT_STREAMING, 0);
-  if (error_code == HM01B0_ERR_OK) {
-    am_hal_gpio_output_set(AM_BSP_GPIO_LED_RED);
-
+  if (HM01B0_ERR_OK !=
+      hm01b0_set_mode(&s_HM01B0Cfg, HM01B0_REG_MODE_SELECT_STREAMING, 0)) {
     return kTfLiteError;
   }
 
@@ -183,7 +187,13 @@ TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int frame_width,
   if (!g_is_camera_initialized) {
     TfLiteStatus init_status = InitCamera(error_reporter);
     if (init_status != kTfLiteOk) {
+      am_hal_gpio_output_set(AM_BSP_GPIO_LED_RED);
       return init_status;
+    }
+    // Drop a few frames until auto exposure is calibrated.
+    for (int i = 0; i < kFramesToInitialize; ++i) {
+      hm01b0_blocking_read_oneframe_scaled(frame, frame_width, frame_height,
+                                           channels);
     }
     g_is_camera_initialized = true;
   }

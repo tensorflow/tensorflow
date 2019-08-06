@@ -163,9 +163,10 @@ bool HostExecutor::AllocateStream(Stream *stream) { return true; }
 void HostExecutor::DeallocateStream(Stream *stream) {}
 
 bool HostExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
+  auto event = std::make_shared<absl::Notification>();
+  AsHostStream(other)->EnqueueTask([event]() { event->Notify(); });
   AsHostStream(dependent)->EnqueueTask(
-      [other]() { SE_CHECK_OK(other->BlockHostUntilDone()); });
-  AsHostStream(dependent)->BlockUntilDone();
+      [event]() { event->WaitForNotification(); });
   return true;
 }
 
@@ -252,6 +253,9 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
   float cycle_counter_frequency = static_cast<float>(
       tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency());
   builder.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
+
+  builder.set_name("Host");
+  builder.set_platform_version("Default Version");
 
   return builder.Build();
 }

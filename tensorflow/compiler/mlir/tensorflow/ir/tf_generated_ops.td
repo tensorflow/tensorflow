@@ -123,6 +123,65 @@ def TF_AddV2Op : TF_Op<"AddV2", [Broadcastable, Commutative, NoSideEffect]>,
   let hasCanonicalizer = 1;
 }
 
+def TF_AnyOp : TF_Op<"Any", [NoSideEffect]> {
+  let summary = [{
+Computes the "logical or" of elements across dimensions of a tensor.
+  }];
+
+  let description = [{
+Reduces `input` along the dimensions given in `axis`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`axis`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+  }];
+
+  let arguments = (ins
+    I1Tensor:$input,
+    TF_I32OrI64Tensor:$reduction_indices,
+
+    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+  );
+
+  let results = (outs
+    I1Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_ArgMaxOp : TF_Op<"ArgMax", [NoSideEffect]> {
+  let summary = [{
+Returns the index with the largest value across dimensions of a tensor.
+  }];
+
+  let description = [{
+Note that in case of ties the identity of the return value is not guaranteed.
+
+Usage:
+  ```python
+  import tensorflow as tf
+  a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+  b = tf.math.argmax(input = a)
+  c = tf.keras.backend.eval(b)
+  # c = 4
+  # here a[4] = 166.32 which is the largest element of a across axis 0
+  ```
+  }];
+
+  let arguments = (ins
+    TF_NumberTensor:$input,
+    TF_I32OrI64Tensor:$dimension
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr output_type = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_ArgMinOp : TF_Op<"ArgMin", [NoSideEffect]> {
   let summary = [{
 Returns the index with the smallest value across dimensions of a tensor.
@@ -136,7 +195,7 @@ Usage:
   import tensorflow as tf
   a = [1, 10, 26.9, 2.8, 166.32, 62.3]
   b = tf.math.argmin(input = a)
-  c = tf.keras.backend.eval(b)  
+  c = tf.keras.backend.eval(b)
   # c = 0
   # here a[0] = 1 which is the smallest element of a across axis 0
   ```
@@ -154,6 +213,28 @@ Usage:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultTypeAttr output_type = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_AssertOp : TF_Op<"Assert", []> {
+  let summary = "Asserts that the given condition is true.";
+
+  let description = [{
+If `condition` evaluates to false, print the list of tensors in `data`.
+`summarize` determines how many entries of the tensors to print.
+  }];
+
+  let arguments = (ins
+    I1Tensor:$condition,
+    Variadic<TF_Tensor>:$data,
+
+    DefaultValuedAttr<I64Attr, "3">:$summarize
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<1>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_AvgPoolOp : TF_Op<"AvgPool", [NoSideEffect]> {
@@ -939,6 +1020,131 @@ raising an error.
   TF_DerivedOperandTypeAttr Tparams = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_GatherNdOp : TF_Op<"GatherNd", [NoSideEffect]> {
+  let summary = [{
+Gather slices from `params` into a Tensor with shape specified by `indices`.
+  }];
+
+  let description = [{
+`indices` is a K-dimensional integer tensor, best thought of as a
+(K-1)-dimensional tensor of indices into `params`, where each element defines a
+slice of `params`:
+
+    output[\\(i_0, ..., i_{K-2}\\)] = params[indices[\\(i_0, ..., i_{K-2}\\)]]
+
+Whereas in `tf.gather` `indices` defines slices into the first
+dimension of `params`, in `tf.gather_nd`, `indices` defines slices into the
+first `N` dimensions of `params`, where `N = indices.shape[-1]`.
+
+The last dimension of `indices` can be at most the rank of
+`params`:
+
+    indices.shape[-1] <= params.rank
+
+The last dimension of `indices` corresponds to elements
+(if `indices.shape[-1] == params.rank`) or slices
+(if `indices.shape[-1] < params.rank`) along dimension `indices.shape[-1]`
+of `params`.  The output tensor has shape
+
+    indices.shape[:-1] + params.shape[indices.shape[-1]:]
+
+Note that on CPU, if an out of bound index is found, an error is returned.
+On GPU, if an out of bound index is found, a 0 is stored in the
+corresponding output value.
+
+Some examples below.
+
+Simple indexing into a matrix:
+
+```python
+    indices = [[0, 0], [1, 1]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = ['a', 'd']
+```
+
+Slice indexing into a matrix:
+
+```python
+    indices = [[1], [0]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = [['c', 'd'], ['a', 'b']]
+```
+
+Indexing into a 3-tensor:
+
+```python
+    indices = [[1]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [[['a1', 'b1'], ['c1', 'd1']]]
+
+
+    indices = [[0, 1], [1, 0]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [['c0', 'd0'], ['a1', 'b1']]
+
+
+    indices = [[0, 0, 1], [1, 0, 1]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = ['b0', 'b1']
+```
+
+Batched indexing into a matrix:
+
+```python
+    indices = [[[0, 0]], [[0, 1]]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = [['a'], ['b']]
+```
+
+Batched slice indexing into a matrix:
+
+```python
+    indices = [[[1]], [[0]]]
+    params = [['a', 'b'], ['c', 'd']]
+    output = [[['c', 'd']], [['a', 'b']]]
+```
+
+Batched indexing into a 3-tensor:
+
+```python
+    indices = [[[1]], [[0]]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [[[['a1', 'b1'], ['c1', 'd1']]],
+              [[['a0', 'b0'], ['c0', 'd0']]]]
+
+    indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [[['c0', 'd0'], ['a1', 'b1']],
+              [['a0', 'b0'], ['c1', 'd1']]]
+
+
+    indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]
+    params = [[['a0', 'b0'], ['c0', 'd0']],
+              [['a1', 'b1'], ['c1', 'd1']]]
+    output = [['b0', 'b1'], ['d0', 'c1']]
+```
+
+See also `tf.gather` and `tf.batch_gather`.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$params,
+    TF_I32OrI64Tensor:$indices
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tparams = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_GatherV2Op : TF_Op<"GatherV2", [NoSideEffect]> {
   let summary = [{
 Gather slices from `params` axis `axis` according to `indices`.
@@ -1125,6 +1331,39 @@ for dtype in dtype_list:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+}
+
+def TF_LRNOp : TF_Op<"LRN", [NoSideEffect]> {
+  let summary = "Local Response Normalization.";
+
+  let description = [{
+The 4-D `input` tensor is treated as a 3-D array of 1-D vectors (along the last
+dimension), and each vector is normalized independently.  Within a given vector,
+each component is divided by the weighted, squared sum of inputs within
+`depth_radius`.  In detail,
+
+    sqr_sum[a, b, c, d] =
+        sum(input[a, b, c, d - depth_radius : d + depth_radius + 1] ** 2)
+    output = input / (bias + alpha * sqr_sum) ** beta
+
+For details, see [Krizhevsky et al., ImageNet classification with deep
+convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks).
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32]>:$input,
+
+    DefaultValuedAttr<I64Attr, "5">:$depth_radius,
+    DefaultValuedAttr<F32Attr, "1.0f">:$bias,
+    DefaultValuedAttr<F32Attr, "1.0f">:$alpha,
+    DefaultValuedAttr<F32Attr, "0.5f">:$beta
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_LeakyReluOp : TF_Op<"LeakyRelu", [NoSideEffect, SameOperandsAndResultType]> {
@@ -1573,6 +1812,116 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Broadcastable, Commutative, NoSideEffect]
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_OneHotOp : TF_Op<"OneHot", [NoSideEffect]> {
+  let summary = "Returns a one-hot tensor.";
+
+  let description = [{
+The locations represented by indices in `indices` take value `on_value`,
+while all other locations take value `off_value`.
+
+If the input `indices` is rank `N`, the output will have rank `N+1`,
+The new axis is created at dimension `axis` (default: the new axis is
+appended at the end).
+
+If `indices` is a scalar the output shape will be a vector of length `depth`.
+
+If `indices` is a vector of length `features`, the output shape will be:
+```
+  features x depth if axis == -1
+  depth x features if axis == 0
+```
+
+If `indices` is a matrix (batch) with shape `[batch, features]`,
+the output shape will be:
+```
+  batch x features x depth if axis == -1
+  batch x depth x features if axis == 1
+  depth x batch x features if axis == 0
+```
+
+
+Examples
+=========
+
+Suppose that
+```
+  indices = [0, 2, -1, 1]
+  depth = 3
+  on_value = 5.0
+  off_value = 0.0
+  axis = -1
+```
+
+Then output is `[4 x 3]`:
+```
+output =
+  [5.0 0.0 0.0]  // one_hot(0)
+  [0.0 0.0 5.0]  // one_hot(2)
+  [0.0 0.0 0.0]  // one_hot(-1)
+  [0.0 5.0 0.0]  // one_hot(1)
+```
+
+Suppose that
+```
+  indices = [0, 2, -1, 1]
+  depth = 3
+  on_value = 0.0
+  off_value = 3.0
+  axis = 0
+```
+
+Then output is `[3 x 4]`:
+```
+output =
+  [0.0 3.0 3.0 3.0]
+  [3.0 3.0 3.0 0.0]
+  [3.0 3.0 3.0 3.0]
+  [3.0 0.0 3.0 3.0]
+//  ^                one_hot(0)
+//      ^            one_hot(2)
+//          ^        one_hot(-1)
+//              ^    one_hot(1)
+```
+
+Suppose that
+```
+  indices = [[0, 2], [1, -1]]
+  depth = 3
+  on_value = 1.0
+  off_value = 0.0
+  axis = -1
+```
+
+Then output is `[2 x 2 x 3]`:
+```
+output =
+  [
+    [1.0, 0.0, 0.0]  // one_hot(0)
+    [0.0, 0.0, 1.0]  // one_hot(2)
+  ][
+    [0.0, 1.0, 0.0]  // one_hot(1)
+    [0.0, 0.0, 0.0]  // one_hot(-1)
+  ]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[I32, I64, I8]>:$indices,
+    I32Tensor:$depth,
+    TF_Tensor:$on_value,
+    TF_Tensor:$off_value,
+
+    DefaultValuedAttr<I64Attr, "-1">:$axis
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_PackOp : TF_Op<"Pack", [NoSideEffect]> {
@@ -2134,6 +2483,105 @@ Input images can be of different types but output images are always float.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ResizeNearestNeighborOp : TF_Op<"ResizeNearestNeighbor", [NoSideEffect]> {
+  let summary = [{
+Resize `images` to `size` using nearest neighbor interpolation.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32, F64, I16, I32, I64, I8]>:$images,
+    I32Tensor:$size,
+
+    DefaultValuedAttr<BoolAttr, "false">:$align_corners,
+    DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64, I16, I32, I64, I8]>:$resized_images
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_ReverseSequenceOp : TF_Op<"ReverseSequence", [NoSideEffect]> {
+  let summary = "Reverses variable length slices.";
+
+  let description = [{
+This op first slices `input` along the dimension `batch_dim`, and for each
+slice `i`, reverses the first `seq_lengths[i]` elements along
+the dimension `seq_dim`.
+
+The elements of `seq_lengths` must obey `seq_lengths[i] <= input.dims[seq_dim]`,
+and `seq_lengths` must be a vector of length `input.dims[batch_dim]`.
+
+The output slice `i` along dimension `batch_dim` is then given by input
+slice `i`, with the first `seq_lengths[i]` slices along dimension
+`seq_dim` reversed.
+
+For example:
+
+```
+# Given this:
+batch_dim = 0
+seq_dim = 1
+input.dims = (4, 8, ...)
+seq_lengths = [7, 2, 3, 5]
+
+# then slices of input are reversed on seq_dim, but only up to seq_lengths:
+output[0, 0:7, :, ...] = input[0, 7:0:-1, :, ...]
+output[1, 0:2, :, ...] = input[1, 2:0:-1, :, ...]
+output[2, 0:3, :, ...] = input[2, 3:0:-1, :, ...]
+output[3, 0:5, :, ...] = input[3, 5:0:-1, :, ...]
+
+# while entries past seq_lens are copied through:
+output[0, 7:, :, ...] = input[0, 7:, :, ...]
+output[1, 2:, :, ...] = input[1, 2:, :, ...]
+output[2, 3:, :, ...] = input[2, 3:, :, ...]
+output[3, 2:, :, ...] = input[3, 2:, :, ...]
+```
+
+In contrast, if:
+
+```
+# Given this:
+batch_dim = 2
+seq_dim = 0
+input.dims = (8, ?, 4, ...)
+seq_lengths = [7, 2, 3, 5]
+
+# then slices of input are reversed on seq_dim, but only up to seq_lengths:
+output[0:7, :, 0, :, ...] = input[7:0:-1, :, 0, :, ...]
+output[0:2, :, 1, :, ...] = input[2:0:-1, :, 1, :, ...]
+output[0:3, :, 2, :, ...] = input[3:0:-1, :, 2, :, ...]
+output[0:5, :, 3, :, ...] = input[5:0:-1, :, 3, :, ...]
+
+# while entries past seq_lens are copied through:
+output[7:, :, 0, :, ...] = input[7:, :, 0, :, ...]
+output[2:, :, 1, :, ...] = input[2:, :, 1, :, ...]
+output[3:, :, 2, :, ...] = input[3:, :, 2, :, ...]
+output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$seq_lengths,
+
+    I64Attr:$seq_dim,
+    DefaultValuedAttr<I64Attr, "0">:$batch_dim
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tlen = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ReverseV2Op : TF_Op<"ReverseV2", [NoSideEffect]> {
   let summary = "Reverses specific dimensions of a tensor.";
 
@@ -2197,6 +2645,27 @@ reverse(t, dims) ==> [[[[8, 9, 10, 11],
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_RoundOp : TF_Op<"Round", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+Rounds the values of a tensor to the nearest integer, element-wise.
+  }];
+
+  let description = [{
+Rounds half to even.  Also known as bankers rounding. If you want to round
+according to the current system rounding mode use std::cint.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_RsqrtOp : TF_Op<"Rsqrt", [NoSideEffect, SameOperandsAndResultType]> {
@@ -2428,6 +2897,109 @@ precise description.
   TF_DerivedOperandTypeAttr Tblock_shape = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_SpaceToDepthOp : TF_Op<"SpaceToDepth", [NoSideEffect]> {
+  let summary = "SpaceToDepth for tensors of type T.";
+
+  let description = [{
+Rearranges blocks of spatial data, into depth. More specifically,
+this op outputs a copy of the input tensor where values from the `height`
+and `width` dimensions are moved to the `depth` dimension.
+The attr `block_size` indicates the input block size.
+
+  * Non-overlapping blocks of size `block_size x block size` are rearranged
+    into depth at each location.
+  * The depth of the output tensor is `block_size * block_size * input_depth`.
+  * The Y, X coordinates within each block of the input become the high order
+    component of the output channel index.
+  * The input tensor's height and width must be divisible by block_size.
+
+The `data_format` attr specifies the layout of the input and output tensors
+with the following options:
+  "NHWC": `[ batch, height, width, channels ]`
+  "NCHW": `[ batch, channels, height, width ]`
+  "NCHW_VECT_C":
+      `qint8 [ batch, channels / 4, height, width, 4 ]`
+
+It is useful to consider the operation as transforming a 6-D Tensor.
+e.g. for data_format = NHWC,
+     Each element in the input tensor can be specified via 6 coordinates,
+     ordered by decreasing memory layout significance as:
+     n,oY,bY,oX,bX,iC  (where n=batch index, oX, oY means X or Y coordinates
+                        within the output image, bX, bY means coordinates
+                        within the input block, iC means input channels).
+     The output would be a transpose to the following layout:
+     n,oY,oX,bY,bX,iC
+
+This operation is useful for resizing the activations between convolutions
+(but keeping all data), e.g. instead of pooling. It is also useful for training
+purely convolutional models.
+
+For example, given an input of shape `[1, 2, 2, 1]`, data_format = "NHWC" and
+block_size = 2:
+
+```
+x = [[[[1], [2]],
+      [[3], [4]]]]
+```
+
+This operation will output a tensor of shape `[1, 1, 1, 4]`:
+
+```
+[[[[1, 2, 3, 4]]]]
+```
+
+Here, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,
+the corresponding output will have a single element (i.e. width and height are
+both 1) and will have a depth of 4 channels (1 * block_size * block_size).
+The output element shape is `[1, 1, 4]`.
+
+For an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.
+
+```
+x = [[[[1, 2, 3], [4, 5, 6]],
+      [[7, 8, 9], [10, 11, 12]]]]
+```
+
+This operation, for block_size of 2, will return the following tensor of shape
+`[1, 1, 1, 12]`
+
+```
+[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]
+```
+
+Similarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:
+
+```
+x = [[[[1],   [2],  [5],  [6]],
+      [[3],   [4],  [7],  [8]],
+      [[9],  [10], [13],  [14]],
+      [[11], [12], [15],  [16]]]]
+```
+
+the operator will return the following tensor of shape `[1 2 2 4]`:
+
+```
+x = [[[[1, 2, 3, 4],
+       [5, 6, 7, 8]],
+      [[9, 10, 11, 12],
+       [13, 14, 15, 16]]]]
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    Confined<I64Attr, [IntMinValue<2>]>:$block_size,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "NHWC">:$data_format
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_SplitOp : TF_Op<"Split", [NoSideEffect]> {
   let summary = "Splits a tensor into `num_split` tensors along one dimension.";
 
@@ -2557,6 +3129,42 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
     TF_Tensor:$input,
 
     DefaultValuedAttr<I64ArrayAttr, "{}">:$squeeze_dims
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_StopGradientOp : TF_Op<"StopGradient", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Stops gradient computation.";
+
+  let description = [{
+When executed in a graph, this op outputs its input tensor as-is.
+
+When building ops to compute gradients, this op prevents the contribution of
+its inputs to be taken into account.  Normally, the gradient generator adds ops
+to a graph to compute the derivatives of a specified 'loss' by recursively
+finding out inputs that contributed to its computation.  If you insert this op
+in the graph it inputs are masked from the gradient generator.  They are not
+taken into account for computing gradients.
+
+This is useful any time you want to compute a value with TensorFlow but need
+to pretend that the value was a constant. Some examples include:
+
+*  The *EM* algorithm where the *M-step* should not involve backpropagation
+   through the output of the *E-step*.
+*  Contrastive divergence training of Boltzmann machines where, when
+   differentiating the energy function, the training must not backpropagate
+   through the graph that generated the samples from the model.
+*  Adversarial training, where no backprop should happen through the adversarial
+   example generation process.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
   );
 
   let results = (outs
@@ -2799,6 +3407,31 @@ def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_TensorListPushBackOp : TF_Op<"TensorListPushBack", [NoSideEffect]> {
+  let summary = [{
+Returns a list which has the passed-in `Tensor` as last element and the other elements of the given list in `input_handle`.
+  }];
+
+  let description = [{
+tensor: The tensor to put on the list.
+input_handle: The old list.
+output_handle: A list with the elements of the old list followed by tensor.
+element_dtype: the type of elements in the list.
+element_shape: a shape compatible with that of elements in the list.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    TF_Tensor:$tensor
+  );
+
+  let results = (outs
+    TF_VariantTensor:$output_handle
+  );
+
+  TF_DerivedOperandTypeAttr element_dtype = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [NoSideEffect]> {
   let summary = "";
 
@@ -2934,6 +3567,40 @@ Python Semantics.
   let hasCanonicalizer = 1;
 }
 
+def TF_UniqueOp : TF_Op<"Unique", [NoSideEffect]> {
+  let summary = "Finds unique elements in a 1-D tensor.";
+
+  let description = [{
+This operation returns a tensor `y` containing all of the unique elements of `x`
+sorted in the same order that they occur in `x`. This operation also returns a
+tensor `idx` the same size as `x` that contains the index of each value of `x`
+in the unique output `y`. In other words:
+
+`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
+
+For example:
+
+```
+# tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
+y, idx = unique(x)
+y ==> [1, 2, 4, 7, 8]
+idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$x
+  );
+
+  let results = (outs
+    TF_Tensor:$y,
+    TF_I32OrI64Tensor:$idx
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr out_idx = TF_DerivedResultTypeAttr<1>;
+}
+
 def TF_UnpackOp : TF_Op<"Unpack", [NoSideEffect]> {
   let summary = [{
 Unpacks a given dimension of a rank-`R` tensor into `num` rank-`(R-1)` tensors.
@@ -2963,6 +3630,82 @@ This is the opposite of `pack`.
 
   let results = (outs
     Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_WhereOp : TF_Op<"Where", [NoSideEffect]> {
+  let summary = "Returns locations of nonzero / true values in a tensor.";
+
+  let description = [{
+This operation returns the coordinates of true elements in `condition`. The
+coordinates are returned in a 2-D tensor where the first dimension (rows)
+represents the number of true elements, and the second dimension (columns)
+represents the coordinates of the true elements. Keep in mind, the shape of
+the output tensor can vary depending on how many true values there are in
+`condition`. Indices are output in row-major order.
+
+For example:
+
+```
+# 'input' tensor is [[True, False]
+#                    [True, False]]
+# 'input' has two true values, so output has two coordinates.
+# 'input' has rank of 2, so coordinates have two indices.
+where(input) ==> [[0, 0],
+                  [1, 0]]
+
+# `condition` tensor is [[[True, False]
+#                     [True, False]]
+#                    [[False, True]
+#                     [False, True]]
+#                    [[False, False]
+#                     [False, True]]]
+# 'input' has 5 true values, so output has 5 coordinates.
+# 'input' has rank of 3, so coordinates have three indices.
+where(input) ==> [[0, 0, 0],
+                  [0, 1, 0],
+                  [1, 0, 1],
+                  [1, 1, 1],
+                  [2, 1, 1]]
+
+# `condition` tensor is [[[1.5,  0.0]
+#                     [-0.5, 0.0]]
+#                    [[0.0,  0.25]
+#                     [0.0,  0.75]]
+#                    [[0.0,  0.0]
+#                     [0.0,  0.01]]]
+# 'input' has 5 nonzero values, so output has 5 coordinates.
+# 'input' has rank of 3, so coordinates have three indices.
+where(input) ==> [[0, 0, 0],
+                  [0, 1, 0],
+                  [1, 0, 1],
+                  [1, 1, 1],
+                  [2, 1, 1]]
+
+# `condition` tensor is [[[1.5 + 0.0j, 0.0  + 0.0j]
+#                     [0.0 + 0.5j, 0.0  + 0.0j]]
+#                    [[0.0 + 0.0j, 0.25 + 1.5j]
+#                     [0.0 + 0.0j, 0.75 + 0.0j]]
+#                    [[0.0 + 0.0j, 0.0  + 0.0j]
+#                     [0.0 + 0.0j, 0.01 + 0.0j]]]
+# 'input' has 5 nonzero magnitude values, so output has 5 coordinates.
+# 'input' has rank of 3, so coordinates have three indices.
+where(input) ==> [[0, 0, 0],
+                  [0, 1, 0],
+                  [1, 0, 1],
+                  [1, 1, 1],
+                  [2, 1, 1]]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    I64Tensor:$index
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

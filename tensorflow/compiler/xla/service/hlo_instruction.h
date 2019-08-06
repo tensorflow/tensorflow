@@ -63,6 +63,8 @@ namespace xla {
 class HloComputation;
 class HloModule;
 
+string PrintName(const string& name, bool print_ids);
+
 // A bunch of switches that control how the hlo text should be printed.
 class HloPrintOptions {
  public:
@@ -88,7 +90,8 @@ class HloPrintOptions {
         print_control_dependencies_(true),
         canonicalize_instruction_names_(false),
         indent_amount_(0),
-        is_in_nested_computation_(false) {}
+        is_in_nested_computation_(false),
+        print_ids_(true) {}
 
   static HloPrintOptions ShortParsable() {
     return HloPrintOptions()
@@ -116,6 +119,22 @@ class HloPrintOptions {
         .set_print_percent(false)
         .set_print_control_dependencies(false)
         .set_canonicalize_instruction_names(true);
+  }
+
+  // Options to produce a fingerprint of an HLO.
+  static HloPrintOptions Fingerprint() {
+    return HloPrintOptions()
+        .set_print_subcomputation_mode(PrintSubcomputationMode::kNameOnly)
+        .set_print_metadata(false)
+        .set_print_backend_config(false)
+        .set_compact_operands(true)
+        .set_print_operand_names(false)
+        .set_print_operand_shape(true)
+        .set_print_program_shape(false)
+        .set_print_percent(false)
+        .set_print_control_dependencies(false)
+        .set_canonicalize_instruction_names(true)
+        .set_print_ids(false);
   }
 
   // If true, large constants will be printed out.
@@ -151,6 +170,12 @@ class HloPrintOptions {
   // If true, the operand names will be printed.
   HloPrintOptions& set_print_operand_names(bool value) {
     print_operand_names_ = value;
+    return *this;
+  }
+
+  // If true, all printed names include unique identifiers.
+  HloPrintOptions& set_print_ids(bool value) {
+    print_ids_ = value;
     return *this;
   }
 
@@ -216,6 +241,7 @@ class HloPrintOptions {
   bool include_layout_in_shapes() const { return include_layout_in_shapes_; }
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_operand_names() const { return print_operand_names_; }
+  bool print_ids() const { return print_ids_; }
   bool print_program_shape() const { return print_program_shape_; }
   bool print_percent() const { return print_percent_; }
   bool print_control_dependencies() const {
@@ -242,6 +268,7 @@ class HloPrintOptions {
   bool canonicalize_instruction_names_;
   int indent_amount_;
   bool is_in_nested_computation_;
+  bool print_ids_;
 };
 
 // For canonical string output, we need to have a canonical way to rename
@@ -557,6 +584,11 @@ class HloInstruction {
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
   static std::unique_ptr<HloInstruction> CreateConvert(const Shape& shape,
+                                                       HloInstruction* operand);
+
+  // Creates a bitcast instruction, where operand is the data to
+  // convert and shape is the target shape for the conversion.
+  static std::unique_ptr<HloInstruction> CreateBitcast(const Shape& shape,
                                                        HloInstruction* operand);
 
   // Creates a bitcast conversion instruction, where operand is the data to

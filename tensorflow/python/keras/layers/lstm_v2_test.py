@@ -565,6 +565,21 @@ class LSTMV2Test(keras_parameterized.TestCase):
         },
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  def test_float64_LSTM(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        rnn.LSTM,
+        kwargs={
+            'units': units,
+            'return_sequences': True,
+            'dtype': 'float64'
+        },
+        input_shape=(num_samples, timesteps, embedding_dim),
+        input_dtype='float64')
+
   def test_regularizers_LSTM(self):
     embedding_dim = 4
     layer_class = rnn.LSTM
@@ -605,8 +620,11 @@ class LSTMV2Test(keras_parameterized.TestCase):
     layer = layer_class(
         units, return_sequences=False, stateful=True, weights=None)
     model.add(layer)
-    model.compile(optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                  loss='mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 
@@ -675,9 +693,11 @@ class LSTMV2Test(keras_parameterized.TestCase):
         rnn.LSTM(units, return_sequences=True, stateful=True),
         keras.layers.Dense(vocab_size)
     ])
-    model.compile(optimizer='adam',
-                  loss='sparse_categorical_crossentropy',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer='adam',
+        loss='sparse_categorical_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(x, y, epochs=1, shuffle=False)
 
   def test_dropout_LSTM(self):
@@ -762,8 +782,11 @@ class LSTMGraphRewriteTest(keras_parameterized.TestCase):
         num_classes=self.output_shape)
     y_train = keras.utils.to_categorical(y_train, self.output_shape)
 
-    model.compile(optimizer='sgd',
-                  loss=['categorical_crossentropy', None])
+    model.compile(
+        optimizer='sgd',
+        loss=['categorical_crossentropy', None],
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     existing_loss = 0
     for _ in range(self.epoch):
@@ -793,6 +816,61 @@ class LSTMGraphRewriteTest(keras_parameterized.TestCase):
         lambda x: array_ops.expand_dims(x, axis=-1))(runtime)
     model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
     self._test_runtime_with_model(model)
+
+  def test_LSTM_runtime_with_mask(self):
+    # Masking will affect which backend is selected based on whether the mask
+    # is strictly right padded.
+    layer = rnn.LSTM(self.rnn_state_size, return_runtime=True)
+
+    inputs = keras.layers.Input(
+        shape=[self.timestep, self.input_shape], dtype=dtypes.float32)
+    masked_inputs = keras.layers.Masking()(inputs)
+
+    outputs, runtime = layer(masked_inputs)
+    # Expand the runtime so that it is a 1D tensor instead of scalar.
+    # TF model does not work with scalar model output, specially during
+    # aggregation.
+    runtime = keras.layers.Lambda(
+        lambda x: array_ops.expand_dims(x, axis=-1))(runtime)
+    model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
+
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=self.batch,
+        test_samples=0,
+        input_shape=(self.timestep, self.input_shape),
+        num_classes=self.output_shape)
+    y_train = keras.utils.to_categorical(y_train, self.output_shape)
+
+    model.compile(
+        optimizer='sgd',
+        loss=['categorical_crossentropy', None],
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    model.fit(x_train, y_train)
+
+    # Verify unpadded data.
+    _, runtime_value = model.predict(x_train)
+    if test.is_gpu_available():
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_GPU)
+    else:
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
+
+    # Update x/y to be right padded by setting the last timestep to 0
+    x_train[:, -1, :] = 0
+    y_train[:, -1] = 0
+    _, runtime_value = model.predict(x_train)
+    if test.is_gpu_available():
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_GPU)
+    else:
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
+
+    # Further update x/y to be mix padded (masks in the middle), and verify
+    # only cpu kernel can be selected.
+    x_train[:, -3, :] = 0
+    y_train[:, -3] = 0
+    _, runtime_value = model.predict(x_train)
+    self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
 
   # Due to b/120160788.
   @test_util.run_v2_only

@@ -38,7 +38,9 @@ limitations under the License.
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/context.h"
+#include "tensorflow/lite/experimental/ruy/kernel.h"
 #include "tensorflow/lite/experimental/ruy/matrix.h"
+#include "tensorflow/lite/experimental/ruy/pack.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
 #include "tensorflow/lite/experimental/ruy/trmul.h"
 
@@ -108,10 +110,10 @@ void EnforceDstSpecSupport(const Spec& spec, DstScalar dst_zero_point) {
   RUY_DCHECK(spec.multiplier_exponent_perchannel == nullptr);
 }
 
-inline bool IsColMajorTrMul(const DMatrix& lhs, const DMatrix& rhs,
-                            const DMatrix& dst) {
-  return IsColMajor(lhs.layout) && IsColMajor(rhs.layout) &&
-         IsColMajor(dst.layout);
+inline bool IsColMajorTrMul(const TrMulParams& params) {
+  return IsColMajor(params.src[Side::kLhs].layout) &&
+         IsColMajor(params.src[Side::kRhs].layout) &&
+         IsColMajor(params.dst.layout);
 }
 
 inline void CreatePackedLayout(const Layout& src, const Type& scalar,
@@ -131,8 +133,8 @@ inline void CreatePackedLayout(const Layout& src, const Type& scalar,
 }
 
 template <typename Scalar, typename PackedScalar>
-void CreatePackedMatrix(const DMatrix& src, const KernelLayout& kernel_layout,
-                        PMatrix* packed) {
+void CreatePackedMatrix(Side side, const KernelLayout& kernel_layout,
+                        TrMulParams* params) {
   // Ruy always uses 32-bit signed accumulators for quantized
   // matrix multiplication, so we would like to always use std::int32_t
   // unconditionally for SumsType.
@@ -142,6 +144,8 @@ void CreatePackedMatrix(const DMatrix& src, const KernelLayout& kernel_layout,
       typename std::conditional<std::is_floating_point<Scalar>::value, Scalar,
                                 std::int32_t>::type;
 
+  const DMatrix& src = params->src[side];
+  PMatrix* packed = &params->packed[side];
   packed->data_type = Type::Create<PackedScalar>();
   packed->sums_type = Type::Create<SumsType>();
   CreatePackedLayout(src.layout, packed->data_type, kernel_layout,
@@ -160,7 +164,7 @@ void PopulateTrMulParams(TrMulParams* params) {
   if (ThePath != Path::kStandardCpp) {
     // The optimized code paths currently only handle the case of all matrices
     // being column major.
-    if (!IsColMajorTrMul(params->lhs, params->rhs, params->dst)) {
+    if (!IsColMajorTrMul(*params)) {
       fallback_to_standard_cpp = true;
     }
   }
@@ -179,13 +183,12 @@ void PopulateTrMulParams(TrMulParams* params) {
   using RhsKernelLayout = typename Kernel::RhsLayout;
 
   CreatePackedMatrix<LhsScalar, PackedLhsScalar>(
-      params->lhs, ToKernelLayout<LhsKernelLayout>(), &params->packed_lhs);
+      Side::kLhs, ToKernelLayout<LhsKernelLayout>(), params);
   CreatePackedMatrix<RhsScalar, PackedRhsScalar>(
-      params->rhs, ToKernelLayout<RhsKernelLayout>(), &params->packed_rhs);
-
-  params->lhs_run_pack =
+      Side::kRhs, ToKernelLayout<RhsKernelLayout>(), params);
+  params->run_pack[Side::kLhs] =
       &RunPack<ThePath, LhsKernelLayout, LhsScalar, PackedLhsScalar>;
-  params->rhs_run_pack =
+  params->run_pack[Side::kRhs] =
       &RunPack<ThePath, RhsKernelLayout, RhsScalar, PackedRhsScalar>;
   params->run_kernel =
       &RunKernel<ThePath, PackedLhsScalar, PackedRhsScalar, DstScalar, Spec>;
@@ -304,8 +307,8 @@ void CreateTrMulParams(const Matrix<LhsScalar>& lhs,
                        Context* context, Matrix<DstScalar>* dst, Path the_path,
                        TrMulParams* params) {
   // Fill in the fields we already know.
-  params->lhs = ToDMatrix(lhs);
-  params->rhs = ToDMatrix(rhs);
+  params->src[Side::kLhs] = ToDMatrix(lhs);
+  params->src[Side::kRhs] = ToDMatrix(rhs);
   params->dst = ToDMatrix(*dst);
   params->spec = ToVoidPtr(&spec);
 

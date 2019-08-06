@@ -105,7 +105,7 @@ REGISTER_OP("BoostedTreesCalculateBestFeatureSplit")
     .Input("tree_complexity: float")
     .Input("min_node_weight: float")
     .Attr("logits_dimension: int >= 1")
-    .Attr("split_type: {'inequality'} = 'inequality'")
+    .Attr("split_type: {'inequality', 'equality'} = 'inequality'")
     .Output("node_ids: int32")
     .Output("gains: float32")
     .Output("feature_dimensions: int32")
@@ -591,6 +591,20 @@ REGISTER_OP("BoostedTreesMakeQuantileSummaries")
       ShapeHandle unused_input;
       TF_RETURN_IF_ERROR(
           c->WithRank(c->input(num_features + 1), 0, &unused_input));
+      return Status::OK();
+    });
+
+REGISTER_OP("BoostedTreesFlushQuantileSummaries")
+    .Attr("num_features: int >= 0")
+    .Input("quantile_stream_resource_handle: resource")
+    .Output("summaries: num_features * float")
+    .SetShapeFn([](InferenceContext* c) {
+      int num_features;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      for (int i = 0; i < num_features; ++i) {
+        // the columns are value, weight, min_rank, max_rank.
+        c->set_output(i, c->MakeShape({c->UnknownDim(), 4}));
+      }
       return Status::OK();
     });
 

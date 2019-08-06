@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 #include <vector>
+
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -85,11 +86,14 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"CollectiveReduce", NC_COLLECTIVE},
         {"CollectiveBcastSend", NC_COLLECTIVE},
         {"CollectiveBcastRecv", NC_COLLECTIVE},
+        {"CollectiveGather", NC_COLLECTIVE},
         {"FakeParam", NC_FAKE_PARAM},
         {"PartitionedCall", NC_PARTITIONED_CALL},
         {"StatefulPartitionedCall", NC_PARTITIONED_CALL},
         {"If", NC_IF},
         {"StatelessIf", NC_IF},
+        {"While", NC_WHILE},
+        {"StatelessWhile", NC_WHILE},
         // Not using the constants defined in FunctionLibraryDefinition for the
         // 4 ops below because android inference library does not link
         // tf.function related files.
@@ -592,7 +596,7 @@ Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
 }
 
 Status Graph::AddWhileInputHack(Node* new_src, int new_src_index, Node* dst) {
-  if (dst->type_string() != "While") {
+  if (!dst->IsWhileNode()) {
     return errors::Internal(
         "dst argument to AddWhileEdgeHack should be a While op, got: ",
         dst->DebugString());

@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
@@ -49,7 +48,7 @@ def _create_or_validate_filenames_dataset(filenames):
       raise TypeError(
           "`filenames` must be a `tf.data.Dataset` of `tf.string` elements.")
     if not dataset_ops.get_legacy_output_shapes(filenames).is_compatible_with(
-        tensor_shape.scalar()):
+        tensor_shape.TensorShape([])):
       raise TypeError(
           "`filenames` must be a `tf.data.Dataset` of scalar `tf.string` "
           "elements.")
@@ -239,28 +238,16 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
         "prefetch_input_elements",
         prefetch_input_elements,
         argument_default=2 * cycle_length)
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = ged_ops.parallel_interleave_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,
-          self._cycle_length,
-          self._block_length,
-          self._sloppy,
-          self._buffer_output_elements,
-          self._prefetch_input_elements,
-          f=self._map_func.function,
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.experimental_parallel_interleave_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,
-          self._cycle_length,
-          self._block_length,
-          self._sloppy,
-          self._buffer_output_elements,
-          self._prefetch_input_elements,
-          f=self._map_func.function,
-          **self._flat_structure)
+    variant_tensor = ged_ops.parallel_interleave_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._map_func.function.captured_inputs,
+        self._cycle_length,
+        self._block_length,
+        self._sloppy,
+        self._buffer_output_elements,
+        self._prefetch_input_elements,
+        f=self._map_func.function,
+        **self._flat_structure)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)
 
@@ -407,15 +394,9 @@ class _FixedLengthRecordDataset(dataset_ops.DatasetSource):
         compression_type,
         argument_default="",
         argument_dtype=dtypes.string)
-    if (self._compression_type is not None or
-        compat.forward_compatible(2018, 11, 30)):
-      variant_tensor = gen_dataset_ops.fixed_length_record_dataset_v2(
-          self._filenames, self._header_bytes, self._record_bytes,
-          self._footer_bytes, self._buffer_size, self._compression_type)
-    else:
-      variant_tensor = gen_dataset_ops.fixed_length_record_dataset(
-          self._filenames, self._header_bytes, self._record_bytes,
-          self._footer_bytes, self._buffer_size)
+    variant_tensor = gen_dataset_ops.fixed_length_record_dataset_v2(
+        self._filenames, self._header_bytes, self._record_bytes,
+        self._footer_bytes, self._buffer_size, self._compression_type)
     super(_FixedLengthRecordDataset, self).__init__(variant_tensor)
 
   @property

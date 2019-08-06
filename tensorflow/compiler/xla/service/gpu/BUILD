@@ -3,11 +3,10 @@
 
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "if_static",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts", "tf_cuda_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
@@ -44,6 +43,14 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
+    name = "gpu_types",
+    hdrs = ["gpu_types.h"],
+    deps = [
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -453,6 +460,7 @@ cc_library(
         ":cudnn_conv_runner",
         ":cusolver_context",
         ":gpu_debug_info_manager",
+        ":gpu_types",
         ":hlo_execution_profiler",
         ":infeed_manager",
         ":ir_emission_utils",
@@ -525,6 +533,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
         "@llvm//:core",
     ],
 )
@@ -583,6 +592,7 @@ cc_library(
     deps = [
         ":backend_configs",
         ":buffer_comparator",
+        ":cudnn_conv_blacklist",
         ":cudnn_conv_runner",
         ":gpu_autotuning_proto",
         ":gpu_executable",
@@ -607,18 +617,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
-    ],
-)
-
-cc_library(
-    name = "scratch_allocator",
-    srcs = ["scratch_allocator.cc"],
-    hdrs = ["scratch_allocator.h"],
-    deps = [
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:device_memory_allocator",
     ],
 )
 
@@ -693,10 +691,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:blas",
-    ] + if_static(
-        ["@local_config_cuda//cuda:cusolver"],
-        ["//tensorflow/stream_executor/cuda:cusolver_stub"],
-    ),
+        "//tensorflow/stream_executor/cuda:cusolver_lib",
+    ],
 )
 
 cc_library(
@@ -962,7 +958,7 @@ cc_library(
 )
 
 cc_library(
-    name = "nvptx_compiler",
+    name = "nvptx_compiler_impl",
     srcs = ["nvptx_compiler.cc"],
     hdrs = ["nvptx_compiler.h"],
     deps = [
@@ -1028,6 +1024,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:rng_expander",
         "//tensorflow/compiler/xla/service:slice_sinker",
+        "//tensorflow/compiler/xla/service:slow_operation_alarm",
         "//tensorflow/compiler/xla/service:sort_simplifier",
         "//tensorflow/compiler/xla/service:stable_sort_expander",
         "//tensorflow/compiler/xla/service:transpose_folding",
@@ -1054,6 +1051,12 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm//:core",
     ],
+)
+
+cc_library(
+    name = "nvptx_compiler",
+    srcs = ["nvptx_compiler_registration.cc"],
+    deps = [":nvptx_compiler_impl"],
     alwayslink = True,  # Contains compiler registration
 )
 
@@ -1215,6 +1218,7 @@ cc_library(
     name = "stream_executor_util",
     srcs = ["stream_executor_util.cc"],
     hdrs = ["stream_executor_util.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -1392,5 +1396,32 @@ xla_proto_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/core:autotuning_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "cudnn_conv_blacklist",
+    srcs = ["cudnn_conv_blacklist.cc"],
+    hdrs = ["cudnn_conv_blacklist.h"],
+    deps = [
+        ":gpu_autotuning_proto",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/core:autotuning_proto_cc",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "cudnn_conv_blacklist_test",
+    srcs = ["cudnn_conv_blacklist_test.cc"],
+    data = ["data/cudnn_conv_blacklist.pbtxt"],
+    deps = [
+        ":cudnn_conv_blacklist",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor:dnn",
     ],
 )

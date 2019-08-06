@@ -22,14 +22,3 @@
      return res;
    }
  };
---- a/unsupported/Eigen/CXX11/src/Tensor/TensorForwardDeclarations.h
-+++ b/unsupported/Eigen/CXX11/src/Tensor/TensorForwardDeclarations.h
-@@ -23,7 +23,7 @@
- };
- 
- template <typename T>
--EIGEN_STRONG_INLINE T* constCast(const T* data) {
-+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T* constCast(const T* data) {
-   return const_cast<T*>(data);
- }
- 

@@ -19,6 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace sql {
 
 // A factory class for creating `QueryConnection` instances.
@@ -35,6 +36,7 @@ class DriverManager {
 };
 
 }  // namespace sql
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow
 

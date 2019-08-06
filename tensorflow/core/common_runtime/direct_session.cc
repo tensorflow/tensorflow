@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/run_handler.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -353,7 +354,10 @@ DirectSession::DirectSession(const SessionOptions& options,
     } else {
       printf("Device mapping:\n%s", mapping_str.c_str());
     }
-    LOG(INFO) << "Device mapping:\n" << mapping_str;
+    string msg = strings::StrCat("Device mapping:\n", mapping_str);
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
   }
   for (auto d : device_mgr_->ListDevices()) {
     devices_.push_back(d);
@@ -380,9 +384,6 @@ DirectSession::~DirectSession() {
   callables_.clear();
   for (auto d : device_mgr_->ListDevices()) {
     d->op_segment()->RemoveHold(session_handle_);
-  }
-  for (auto d : device_mgr_->ListDevices()) {
-    d->ClearResourceMgr();
   }
   functions_.clear();
   delete cancellation_manager_;
@@ -590,7 +591,7 @@ Status DirectSession::RunInternal(
 
   std::unique_ptr<ProfilerSession> profiler_session;
   if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
-    profiler_session = ProfilerSession::Create(/*ProfilerContext*/ nullptr);
+    profiler_session = ProfilerSession::Create();
   }
 
   if (run_options.inter_op_thread_pool() < -1 ||
@@ -1614,15 +1615,15 @@ Status DirectSession::CreateGraphs(
     }
   }
 
-  for (const auto& partition : partitions) {
+  for (auto& partition : partitions) {
     std::unique_ptr<Graph> device_graph(
         new Graph(client_graph->flib_def.get()));
     GraphConstructorOptions device_opts;
     // There are internal operations (e.g., send/recv) that we now allow.
     device_opts.allow_internal_ops = true;
     device_opts.expect_device_spec = true;
-    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(device_opts, partition.second,
-                                              device_graph.get()));
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+        device_opts, std::move(partition.second), device_graph.get()));
     outputs->emplace(partition.first, std::move(device_graph));
   }
 

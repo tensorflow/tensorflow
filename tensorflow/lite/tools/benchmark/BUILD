@@ -36,6 +36,26 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "benchmark_model_performance_options",
+    srcs = [
+        "benchmark_tflite_performance_options_main.cc",
+    ],
+    copts = common_copts,
+    linkopts = tflite_linkopts() + select({
+        "//tensorflow:android": [
+            "-pie",  # Android 5.0 and later supports only PIE
+            "-lm",  # some builtin ops, e.g., tanh, need -lm
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":benchmark_performance_options",
+        ":benchmark_tflite_model_lib",
+        ":logging",
+    ],
+)
+
 tf_cc_binary(
     name = "benchmark_model_plus_flex",
     srcs = [
@@ -87,6 +107,7 @@ cc_library(
     copts = common_copts,
     deps = [
         ":benchmark_model_lib",
+        ":benchmark_utils",
         ":logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
@@ -95,6 +116,23 @@ cc_library(
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools/evaluation:utils",
         "@gemmlowp",
+    ],
+)
+
+cc_library(
+    name = "benchmark_performance_options",
+    srcs = [
+        "benchmark_performance_options.cc",
+    ],
+    hdrs = ["benchmark_performance_options.h"],
+    copts = common_copts,
+    deps = [
+        ":benchmark_model_lib",
+        ":benchmark_utils",
+        ":logging",
+        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/lite/profiling:time",
+        "//tensorflow/lite/tools:command_line_flags",
     ],
 )
 
@@ -117,11 +155,35 @@ cc_library(
     copts = common_copts,
     deps = [
         ":benchmark_params",
+        ":benchmark_utils",
         ":logging",
         "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
+    ],
+)
+
+cc_library(
+    name = "benchmark_utils",
+    srcs = [
+        "benchmark_utils.cc",
+    ],
+    hdrs = ["benchmark_utils.h"],
+    copts = common_copts,
+    deps = ["//tensorflow/lite/profiling:time"],
+)
+
+cc_test(
+    name = "benchmark_utils_test",
+    srcs = [
+        "benchmark_utils_test.cc",
+    ],
+    copts = common_copts,
+    deps = [
+        ":benchmark_utils",
+        "//tensorflow/lite/profiling:time",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

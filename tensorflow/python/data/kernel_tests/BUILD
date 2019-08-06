@@ -47,6 +47,24 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "checkpoint_test",
+    size = "medium",
+    srcs = ["checkpoint_test.py"],
+    additional_deps = [
+        ":test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/tracking:util",
+        "//tensorflow/python:checkpoint_management",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+    ],
+    grpc_enabled = True,
+)
+
+tf_py_test(
     name = "concatenate_test",
     size = "small",
     srcs = ["concatenate_test.py"],
@@ -58,28 +76,6 @@ tf_py_test(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
-    ],
-)
-
-tf_py_test(
-    name = "dataset_checkpoint_test",
-    size = "small",
-    srcs = ["dataset_checkpoint_test.py"],
-    additional_deps = [
-        ":test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dataset_ops_gen",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:io_ops",
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:variables",
     ],
 )
 
@@ -309,24 +305,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "iterator_checkpoint_test",
-    size = "medium",
-    srcs = ["iterator_checkpoint_test.py"],
-    additional_deps = [
-        ":test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/tracking:util",
-        "//tensorflow/python:checkpoint_management",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-    ],
-    grpc_enabled = True,
-)
-
-tf_py_test(
     name = "iterator_cluster_test",
     size = "small",
     srcs = ["iterator_cluster_test.py"],
@@ -468,6 +446,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
     ],
     tags = [
+        "no_oss",
         "no_windows_gpu",
     ],
     xla_enable_strict_auto_jit = True,
@@ -712,6 +691,7 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_combinations",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",

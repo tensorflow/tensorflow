@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 
 #include <iterator>
+#include <stack>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -26,8 +28,8 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
 namespace {
+
 void AppendParams(const HloInstruction& instr,
                   std::vector<HloInstruction*>* params) {
   if (instr.opcode() == HloOpcode::kFusion) {
@@ -39,6 +41,25 @@ void AppendParams(const HloInstruction& instr,
     }
   }
 }
+
+bool CodegensIntoLoop(const HloInstruction& instr) {
+  CHECK_NE(instr.opcode(), HloOpcode::kFusion) << "`instr` has to be unfused.";
+  if (instr.opcode() == HloOpcode::kReduce &&
+      !IsReductionFromOrToContiguousDimensions(instr)) {
+    return true;
+  }
+  // Reduce window codegens into loop only when windows overlap, i.e. stride is
+  // less than window size.
+  if (instr.opcode() == HloOpcode::kReduceWindow) {
+    for (const auto& dim : instr.window().dimensions()) {
+      if (dim.size() > dim.stride()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
@@ -202,19 +223,19 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
   if (!IsLoopFusible(producer) || !IsFusible(consumer)) {
     return false;
   }
-
   // Skip multiple output fusion. It's not yet supported.
   if (producer.IsMultiOutputFusion()) {
     return false;
   }
-
+  if (CreatesNestedLoop(producer, consumer)) {
+    return false;
+  }
   // Do not fuse into reduce input fusions if the resulting kernel would suffer
   // from poor data locality (due to unfriendly input layouts).
   if (IsInputFusibleReduction(consumer) &&
       !LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
     return false;
   }
-
   // We can't fuse library calls, so if a user of such an op could become a
   // bitcast, leave it unfused. See `xla::InstructionFusion::ShouldFuse` for
   // further rationale.
@@ -222,7 +243,6 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
       ImplementedAsLibraryCall(*producer.operand(0))) {
     return false;
   }
-
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
   // parameters and makes matching scalar broadcasts easier.
   //
@@ -235,24 +255,28 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
     return ShapeUtil::IsEffectiveScalar(producer.shape()) &&
            consumer.opcode() == HloOpcode::kFusion;
   }
-
   return true;
 }
 
 bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
                                           const HloInstruction& consumer) {
+  // Skip multiple output fusion. It's not yet supported.
+  if (producer.IsMultiOutputFusion()) {
+    return false;
+  }
+
   if (!IsLoopFusible(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return false;
   }
-
+  if (CreatesNestedLoop(producer, consumer)) {
+    return false;
+  }
   if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
     return false;
   }
-
   if (!LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
     return false;
   }
-
   return true;
 }
 
@@ -316,6 +340,71 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
   operands.erase(&instr1);
   operands.erase(&instr2);
   return operands.size() + num_output_buffers > kMaxOperandsAndOutputsPerFusion;
+}
+
+bool CreatesNestedLoop(const HloInstruction& producer,
+                       const HloInstruction& consumer) {
+  // If producer does not have an instruction that codegens a loop then there is
+  // nothing to do.
+  auto producer_has_loop_codegen = [&](const HloInstruction& instr) {
+    if (producer.opcode() != HloOpcode::kFusion) {
+      return CodegensIntoLoop(producer);
+    }
+    for (const auto& instr : producer.fused_instructions()) {
+      if (CodegensIntoLoop(*instr)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  if (!producer_has_loop_codegen(producer)) {
+    return false;
+  }
+
+  // If consumer is a non-fusion instruction then we have to check if it
+  // generates a loop.
+  if (consumer.opcode() != HloOpcode::kFusion) {
+    return CodegensIntoLoop(consumer);
+  }
+
+  // If consumer is a fusion then we have to check if the output of producer is
+  // used directly or indirectly as an input to an HLO instruction that
+  // generates a loop, i.e. there is a path in the graph from an operand
+  // corresponding to the producer to an HLO instruction generating a loop in
+  // the consumer.
+  for (const HloInstruction* operand : consumer.operands()) {
+    if (operand != &producer) {
+      continue;
+    }
+
+    const HloInstruction* root =
+        consumer.fused_instructions_computation()->parameter_instruction(
+            consumer.operand_index(operand));
+
+    std::stack<const HloInstruction*> dfs;
+    dfs.push(root);
+    absl::flat_hash_set<const HloInstruction*> visited;
+    while (!dfs.empty()) {
+      const HloInstruction* cur = dfs.top();
+      dfs.pop();
+
+      if (visited.contains(cur)) {
+        continue;
+      }
+      visited.insert(cur);
+
+      if (CodegensIntoLoop(*cur)) {
+        return true;
+      }
+      for (const auto& user : cur->users()) {
+        if (visited.contains(user)) {
+          continue;
+        }
+        dfs.push(user);
+      }
+    }
+  }
+  return false;
 }
 
 bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {

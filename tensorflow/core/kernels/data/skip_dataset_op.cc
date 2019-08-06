@@ -75,6 +75,8 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     return count_ < 0 ? 0 : std::max(0LL, n - count_);
   }
 
+  bool IsStateful() const override { return input_->IsStateful(); }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

@@ -142,7 +142,7 @@ func @const() -> tensor<2xi32> {
   return %0: tensor<2xi32>
 
 // CHECK-LABEL: @const
-// CHECK: %0 = "tfl.pseudo_const"() {value = opaque<"tf", "0x746674656E736F722464747970653A2044545F494E5433320A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20320A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3230305C3030305C3030305C3030305C3230305C3030305C3030305C303030220A"> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK: "tfl.pseudo_const"() {value = opaque<"tf", "0x746674656E736F722464747970653A2044545F494E5433320A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20320A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3230305C3030305C3030305C3030305C3230305C3030305C3030305C303030220A"> : tensor<2xi32>} : () -> tensor<2xi32>
 }
 
 func @placeholder(%arg0: tensor<f32>) -> tensor<f32> {
@@ -211,6 +211,20 @@ func @sigmoid(%arg0: tensor<?x88xf16>) -> tensor<?x88xf16> {
   return %0 : tensor<?x88xf16>
 // CHECK-LABEL: sigmoid
 // CHECK:  %0 = "tfl.logistic"(%arg0) : (tensor<?x88xf16>) -> tensor<?x88xf16>
+}
+
+func @sqrt(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Sqrt"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+// CHECK-LABEL: sqrt
+// CHECK:  %0 = "tfl.sqrt"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+}
+
+func @square(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Square"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+// CHECK-LABEL: square
+// CHECK:  %0 = "tfl.square"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
 }
 
 func @log_softmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
@@ -287,6 +301,14 @@ func @abs(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
 
 // CHECK-LABEL:abs
 // CHECK:  %0 = "tfl.abs"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+}
+
+func @any(%arg0: tensor<2x2xi1>, %arg1: tensor<i32>) -> tensor<i1> {
+  %0 = "tf.Any"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+
+// CHECK-LABEL:any
+// CHECK:  %0 = "tfl.reduce_any"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i32>) -> tensor<i1>
 }
 
 func @ceil(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
@@ -370,6 +392,22 @@ func @gatherHigherRankIndices(%arg0 : tensor<2x3x6xf32>, %arg1 : tensor<4x5xi32>
 // CHECK:  %0 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32} : (tensor<2x3x6xf32>, tensor<4x5xi32>) -> tensor<4x5x3x6xf32>
 }
 
+func @gatherNdVectorIndices(%arg0 : tensor<3x2x2xf32>, %arg1 : tensor<2xi32>) -> tensor<2xf32> {
+  %0 = "tf.GatherNd"(%arg0, %arg1) : (tensor<3x2x2xf32>, tensor<2xi32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+
+// CHECK-LABEL:gatherNdVectorIndices
+// CHECK:  %0 = "tfl.gather_nd"(%arg0, %arg1) : (tensor<3x2x2xf32>, tensor<2xi32>) -> tensor<2xf32>
+}
+
+func @gatherNdHigherRankIndices(%arg0 : tensor<4x3x2xf32>, %arg1 : tensor<2x2xi32>) -> tensor<2x2xf32> {
+  %0 = "tf.GatherNd"(%arg0, %arg1) : (tensor<4x3x2xf32>, tensor<2x2xi32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+
+// CHECK-LABEL:gatherNdHigherRankIndices
+// CHECK:  %0 = "tfl.gather_nd"(%arg0, %arg1) : (tensor<4x3x2xf32>, tensor<2x2xi32>) -> tensor<2x2xf32>
+}
+
 func @gatherV2VectorIndices(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x5xi32>) -> tensor<1x3x5x20xf32> {
   %0 = constant dense<[1]> : tensor<1xi32>
   %1 = "tf.GatherV2"(%arg0, %arg1, %0) : (tensor<1x2x20xf32>, tensor<3x5xi32>, tensor<1xi32>) -> tensor<1x3x5x20xf32>
@@ -386,6 +424,15 @@ func @gatherV2VectorIndicesNegAxis(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x
 
 // CHECK-LABEL:gatherV2VectorIndices
 // CHECK:  %0 = "tfl.gather"(%arg0, %arg1) {axis = -1 : i32} : (tensor<1x2x20xf32>, tensor<3x5xi32>) -> tensor<1x2x3x5xf32>
+}
+
+func @gatherV2NonZeroBatchDims(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x5xi32>) -> tensor<1x2x3x5xf32> {
+  %0 = constant dense<[1]> : tensor<1xi32>
+  %1 = "tf.GatherV2"(%arg0, %arg1, %0) {batch_dims = 1 : i64} : (tensor<1x2x20xf32>, tensor<3x5xi32>, tensor<1xi32>) -> tensor<1x2x3x5xf32>
+  return %1 : tensor<1x2x3x5xf32>
+
+// CHECK-LABEL:gatherV2NonZeroBatchDims
+// CHECK: tf.GatherV2
 }
 
 func @greater(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi1> {
@@ -417,12 +464,12 @@ func @less_equal(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x1
 // CHECK:  return %0 : tensor<8x16xi1>
 }
 
-func @rank(%arg0: tensor<11x16xf32>) -> tensor<1xi32> {
-  %0 = "tf.Rank"(%arg0) : (tensor<11x16xf32>) -> tensor<1xi32>
+func @rank(%arg0: tensor<*xf32>) -> tensor<1xi32> {
+  %0 = "tf.Rank"(%arg0) : (tensor<*xf32>) -> tensor<1xi32>
   return %0 : tensor<1xi32>
 
 // CHECK-LABEL:rank
-// CHECK:  %0 = "tfl.rank"(%arg0) : (tensor<11x16xf32>) -> tensor<1xi32>
+// CHECK:  %0 = "tfl.rank"(%arg0) : (tensor<*xf32>) -> tensor<1xi32>
 }
 
 func @floor(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
@@ -859,11 +906,11 @@ func @mirror_pad_reflect(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> 
 }
 
 func @Tanh(%arg0: tensor<1xf32>) -> tensor<1xf32> {
-  %2 = "tf.Tanh"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
-  return %2: tensor<1xf32>
+  %0 = "tf.Tanh"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
+  return %0: tensor<1xf32>
 
 // CHECK-LABEL: Tanh
-// CHECK:  %0 = "tfl.tanh"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
+// CHECK:  "tfl.tanh"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
 }
 
 func @cast(%arg0: tensor<1x2x2x5xi32>) -> tensor<1x2x2x5xf32> {
@@ -872,4 +919,104 @@ func @cast(%arg0: tensor<1x2x2x5xi32>) -> tensor<1x2x2x5xf32> {
 
   // CHECK-LABEL: cast
   // CHECK: "tfl.cast"(%arg0) : (tensor<1x2x2x5xi32>) -> tensor<1x2x2x5xf32>
+}
+
+func @unique(%arg0: tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi32>) {
+  %0, %1 = "tf.Unique"(%arg0) : (tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi32>)
+  return %0, %1 : tensor<?xf32> , tensor<?xi32>
+
+  // CHECK-LABEL: unique
+  // CHECK: %0:2 = "tfl.unique"(%arg0) : (tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi32>)
+  // CHECK: %0
+}
+
+func @unique64(%arg0: tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi64>) {
+  %0, %1 = "tf.Unique"(%arg0) : (tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi64>)
+  return %0, %1 : tensor<?xf32> , tensor<?xi64>
+
+  // CHECK-LABEL: unique64
+  // CHECK: %0:2 = "tfl.unique"(%arg0) : (tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi64>)
+  // CHECK: %0
+}
+
+func @ReverseSequence(%arg0: tensor<2x3xf32>, %arg1: tensor<2xi32>) -> tensor<2x3xf32> {
+  %0 = "tf.ReverseSequence"(%arg0, %arg1) {seq_dim = 0 : i64, batch_dim = 0 : i64}: (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x3xf32>
+  return %0: tensor<2x3xf32>
+
+// CHECK-LABEL: ReverseSequence
+// CHECK:  "tfl.reverse_sequence"(%arg0, %arg1) {batch_dim = 0 : i32, seq_dim = 0 : i32} : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x3xf32>
+}
+
+func @LRN(%arg0: tensor<2x3x4x5xf32>) -> tensor<2x3x4x5xf32> {
+  %0 = "tf.LRN"(%arg0) {depth_radius = 5 :i64, bias = 1.0 :f32, alpha = 1.0 : f32, beta = 0.5 :f32} : (tensor<2x3x4x5xf32>) -> (tensor<2x3x4x5xf32>)
+  return %0: tensor<2x3x4x5xf32>
+
+  // CHECK-LABEL: LRN
+  // CHECK: %0 = "tfl.local_response_normalization"(%arg0) {alpha = 1.000000e+00 : f32, beta = 5.000000e-01 : f32, bias = 1.000000e+00 : f32, radius = 5 : i32} : (tensor<2x3x4x5xf32>) -> tensor<2x3x4x5xf32>
+  // CHECK: return %0 : tensor<2x3x4x5xf32>
+}
+
+func @OneHot(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<*xf32> {
+  %0 = "tf.OneHot"(%arg0, %arg1, %arg2, %arg3) {axis = -1 : i64} : (tensor<3xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<*xf32>
+  return %0: tensor<*xf32>
+
+// CHECK-LABEL: OneHot
+// CHECK: "tfl.one_hot"(%arg0, %arg1, %arg2, %arg3) {axis = -1 : i32} : (tensor<3xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<*xf32>
+}
+
+func @argmax(%arg0: tensor<3xi32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %0 = "tf.ArgMax"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<i32>
+  return %0 : tensor<i32>
+
+// CHECK-LABEL: argmax
+// CHECK:  %0 = "tfl.arg_max"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<i32>
+}
+
+func @argmax64(%arg0: tensor<3xi32>, %arg1: tensor<i32>) -> tensor<i64> {
+  %0 = "tf.ArgMax"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<i64>
+  return %0 : tensor<i64>
+
+// CHECK-LABEL: argmax64
+// CHECK:  %0 = "tfl.arg_max"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<i64>
+}
+
+func @space_to_depth(%arg0: tensor<1x2x2x1xf32>) -> tensor<?xf32> {
+  %0 = "tf.SpaceToDepth"(%arg0) {block_size = 2: i64,  data_format = "NHWC"}: (tensor<1x2x2x1xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+
+  // CHECK-LABEL: space_to_depth
+  // CHECK: %[[ARG:.*]]: tensor<1x2x2x1xf32>
+  // CHECK: "tfl.space_to_depth"(%[[ARG]]) {block_size = 2 : i32} : (tensor<1x2x2x1xf32>) -> tensor<?xf32>
+}
+
+func @round(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Round"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+
+  // CHECK-LABEL: round
+  // CHECK: %[[ARG:.*]]: tensor<8x16xf32>
+  // CHECK: %[[RESULT:.*]] = "tfl.round"(%[[ARG]]) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  // CHECK: return %[[RESULT]] : tensor<8x16xf32>
+}
+
+func @resize_nearest_neighbor(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
+  %0 = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+  // CHECK-LABEL: resize_nearest_neighbor
+  // CHECK: "tfl.resize_nearest_neighbor"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+}
+
+// Note: half_pixel_centers isn't supported by TFLite, so it's not legalized.
+func @resize_nearest_neighbor_with_half_pixel_centers(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
+  %0 = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true, half_pixel_centers = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+  // CHECK-LABEL: resize_nearest_neighbor_with_half_pixel_centers
+  // CHECK: "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true, half_pixel_centers = true}
+}
+
+func @where(%arg0: tensor<3x5xi1>) -> tensor<?x2xi64> {
+  %0 = "tf.Where"(%arg0) : (tensor<3x5xi1>) -> tensor<?x2xi64>
+  return %0 : tensor<?x2xi64>
+  // CHECK-LABEL: where
+  // CHECK: "tfl.where"(%arg0) : (tensor<3x5xi1>) -> tensor<?x2xi64>
 }

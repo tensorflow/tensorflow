@@ -1,3 +1,5 @@
+load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -12,6 +14,14 @@ package(
 config_setting(
     name = "tflite_gpu_binary_release",
     values = {"copt": "-DTFLITE_GPU_BINARY_RELEASE"},
+)
+
+config_setting(
+    name = "tflite_gpu_extra_gles_deps",
+    values = {
+        "copt": "-DTFLITE_GPU_EXTRA_GLES_DEPS",
+        "cpu": "k8",
+    },
 )
 
 cc_library(
@@ -56,14 +66,13 @@ cc_library(
             "//tensorflow/lite/schema:schema_fbs",
         ],
         ":tflite_gpu_binary_release": [],
-    }),
+    }) + tflite_extra_gles_deps(),
 )
 
 objc_library(
     name = "metal_delegate",
     srcs = ["metal_delegate.mm"],
     hdrs = ["metal_delegate.h"],
-    copts = ["-std=c++11"],
     sdk_frameworks = ["Metal"],
     deps = [
         "//tensorflow/lite:kernel_api",
@@ -83,6 +92,16 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:compiled_model",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+objc_library(
+    name = "metal_delegate_internal",
+    hdrs = ["metal_delegate_internal.h"],
+    copts = ["-std=c++11"],
+    sdk_frameworks = ["Metal"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu:metal_delegate",
     ],
 )
 

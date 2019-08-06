@@ -62,6 +62,7 @@ class UpsamplingBilinear : public NodeShader {
       *generated_code = {
           /*parameters=*/{},
           /*objects=*/{},
+          /*shared_variables=*/{},
           /*workload=*/uint3(),
           /*workgroup=*/uint3(),
           /*source_code=*/"value_0 = $input_data_0[0, 0, gid.z]$;",
@@ -100,6 +101,7 @@ class UpsamplingBilinear : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(source),

@@ -49,18 +49,11 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
 
     self._element_spec = input_dataset.element_spec
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = ged_ops.auto_shard_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_workers=num_workers,
-          index=index,
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.experimental_auto_shard_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          num_workers=num_workers,
-          index=index,
-          **self._flat_structure)
+    variant_tensor = ged_ops.auto_shard_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        num_workers=num_workers,
+        index=index,
+        **self._flat_structure)
     super(_AutoShardDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
@@ -74,9 +67,13 @@ def _AutoShardDatasetV1(input_dataset, num_workers, index):  # pylint: disable=i
 
 
 class _RebatchDataset(dataset_ops.UnaryDataset):
-  """A `Dataset` that divides the batch size by `num_workers`."""
+  """A `Dataset` that divides the batch size by `num_workers`.
 
-  def __init__(self, input_dataset, num_workers):
+  For each batch in the input dataset, the resulting dataset will produce
+  `num_replicas` minibatches whose sizes add up to the original batch size.
+  """
+
+  def __init__(self, input_dataset, num_workers, use_fallback=True):
     self._input_dataset = input_dataset
 
     def recalculate_output_shapes(output_shapes):
@@ -85,8 +82,14 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
         raise ValueError(
             "Input shape should have at least one dimension. "
             "Perhaps your input dataset is not batched?")
-      output_dims = [d for d in output_shapes.dims]
-      output_dims[0] = (output_dims[0] + num_workers - 1) // num_workers
+      output_dims = [d.value for d in output_shapes.dims]
+
+      if output_dims[0] is not None and output_dims[0] % num_workers == 0:
+        output_dims[0] = output_dims[0] // num_workers
+      else:
+        # Set the batch dimension to unknown. If the global batch size does not
+        # divide num_workers evenly, the minibatches may have different sizes.
+        output_dims[0] = None
       return tensor_shape.TensorShape(output_dims)
 
     input_types = dataset_ops.get_legacy_output_types(self._input_dataset)
@@ -96,13 +99,14 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
 
     self._element_spec = structure.convert_legacy_structure(
         input_types, output_shapes, input_classes)
-    if compat.forward_compatible(2019, 8, 3):
+    if compat.forward_compatible(2019, 8, 13) or not use_fallback:
       variant_tensor = ged_ops.rebatch_dataset(
           self._input_dataset._variant_tensor,  # pylint: disable=protected-access
           num_workers=num_workers,
+          use_fallback=use_fallback,
           **self._flat_structure)
     else:
-      variant_tensor = ged_ops.experimental_rebatch_dataset(
+      variant_tensor = ged_ops.rebatch_dataset(
           self._input_dataset._variant_tensor,  # pylint: disable=protected-access
           num_workers=num_workers,
           **self._flat_structure)

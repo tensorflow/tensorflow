@@ -32,9 +32,15 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/arg_min_max.h"
+#include "tensorflow/lite/kernels/internal/reference/binary_function.h"
+#include "tensorflow/lite/kernels/internal/reference/comparisons.h"
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
+#include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
+#include "tensorflow/lite/kernels/internal/reference/maximum_minimum.h"
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
+#include "tensorflow/lite/kernels/internal/reference/prelu.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
 #include "tensorflow/lite/kernels/internal/round.h"
@@ -897,9 +903,9 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
     const int32 input2_val = params.input2_offset + input2_data[i];
     const int32 unclamped_result =
         params.output_offset +
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(input1_val * input2_val,
-                                                       params.output_multiplier,
-                                                       params.output_shift);
+        MultiplyByQuantizedMultiplier(input1_val * input2_val,
+                                      params.output_multiplier,
+                                      params.output_shift);
     const int32 clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
@@ -1001,9 +1007,9 @@ inline void BroadcastMul4DSlow(const ArithmeticParams& params,
               input2_data[SubscriptToIndex(desc2, b, y, x, c)];
           const int32 unclamped_result =
               params.output_offset +
-              MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                  input1_val * input2_val, params.output_multiplier,
-                  params.output_shift);
+              MultiplyByQuantizedMultiplier(input1_val * input2_val,
+                                            params.output_multiplier,
+                                            params.output_shift);
           const int32 clamped_output = std::min(
               params.quantized_activation_max,
               std::max(params.quantized_activation_min, unclamped_result));
@@ -2467,7 +2473,6 @@ inline void Tanh(const TanhParams&, const RuntimeShape& input_shape,
   Tanh(input_shape, input_data, output_shape, output_data);
 }
 
-
 inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
                  const int16* input_data, const RuntimeShape& output_shape,
                  int16* output_data) {
@@ -2631,19 +2636,9 @@ T FloorMod(T input1, T input2) {
                                             std::modulus<T>, FloatMod>::type;
   ModFunc mod_func;
   T trunc_mod = mod_func(input1, input2);
-  return trunc_mod != 0 && ((input2 < 0) != (trunc_mod < 0))
-             ? trunc_mod + input2
+  return (trunc_mod != 0) && ((input2 < 0) != (trunc_mod < 0))
+             ? (trunc_mod + input2)
              : trunc_mod;
-}
-
-inline void Floor(const RuntimeShape& input_shape, const float* input_data,
-                  const RuntimeShape& output_shape, float* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    int offset = i;
-    output_data[offset] = std::floor(input_data[offset]);
-  }
 }
 
 inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
@@ -3545,87 +3540,6 @@ inline void Maximum(const RuntimeShape& input1_shape, const T* input1_data,
   Maximum(input1_shape, input1_data, input2_data, output_shape, output_data);
 }
 
-template <typename T, typename Op>
-void MaximumMinimumBroadcast4DSlow(const RuntimeShape& unextended_input1_shape,
-                                   const T* input1_data,
-                                   const RuntimeShape& unextended_input2_shape,
-                                   const T* input2_data,
-                                   const RuntimeShape& unextended_output_shape,
-                                   T* output_data, Op op) {
-  gemmlowp::ScopedProfilingLabel label("MaximumMinimumBroadcast4DSlow");
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-
-  for (int b = 0; b < output_shape.Dims(0); ++b) {
-    for (int y = 0; y < output_shape.Dims(1); ++y) {
-      for (int x = 0; x < output_shape.Dims(2); ++x) {
-        for (int c = 0; c < output_shape.Dims(3); ++c) {
-          auto out_idx = Offset(output_shape, b, y, x, c);
-          auto in1_idx = SubscriptToIndex(desc1, b, y, x, c);
-          auto in2_idx = SubscriptToIndex(desc2, b, y, x, c);
-          auto in1_val = input1_data[in1_idx];
-          auto in2_val = input2_data[in2_idx];
-          output_data[out_idx] = op(in1_val, in2_val);
-        }
-      }
-    }
-  }
-}
-
-template <typename T1, typename T2, typename T3, typename Cmp>
-void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
-               const T3* input2_data, const RuntimeShape& output_shape,
-               T2* output_data, const Cmp& cmp) {
-  gemmlowp::ScopedProfilingLabel label("ArgMinMax");
-  TFLITE_DCHECK_GT(input1_shape.DimensionsCount(), 0);
-  TFLITE_DCHECK_EQ(input1_shape.DimensionsCount() - 1,
-                   output_shape.DimensionsCount());
-
-  int axis = input2_data[0];
-  if (axis < 0) {
-    axis += input1_shape.DimensionsCount();
-  }
-
-  const int axis_size = input1_shape.Dims(axis);
-
-  int outer_size = 1;
-  for (int i = 0; i < axis; ++i) {
-    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i));
-    outer_size *= input1_shape.Dims(i);
-  }
-
-  int inner_size = 1;
-  const int dims_count = input1_shape.DimensionsCount();
-  for (int i = axis + 1; i < dims_count; ++i) {
-    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i - 1));
-    inner_size *= input1_shape.Dims(i);
-  }
-
-  for (int outer = 0; outer < outer_size; ++outer) {
-    for (int inner = 0; inner < inner_size; ++inner) {
-      auto min_max_value = input1_data[outer * axis_size * inner_size + inner];
-      int min_max_index = 0;
-      for (int i = 1; i < axis_size; ++i) {
-        const auto& curr_value =
-            input1_data[(outer * axis_size + i) * inner_size + inner];
-        if (cmp(curr_value, min_max_value)) {
-          min_max_value = curr_value;
-          min_max_index = i;
-        }
-      }
-      output_data[outer * inner_size + inner] = min_max_index;
-    }
-  }
-}
-
 template <typename T1, typename T2, typename T3>
 void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
             const T3* input2_data, const RuntimeShape& output_shape,
@@ -3855,253 +3769,6 @@ inline void TransposeConv(const ConvParams& params,
   }
 }
 
-template <typename T>
-inline bool EqualFn(T lhs, T rhs) {
-  return lhs == rhs;
-}
-
-template <typename T>
-inline bool NotEqualFn(T lhs, T rhs) {
-  return lhs != rhs;
-}
-
-template <typename T>
-inline bool GreaterFn(T lhs, T rhs) {
-  return lhs > rhs;
-}
-template <typename T>
-inline bool GreaterEqualFn(T lhs, T rhs) {
-  return lhs >= rhs;
-}
-template <typename T>
-inline bool LessFn(T lhs, T rhs) {
-  return lhs < rhs;
-}
-template <typename T>
-inline bool LessEqualFn(T lhs, T rhs) {
-  return lhs <= rhs;
-}
-
-template <typename T>
-using ComparisonFn = bool (*)(T, T);
-
-template <typename T, ComparisonFn<T> F>
-inline void ComparisonImpl(
-    const ComparisonParams& op_params, const RuntimeShape& input1_shape,
-    const T* input1_data, const RuntimeShape& input2_shape,
-    const T* input2_data, const RuntimeShape& output_shape, bool* output_data) {
-  const int64_t flatsize =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
-  for (int64_t i = 0; i < flatsize; ++i) {
-    output_data[i] = F(input1_data[i], input2_data[i]);
-  }
-}
-
-template <ComparisonFn<float> F>
-inline void Comparison(const ComparisonParams& op_params,
-                       const RuntimeShape& input1_shape,
-                       const float* input1_data,
-                       const RuntimeShape& input2_shape,
-                       const float* input2_data,
-                       const RuntimeShape& output_shape, bool* output_data) {
-  ComparisonImpl<float, F>(op_params, input1_shape, input1_data, input2_shape,
-                           input2_data, output_shape, output_data);
-}
-
-template <typename T, ComparisonFn<int32> F>
-inline void ComparisonWithScaling(
-    const ComparisonParams& op_params, const RuntimeShape& input1_shape,
-    const T* input1_data, const RuntimeShape& input2_shape,
-    const T* input2_data, const RuntimeShape& output_shape, bool* output_data) {
-  int left_shift = op_params.left_shift;
-  int32 input1_offset = op_params.input1_offset;
-  int32 input1_multiplier = op_params.input1_multiplier;
-  int input1_shift = op_params.input1_shift;
-  int32 input2_offset = op_params.input2_offset;
-  int32 input2_multiplier = op_params.input2_multiplier;
-  int input2_shift = op_params.input2_shift;
-
-  const int64_t flatsize =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
-  for (int64_t i = 0; i < flatsize; ++i) {
-    const int32 input1_val = input1_offset + input1_data[i];
-    const int32 input2_val = input2_offset + input2_data[i];
-    const int32 shifted_input1_val = input1_val * (1 << left_shift);
-    const int32 shifted_input2_val = input2_val * (1 << left_shift);
-    const int32 scaled_input1_val =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_input1_val, input1_multiplier, input1_shift);
-    const int32 scaled_input2_val =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            shifted_input2_val, input2_multiplier, input2_shift);
-    output_data[i] = F(scaled_input1_val, scaled_input2_val);
-  }
-}
-
-template <typename T, ComparisonFn<T> F>
-inline void BroadcastComparison4DSlowImpl(
-    const ComparisonParams& op_params,
-    const RuntimeShape& unextended_input1_shape, const T* input1_data,
-    const RuntimeShape& unextended_input2_shape, const T* input2_data,
-    const RuntimeShape& unextended_output_shape, bool* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastComparison4DSlow");
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-
-  for (int b = 0; b < output_shape.Dims(0); ++b) {
-    for (int y = 0; y < output_shape.Dims(1); ++y) {
-      for (int x = 0; x < output_shape.Dims(2); ++x) {
-        for (int c = 0; c < output_shape.Dims(3); ++c) {
-          output_data[Offset(output_shape, b, y, x, c)] =
-              F(input1_data[SubscriptToIndex(desc1, b, y, x, c)],
-                input2_data[SubscriptToIndex(desc2, b, y, x, c)]);
-        }
-      }
-    }
-  }
-}
-template <ComparisonFn<float> F>
-inline void BroadcastComparison4DSlow(const ComparisonParams& op_params,
-                                      const RuntimeShape& input1_shape,
-                                      const float* input1_data,
-                                      const RuntimeShape& input2_shape,
-                                      const float* input2_data,
-                                      const RuntimeShape& output_shape,
-                                      bool* output_data) {
-  BroadcastComparison4DSlowImpl<float, F>(op_params, input1_shape, input1_data,
-                                          input2_shape, input2_data,
-                                          output_shape, output_data);
-}
-
-template <typename T, ComparisonFn<int32> F>
-inline void BroadcastComparison4DSlowWithScaling(
-    const ComparisonParams& op_params,
-    const RuntimeShape& unextended_input1_shape, const T* input1_data,
-    const RuntimeShape& unextended_input2_shape, const T* input2_data,
-    const RuntimeShape& unextended_output_shape, bool* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastComparison4DSlowWithScaling");
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-
-  int left_shift = op_params.left_shift;
-  int32 input1_offset = op_params.input1_offset;
-  int32 input1_multiplier = op_params.input1_multiplier;
-  int input1_shift = op_params.input1_shift;
-  int32 input2_offset = op_params.input2_offset;
-  int32 input2_multiplier = op_params.input2_multiplier;
-  int input2_shift = op_params.input2_shift;
-
-  for (int b = 0; b < output_shape.Dims(0); ++b) {
-    for (int y = 0; y < output_shape.Dims(1); ++y) {
-      for (int x = 0; x < output_shape.Dims(2); ++x) {
-        for (int c = 0; c < output_shape.Dims(3); ++c) {
-          const int32 input1_val =
-              input1_offset + input1_data[SubscriptToIndex(desc1, b, y, x, c)];
-          const int32 input2_val =
-              input2_offset + input2_data[SubscriptToIndex(desc2, b, y, x, c)];
-          const int32 shifted_input1_val = input1_val * (1 << left_shift);
-          const int32 shifted_input2_val = input2_val * (1 << left_shift);
-          const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                  shifted_input1_val, input1_multiplier, input1_shift);
-          const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                  shifted_input2_val, input2_multiplier, input2_shift);
-          output_data[Offset(output_shape, b, y, x, c)] =
-              F(scaled_input1_val, scaled_input2_val);
-        }
-      }
-    }
-  }
-}
-
-#define TFLITE_COMPARISON_OP(name)                                             \
-  inline void name(const ComparisonParams& op_params,                          \
-                   const RuntimeShape& input1_shape, const float* input1_data, \
-                   const RuntimeShape& input2_shape, const float* input2_data, \
-                   const RuntimeShape& output_shape, bool* output_data) {      \
-    gemmlowp::ScopedProfilingLabel label(#name);                               \
-    Comparison<name##Fn>(op_params, input1_shape, input1_data, input2_shape,   \
-                         input2_data, output_shape, output_data);              \
-  }                                                                            \
-  template <typename T>                                                        \
-  inline void name##NoScaling(                                                 \
-      const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
-      const T* input1_data, const RuntimeShape& input2_shape,                  \
-      const T* input2_data, const RuntimeShape& output_shape,                  \
-      bool* output_data) {                                                     \
-    gemmlowp::ScopedProfilingLabel label(#name "NoScaling");                   \
-    ComparisonImpl<T, name##Fn>(op_params, input1_shape, input1_data,          \
-                                input2_shape, input2_data, output_shape,       \
-                                output_data);                                  \
-  }                                                                            \
-  template <typename T>                                                        \
-  inline void name##WithScaling(                                               \
-      const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
-      const T* input1_data, const RuntimeShape& input2_shape,                  \
-      const T* input2_data, const RuntimeShape& output_shape,                  \
-      bool* output_data) {                                                     \
-    gemmlowp::ScopedProfilingLabel label(#name "WithScaling/8bit");            \
-    ComparisonWithScaling<T, name##Fn>(op_params, input1_shape, input1_data,   \
-                                       input2_shape, input2_data,              \
-                                       output_shape, output_data);             \
-  }                                                                            \
-  template <typename T>                                                        \
-  inline void Broadcast4DSlow##name##NoScaling(                                \
-      const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
-      const T* input1_data, const RuntimeShape& input2_shape,                  \
-      const T* input2_data, const RuntimeShape& output_shape,                  \
-      bool* output_data) {                                                     \
-    gemmlowp::ScopedProfilingLabel label("Broadcast4DSlow" #name "NoScaling"); \
-    BroadcastComparison4DSlowImpl<T, name##Fn>(                                \
-        op_params, input1_shape, input1_data, input2_shape, input2_data,       \
-        output_shape, output_data);                                            \
-  }                                                                            \
-  inline void Broadcast4DSlow##name(                                           \
-      const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
-      const float* input1_data, const RuntimeShape& input2_shape,              \
-      const float* input2_data, const RuntimeShape& output_shape,              \
-      bool* output_data) {                                                     \
-    gemmlowp::ScopedProfilingLabel label("Broadcast4DSlow" #name);             \
-    BroadcastComparison4DSlow<name##Fn>(op_params, input1_shape, input1_data,  \
-                                        input2_shape, input2_data,             \
-                                        output_shape, output_data);            \
-  }                                                                            \
-  template <typename T>                                                        \
-  inline void Broadcast4DSlow##name##WithScaling(                              \
-      const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
-      const T* input1_data, const RuntimeShape& input2_shape,                  \
-      const T* input2_data, const RuntimeShape& output_shape,                  \
-      bool* output_data) {                                                     \
-    gemmlowp::ScopedProfilingLabel label("Broadcast4DSlow" #name "/8bit");     \
-    BroadcastComparison4DSlowWithScaling<T, name##Fn>(                         \
-        op_params, input1_shape, input1_data, input2_shape, input2_data,       \
-        output_shape, output_data);                                            \
-  }
-TFLITE_COMPARISON_OP(Equal);
-TFLITE_COMPARISON_OP(NotEqual);
-TFLITE_COMPARISON_OP(Greater);
-TFLITE_COMPARISON_OP(GreaterEqual);
-TFLITE_COMPARISON_OP(Less);
-TFLITE_COMPARISON_OP(LessEqual);
-#undef TFLITE_COMPARISON_OP
-
 template <typename D, typename T>
 void Select(const RuntimeShape& input_condition_shape,
             const D* input_condition_data, const RuntimeShape& input_x_shape,
@@ -4251,104 +3918,6 @@ inline void BroadcastPow4DSlow(const RuntimeShape& unextended_input1_shape,
   }
 }
 
-inline void Logical(const RuntimeShape& input1_shape, const bool* input1_data,
-                    const RuntimeShape& input2_shape, const bool* input2_data,
-                    const RuntimeShape& output_shape, bool* output_data,
-                    const std::function<bool(bool, bool)>& func) {
-  const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = func(input1_data[i], input2_data[i]);
-  }
-}
-
-inline void BroadcastLogical4DSlow(
-    const RuntimeShape& unextended_input1_shape, const bool* input1_data,
-    const RuntimeShape& unextended_input2_shape, const bool* input2_data,
-    const RuntimeShape& unextended_output_shape, bool* output_data,
-    const std::function<bool(bool, bool)>& func) {
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-
-  for (int b = 0; b < output_shape.Dims(0); ++b) {
-    for (int y = 0; y < output_shape.Dims(1); ++y) {
-      for (int x = 0; x < output_shape.Dims(2); ++x) {
-        for (int c = 0; c < output_shape.Dims(3); ++c) {
-          auto out_idx = Offset(output_shape, b, y, x, c);
-          auto in1_idx = SubscriptToIndex(desc1, b, y, x, c);
-          auto in2_idx = SubscriptToIndex(desc2, b, y, x, c);
-          auto in1_val = input1_data[in1_idx];
-          auto in2_val = input2_data[in2_idx];
-          output_data[out_idx] = func(in1_val, in2_val);
-        }
-      }
-    }
-  }
-}
-
-// TODO(ycling): Refactoring. Remove BroadcastLogical and use the more
-// generalized and efficient BroadcastBinaryFunction.
-//
-// Also appears to duplicte MinimumMaximum.
-//
-// R: Result type. T1: Input 1 type. T2: Input 2 type.
-template <typename R, typename T1, typename T2>
-inline void BroadcastBinaryFunction4DSlow(
-    const RuntimeShape& unextended_input1_shape, const T1* input1_data,
-    const RuntimeShape& unextended_input2_shape, const T2* input2_data,
-    const RuntimeShape& unextended_output_shape, R* output_data,
-    R (*func)(T1, T2)) {
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-
-  for (int b = 0; b < output_shape.Dims(0); ++b) {
-    for (int y = 0; y < output_shape.Dims(1); ++y) {
-      for (int x = 0; x < output_shape.Dims(2); ++x) {
-        for (int c = 0; c < output_shape.Dims(3); ++c) {
-          auto out_idx = Offset(output_shape, b, y, x, c);
-          auto in1_idx = SubscriptToIndex(desc1, b, y, x, c);
-          auto in2_idx = SubscriptToIndex(desc2, b, y, x, c);
-          auto in1_val = input1_data[in1_idx];
-          auto in2_val = input2_data[in2_idx];
-          output_data[out_idx] = func(in1_val, in2_val);
-        }
-      }
-    }
-  }
-}
-
-// R: Result type. T1: Input 1 type. T2: Input 2 type.
-// TODO(renjieliu): Refactor other binary functions to use this one.
-template <typename R, typename T1, typename T2>
-inline void BinaryFunction(const RuntimeShape& input1_shape,
-                           const T1* input1_data,
-                           const RuntimeShape& input2_shape,
-                           const T2* input2_data,
-                           const RuntimeShape& output_shape, R* output_data,
-                           R (*func)(T1, T2)) {
-  const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = func(input1_data[i], input2_data[i]);
-  }
-}
-
 template <typename T>
 inline void ResizeNearestNeighbor(
     const tflite::ResizeNearestNeighborParams& op_params,
@@ -4400,53 +3969,6 @@ inline void ResizeNearestNeighbor(
       }
     }
     input_ptr += batch_offset;
-  }
-}
-
-inline void BroadcastPrelu4DSlow(const PreluParams& params,
-                                 const RuntimeShape& input_shape,
-                                 const uint8* input_data,
-                                 const RuntimeShape& alpha_shape,
-                                 const uint8* alpha_data,
-                                 const RuntimeShape& output_shape,
-                                 uint8* output_data) {
-  TFLITE_DCHECK_LE(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(alpha_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), 4);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input_shape, alpha_shape, &desc1, &desc2);
-
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          int output_index = Offset(extended_output_shape, b, y, x, c);
-          int input_index = SubscriptToIndex(desc1, b, y, x, c);
-          const int32 input_value =
-              params.input_offset + input_data[input_index];
-          if (input_value >= 0) {
-            output_data[output_index] = input_data[input_index];
-          } else {
-            auto alpha_index = SubscriptToIndex(desc2, b, y, x, c);
-            const int32 alpha_value =
-                params.alpha_offset + alpha_data[alpha_index];
-            const int32 unclamped_output =
-                params.output_offset +
-                MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                    input_value * alpha_value, params.output_multiplier,
-                    params.output_shift);
-            const int32 quantized_min = std::numeric_limits<uint8_t>::min();
-            const int32 quantized_max = std::numeric_limits<uint8_t>::max();
-            const int32 clamped_output = std::min(
-                quantized_max, std::max(quantized_min, unclamped_output));
-            output_data[output_index] = static_cast<uint8>(clamped_output);
-          }
-        }
-      }
-    }
   }
 }
 

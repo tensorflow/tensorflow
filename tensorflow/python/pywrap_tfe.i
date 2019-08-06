@@ -41,17 +41,18 @@ limitations under the License.
 %rename("%s") TFE_ContextGetMirroringPolicy;
 %rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
 %rename("%s") TFE_ContextSetThreadLocalMirroringPolicy;
-%rename("%s") TFE_ContextSetAsyncForThread;
 %rename("%s") TFE_ContextSetServerDef;
 %rename("%s") TFE_ContextAsyncWait;
 %rename("%s") TFE_ContextAsyncClearError;
+%rename("%s") TFE_NewExecutor;
+%rename("%s") TFE_DeleteExecutor;
+%rename("%s") TFE_ExecutorWaitForAllPendingNodes;
+%rename("%s") TFE_ContextSetExecutorForThread;
+%rename("%s") TFE_ContextClearExecutorForThread;
 %rename("%s") TFE_NewProfiler;
 %rename("%s") TFE_ProfilerIsOk;
 %rename("%s") TFE_DeleteProfiler;
 %rename("%s") TFE_ProfilerSerializeToString;
-%rename("%s") TFE_NewProfilerContext;
-%rename("%s") TFE_ProfilerContextSetEagerContext;
-%rename("%s") TFE_DeleteProfilerContext;
 %rename("%s") TFE_StartProfilerServer;
 %rename("%s") TFE_ProfilerClientStartTracing;
 %rename("%s") TFE_ProfilerClientMonitor;
@@ -59,10 +60,11 @@ limitations under the License.
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;
 %rename("%s") TFE_Py_RegisterExceptionClass;
+%rename("%s") TFE_Py_RegisterForwardGradientFunction;
 %rename("%s") TFE_Py_RegisterGradientFunction;
 %rename("%s") TFE_Py_RegisterFallbackExceptionClass;
-%rename("%s") TFE_Py_RegisterResourceVariableType;
 %rename("%s") TFE_Py_Execute;
+%rename("%s") TFE_Py_ExecuteCancelable;
 %rename("%s") TFE_Py_FastPathExecute;
 %rename("%s") TFE_Py_RecordGradient;
 %rename("%s") TFE_Py_UID;
@@ -95,6 +97,7 @@ limitations under the License.
 %rename("%s") TFE_Py_TensorShapeSlice;
 %rename("%s") TFE_Py_TensorShapeOnDevice;
 %rename("%s") TFE_Py_EnableInteractivePythonLogging;
+%rename("%s") TFE_Py_SetEagerContext;
 %rename("%s") TFE_ContextStartStep;
 %rename("%s") TFE_ContextEndStep;
 %rename("%s") TFE_Py_RegisterVSpace;
@@ -163,6 +166,8 @@ limitations under the License.
 %rename("%s") TFE_CancellationManagerIsCancelled;
 %rename("%s") TFE_CancellationManagerStartCancel;
 %rename("%s") TFE_DeleteCancellationManager;
+%rename("%s") TF_ImportGraphDefOptionsSetValidateColocationConstraints;
+%rename("%s") TFE_ClearScalarCache;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
@@ -189,6 +194,16 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status) {
 }
 %}
 static PyObject* TF_ListPhysicalDevices(TF_Status* status);
+
+%{
+#include "tensorflow/python/eager/pywrap_tensor_conversion.h"
+
+static PyObject* TFE_ClearScalarCache() {
+  tensorflow::TFE_TensorHandleCache::Get()->Clear();
+  Py_RETURN_NONE;
+}
+%}
+static PyObject* TFE_ClearScalarCache();
 
 %typemap(in) (const void* proto) {
   char* c_string;

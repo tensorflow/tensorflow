@@ -36,7 +36,7 @@ constexpr char kConstOp[] = "Const";
 constexpr char kRangeOp[] = "RangeDataset";
 constexpr char kBatchOp[] = "BatchDataset";
 constexpr char kBatchV2Op[] = "BatchDatasetV2";
-constexpr char kExperimentalMapAndBatchOp[] = "ExperimentalMapAndBatchDataset";
+constexpr char kMapAndBatchOp[] = "MapAndBatchDataset";
 constexpr char kMapOp[] = "MapDataset";
 constexpr char kParallelMapOp[] = "ParallelMapDataset";
 constexpr char kChooseFastestOp[] = "ChooseFastestBranchDataset";
@@ -244,8 +244,8 @@ void CheckVectorizedWithChooseFastest(
     const GraphDef& output, gtl::ArraySlice<string> expected_vectorized_branch,
     gtl::ArraySlice<string> expected_original_branch,
     const string& input_name) {
-  for (const auto& op : {kBatchOp, kBatchV2Op, kMapOp, kParallelMapOp,
-                         kExperimentalMapAndBatchOp}) {
+  for (const auto& op :
+       {kBatchOp, kBatchV2Op, kMapOp, kParallelMapOp, kMapAndBatchOp}) {
     // Check that the dataset nodes have been removed from the main graph.
     ASSERT_EQ(graph_utils::FindAllGraphNodesWithOp(op, output).size(), 0);
   }
@@ -349,7 +349,7 @@ NodeDef* AddMapAndBatchNode(MutableGraphView* graph,
 
   NodeDef result =
       NDef(/*name=*/"map_and_batch",
-           /*op=*/kExperimentalMapAndBatchOp,
+           /*op=*/kMapAndBatchOp,
            /*inputs=*/
            {input_dataset, batch_size_node->name(),
             num_parallel_calls_node->name(), drop_remainder->name()},
@@ -364,7 +364,7 @@ NodeDef* AddMapAndBatchNode(MutableGraphView* graph,
   return graph->AddNode(std::move(result));
 }
 
-TEST_P(MapAndBatchTest, VectorizeExperimentalMapAndBatch) {
+TEST_P(MapAndBatchTest, VectorizeMapAndBatch) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
   auto range_node = AddRangeNode(&graph);
@@ -379,8 +379,7 @@ TEST_P(MapAndBatchTest, VectorizeExperimentalMapAndBatch) {
   TF_ASSERT_OK(OptimizeWithMapVectorization(item, &output, use_choose_fastest));
   if (use_choose_fastest) {
     CheckVectorizedWithChooseFastest(output, {kBatchV2Op, kParallelMapOp},
-                                     {kExperimentalMapAndBatchOp},
-                                     range_node->name());
+                                     {kMapAndBatchOp}, range_node->name());
   } else {
     CheckVectorizedWithoutChooseFastest(output, {kBatchV2Op, kParallelMapOp},
                                         range_node->name());
@@ -431,7 +430,7 @@ TEST_P(ChainedMapAndBatchTest, IsVectorized) {
         graph_utils::FindAllGraphNodesWithOp(kChooseFastestOp, output);
     ASSERT_EQ(choose_fastest_nodes.size(), 2);
 
-    std::vector<string> fused_sequence({kExperimentalMapAndBatchOp});
+    std::vector<string> fused_sequence({kMapAndBatchOp});
     std::vector<string> unfused_sequence({kParallelMapOp, kBatchV2Op});
     const NodeDef& range_node =
         output.node(graph_utils::FindGraphNodeWithOp(kRangeOp, output));

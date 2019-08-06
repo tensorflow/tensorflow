@@ -130,6 +130,20 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "remote_mgr_test",
+    size = "small",
+    srcs = ["remote_mgr_test.cc"],
+    deps = [
+        ":remote_mgr",
+        "//tensorflow/core:eager_service_proto_cc",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
+    ],
+)
+
 cc_library(
     name = "remote_tensor_handle_data",
     srcs = ["remote_tensor_handle_data.cc"],
@@ -139,5 +153,26 @@ cc_library(
         ":eager_client",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:tensor_handle_data",
+    ],
+)
+
+cc_library(
+    name = "remote_copy_node",
+    srcs = [
+        "remote_copy_node.cc",
+    ],
+    hdrs = [
+        "remote_copy_node.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":remote_mgr",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:attr_builder",
+        "//tensorflow/core/common_runtime/eager:eager_executor",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
     ],
 )

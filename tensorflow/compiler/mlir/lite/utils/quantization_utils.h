@@ -19,6 +19,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_QUANTIZATION_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_QUANTIZATION_UTILS_H_
 
+#include <unordered_map>
+
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
@@ -27,6 +29,40 @@ limitations under the License.
 
 namespace mlir {
 namespace TFL {
+
+using QuantParams = quant::QuantizedType;
+using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
+using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
+using AccumulatorScaleFunc =
+    std::function<QuantParams(const std::vector<QuantParams>&)>;
+
+// Quantization spec of an op, driving the quantization algorithm.
+struct OpQuantSpec {
+  // Whether the op has quantizable result. This flag is set to false if the op
+  // has "TFL::NoQuantizableResult" trait.
+  bool is_quantizable = true;
+
+  // Whether it requires same inputs and result scale. This flag is set to true
+  // if the op has "TFL::SameOperandsAndResultScale" trait.
+  bool requires_same_scale = false;
+
+  // Maps the operand index of a bias input to its quantization specifications,
+  // including the non-bias operand indexes and the method retrieving
+  // quantization parameters from list of parameters of the non-bias operands.
+  // This map is empty if the op doesn't havea bias operand.
+  std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>
+      biases_params;
+
+  // Quantization parameters for value restricted outputs. This is the
+  // "hard-coded" parameters and should be used unconditionally for the
+  // quantized op. This vector is empty if the op doesn't have value resctricted
+  // outputs.
+  llvm::DenseMap<SignedInteger, QuantParamsForResults> restricted_output_params;
+};
+
+// A function signature for getting the particular OpQuantSpec for the provided
+// op.
+typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
 
 // A generic rewrite pattern which matches any N-in-1-out operations with
 // quantization parameters propagated to all the operands and results values.
@@ -63,8 +99,14 @@ struct GenericFullQuantizationPattern : public RewritePattern {
     inputs.reserve(quantized_op->getNumOperands());
     for (int i = 0, e = quantized_op->getNumOperands(); i != e; ++i) {
       auto* operand = quantized_op->getOperand(i);
+      auto operand_ele_type =
+          operand->getType().template cast<TensorType>().getElementType();
       if (auto op_inst = dyn_cast_or_null<DQ>(operand->getDefiningOp())) {
         inputs.push_back(op_inst.input());
+      } else if (operand_ele_type.template isa<IntegerType>()) {
+        // If the operand is an integer tensor, then it doesn't require the
+        // DQ op in the pattern.
+        inputs.push_back(operand);
       } else {
         return matchFailure();
       }
@@ -84,13 +126,26 @@ struct GenericFullQuantizationPattern : public RewritePattern {
 // QuantizedType, and then returns the attribute containing the QuantizedType.
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, FloatAttr min,
                               FloatAttr max, Type storage_type,
-                              bool narrow_range = false);
+                              bool narrow_range = false,
+                              bool is_signed = false);
 
 // Converts the min/max/num_bits/narrow_range information to a
 // QuantizedType, and then returns the attribute containing the QuantizedType.
+// Note that this method assumes an unsigned quantization type, which is
+// implicitly defined by FakeQuant* ops in TensorFlow.
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, IntegerAttr num_bits,
                               BoolAttr narrow_range);
+
+// Casts the `target` type to a quantized type by using the quantization
+// parameters from the type in the `source` type attribute.
+// Examples:
+//   f32 -> !quant.uniform<i8:f32, 1.0>
+//   tensor<4xf32> -> tensor<4x!quant.uniform<i8:f32, 1.0>>
+// The result is wrapped by a type attribute. Returns nullptr if the cast isn't
+// valid.
+TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
+                                                TypeAttr source, Type target);
 
 // Quantizes the elements in the attribute `real_value` by the quantization
 // parameters in `tensor_type`. Returns empty Attribute if the
@@ -103,7 +158,7 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type);
 // isn't straddling zero, an empty type is returned.
 Type GetUniformQuantizedTypeForElementsAttr(ElementsAttr attr,
                                             unsigned storage_type_width,
-                                            bool narrow_range = false);
+                                            bool is_sign, bool narrow_range);
 
 // Returns the quantized type of a bias input, given the quantized types of
 // other operands which are multiply-accumulated (the bias is added to the
@@ -116,7 +171,8 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 // quantization parameters are stored as adjacent quantize and dequantize ops
 // and the propagation results are materialized by inserting pairs of quantize
 // and dequantize ops to this function.
-void ApplyQuantizationParamsPropagation(mlir::FuncOp func);
+void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
+                                        OpQuantSpecGetter op_quant_spec_getter);
 
 }  // end namespace TFL
 }  // end namespace mlir

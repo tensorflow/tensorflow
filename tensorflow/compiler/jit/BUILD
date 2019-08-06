@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
+load("//tensorflow/core/platform:default/build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 
 package(
     default_visibility = [
@@ -131,6 +131,7 @@ cc_library(
     name = "xla_tensor",
     srcs = ["xla_tensor.cc"],
     hdrs = ["xla_tensor.h"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/xla/client:local_client",

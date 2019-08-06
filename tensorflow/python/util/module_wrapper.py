@@ -39,9 +39,10 @@ def get_rename_v2(name):
 
 
 def _call_location():
-  # We want to get stack frame 2 frames up from current frame,
-  # i.e. above _getattr__ and _call_location calls.
-  stack = tf_stack.extract_stack_file_and_line(max_length=3)
+  # We want to get stack frame 3 frames up from current frame,
+  # i.e. above __getattr__, _tfmw_add_deprecation_warning,
+  # and _call_location calls.
+  stack = tf_stack.extract_stack_file_and_line(max_length=4)
   if not stack:  # should never happen as we're in a function
     return 'UNKNOWN'
   frame = stack[0]
@@ -101,6 +102,16 @@ class TFModuleWrapper(types.ModuleType):
     if self._tfmw_public_apis:
       self._tfmw_wrapped_module.__all__ = list(self._tfmw_public_apis.keys())
       self.__all__ = list(self._tfmw_public_apis.keys())
+    else:
+      if hasattr(self._tfmw_wrapped_module, '__all__'):
+        self.__all__ = self._tfmw_wrapped_module.__all__
+      else:
+        self._tfmw_wrapped_module.__all__ = [
+            attr for attr in dir(self._tfmw_wrapped_module)
+            if not attr.startswith('_')
+        ]
+        self.__all__ = self._tfmw_wrapped_module.__all__
+
     # names we already checked for deprecation
     self._tfmw_deprecated_checked = set()
     self._tfmw_warning_count = 0
@@ -158,9 +169,9 @@ class TFModuleWrapper(types.ModuleType):
       attr = getattr(self._tfmw_wrapped_module, name)
     except AttributeError as e:
       if not self._tfmw_public_apis:
-        raise e
+        raise
       if name not in self._tfmw_public_apis:
-        raise e
+        raise
       attr = self._tfmw_import_module(name)
 
     if self._tfmw_print_deprecation_warnings:

@@ -1,7 +1,7 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
@@ -174,7 +174,7 @@ py_test(
 
 py_test(
     name = "sampling_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/training/sampling_ops_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",

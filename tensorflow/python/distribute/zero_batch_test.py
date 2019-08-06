@@ -44,7 +44,8 @@ class NormalizationTest(test.TestCase, parameterized.TestCase):
           ],
           mode=["graph"],
           fused=[True, False]))
-  def disabled_testBNWithZeroBatchInput(self, distribution, fused):
+  def testBNWithZeroBatchInputGraph(self, distribution, fused):
+    distribution.extended.experimental_enable_get_next_as_optional = True
     with distribution.scope(), self.cached_session() as sess:
       bn_list = []
       inputs = np.random.random((0, 4, 4, 3)) + 100
@@ -115,6 +116,7 @@ class NormalizationTest(test.TestCase, parameterized.TestCase):
           mode=["eager"],
           fused=[True, False]))
   def testBNWithZeroBatchInput(self, distribution, fused):
+    distribution.extended.experimental_enable_get_next_as_optional = True
     with distribution.scope():
       inputs = np.random.random((0, 4, 4, 3)).astype(np.float32) + 100
       targets = np.random.random((0, 4, 4, 3)).astype(np.float32)

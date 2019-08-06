@@ -1,15 +1,15 @@
 """Wrapper around cc_proto_library used inside the XLA codebase."""
 
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "cc_proto_library",
 )
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "if_static",
 )
 load(
-    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 
@@ -48,3 +48,6 @@ ORC_JIT_MEMORY_MAPPER_TARGETS = []
 # We link the GPU plugin into the XLA Python extension if CUDA is enabled.
 def xla_python_default_plugins():
     return if_cuda_is_configured(["//tensorflow/compiler/xla/service:gpu_plugin"])
+
+def xla_py_test_deps():
+    return []

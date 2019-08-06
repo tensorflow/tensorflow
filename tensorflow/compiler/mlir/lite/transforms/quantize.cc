@@ -43,7 +43,7 @@ namespace TFL {
 //
 namespace {
 
-/// Applies quantization on the model in TFL dialect.
+// Applies quantization on the model in TFL dialect.
 struct QuantizePass : public FunctionPass<QuantizePass> {
   void runOnFunction() override;
 };
@@ -55,8 +55,8 @@ void QuantizePass::runOnFunction() {
   auto func = getFunction();
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(ctx, &patterns);
-  mlir::RewriteListBuilder<mlir::TFL::GenericFullQuantizationPattern<
-      mlir::TFL::QuantizeOp, mlir::TFL::DequantizeOp>>::build(patterns, ctx);
+  patterns.insert<mlir::TFL::GenericFullQuantizationPattern<
+      mlir::TFL::QuantizeOp, mlir::TFL::DequantizeOp>>(ctx);
   applyPatternsGreedily(func, std::move(patterns));
 }
 }  // namespace

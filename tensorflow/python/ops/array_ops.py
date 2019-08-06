@@ -56,6 +56,83 @@ tf_export("newaxis").export_constant(__name__, "newaxis")
 _BaseSlice = slice
 
 
+@tf_export("reshape", v1=["reshape", "manip.reshape"])
+def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
+  r"""Reshapes a tensor.
+
+  Given `tensor`, this operation returns a tensor that has the same values
+  as `tensor` with shape `shape`.
+
+  If one component of `shape` is the special value -1, the size of that
+  dimension is computed so that the total size remains constant.  In particular,
+  a `shape` of `[-1]` flattens into 1-D.  At most one component of `shape` can
+  be -1.
+
+  If `shape` is 1-D or higher, then the operation returns a tensor with shape
+  `shape` filled with the values of `tensor`. In this case, the number of
+  elements implied by `shape` must be the same as the number of elements in
+  `tensor`.
+
+  For example:
+
+  ```
+  # tensor 't' is [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  # tensor 't' has shape [9]
+  reshape(t, [3, 3]) ==> [[1, 2, 3],
+                          [4, 5, 6],
+                          [7, 8, 9]]
+
+  # tensor 't' is [[[1, 1], [2, 2]],
+  #                [[3, 3], [4, 4]]]
+  # tensor 't' has shape [2, 2, 2]
+  reshape(t, [2, 4]) ==> [[1, 1, 2, 2],
+                          [3, 3, 4, 4]]
+
+  # tensor 't' is [[[1, 1, 1],
+  #                 [2, 2, 2]],
+  #                [[3, 3, 3],
+  #                 [4, 4, 4]],
+  #                [[5, 5, 5],
+  #                 [6, 6, 6]]]
+  # tensor 't' has shape [3, 2, 3]
+  # pass '[-1]' to flatten 't'
+  reshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]
+
+  # -1 can also be used to infer the shape
+
+  # -1 is inferred to be 9:
+  reshape(t, [2, -1]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
+                           [4, 4, 4, 5, 5, 5, 6, 6, 6]]
+  # -1 is inferred to be 2:
+  reshape(t, [-1, 9]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
+                           [4, 4, 4, 5, 5, 5, 6, 6, 6]]
+  # -1 is inferred to be 3:
+  reshape(t, [ 2, -1, 3]) ==> [[[1, 1, 1],
+                                [2, 2, 2],
+                                [3, 3, 3]],
+                               [[4, 4, 4],
+                                [5, 5, 5],
+                                [6, 6, 6]]]
+
+  # tensor 't' is [7]
+  # shape `[]` reshapes to a scalar
+  reshape(t, []) ==> 7
+  ```
+
+  Args:
+    tensor: A `Tensor`.
+    shape: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      Defines the shape of the output tensor.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `tensor`.
+  """
+  result = gen_array_ops.reshape(tensor, shape, name)
+  tensor_util.maybe_set_static_shape(result, shape)
+  return result
+
+
 @tf_export("identity")
 @dispatch.add_dispatch_support
 def identity(input, name=None):  # pylint: disable=redefined-builtin
@@ -627,13 +704,15 @@ def _slice_helper(tensor, slice_spec, var=None):
       # python doesn't always use None when constructing ranges
       # for example a[:] gives slice(None,sys.maxsize,None)
       # whereas a[::1] gives slice(None,None,None)
-      if s.start is not None and s.start is not sys.maxsize:
+      if s.start is not None and (isinstance(s.start, ops.Tensor) or
+                                  s.start != sys.maxsize):
         _check_index(s.start)
         begin.append(s.start)
       else:
         begin.append(0)
         begin_mask |= (1 << index)
-      if s.stop is not None and s.stop != sys.maxsize:
+      if s.stop is not None and (isinstance(s.stop, ops.Tensor) or
+                                 s.stop != sys.maxsize):
         _check_index(s.stop)
         end.append(s.stop)
       else:
@@ -1129,9 +1208,23 @@ def _cast_nested_seqs_to_dtype(dtype):
   return _maybe_cast
 
 
+_NON_AUTOPACKABLE_TYPES = set(np.core.numerictypes.ScalarType)
+_NON_AUTOPACKABLE_TYPES.add(np.ndarray)
+
+
+def _should_not_autopack(v):
+  # The condition we really want is
+  #    ops.is_dense_tensor_like(...)
+  # but it is >5x slower due to abc.ABCMeta.__instancecheck__.
+  # pylint: disable=unidiomatic-typecheck
+  # TODO(slebedev): add nest.all?
+  return all(type(elem) in _NON_AUTOPACKABLE_TYPES for elem in nest.flatten(v))
+  # pylint: enable=unidiomatic-typecheck
+
+
 def _autopacking_conversion_function(v, dtype=None, name=None, as_ref=False):
   """Tensor conversion function that automatically packs arguments."""
-  if as_ref:
+  if as_ref or _should_not_autopack(v):
     return NotImplemented
   inferred_dtype = _get_dtype_from_nested_lists(v)
   if inferred_dtype is None:
@@ -1293,9 +1386,8 @@ def concat(values, axis, name="concat"):
     with ops.name_scope(name) as scope:
       ops.convert_to_tensor(
           axis, name="concat_dim",
-          dtype=dtypes.int32).get_shape().assert_is_compatible_with(
-              tensor_shape.scalar())
-      return identity(values[0], name=scope)
+          dtype=dtypes.int32).get_shape().assert_has_rank(0)
+      return identity(values[0], name=name)
   return gen_array_ops.concat_v2(values=values, axis=axis, name=name)
 
 
@@ -1938,8 +2030,8 @@ def matrix_diag(diagonal,
     A Tensor. Has the same type as `diagonal`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 7, 31):
-  # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
+  if compat.forward_compatible(2019, 8, 31):
+    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
 
     # Special case to sidestep the tf.constant conversion error:
     # TypeError: Expected bool, got 0 of type 'int' instead.
@@ -2050,8 +2142,8 @@ def matrix_diag_part(
     A Tensor containing diagonals of `input`. Has the same type as `input`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 7, 31):
-  # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
+  if compat.forward_compatible(2019, 8, 31):
+    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
 
     # Special case to sidestep the tf.constant conversion error:
     # TypeError: Expected bool, got 0 of type 'int' instead.
@@ -2157,8 +2249,8 @@ def matrix_set_diag(
       and high ends of a matrix band. `k[0]` must not be larger than `k[1]`.
   """
   # LINT.IfChange
-  if compat.forward_compatible(2019, 7, 31):
-  # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
+  if compat.forward_compatible(2019, 8, 31):
+    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
     return gen_array_ops.matrix_set_diag_v2(
         input=input, diagonal=diagonal, k=k, name=name)
 
@@ -2715,11 +2807,11 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   if mode == "CONSTANT":
     # TODO(rjryan): Once the forward compatibility period (3 weeks) have passed
     # remove the "Pad" fallback here.
-    if constant_values != 0:
+    if not tensor_util.is_tensor(constant_values) and constant_values == 0:
+      result = gen_array_ops.pad(tensor, paddings, name=name)
+    else:
       result = gen_array_ops.pad_v2(
           tensor, paddings, constant_values, name=name)
-    else:
-      result = gen_array_ops.pad(tensor, paddings, name=name)
   elif mode == "REFLECT":
     result = gen_array_ops.mirror_pad(
         tensor, paddings, mode="REFLECT", name=name)

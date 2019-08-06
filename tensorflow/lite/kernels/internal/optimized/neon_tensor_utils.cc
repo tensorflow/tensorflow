@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/experimental/ruy/detect_dotprod.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
@@ -66,51 +67,9 @@ inline void* aligned_alloc(size_t alignment, size_t size,
 #endif
 }
 
-// Use /proc/cpuinfo to test whether we have the right processor.
 bool HasSdotInstruction() {
-#ifdef __MINGW32__
-  return false;
-#else
-  // TODO(strohman): Replace this with a proper API call once we are running
-  // on kernels that can tell us about this instruction: (b/119112014)
-  // Note that the C++ spec ensures that this variable will be initialized
-  // exactly once.
-  static bool has_sdot = []() -> bool {
-    char text[1024];
-    int fd = open("/proc/cpuinfo", O_RDONLY);
-    if (fd < 0) {
-      return false;
-    }
-
-    bool found = false;
-    int buffer = 0;
-    const char kSM8150[] = "Qualcomm Technologies, Inc SM8150";
-    while (true) {
-      int count = read(fd, text + buffer, sizeof(text) - buffer);
-      if (count <= 0) {
-        break;
-      }
-      int text_end = buffer + count;
-
-      if (memmem(text, text_end, kSM8150, sizeof(kSM8150) - 1) != nullptr) {
-        found = true;
-        break;
-      }
-
-      // Keep up to some bytes of the previous buffer state so that we
-      // can find a string match even if it occurs on a buffer boundary.
-      buffer = text_end;
-      if (text_end > sizeof(kSM8150)) {
-        buffer = sizeof(kSM8150);
-      }
-
-      memmove(text, text + text_end - buffer, buffer);
-    }
-    close(fd);
-    return found;
-  }();
-  return has_sdot;
-#endif  // MINGW32
+  static const bool has_dotprod = ruy::DetectDotprod();
+  return has_dotprod;
 }
 
 }  // namespace
@@ -911,6 +870,23 @@ void NeonVectorScalarMultiply(const int8_t* vector, const int v_size,
   }
 }
 
+// TODO(renjieliu): Avoid duplicating the logic.
+// Also consider changing the rounding stragey from "ties to away" to
+// "ties to even" since vcvtnq_s32_f32 is generally more available.
+inline int32x4_t RoundToNearest(const float32x4_t input) {
+#if defined(_ACAT_ARM64)
+  return vcvtaq_s32_f32(input);
+#else
+  static const float32x4_t zero_val_dup = vdupq_n_f32(0.0f);
+  static const float32x4_t point5_val_dup = vdupq_n_f32(0.5f);
+
+  const int32x4_t mask = vreinterpretq_s32_u32(vcltq_f32(input, zero_val_dup));
+  const float32x4_t casted_mask = vcvtq_f32_s32(mask);
+  const float32x4_t round = vaddq_f32(casted_mask, point5_val_dup);
+  return vcvtq_s32_f32(vaddq_f32(input, round));
+#endif
+}
+
 void NeonSymmetricQuantizeFloats(const float* values, const int size,
                                  int8_t* quantized_values, float* min,
                                  float* max, float* scaling_factor) {
@@ -933,8 +909,6 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
 
   // Vectorized constants.
   const float32x4_t q_factor_f32x4 = vmovq_n_f32(scaling_factor_inv);
-  const float32x4_t point5_f32x4 = vmovq_n_f32(0.5);
-  const float32x4_t zero_f32x4 = vmovq_n_f32(0.0);
   const int32x4_t scale_i32x4 = vmovq_n_s32(kScale);
   const int32x4_t neg_scale_i32x4 = vmovq_n_s32(-kScale);
 
@@ -942,29 +916,13 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
     // Implements the vectorized version of the following:
     // const int32 quantized_value = static_cast<int32>(
     //    std::round(*scaling_factor * values[i]));
-    // Since the vectorized round intrinsics (vrndqa_f32) is not supported
-    // on all Neon flavors, we use the following method for rounding: if (x
-    // < 0) (int)(x - 0.5) if (x >= 0) (int)(x + 0.5)
     float32x4_t value0_f32x4 = vld1q_f32(&values[i]);
     float32x4_t value1_f32x4 = vld1q_f32(&values[i + kFloatWeightsPerNeonLane]);
     float32x4_t mul0_f32x4 = vmulq_f32(value0_f32x4, q_factor_f32x4);
     float32x4_t mul1_f32x4 = vmulq_f32(value1_f32x4, q_factor_f32x4);
 
-    int32x4_t cmp_with_zero0_ui32x4 =
-        (int32x4_t)vcltq_f32(mul0_f32x4, zero_f32x4);  // NOLINT
-    int32x4_t cmp_with_zero1_ui32x4 =
-        (int32x4_t)vcltq_f32(mul1_f32x4, zero_f32x4);  // NOLINT
-
-    float32x4_t cmp_with_zero0_f32x4 = vcvtq_f32_s32(cmp_with_zero0_ui32x4);
-    float32x4_t cmp_with_zero1_f32x4 = vcvtq_f32_s32(cmp_with_zero1_ui32x4);
-    cmp_with_zero0_f32x4 = vaddq_f32(cmp_with_zero0_f32x4, point5_f32x4);
-    cmp_with_zero1_f32x4 = vaddq_f32(cmp_with_zero1_f32x4, point5_f32x4);
-
-    mul0_f32x4 = vaddq_f32(mul0_f32x4, cmp_with_zero0_f32x4);
-    mul1_f32x4 = vaddq_f32(mul1_f32x4, cmp_with_zero1_f32x4);
-
-    int32x4_t f2i0_i32x4 = vcvtq_s32_f32(mul0_f32x4);
-    int32x4_t f2i1_i32x4 = vcvtq_s32_f32(mul1_f32x4);
+    const int32x4_t f2i0_i32x4 = RoundToNearest(mul0_f32x4);
+    const int32x4_t f2i1_i32x4 = RoundToNearest(mul1_f32x4);
 
     // Implements the vectorized version of the folowing block:
     //  quantized_values[i] = std::min(kScale, std::max(-kScale,

@@ -613,10 +613,9 @@ typedef AutoTuneSingleton<ConvAutoTuneGroup, ConvParameters,
 // If violations have occurred, mark the corresponding autotune result
 // as a failure.
 static void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
-                          se::Stream* stream,
                           tensorflow::AutotuneResult* autotune_result) {
   se::port::StatusOr<se::cuda::RedzoneAllocator::RedzoneCheckStatus> rz_status =
-      rz_allocator.CheckRedzones(stream);
+      rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {
     static std::once_flag failure_logged;
     std::call_once(failure_logged, [&]() {
@@ -1003,14 +1002,12 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     se::TfAllocatorAdapter tf_allocator_adapter(
         stream->parent()->platform(), ctx->device()->GetAllocator({}));
 
-    se::cuda::RedzoneAllocator rz_allocator(stream->parent()->device_ordinal(),
-                                            &tf_allocator_adapter,
+    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
                                             se::cuda::PtxCompilationOptions());
-
     se::DeviceMemory<T> output_tensor;
 
     if (!RedzoneCheckDisabled()) {
-      auto output_rz_or = rz_allocator.AllocateBytes(stream, output_ptr.size());
+      auto output_rz_or = rz_allocator.AllocateBytes(output_ptr.size());
       if (!output_rz_or.ok()) {
         static std::once_flag rz_allocation_failure_logged;
         std::call_once(rz_allocation_failure_logged, []() {
@@ -1033,8 +1030,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
       se::cuda::RedzoneAllocator rz_scratch_allocator(
-          stream->parent()->device_ordinal(), &tf_allocator_adapter,
-          se::cuda::PtxCompilationOptions());
+          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+          /*memory_limit=*/ConvolveScratchSize);
       DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
       se::ScratchAllocator* allocator_used =
           !RedzoneCheckDisabled()
@@ -1061,8 +1058,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         *result.mutable_run_time() = proto_utils::ToDurationProto(
             absl::Milliseconds(profile_result.elapsed_time_in_ms()));
 
-        CheckRedzones(rz_scratch_allocator, stream, &result);
-        CheckRedzones(rz_allocator, stream, &result);
+        CheckRedzones(rz_scratch_allocator, &result);
+        CheckRedzones(rz_allocator, &result);
       }
     }
     LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,

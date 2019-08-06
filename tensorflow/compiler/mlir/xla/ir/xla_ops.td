@@ -25,7 +25,7 @@ include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
 def XLA_Dialect : Dialect {
-  let name = "xla";
+  let name = "xla_hlo";
   let cppNamespace = "XLA";
 }
 
@@ -418,7 +418,7 @@ def XLA_CompareOp: XLA_Op<"compare",
       BroadcastDimAttr:$broadcast_dimensions,
       XLA_ComparisonDirectionAttr:$comparison_direction
   );
-  let results = (outs I1Tensor:$res);
+  let results = (outs XLA_PredTensor:$res);
   let summary = "Comparison operator";
 
   let description = [{
@@ -433,8 +433,10 @@ def XLA_CompareOp: XLA_Op<"compare",
 // XLA Slice definitions.
 //===----------------------------------------------------------------------===//
 
-def XLA_SliceOp: XLA_UnaryElementwiseOp<"slice",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+def XLA_SliceOp: XLA_UnaryElementwiseOp<
+      "slice",
+      [NoSideEffect, SameOperandsAndResultElementType,
+       AllTypesMatch<["start_indices", "limit_indices"]>]> {
   let arguments = (
     ins XLA_Tensor:$operand,
     ElementsAttr:$start_indices,

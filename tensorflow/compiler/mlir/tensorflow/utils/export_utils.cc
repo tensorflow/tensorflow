@@ -160,6 +160,30 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
+// Updates NodeDef constructed out of an MLIR If op to map it to either
+// TensorFlow StatelessIf or If op depending on the additional attribute.
+void UpdateCompositeIfOp(NodeDef* node_def) {
+  auto it = node_def->mutable_attr()->find("is_stateless");
+  if (it != node_def->attr().end()) {
+    if (it->second.b()) {
+      *node_def->mutable_op() = "StatelessIf";
+    }
+    node_def->mutable_attr()->erase(it);
+  }
+}
+
+// Updates NodeDef constructed out of an MLIR While op to map it to either
+// TensorFlow StatelessWhile or While op depending on the additional attribute.
+void UpdateCompositeWhileOp(NodeDef* node_def) {
+  auto it = node_def->mutable_attr()->find("is_stateless");
+  if (it != node_def->attr().end()) {
+    if (it->second.b()) {
+      *node_def->mutable_op() = "StatelessWhile";
+    }
+    node_def->mutable_attr()->erase(it);
+  }
+}
+
 }  // anonymous namespace
 
 StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
@@ -193,6 +217,9 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   // Add the node debug info.
   TF_RETURN_IF_ERROR(ConvertLocation(
       inst->getLoc(), node_def->mutable_experimental_debug_info()));
+
+  if (node_def->op() == "If") UpdateCompositeIfOp(node_def.get());
+  if (node_def->op() == "While") UpdateCompositeWhileOp(node_def.get());
 
   return node_def;
 }

@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/kernel.h"
+#include "tensorflow/lite/experimental/ruy/platform.h"
 
 namespace ruy {
 
-#if (defined RUY_NEON_32) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#if RUY_PLATFORM(NEON_32) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 #define RUY_ASM_LABEL_STORE_UINT8 91
 #define RUY_ASM_LABEL_STORE_INT8 92
@@ -124,20 +125,17 @@ void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params) {
   //  \---------------------/  \--------------------------/
   //                             accumulators 8x4 block
   asm volatile(
-#define RUY_MAKE_ZERO(reg) "mov r0, 0\n vdup.32 " #reg ", r0\n"
+#define RUY_MAKE_ZERO(reg) "mov r0, #0\n vdup.32 " #reg ", r0\n"
 
         // clang-format off
 
         // Load the first 32 bytes of LHS and RHS data.
-        // Load q0
-        "vld1.32 {d0}, [%[lhs_ptr]]!\n"
-        "vld1.32 {d1}, [%[lhs_ptr]]!\n"
-        // Load q1
-        "vld1.32 {d2}, [%[lhs_ptr]]!\n"
-        "vld1.32 {d3}, [%[lhs_ptr]]!\n"
+        // Load q0, q1
+        "vld1.32 {d0, d1, d2, d3}, [%[lhs_ptr]]!\n"
+        "pld [%[lhs_ptr]]\n"
         // Load q2
-        "vld1.32 {d4}, [%[rhs_ptr]]!\n"
-        "vld1.32 {d5}, [%[rhs_ptr]]!\n"
+        "vld1.32 {d4, d5}, [%[rhs_ptr]]!\n"
+        "pld [%[rhs_ptr]]\n"
 
         "sub sp, sp, #" RUY_STR(RUY_STACK_OFFSET_SIZE) "\n"
 
@@ -188,17 +186,16 @@ void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params) {
         "vmla.f32 q5, q0, d4[1]\n"
         "vmla.f32 q7, q0, d5[0]\n"
         "vmla.f32 q9, q0, d5[1]\n"
-        "vld1.32 {d0}, [%[lhs_ptr]]!\n" // Reload LHS 1 into r0
-        "vld1.32 {d1}, [%[lhs_ptr]]!\n" // Reload LHS 1 into r0
+        "vld1.32 {d0, d1}, [%[lhs_ptr]]!\n" // Reload LHS
 
         "vmla.f32 q4, q1, d4[0]\n"
         "vmla.f32 q6, q1, d4[1]\n"
         "vmla.f32 q8, q1, d5[0]\n"
         "vmla.f32 q10, q1, d5[1]\n"
-        "vld1.32 {d2}, [%[lhs_ptr]]!\n" // Reload LHS 2 into r1
-        "vld1.32 {d3}, [%[lhs_ptr]]!\n" // Reload LHS 2 into r1
-        "vld1.32 {d4}, [%[rhs_ptr]]!\n" // Reload RHS into r2
-        "vld1.32 {d5}, [%[rhs_ptr]]!\n" // Reload RHS into r2
+        "vld1.32 {d2, d3}, [%[lhs_ptr]]!\n" // Reload LHS
+        "pld [%[lhs_ptr]]\n"
+        "vld1.32 {d4, d5}, [%[rhs_ptr]]!\n" // Reload RHS
+        "pld [%[rhs_ptr]]\n"
 
         "add r1, r1, #1\n"
         "cmp r1, r2\n"
@@ -290,25 +287,18 @@ void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params) {
         "movne r1, r5\n"
 
         // Load 8 bias values.
-        "vld1.32 {d24}, [r1]!\n"
-        "vld1.32 {d25}, [r1]!\n"
-        "vld1.32 {d26}, [r1]!\n"
-        "vld1.32 {d27}, [r1]\n"
+        "vld1.32 {d24, d25, d26, d27}, [r1]\n"
 
         // Now that we know what LHS and RHS data the next iteration of the
         // main loop will need to load, we start loading the first 32 bytes of
         // each of LHS and RHS, into q0 -- q2, as we don't need q0 -- q2 anymore
         // in the rest of the work on the current block.
-        // Load q0
-        "vld1.32 {d0}, [%[lhs_ptr]]!\n"
-        "vld1.32 {d1}, [%[lhs_ptr]]!\n"
-        // Load q1
-        "vld1.32 {d2}, [%[lhs_ptr]]!\n"
-        "vld1.32 {d3}, [%[lhs_ptr]]!\n"
+        // Load q0, q1
+        "vld1.32 {d0, d1, d2, d3}, [%[lhs_ptr]]!\n"
+        "pld [%[lhs_ptr]]\n"
         // Load q2
-        "vld1.32 {d4}, [%[rhs_ptr]]!\n"
-        "vld1.32 {d5}, [%[rhs_ptr]]!\n"
-
+        "vld1.32 {d4, d5}, [%[rhs_ptr]]!\n"
+        "pld [%[rhs_ptr]]\n"
 
         // Perform the bias-addition (per the above, we have just folded into
         // the bias the (depth * lhs_zero_point * rhs_zero_point) term.)
@@ -390,40 +380,20 @@ void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params) {
         "31:\n"
 
         // Write our float values to the destination described by
-        // (r3 address, r4 stride).
-        // q3 = d6, d7
-        "vstr d6, [r3, #0]\n"
-        "vstr d7, [r3, #8]\n"
-        // q4 = d8, d9
-        "vstr d8, [r3, #16]\n"
-        "vstr d9, [r3, #24]\n"
+        // (r3 address, r4 stride)
+        "vst1.32 {d6, d7, d8, d9}, [r3]\n"
         "add r3, r3, r4\n"
         RUY_MAKE_ZERO(q3)
         RUY_MAKE_ZERO(q4)
-        // q5 = d10, d11
-        "vstr d10, [r3, #0]\n"
-        "vstr d11, [r3, #8]\n"
-        // q6 = d12, d13
-        "vstr d12, [r3, #16]\n"
-        "vstr d13, [r3, #24]\n"
+        "vst1.32 {d10, d11, d12, d13}, [r3]\n"
         "add r3, r3, r4\n"
         RUY_MAKE_ZERO(q5)
         RUY_MAKE_ZERO(q6)
-        // q7 = d14, d15
-        "vstr d14, [r3, #0]\n"
-        "vstr d15, [r3, #8]\n"
-        // q8 = d16, d17
-        "vstr d16, [r3, #16]\n"
-        "vstr d17, [r3, #24]\n"
+        "vst1.32 {d14, d15, d16, d17}, [r3]\n"
         "add r3, r3, r4\n"
         RUY_MAKE_ZERO(q7)
         RUY_MAKE_ZERO(q8)
-        // q9 = d18, d19
-        "vstr d18, [r3, #0]\n"
-        "vstr d19, [r3, #8]\n"
-        // q10 = d20, d21
-        "vstr d20, [r3, #16]\n"
-        "vstr d21, [r3, #24]\n"
+        "vst1.32 {d18, d19, d20, d21}, [r3]\n"
         "add r3, r3, r4\n"
         RUY_MAKE_ZERO(q9)
         RUY_MAKE_ZERO(q10)
@@ -517,10 +487,12 @@ void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params) {
         // clang-format on
         : [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr)
         : [ params ] "r"(&params), [dst_tmp_buf] "r"(params.dst_tmp_buf)
+        // Clobber list must specify q registers (and not their constituent
+        // d registers). There is a (currently unexplained) slowdown if
+        // d registers are listed in the clobbers list.
         : "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r8", "r10", "cc",
-          "memory", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8",
-          "d9", "d10", "d12", "d13", "d14", "d15", "d16", "d17", "d18","d19",
-          "d20", "d21", "d22", "d23", "d24", "d25", "d26");
+          "memory", "q0", "q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8",
+          "q9", "q10", "q12", "q13");
 }
 
 #undef RUY_OFFSET_BIAS
@@ -539,5 +511,5 @@ void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params) {
 #undef RUY_OFFSET_RHS_BASE_PTR
 #undef RUY_OFFSET_DST_BASE_PTR
 
-#endif  // (defined RUY_NEON_32) && (RUY_OPT_ENABLED(RUY_OPT_ASM)
+#endif  // RUY_PLATFORM(NEON_32) && (RUY_OPT_ENABLED(RUY_OPT_ASM)
 }  // namespace ruy

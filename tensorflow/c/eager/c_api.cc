@@ -205,6 +205,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 
   tensorflow::uint64 context_id = tensorflow::random::New64();
+  // Make master eager context accessible by local eager service, which might
+  // receive send tensor requests from remote workers.
+  LOG_AND_RETURN_IF_ERROR(grpc_server->AddMasterEagerContextToEagerService(
+      context_id, ctx->context));
 
   std::vector<string> remote_workers;
   grpc_server->master_env()->worker_cache->ListWorkers(&remote_workers);
@@ -240,9 +244,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
           &remote_eager_workers));
 
   // Initialize remote eager workers.
-  LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
-      remote_workers, context_id, keep_alive_secs, server_def,
-      remote_eager_workers.get(), ctx->context->Async(), base_request));
+  LOG_AND_RETURN_IF_ERROR(
+      CreateRemoteContexts(remote_workers, context_id, keep_alive_secs,
+                           server_def, remote_eager_workers.get(),
+                           ctx->context->Executor()->Async(), base_request));
 
   tensorflow::RemoteRendezvous* r =
       grpc_server->worker_env()->rendezvous_mgr->Find(context_id);
@@ -261,8 +266,8 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
-  auto remote_mgr =
-      absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/true);
+  auto remote_mgr = absl::make_unique<tensorflow::eager::RemoteMgr>(
+      /*is_master=*/true, ctx->context);
 
   return ctx->context->InitializeRemoteMaster(
       std::move(server), grpc_server->worker_env(), worker_session,
@@ -365,12 +370,6 @@ void TFE_ContextOptionsSetDevicePlacementPolicy(
   options->device_placement_policy = policy;
 }
 
-TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
-                                                        unsigned char enable,
-                                                        TF_Status* status) {
-  status->status = ctx->context->SetAsyncForThread(enable);
-}
-
 void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
@@ -456,15 +455,15 @@ extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
 }
 
 void TFE_ContextAsyncWait(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->context->AsyncWait();
+  status->status = ctx->context->Executor()->WaitForAllPendingNodes();
 }
 
 void TFE_ContextGetStatus(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->context->GetStatus();
+  status->status = ctx->context->Executor()->status();
 }
 
 void TFE_ContextAsyncClearError(TFE_Context* ctx) {
-  ctx->context->ClearAsyncError();
+  ctx->context->Executor()->ClearError();
 }
 
 TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
@@ -571,7 +570,8 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
     const tensorflow::Tensor* t = nullptr;
     tensorflow::TensorHandle* h_cpu = nullptr;
     status->status = EagerCopyToDevice(
-        handle, handle->Context(), handle->Context()->HostCPU(), false, &h_cpu);
+        handle, handle->Context(), handle->Context()->Executor(),
+        handle->Context()->HostCPU(), false, &h_cpu);
     if (!status->status.ok()) {
       return nullptr;
     }
@@ -683,10 +683,11 @@ TF_AttrType TFE_OpNameGetAttrType(TFE_Context* ctx,
                                   TF_Status* status) {
   TF_AttrType ret;
   TFE_Op* op = TFE_NewOp(ctx, op_or_function_name, status);
-  if (!status->status.ok()) {
-    return TF_ATTR_INT;  // Same dummy return as TFE_OpGetAttrType.
+  if (status->status.ok()) {
+    ret = TFE_OpGetAttrType(op, attr_name, is_list, status);
+  } else {
+    ret = TF_ATTR_INT;  // Same dummy return as TFE_OpGetAttrType.
   }
-  ret = TFE_OpGetAttrType(op, attr_name, is_list, status);
   TFE_DeleteOp(op);
   return ret;
 }
@@ -922,6 +923,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return nullptr;
   }
   status->status = tensorflow::EagerCopyToDevice(h->handle, ctx->context,
+                                                 ctx->context->Executor(),
                                                  device, false, &handle);
   if (status->status.ok()) {
     return new TFE_TensorHandle(handle);

@@ -190,9 +190,10 @@ std::vector<RecomputedSubGraph> GetOpGroupsToRecompute(
                        should_recompute, &unpruned_recompute_nodes);
     visited_nodes.insert(unpruned_recompute_nodes.begin(),
                          unpruned_recompute_nodes.end());
-    for (const NodeDef* recompute_node : unpruned_recompute_nodes) {
+    for (const NodeDef* unpruned_recompute_node : unpruned_recompute_nodes) {
       bool inserted_feed = false;
-      for (NodeDef* output : node_map.GetOutputs(recompute_node->name())) {
+      for (NodeDef* output :
+           node_map.GetOutputs(unpruned_recompute_node->name())) {
         if (is_target(*output)) {
           current_recomputation.target_nodes.insert(output);
           if (!inserted_feed) {
@@ -200,7 +201,7 @@ std::vector<RecomputedSubGraph> GetOpGroupsToRecompute(
             // and nodes which feed into them will define the recomputed
             // subgraph.
             current_recomputation.recomputed_source_nodes.insert(
-                recompute_node);
+                unpruned_recompute_node);
             inserted_feed = true;
           }
         }
@@ -1380,7 +1381,10 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (int i = 0; i < 25 && updated_graph; ++i) {
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     updated_graph = false;
-    if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
+    // SchedulingPass() relies on defined fetches in order to infer the memory
+    // usage, so skip optimization if there are no fetches.
+    if (!item.fetch.empty() &&
+        (optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
          optimization_level_ == RewriterConfig::SCHEDULING_HEURISTICS ||
          optimization_level_ == RewriterConfig::HEURISTICS) &&
         cluster != nullptr) {

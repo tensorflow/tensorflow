@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
@@ -372,6 +373,23 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     self.assertEqual(st_after.dense_shape.shape.as_list(),
                      st.dense_shape.shape.as_list())
 
+  def testPreserveTensorArrayShape(self):
+    ta = tensor_array_ops.TensorArray(
+        dtype=dtypes.int32, size=1, element_shape=(3,))
+    ta_s = structure.type_spec_from_value(ta)
+    ta_after = structure.from_tensor_list(ta_s,
+                                          structure.to_tensor_list(ta_s, ta))
+    self.assertEqual(ta_after.element_shape.as_list(), [3])
+
+  def testPreserveInferredTensorArrayShape(self):
+    ta = tensor_array_ops.TensorArray(dtype=dtypes.int32, size=1)
+    # Shape is inferred from the write.
+    ta = ta.write(0, [1, 2, 3])
+    ta_s = structure.type_spec_from_value(ta)
+    ta_after = structure.from_tensor_list(ta_s,
+                                          structure.to_tensor_list(ta_s, ta))
+    self.assertEqual(ta_after.element_shape.as_list(), [3])
+
   def testIncompatibleStructure(self):
     # Define three mutually incompatible values/structures, and assert that:
     # 1. Using one structure to flatten a value with an incompatible structure
@@ -524,40 +542,43 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
       structure.from_tensor_list(s_2, flat_s_1)
 
   @parameterized.named_parameters(
-      ("Tensor", dtypes.float32, tensor_shape.scalar(), ops.Tensor,
-       tensor_spec.TensorSpec([], dtypes.float32)),
-      ("SparseTensor", dtypes.int32, tensor_shape.matrix(
-          2, 2), sparse_tensor.SparseTensor,
+      ("Tensor", dtypes.float32, tensor_shape.TensorShape(
+          []), ops.Tensor, tensor_spec.TensorSpec([], dtypes.float32)),
+      ("SparseTensor", dtypes.int32, tensor_shape.TensorShape(
+          [2, 2]), sparse_tensor.SparseTensor,
        sparse_tensor.SparseTensorSpec([2, 2], dtypes.int32)),
-      ("TensorArray_0", dtypes.int32, tensor_shape.as_shape(
-          [None, True, 2, 2]), tensor_array_ops.TensorArray,
+      ("TensorArray_0", dtypes.int32,
+       tensor_shape.TensorShape([None, True, 2, 2
+                                ]), tensor_array_ops.TensorArray,
        tensor_array_ops.TensorArraySpec(
            [2, 2], dtypes.int32, dynamic_size=None, infer_shape=True)),
-      ("TensorArray_1", dtypes.int32, tensor_shape.as_shape(
-          [True, None, 2, 2]), tensor_array_ops.TensorArray,
+      ("TensorArray_1", dtypes.int32,
+       tensor_shape.TensorShape([True, None, 2, 2
+                                ]), tensor_array_ops.TensorArray,
        tensor_array_ops.TensorArraySpec(
            [2, 2], dtypes.int32, dynamic_size=True, infer_shape=None)),
-      ("TensorArray_2", dtypes.int32, tensor_shape.as_shape(
-          [True, False, 2, 2]), tensor_array_ops.TensorArray,
+      ("TensorArray_2", dtypes.int32,
+       tensor_shape.TensorShape([True, False, 2, 2
+                                ]), tensor_array_ops.TensorArray,
        tensor_array_ops.TensorArraySpec(
            [2, 2], dtypes.int32, dynamic_size=True, infer_shape=False)),
-      ("RaggedTensor", dtypes.int32, tensor_shape.matrix(
-          2, None), ragged_tensor.RaggedTensorSpec([2, None], dtypes.int32, 1),
+      ("RaggedTensor", dtypes.int32, tensor_shape.TensorShape([2, None]),
+       ragged_tensor.RaggedTensorSpec([2, None], dtypes.int32, 1),
        ragged_tensor.RaggedTensorSpec([2, None], dtypes.int32, 1)),
       ("Nested", {
           "a": dtypes.float32,
           "b": (dtypes.int32, dtypes.string)
       }, {
-          "a": tensor_shape.scalar(),
-          "b": (tensor_shape.matrix(2, 2), tensor_shape.scalar())
+          "a": tensor_shape.TensorShape([]),
+          "b": (tensor_shape.TensorShape([2, 2]), tensor_shape.TensorShape([]))
       }, {
           "a": ops.Tensor,
           "b": (sparse_tensor.SparseTensor, ops.Tensor)
       }, {
           "a":
               tensor_spec.TensorSpec([], dtypes.float32),
-          "b": (sparse_tensor.SparseTensorSpec([2, 2], dtypes.int32),
-                tensor_spec.TensorSpec([], dtypes.string))
+          "b": (sparse_tensor.SparseTensorSpec(
+              [2, 2], dtypes.int32), tensor_spec.TensorSpec([], dtypes.string))
       }),
   )
   def testConvertLegacyStructure(self, output_types, output_shapes,
@@ -706,6 +727,16 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
       self.assertValuesEqual(expected, actual)
 
   # pylint: enable=g-long-lambda
+
+  def testDatasetSpecConstructor(self):
+    rt_spec = ragged_tensor.RaggedTensorSpec([10, None], dtypes.int32)
+    st_spec = sparse_tensor.SparseTensorSpec([10, 20], dtypes.float32)
+    t_spec = tensor_spec.TensorSpec([10, 8], dtypes.string)
+    element_spec = {"rt": rt_spec, "st": st_spec, "t": t_spec}
+    ds_struct = dataset_ops.DatasetSpec(element_spec, [5])
+    self.assertEqual(ds_struct._element_spec, element_spec)
+    # Note: shape was automatically converted from a list to a TensorShape.
+    self.assertEqual(ds_struct._dataset_shape, tensor_shape.TensorShape([5]))
 
 
 if __name__ == "__main__":

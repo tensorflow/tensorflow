@@ -22,6 +22,7 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_like
@@ -332,6 +333,11 @@ def _AssertCompatible(values, dtype):
 
 def _is_array_like(obj):  # pylint: disable=invalid-name
   """Check if a given object is array-like."""
+  if isinstance(obj, ops.Tensor) and not isinstance(obj, ops._EagerTensorBase):  # pylint: disable=protected-access
+    # Tensor implements __array__ only so it can inform the user that it is not
+    # a valid array.
+    return False
+
   # TODO(slebedev): an object could also implement C-level array interface.
   if (callable(getattr(obj, "__array__", None)) or
       isinstance(getattr(obj, "__array_interface__", None), dict)):
@@ -833,11 +839,11 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
 
   shape = tensor.get_shape().with_rank(1)
   if shape == [0]:
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
   elif tensor.op.type == "Shape":
     return tensor.op.inputs[0].get_shape()
   elif tensor.op.type == "Pack":
-    ret = tensor_shape.scalar()  # Empty list.
+    ret = tensor_shape.TensorShape([])  # Empty list.
     # Since we expect rank 1 inputs, Pack's axis must be zero, otherwise it
     # would not be rank 1.
     assert tensor.op.get_attr("axis") == 0
@@ -855,7 +861,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     # We assume that `tensor.op.inputs[0]` evaluates to 0, as this is
     # the only legal value when concatenating vectors, and it will
     # have been checked by a previous shape function.
-    ret = tensor_shape.scalar()  # Empty list.
+    ret = tensor_shape.TensorShape([])  # Empty list.
     for concat_input in tensor.op.inputs[1:]:
       # `concat_input` must be a vector. Attempt to evaluate it as a shape,
       # and concatenate it with `ret`.
@@ -865,7 +871,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     # We assume that `tensor.op.inputs[-1]` evaluates to 0, as this is
     # the only legal value when concatenating vectors, and it will
     # have been checked by a previous shape function.
-    ret = tensor_shape.scalar()  # Empty list.
+    ret = tensor_shape.TensorShape([])  # Empty list.
     for concat_input in tensor.op.inputs[:-1]:
       # `concat_input` must be a vector. Attempt to evaluate it as a shape,
       # and concatenate it with `ret`.
@@ -904,6 +910,16 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
       pass
     except TypeError:  # Could come from slicing prev.
       pass
+  elif tensor.op.type == "Placeholder" and tensor.op.graph.building_function:
+    # If we are inside a FuncGraph try to lookup the constant value of the
+    # corresponding external capture. Note that we only look at captures and
+    # not the fed inputs because those can be fed different values in different
+    # instantiations of the function call or different iterations of a
+    # tf.while_loop.
+    for i, capture in enumerate(tensor.op.graph.internal_captures):
+      if capture is tensor:
+        external_capture = tensor.op.graph.external_captures[i]
+        return constant_value_as_shape(external_capture)
 
   ret = tensor_shape.unknown_shape(shape.dims[0].value)
   value = constant_value(tensor)
@@ -944,3 +960,12 @@ def shape_tensor(shape):  # pylint: disable=invalid-name
       # not convertible to Tensors becasue of mixed content.
       shape = tuple(map(tensor_shape.dimension_value, shape))
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
+
+
+def maybe_set_static_shape(tensor, shape):  # pylint: disable=invalid-name
+  if (not context.executing_eagerly() and
+      ops.get_default_graph().building_function and
+      not tensor.shape.is_fully_defined()):
+    shape = shape_tensor(shape)
+    const_shape = constant_value_as_shape(shape)
+    tensor.set_shape(const_shape)

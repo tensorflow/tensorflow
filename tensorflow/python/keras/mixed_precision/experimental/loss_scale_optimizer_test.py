@@ -31,6 +31,7 @@ from tensorflow.python.keras.mixed_precision.experimental import loss_scale_opti
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -59,6 +60,7 @@ TESTCASES = ({
 })
 
 
+@test_util.with_control_flow_v2
 class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
 
   def _run_if_in_graph_mode(self, val):
@@ -192,7 +194,12 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
   def testDynamicLossScaleWithSlots(self, strategy_fn):
-    with strategy_fn().scope() as strategy:
+    strategy_obj = strategy_fn()
+    if (isinstance(strategy_obj, mirrored_strategy.MirroredStrategy) and
+        control_flow_v2_toggles.control_flow_v2_enabled() and
+        not context.executing_eagerly()):
+      self.skipTest('b/138667997')
+    with strategy_obj.scope() as strategy:
       var = variables.Variable([1.0, 2.0])
       # An SGD optimizer with momentum has slot variables.
       opt = gradient_descent.SGD(1.0, momentum=1.)
@@ -265,10 +272,14 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     opt.beta_1  # pylint: disable=pointless-statement
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=10.)
     # Test that attributes defined by OptimizerV2 subclasses are not exposed in
-    # LossScaleOptimizer.
-    with self.assertRaises(AttributeError):
+    # LossScaleOptimizer, and that the error message is sensible.
+    with self.assertRaisesRegexp(
+        AttributeError,
+        "'LossScaleOptimizer' object has no attribute 'epsilon'"):
       opt.epsilon  # pylint: disable=pointless-statement
-    with self.assertRaises(AttributeError):
+    with self.assertRaisesRegexp(
+        AttributeError,
+        "'LossScaleOptimizer' object has no attribute 'beta_1'"):
       opt.beta_1  # pylint: disable=pointless-statement
 
   @test_util.run_in_graph_and_eager_modes

@@ -40,9 +40,9 @@ class CollectiveOpKernel : public AsyncOpKernel {
     if (col_params_.group.group_size >
         col_params_.instance.device_names.size()) {
       // This is the first invocation: Finish initializing col_params_.
-      // Call in a blockable thread because it's not guaranteed that
-      // this call cannot block.
-      c->env()->SchedClosure([this, c, done, col_exec]() {
+      // Schedule the `CompleteParamsAsync` call on a work queue that can handle
+      // blocking work because it's not guaranteed that this call cannot block.
+      c->collective_executor()->RunClosure([this, c, done, col_exec]() {
         VLOG(1) << "CollectiveOpKernel CompleteParams for collective "
                 << col_params_.name << " device " << c->device()->name()
                 << " group " << col_params_.group.group_key << " instance "
@@ -98,11 +98,12 @@ class CollectiveGatherOpKernel : public CollectiveOpKernel {
     if (col_params_.instance.shape.num_elements() == 0) {
       col_params_.instance.shape = output_shape;
     } else {
-      OP_REQUIRES(
+      OP_REQUIRES_ASYNC(
           c, col_params_.instance.shape == output_shape,
           errors::Internal("Inconsistent output shapes, got ",
                            output_shape.DebugString(), ", but expected is ",
-                           col_params_.instance.shape.DebugString(), "."));
+                           col_params_.instance.shape.DebugString(), "."),
+          done);
     }
 
     // Allocate output on the first pass through this function.  This must be

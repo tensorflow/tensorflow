@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -33,10 +34,13 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/tracing.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
@@ -298,6 +302,7 @@ class IteratorContext {
   struct Params {
     explicit Params(IteratorContext* ctx)
         : allocator_getter(ctx->allocator_getter()),
+          cancellation_manager(ctx->cancellation_manager()),
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
@@ -306,7 +311,8 @@ class IteratorContext {
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
           stats_aggregator(ctx->stats_aggregator()),
-          thread_factory(ctx->thread_factory()) {}
+          thread_factory(ctx->thread_factory()),
+          thread_pool(ctx->thread_pool()) {}
 
     explicit Params(OpKernelContext* ctx)
         : env(ctx->env()), flr(ctx->function_library()) {
@@ -343,6 +349,9 @@ class IteratorContext {
     // The Allocator to be used to allocate the output of an iterator.
     std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
 
+    // The CancellationManager to be used to cancel execution of ops.
+    CancellationManager* cancellation_manager;
+
     // Interface to operating system functionality.
     Env* env = nullptr;
 
@@ -368,9 +377,11 @@ class IteratorContext {
     // The `StatsAggregator` object to record statistics about the iterator.
     std::shared_ptr<StatsAggregator> stats_aggregator = nullptr;
 
-    // A `ThreadFactory` for creating threads used by iterators to perform
-    // blocking work.
+    // A factory for creating threads to perform blocking work.
     std::shared_ptr<ThreadFactory> thread_factory = nullptr;
+
+    // A shared thread pool to schedule computation into.
+    thread::ThreadPoolInterface* thread_pool = nullptr;
   };
 
   explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
@@ -385,6 +396,10 @@ class IteratorContext {
 
   std::function<Allocator*(AllocatorAttributes)> allocator_getter() {
     return params_.allocator_getter;
+  }
+
+  CancellationManager* cancellation_manager() {
+    return params_.cancellation_manager;
   }
 
   Env* env() const { return params_.env; }
@@ -403,8 +418,33 @@ class IteratorContext {
     return &params_.runner;
   }
 
+  int32 runner_threadpool_size() { return params_.runner_threadpool_size; }
+
+  std::shared_ptr<StatsAggregator> stats_aggregator() {
+    return params_.stats_aggregator;
+  }
+
   const std::shared_ptr<ThreadFactory>& thread_factory() {
     return params_.thread_factory;
+  }
+
+  thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
+
+  Params params() { return params_; }
+
+  std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
+                                                       int num_threads) {
+    if (params_.thread_pool) {
+      // Create a `ThreadPool` instance by wrapping `params_.thread_pool` (which
+      // is an instance of `thread::ThreadPoolInterface`). Notably, the
+      // ownership of `params_.thread_pool` is *not* transferred onto the newly
+      // created `ThreadPool` instance.
+      return absl::make_unique<thread::ThreadPool>(params_.thread_pool);
+    } else {
+      return absl::make_unique<thread::ThreadPool>(params_.env, ThreadOptions(),
+                                                   name, num_threads,
+                                                   /*low_latency_hint=*/false);
+    }
   }
 
   std::unique_ptr<Thread> StartThread(const string& name,
@@ -416,14 +456,6 @@ class IteratorContext {
           Env::Default()->StartThread({}, name, std::move(fn)));
     }
   }
-
-  int32 runner_threadpool_size() { return params_.runner_threadpool_size; }
-
-  std::shared_ptr<StatsAggregator> stats_aggregator() {
-    return params_.stats_aggregator;
-  }
-
-  Params params() { return params_; }
 
  private:
   Params params_;
@@ -516,6 +548,10 @@ class IteratorBase {
   // Restores the state of this iterator.
   virtual Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
     return RestoreInternal(ctx, reader);
+  }
+
+  Status Restore(IteratorContext&& ctx, IteratorStateReader* reader) {
+    return Restore(&ctx, reader);
   }
 
  protected:
@@ -686,6 +722,14 @@ class DatasetBase : public core::RefCounted {
   virtual Status Save(SerializationContext* ctx,
                       IteratorStateWriter* writer) const;
 
+  // Indicates whether the dataset depends on external mutable state case in
+  // which case the serialization of the input pipeline graph and the
+  // checkpointing of the input pipeline state will not be supported.
+  //
+  // TODO(jsimsa): Make this method pure virtual once all `DatasetBase`
+  // implementations have an override.
+  virtual bool IsStateful() const { return false; }
+
  protected:
   friend Status AsGraphDef(
       OpKernelContext* ctx, const DatasetBase* dataset,
@@ -758,7 +802,10 @@ class DatasetBaseIterator : public IteratorBase {
                  bool* end_of_sequence) final;
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
-    TF_RETURN_IF_ERROR(params_.dataset->Save(ctx, writer));
+    if (params_.dataset->IsStateful()) {
+      return errors::FailedPrecondition(
+          "Saving iterator that depends on external state is not supported.");
+    }
     return IteratorBase::Save(ctx, writer);
   }
 

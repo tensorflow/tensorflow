@@ -52,8 +52,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class DeviceMgr;
-
 class Device : public DeviceBase {
  public:
   // Callback type that takes a Status and returns void.
@@ -104,12 +102,6 @@ class Device : public DeviceBase {
       ref.Unref();
     }
   }
-
-  // If true, and tracing is enabled, the `tracing::ScopedAnnotation()` tracing
-  // mechanism will be used instead of `tracing::ScopedActivity()`. Some devices
-  // may override this method to use annotations, which enable child activities
-  // (such as GPU kernel launches) to be related to the OpKernel invocation.
-  virtual bool TraceUsingAnnotations() const { return false; }
 
   // Blocks until all operations queued on the device at the time of
   // the call have completed.  Returns any error pending on the device
@@ -174,10 +166,6 @@ class Device : public DeviceBase {
   // Returns the resource manager associated w/ this device.
   virtual ResourceMgr* resource_manager() { return rmgr_; }
 
-  // Returns the device manager that owns this device, or nullptr if this Device
-  // is not owned by a device manager.
-  DeviceMgr* device_mgr() const { return device_mgr_; }
-
   // Summarizes the status of this Device, for debugging.
   string DebugString() const { return ProtoDebugString(device_attributes_); }
 
@@ -196,6 +184,8 @@ class Device : public DeviceBase {
   // Clears the resource manager associated with this device.
   void ClearResourceMgr() { rmgr_->Clear(); }
 
+  virtual bool IsLocal() const { return true; }
+
  protected:
   void DeleteResourceMgr() {
     delete rmgr_;
@@ -203,11 +193,6 @@ class Device : public DeviceBase {
   }
 
  private:
-  friend class DeviceMgr;
-
-  // Pointer to the device manager that owns this device. Not owned.
-  DeviceMgr* device_mgr_ = nullptr;
-
   const DeviceAttributes device_attributes_;
   DeviceNameUtils::ParsedName parsed_name_;
 

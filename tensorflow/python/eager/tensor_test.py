@@ -47,8 +47,7 @@ def _create_tensor(value, device=None, dtype=None):
   if dtype is not None:
     dtype = dtype.as_datatype_enum
   try:
-    return ops.EagerTensor(
-        value, context=ctx._handle, device=device, dtype=dtype)
+    return ops.EagerTensor(value, device=device, dtype=dtype)
   except core._NotOkStatusException as e:  # pylint: disable=protected-access
     raise core._status_to_exception(e.code, e.message)
 
@@ -67,35 +66,23 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testBadConstructorArgs(self):
     context.ensure_initialized()
     ctx = context.context()
-    handle = ctx._handle
     device = ctx.device_name
-    # Missing context.
-    with self.assertRaisesRegexp(
-        TypeError, r".*argument 'context' \(pos 2\).*"):
-      ops.EagerTensor(1, device=device)
     # Missing device.
-    with self.assertRaisesRegexp(
-        TypeError, r".*argument 'device' \(pos 3\).*"):
-      ops.EagerTensor(1, context=handle)
+    with self.assertRaisesRegexp(TypeError, r".*argument 'device' \(pos 2\).*"):
+      ops.EagerTensor(1)
     # Bad dtype type.
     with self.assertRaisesRegexp(TypeError,
                                  "Expecting a DataType value for dtype. Got"):
-      ops.EagerTensor(1, context=handle, device=device, dtype="1")
+      ops.EagerTensor(1, device=device, dtype="1")
 
     # Following errors happen when trying to copy to GPU.
     if not test_util.is_gpu_available():
       self.skipTest("No GPUs found")
 
     with ops.device("/device:GPU:0"):
-      device = ctx.device_name
-      # Bad context.
-      with self.assertRaisesRegexp(
-          TypeError, "Expecting a PyCapsule encoded context handle. Got"):
-        ops.EagerTensor(1.0, context=1, device=device)
       # Bad device.
-      with self.assertRaisesRegexp(
-          TypeError, "Error parsing device argument to CopyToDevice"):
-        ops.EagerTensor(1.0, context=handle, device=1)
+      with self.assertRaisesRegexp(TypeError, "Error parsing device argument"):
+        ops.EagerTensor(1.0, device=1)
 
   def testNumpyValue(self):
     values = np.array([3.0])
@@ -121,8 +108,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     ctx = context.context()
     # Bad dtype value.
     with self.assertRaisesRegexp(TypeError, "Invalid dtype argument value"):
-      ops.EagerTensor(
-          values, context=ctx._handle, device=ctx.device_name, dtype=12345)
+      ops.EagerTensor(values, device=ctx.device_name, dtype=12345)
 
   def testNumpyOrderHandling(self):
     n = np.array([[1, 2], [3, 4]], order="F")
@@ -377,8 +363,7 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   def testEagerTensorError(self):
     with self.assertRaisesRegexp(
         TypeError,
-        "Cannot convert provided value to EagerTensor. "
-        "Provided value.*Requested dtype.*"):
+        "Cannot convert .* to EagerTensor of dtype .*"):
       _ = ops.convert_to_tensor(1., dtype=dtypes.int32)
 
   def testEagerLargeConstant(self):
@@ -537,7 +522,6 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(
         ValueError, "non-rectangular Python sequence"):
       constant_op.constant(l)
-
 
 if __name__ == "__main__":
   test.main()

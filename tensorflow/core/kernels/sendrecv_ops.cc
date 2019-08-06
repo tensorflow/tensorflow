@@ -169,6 +169,7 @@ void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   Rendezvous::Args args;
   args.device_context = ctx->op_device_context();
   args.alloc_attrs = ctx->output_alloc_attr(0);
+  args.cancellation_manager = ctx->cancellation_manager();
 
   FrameAndIter frame_iter = GetFrameAndIter(ctx, hostmem_sendrecv_);
   if (frame_iter == FrameAndIter(0, 0)) {

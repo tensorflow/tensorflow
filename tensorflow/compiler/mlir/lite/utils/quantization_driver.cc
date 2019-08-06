@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
-#include "absl/memory/memory.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -41,35 +41,6 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-
-using QuantParams = quant::QuantizedType;
-using AccumulatorScaleFunc =
-    std::function<QuantParams(const std::vector<QuantParams> &)>;
-
-// Quantization specs of ops, driving the TF Lite quantization algorithm.
-struct OpQuantSpec {
-  // Whether the op has quantizable result. This flag is set to false if the op
-  // has "TFL::NoQuantizableResult" trait.
-  bool is_quantizable = true;
-
-  // Whether it requires same inputs and result scale. This flag is set to true
-  // if the op has "TFL::SameOperandsAndResultScale" trait.
-  bool requires_same_scale = false;
-
-  // Maps the operand index of a bias input to its quantization specifications,
-  // including the non-bias operand indexes and the method retrieving
-  // quantization parameters from list of parameters of the non-bias operands.
-  // This map is empty if the op doesn't havea bias operand.
-  std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>
-      biases_params;
-
-  // Quantization parameters for value restricted outputs. This is the
-  // "hard-coded" parameters and should be used unconditionally for the
-  // quantized op. This vector is empty if the op doesn't have value resctricted
-  // outputs.
-  llvm::SmallVector<QuantParams, 1> restricted_output_params;
-};
-
 static bool EmptyParams(QuantParams p) { return p == quant::QuantizedType(); }
 
 // The state for each op result during the quantization parameters propagation.
@@ -122,10 +93,15 @@ struct RequantizeState {
 //
 class QuantizationDriver {
  public:
-  explicit QuantizationDriver(FuncOp fn) : builder_(fn.getBody()) {}
+  explicit QuantizationDriver(FuncOp fn, bool is_signed,
+                              OpQuantSpecGetter op_quant_spec_getter)
+      : fn_(fn),
+        builder_(fn.getBody()),
+        is_signed_(is_signed),
+        op_quant_spec_getter_(op_quant_spec_getter) {}
 
   // The entry point of the quantization parameters propagation.
-  void Run(FuncOp fn);
+  void Run();
 
  private:
   // This is used to identify an operand or result of an op. The second element
@@ -133,7 +109,7 @@ class QuantizationDriver {
   using OpValue = std::pair<mlir::Operation *, int>;
 
   // Sets up the states for all the op results in the function.
-  void Initialize(FuncOp fn);
+  void Initialize();
 
   // Propagates the quantization parameters across all the ops.
   bool PropagateParams();
@@ -194,8 +170,7 @@ class QuantizationDriver {
 
   // Sets the quantization parameters of the constant result according to its
   // content.
-  bool SetConstantResultParams(Operation *op, unsigned storage_type_width,
-                               bool narrow_range);
+  bool SetConstantResultParams(Operation *op);
 
   // Inserts the Quantize and Dequantize ops for quantizing the index-th result
   // of the op.
@@ -287,7 +262,9 @@ class QuantizationDriver {
     cached.first->second = InitializeState(op, index, res, /*as_result=*/true);
   }
 
+  FuncOp fn_;
   OpBuilder builder_;
+  bool is_signed_;
 
   // All the ops needs to propagate the quantization parameters to.
   std::vector<Operation *> work_list_;
@@ -311,14 +288,13 @@ class QuantizationDriver {
   // This vector is to preserve the arguments order, so the newly inserted
   // quantized ops for the arguments are deterministically ordered.
   llvm::SmallVector<BlockArgument *, 4> args_;
-};
 
-#include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
+  OpQuantSpecGetter op_quant_spec_getter_;
+};
 }  // namespace
 
-// TODO(fengliuai): cache the quantization parameters.
 std::unique_ptr<OpQuantSpec> QuantizationDriver::GetQuantSpec(Operation *op) {
-  return GetOpQuantSpec(op);
+  return op_quant_spec_getter_(op);
 }
 
 bool QuantizationDriver::IsQuantized(Operation *op) {
@@ -343,17 +319,17 @@ int QuantizationDriver::InitializeState(Operation *op, int index, Value *val,
   return next_state_index;
 }
 
-bool QuantizationDriver::SetConstantResultParams(Operation *op,
-                                                 unsigned storage_type_width,
-                                                 bool narrow_range) {
+bool QuantizationDriver::SetConstantResultParams(Operation *op) {
   ElementsAttr attr;
   Value *res = op->getResult(0);
   if (!matchPattern(res, m_Constant(&attr))) {
     return false;
   }
-  auto final_type = GetUniformQuantizedTypeForElementsAttr(
-                        attr, storage_type_width, narrow_range)
-                        .dyn_cast_or_null<quant::QuantizedType>();
+  // TODO(fengliuai): make storage_type_width and narrow_range configurable.
+  auto final_type =
+      GetUniformQuantizedTypeForElementsAttr(attr, /*storage_type_width=*/8,
+                                             is_signed_, /*narrow_range_=*/true)
+          .dyn_cast_or_null<quant::QuantizedType>();
   if (!final_type) return false;
   return SetResultParams(op, 0, final_type);
 }
@@ -427,6 +403,9 @@ void QuantizationDriver::QuantizeValue(Value *value, QuantParams params,
                                        Location loc) {
   Type expressed_type = value->getType();
   Type new_type = params.castFromExpressedType(expressed_type);
+  // This value isn't an expressed type (float), skip.
+  if (!new_type) return;
+
   TypeAttr type_attr = builder_.getTypeAttr(new_type);
   auto quantize =
       builder_.create<TFL::QuantizeOp>(loc, new_type, value, type_attr);
@@ -477,10 +456,15 @@ void QuantizationDriver::RequantizeValue(Value *value, RequantizeState *state,
   } else {
     Type expressed_type =
         quant::QuantizedType::castToExpressedType(value->getType());
+    if (!expressed_type) return;
+
     // The value needs to be requantized. A Quantize op will be created to use
     // it as the operand and replace its uses.
     new_type = state->params.castFromExpressedType(expressed_type);
   }
+  // This value isn't an expressed type (float), skip.
+  if (!new_type) return;
+
   TypeAttr type_attr = builder_.getTypeAttr(new_type);
   auto requantize_op =
       builder_.create<TFL::QuantizeOp>(loc, new_type, value, type_attr);
@@ -560,10 +544,10 @@ QuantParams QuantizationDriver::GetQuantParamsForSameScaleConstraint(
 // TODO(fengliuai): This algorithm assumes there are only one pair of
 // tfl.quantize and tfl.dequantize ops between two quantizable ops. A sanity
 // check should be applied.
-void QuantizationDriver::Initialize(FuncOp fn) {
+void QuantizationDriver::Initialize() {
   llvm::DenseMap<Value *, int> value_to_state;
 
-  fn.walk([&](Operation *op) {
+  fn_.walk([&](Operation *op) {
     if (op->isKnownTerminator()) return;
     if (!GetQuantSpec(op)->is_quantizable) return;
     work_list_.push_back(op);
@@ -605,7 +589,7 @@ bool QuantizationDriver::PropagateParams() {
     Operation *op = work_list_.back();
     work_list_.pop_back();
 
-    // This op has been quantized, so we should consider it again.
+    // This op has been quantized, so we should not consider it again.
     if (quantized_.find(op) != quantized_.end()) continue;
     quantized_.insert(op);
 
@@ -622,9 +606,7 @@ bool QuantizationDriver::PropagateParams() {
 
       // The quantization parameters are determined by the content of the
       // constant.
-      // TODO(fengliuai): the storage_type_width should be from higher level.
-      changed |= SetConstantResultParams(op, /*storage_type_width=*/8,
-                                         /*narrow_range=*/false);
+      changed |= SetConstantResultParams(op);
       continue;
     }
 
@@ -646,8 +628,12 @@ bool QuantizationDriver::PropagateParams() {
         changed |= SetResultParams(op, res, params);
     }
 
-    for (int i = 0, e = spec->restricted_output_params.size(); i != e; ++i)
-      changed |= SetResultParams(op, i, spec->restricted_output_params[i]);
+    // TODO(fengliuai): make the bit width configurable.
+    auto key = std::make_pair(8, is_signed_);
+    auto &restricted_outputs = spec->restricted_output_params[key];
+    for (int i = 0, e = restricted_outputs.size(); i != e; ++i) {
+      changed |= SetResultParams(op, i, restricted_outputs[i]);
+    }
 
     for (auto &it : spec->biases_params) {
       auto params =
@@ -700,15 +686,16 @@ void QuantizationDriver::Finalize() {
   }
 }
 
-void QuantizationDriver::Run(FuncOp fn) {
-  Initialize(fn);
+void QuantizationDriver::Run() {
+  Initialize();
   if (PropagateParams()) {
     Finalize();
   }
 }
 
-void ApplyQuantizationParamsPropagation(mlir::FuncOp func) {
-  QuantizationDriver(func).Run(func);
+void ApplyQuantizationParamsPropagation(
+    mlir::FuncOp func, bool is_signed, OpQuantSpecGetter op_quant_spec_getter) {
+  QuantizationDriver(func, is_signed, op_quant_spec_getter).Run();
 }
 
 }  // namespace TFL

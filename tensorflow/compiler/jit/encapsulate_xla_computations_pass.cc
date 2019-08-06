@@ -245,8 +245,8 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   // while iterating.
   std::vector<Node*> launch_nodes;
   for (Node* n : graph->nodes()) {
-    string name;
-    if (GetNodeAttr(n->attrs(), kXlaClusterAttr, &name).ok()) {
+    const string& name = GetNodeAttrString(n->attrs(), kXlaClusterAttr);
+    if (!name.empty()) {
       launch_nodes.push_back(n);
     }
   }

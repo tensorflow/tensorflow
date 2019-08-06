@@ -4,7 +4,7 @@ load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -666,6 +666,19 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "matrix_diag_ops_test",
+    size = "medium",
+    timeout = "long",
+    srcs = ["matrix_diag_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "momentum_test",
     size = "small",
     srcs = ["momentum_test.py"],
@@ -1142,9 +1155,9 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "permute_test",
+    name = "data_format_ops_test",
     size = "small",
-    srcs = ["permute_test.py"],
+    srcs = ["data_format_ops_test.py"],
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -1179,6 +1192,7 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -1204,6 +1218,7 @@ cuda_py_test(
         "nogpu",
         "no_cuda_on_cpu_tap",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -1219,6 +1234,7 @@ cuda_py_test(
         "//tensorflow/python:layers",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cc_library(
@@ -1304,6 +1320,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 # An example of ahead-of-time compilation using tfcompile.  The
@@ -1380,5 +1397,21 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "conv_node_name_test",
+    size = "medium",
+    srcs = ["conv_node_name_test.py"],
+    shard_count = 5,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
     ],
 )

@@ -29,22 +29,18 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Parser.h"  // TF:local_config_mlir
 #include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "mlir/Support/STLExtras.h"  // TF:local_config_mlir
-#include "mlir/Support/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
 namespace TF {
-
-namespace {
-#include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
-}  // namespace
 
 //===----------------------------------------------------------------------===//
 // TF op helper functions
@@ -75,10 +71,11 @@ static inline bool HasRankAtLeast(Value *value, int64_t rank) {
     return ranked_type.getRank() >= rank;
   return type.isa<UnrankedTensorType>();
 }
+
 // Returns true if the given pair of TensorFlow types can be cast to one
 // another. In other words, a single run-time value is legal for both the types.
 // For example, tensor<*xf32> and tensor<3xf32> are cast compatible.
-bool AreCastCompatible(Type a, Type b) {
+static bool AreCastCompatible(Type a, Type b) {
   if (TensorCastOp::areCastCompatible(a, b)) return true;
 
   // Variant types may optionally contain subtypes information that need not
@@ -89,13 +86,27 @@ bool AreCastCompatible(Type a, Type b) {
          getElementTypeOrSelf(b).getKind() == TensorFlowTypes::VARIANT;
 }
 
+// Returns either the element type or type of the result of a single result
+// operation.
+// TODO(antiagainst): We need an overload function, which mandates function
+// name. This is temporary. Remove this post variadic operand support is
+// improved.
+static Type getElementTypeOrSelf(Operation *op) {
+  if (op->getNumResults() != 1) return {};
+  return getElementTypeOrSelf(op->getResult(0));
+}
+
+namespace {
+#include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
+}  // namespace
+
 //===----------------------------------------------------------------------===//
 // AddOp
 //===----------------------------------------------------------------------===//
 
 void AddOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<AddToAddV2>::build(results, context);
+  results.insert<AddToAddV2>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -104,7 +115,36 @@ void AddOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  RewriteListBuilder<AddV2OfNegLeft, AddV2OfNegRight>::build(results, context);
+  results.insert<AddV2OfNegLeft, AddV2OfNegRight>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// AssertOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// Removes Assert with constant true predicate.
+struct AssertWithTrue : public OpRewritePattern<AssertOp> {
+  using OpRewritePattern<AssertOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(AssertOp op,
+                                     PatternRewriter &rewriter) const override {
+    ElementsAttr cst;
+    if (matchPattern(op.condition(), m_Constant(&cst))) {
+      if (cst.getValue({}).cast<BoolAttr>().getValue()) {
+        rewriter.replaceOp(op, llvm::None);
+        return matchSuccess();
+      }
+    }
+    return matchFailure();
+  }
+};
+}  // namespace
+
+void AssertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<AssertWithTrue>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -113,7 +153,7 @@ void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void BitcastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  RewriteListBuilder<BitcastSameType, BitcastNested>::build(results, context);
+  results.insert<BitcastSameType, BitcastNested>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -134,7 +174,7 @@ static LogicalResult Verify(BroadcastToOp op) {
 
 void CastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
-  RewriteListBuilder<CastSameType>::build(results, context);
+  results.insert<CastSameType>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -143,7 +183,7 @@ void CastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void ConjOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
-  RewriteListBuilder<ConjNested>::build(results, context);
+  results.insert<ConjNested>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -199,7 +239,23 @@ void ConstOp::build(Builder *builder, OperationState *result, Type type,
 
 void DivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<DivWithSqrtDivisor>::build(results, context);
+  results.insert<DivWithSqrtDivisor>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// EmptyTensorListOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(EmptyTensorListOp op) {
+  if (!IsOfRankOrUnranked(op.element_shape(), 0) &&
+      !IsOfRankOrUnranked(op.element_shape(), 1)) {
+    return op.emitOpError("requires element_shape operand to be 0D/1D tensor");
+  }
+
+  if (!IsOfRankOrUnranked(op.max_num_elements(), 0)) {
+    return op.emitOpError("requires max_num_elements operand to be 0D tensor");
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -282,45 +338,39 @@ static LogicalResult Verify(FusedBatchNormOp op) {
 // IfOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult IfOp::verify() {
-  auto thenAttr = getAttrOfType<SymbolRefAttr>("then_branch");
-  if (!thenAttr) return emitOpError("requires then_branch attribute");
-
-  auto elseAttr = getAttrOfType<SymbolRefAttr>("else_branch");
-  if (!elseAttr) return emitOpError("requires else_branch attribute");
-
-  auto module = getParentOfType<ModuleOp>();
-  auto thenFn = module.lookupSymbol<FuncOp>(thenAttr.getValue());
+static LogicalResult Verify(IfOp op) {
+  auto module = op.getParentOfType<ModuleOp>();
+  auto thenFn = module.lookupSymbol<FuncOp>(op.then_branch());
   if (!thenFn)
-    return emitOpError("then_branch refers to an undefined function : ")
-           << thenAttr;
-  auto elseFn = module.lookupSymbol<FuncOp>(elseAttr.getValue());
+    return op.emitOpError("then_branch refers to an undefined function : ")
+           << op.then_branch();
+  auto elseFn = module.lookupSymbol<FuncOp>(op.else_branch());
   if (!elseFn)
-    return emitOpError("else_branch refers to an undefined function : ")
-           << elseAttr;
+    return op.emitOpError("else_branch refers to an undefined function : ")
+           << op.else_branch();
   auto thenFuncType = thenFn.getType();
   auto elseFuncType = elseFn.getType();
 
   // Non-conditional operands starting with the second operand are passed to
   // branches and should be pair-wise compatible with branches' inputs.
-  unsigned expectedNumInputs = getNumOperands() - 1;
+  unsigned expectedNumInputs = op.getNumOperands() - 1;
   if (thenFuncType.getNumInputs() != expectedNumInputs ||
       elseFuncType.getNumInputs() != expectedNumInputs)
-    return emitError("branches should have " + Twine(expectedNumInputs) +
-                     " inputs");
+    return op.emitError("branches should have " + Twine(expectedNumInputs) +
+                        " inputs");
 
   for (unsigned i = 0; i < expectedNumInputs; ++i) {
-    auto operandType = getOperand(i + 1)->getType().cast<TensorType>();
+    auto operandType = op.getOperand(i + 1)->getType().cast<TensorType>();
     auto thenInputType = thenFuncType.getInput(i).cast<TensorType>();
     if (!AreCastCompatible(operandType, thenInputType))
-      return emitError(
+      return op.emitError(
           llvm::formatv("then branch input type {0} is incompatible with "
                         "operand type {1} at index {2}",
                         thenInputType, operandType, i));
 
     auto elseInputType = elseFuncType.getInput(i).cast<TensorType>();
     if (!AreCastCompatible(operandType, elseInputType))
-      return emitError(
+      return op.emitError(
           llvm::formatv("else branch input type {0} is incompatible with "
                         "operand type {1} at index {2}",
                         elseInputType, operandType, i));
@@ -328,30 +378,30 @@ LogicalResult IfOp::verify() {
     // If branches have incompatible input types that means that no tensor can
     // serve as input to both the functions. Hence, the op is invalid.
     if (!AreCastCompatible(thenInputType, elseInputType))
-      return emitError(llvm::formatv(
+      return op.emitError(llvm::formatv(
           "branches inputs have incompatible types {0} and {1} at index {2}",
           thenInputType, elseInputType, i));
   }
 
   // Branches' results should be pair-wise compatible with the op results.
-  unsigned expectedNumResults = getNumResults();
+  unsigned expectedNumResults = op.getNumResults();
   if (thenFuncType.getNumResults() != expectedNumResults ||
       elseFuncType.getNumResults() != expectedNumResults)
-    return emitError("branches should have " + Twine(expectedNumResults) +
-                     " results");
+    return op.emitError("branches should have " + Twine(expectedNumResults) +
+                        " results");
 
   for (unsigned i = 0; i < expectedNumResults; ++i) {
-    auto resultType = getResult(i)->getType().cast<TensorType>();
+    auto resultType = op.getResult(i)->getType().cast<TensorType>();
     auto thenResultType = thenFuncType.getResult(i).cast<TensorType>();
     if (!AreCastCompatible(thenResultType, resultType))
-      return emitError(
+      return op.emitError(
           llvm::formatv("then branch result type {0} is incompatible with op "
                         "result type {1} at index {2}",
                         thenResultType, resultType, i));
 
     auto elseResultType = elseFuncType.getResult(i).cast<TensorType>();
     if (!AreCastCompatible(elseResultType, resultType))
-      return emitError(
+      return op.emitError(
           llvm::formatv("else branch result type {0} is incompatible with op "
                         "result type {1} at index {2}",
                         elseResultType, resultType, i));
@@ -365,7 +415,7 @@ LogicalResult IfOp::verify() {
 
 void InvertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
-  RewriteListBuilder<InvertNested>::build(results, context);
+  results.insert<InvertNested>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -399,7 +449,7 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 
 void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<LogOfSoftmax>::build(results, context);
+  results.insert<LogOfSoftmax>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -408,10 +458,9 @@ void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void LogicalNotOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  RewriteListBuilder<LogicalNotNested, LogicalNotOfEqual, LogicalNotOfNotEqual,
-                     LogicalNotOfGreater, LogicalNotOfGreaterEqual,
-                     LogicalNotOfLess, LogicalNotOfLessEqual>::build(results,
-                                                                     context);
+  results.insert<LogicalNotNested, LogicalNotOfEqual, LogicalNotOfNotEqual,
+                 LogicalNotOfGreater, LogicalNotOfGreaterEqual,
+                 LogicalNotOfLess, LogicalNotOfLessEqual>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -420,7 +469,7 @@ void LogicalNotOp::getCanonicalizationPatterns(
 
 void NegOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<NegNested>::build(results, context);
+  results.insert<NegNested>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -429,7 +478,7 @@ void NegOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void ReciprocalOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  RewriteListBuilder<ReciprocalNested>::build(results, context);
+  results.insert<ReciprocalNested>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -488,7 +537,7 @@ void RankOp::build(Builder *builder, OperationState *result, Value *input) {
 
 void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  RewriteListBuilder<RealDivWithSqrtDivisor>::build(results, context);
+  results.insert<RealDivWithSqrtDivisor>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -499,12 +548,13 @@ void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // m_Constant.
 static LogicalResult Verify(ReshapeOp op) {
   auto shapeType = op.shape()->getType().cast<TensorType>();
+  if (!shapeType.hasRank()) return success();
   if (shapeType.getRank() != 1)
     return op.emitOpError("shape must be 1D tensor");
   auto rankByShape = shapeType.getShape()[0];
   auto typeOfTensor = op.tensor()->getType().cast<TensorType>();
   // No compile time verification for unknown sized shape.
-  if (rankByShape == -1 || !typeOfTensor.hasRank()) return success();
+  if (rankByShape == -1 || !typeOfTensor.hasStaticShape()) return success();
   // Check values if constant shape. No compiling time verification for
   // non-constant shape.
   auto *shapeOp = op.shape()->getDefiningOp();
@@ -647,7 +697,7 @@ static LogicalResult Verify(SoftmaxOp op) {
 
 void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
-  RewriteListBuilder<SquareOfSub>::build(results, context);
+  results.insert<SquareOfSub>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -656,7 +706,7 @@ void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void SubOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<SubOfNeg>::build(results, context);
+  results.insert<SubOfNeg>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -727,32 +777,27 @@ void TransposeOp::build(Builder *builder, OperationState *result, Value *x,
 
 void TruncateDivOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  RewriteListBuilder<TruncateDivWithSqrtDivisor>::build(results, context);
+  results.insert<TruncateDivWithSqrtDivisor>(context);
 }
 
 //===----------------------------------------------------------------------===//
 // WhileOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult WhileOp::verify() {
-  auto condAttr = getAttrOfType<SymbolRefAttr>("cond");
-  if (!condAttr) return emitOpError("requires cond attribute");
-
-  auto module = getParentOfType<ModuleOp>();
-  auto condFn = module.lookupSymbol<FuncOp>(condAttr.getValue());
+static LogicalResult Verify(WhileOp op) {
+  auto module = op.getParentOfType<ModuleOp>();
+  auto condFn = module.lookupSymbol<FuncOp>(op.cond());
   auto condFuncType = condFn.getType();
 
   // Verify that the cond function has exactly one result.
   if (condFuncType.getNumResults() != 1)
-    return emitOpError("requires cond function to have exactly one result");
+    return op.emitOpError("requires cond function to have exactly one result");
 
-  auto bodyAttr = getAttrOfType<SymbolRefAttr>("body");
-  if (!bodyAttr) return emitOpError("requires body attribute");
-  auto bodyFn = module.lookupSymbol<FuncOp>(bodyAttr.getValue());
+  auto bodyFn = module.lookupSymbol<FuncOp>(op.body());
   auto bodyFuncType = bodyFn.getType();
 
-  SmallVector<Type, 4> operands(getOperandTypes());
-  SmallVector<Type, 4> results(getResultTypes());
+  SmallVector<Type, 4> operands(op.getOperandTypes());
+  SmallVector<Type, 4> results(op.getResultTypes());
 
   // Collect all the type lists for the op so that different pairs of type lists
   // can be compared for the compatibility.
@@ -796,7 +841,7 @@ LogicalResult WhileOp::verify() {
 
       int aSize = a.second.size();
       if (aSize != b.second.size())
-        return emitOpError(
+        return op.emitOpError(
             llvm::formatv("requires the number of {0}s to be equal to the "
                           "number of {1}s. Found {2} and {3}, respectively",
                           a.first, b.first, aSize, b.second.size()));
@@ -806,7 +851,7 @@ LogicalResult WhileOp::verify() {
         auto bType = b.second[idx];
 
         if (!AreCastCompatible(aType, bType))
-          return emitError(llvm::formatv(
+          return op.emitError(llvm::formatv(
               "{0} type {1} is incompatible with {2} type {3} at index {4}",
               a.first, aType, b.first, bType, idx));
       }
@@ -821,7 +866,7 @@ LogicalResult WhileOp::verify() {
 
 void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  RewriteListBuilder<XdivyWithSqrtDivisor>::build(results, context);
+  results.insert<XdivyWithSqrtDivisor>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -840,7 +885,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.cc.inc"
-      , IfOp, WhileOp>();
+      >();
   addTypes<
 #define HANDLE_TF_TYPE(tftype, enumerant, name) tftype##Type,
 #define HANDLE_LAST_TF_TYPE(tftype, enumerant, name) tftype##Type
@@ -952,28 +997,6 @@ Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,
   if (value.isa<OpaqueElementsAttr>() || value.getType() != type)
     return builder.create<ConstOp>(loc, type, value);
   return nullptr;
-}
-
-// Verifies that the Op is a well-formed TensorFlow op, checking that all inputs
-// and results are Tensor or other TensorFlow types, etc.
-LogicalResult verifyTensorFlowOp(Operation *op) {
-  if (op->getName().getDialect() != "tf")
-    return op->emitError("TensorFlow op ")
-           << op->getName() << " should start with 'tf.'";
-
-  for (Type type : op->getOperandTypes()) {
-    if (!IsValidTFTensorType(type))
-      return op->emitOpError(
-          "requires operands to have a valid TensorFlow tensor type");
-  }
-
-  for (Type type : op->getResultTypes()) {
-    if (!IsValidTFTensorType(type))
-      return op->emitOpError(
-          "requires results to have a valid TensorFlow tensor type");
-  }
-
-  return success();
 }
 
 }  // namespace TF

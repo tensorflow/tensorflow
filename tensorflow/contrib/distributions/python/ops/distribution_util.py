@@ -475,10 +475,9 @@ def pad_mixture_dimensions(x, mixture_distribution, categorical_distribution,
       return array_ops.shape(d.batch_shape_tensor())[0]
     dist_batch_ndims = _get_ndims(mixture_distribution)
     cat_batch_ndims = _get_ndims(categorical_distribution)
-    pad_ndims = array_ops.where(
-        categorical_distribution.is_scalar_batch(),
-        dist_batch_ndims,
-        dist_batch_ndims - cat_batch_ndims)
+    pad_ndims = array_ops.where_v2(categorical_distribution.is_scalar_batch(),
+                                   dist_batch_ndims,
+                                   dist_batch_ndims - cat_batch_ndims)
     s = array_ops.shape(x)
     x = array_ops.reshape(x, shape=array_ops.concat([
         s[:-1],

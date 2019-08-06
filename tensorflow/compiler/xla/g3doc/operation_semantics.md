@@ -1892,7 +1892,7 @@ compute the max and the argmax of a 1-D array in parallel:
 ```python
 f: (Float, Int, Float, Int) -> Float, Int
 f(max, argmax, value, index):
-  if value >= argmax:
+  if value >= max:
     return (value, index)
   else:
     return (max, argmax)
@@ -1980,8 +1980,12 @@ window_strides, padding)` </b>
 | `window_dilations`  | `ArraySlice<int64>` | array of integers for window     |
 :                     :                     : dilation values                  :
 | `padding`           | `Padding`           | padding type for window          |
-:                     :                     : (Padding\:\:kSame or             :
-:                     :                     : Padding\:\:kValid)               :
+:                     :                     : (Padding\:\:kSame, which pads so :
+:                     :                     : as to have the same output shape :
+:                     :                     : as input if the stride is 1, or  :
+:                     :                     : Padding\:\:kValid, which uses no :
+:                     :                     : no padding and "stops" the       :
+:                     :                     : window once it no longer fits)   :
 
 Below code and figure shows an example of using `ReduceWindow`. Input is a
 matrix of size [4x6] and both window_dimensions and window_stride_dimensions are
@@ -2026,6 +2030,17 @@ padding.
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:75%" src="./images/ops_reduce_window_stride.png">
 </div>
+
+For a non-trivial padding example, consider computing reduce-window minimum
+(initial value is `MAX_FLOAT`) with dimension `3` and stride `2` over the input
+array `[10000, 1000, 100, 10, 1]`. Padding `kValid` computes minimums over two
+_valid_ windows: `[10000, 1000, 100]` and `[100, 10, 1]`, resulting in the
+output `[100, 1]`. Padding `kSame` first pads the array so that the shape after
+the reduce-window would be the _same_ as input for stride one by adding initial
+elements on both sides, getting `[MAX_VALUE, 10000, 1000, 100, 10, 1,
+MAX_VALUE]`. Running reduce-window over the padded array operates on three
+windows `[MAX_VALUE, 10000, 1000]`, `[1000, 100, 10]`, `[10, 1, MAX_VALUE]`, and
+yields `[1000, 10, 1]`.
 
 The evaluation order of the reduction function is arbitrary and may be
 non-deterministic. Therefore, the reduction function should not be overly
@@ -2247,6 +2262,9 @@ The arguments of scatter should follow these constraints:
 
 -   `inserted_window_dims` must be in ascending order, not have any repeating
     dimension numbers, and be in the range `[0, operand.rank)`.
+
+-   `operand.rank` must equal the sum of `update_window_dims.size` and
+    `inserted_window_dims.size`.
 
 -   `scatter_dims_to_operand_dims.size` must be equal to
     `scatter_indices`[`index_vector_dim`], and its values must be in the range

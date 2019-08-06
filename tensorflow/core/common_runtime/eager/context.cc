@@ -97,6 +97,9 @@ EagerContext::EagerContext(
   } else {
     local_unowned_device_manager_ = device_mgr;
   }
+  if (async_default_) {
+    default_executor_.EnableAsync();
+  }
   InitDeviceMapAndAsync();
   runner_ = [this](std::function<void()> closure) {
     this->thread_pool_->Schedule(std::move(closure));
@@ -112,10 +115,6 @@ EagerContext::EagerContext(
 }
 
 void EagerContext::InitDeviceMapAndAsync() {
-  if (async_default_) {
-    executor_.EnableAsync();
-  }
-
   for (auto* device : devices_) {
     devices_map_[device->name()] = device;
   }
@@ -136,38 +135,39 @@ void EagerContext::InitDeviceMapAndAsync() {
   prioritized_device_type_list_ = ds.PrioritizedDeviceTypeList();
 }
 
-bool EagerContext::Async() const {
-  mutex_lock l(async_map_mu_);
-  return gtl::FindWithDefault(thread_local_async_, std::this_thread::get_id(),
-                              async_default_);
+EagerExecutor* EagerContext::Executor() {
+  tf_shared_lock l(executor_map_mu_);
+  return gtl::FindWithDefault(thread_local_executor_,
+                              std::this_thread::get_id(), &default_executor_);
 }
 
-Status EagerContext::SetAsyncForThread(bool async) {
-  {
-    tensorflow::mutex_lock l(async_map_mu_);
-    thread_local_async_[std::this_thread::get_id()] = async;
-  }
-  if (async) {
-    executor_.EnableAsync();
-  } else {
-    // TODO(agarwal): Currently we add a wait here to handle cases where a
-    // sync op has a control dependency on an async op, and the latter has not
-    // executed yet. This wait can be removed by storing all the control
-    // inputs and waiting for them when executing ops.
-    return executor_.WaitForAllPendingNodes();
-  }
-  return Status::OK();
+void EagerContext::SetExecutorForThread(EagerExecutor* executor) {
+  tensorflow::mutex_lock l(executor_map_mu_);
+  thread_local_executor_[std::this_thread::get_id()] = executor;
+}
+
+void EagerContext::ClearExecutorForThread() {
+  tensorflow::mutex_lock l(executor_map_mu_);
+  thread_local_executor_.erase(std::this_thread::get_id());
 }
 
 void EagerContext::ClearCaches() {
-  // The executor stores pointers to kernels, so we need to make sure that no
-  // async eager ops are still executing. We lock the cache during this time as
-  // well.
-  mutex_lock ml(cache_mu_);
-  executor_.WaitForAllPendingNodes().IgnoreError();
-  kernel_cache_.clear();
-  for (auto& entry : registered_functions_) {
-    entry.second->cached_kernel_keys->clear();
+  {
+    mutex_lock ml(executor_map_mu_);
+    for (auto& entry : thread_local_executor_) {
+      entry.second->WaitForAllPendingNodes().IgnoreError();
+    }
+  }
+  {
+    // The executor stores pointers to kernels, so we need to make sure that no
+    // async eager ops are still executing. We lock the cache during this time
+    // as well.
+    mutex_lock ml(cache_mu_);
+    default_executor_.WaitForAllPendingNodes().IgnoreError();
+    kernel_cache_.clear();
+    for (auto& entry : registered_functions_) {
+      entry.second->cached_kernel_keys->clear();
+    }
   }
 }
 
@@ -232,8 +232,48 @@ void EagerContext::CloseRemoteContexts() {
   }
 
   counter.Wait();
+
+  remote_contexts_.clear();
 }
+
 #endif  // !IS_MOBILE_PLATFORM
+
+void EagerContext::WaitForAndCloseRemoteContexts() {
+  ClearCaches();
+
+#if !defined(IS_MOBILE_PLATFORM)
+  {
+    mutex_lock l(keep_alive_thread_shutdown_mu_);
+    shutting_down_ = true;
+    keep_alive_thread_cv_.notify_all();
+  }
+  keep_alive_thread_.reset();
+
+  mutex_lock l(remote_state_mu_);
+  if (!remote_contexts_.empty() && is_master_) {
+    CloseRemoteContexts();
+  }
+
+  default_executor_.ShutDown().IgnoreError();
+  std::unordered_map<std::thread::id, EagerExecutor*> executors_copy;
+  {
+    mutex_lock l(executor_map_mu_);
+    executors_copy = thread_local_executor_;
+  }
+  for (const auto& it : executors_copy) {
+    it.second->ShutDown().IgnoreError();
+  }
+
+  // This shuts down the completion queue and joins the thread polling it.
+  // The thread exits only after the completion queue has been drained of all
+  // the events. These events' completion should invoke all remaining RPC
+  // callbacks.
+  // This also deletes all EagerClient instances. There should not be any
+  // references to EagerClients left after all RPCs and async ops have been
+  // finished.
+  remote_eager_workers_ = nullptr;
+#endif  // !IS_MOBILE_PLATFORM
+}
 
 EagerContext::~EagerContext() {
   ClearCaches();
@@ -263,29 +303,19 @@ EagerContext::~EagerContext() {
   }
 #endif  // !IS_MOBILE_PLATFORM
 
-  executor_.WaitForAllPendingNodes().IgnoreError();
   rendezvous_->Unref();
-
-  // Release resources ahead of destroying the device manager as the resource
-  // destructors (e.g. ~IteratorResource) assume devices still exist.
-  for (auto device : local_device_mgr()->ListDevices()) {
-    device->ClearResourceMgr();
-  }
 }
 
 bool EagerContext::FindFunctionByName(const string& name) {
-  mutex_lock l(functions_mu_);
   return func_lib_def_.Find(name) != nullptr;
 }
 
 Status EagerContext::FindFunctionOpData(
     const string& name, const tensorflow::OpRegistrationData** op_data) {
-  mutex_lock l(functions_mu_);
   return func_lib_def_.LookUp(name, op_data);
 }
 
 const FunctionDef* EagerContext::FindFunctionDef(const string& name) {
-  mutex_lock l(functions_mu_);
   return func_lib_def_.Find(name);
 }
 
@@ -406,9 +436,7 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
     is_first_ref = registered_function->RefCountIsOne();
   }
   if (is_first_ref) {
-    mutex_lock l(functions_mu_);
     TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef));
-    // TODO(fishx): Avoid holding lock when sending RPCs.
     return MaybeRegisterFunctionRemotely(fdef);
   }
   return Status::OK();
@@ -433,7 +461,6 @@ Status EagerContext::RemoveFunction(const string& func) {
     registered_function->Unref();
   }
   if (is_last_ref) {
-    mutex_lock l(functions_mu_);
     // TODO(fishx): Remove remote function as well.
     return func_lib_def_.RemoveFunction(func);
   }
@@ -509,12 +536,6 @@ Status EagerContext::FindDeviceFromName(const char* device_name,
   }
 
   return status;
-}
-
-bool EagerContext::IsLocal(const Device* d) const {
-  if (d == nullptr || remote_device_mgr() == nullptr) return true;
-  tensorflow::Device* tmp;
-  return local_device_mgr()->LookupDevice(d->name(), &tmp).ok();
 }
 
 bool EagerContext::OnSameTask(const Device* first, const Device* second) const {
@@ -610,6 +631,13 @@ Status EagerContext::StoreCollectiveOpsServer(
 
   InitDeviceMapAndAsync();
   ClearCaches();
+  default_executor_.ClearError();
+  {
+    tensorflow::mutex_lock l(executor_map_mu_);
+    for (auto& entry : thread_local_executor_) {
+      entry.second->ClearError();
+    }
+  }
 
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       local_unowned_device_manager_, env_, TF_GRAPH_DEF_VERSION, &func_lib_def_,
@@ -678,7 +706,13 @@ Status EagerContext::InitializeRemoteMaster(
   InitDeviceMapAndAsync();
 
   ClearCaches();
-  executor_.ClearError();
+  default_executor_.ClearError();
+  {
+    tensorflow::mutex_lock l(executor_map_mu_);
+    for (auto& entry : thread_local_executor_) {
+      entry.second->ClearError();
+    }
+  }
 
   keep_alive_secs_ = keep_alive_secs;
   sleep_for_secs_ = std::max(1, keep_alive_secs_ / 2);
@@ -769,7 +803,13 @@ Status EagerContext::InitializeRemoteWorker(
   InitDeviceMapAndAsync();
 
   ClearCaches();
-  executor_.ClearError();
+  default_executor_.ClearError();
+  {
+    tensorflow::mutex_lock l(executor_map_mu_);
+    for (auto& entry : thread_local_executor_) {
+      entry.second->ClearError();
+    }
+  }
 
   return Status::OK();
 }

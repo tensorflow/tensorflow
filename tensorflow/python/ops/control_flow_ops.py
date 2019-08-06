@@ -482,6 +482,12 @@ def _get_shape_invariant(var, shape=None):
 
   elif shape is None:
     return var.shape
+  elif isinstance(shape, tensor_spec.TensorSpec):
+    if var.dtype != shape.dtype:
+      raise TypeError("TensorSpec %r is not compatible with %r" % (shape, var))
+    return shape.shape
+  elif isinstance(shape, type_spec.TypeSpec):
+    raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
   else:
     return shape
 
@@ -498,6 +504,8 @@ def _shape_invariant_to_type_spec(var, shape):
     A `TypeSpec` for `var`, consistent with the given shape.
   """
   if isinstance(shape, type_spec.TypeSpec):
+    if not shape.is_compatible_with(var):
+      raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
     return shape
   elif not isinstance(shape, tensor_shape.TensorShape):
     raise TypeError("Expected shape to be a TypeSpec or TensorShape, got %r"
@@ -751,15 +759,6 @@ class ControlFlowContext(object):
     if self._outer_context:
       return self._outer_context.GetWhileContext()
     return None
-
-  def _IsInOuterContext(self, op):
-    op_ctxt = util.GetOutputContext(op)
-    outer_ctxt = self.outer_context
-    while outer_ctxt != op_ctxt:
-      if outer_ctxt is None:
-        return False
-      outer_ctxt = outer_ctxt.outer_context
-    return True
 
   def _RemoveExternalControlEdges(self, op):
     """Remove any external control dependency on this op."""
@@ -2273,9 +2272,22 @@ class WhileContext(ControlFlowContext):
       for x in xs:
         inp_op = x.op.inputs[0].op
         control_inputs = graph._control_dependencies_for_inputs([inp_op])
-        outer_control_inputs = [
-            op for op in control_inputs if self._IsInOuterContext(op)
-        ]
+        outer_control_inputs = []
+        for op in control_inputs:
+          # We need to keep control inputs that are in any ancestor
+          # ControlFlowContext, and within outer WhileContext.
+          keep_as_control_input = True
+          op_ctxt = util.GetOutputContext(op)
+          outer_ctxt = self.outer_context
+          outer_while_context = (None if outer_ctxt is None else
+                                 outer_ctxt.GetWhileContext())
+          while outer_ctxt != op_ctxt:
+            if outer_ctxt is None or outer_ctxt == outer_while_context:
+              keep_as_control_input = False
+              break
+            outer_ctxt = outer_ctxt.outer_context
+          if keep_as_control_input:
+            outer_control_inputs.append(op)
         x.op._set_control_flow_context(self)
         x.op._add_control_inputs(outer_control_inputs)
         graph._record_op_seen_by_control_dependencies(x.op)
@@ -2640,6 +2652,13 @@ def while_loop(cond,
   ```
 
   """
+  if not callable(cond):
+    raise TypeError("cond must be callable.")
+  if not callable(body):
+    raise TypeError("body must be callable.")
+  if parallel_iterations < 1:
+    raise TypeError("parallel_iterations must be a positive integer.")
+
   # Always enable control flow v2 if building a function, regardless of toggle.
   executing_eagerly = context.executing_eagerly()
   if (util.EnableControlFlowV2(ops.get_default_graph()) and
@@ -2652,18 +2671,13 @@ def while_loop(cond,
         parallel_iterations=parallel_iterations,
         maximum_iterations=maximum_iterations,
         name=name,
-        return_same_structure=return_same_structure)
+        return_same_structure=return_same_structure,
+        back_prop=back_prop)
 
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:
       raise ValueError("No loop variables provided")
-    if not callable(cond):
-      raise TypeError("cond must be callable.")
-    if not callable(body):
-      raise TypeError("body must be callable.")
-    if parallel_iterations < 1:
-      raise TypeError("parallel_iterations must be a positive integer.")
-
+    try_to_pack = (len(loop_vars) == 1 and not return_same_structure)
     if maximum_iterations is not None:
       maximum_iterations = ops.convert_to_tensor(
           maximum_iterations, name="maximum_iterations")
@@ -2679,7 +2693,7 @@ def while_loop(cond,
             0, dtype=maximum_iterations.dtype, name="iteration_counter")
       orig_cond = cond
       orig_body = body
-      if len(loop_vars) == 1:
+      if try_to_pack:
         loop_vars = (counter, loop_vars[0])
         cond = lambda i, lv: (  # pylint: disable=g-long-lambda
             math_ops.logical_and(i < maximum_iterations, orig_cond(lv)))
@@ -2689,9 +2703,9 @@ def while_loop(cond,
         cond = lambda i, lv: (  # pylint: disable=g-long-lambda
             math_ops.logical_and(i < maximum_iterations, orig_cond(*lv)))
         body = lambda i, lv: (i + 1, orig_body(*lv))
+      try_to_pack = False
 
     if executing_eagerly:
-      try_to_pack = len(loop_vars) == 1
       packed = False  # whether the body result was packed into a 1-item tuple
 
       loop_var_structure = nest.map_structure(type_spec.type_spec_from_value,

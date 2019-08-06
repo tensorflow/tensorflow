@@ -3,7 +3,7 @@
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "if_dynamic_kernels",
     "if_static",
     "tf_additional_grpc_deps_py",
@@ -18,7 +18,7 @@ load(
     "if_tensorrt",
 )
 load(
-    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
@@ -80,7 +80,7 @@ def if_cuda_is_configured_compat(x):
 # i.e. "common_runtime/direct_session_test.cc" becomes
 #      "common_runtime_direct_session_test"
 def src_to_test_name(src):
-    return src.replace("/", "_").split(".")[0]
+    return src.replace("/", "_").replace(":", "_").split(".")[0]
 
 def full_path(relative_paths):
     return [native.package_name() + "/" + relative for relative in relative_paths]
@@ -418,6 +418,13 @@ def tf_binary_additional_data_deps():
             clean_dep("//tensorflow:libtensorflow_framework.so.%s" % VERSION),
         ],
     )
+
+def tf_binary_pybind_deps():
+    return select({
+        clean_dep("//tensorflow:macos"): [clean_dep("//tensorflow/python:lib_pywrap_tensorflow_internal.dylib")],
+        clean_dep("//tensorflow:windows"): [clean_dep("//tensorflow/python:_pywrap_tensorflow_internal.dll")],
+        "//conditions:default": [clean_dep("//tensorflow/python:lib_pywrap_tensorflow_internal.so")],
+    })
 
 # Helper function for the per-OS tensorflow libraries and their version symlinks
 def tf_shared_library_deps():
@@ -1270,10 +1277,10 @@ register_extension_info(
 def _cuda_copts(opts = []):
     """Gets the appropriate set of copts for (maybe) CUDA compilation.
 
-      If we're doing CUDA compilation, returns copts for our particular CUDA
-      compiler.  If we're not doing CUDA compilation, returns an empty list.
+        If we're doing CUDA compilation, returns copts for our particular CUDA
+        compiler.  If we're not doing CUDA compilation, returns an empty list.
 
-      """
+        """
     return cuda_default_copts() + select({
         "//conditions:default": [],
         "@local_config_cuda//cuda:using_nvcc": ([
@@ -1326,21 +1333,21 @@ register_extension_info(
 def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
     """Generate a cc_library with a conditional set of CUDA dependencies.
 
-    When the library is built with --config=cuda:
+      When the library is built with --config=cuda:
 
-    - Both deps and cuda_deps are used as dependencies.
-    - The cuda runtime is added as a dependency (if necessary).
-    - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts.
-    - In addition, when the library is also built with TensorRT enabled, it
-        additionally passes -DGOOGLE_TENSORRT=1 to the list of copts.
+      - Both deps and cuda_deps are used as dependencies.
+      - The cuda runtime is added as a dependency (if necessary).
+      - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts.
+      - In addition, when the library is also built with TensorRT enabled, it
+          additionally passes -DGOOGLE_TENSORRT=1 to the list of copts.
 
-    Args:
-    - cuda_deps: BUILD dependencies which will be linked if and only if:
-        '--config=cuda' is passed to the bazel command line.
-    - deps: dependencies which will always be linked.
-    - copts: copts always passed to the cc_library.
-    - kwargs: Any other argument to cc_library.
-    """
+      Args:
+      - cuda_deps: BUILD dependencies which will be linked if and only if:
+          '--config=cuda' is passed to the bazel command line.
+      - deps: dependencies which will always be linked.
+      - copts: copts always passed to the cc_library.
+      - kwargs: Any other argument to cc_library.
+      """
     if not deps:
         deps = []
     if not cuda_deps:
@@ -1386,25 +1393,25 @@ def tf_kernel_library(
         **kwargs):
     """A rule to build a TensorFlow OpKernel.
 
-    May either specify srcs/hdrs or prefix.  Similar to tf_gpu_library,
-    but with alwayslink=1 by default.  If prefix is specified:
-      * prefix*.cc (except *.cu.cc) is added to srcs
-      * prefix*.h (except *.cu.h) is added to hdrs
-      * prefix*.cu.cc and prefix*.h (including *.cu.h) are added to gpu_srcs.
-    With the exception that test files are excluded.
-    For example, with prefix = "cast_op",
-      * srcs = ["cast_op.cc"]
-      * hdrs = ["cast_op.h"]
-      * gpu_srcs = ["cast_op_gpu.cu.cc", "cast_op.h"]
-      * "cast_op_test.cc" is excluded
-    With prefix = "cwise_op"
-      * srcs = ["cwise_op_abs.cc", ..., "cwise_op_tanh.cc"],
-      * hdrs = ["cwise_ops.h", "cwise_ops_common.h"],
-      * gpu_srcs = ["cwise_op_gpu_abs.cu.cc", ..., "cwise_op_gpu_tanh.cu.cc",
-                    "cwise_ops.h", "cwise_ops_common.h",
-                    "cwise_ops_gpu_common.cu.h"]
-      * "cwise_ops_test.cc" is excluded
-    """
+      May either specify srcs/hdrs or prefix.  Similar to tf_gpu_library,
+      but with alwayslink=1 by default.  If prefix is specified:
+        * prefix*.cc (except *.cu.cc) is added to srcs
+        * prefix*.h (except *.cu.h) is added to hdrs
+        * prefix*.cu.cc and prefix*.h (including *.cu.h) are added to gpu_srcs.
+      With the exception that test files are excluded.
+      For example, with prefix = "cast_op",
+        * srcs = ["cast_op.cc"]
+        * hdrs = ["cast_op.h"]
+        * gpu_srcs = ["cast_op_gpu.cu.cc", "cast_op.h"]
+        * "cast_op_test.cc" is excluded
+      With prefix = "cwise_op"
+        * srcs = ["cwise_op_abs.cc", ..., "cwise_op_tanh.cc"],
+        * hdrs = ["cwise_ops.h", "cwise_ops_common.h"],
+        * gpu_srcs = ["cwise_op_gpu_abs.cu.cc", ..., "cwise_op_gpu_tanh.cu.cc",
+                      "cwise_ops.h", "cwise_ops_common.h",
+                      "cwise_ops_gpu_common.cu.h"]
+        * "cwise_ops_test.cc" is excluded
+      """
     if not srcs:
         srcs = []
     if not hdrs:
@@ -1535,13 +1542,13 @@ register_extension_info(
 def _get_transitive_headers(hdrs, deps):
     """Obtain the header files for a target and its transitive dependencies.
 
-    Args:
-      hdrs: a list of header files
-      deps: a list of targets that are direct dependencies
+      Args:
+        hdrs: a list of header files
+        deps: a list of targets that are direct dependencies
 
-    Returns:
-      a collection of the transitive headers
-    """
+      Returns:
+        a collection of the transitive headers
+      """
     return depset(
         hdrs,
         transitive = [dep[CcInfo].compilation_context.headers for dep in deps],
@@ -1621,14 +1628,14 @@ _py_wrap_cc = rule(
 def _get_repository_roots(ctx, files):
     """Returns abnormal root directories under which files reside.
 
-    When running a ctx.action, source files within the main repository are all
-    relative to the current directory; however, files that are generated or exist
-    in remote repositories will have their root directory be a subdirectory,
-    e.g. bazel-out/local-fastbuild/genfiles/external/jpeg_archive. This function
-    returns the set of these devious directories, ranked and sorted by popularity
-    in order to hopefully minimize the number of I/O system calls within the
-    compiler, because includes have quadratic complexity.
-    """
+      When running a ctx.action, source files within the main repository are all
+      relative to the current directory; however, files that are generated or exist
+      in remote repositories will have their root directory be a subdirectory,
+      e.g. bazel-out/local-fastbuild/genfiles/external/jpeg_archive. This function
+      returns the set of these devious directories, ranked and sorted by popularity
+      in order to hopefully minimize the number of I/O system calls within the
+      compiler, because includes have quadratic complexity.
+      """
     result = {}
     for f in files.to_list():
         root = f.root.path
@@ -1756,7 +1763,7 @@ check_deps = rule(
 
 def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [], copts = [], **kwargs):
     """Helper to build a dynamic library (.so) from the sources containing implementations of custom ops and kernels.
-    """
+      """
     cuda_deps = [
         clean_dep("//tensorflow/core:stream_executor_headers_lib"),
         "@local_config_cuda//cuda:cuda_headers",
@@ -1895,7 +1902,11 @@ def tf_py_wrap_cc(
 
     # Convert a rule name such as foo/bar/baz to foo/bar/_baz.so
     # and use that as the name for the rule producing the .so file.
-    cc_library_name = "/".join(name.split("/")[:-1] + ["_" + module_name + ".so"])
+    cc_library_base = "/".join(name.split("/")[:-1] + ["_" + module_name])
+
+    # TODO(b/137885063): tf_cc_shared_object needs to be cleaned up; we really
+    # shouldn't be passing a name qualified with .so here.
+    cc_library_name = cc_library_base + ".so"
     cc_library_pyd_name = "/".join(
         name.split("/")[:-1] + ["_" + module_name + ".pyd"],
     )
@@ -1957,6 +1968,25 @@ def tf_py_wrap_cc(
         deps = deps + extra_deps,
         **kwargs
     )
+
+    # When a non-versioned .so is added as a 'src' to a bazel target, it uses
+    # -l%(so_name) instead of -l:%(so_file) during linking.  When -l%(so_name)
+    # is passed to ld, it will look for an associated file with the schema
+    # lib%(so_name).so.  Since pywrap_tensorflow is not explicitly versioned
+    # and is not prefixed with lib_, we add a rule for the creation of an .so
+    # file with the canonical lib schema (e.g. libNAME.so), so that
+    # -l%(so_name) is resolved during linking.
+    #
+    # See: https://github.com/bazelbuild/bazel/blob/7a6808260a733d50983c1adf0cf5a7493472267f/src/main/java/com/google/devtools/build/lib/rules/cpp/LibrariesToLinkCollector.java#L319
+    for pattern in SHARED_LIBRARY_NAME_PATTERNS:
+        name_os = pattern % (cc_library_base, "")
+        native.genrule(
+            name = name_os + "_rule",
+            srcs = [":" + cc_library_name],
+            outs = [name_os],
+            cmd = "cp $< $@",
+        )
+
     native.genrule(
         name = "gen_" + cc_library_pyd_name,
         srcs = [":" + cc_library_name],
@@ -2078,11 +2108,12 @@ def tf_py_test(
         shard_count = shard_count,
         srcs_version = "PY2AND3",
         tags = tags,
-        visibility = [clean_dep("//tensorflow:internal")] + additional_visibility,
-        deps = [
+        visibility = [clean_dep("//tensorflow:internal")] +
+                     additional_visibility,
+        deps = depset([
             clean_dep("//tensorflow/python:extra_py_tests_deps"),
             clean_dep("//tensorflow/python:gradient_checker"),
-        ] + additional_deps + xla_test_true_list,
+        ] + additional_deps + xla_test_true_list),
         **kwargs
     )
 
@@ -2405,7 +2436,7 @@ def tf_pybind_extension(
         data = data,
         copts = copts,
         nocopts = nocopts,
-        linkopts = linkopts + select({
+        linkopts = linkopts + _rpath_linkopts(name) + select({
             "@local_config_cuda//cuda:darwin": [
                 "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
             ],
@@ -2457,26 +2488,26 @@ def tf_pybind_extension(
 def if_cuda_or_rocm(if_true, if_false = []):
     """Shorthand for select()'ing whether to build for either CUDA or ROCm.
 
-    Returns a select statement which evaluates to
-       if_true if we're building with either CUDA or ROCm enabled.
-       if_false, otherwise.
+      Returns a select statement which evaluates to
+         if_true if we're building with either CUDA or ROCm enabled.
+         if_false, otherwise.
 
-    Sometimes a target has additional CUDa or ROCm specific dependencies.
-    The `if_cuda` / `if_rocm` functions are used to specify these additional
-    dependencies. For eg, see the `//tensorflow/core/kernels:bias_op` target
+      Sometimes a target has additional CUDa or ROCm specific dependencies.
+      The `if_cuda` / `if_rocm` functions are used to specify these additional
+      dependencies. For eg, see the `//tensorflow/core/kernels:bias_op` target
 
-    If the same additional dependency is needed for both CUDA and ROCm
-    (for eg. `reduction_ops` dependency for the `bias_op` target above),
-    then specifying that dependency in both  both `if_cuda` and `if_rocm` will
-    result in both those functions returning a select statement, which contains
-    the same dependency, which then leads to a duplicate dependency bazel error.
+      If the same additional dependency is needed for both CUDA and ROCm
+      (for eg. `reduction_ops` dependency for the `bias_op` target above),
+      then specifying that dependency in both  both `if_cuda` and `if_rocm` will
+      result in both those functions returning a select statement, which contains
+      the same dependency, which then leads to a duplicate dependency bazel error.
 
-    In order to work around this error, any additional dependency that is common
-    to both the CUDA and ROCm platforms, should be specified using this function.
-    Doing so will eliminate the cause of the bazel error (i.e. the  same
-    dependency showing up in two different select statements)
+      In order to work around this error, any additional dependency that is common
+      to both the CUDA and ROCm platforms, should be specified using this function.
+      Doing so will eliminate the cause of the bazel error (i.e. the  same
+      dependency showing up in two different select statements)
 
-    """
+      """
     return select({
         "@local_config_cuda//cuda:using_nvcc": if_true,
         "@local_config_cuda//cuda:using_clang": if_true,
@@ -2492,6 +2523,10 @@ def if_mlir(if_true, if_false = []):
         "//conditions:default": if_false,
         "//tensorflow:with_mlir_support": if_true,
     })
+
+# TODO(b/138724071): Remove when build is stable.
+def if_mlir_tflite(if_true, if_false = []):
+    return if_mlir(if_true, if_false)
 
 def tfcompile_extra_flags():
     return ""

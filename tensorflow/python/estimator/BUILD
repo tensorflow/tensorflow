@@ -6,7 +6,6 @@ package(
 py_library(
     name = "estimator_py",
     srcs = [
-        "__init__.py",
         "estimator_lib.py",
     ],
     srcs_version = "PY2AND3",
@@ -383,7 +382,6 @@ py_library(
 py_library(
     name = "inputs_queues",
     srcs = [
-        "inputs/queues/__init__.py",
         "inputs/queues/feeding_functions.py",
         "inputs/queues/feeding_queue_runner.py",
     ],

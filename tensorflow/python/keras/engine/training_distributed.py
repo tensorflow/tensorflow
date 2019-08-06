@@ -149,7 +149,7 @@ def experimental_tpu_fit_loop(model,
           (only if doing validation from data tensors).
           Ignored with the default value of `None`.
       validation_freq: Only relevant if validation data is provided. Integer or
-          `collections.Container` instance (e.g. list, tuple, etc.). If an
+          `collections.abc.Container` instance (e.g. list, tuple, etc.). If an
           integer, specifies how many training epochs to run before a new
           validation run is performed, e.g. `validation_freq=2` runs
           validation every 2 epochs. If a Container, specifies the epochs on
@@ -163,8 +163,16 @@ def experimental_tpu_fit_loop(model,
       ValueError: in case of invalid arguments.
   """
   mode = ModeKeys.TRAIN
-  # TODO(fchollet): add support for `steps_per_epoch=None` in TPU loops.
+
   current_strategy = model._distribution_strategy
+  iteration_value = min(steps_per_epoch,
+                        current_strategy.extended.steps_per_run)
+  steps_per_run = K.variable(
+      value=iteration_value,
+      dtype='int32',
+      name='steps_per_run')
+
+  # TODO(fchollet): add support for `steps_per_epoch=None` in TPU loops.
   iterator = dist_utils.get_iterator(dataset, current_strategy)
 
   scope = dist_utils.distributed_scope(
@@ -183,13 +191,6 @@ def experimental_tpu_fit_loop(model,
     tensor = m.result()
     initial_loop_values[m.name] = array_ops.zeros(tensor.shape, tensor.dtype)
 
-  iteration_value = min(steps_per_epoch,
-                        current_strategy.extended.steps_per_run)
-
-  steps_per_run = K.variable(
-      value=iteration_value,
-      dtype='int32',
-      name='steps_per_run')
   ctx = current_strategy.extended.experimental_run_steps_on_iterator(
       step_fn, iterator, iterations=steps_per_run,
       initial_loop_values=initial_loop_values)
@@ -236,7 +237,7 @@ def experimental_tpu_fit_loop(model,
       batch_logs = {'batch': step_index, 'size': 1, 'num_steps': step_count}
       callbacks._call_batch_hook(mode, 'begin', step_index, batch_logs)
       if prev_step_count is None or step_count != prev_step_count:
-        steps_per_run.load(step_count, K.get_session())
+        K.get_session().run(steps_per_run.assign(step_count))
         prev_step_count = step_count
       try:
         _, outputs = K.batch_get_value([train_op, output_tensors])
@@ -334,7 +335,7 @@ def experimental_tpu_test_loop(model,
     (_, outputs, updates, _) = _per_replica_execution_function(
         dist_utils.get_distributed_model(model, mode), mode)
     with ops.control_dependencies([updates]):
-      return outputs
+      return [array_ops.identity(out) for out in outputs]
 
   test_input_data = iterator.get_next()
   per_replica_outputs = current_strategy.experimental_run_v2(
@@ -481,7 +482,7 @@ def experimental_tpu_predict_loop(model,
         dist_utils.get_distributed_model(model, mode), mode)
 
     with ops.control_dependencies([updates]):
-      return outputs
+      return [array_ops.identity(out) for out in outputs]
 
   # TODO(hongjunchoi): When numpy array is passed as an input to `predict()`
   # use numpy arrays directly to avoid cumulating unnecessary input pipeline
@@ -755,16 +756,15 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
         callbacks=callbacks)
 
 
-def train_with_multi_worker(fn):
+def train_with_multi_worker(method):
   """Decorator that handles multi worker training with distribution strategy."""
 
-  def wrapper(instance, model, **kwargs):
-
+  def wrapper(model, **kwargs):
     def _worker_fn(_):
       callbacks = kwargs.pop('callbacks', None)
       filtered_callbacks = dist_utils.filter_distributed_callbacks(callbacks)
       kwargs['callbacks'] = filtered_callbacks
-      return fn(instance, model, **kwargs)
+      return method(model, **kwargs)
 
     return dc.run_distribute_coordinator(
         _worker_fn,
@@ -774,10 +774,20 @@ def train_with_multi_worker(fn):
   return wrapper
 
 
-class DistributionMultiWorkerTrainingLoop(DistributionSingleWorkerTrainingLoop):
+class DistributionMultiWorkerTrainingLoop(training_utils.TrainingLoop):
   """Training loop for distribution strategy with multiple worker."""
 
-  fit = train_with_multi_worker(DistributionSingleWorkerTrainingLoop.fit)
-  evaluate = train_with_multi_worker(
-      DistributionSingleWorkerTrainingLoop.evaluate)
-  # Currently predict is still using the single worker implementation.
+  def __init__(self, single_worker_loop):
+    self._single_worker_loop = single_worker_loop
+
+  def fit(self, *args, **kwargs):
+    return train_with_multi_worker(self._single_worker_loop.fit)(
+        *args, **kwargs)
+
+  def evaluate(self, *args, **kwargs):
+    return train_with_multi_worker(self._single_worker_loop.evaluate)(
+        *args, **kwargs)
+
+  def predict(self, *args, **kwargs):
+    # Currently predict is still using the single worker implementation.
+    return self._single_worker_loop.predict(*args, **kwargs)

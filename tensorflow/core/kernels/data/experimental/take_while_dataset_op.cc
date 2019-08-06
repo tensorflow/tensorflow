@@ -26,10 +26,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -85,6 +83,10 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
     }
 
     int64 Cardinality() const override { return kUnknownCardinality; }
+
+    bool IsStateful() const override {
+      return captured_func_->IsStateful() || input_->IsStateful();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -207,5 +209,6 @@ REGISTER_INPUT_COLOCATION_EXEMPTION("TakeWhileDataset");
 REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalTakeWhileDataset");
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

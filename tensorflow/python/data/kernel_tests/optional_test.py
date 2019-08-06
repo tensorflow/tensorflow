@@ -290,7 +290,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
                                  expected_value_structure))
     self.assertEqual([dtypes.variant],
                      structure.get_flat_tensor_types(opt_structure))
-    self.assertEqual([tensor_shape.scalar()],
+    self.assertEqual([tensor_shape.TensorShape([])],
                      structure.get_flat_tensor_shapes(opt_structure))
 
     # All OptionalSpec objects are not compatible with a non-optional

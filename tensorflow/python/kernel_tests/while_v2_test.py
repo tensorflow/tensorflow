@@ -22,10 +22,12 @@ from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import control_flow_v2_toggles
+from tensorflow.python.ops import random_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -34,6 +36,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
@@ -137,6 +141,27 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertSequenceEqual(self.evaluate(grad), [9.])
 
   @test_util.run_deprecated_v1
+  def testMultipleLoopNonscalarCond(self):
+    x = constant_op.constant([[5.]])
+    y = constant_op.constant(3.)
+
+    # x = 5.
+    # y = 3.
+    # while x < 45.:
+    #   x = x * y
+    ret = while_loop_v2(
+        lambda v, _: v < 45.,
+        lambda v, w: (v * w, w), [x, y],
+        return_same_structure=False)
+    # ret == [x*y^2, y]
+
+    # Note: This is simply d_ret[0]/d_x since d_ret[1]/d_x is 0.
+    grad = gradients_impl.gradients(ret, [x])  # [2*x*y]
+    with self.cached_session():
+      self.assertSequenceEqual(self.evaluate(ret), [45., 3.])
+      self.assertSequenceEqual(self.evaluate(grad), [9.])
+
+  @test_util.run_deprecated_v1
   def testMultipleLoopVars(self):
     x = constant_op.constant(5.)
     y = constant_op.constant(3.)
@@ -194,6 +219,115 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertSequenceEqual(self.evaluate(grad), [32.])
       self.assertSequenceEqual(self.evaluate(grad_grad), [48.])
 
+  def testMultipleWhileLoopsWithFunc(self):
+    if compat.forward_compatible(2019, 8, 23):
+      x = constant_op.constant(2.)
+
+      @def_function.function
+      def Fn():
+        ret1 = while_loop_v2(
+            lambda v: v < 4.,
+            lambda v: v * v, [x],
+            return_same_structure=False,
+            name="while_1")  # x**2
+        ret2 = while_loop_v2(
+            lambda v: v < 16.,
+            lambda v: v * v, [x],
+            return_same_structure=False,
+            name="while_2")  # x**4
+        return ret1, ret2
+
+      concrete_fn = Fn.get_concrete_function()
+      while_1 = concrete_fn.graph.get_operation_by_name("while_1")
+      while_2 = concrete_fn.graph.get_operation_by_name("while_2")
+      self.assertEqual(while_1.type, "StatelessWhile")
+      self.assertEqual(while_2.type, "StatelessWhile")
+      self.assertEmpty(while_1.control_inputs)
+      self.assertEmpty(while_2.control_inputs)
+
+  def testMultipleWhileLoopsWithDeps(self):
+    if compat.forward_compatible(2019, 8, 23):
+      x = variables.Variable(2.)
+      c = constant_op.constant(2.)
+
+      @def_function.function
+      def Fn():
+        ret1 = while_loop_v2(
+            lambda v: v < 4.,
+            lambda v: v * x, [c],
+            return_same_structure=False,
+            name="while_1")  # 2x
+        ret2 = while_loop_v2(
+            lambda v: v < 16.,
+            lambda v: v * x * x, [c],
+            return_same_structure=False,
+            name="while_2")  # 4x
+        return ret1, ret2
+
+      concrete_fn = Fn.get_concrete_function()
+      while_1 = concrete_fn.graph.get_operation_by_name("while_1")
+      while_2 = concrete_fn.graph.get_operation_by_name("while_2")
+      self.assertEqual(while_1.type, "While")
+      self.assertEqual(while_2.type, "While")
+      self.assertEmpty(while_1.control_inputs)
+      self.assertLen(while_2.control_inputs, 1)
+      self.assertIs(while_2.control_inputs[0], while_1)
+
+  def testMultipleWhileLoopsWithVarsDeps(self):
+    if compat.forward_compatible(2019, 8, 23):
+      x1 = variables.Variable(2.)
+      x2 = variables.Variable(3.)
+      c = constant_op.constant(2.)
+
+      @def_function.function
+      def Fn():
+        ret1 = while_loop_v2(
+            lambda v: v < 4.,
+            lambda v: v * x1, [c],
+            return_same_structure=False,
+            name="while_1")  # 2x
+        ret2 = while_loop_v2(
+            lambda v: v < 16.,
+            lambda v: v * x1 * x1, [c],
+            return_same_structure=False,
+            name="while_2")  # 4x
+        ret3 = while_loop_v2(
+            lambda v: v < 4.,
+            lambda v: v * x2, [c],
+            return_same_structure=False,
+            name="while_3")  # 3x
+        ret4 = while_loop_v2(
+            lambda v: v < 16.,
+            lambda v: v * x2 * x2, [c],
+            return_same_structure=False,
+            name="while_4")  # 9x
+        ret5 = while_loop_v2(
+            lambda v: v < 16.,
+            lambda v: v * v, [c],
+            return_same_structure=False,
+            name="while_stateless")  # x**2
+        return ret1, ret2, ret3, ret4, ret5
+
+      concrete_fn = Fn.get_concrete_function()
+      while_1 = concrete_fn.graph.get_operation_by_name("while_1")
+      while_2 = concrete_fn.graph.get_operation_by_name("while_2")
+      while_3 = concrete_fn.graph.get_operation_by_name("while_3")
+      while_4 = concrete_fn.graph.get_operation_by_name("while_4")
+      while_stateless = concrete_fn.graph.get_operation_by_name(
+          "while_stateless")
+      self.assertEqual(while_1.type, "While")
+      self.assertEqual(while_2.type, "While")
+      self.assertEqual(while_3.type, "While")
+      self.assertEqual(while_4.type, "While")
+      self.assertEqual(while_stateless.type, "StatelessWhile")
+      self.assertEmpty(while_1.control_inputs)
+      self.assertLen(while_2.control_inputs, 1)
+      self.assertIs(while_2.control_inputs[0], while_1)
+      self.assertEmpty(while_3.control_inputs)
+      self.assertLen(while_4.control_inputs, 1)
+      self.assertIs(while_4.control_inputs[0], while_3)
+      self.assertEmpty(while_stateless.control_inputs)
+
   @test_util.run_deprecated_v1
   def testDoubleDerivative(self):
     x = constant_op.constant(2.)
@@ -206,6 +340,45 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(ret), 16.)
       self.assertSequenceEqual(self.evaluate(grad), [32.])
       self.assertSequenceEqual(self.evaluate(grad_grad), [48.])
+
+  @test_util.run_v2_only
+  def testMultipleWhileLoopsEager(self):
+
+    @def_function.function
+    def Func():
+      x = constant_op.constant(2.)
+      ret1 = while_loop_v2(
+          lambda v: v < 4., lambda v: v * v, [x],
+          return_same_structure=False)  # x**2
+      ret2 = while_loop_v2(
+          lambda v: v < 16.,
+          lambda v: v * v, [ret1],
+          return_same_structure=False)  # x**4
+      grad = gradients_impl.gradients(ret2, [x])[0]  # 4x**3
+      grad_grad = gradients_impl.gradients(grad, [x])[0]  # 12x**2
+      return grad, grad_grad
+
+    grad, grad_grad = Func()
+    self.assertEqual(grad.numpy(), 32.)
+    self.assertEqual(grad_grad.numpy(), 48.)
+
+  @test_util.run_v2_only
+  def testDoubleDerivativeEager(self):
+
+    @def_function.function
+    def Func():
+      x = constant_op.constant(2.)
+      ret = while_loop_v2(
+          lambda v: v < 8., lambda v: v**2, [x],
+          return_same_structure=False)  # x**4
+      grad = gradients_impl.gradients(ret, [x])[0]  # 4x**3
+      grad_grad = gradients_impl.gradients(grad, [x])[0]  # 12x**2
+      return ret, grad, grad_grad
+
+    ret, grad, grad_grad = Func()
+    self.assertEqual(ret.numpy(), 16.)
+    self.assertEqual(grad.numpy(), 32.)
+    self.assertEqual(grad_grad.numpy(), 48.)
 
   def _testPruning(self):
     x = constant_op.constant(1)
@@ -225,15 +398,6 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
     train_op.append(outputs[0])
 
-    def GetOptimizedGraph():
-      mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
-      config = config_pb2.ConfigProto()
-      config.graph_options.rewrite_options.CopyFrom(
-          rewriter_config_pb2.RewriterConfig(
-              constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
-              memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL))
-      return tf_optimizer.OptimizeGraph(config, mg)
-
     g = GetOptimizedGraph()
     # TODO(b/136034023): while_v2 adds an extra loop_counter which is not pruned
     # away, causing an extra Enter node.
@@ -244,6 +408,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         n for n in g.node if n.op == "Enter" and
         n.attr["T"].type == dtypes.variant.as_datatype_enum
     ])
+    self.assertEmpty([n for n in g.node if n.op == "TensorListPushBack"])
 
     stack = list_ops.tensor_list_stack(outputs[1], element_dtype=x.dtype)
     train_op.append(stack)
@@ -257,6 +422,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         n for n in g.node if n.op == "Enter" and
         n.attr["T"].type == dtypes.variant.as_datatype_enum
     ])
+    self.assertNotEmpty([n for n in g.node if n.op == "TensorListPushBack"])
 
   @test_util.run_deprecated_v1
   def testPruningV1(self):
@@ -267,6 +433,165 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
   def testPruningV2(self):
     self._testPruning()
 
+  def _testDoNotAccumulateInvariants(self):
+    push_op = ("TensorListPushBack"
+               if control_flow_v2_toggles.control_flow_v2_enabled() else
+               "StackPushV2")
+
+    # Tests that loop invariants, i.e., tensors that are "captured" by the
+    # while loop and not passed as loop variables are not accumulated in
+    # gradient computation.
+    v = constant_op.constant(5.0, name="v")
+
+    r = control_flow_ops.while_loop(
+        lambda _: True, lambda x: v * x, [1.0], maximum_iterations=5)
+
+    output = gradients_impl.gradients(r, v)[0]
+    train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+    train_op.append(output)
+
+    g = GetOptimizedGraph()
+    # The gradient for v * x requires the value of both v and x. Since v is a
+    # loop invariant it is not accumulated so we have just one accumulator for
+    # x.
+    self.assertLen([n for n in g.node if n.op == push_op], 1)
+
+  @test_util.run_deprecated_v1
+  def testDoNotAccumulateInvariantsV1(self):
+    self._testDoNotAccumulateInvariants()
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_control_flow_v2
+  def testDoNotAccumulateInvariantsV2(self):
+    self._testDoNotAccumulateInvariants()
+
+  @test_util.enable_control_flow_v2
+  @test_util.run_deprecated_v1
+  @test_util.enable_output_all_intermediates
+  def testPruningNested(self):
+    assert control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
+    x = constant_op.constant(0)
+
+    tensor_list = list_ops.empty_tensor_list(
+        element_dtype=x.dtype, element_shape=x.shape)
+
+    def Cond(x, tl):
+      del tl  # Unused for Cond.
+      return x < 25
+
+    def Body(x, tl):
+
+      def InnerCond(inner_x, unused_outer_x, unused_tl):
+        return inner_x < 5
+
+      def InnerBody(inner_x, outer_x, tl):
+        return inner_x + 1, outer_x + 1, list_ops.tensor_list_push_back(tl, x)
+
+      inner_x = constant_op.constant(0)
+      return control_flow_ops.while_loop(InnerCond, InnerBody,
+                                         [inner_x, x, tl])[1:]
+
+    outputs = control_flow_ops.while_loop(Cond, Body, [x, tensor_list])
+
+    train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+    train_op.append(outputs[0])
+
+    g = GetOptimizedGraph()
+    # TODO(b/136034023): while_v2 adds an extra loop_counter which is not pruned
+    # away, causing an extra Enter node.
+    # enter_count = 4 if control_flow_util.ENABLE_CONTROL_FLOW_V2 else 2
+    # self.assertLen([n for n in g.node if n.op == "Enter"], enter_count)
+    # Test that the TensorList is pruned out.
+    self.assertEmpty([
+        n for n in g.node if n.op == "Enter" and
+        n.attr["T"].type == dtypes.variant.as_datatype_enum
+    ])
+    self.assertEmpty([n for n in g.node if n.op == "TensorListPushBack"])
+    self.assertEmpty([n for n in g.node if n.op == "_While"])
+
+    stack = list_ops.tensor_list_stack(outputs[1], element_dtype=x.dtype)
+    train_op.append(stack)
+    g = GetOptimizedGraph()
+    # TODO(b/136034023): while_v2 adds an extra loop_counter which is not pruned
+    # away, causing an extra Enter node.
+    # enter_count = 3 if control_flow_util.ENABLE_CONTROL_FLOW_V2 else 2
+    # self.assertLen([n for n in g.node if n.op == "Enter"], enter_count)
+    # Test that the TensorList is not pruned out.
+    self.assertNotEmpty([
+        n for n in g.node if n.op == "Enter" and
+        n.attr["T"].type == dtypes.variant.as_datatype_enum
+    ])
+    self.assertNotEmpty([n for n in g.node if n.op == "TensorListPushBack"])
+
+  @test_util.enable_control_flow_v2
+  @test_util.run_deprecated_v1
+  @test_util.enable_output_all_intermediates
+  def testPruningNested2(self):
+    assert control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
+    v = constant_op.constant(5.0, name="v")
+
+    p = array_ops.placeholder(dtype=dtypes.int32)
+
+    def MidBodyBuilder(iterations):
+
+      def MidBody(i, x):
+        r = control_flow_ops.while_loop(
+            lambda *_: True,
+            lambda i, x: (i + 1, math_ops.multiply(v, x, name="my_mul")),
+            (0, x),
+            maximum_iterations=iterations,
+            name="inner")
+        return (i + 1, gradients_impl.gradients(x + r[1], v)[0])
+
+      return MidBody
+
+    def OuterBody(i, x):
+      iterations = array_ops.size(p, name="iterations")
+      return (i + 1, x + control_flow_ops.while_loop(
+          lambda *_: True,
+          MidBodyBuilder(iterations), (0, x),
+          maximum_iterations=iterations,
+          name="mid")[1])
+
+    def CreateWhileLoop():
+      with ops.device("/cpu:0"):
+        r = control_flow_ops.while_loop(
+            lambda *_: True,
+            OuterBody, (0, 1.0),
+            maximum_iterations=5,
+            name="outer")
+        return array_ops.identity(r[1])
+
+    output = CreateWhileLoop()
+    train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+    train_op.append(output)
+
+    g = GetOptimizedGraph()
+    self.assertLen([n for n in g.node if n.op == "TensorListPushBack"], 1)
+
+  @test_util.enable_control_flow_v2
+  @test_util.run_deprecated_v1
+  @test_util.enable_output_all_intermediates
+  def testPruningNested3(self):
+    assert control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
+    v = constant_op.constant(5.0, name="v")
+
+    def CreateWhileLoop():
+      r = control_flow_ops.while_loop(
+          lambda _: True,
+          lambda x: math_ops.multiply(v, x, name="my_mul"), [1.0],
+          maximum_iterations=5,
+          name="outer")
+      return array_ops.identity(r)
+
+    r = CreateWhileLoop()
+    output = gradients_impl.gradients(r, v)[0]
+    train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+    train_op.append(output)
+
+    g = GetOptimizedGraph()
+    self.assertLen([n for n in g.node if n.op == "TensorListPushBack"], 1)
+
   @test_util.run_deprecated_v1
   def testCaptureExternalTensorInCond(self):
     x = constant_op.constant(2.)
@@ -276,7 +601,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         lambda v: v * 3., [x],
         return_same_structure=False)
     grad = gradients_impl.gradients(ret, [x])
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.assertEqual(self.evaluate(ret), 18.)
       self.assertSequenceEqual(self.evaluate(grad), [9.])
 
@@ -287,7 +612,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     ret = while_loop_v2(
         lambda v: v < 8., lambda v: v * y, [x], return_same_structure=False)
     grad = gradients_impl.gradients(ret, [x])
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.assertEqual(self.evaluate(ret), 18.)
       self.assertSequenceEqual(self.evaluate(grad), [9.])
 
@@ -335,7 +660,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         Cond, Body, [x, tensor_list], return_same_structure=False)
 
     for op in ops.get_default_graph().get_operations():
-      if op.type == "While":
+      if op.type == "While" or op.type == "StatelessWhile":
         while_op = op
 
     body_graph = while_v2._get_graph(while_op, "body")
@@ -418,7 +743,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         lambda i: i + 1, [constant_op.constant(0)],
         return_same_structure=False)
     while_op = output.op.inputs[0].op
-    self.assertEqual(while_op.type, "While")
+    if compat.forward_compatible(2019, 8, 23):
+      self.assertEqual(while_op.type, "StatelessWhile")
     return while_op
 
   def testDefaultName(self):
@@ -499,27 +825,89 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testForwardPassRewrite(self):
-    x = constant_op.constant(1.0, name="x")
-    output = while_v2.while_loop(lambda x: x < 10.0,
-                                 lambda x: x * 2.0,
-                                 [x])[0]
-    while_op = output.op.inputs[0].op
-    self.assertEqual(while_op.type, "While")
-    # outputs = [loop_counter, max_iters, x]
-    self.assertLen(while_op.outputs, 3)
+    if compat.forward_compatible(2019, 8, 23):
+      x = constant_op.constant(1.0, name="x")
+      output = while_v2.while_loop(lambda x: x < 10.0,
+                                   lambda x: x * 2.0,
+                                   [x])[0]
+      while_op = output.op.inputs[0].op
+      self.assertEqual(while_op.type, "StatelessWhile")
+      # outputs = [loop_counter, max_iters, x]
+      self.assertLen(while_op.outputs, 3)
 
-    gradients_impl.gradients(output, x)
-    # while_op should have been rewritten to output 2.0 intermediate.
-    # outputs = [loop_counter, max_iters, x, 2.0_accumulator, x_accumulator]
-    self.assertLen(while_op.outputs, 5)
+      gradients_impl.gradients(output, x)
+      # while_op should have been rewritten to output 2.0 intermediate.
+      # outputs = [loop_counter, max_iters, x, 2.0_accumulator, x_accumulator]
+      self.assertLen(while_op.outputs, 5)
 
-    gradients_impl.gradients(output, x)
-    # Computing the gradient again shouldn't rewrite while_op again.
-    self.assertLen(while_op.outputs, 5)
+      gradients_impl.gradients(output, x)
+      # Computing the gradient again shouldn't rewrite while_op again.
+      self.assertLen(while_op.outputs, 5)
+
+  @test_util.run_deprecated_v1
+  def testRandomUniformShape(self):
+    shape = constant_op.constant([3])
+
+    def Body(i, u):
+      shape_extended = array_ops.concat([[5], shape], axis=0)
+      u = random_ops.random_uniform(shape_extended)
+      self.assertAllEqual(u.shape.as_list(), [5, 3])
+      return i + 1, u
+
+    _, _ = while_loop_v2(
+        cond=lambda i, _: i < 3,
+        body=Body,
+        loop_vars=[
+            0,
+            array_ops.zeros([5, 3], dtype=dtypes.float32),
+        ])
+
+  @test_util.run_deprecated_v1
+  def testReshapeShape(self):
+    shape = constant_op.constant([3, 4])
+
+    def Body(i, u):
+      shape_extended = array_ops.concat([[5], shape], axis=0)
+      u = array_ops.reshape(u, [-1])
+      u = array_ops.reshape(u, shape_extended)
+      assert u.shape.as_list() == [5, 3, 4], str(u.shape.as_list())
+      return i + 1, u
+
+    _, _ = while_loop_v2(
+        cond=lambda i, _: i < 3,
+        body=Body,
+        loop_vars=[
+            0,
+            array_ops.zeros([5, 3, 4], dtype=dtypes.float32),
+        ])
+
+  @test_util.run_deprecated_v1
+  def testExternalColocationGrad(self):
+    external_t = constant_op.constant(2.)
+    v0 = constant_op.constant(2.)
+
+    def Body(v):
+      with ops.colocate_with(external_t):
+        return v * v
+
+    ret = while_loop_v2(lambda v: v < 8., Body, [v0])[0]
+    grad = gradients_impl.gradients(ret, [v0])[0]
+    self.assertAllEqual(ret, 16.)
+    self.assertAllEqual(grad, 32.)
 
 
 def ScalarShape():
   return ops.convert_to_tensor([], dtype=dtypes.int32)
+
+
+def GetOptimizedGraph():
+  mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
+  config = config_pb2.ConfigProto()
+  config.graph_options.rewrite_options.CopyFrom(
+      rewriter_config_pb2.RewriterConfig(
+          constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
+          memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL))
+  return tf_optimizer.OptimizeGraph(config, mg)
 
 
 if __name__ == "__main__":

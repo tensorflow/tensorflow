@@ -33,13 +33,19 @@ std::shared_ptr<Transposer> TransposerFactory::GetTransposer(
   if (IsBiasAddGrad(node)) {
     return GetOrCreateIfNotFound<BiasAddGradTransposer>("BiasAddGrad");
   }
-  if (IsConv2DBackpropFilter(node)) {
+  if (IsConv2DBackpropFilter(node) ||
+      IsDepthwiseConv2dNativeBackpropFilter(node)) {
     return GetOrCreateIfNotFound<Conv2DBackpropFilterTransposer>(
         "Conv2DBackpropFilter");
   }
-  if (IsConv2DBackpropInput(node)) {
+  if (IsConv2DBackpropInput(node) ||
+      IsDepthwiseConv2dNativeBackpropInput(node)) {
     return GetOrCreateIfNotFound<Conv2DBackpropInputTransposer>(
         "Conv2DBackpropInput");
+  }
+  if (IsFusedBatchNormEx(node)) {
+    return GetOrCreateIfNotFound<FusedBatchNormExTransposer>(
+        "FusedBatchNormEx");
   }
   if (IsFusedBatchNormGrad(node)) {
     return GetOrCreateIfNotFound<FusedBatchNormGradTransposer>(

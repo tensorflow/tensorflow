@@ -81,6 +81,7 @@ class MicroInterpreter {
   ErrorReporter* error_reporter_;
   TfLiteContext context_;
   MicroAllocator allocator_;
+  bool tensors_allocated_;
 
   TfLiteStatus initialization_status_;
   const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;

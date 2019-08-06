@@ -921,7 +921,8 @@ class ConvLSTM2D(ConvRNN2D):
                           recurrent_constraint=recurrent_constraint,
                           bias_constraint=bias_constraint,
                           dropout=dropout,
-                          recurrent_dropout=recurrent_dropout)
+                          recurrent_dropout=recurrent_dropout,
+                          dtype=kwargs.get('dtype'))
     super(ConvLSTM2D, self).__init__(cell,
                                      return_sequences=return_sequences,
                                      go_backwards=go_backwards,

@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/security/credentials.h"
-
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
@@ -94,6 +94,11 @@ class GrpcServer : public ServerInterface {
 
   WorkerEnv* worker_env() { return &worker_env_; }
   MasterEnv* master_env() { return &master_env_; }
+
+  // Add master eager context to local eager service in order to handle enqueue
+  // requests from remote workers.
+  Status AddMasterEagerContextToEagerService(
+      const tensorflow::uint64 context_id, tensorflow::EagerContext* context);
 
  protected:
   virtual Status GetPort(int* port) const;

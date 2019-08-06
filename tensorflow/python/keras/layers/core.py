@@ -580,9 +580,15 @@ class Flatten(Layer):
       permutation.append(1)
       inputs = array_ops.transpose(inputs, perm=permutation)
 
-    outputs = array_ops.reshape(
-        inputs, (tensor_shape.dimension_value(inputs.shape[0]) or
-                 array_ops.shape(inputs)[0], -1))
+    input_shape = inputs.shape
+    if input_shape[1:].is_fully_defined():
+      flattened_dim = tensor_shape.dimension_value(
+          np.prod(input_shape[1:], dtype=int))
+      outputs = array_ops.reshape(inputs, (-1, flattened_dim))
+    else:
+      outputs = array_ops.reshape(
+          inputs, (tensor_shape.dimension_value(inputs.shape[0]) or
+                   array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
       outputs.set_shape(self.compute_output_shape(inputs.shape))
     return outputs
@@ -1043,11 +1049,7 @@ class Dense(Layer):
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:
-      # Cast the inputs to self.dtype, which is the variable dtype. We do not
-      # cast if `should_cast_variables` is True, as in that case the variable
-      # will be automatically casted to inputs.dtype.
-      if not self._mixed_precision_policy.should_cast_variables:
-        inputs = math_ops.cast(inputs, self.dtype)
+      inputs = math_ops.cast(inputs, self._compute_dtype)
       if K.is_sparse(inputs):
         outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, self.kernel)
       else:
