@@ -98,6 +98,10 @@ protected:
     addToWorklist(op->getOperands());
     removeFromWorklist(op);
     folder.notifyRemoval(op);
+    op->walk([this](Operation *operation) {
+      removeFromWorklist(operation);
+      folder.notifyRemoval(operation);
+    });
   }
 
   // When the root of a pattern is about to be replaced, it can trigger
