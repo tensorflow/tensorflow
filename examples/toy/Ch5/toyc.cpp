@@ -230,7 +230,8 @@ int dumpLLVMIR() {
   llvm::InitializeNativeTargetAsmPrinter();
   mlir::ExecutionEngine::setupTargetTriple(llvmModule.get());
   auto optPipeline = mlir::makeOptimizingTransformer(
-      /* optLevel=*/EnableOpt ? 3 : 0, /* sizeLevel=*/0);
+      /* optLevel=*/EnableOpt ? 3 : 0, /* sizeLevel=*/0,
+      /* targetMachine=*/nullptr);
   if (auto err = optPipeline(llvmModule.get())) {
     llvm::errs() << "Failed to optimize LLVM IR " << err << "\n";
     return -1;
@@ -252,7 +253,8 @@ int runJit() {
   // Create an MLIR execution engine. The execution engine eagerly JIT-compiles
   // the module.
   auto optPipeline = mlir::makeOptimizingTransformer(
-      /* optLevel=*/EnableOpt ? 3 : 0, /* sizeLevel=*/0);
+      /* optLevel=*/EnableOpt ? 3 : 0, /* sizeLevel=*/0,
+      /* targetMachine=*/nullptr);
   auto maybeEngine = mlir::ExecutionEngine::create(*module, optPipeline);
   assert(maybeEngine && "failed to construct an execution engine");
   auto &engine = maybeEngine.get();

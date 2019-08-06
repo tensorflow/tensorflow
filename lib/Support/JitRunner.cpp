@@ -308,8 +308,8 @@ int mlir::JitRunnerMain(
     if (failed(mlirTransformer(m.get())))
       return EXIT_FAILURE;
 
-  auto transformer =
-      mlir::makeLLVMPassesTransformer(passes, optLevel, optPosition);
+  auto transformer = mlir::makeLLVMPassesTransformer(
+      passes, optLevel, /*targetMachine=*/nullptr, optPosition);
   auto error = mainFuncType.getValue() == "f32"
                    ? compileAndExecuteSingleFloatReturnFunction(
                          m.get(), mainFuncName.getValue(), transformer)
