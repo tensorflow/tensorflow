@@ -38,6 +38,6 @@ func @module_op() {
 // -----
 
 func @module_op() {
-  // expected-error@+1 {{is expected to terminate a 'module' operation}}
+  // expected-error@+1 {{expects parent op 'module'}}
   "module_terminator"() : () -> ()
 }

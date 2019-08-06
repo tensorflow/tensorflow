@@ -107,13 +107,11 @@ public:
 /// the terminator in their custom syntax for brevity.
 class ModuleTerminatorOp
     : public Op<ModuleTerminatorOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
-                OpTrait::IsTerminator> {
+                OpTrait::HasParent<ModuleOp>::Impl, OpTrait::IsTerminator> {
 public:
   using Op::Op;
   static StringRef getOperationName() { return "module_terminator"; }
-
   static void build(Builder *, OperationState *) {}
-  LogicalResult verify();
 };
 
 //===----------------------------------------------------------------------===//
