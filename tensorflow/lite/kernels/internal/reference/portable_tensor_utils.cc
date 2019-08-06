@@ -301,14 +301,6 @@ void PortableClipVector(const float* vector, int v_size, float abs_limit,
   }
 }
 
-void PortableVectorShiftLeft(float* vector, int v_size, float shift_value) {
-  TF_LITE_ASSERT(v_size > 0);
-  for (int i = 0; i < v_size - 1; i++) {
-    vector[i] = vector[i + 1];
-  }
-  vector[v_size - 1] = shift_value;
-}
-
 void PortableReductionSumVector(const float* input_vector, float* output_vector,
                                 int output_size, int reduction_size) {
   const float* input_vector_ptr = input_vector;

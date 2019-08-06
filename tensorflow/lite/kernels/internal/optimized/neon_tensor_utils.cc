@@ -1020,24 +1020,6 @@ void NeonReductionSumVector(const float* input_vector, float* output_vector,
   }
 }
 
-void NeonVectorShiftLeft(float* vector, int v_size, float shift_value) {
-  // This variable keeps track of the next to the last index which is being
-  // copied to make sure we are not out of the vector boundary.
-  int last_index_copy = kFloatWeightsPerNeonLane;
-  int current_index_copy = 0;
-  while (last_index_copy < v_size) {
-    float32x4_t v_f32x4 = vld1q_f32(vector + current_index_copy + 1);
-    vst1q_f32(vector + current_index_copy, v_f32x4);
-    current_index_copy += kFloatWeightsPerNeonLane;
-    last_index_copy += kFloatWeightsPerNeonLane;
-  }
-  // Postamble loop.
-  for (int i = current_index_copy; i < v_size - 1; i++) {
-    vector[i] = vector[i + 1];
-  }
-  vector[v_size - 1] = shift_value;
-}
-
 }  // namespace tensor_utils
 }  // namespace tflite
 
