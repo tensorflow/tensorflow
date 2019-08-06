@@ -676,6 +676,10 @@ py_test(
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
+    tags = [
+        "no_rocm",
+        "no_rocm_v2",
+    ],
 )
 
 py_test(
@@ -1124,6 +1128,10 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    tags = [
+        "no_rocm",
+        "no_rocm_v2",
+    ],
 )
 
 py_test(
@@ -1152,6 +1160,10 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
+    ],
+    tags = [
+        "no_rocm",
+        "no_rocm_v2",
     ],
 )
 
