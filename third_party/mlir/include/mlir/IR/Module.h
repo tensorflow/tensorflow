@@ -25,6 +25,8 @@
 #include "mlir/IR/SymbolTable.h"
 
 namespace mlir {
+class ModuleTerminatorOp;
+
 //===----------------------------------------------------------------------===//
 // Module Operation.
 //===----------------------------------------------------------------------===//
@@ -33,8 +35,11 @@ namespace mlir {
 /// single block containing opaque operations. The region of a module is not
 /// allowed to implicitly capture global values, and all external references
 /// must use symbolic references via attributes(e.g. via a string name).
-class ModuleOp : public Op<ModuleOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
-                           OpTrait::IsIsolatedFromAbove, OpTrait::SymbolTable> {
+class ModuleOp
+    : public Op<
+          ModuleOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
+          OpTrait::IsIsolatedFromAbove, OpTrait::SymbolTable,
+          OpTrait::SingleBlockImplicitTerminator<ModuleTerminatorOp>::Impl> {
 public:
   using Op::Op;
   using Op::print;
