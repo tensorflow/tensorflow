@@ -25,6 +25,8 @@ import numpy as np
 import six
 
 from tensorflow.python import keras
+from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.utils import io_utils
 from tensorflow.python.platform import test
 
@@ -47,8 +49,10 @@ def create_dataset(h5_path='test.h5'):
   f.close()
 
 
-class TestIOUtils(test.TestCase):
+class TestIOUtils(keras_parameterized.TestCase):
 
+  # TODO(b/137965102): eventually support this in eager + the v2 loops
+  @keras_parameterized.run_all_keras_modes(always_skip_eager=True)
   def test_HDF5Matrix(self):
     if h5py is None:
       return
@@ -80,7 +84,11 @@ class TestIOUtils(test.TestCase):
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(64, input_shape=(10,), activation='relu'))
     model.add(keras.layers.Dense(1, activation='sigmoid'))
-    model.compile(loss='binary_crossentropy', optimizer='sgd')
+    model.compile(
+        loss='binary_crossentropy',
+        optimizer='sgd',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     # Note: you have to use shuffle='batch' or False with HDF5Matrix
     model.fit(x_train, y_train, batch_size=32, shuffle='batch', verbose=False)

@@ -81,23 +81,19 @@ struct TestCase {
 // Test case 1: same shape.
 TestCase SameShapeTestCase() {
   return {/*input_tensors*/
-          {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                                    {1, 2, 3, 4}),
-            DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                                    {5, 6, 7, 8})},
-           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                                    {11, 12, 13, 14}),
-            DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                                    {15, 16, 17, 18})}},
+          {{CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
+            CreateTensor<int64>(TensorShape{2, 2}, {5, 6, 7, 8})},
+           {CreateTensor<int64>(TensorShape{2, 2}, {11, 12, 13, 14}),
+            CreateTensor<int64>(TensorShape{2, 2}, {15, 16, 17, 18})}},
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {1, 2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {5, 6}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {3, 4}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {7, 8}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {11, 12}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {15, 16}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {13, 14}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {17, 18})},
+          {CreateTensor<int64>(TensorShape{2}, {1, 2}),
+           CreateTensor<int64>(TensorShape{2}, {5, 6}),
+           CreateTensor<int64>(TensorShape{2}, {3, 4}),
+           CreateTensor<int64>(TensorShape{2}, {7, 8}),
+           CreateTensor<int64>(TensorShape{2}, {11, 12}),
+           CreateTensor<int64>(TensorShape{2}, {15, 16}),
+           CreateTensor<int64>(TensorShape{2}, {13, 14}),
+           CreateTensor<int64>(TensorShape{2}, {17, 18})},
           /*expected_output_dtypes*/ {DT_INT64, DT_INT64},
           /*expected_output_shapes*/
           {PartialTensorShape({2}), PartialTensorShape({2})},
@@ -107,42 +103,38 @@ TestCase SameShapeTestCase() {
 
 // Test case 2: different shape.
 TestCase DifferentShapeTestCase() {
-  return {
-      /*input_tensors*/
-      {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                                {1, 2, 3, 4, 5, 6}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                                {7, 8, 9, 10})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                                {11, 12, 13, 14}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 1}, {15, 16})}},
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3}, {1, 2, 3}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {7, 8}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3}, {4, 5, 6}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {9, 10}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {11, 12}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {15}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {13, 14}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {16})},
-      /*expected_output_dtypes*/ {DT_INT64, DT_INT64},
-      /*expected_output_shapes*/
-      {PartialTensorShape({-1}), PartialTensorShape({-1})},
-      /*expected_cardinality*/ 4,
-      /*breakpoints*/ {0, 2, 5}};
+  return {/*input_tensors*/
+          {{CreateTensor<int64>(TensorShape{2, 3}, {1, 2, 3, 4, 5, 6}),
+            CreateTensor<int64>(TensorShape{2, 2}, {7, 8, 9, 10})},
+           {CreateTensor<int64>(TensorShape{2, 2}, {11, 12, 13, 14}),
+            CreateTensor<int64>(TensorShape{2, 1}, {15, 16})}},
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape{3}, {1, 2, 3}),
+           CreateTensor<int64>(TensorShape{2}, {7, 8}),
+           CreateTensor<int64>(TensorShape{3}, {4, 5, 6}),
+           CreateTensor<int64>(TensorShape{2}, {9, 10}),
+           CreateTensor<int64>(TensorShape{2}, {11, 12}),
+           CreateTensor<int64>(TensorShape{1}, {15}),
+           CreateTensor<int64>(TensorShape{2}, {13, 14}),
+           CreateTensor<int64>(TensorShape{1}, {16})},
+          /*expected_output_dtypes*/ {DT_INT64, DT_INT64},
+          /*expected_output_shapes*/
+          {PartialTensorShape({-1}), PartialTensorShape({-1})},
+          /*expected_cardinality*/ 4,
+          /*breakpoints*/ {0, 2, 5}};
 }
 
 // Test case 3: different dtypes
 TestCase DifferentDtypeTestCase() {
-  return {/*input_tensors*/ {{DatasetOpsTestBase::CreateTensor<int64>(
-                                 TensorShape({2, 2}), {1, 2, 3, 4})},
-                             {DatasetOpsTestBase::CreateTensor<double>(
-                                 TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}},
-          /*expected_outputs*/ {},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({2})},
-          /*expected_cardinality*/ 0,
-          /*breakpoints*/ {}};
+  return {
+      /*input_tensors*/ {
+          {CreateTensor<int64>(TensorShape({2, 2}), {1, 2, 3, 4})},
+          {CreateTensor<double>(TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}},
+      /*expected_outputs*/ {},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({2})},
+      /*expected_cardinality*/ 0,
+      /*breakpoints*/ {}};
 }
 
 class ParameterizedConcatenateDatasetOpTest

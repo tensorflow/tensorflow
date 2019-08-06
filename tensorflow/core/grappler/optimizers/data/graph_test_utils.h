@@ -23,6 +23,11 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_tests_utils {
 
+// Creates a test NodeDef for ShuffleDatasetV2.
+NodeDef MakeCacheV2Node(StringPiece name, StringPiece input_node_name,
+                        StringPiece filename_node_name,
+                        StringPiece cache_node_name);
+
 // Creates a test NodeDef for FilterDataset.
 NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
                        StringPiece function_name = "IsZero");
@@ -38,13 +43,13 @@ NodeDef MakeMapAndBatchNode(StringPiece name, StringPiece input_node_name,
                             StringPiece drop_remainder_node_name,
                             StringPiece function_name = "XTimesTwo");
 
-// Creates a test NodeDef for ParallelInterleaveDataset.
-NodeDef MakeParallelInterleaveNode(StringPiece name,
-                                   StringPiece input_node_name,
-                                   StringPiece cycle_length_node_name,
-                                   StringPiece block_length_node_name,
-                                   StringPiece num_parallel_calls_node_name,
-                                   StringPiece function_name, bool sloppy);
+// Creates a test NodeDef for ParallelInterleaveDatasetV2.
+NodeDef MakeParallelInterleaveV2Node(StringPiece name,
+                                     StringPiece input_node_name,
+                                     StringPiece cycle_length_node_name,
+                                     StringPiece block_length_node_name,
+                                     StringPiece num_parallel_calls_node_name,
+                                     StringPiece function_name, bool sloppy);
 
 // Creates a test NodeDef for ParallelMapDataset.
 NodeDef MakeParallelMapNode(StringPiece name, StringPiece input_node_name,
@@ -55,6 +60,11 @@ NodeDef MakeParallelMapNode(StringPiece name, StringPiece input_node_name,
 NodeDef MakeParseExampleNode(StringPiece name, StringPiece input_node_name,
                              StringPiece num_parallel_calls_node_name,
                              bool sloppy);
+
+// Creates a test NodeDef for ShuffleDatasetV2.
+NodeDef MakeShuffleV2Node(StringPiece name, StringPiece input_node_name,
+                          StringPiece buffer_size_node_name,
+                          StringPiece seed_generator_node_name);
 
 }  // namespace graph_tests_utils
 }  // namespace grappler

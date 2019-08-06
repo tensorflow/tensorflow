@@ -147,8 +147,11 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "no_oss",
         "nomsan",  # TODO(b/130299192)
+        "notap",  # TODO(b/130432997)
     ],
 )
 

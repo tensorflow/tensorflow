@@ -148,6 +148,7 @@ class LinearOperatorCirculantTestSelfAdjointOperator(
     return operator, mat
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("No registered Const")
   def test_simple_hermitian_spectrum_gives_operator_with_zero_imag_part(self):
     with self.cached_session():
       spectrum = math_ops.cast([1., 1j, -1j], dtypes.complex64)
@@ -216,6 +217,7 @@ class LinearOperatorCirculantTestHermitianSpectrum(
     return operator, mat
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("No registered Const")
   def test_simple_hermitian_spectrum_gives_operator_with_zero_imag_part(self):
     with self.cached_session():
       spectrum = math_ops.cast([1., 1j, -1j], dtypes.complex64)
@@ -244,7 +246,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
   # Skip Cholesky since we are explicitly testing non-hermitian
   # spectra.
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     return ["cholesky"]
 
   def operator_and_matrix(
@@ -272,6 +274,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
     return operator, mat
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("No registered Const")
   def test_simple_hermitian_spectrum_gives_operator_with_zero_imag_part(self):
     with self.cached_session():
       spectrum = math_ops.cast([1., 1j, -1j], dtypes.complex64)
@@ -530,7 +533,7 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
     return [dtypes.complex64, dtypes.complex128]
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     return ["cholesky"]
 
   def operator_and_matrix(
@@ -679,7 +682,7 @@ class LinearOperatorCirculant3DTest(test.TestCase):
       self.assertEqual(operator.dtype, dtypes.complex64)
       matrix = operator.to_dense().eval()
       self.assertAllEqual((2, 2 * 3 * 5, 2 * 3 * 5), matrix.shape)
-      np.testing.assert_allclose(0, np.imag(matrix), atol=1e-6)
+      np.testing.assert_allclose(0, np.imag(matrix), atol=1e-5)
 
   @test_util.run_deprecated_v1
   def test_defining_spd_operator_by_taking_real_part(self):

@@ -40,7 +40,7 @@ TEST(MergePaddingWith, Smoke) {
   pad_node->operation.attributes = attr;
 
   auto conv_node = graph.NewNode();
-  Value<TensorRefFloat32>* temp;
+  Value<TensorRef<BHWC>>* temp;
   ASSERT_TRUE(ConnectTwoNodes(&graph, pad_node, conv_node, &temp).ok());
   ASSERT_TRUE(AddOutput(&graph, conv_node, &temp).ok());
   conv_node->operation.type = ToString(OperationType::CONVOLUTION_2D);
@@ -77,7 +77,7 @@ TEST(MergePaddingWith, MergeTwo) {
   pad_node1->operation.attributes = attr;
 
   auto pad_node2 = graph.NewNode();
-  Value<TensorRefFloat32>* temp;
+  Value<TensorRef<BHWC>>* temp;
   ASSERT_TRUE(ConnectTwoNodes(&graph, pad_node1, pad_node2, &temp).ok());
   pad_node2->operation.type = ToString(OperationType::PAD);
   attr.prepended = HWC(0, 0, 0);

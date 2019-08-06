@@ -211,7 +211,7 @@ TEST_F(BFloat16PropagationTest, DoNotChangeAllReduce) {
   HloInstruction* all_reduce =
       builder.AddInstruction(HloInstruction::CreateAllReduce(
           ShapeUtil::MakeTupleShape({shape, shape}), {a, b}, reduction,
-          /*replica_groups=*/{}, /*barrier=*/"", /*all_reduce_id=*/1));
+          /*replica_groups=*/{}, /*channel_id=*/1));
   HloInstruction* gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(shape, all_reduce, 0));
   HloInstruction* gte1 = builder.AddInstruction(
@@ -420,6 +420,35 @@ TEST_F(BFloat16PropagationTest, PropagateThroughFusion) {
   EXPECT_TRUE(OutputsBF16(b_f0));
   EXPECT_TRUE(OutputsBF16(a_f1));
   EXPECT_TRUE(OutputsBF16(b_f1));
+}
+
+// Tests that a fusion with a bitcast-convert as its root is changed via adding
+// extra convert, instead of changing the type in-place.
+TEST_F(BFloat16PropagationTest, FusionWithBitcastConvertRoot) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+  Shape u32_shape = ShapeUtil::MakeShape(U32, {4, 4});
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {4, 4});
+
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, u32_shape, "param"));
+
+  auto builder_f = HloComputation::Builder("fusion");
+  HloInstruction* a_f = builder_f.AddInstruction(
+      HloInstruction::CreateParameter(0, u32_shape, "a"));
+  HloInstruction* bc_f = builder_f.AddInstruction(
+      HloInstruction::CreateBitcastConvert(f32_shape, a_f));
+  auto comp_f = module->AddEmbeddedComputation(builder_f.Build());
+  auto fusion = builder.AddInstruction(HloInstruction::CreateFusion(
+      f32_shape, HloInstruction::FusionKind::kLoop, {param}, comp_f));
+  auto dot = builder.AddInstruction(CreateDot(f32_shape, fusion, fusion));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), dot);
+  EXPECT_EQ(bc_f->shape(), f32_shape);
+  EXPECT_TRUE(OutputsBF16(bc_f));
 }
 
 // Tests that changes to BF16 that cannot be propagated outside a fusion are

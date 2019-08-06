@@ -149,7 +149,7 @@ def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
   DeprecatedNameForClass = deprecated_alias(
     deprecated_name='module2.DeprecatedNameForClass',
     name='module1.NewNameForClass',
-    module1.NewNameForClass)
+    func_or_class=module1.NewNameForClass)
   ```
 
   This function works for classes and functions.

@@ -248,9 +248,9 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   OptimizerOptions* optimizer_opts =
       options.config.mutable_graph_options()->mutable_optimizer_options();
   if (cfg.apply_optimizations) {
-    optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions_Level_L1);
+    optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions::L1);
   } else {
-    optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions_Level_L0);
+    optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions::L0);
   }
   optimizer_opts->set_do_function_inlining(cfg.inline_functions);
 
@@ -267,8 +267,8 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   graph_ctor_opts.expect_device_spec = false;
   std::unique_ptr<Graph> graphptr(new Graph(function_library));
 
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(graph_ctor_opts, graph_def, graphptr.get()));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+      graph_ctor_opts, std::move(graph_def), graphptr.get()));
 
   // Optimize the graph.
   ::tensorflow::GraphOptimizer optimizer(*optimizer_opts);

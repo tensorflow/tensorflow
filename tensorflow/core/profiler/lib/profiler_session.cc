@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/env.h"
@@ -27,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/trace_events.pb.h"
 
 namespace tensorflow {
-
 namespace {
 
 // Track whether there's an active ProfilerSession.
@@ -35,6 +37,15 @@ namespace {
 // use singletons that do not allow concurrent profiling request (e.g.,
 // DeviceTracer).
 std::atomic<bool> session_active = ATOMIC_VAR_INIT(false);
+
+// Given a node_name in the format "op_name:op_type", returns the "op_type".
+// If the "op_type" is missing, returns the node_name.
+// This is done so all ops with the same type appear in the same color in trace
+// viewer.
+inline std::string EventName(absl::string_view node_name) {
+  std::vector<absl::string_view> parts = absl::StrSplit(node_name, ':');
+  return std::string(parts.back());
+}
 
 void AssignLanes(RunMetadata* run_metadata) {
   for (size_t device_id = 0;
@@ -105,7 +116,7 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
       auto* args = event->mutable_args();
       event->set_device_id(device_id);
       event->set_resource_id(node.thread_id());
-      event->set_name(node.node_name());
+      event->set_name(EventName(node.node_name()));
       event->set_timestamp_ps(
           (node.all_start_micros() - profile_start_time_micros) *
           EnvTime::kMicrosToPicos);
@@ -119,9 +130,8 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
 }
 }  // namespace
 
-/*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
-    ProfilerContext* const context) {
-  return absl::WrapUnique(new ProfilerSession(context));
+/*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create() {
+  return absl::WrapUnique(new ProfilerSession());
 }
 
 Status ProfilerSession::Status() {
@@ -162,7 +172,7 @@ Status ProfilerSession::SerializeToString(string* content) {
   return Status::OK();
 }
 
-ProfilerSession::ProfilerSession(ProfilerContext* const context)
+ProfilerSession::ProfilerSession()
     : active_(!session_active.exchange(true)),
       start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
   if (!active_) {
@@ -173,7 +183,7 @@ ProfilerSession::ProfilerSession(ProfilerContext* const context)
 
   LOG(INFO) << "Profiler session started.";
 
-  CreateProfilers(context, &profilers_);
+  CreateProfilers(&profilers_);
   status_ = Status::OK();
 
   for (auto& profiler : profilers_) {

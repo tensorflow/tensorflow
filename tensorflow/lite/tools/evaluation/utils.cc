@@ -23,12 +23,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-
-#if defined(__ANDROID__)
-#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
-#endif
-
 namespace tflite {
 namespace evaluation {
 
@@ -79,6 +73,7 @@ TfLiteStatus GetSortedFileNames(const std::string& directory,
   return kTfLiteOk;
 }
 
+// TODO(b/138448769): Migrate delegate helper APIs to lite/testing.
 Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
 #if defined(__ANDROID__)
   return Interpreter::TfLiteDelegatePtr(
@@ -90,17 +85,38 @@ Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
 #endif  // defined(__ANDROID__)
 }
 
+Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
+    StatefulNnApiDelegate::Options options) {
+#if defined(__ANDROID__)
+  return Interpreter::TfLiteDelegatePtr(
+      new StatefulNnApiDelegate(options), [](TfLiteDelegate* delegate) {
+        delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
+      });
+#else
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+#endif  // defined(__ANDROID__)
+}
+
+#if defined(__ANDROID__)
+Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
+    tflite::FlatBufferModel* model, TfLiteGpuDelegateOptions* options) {
+  return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateCreate(options),
+                                        &TfLiteGpuDelegateDelete);
+}
+#endif  // defined(__ANDROID__)
+
 Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
     tflite::FlatBufferModel* model) {
 #if defined(__ANDROID__)
   TfLiteGpuDelegateOptions options;
-  options.metadata = TfLiteGpuDelegateGetModelMetadata(model->GetModel());
+  options.metadata =
+      model ? TfLiteGpuDelegateGetModelMetadata(model->GetModel()) : nullptr;
   options.compile_options.precision_loss_allowed = 1;
   options.compile_options.preferred_gl_object_type =
       TFLITE_GL_OBJECT_TYPE_FASTEST;
   options.compile_options.dynamic_batch_enabled = 0;
-  return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateCreate(&options),
-                                        &TfLiteGpuDelegateDelete);
+
+  return CreateGPUDelegate(model, &options);
 #else
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 #endif  // defined(__ANDROID__)

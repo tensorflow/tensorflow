@@ -30,6 +30,8 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
+const absl::string_view kTfTrtContainerName = "TF-TRT";
+
 Logger& TRTEngineCacheResource::GetLogger() {
   static Logger* logger = new Logger();
   return *logger;

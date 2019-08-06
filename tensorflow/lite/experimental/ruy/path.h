@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/lite/experimental/ruy/platform.h"
 #include "tensorflow/lite/experimental/ruy/size_util.h"
 
 namespace ruy {
@@ -50,6 +51,11 @@ namespace ruy {
 // given base architecture (such as ARM). Higher values of this enum correspond
 // to "better" code paths within a given base architecture for which Ruy has
 // optimized code paths.
+//
+// Values are reused across architectures.
+// Rationale: Scale better to N architectures, it is good to have small values
+// both for the compile-time logic to select paths, and when manually spelling
+// out Path values, such as when invoking a test or benchmark.
 enum class Path : std::uint8_t {
   // This is a special null value, representing the absence of any path.
   kNone = 0,
@@ -65,11 +71,19 @@ enum class Path : std::uint8_t {
   //
   // This is intended for testing/development.
   kStandardCpp = 0x2,
+  //
+  // ARM architectures.
+  //
   // Optimized path using a widely available subset of ARM NEON instructions.
   kNeon = 0x4,
   // Optimized path making use of ARM NEON dot product instructions that are
   // available on newer ARM cores.
   kNeonDotprod = 0x8,
+  //
+  // x86 architectures.
+  //
+  // Optimized for AVX-512.
+  kAvx512 = 0x4,
 };
 
 inline constexpr Path operator|(Path p, Path q) {
@@ -97,17 +111,31 @@ inline Path GetMostSignificantPath(Path path_mask) {
 
 // ruy::kAllPaths represents all Path's that make sense to on a given
 // base architecture.
-#ifdef __aarch64__
 #ifdef __linux__
+#if RUY_PLATFORM(NEON_64)
 constexpr Path kAllPaths =
     Path::kReference | Path::kStandardCpp | Path::kNeon | Path::kNeonDotprod;
-#else
-// We don't know how to do runtime dotprod detection outside of linux for now.
+#elif RUY_PLATFORM(NEON_32)
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp | Path::kNeon;
-#endif
+#elif RUY_PLATFORM(AVX512)
+// TODO(b/138433137): kAllPaths should always contain kAvx512 regardless of
+// whether AVX-512 is enabled in the translation unit #including this header.
+constexpr Path kAllPaths =
+    Path::kReference | Path::kStandardCpp | Path::kAvx512;
 #else
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
 #endif
+#else   // __linux__
+// We don't know how to do runtime dotprod detection outside of linux for now.
+#if RUY_PLATFORM(NEON)
+constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp | Path::kNeon;
+#elif RUY_PLATFORM(AVX512)
+constexpr Path kAllPaths =
+    Path::kReference | Path::kStandardCpp | Path::kAvx512;
+#else
+constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
+#endif
+#endif  // __linux__
 
 }  // namespace ruy
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -25,17 +26,17 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit TakeWhileDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(
-                            ctx, "predicate", /*params=*/{}, &func_metadata_));
+    FunctionMetadata::Params params;
+    params.is_multi_device_function = true;
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "predicate", params,
+                                                 &func_metadata_));
     OP_REQUIRES(ctx, func_metadata_->short_circuit_info().indices.size() <= 1,
                 errors::InvalidArgument(
                     "predicate function has more than one return value."));
@@ -82,6 +83,10 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
     }
 
     int64 Cardinality() const override { return kUnknownCardinality; }
+
+    bool IsStateful() const override {
+      return captured_func_->IsStateful() || input_->IsStateful();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -195,9 +200,15 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
   std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
 };
 
+REGISTER_KERNEL_BUILDER(Name("TakeWhileDataset").Device(DEVICE_CPU),
+                        TakeWhileDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalTakeWhileDataset").Device(DEVICE_CPU),
                         TakeWhileDatasetOp);
 
+REGISTER_INPUT_COLOCATION_EXEMPTION("TakeWhileDataset");
+REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalTakeWhileDataset");
+
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

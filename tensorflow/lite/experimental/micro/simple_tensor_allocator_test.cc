@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
-
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 
 namespace tflite {
@@ -67,6 +66,24 @@ const Tensor* Create1dTensor(int size) {
   const Offset<Tensor> tensor_offset = CreateTensor(
       *builder, builder->CreateVector(tensor_shape, tensor_shape_size),
       TensorType_INT32, 0, builder->CreateString("test_tensor"), 0, false);
+  builder->Finish(tensor_offset);
+  void* tensor_pointer = builder->GetBufferPointer();
+  const Tensor* tensor = flatbuffers::GetRoot<Tensor>(tensor_pointer);
+  return tensor;
+}
+
+const Tensor* CreateMissingQuantizationTensor(int size) {
+  using flatbuffers::Offset;
+  flatbuffers::FlatBufferBuilder* builder = BuilderInstance();
+  const Offset<QuantizationParameters> quant_params =
+      CreateQuantizationParameters(*builder, 0, 0, 0, 0,
+                                   QuantizationDetails_NONE, 0, 0);
+  constexpr size_t tensor_shape_size = 1;
+  const int32_t tensor_shape[tensor_shape_size] = {size};
+  const Offset<Tensor> tensor_offset = CreateTensor(
+      *builder, builder->CreateVector(tensor_shape, tensor_shape_size),
+      TensorType_INT32, 0, builder->CreateString("test_tensor"), quant_params,
+      false);
   builder->Finish(tensor_offset);
   void* tensor_pointer = builder->GetBufferPointer();
   const Tensor* tensor = flatbuffers::GetRoot<Tensor>(tensor_pointer);
@@ -164,6 +181,27 @@ TF_LITE_MICRO_TEST(TestMultipleTooLarge) {
 
   result = allocator.AllocateMemory(768, 1);
   TF_LITE_MICRO_EXPECT_EQ(nullptr, result);
+}
+
+TF_LITE_MICRO_TEST(TestAllocateTensor) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleTensorAllocator allocator(arena, arena_size);
+
+  const tflite::Tensor* tensor = tflite::CreateMissingQuantizationTensor(100);
+  const flatbuffers::Vector<flatbuffers::Offset<tflite::Buffer>>* buffers =
+      tflite::CreateBuffers();
+
+  TfLiteTensor allocated_tensor;
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk,
+      allocator.AllocateTensor(*tensor, 0, 1, buffers, micro_test::reporter,
+                               &allocated_tensor));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, allocated_tensor.type);
+  TF_LITE_MICRO_EXPECT_EQ(1, allocated_tensor.dims->size);
+  TF_LITE_MICRO_EXPECT_EQ(100, allocated_tensor.dims->data[0]);
+  TF_LITE_MICRO_EXPECT_EQ(400, allocated_tensor.bytes);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, allocated_tensor.data.i32);
 }
 
 TF_LITE_MICRO_TESTS_END

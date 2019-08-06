@@ -108,8 +108,7 @@ def generate_checkpoint_state_proto(save_dir,
   if not os.path.isabs(save_dir):
     if not os.path.isabs(model_checkpoint_path):
       model_checkpoint_path = os.path.relpath(model_checkpoint_path, save_dir)
-    for i in range(len(all_model_checkpoint_paths)):
-      p = all_model_checkpoint_paths[i]
+    for i, p in enumerate(all_model_checkpoint_paths):
       if not os.path.isabs(p):
         all_model_checkpoint_paths[i] = os.path.relpath(p, save_dir)
 
@@ -281,8 +280,7 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
       if not os.path.isabs(ckpt.model_checkpoint_path):
         ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
                                                   ckpt.model_checkpoint_path)
-      for i in range(len(ckpt.all_model_checkpoint_paths)):
-        p = ckpt.all_model_checkpoint_paths[i]
+      for i, p in enumerate(ckpt.all_model_checkpoint_paths):
         if not os.path.isabs(p):
           ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
   except errors.OpError as e:
@@ -349,6 +347,30 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   return None
 
 
+def checkpoint_exists_internal(checkpoint_prefix):
+  """Checks whether a V1 or V2 checkpoint exists with the specified prefix.
+
+  This is an internal function to check if a checkpoint exists,
+  since it takes into account the naming difference between V1 and V2 formats.
+
+  Args:
+    checkpoint_prefix: the prefix of a V1 or V2 checkpoint, with V2 taking
+      priority.  Typically the result of `Saver.save()` or that of
+      `tf.train.latest_checkpoint()`, regardless of sharded/non-sharded or
+      V1/V2.
+  Returns:
+    A bool, true if a checkpoint referred to by `checkpoint_prefix` exists.
+  """
+  pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
+                                        saver_pb2.SaverDef.V2)
+  if file_io.get_matching_files(pathname):
+    return True
+  elif file_io.get_matching_files(checkpoint_prefix):
+    return True
+  else:
+    return False
+
+
 @deprecation.deprecated(
     date=None,
     instructions="Use standard file APIs to check for files with this prefix.")
@@ -364,17 +386,11 @@ def checkpoint_exists(checkpoint_prefix):
       priority.  Typically the result of `Saver.save()` or that of
       `tf.train.latest_checkpoint()`, regardless of sharded/non-sharded or
       V1/V2.
+
   Returns:
-    A bool, true iff a checkpoint referred to by `checkpoint_prefix` exists.
+    A bool, true if a checkpoint referred to by `checkpoint_prefix` exists.
   """
-  pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
-                                        saver_pb2.SaverDef.V2)
-  if file_io.get_matching_files(pathname):
-    return True
-  elif file_io.get_matching_files(checkpoint_prefix):
-    return True
-  else:
-    return False
+  return checkpoint_exists_internal(checkpoint_prefix)
 
 
 @deprecation.deprecated(
@@ -709,6 +725,13 @@ class CheckpointManager(object):
       del self._maybe_delete[save_path]
     self._maybe_delete[save_path] = timestamp
     self._latest_checkpoint = save_path
+    # Before deleting anything we update the Checkpoint proto with the new
+    # checkpoint. We'll go back and correct it after cleaning up old files, but
+    # a preemption while deleting will be more likely to see the new checkpoint
+    # this way.
+    self._record_state()
     self._sweep()
+    # Write out the Checkpoint proto a second time, now without the deleted
+    # checkpoints.
     self._record_state()
     return save_path

@@ -22,6 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 static const double kPercentile = 90.0;
@@ -156,6 +157,15 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
     }
 
     int64 Cardinality() const override { return cardinality_; }
+
+    bool IsStateful() const override {
+      for (const auto& input : inputs_) {
+        if (input->IsStateful()) {
+          return true;
+        }
+      }
+      return false;
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -357,11 +367,13 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };  // class ChooseFastestDatasetOp
 
-// Register the kernel implementation for ChooseFastestDataset.
+REGISTER_KERNEL_BUILDER(Name("ChooseFastestDataset").Device(DEVICE_CPU),
+                        ChooseFastestDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalChooseFastestDataset").Device(DEVICE_CPU),
     ChooseFastestDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

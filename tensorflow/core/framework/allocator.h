@@ -288,9 +288,13 @@ struct AllocatorAttributes {
   bool gpu_compatible() const { return value & (0x1 << 2); }
   void Merge(AllocatorAttributes other) {
     value |= other.value;
-    scope_id = (scope_id > 0 && other.scope_id == 0)
-                   ? scope_id
-                   : ((scope_id == 0) ? other.scope_id : 0);
+    if (scope_id != other.scope_id) {
+      CHECK(scope_id == 0 || other.scope_id == 0)
+          << "At least one scope_id should be zero to merge "
+             "AllocatorAttributes but found this.scope_id="
+          << scope_id << " and other.scope_id=" << other.scope_id;
+      scope_id = scope_id == 0 ? other.scope_id : scope_id;
+    }
   }
   // Returns true if the fields set in *this is a subset of or equal to
   // those set in other.

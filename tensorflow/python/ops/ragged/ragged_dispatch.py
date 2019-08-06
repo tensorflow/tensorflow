@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
@@ -37,6 +38,7 @@ from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_squeeze_op
+from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_shape
 from tensorflow.python.ops.ragged import ragged_util
@@ -388,7 +390,7 @@ _BINARY_ELEMENTWISE_OPS = [
 # We don't need to register a separate delegation handler for these v1 ops,
 # since they delegate to the v2 ops (which already have a handler).  But we
 # still want to include them in the ragged_op_list() output.
-_V1_OPS_THAT_DELEGATE_TO_V2_OPS = [
+_V2_OPS_THAT_ARE_DELEGATED_TO_FROM_V1_OPS = [
     math_ops.reduce_sum,
     math_ops.reduce_prod,
     math_ops.reduce_min,
@@ -396,6 +398,9 @@ _V1_OPS_THAT_DELEGATE_TO_V2_OPS = [
     math_ops.reduce_mean,
     math_ops.reduce_any,
     math_ops.reduce_all,
+    string_ops.string_to_number,
+    string_ops.string_to_hash_bucket,
+    string_ops.reduce_join_v2,
 ]
 
 
@@ -433,6 +438,15 @@ def _ragged_squeeze_v1(input, axis=None, name=None, squeeze_dims=None):  # pylin
                                                 squeeze_dims)
   return ragged_squeeze_op.squeeze(input, axis, name)
 
+
+def _ragged_dynamic_partition(data, partitions, num_partitions, name=None):
+  """RaggedTensor Dispatch override for tf.dynamic_partition."""
+  if not isinstance(num_partitions, int) or num_partitions < 0:
+    raise TypeError('num_partitions must be a non-negative integer')
+  result = ragged_array_ops.stack_dynamic_partitions(data, partitions,
+                                                     num_partitions, name)
+  return [result[i] for i in range(num_partitions)]
+
 # (original_op, ragged_op, ragged_args)
 _RAGGED_DISPATCH_OPS = [
     (array_ops.batch_gather, ragged_batch_gather_ops.batch_gather,
@@ -453,6 +467,8 @@ _RAGGED_DISPATCH_OPS = [
     (array_ops.stack, ragged_concat_ops.stack, ['[values]']),
     (array_ops.tile, ragged_array_ops.tile, ['input']),
     (array_ops.where, ragged_where_op.where, ['condition', 'x', 'y']),
+    (data_flow_ops.dynamic_partition, _ragged_dynamic_partition,
+     ['data', 'partitions']),
     (math_ops.unsorted_segment_sum, ragged_math_ops.segment_sum,
      ['data', 'segment_ids']),
     (math_ops.unsorted_segment_prod, ragged_math_ops.segment_prod,
@@ -465,6 +481,7 @@ _RAGGED_DISPATCH_OPS = [
      ['data', 'segment_ids']),
     (math_ops.unsorted_segment_sqrt_n, ragged_math_ops.segment_sqrt_n,
      ['data', 'segment_ids']),
+    (string_ops.reduce_join_v2, ragged_string_ops.reduce_join, ['inputs']),
     (math_ops.reduce_sum, ragged_math_ops.reduce_sum, ['input_tensor']),
     (math_ops.reduce_prod, ragged_math_ops.reduce_prod, ['input_tensor']),
     (math_ops.reduce_min, ragged_math_ops.reduce_min, ['input_tensor']),
@@ -527,7 +544,7 @@ def _ragged_op_signature(op, ragged_args):
 def _op_is_in_tf_version(op, version):
   if version == 1:
     return (tf_export.get_v1_names(tf_decorator.unwrap(op)[1]) or
-            op in _V1_OPS_THAT_DELEGATE_TO_V2_OPS)
+            op in _V2_OPS_THAT_ARE_DELEGATED_TO_FROM_V1_OPS)
   elif version == 2:
     return tf_export.get_v2_names(tf_decorator.unwrap(op)[1])
   else:

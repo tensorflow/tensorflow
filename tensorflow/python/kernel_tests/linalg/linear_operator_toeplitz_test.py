@@ -61,7 +61,7 @@ class LinearOperatorToeplitzTest(
     self._rtol[dtypes.complex128] = 1e-10
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     # Skip solve tests, as these could have better stability
     # (currently exercises the base class).
     # TODO(srvasude): Enable these when solve is implemented.

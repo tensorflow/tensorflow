@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras.applications.resnet50 import decode_predictions
-from tensorflow.python.keras.applications.resnet50 import preprocess_input
-from tensorflow.python.keras.applications.resnet50 import ResNet50
+from tensorflow.python.keras.applications.resnet import decode_predictions
+from tensorflow.python.keras.applications.resnet import preprocess_input
+from tensorflow.python.keras.applications.resnet import ResNet50
 
 del absolute_import
 del division

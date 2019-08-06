@@ -1,16 +1,6 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-package(
-    default_visibility = [
-        "//learning/brain/google/xla/tests:__subpackages__",
-        "//tensorflow:__subpackages__",
-    ],
-    licenses = ["notice"],  # Apache 2.0
-)
-
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load(
@@ -20,6 +10,16 @@ load(
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
 )
+
+package(
+    default_visibility = [
+        "//learning/brain/google/xla/tests:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 tf_custom_op_py_library(
     name = "seq2seq_py",

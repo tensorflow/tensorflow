@@ -57,11 +57,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
 
     for k, v in sorted(dict_tensors.items()):
       expected_v = expected_tensors[k]
-      if sparse_tensor.is_sparse(v):
-        self.assertSparseValuesEqual(expected_v, v)
-      else:
-        # One output for standard Tensor.
-        self.assertAllEqual(expected_v, v)
+      self.assertValuesEqual(expected_v, v)
 
   def _test(self,
             input_tensor,

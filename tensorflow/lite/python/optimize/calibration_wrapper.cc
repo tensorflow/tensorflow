@@ -198,7 +198,7 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
     return nullptr;
   }
   auto tflite_model = CreateMutableModel(*model_->GetModel());
-  reader_->AddCalibrationToModel(tflite_model.get());
+  reader_->AddCalibrationToModel(tflite_model.get(), /*update=*/false);
   flatbuffers::FlatBufferBuilder builder;
   auto status = tflite::optimize::QuantizeModel(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),

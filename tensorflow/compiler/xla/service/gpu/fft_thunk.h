@@ -72,9 +72,7 @@ class FftThunk : public Thunk {
   FftThunk& operator=(const FftThunk&) = delete;  // Cannot share fft_plan_
 
   // Does the FFT for the thunk on "stream".
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream, const RunId& run_id,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   const se::fft::Type fft_type_;

@@ -14,11 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/monitoring.h"
 
 namespace tensorflow {
 
 namespace {
+
+auto* worker_session_created =
+    monitoring::Gauge<bool, 0>::New("/tensorflow/core/worker_session_created",
+                                    "True if a worker session was created.");
 
 // A private cache that wraps worker_cache and allows reuse of
 // WorkerInterface objects.
@@ -42,18 +47,23 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     wrapped_->ListWorkersInJob(job_name, workers);
   }
 
-  WorkerInterface* CreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const string& target) override {
     mutex_lock l(mu_);
     auto p = workers_.find(target);
     if (p != workers_.end()) {
       return p->second.worker;
     }
     WorkerState state;
-    state.worker = wrapped_->CreateWorker(target);
+    state.worker = wrapped_->GetOrCreateWorker(target);
     if (state.worker != nullptr) {
       workers_.insert(std::make_pair(target, state));
     }
     return state.worker;
+  }
+
+  Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    return wrapped_->GetEagerClientCache(eager_client_cache);
   }
 
   void ReleaseWorker(const string& target, WorkerInterface* worker) override {
@@ -113,6 +123,7 @@ WorkerSession::WorkerSession(const string& session_name,
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
+  worker_session_created->GetCell()->Set(true);
   monitoring::StartExporter();
 }
 
@@ -145,6 +156,7 @@ WorkerSession::WorkerSession(const string& session_name,
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
+  worker_session_created->GetCell()->Set(true);
   monitoring::StartExporter();
 }
 

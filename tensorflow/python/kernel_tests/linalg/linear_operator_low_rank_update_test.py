@@ -181,7 +181,7 @@ class LinearOperatorLowRankUpdatetestWithDiagCannotUseCholesky(
   """A = L + UDU^H, D !> 0, L > 0 ==> A !> 0 and we cannot use a Cholesky."""
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     return ["cholesky"]
 
   _use_diag_update = True
@@ -224,7 +224,7 @@ class LinearOperatorLowRankUpdatetestNoDiagCannotUseCholesky(
   """A = L + UV^H, L > 0 ==> A is not symmetric and we cannot use a Cholesky."""
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     return ["cholesky"]
 
   _use_diag_update = False
@@ -239,6 +239,7 @@ class LinearOperatorLowRankUpdatetestNoDiagCannotUseCholesky(
     self._rtol[dtypes.float32] = 1e-4
     self._atol[dtypes.float64] = 1e-9
     self._rtol[dtypes.float64] = 1e-9
+    self._atol[dtypes.complex64] = 1e-5
     self._rtol[dtypes.complex64] = 2e-4
 
 

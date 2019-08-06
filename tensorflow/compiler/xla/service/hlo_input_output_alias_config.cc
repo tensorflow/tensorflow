@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
+
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 namespace xla {
@@ -81,8 +82,8 @@ HloInputOutputAliasProto HloInputOutputAliasConfig::ToProto() const {
 }
 
 StatusOr<HloInputOutputAliasConfig> HloInputOutputAliasConfig::CreateFromProto(
-    const Shape& output_shape, const HloInputOutputAliasProto& proto) {
-  HloInputOutputAliasConfig result(output_shape);
+    Shape output_shape, const HloInputOutputAliasProto& proto) {
+  HloInputOutputAliasConfig result(std::move(output_shape));
   for (const HloInputOutputAliasProto::AliasEntryProto& entry :
        proto.entries()) {
     ShapeIndex output_index(entry.output_shape_index().begin(),

@@ -22,12 +22,6 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
@@ -38,18 +32,21 @@ import org.junit.runners.JUnit4;
 @RunWith(JUnit4.class)
 public final class InterpreterTest {
 
-  private static final File MODEL_FILE =
-      new File("tensorflow/lite/java/src/testdata/add.bin");
+  private static final String MODEL_PATH = "tensorflow/lite/java/src/testdata/add.bin";
+  private static final String MULTIPLE_INPUTS_MODEL_PATH =
+      "tensorflow/lite/testdata/multi_add.bin";
+  private static final String FLEX_MODEL_PATH =
+      "tensorflow/lite/testdata/multi_add_flex.bin";
 
-  private static final File MULTIPLE_INPUTS_MODEL_FILE =
-      new File("tensorflow/lite/testdata/multi_add.bin");
-
-  private static final File FLEX_MODEL_FILE =
-      new File("tensorflow/lite/testdata/multi_add_flex.bin");
+  private static final ByteBuffer MODEL_BUFFER = TestUtils.getTestFileAsBuffer(MODEL_PATH);
+  private static final ByteBuffer MULTIPLE_INPUTS_MODEL_BUFFER =
+      TestUtils.getTestFileAsBuffer(MULTIPLE_INPUTS_MODEL_PATH);
+  private static final ByteBuffer FLEX_MODEL_BUFFER =
+      TestUtils.getTestFileAsBuffer(FLEX_MODEL_PATH);
 
   @Test
   public void testInterpreter() throws Exception {
-    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
     assertThat(interpreter).isNotNull();
     assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
     assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
@@ -62,7 +59,7 @@ public final class InterpreterTest {
   public void testInterpreterWithOptions() throws Exception {
     Interpreter interpreter =
         new Interpreter(
-            MODEL_FILE,
+            MODEL_BUFFER,
             new Interpreter.Options()
                 .setNumThreads(2)
                 .setUseNNAPI(true)
@@ -77,13 +74,11 @@ public final class InterpreterTest {
   }
 
   @Test
-  public void testRunWithMappedByteBufferModel() throws Exception {
-    Path path = MODEL_FILE.toPath();
-    FileChannel fileChannel =
-        (FileChannel) Files.newByteChannel(path, EnumSet.of(StandardOpenOption.READ));
-    ByteBuffer mappedByteBuffer =
-        fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
-    Interpreter interpreter = new Interpreter(mappedByteBuffer);
+  public void testRunWithFileModel() throws Exception {
+    if (!TestUtils.supportsFilePaths()) {
+      return;
+    }
+    Interpreter interpreter = new Interpreter(new File(MODEL_PATH));
     float[] oneD = {1.23f, 6.54f, 7.81f};
     float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
     float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
@@ -94,17 +89,13 @@ public final class InterpreterTest {
     float[] expected = {3.69f, 19.62f, 23.43f};
     assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
     interpreter.close();
-    fileChannel.close();
   }
 
   @Test
   public void testRunWithDirectByteBufferModel() throws Exception {
-    Path path = MODEL_FILE.toPath();
-    FileChannel fileChannel =
-        (FileChannel) Files.newByteChannel(path, EnumSet.of(StandardOpenOption.READ));
-    ByteBuffer byteBuffer = ByteBuffer.allocateDirect((int) fileChannel.size());
+    ByteBuffer byteBuffer = ByteBuffer.allocateDirect(MODEL_BUFFER.capacity());
     byteBuffer.order(ByteOrder.nativeOrder());
-    fileChannel.read(byteBuffer);
+    byteBuffer.put(MODEL_BUFFER);
     Interpreter interpreter = new Interpreter(byteBuffer);
     float[] oneD = {1.23f, 6.54f, 7.81f};
     float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
@@ -116,17 +107,13 @@ public final class InterpreterTest {
     float[] expected = {3.69f, 19.62f, 23.43f};
     assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
     interpreter.close();
-    fileChannel.close();
   }
 
   @Test
   public void testRunWithInvalidByteBufferModel() throws Exception {
-    Path path = MODEL_FILE.toPath();
-    FileChannel fileChannel =
-        (FileChannel) Files.newByteChannel(path, EnumSet.of(StandardOpenOption.READ));
-    ByteBuffer byteBuffer = ByteBuffer.allocate((int) fileChannel.size());
+    ByteBuffer byteBuffer = ByteBuffer.allocate(MODEL_BUFFER.capacity());
     byteBuffer.order(ByteOrder.nativeOrder());
-    fileChannel.read(byteBuffer);
+    byteBuffer.put(MODEL_BUFFER);
     try {
       new Interpreter(byteBuffer);
       fail();
@@ -137,12 +124,11 @@ public final class InterpreterTest {
               "Model ByteBuffer should be either a MappedByteBuffer"
                   + " of the model file, or a direct ByteBuffer using ByteOrder.nativeOrder()");
     }
-    fileChannel.close();
   }
 
   @Test
   public void testRun() {
-    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
     Float[] oneD = {1.23f, 6.54f, 7.81f};
     Float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
     Float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
@@ -159,7 +145,7 @@ public final class InterpreterTest {
 
   @Test
   public void testRunWithBoxedInputs() {
-    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
     float[] oneD = {1.23f, 6.54f, 7.81f};
     float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
     float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
@@ -174,7 +160,7 @@ public final class InterpreterTest {
 
   @Test
   public void testRunForMultipleInputsOutputs() {
-    Interpreter interpreter = new Interpreter(MULTIPLE_INPUTS_MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MULTIPLE_INPUTS_MODEL_BUFFER);
     assertThat(interpreter.getInputTensorCount()).isEqualTo(4);
     assertThat(interpreter.getInputTensor(0).index()).isGreaterThan(-1);
     assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
@@ -209,7 +195,7 @@ public final class InterpreterTest {
     float[][][][] fourD = {threeD, threeD};
     ByteBuffer parsedOutput =
         ByteBuffer.allocateDirect(2 * 8 * 8 * 3 * 4).order(ByteOrder.nativeOrder());
-    try (Interpreter interpreter = new Interpreter(MODEL_FILE)) {
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
       interpreter.run(fourD, parsedOutput);
     }
     float[] outputOneD = {
@@ -221,7 +207,7 @@ public final class InterpreterTest {
 
   @Test
   public void testResizeInput() {
-    try (Interpreter interpreter = new Interpreter(MODEL_FILE)) {
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
       int[] inputDims = {1};
       interpreter.resizeInput(0, inputDims);
       assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
@@ -234,7 +220,7 @@ public final class InterpreterTest {
 
   @Test
   public void testRunWithWrongInputType() {
-    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
     int[] oneD = {4, 3, 9};
     int[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
     int[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
@@ -258,7 +244,7 @@ public final class InterpreterTest {
   public void testRunWithUnsupportedInputType() {
     FloatBuffer floatBuffer = FloatBuffer.allocate(10);
     float[][][][] parsedOutputs = new float[2][8][8][3];
-    try (Interpreter interpreter = new Interpreter(MODEL_FILE)) {
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
       interpreter.run(floatBuffer, parsedOutputs);
       fail();
     } catch (IllegalArgumentException e) {
@@ -268,7 +254,7 @@ public final class InterpreterTest {
 
   @Test
   public void testRunWithWrongOutputType() {
-    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
     float[] oneD = {1.23f, 6.54f, 7.81f};
     float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
     float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
@@ -290,7 +276,7 @@ public final class InterpreterTest {
 
   @Test
   public void testGetInputIndex() {
-    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
     try {
       interpreter.getInputIndex("WrongInputName");
       fail();
@@ -307,7 +293,7 @@ public final class InterpreterTest {
 
   @Test
   public void testGetOutputIndex() {
-    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
     try {
       interpreter.getOutputIndex("WrongOutputName");
       fail();
@@ -324,14 +310,9 @@ public final class InterpreterTest {
 
   @Test
   public void testTurnOnNNAPI() throws Exception {
-    Path path = MODEL_FILE.toPath();
-    FileChannel fileChannel =
-        (FileChannel) Files.newByteChannel(path, EnumSet.of(StandardOpenOption.READ));
-    MappedByteBuffer mappedByteBuffer =
-        fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
     Interpreter interpreter =
         new Interpreter(
-            mappedByteBuffer,
+            MODEL_BUFFER,
             new Interpreter.Options().setUseNNAPI(true).setAllowFp16PrecisionForFp32(true));
     float[] oneD = {1.23f, 6.54f, 7.81f};
     float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
@@ -343,19 +324,18 @@ public final class InterpreterTest {
     float[] expected = {3.69f, 19.62f, 23.43f};
     assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
     interpreter.close();
-    fileChannel.close();
   }
 
   @Test
   public void testRedundantClose() throws Exception {
-    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
     interpreter.close();
     interpreter.close();
   }
 
   @Test
   public void testNullInputs() throws Exception {
-    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
     try {
       interpreter.run(null, new float[2][8][8][3]);
       fail();
@@ -367,7 +347,7 @@ public final class InterpreterTest {
 
   @Test
   public void testNullOutputs() throws Exception {
-    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
     try {
       interpreter.run(new float[2][8][8][3], null);
       fail();
@@ -381,7 +361,7 @@ public final class InterpreterTest {
   @Test
   public void testFlexModel() throws Exception {
     try {
-      new Interpreter(FLEX_MODEL_FILE);
+      new Interpreter(FLEX_MODEL_BUFFER);
       fail();
     } catch (IllegalStateException e) {
       // Expected failure.
@@ -399,7 +379,7 @@ public final class InterpreterTest {
           }
         };
     Interpreter interpreter =
-        new Interpreter(MODEL_FILE, new Interpreter.Options().addDelegate(delegate));
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().addDelegate(delegate));
 
     // The native delegate stubs out the graph with a single op that produces the scalar value 7.
     float[] oneD = {1.23f, 6.54f, 7.81f};
@@ -426,7 +406,7 @@ public final class InterpreterTest {
           }
         };
     Interpreter interpreter =
-        new Interpreter(MODEL_FILE, new Interpreter.Options().addDelegate(delegate));
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().addDelegate(delegate));
     // The delegate installs a custom buffer handle for all tensors, in turn allowing null to be
     // provided for the inputs/outputs (as the client can reference the buffer directly).
     interpreter.run(new float[2][8][8][3], null);
@@ -444,7 +424,7 @@ public final class InterpreterTest {
             return getNativeHandleForDelegate();
           }
         };
-    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
     interpreter.modifyGraphWithDelegate(delegate);
 
     // The native delegate stubs out the graph with a single op that produces the scalar value 7.
@@ -473,7 +453,7 @@ public final class InterpreterTest {
         };
     try {
       Interpreter interpreter =
-          new Interpreter(MODEL_FILE, new Interpreter.Options().addDelegate(delegate));
+          new Interpreter(MODEL_BUFFER, new Interpreter.Options().addDelegate(delegate));
       fail();
     } catch (IllegalArgumentException e) {
       assertThat(e).hasMessageThat().contains("Internal error: Failed to apply delegate");
@@ -492,10 +472,27 @@ public final class InterpreterTest {
         };
     try {
       Interpreter interpreter =
-          new Interpreter(MODEL_FILE, new Interpreter.Options().addDelegate(delegate));
+          new Interpreter(MODEL_BUFFER, new Interpreter.Options().addDelegate(delegate));
       fail();
     } catch (IllegalArgumentException e) {
       assertThat(e).hasMessageThat().contains("Internal error: Invalid handle to delegate");
+    }
+  }
+
+  @Test
+  public void testResetVariableTensors() throws Exception {
+    float[][][][] inputs = new float[2][8][8][3];
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+
+    // Smoke test to ensure resetting variables at various times in a simple graph doesn't fail.
+    // TODO(b/138197256): Test with model that has variables.
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      interpreter.resetVariableTensors();
+      interpreter.run(inputs, parsedOutputs);
+
+      interpreter.resetVariableTensors();
+      interpreter.resetVariableTensors();
+      interpreter.run(inputs, parsedOutputs);
     }
   }
 

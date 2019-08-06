@@ -80,7 +80,7 @@ class Member {
   // not update this. Else returns true and updates this.
   bool MergeSupportedDevices(const Member& other);
 
-  Status AssignDevice(const Node& node, bool allow_soft_placement);
+  Status AssignDevice(const Node& node);
 
   // Limit the possible devices of this (should be a root) to the device
   // specifications in `devices`.
@@ -247,6 +247,14 @@ class ColocationGraph {
   string DebugInfo(const int node_root) const;
 
   string DebugString() const;
+
+  // Returns a list of devices having type in supported_device_types.  The
+  // returned list is sorted by preferred type (higher numeric type is
+  // preferred).
+  static std::vector<Device*> FilterSupportedDevices(
+      const std::vector<Device*>& devices,
+      const PrioritizedDeviceTypeVector& supported_device_types,
+      const Device* default_device);
 
  private:
   // Adds each node of the Graph to this ColocationGraph as a singleton.

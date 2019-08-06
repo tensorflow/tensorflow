@@ -154,13 +154,7 @@ void FillArrayWithZeros(Array* array) {
       return ::tensorflow::Status::OK();
   }
 
-  // Erase input arrays to the multiply if no longer used
-  DeleteArrayIfUsedOnce(mul_op->inputs[0], model);
-  DeleteArrayIfUsedOnce(mul_op->inputs[1], model);
-
-  // Erase the multiply operator.
-  model->operators.erase(mul_it);
-
+  DeleteOpAndArrays(model, mul_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

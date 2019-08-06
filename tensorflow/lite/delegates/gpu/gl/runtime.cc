@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/gl_program.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_texture.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -187,7 +188,7 @@ Runtime::Runtime(const RuntimeOptions& options, const GpuInfo& gpu_info,
 }
 
 Status Runtime::AddProgram(const GlShader& shader,
-                           const std::vector<UniformParameter>& parameters,
+                           const std::vector<Variable>& parameters,
                            const std::vector<Object>& objects,
                            const uint3& num_workgroups) {
   GlProgram program;
@@ -542,7 +543,8 @@ Status Runtime::AssignInternalObjects(std::vector<Object>* shared_objects) {
           shared_object.object = shared_ref;
           if (shared_object.object_type == ObjectType::BUFFER) {
             // Make a buffer linear.
-            shared_object.size = NumElements(object.size);
+            shared_object.size =
+                static_cast<uint32_t>(NumElements(object.size));
           }
           shared_objects->push_back(std::move(shared_object));
           is_used_shared_object.push_back(false);
@@ -551,8 +553,8 @@ Status Runtime::AssignInternalObjects(std::vector<Object>* shared_objects) {
           Object& shared_object = (*shared_objects)[shared_ref];
           switch (object.object_type) {
             case ObjectType::BUFFER:
-              shared_object.size = std::max(NumElements(object.size),
-                                            NumElements(shared_object.size));
+              shared_object.size = std::max<uint32_t>(
+                  NumElements(object.size), NumElements(shared_object.size));
               break;
             case ObjectType::TEXTURE: {
               if (!FitSize(object.size, shared_object.size,

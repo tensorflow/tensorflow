@@ -100,6 +100,8 @@ limitations under the License.
 namespace ruy {
 
 // KernelLayout describes small-scale block structure in a packed matrix layout.
+// It's a runtime (as opposed to compile-time-constant) version of the
+// FixedKernelLayout struct used to declare kernel layouts.
 //
 // This is is sometimes known as "tiling" in other contexts.
 //
@@ -115,16 +117,6 @@ struct KernelLayout {
   Order order = Order::kColMajor;
   std::uint8_t rows = 1;
   std::uint8_t cols = 1;
-};
-
-// Compile time version of KernelLayout, suitable for template metaprogramming.
-// In particular, partial template specializations of Kernel use this type to
-// statically declare their kernel format.
-template <Order tOrder, int tRows, int tCols>
-struct FixedKernelLayout {
-  static constexpr Order kOrder = tOrder;
-  static constexpr int kRows = tRows;
-  static constexpr int kCols = tCols;
 };
 
 // A packed matrix has a small-scale block structure that is not present in in

@@ -24,31 +24,30 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedTensorToSparseOpTest(ragged_test_util.RaggedTensorTestCase,
+class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase,
                                  parameterized.TestCase):
 
   def testDocStringExamples(self):
     # The examples from RaggedTensor.from_tensor.__doc__.
     dt = constant_op.constant([[5, 7, 0], [0, 3, 0], [6, 0, 0]])
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         RaggedTensor.from_tensor(dt), [[5, 7, 0], [0, 3, 0], [6, 0, 0]])
 
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         RaggedTensor.from_tensor(dt, lengths=[1, 0, 3]), [[5], [], [6, 0, 0]])
 
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         RaggedTensor.from_tensor(dt, padding=0), [[5, 7], [0, 3], [6]])
 
     dt_3d = constant_op.constant([[[5, 0], [7, 0], [0, 0]],
                                   [[0, 0], [3, 0], [0, 0]],
                                   [[6, 0], [0, 0], [0, 0]]])
-    self.assertRaggedEqual(
+    self.assertAllEqual(
         RaggedTensor.from_tensor(dt_3d, lengths=([2, 0, 3], [1, 1, 2, 0, 1])),
         [[[5], [7]], [], [[6, 0], [], [0]]])
 
@@ -320,7 +319,7 @@ class RaggedTensorToSparseOpTest(ragged_test_util.RaggedTensorTestCase,
     self.assertTrue(
         dt.shape.is_compatible_with(rt.shape),
         '%s is incompatible with %s' % (dt.shape, rt.shape))
-    self.assertRaggedEqual(rt, expected)
+    self.assertAllEqual(rt, expected)
 
   def testHighDimensions(self):
     # Use distinct prime numbers for all dimension shapes in this test, so
@@ -334,7 +333,7 @@ class RaggedTensorToSparseOpTest(ragged_test_util.RaggedTensorTestCase,
       self.assertTrue(
           dt.shape.is_compatible_with(rt.shape),
           '%s is incompatible with %s' % (dt.shape, rt.shape))
-      self.assertRaggedEqual(rt, self.evaluate(dt).tolist())
+      self.assertAllEqual(rt, self.evaluate(dt).tolist())
 
   @parameterized.parameters(
       # With no padding or lengths
@@ -444,7 +443,7 @@ class RaggedTensorToSparseOpTest(ragged_test_util.RaggedTensorTestCase,
     self.assertEqual(type(rt), RaggedTensor)
     self.assertEqual(rt.ragged_rank, 1)
     self.assertTrue(dt.shape.is_compatible_with(rt.shape))
-    self.assertRaggedEqual(rt, expected)
+    self.assertAllEqual(rt, expected)
 
   @parameterized.parameters(
       {

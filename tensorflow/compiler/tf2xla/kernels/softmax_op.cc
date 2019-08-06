@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
 namespace {
@@ -151,30 +152,7 @@ class SoftmaxXentWithLogitsOp : public XlaOpKernel {
     auto logits = ctx->Input(0);
     auto labels = ctx->Input(1);
 
-    const TensorShape logits_shape = ctx->InputShape(0);
-    const TensorShape labels_shape = ctx->InputShape(1);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(logits_shape),
-                errors::InvalidArgument("logits must be 2-dimensional"));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(labels_shape),
-                errors::InvalidArgument("labels must be 2-dimensional"));
-
-    // Confirm that any necessary broadcasting to make the shapes the same will
-    // succeed.
-    for (int dim = 0; dim < 2; dim++) {
-      OP_REQUIRES(
-          ctx,
-          labels_shape.dim_size(dim) == 1 ||
-              logits_shape.dim_size(dim) == labels_shape.dim_size(dim),
-          errors::InvalidArgument("logits and labels must be same size after "
-                                  "broadcasting of labels: logits_size=",
-                                  logits_shape.DebugString(),
-                                  " labels_size=", labels_shape.DebugString()));
-    }
-    if (!logits_shape.IsSameSize(labels_shape)) {
-      auto labels_or = BroadcastTo(labels, logits_shape.dim_sizes());
-      OP_REQUIRES_OK(ctx, labels_or.status());
-      labels = labels_or.ConsumeValueOrDie();
-    }
+    OP_REQUIRES_OK(ctx, BroadcastOpsToSame(&logits, &labels));
 
     xla::XlaOp loss, backprop;
     std::tie(loss, backprop) =

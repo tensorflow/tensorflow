@@ -1,10 +1,10 @@
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 filegroup(
     name = "all_files",
@@ -97,6 +97,24 @@ py_test(
     srcs = ["py_builtins_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_windows"],
+    deps = [
+        ":operators",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/core",
+    ],
+)
+
+py_test(
+    name = "py_builtins_py3_test",
+    srcs = ["py_builtins_py3_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_windows",
+        # TODO(kkimlabs): Temporay workaround since KokoroPresubmit was failing.
+        #                 cl/259400943 for more context.
+        "no_oss_py2",
+    ],
     deps = [
         ":operators",
         "//tensorflow/python:client_testlib",

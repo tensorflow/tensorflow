@@ -23,14 +23,14 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace model {
-
-std::shared_ptr<Parameter> MakeParameter(const string& name,
-                                         std::shared_ptr<SharedState> state,
-                                         int64 min, int64 max) {
-  return std::make_shared<Parameter>(name, state, min, max);
-}
-
 namespace {
+
+// Key of the derivative w.r.t. the last input time in the gradient of
+// `OutputTime`.
+constexpr char kInputTimeDerivativeKey[] = "last_input_time";
+
+// Wrapper for the square function to reduce verbosity.
+inline double Square(double x) { return x * x; }
 
 // Given the average time between output events (`output_time`), the average
 // time between input events (`input_time`) and the buffer size, the method
@@ -42,20 +42,63 @@ namespace {
 // The formula used for computing the probability is derived by modeling the
 // problem as an M/M/1/K queue
 // (https://en.wikipedia.org/wiki/Birth%E2%80%93death_process#M/M/1/K_queue).
+//
+// Collects derivatives of `ComputeWaitTime` w.r.t `output_time`, `input_time'
+// and `buffer_size` if the corresponding pointers are not `nullptr`.
 double ComputeWaitTime(double output_time, double input_time,
-                       int64 buffer_size) {
+                       double buffer_size, double* output_time_derivative,
+                       double* input_time_derivative,
+                       double* buffer_size_derivative) {
   if (output_time == 0 || input_time == 0) {
+    if (output_time_derivative) {
+      *output_time_derivative = 1.0L;
+    }
+    if (input_time_derivative) {
+      *input_time_derivative = 0.0L;
+    }
+    if (buffer_size_derivative) {
+      *buffer_size_derivative = 0.0L;
+    }
     return output_time;
   }
   if (input_time == output_time) {
-    const double p_buffer_empty = 1.0L / static_cast<double>(buffer_size + 1);
+    const double p_buffer_empty = 1.0L / (buffer_size + 1.0L);
+    if (output_time_derivative) {
+      *output_time_derivative = p_buffer_empty;
+    }
+    if (input_time_derivative) {
+      *input_time_derivative = 0.0L;
+    }
+    if (buffer_size_derivative) {
+      const double p_buffer_empty_der = -1.0L / Square(buffer_size + 1.0L);
+      *buffer_size_derivative = p_buffer_empty_der * output_time;
+    }
     return p_buffer_empty * output_time;
   }
-  const double alpha = 1.0L / static_cast<double>(input_time);
-  const double beta = 1.0L / static_cast<double>(output_time);
-  const double p_buffer_empty =
-      (1.0L - beta / alpha) /
-      (1.0L - std::pow((beta / alpha), static_cast<double>(buffer_size + 1)));
+  const double alpha = 1.0L / input_time;
+  const double beta = 1.0L / output_time;
+  const double ratio_pow = std::pow((beta / alpha), (buffer_size + 1.0L));
+  const double p_buffer_empty = (1.0L - beta / alpha) / (1.0L - ratio_pow);
+  if (output_time_derivative) {
+    *output_time_derivative =
+        (1.0L - ratio_pow -
+         (output_time - input_time) * (buffer_size + 1.0L) * ratio_pow /
+             output_time) /
+        Square(1.0L - ratio_pow);
+  }
+  if (input_time_derivative) {
+    *input_time_derivative =
+        (ratio_pow - 1.0L +
+         (buffer_size + 1.0L) * ratio_pow * (alpha / beta - 1.0L)) /
+        Square(1.0L - ratio_pow);
+  }
+  if (buffer_size_derivative) {
+    const double p_buffer_empty_der = (1.0L - beta / alpha) * ratio_pow *
+                                      std::log(beta / alpha) /
+                                      Square(1.0L - ratio_pow);
+    *buffer_size_derivative = p_buffer_empty_der * output_time;
+  }
+
   return p_buffer_empty * output_time;
 }
 
@@ -79,30 +122,58 @@ class InterleaveMany : public Node {
 
   // The output time is the sum of the self processing time and the average
   // output time of inputs comprising the interleave "cycle".
-  double OutputTimeLocked(std::vector<double>* input_times) const override
+  double OutputTimeLocked(std::vector<double>* input_times,
+                          std::map<string, double>* gradient) const override
       SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
+    if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
-    double delta = SelfProcessingTimeLocked() * (inputs_.size() - 1);
+    double delta = SelfProcessingTimeLocked() * (num_inputs() - 1);
     input_times->back() += delta;
     auto cleanup = gtl::MakeCleanup(
         [input_times, delta]() { input_times->back() -= delta; });
-    double output_time = (OutputTimeForInputs(input_times) -
-                          inputs_.front()->OutputTime(input_times)) /
-                         static_cast<double>(inputs_.size() - 1);
+    double output_time;
+    if (gradient) {
+      std::map<string, double> inputs_gradient;
+      output_time =
+          (OutputTimeForInputs(input_times, &inputs_gradient) -
+           inputs_.front()->OutputTime(input_times, /*gradient=*/nullptr)) /
+          static_cast<double>(num_inputs() - 1);
+      for (auto& pair : inputs_gradient) {
+        (*gradient)[pair.first] =
+            pair.second / static_cast<double>(num_inputs() - 1);
+      }
+      auto last_input_time_der =
+          gtl::FindWithDefault(*gradient, kInputTimeDerivativeKey, 0.0L);
+      (*gradient)[kInputTimeDerivativeKey] =
+          last_input_time_der + inputs_gradient[kInputTimeDerivativeKey] /
+                                    static_cast<double>(num_inputs() - 1);
+      // Set derivatives w.r.t. tunable parameters of the subtree rooted in the
+      // first input equal to 0 since its output time is excluded from
+      // computations.
+      std::map<string, std::shared_ptr<Parameter>> first_input_parameters;
+      inputs_.front()->CollectTunableParameters(&first_input_parameters);
+      for (auto& pair : first_input_parameters) {
+        (*gradient)[pair.first] = 0.0L;
+      }
+    } else {
+      output_time =
+          (OutputTimeForInputs(input_times, /*gradient=*/nullptr) -
+           inputs_.front()->OutputTime(input_times, /*gradient=*/nullptr)) /
+          static_cast<double>(num_inputs() - 1);
+    }
     return SelfProcessingTimeLocked() + output_time;
   }
 
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
+    if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
-    double processing_time =
-        (ProcessingTimeForInputs() - inputs_.front()->TotalProcessingTime()) /
-        static_cast<double>(inputs_.size() - 1);
+    double processing_time = (TotalProcessingTimeForInputs() -
+                              inputs_.front()->TotalProcessingTime()) /
+                             static_cast<double>(num_inputs() - 1);
     return SelfProcessingTimeLocked() + processing_time;
   }
 };
@@ -136,41 +207,87 @@ class AsyncInterleaveMany : public Node {
   }
 
   // The output time is estimated using `ComputeWaitTime(output_time,
-  // input_time, parallelism)`, where `output_time` is the sum of the
+  // input_time, parallelism, ...)`, where `output_time` is the sum of the
   // self-processing time and the average output time of inputs comprising the
   // interleave "cycle", `input_time` is specified through `input_times` and
   // `buffer_size` is derived from parallelism.
-  double OutputTimeLocked(std::vector<double>* input_times) const override
+  double OutputTimeLocked(std::vector<double>* input_times,
+                          std::map<string, double>* gradient) const override
       SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
+    if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
     double old_input_time = input_times->back();
     double new_input_time =
-        SelfProcessingTimeLocked() * static_cast<double>(inputs_.size() - 1);
+        SelfProcessingTimeLocked() * static_cast<double>(num_inputs() - 1);
     input_times->push_back(new_input_time);
     auto cleanup =
         gtl::MakeCleanup([input_times]() { input_times->pop_back(); });
-    double parallelism = inputs_.size() - 1;  // default to cycle length
-    if (auto* parameter = gtl::FindOrNull(parameters_, "parallelism")) {
-      parallelism = std::min(static_cast<int>(parallelism),
-                             static_cast<int>((*parameter)->value));
+    double parallelism = num_inputs() - 1;  // default to cycle length
+    auto* parameter = gtl::FindOrNull(parameters_, "parallelism");
+    if (parameter) {
+      parallelism = std::min(parallelism, (*parameter)->value);
     }
-    double output_time = (OutputTimeForInputs(input_times) -
-                          inputs_.front()->OutputTime(input_times)) /
-                         static_cast<double>(num_inputs() - 1) / parallelism;
-    return ComputeWaitTime(SelfProcessingTimeLocked() + output_time,
-                           old_input_time, parallelism);
+    if (gradient) {
+      std::map<string, double> inputs_gradient;
+      double output_time_for_inputs =
+          OutputTimeForInputs(input_times, &inputs_gradient) -
+          inputs_.front()->OutputTime(input_times, /*gradient=*/nullptr);
+      double output_time = output_time_for_inputs /
+                           static_cast<double>(num_inputs() - 1) / parallelism;
+      double output_time_der = 0.0L;
+      double input_time_der = 0.0L;
+      double buffer_size_der = 0.0L;
+      double result = ComputeWaitTime(
+          SelfProcessingTimeLocked() + output_time, old_input_time, parallelism,
+          &output_time_der, &input_time_der, &buffer_size_der);
+      auto last_input_time_der =
+          gtl::FindWithDefault(*gradient, kInputTimeDerivativeKey, 0.0L);
+      (*gradient)[kInputTimeDerivativeKey] =
+          last_input_time_der + input_time_der;
+      double parallelism_der = -output_time_for_inputs /
+                               static_cast<double>(num_inputs() - 1) /
+                               Square(parallelism);
+      for (auto& pair : inputs_gradient) {
+        if (pair.first != kInputTimeDerivativeKey) {
+          (*gradient)[pair.first] = output_time_der * pair.second /
+                                    static_cast<double>(num_inputs() - 1) /
+                                    parallelism;
+        }
+      }
+      // Set derivatives w.r.t. tunable parameters of the subtree rooted in the
+      // first input equal to 0 since its output time is excluded from
+      // computations.
+      std::map<string, std::shared_ptr<Parameter>> first_input_parameters;
+      inputs_.front()->CollectTunableParameters(&first_input_parameters);
+      for (auto& pair : first_input_parameters) {
+        (*gradient)[pair.first] = 0.0L;
+      }
+      // Add derivative w.r.t. own parallelism parameter.
+      if (parameter && (*parameter)->state->tunable) {
+        (*gradient)[long_name()] =
+            output_time_der * parallelism_der + buffer_size_der;
+      }
+      return result;
+    }
+    double output_time =
+        (OutputTimeForInputs(input_times, /*gradient=*/nullptr) -
+         inputs_.front()->OutputTime(input_times, /*gradient=*/nullptr)) /
+        static_cast<double>(num_inputs() - 1) / parallelism;
+    return ComputeWaitTime(
+        SelfProcessingTimeLocked() + output_time, old_input_time, parallelism,
+        /*output_time_derivative=*/nullptr,
+        /*input_time_derivative=*/nullptr, /*buffer_size_derivative=*/nullptr);
   }
 
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
-    if (inputs_.size() <= 1) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
+    if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
     double processing_time =
-        ProcessingTimeForInputs() - inputs_.front()->TotalProcessingTime();
+        TotalProcessingTimeForInputs() - inputs_.front()->TotalProcessingTime();
     return SelfProcessingTimeLocked() +
            processing_time / static_cast<double>(num_inputs() - 1);
   }
@@ -191,7 +308,8 @@ class KnownRatio : public Node {
 
   // The output time is the sum of the self processing time and the product of
   // `ratio_` and the sum of output times of inputs.
-  double OutputTimeLocked(std::vector<double>* input_times) const override
+  double OutputTimeLocked(std::vector<double>* input_times,
+                          std::map<string, double>* gradient) const override
       SHARED_LOCKS_REQUIRED(mu_) {
     if (ratio_ == 0) {
       return SelfProcessingTimeLocked();
@@ -202,14 +320,33 @@ class KnownRatio : public Node {
     auto cleanup = gtl::MakeCleanup([input_times, old_input_time]() {
       input_times->back() = old_input_time;
     });
-    return SelfProcessingTimeLocked() +
-           ratio_ * OutputTimeForInputs(input_times);
+    double result;
+    if (gradient) {
+      std::map<string, double> inputs_gradient;
+      result = SelfProcessingTimeLocked() +
+               ratio_ * OutputTimeForInputs(input_times, &inputs_gradient);
+      auto last_input_time_der =
+          gtl::FindWithDefault(*gradient, kInputTimeDerivativeKey, 0.0L);
+      (*gradient)[kInputTimeDerivativeKey] =
+          last_input_time_der + ratio_ *
+                                    inputs_gradient[kInputTimeDerivativeKey] *
+                                    (1.0L + 1.0L / ratio_);
+      for (auto& pair : inputs_gradient) {
+        if (pair.first != kInputTimeDerivativeKey) {
+          (*gradient)[pair.first] = pair.second * ratio_;
+        }
+      }
+    } else {
+      result = SelfProcessingTimeLocked() +
+               ratio_ * OutputTimeForInputs(input_times, /*gradient=*/nullptr);
+    }
+    return result;
   }
 
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
-    return SelfProcessingTimeLocked() + ratio_ * ProcessingTimeForInputs();
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
+    return SelfProcessingTimeLocked() + ratio_ * TotalProcessingTimeForInputs();
   }
 
  private:
@@ -240,34 +377,93 @@ class AsyncKnownRatio : public Node {
   }
 
   // The output time is estimated using `ComputeWaitTime(output_time,
-  // input_time, parallelism)`, where `output_time` is the sum of the self
+  // input_time, parallelism, ...)`, where `output_time` is the sum of the self
   // processing time and the product of `ratio_` and the sum of output times of
   // inputs, `input_time` is specified through `input_times` and `buffer_size`
   // is derived from parallelism.
-  double OutputTimeLocked(std::vector<double>* input_times) const override
+  double OutputTimeLocked(std::vector<double>* input_times,
+                          std::map<string, double>* gradient) const override
       SHARED_LOCKS_REQUIRED(mu_) {
     double parallelism = 1.0;
-    if (auto* parameter = gtl::FindOrNull(parameters_, "parallelism")) {
+    auto* parameter = gtl::FindOrNull(parameters_, "parallelism");
+    if (parameter) {
       parallelism = (*parameter)->value;
     }
+    double self_processing_time = SelfProcessingTimeLocked();
     if (ratio_ == 0.0) {
-      double output_time = SelfProcessingTimeLocked() / parallelism;
-      return ComputeWaitTime(output_time, input_times->back(), parallelism);
+      double output_time = self_processing_time / parallelism;
+      if (gradient) {
+        double output_time_der = 0.0L;
+        double input_time_der = 0.0L;
+        double buffer_size_der = 0.0L;
+        double result = ComputeWaitTime(output_time, input_times->back(),
+                                        parallelism, &output_time_der,
+                                        &input_time_der, &buffer_size_der);
+        auto last_input_time_der =
+            gtl::FindWithDefault(*gradient, kInputTimeDerivativeKey, 0.0L);
+        (*gradient)[kInputTimeDerivativeKey] =
+            last_input_time_der + input_time_der;
+        // Add derivative w.r.t. own parallelism parameter.
+        if (parameter && (*parameter)->state->tunable) {
+          (*gradient)[long_name()] =
+              -output_time_der * self_processing_time / Square(parallelism) +
+              buffer_size_der;
+        }
+        return result;
+      }
+      return ComputeWaitTime(output_time, input_times->back(), parallelism,
+                             /*output_time_derivative=*/nullptr,
+                             /*input_time_derivative=*/nullptr,
+                             /*buffer_size_derivative=*/nullptr);
     }
     double old_input_time = input_times->back();
-    double new_input_time = SelfProcessingTimeLocked() / ratio_ / parallelism;
+    double new_input_time = self_processing_time / ratio_ / parallelism;
     input_times->push_back(new_input_time);
     auto cleanup =
         gtl::MakeCleanup([input_times]() { input_times->pop_back(); });
-    double output_time = SelfProcessingTimeLocked() / parallelism +
-                         ratio_ * OutputTimeForInputs(input_times);
-    return ComputeWaitTime(output_time, old_input_time, parallelism);
+    if (gradient) {
+      std::map<string, double> inputs_gradient;
+      double output_time_der = 0.0L;
+      double input_time_der = 0.0L;
+      double buffer_size_der = 0.0L;
+      double output_time =
+          self_processing_time / parallelism +
+          ratio_ * OutputTimeForInputs(input_times, &inputs_gradient);
+      double result =
+          ComputeWaitTime(output_time, old_input_time, parallelism,
+                          &output_time_der, &input_time_der, &buffer_size_der);
+      auto last_input_time_der =
+          gtl::FindWithDefault(*gradient, kInputTimeDerivativeKey, 0.0L);
+      (*gradient)[kInputTimeDerivativeKey] =
+          last_input_time_der + input_time_der;
+      for (auto& pair : inputs_gradient) {
+        if (pair.first != kInputTimeDerivativeKey) {
+          (*gradient)[pair.first] = pair.second * ratio_ * output_time_der;
+        }
+      }
+      // Add derivative w.r.t. own parallelism parameter.
+      if (parameter && (*parameter)->state->tunable) {
+        (*gradient)[long_name()] =
+            -output_time_der * self_processing_time / Square(parallelism) +
+            buffer_size_der -
+            output_time_der * inputs_gradient[kInputTimeDerivativeKey] *
+                self_processing_time / Square(parallelism);
+      }
+      return result;
+    }
+    double output_time =
+        self_processing_time / parallelism +
+        ratio_ * OutputTimeForInputs(input_times, /*gradient=*/nullptr);
+    return ComputeWaitTime(output_time, old_input_time, parallelism,
+                           /*output_time_derivative=*/nullptr,
+                           /*input_time_derivative=*/nullptr,
+                           /*buffer_size_derivative=*/nullptr);
   }
 
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
-    return SelfProcessingTimeLocked() + ratio_ * ProcessingTimeForInputs();
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
+    return SelfProcessingTimeLocked() + ratio_ * TotalProcessingTimeForInputs();
   }
 
  private:
@@ -288,7 +484,8 @@ class UnknownRatio : public Node {
 
   // The output time is the sum of the self processing time and the product of
   // the ratio estimate and the sum of output times of inputs.
-  double OutputTimeLocked(std::vector<double>* input_times) const override
+  double OutputTimeLocked(std::vector<double>* input_times,
+                          std::map<string, double>* gradient) const override
       SHARED_LOCKS_REQUIRED(mu_) {
     if (num_elements_ == 0 || inputs_.empty() ||
         inputs_.front()->num_elements() == 0) {
@@ -304,13 +501,30 @@ class UnknownRatio : public Node {
     auto cleanup = gtl::MakeCleanup([input_times, old_input_time]() {
       input_times->back() = old_input_time;
     });
+    if (gradient) {
+      std::map<string, double> inputs_gradient;
+      double result =
+          SelfProcessingTimeLocked() +
+          ratio * OutputTimeForInputs(input_times, &inputs_gradient);
+      auto last_input_time_der =
+          gtl::FindWithDefault(*gradient, kInputTimeDerivativeKey, 0.0L);
+      (*gradient)[kInputTimeDerivativeKey] =
+          last_input_time_der +
+          inputs_gradient[kInputTimeDerivativeKey] / ratio;
+      for (auto& pair : inputs_gradient) {
+        if (pair.first != kInputTimeDerivativeKey) {
+          (*gradient)[pair.first] = pair.second * ratio;
+        }
+      }
+      return result;
+    }
     return SelfProcessingTimeLocked() +
-           ratio * OutputTimeForInputs(input_times);
+           ratio * OutputTimeForInputs(input_times, /*gradient=*/nullptr);
   }
 
   // The processing time is the sum of the self processing time and the product
   // of the ratio estimate and the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
     if (inputs_.empty() || num_elements_ == 0) {
       return SelfProcessingTimeLocked();
     }
@@ -319,7 +533,7 @@ class UnknownRatio : public Node {
     std::shared_ptr<Node> input = inputs_.front();
     double ratio = static_cast<double>(input->num_elements()) /
                    static_cast<double>(num_elements_);
-    return SelfProcessingTimeLocked() + ratio * ProcessingTimeForInputs();
+    return SelfProcessingTimeLocked() + ratio * TotalProcessingTimeForInputs();
   }
 };
 
@@ -336,18 +550,25 @@ class Unknown : public Node {
   }
 
   // The output time is the sum of output times of inputs.
-  double OutputTimeLocked(std::vector<double>* input_times) const override
+  double OutputTimeLocked(std::vector<double>* input_times,
+                          std::map<string, double>* gradient) const override
       SHARED_LOCKS_REQUIRED(mu_) {
-    return OutputTimeForInputs(input_times);
+    return OutputTimeForInputs(input_times, gradient);
   }
 
   // The processing time is the sum of processing times of inputs.
-  double TotalProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
-    return ProcessingTimeForInputs();
+  double TotalProcessingTimeLocked() override SHARED_LOCKS_REQUIRED(mu_) {
+    return TotalProcessingTimeForInputs();
   }
 };
 
 }  // namespace
+
+std::shared_ptr<Parameter> MakeParameter(const string& name,
+                                         std::shared_ptr<SharedState> state,
+                                         double min, double max) {
+  return std::make_shared<Parameter>(name, state, min, max);
+}
 
 std::shared_ptr<Node> MakeInterleaveManyNode(Node::Args args) {
   return std::make_shared<InterleaveMany>(std::move(args));
@@ -426,68 +647,14 @@ void Model::AddProcessingTime(const string& name, int64 delta) {
   }
 }
 
-// The optimization algorithm starts by setting all tunable parallelism
-// parameters to 1. It then repeatedly identifies the parameter whose increase
-// in parallelism decreases the output time the most. This process is repeated
-// until all parameters reach their maximum values or the projected output time
-// is less than or equal to the processing time needed to produce an element
-// divided by CPU budget.
-void Model::Optimize(int64 cpu_budget) {
-  std::shared_ptr<Node> snapshot;
-  {
-    tf_shared_lock lock(mu_);
-    snapshot = output_->Snapshot(nullptr);
-  }
-  VLOG(2) << "Starting optimization of tunable parameters";
-  const double processing_time = TotalProcessingTime(snapshot);
-  auto parameters = CollectTunableParameters(snapshot);
-  for (auto& pair : parameters) {
-    pair.second->value = 1;
-  }
-  while (true) {
-    const double output_time = OutputTime(snapshot);
-    bool all_max = true;
-    for (auto& pair : parameters) {
-      if (pair.second->value < pair.second->max) {
-        all_max = false;
-        break;
-      }
-    }
-    if (output_time < processing_time / cpu_budget || all_max) {
+void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget) {
+  switch (algorithm) {
+    case AutotuneAlgorithm::HILL_CLIMB:
+      OptimizeHillClimb(cpu_budget);
       break;
-    }
-    double best_delta = -1.0L;
-    Parameter* best_parameter = nullptr;
-    for (auto& pair : parameters) {
-      if (pair.second->value == pair.second->max) {
-        continue;
-      }
-      pair.second->value++;
-      double new_output_time = OutputTime(snapshot);
-      double delta = output_time - new_output_time;
-      if (delta > best_delta) {
-        best_delta = delta;
-        best_parameter = pair.second.get();
-      }
-      pair.second->value--;
-    }
-    if (!best_parameter) {
-      LOG(WARNING) << "Failed to find a tunable parameter that would "
-                      "decrease the output time. This means that the "
-                      "autotuning optimization got stuck in a local maximum. "
-                      "The optimization attempt will be aborted.";
-      return;
-    }
-    best_parameter->value++;
-  }
-  VLOG(2) << "Number of tunable parameters: " << parameters.size();
-  for (auto& pair : parameters) {
-    auto& parameter = pair.second;
-    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
-            << parameter->value;
-    mutex_lock l(*parameter->state->mu);
-    parameter->state->value = parameter->value;
-    parameter->state->cond_var->notify_all();
+    case AutotuneAlgorithm::GRADIENT_DESCENT:
+      OptimizeGradientDescent(cpu_budget);
+      break;
   }
 }
 
@@ -552,7 +719,160 @@ std::map<string, std::shared_ptr<Parameter>> Model::CollectTunableParameters(
   return parameters;
 }
 
-double Model::OutputTime(std::shared_ptr<Node> node) {
+void Model::OptimizeGradientDescent(int64 cpu_budget) {
+  std::shared_ptr<Node> snapshot;
+  {
+    tf_shared_lock lock(mu_);
+    snapshot = output_->Snapshot(nullptr);
+  }
+  VLOG(2) << "Starting optimization of tunable parameters with GradientDescent";
+  const double processing_time = TotalProcessingTime(snapshot);
+  auto parameters = CollectTunableParameters(snapshot);
+  for (auto& pair : parameters) {
+    pair.second->value = pair.second->min;
+  }
+  // Gradient descent step size.
+  constexpr double kDescentStep = 0.7L;
+
+  // Optimization is stopped once the `OutputTime` improvement is smaller than
+  // this value.
+  constexpr double kOptimizationPrecision = 100.0L;
+
+  // Penalizing step for the parameters after we overoptimize (output time <
+  // processing time / cpu budget) the objective.
+  constexpr double kParametersPenalty = 0.05L;
+
+  // Maximum number of iterations for optimization.
+  constexpr int64 kMaxIterations = 100;
+
+  double output_time = 0;
+  double new_output_time;
+  double new_value;
+  for (int i = 0; i < kMaxIterations; ++i) {
+    std::map<string, double> gradient;
+    new_output_time = OutputTime(snapshot, &gradient);
+    if (std::abs(output_time - new_output_time) < kOptimizationPrecision ||
+        new_output_time < processing_time / cpu_budget) {
+      break;
+    }
+    double max_abs_derivative = 1.0;
+    for (auto& pair : parameters) {
+      if (pair.second->value != pair.second->max) {
+        max_abs_derivative =
+            std::max(max_abs_derivative, std::abs(gradient[pair.first]));
+      }
+    }
+    // Maximizes parameters on early stages of the model.
+    if (max_abs_derivative < kOptimizationPrecision) {
+      for (auto& pair : parameters) {
+        pair.second->value = pair.second->max;
+      }
+      break;
+    }
+    for (auto& pair : parameters) {
+      new_value = pair.second->value -
+                  kDescentStep * gradient[pair.first] / max_abs_derivative;
+      // Projection on a feasible interval.
+      if (new_value > pair.second->max) {
+        pair.second->value = pair.second->max;
+      } else if (new_value < pair.second->min) {
+        pair.second->value = pair.second->min;
+      } else {
+        pair.second->value = new_value;
+      }
+    }
+    output_time = new_output_time;
+  }
+  // Penalize parameters if we overoptimized the objective.
+  for (int i = 0;
+       i < kMaxIterations && new_output_time < processing_time / cpu_budget;
+       ++i) {
+    for (auto& pair : parameters) {
+      new_value = pair.second->value - kParametersPenalty;
+      // Projection on a feasible interval.
+      if (new_value > pair.second->max) {
+        pair.second->value = pair.second->max;
+      } else if (new_value < pair.second->min) {
+        pair.second->value = pair.second->min;
+      } else {
+        pair.second->value = new_value;
+      }
+    }
+    new_output_time = OutputTime(snapshot, /*gradient=*/nullptr);
+  }
+  VLOG(2) << "Number of tunable parameters: " << parameters.size();
+  for (auto& pair : parameters) {
+    pair.second->value = std::round(pair.second->value);
+    auto& parameter = pair.second;
+    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
+            << parameter->value;
+    mutex_lock l(*parameter->state->mu);
+    parameter->state->value = parameter->value;
+    parameter->state->cond_var->notify_all();
+  }
+}
+
+void Model::OptimizeHillClimb(int64 cpu_budget) {
+  std::shared_ptr<Node> snapshot;
+  {
+    tf_shared_lock lock(mu_);
+    snapshot = output_->Snapshot(nullptr);
+  }
+  VLOG(2) << "Starting optimization of tunable parameters with HillClimb";
+  const double processing_time = TotalProcessingTime(snapshot);
+  auto parameters = CollectTunableParameters(snapshot);
+  for (auto& pair : parameters) {
+    pair.second->value = 1;
+  }
+  while (true) {
+    const double output_time = OutputTime(snapshot, /*gradient=*/nullptr);
+    bool all_max = true;
+    for (auto& pair : parameters) {
+      if (pair.second->value < pair.second->max) {
+        all_max = false;
+        break;
+      }
+    }
+    if (output_time < processing_time / cpu_budget || all_max) {
+      break;
+    }
+    double best_delta = -1.0L;
+    Parameter* best_parameter = nullptr;
+    for (auto& pair : parameters) {
+      if (pair.second->value == pair.second->max) {
+        continue;
+      }
+      pair.second->value++;
+      double new_output_time = OutputTime(snapshot, /*gradient=*/nullptr);
+      double delta = output_time - new_output_time;
+      if (delta > best_delta) {
+        best_delta = delta;
+        best_parameter = pair.second.get();
+      }
+      pair.second->value--;
+    }
+    if (!best_parameter) {
+      LOG(WARNING) << "Failed to find a tunable parameter that would "
+                      "decrease the output time. This means that the "
+                      "autotuning optimization got stuck in a local maximum. "
+                      "The optimization attempt will be aborted.";
+      return;
+    }
+    best_parameter->value++;
+  }
+  VLOG(2) << "Number of tunable parameters: " << parameters.size();
+  for (auto& pair : parameters) {
+    auto& parameter = pair.second;
+    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
+            << parameter->value;
+    mutex_lock l(*parameter->state->mu);
+    parameter->state->value = parameter->value;
+    parameter->state->cond_var->notify_all();
+  }
+}
+
+double Model::OutputTime(std::shared_ptr<Node> node,
+                         std::map<string, double>* gradient) {
   std::vector<double> input_times(1, 0);
   // TODO(jsimsa): Now that we are accounting for buffer size in wait time
   // computation, assuming that the input is infinitely fast will result in
@@ -560,7 +880,7 @@ double Model::OutputTime(std::shared_ptr<Node> node) {
   //
   // We should compute the output latency as a fix-point of the following
   // equation: `output_time = node(OutputTime(input_times(1, output_time))`.
-  return node->OutputTime(&input_times);
+  return node->OutputTime(&input_times, gradient);
 }
 
 double Model::TotalProcessingTime(std::shared_ptr<Node> node) {

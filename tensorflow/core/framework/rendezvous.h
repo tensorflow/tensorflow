@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -48,6 +49,7 @@ class Rendezvous : public core::RefCounted {
   struct Args {
     DeviceContext* device_context = nullptr;
     AllocatorAttributes alloc_attrs;
+    CancellationManager* cancellation_manager = nullptr;  // not owned.
   };
 
   // Constructs a rendezvous key for the tensor of "name" sent from

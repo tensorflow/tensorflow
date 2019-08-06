@@ -252,9 +252,6 @@ void pdm_start_dma(tflite::ErrorReporter* error_reporter) {
 
 #if USE_MAYA
 extern "C" void power_down_sequence(void) {
-  uint32_t ui32IntMask;
-  uint32_t ui32Ret;
-  uint32_t ui32Value = 0;
   am_hal_gpio_read_type_e eReadType;
   eReadType = AM_HAL_GPIO_INPUT_READ;
 

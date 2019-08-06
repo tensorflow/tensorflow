@@ -158,9 +158,11 @@ Status RunCudnnConvImpl(const CudnnConvParams& params,
 
   if (!stream->ok()) {
     return InternalError(
-        "Unable to launch convolution with type %s and algorithm (%d, %d)",
+        "Unable to launch convolution with type %s and algorithm (%d, %s)",
         CudnnConvKindToString(params.kind), algorithm.algorithm()->algo_id(),
-        algorithm.algorithm_no_scratch()->algo_id());
+        algorithm.algorithm_no_scratch().has_value()
+            ? absl::StrCat(algorithm.algorithm_no_scratch()->algo_id())
+            : "none");
   }
   return Status::OK();
 }

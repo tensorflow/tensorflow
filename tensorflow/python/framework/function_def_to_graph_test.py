@@ -75,15 +75,18 @@ class FunctionDefToGraphTest(test.TestCase):
     self.assertIsNone(g.outputs[1].shape.dims)  # Unknown dims.
 
     g = function_def_to_graph.function_def_to_graph(
-        fdef, input_shapes=[tensor_shape.vector(5),
-                            tensor_shape.vector(5)])
+        fdef,
+        input_shapes=[
+            tensor_shape.TensorShape([5]),
+            tensor_shape.TensorShape([5])
+        ])
     self.assertSequenceEqual(g.inputs[0].shape.dims, [5])
     self.assertSequenceEqual(g.inputs[1].shape.dims, [5])
     self.assertSequenceEqual(g.outputs[0].shape.dims, [5])
     self.assertSequenceEqual(g.outputs[1].shape.dims, [5])
 
     g = function_def_to_graph.function_def_to_graph(
-        fdef, input_shapes=[None, tensor_shape.matrix(5, 7)])
+        fdef, input_shapes=[None, tensor_shape.TensorShape([5, 7])])
     self.assertIsNone(g.inputs[0].shape.dims)
     self.assertSequenceEqual(g.inputs[1].shape.dims, [5, 7])
     self.assertSequenceEqual(g.outputs[0].shape.dims, [5, 7])
@@ -93,7 +96,7 @@ class FunctionDefToGraphTest(test.TestCase):
     # the number of input args in FunctionDef.signature.input_arg.
     with self.assertRaises(ValueError):
       g = function_def_to_graph.function_def_to_graph(
-          fdef, input_shapes=[tensor_shape.matrix(5, 7)])
+          fdef, input_shapes=[tensor_shape.TensorShape([5, 7])])
 
 
 class FunctionDefToGraphDefTest(test.TestCase):
@@ -177,8 +180,10 @@ class FunctionDefToGraphDefTest(test.TestCase):
     fdef = self._build_function_def()
     g, _ = function_def_to_graph.function_def_to_graph_def(
         fdef,
-        input_shapes=[tensor_shape.scalar(),
-                      tensor_shape.vector(5), None])
+        input_shapes=[
+            tensor_shape.TensorShape([]),
+            tensor_shape.TensorShape([5]), None
+        ])
     self.assertEqual("shape" in g.node[0].attr, True)
     self.assertSequenceEqual(
         tensor_shape.TensorShape(g.node[0].attr["shape"].shape).as_list(), [])
@@ -213,7 +218,7 @@ class FunctionDefToGraphDefTest(test.TestCase):
     # `function_def_to_graph` can find it.
     fn2_defun()
 
-    fdef = fn2_defun._inference_function.definition
+    fdef = fn2_defun.function_def
     func_graph = function_def_to_graph.function_def_to_graph(fdef)
     with func_graph.as_default():
       x_ph, y_ph = func_graph.inputs

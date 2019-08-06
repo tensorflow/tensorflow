@@ -48,33 +48,124 @@ CustomCallThunk::CustomCallThunk(
              instr->shape().ToString(), result_slices.shape().ToString());
 }
 
-Status CustomCallThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    const RunId& /*run_id*/, HloExecutionProfiler* profiler) {
+// For each leaf in a preorder traversal of `slices`, appends its device address
+// to `buffers`.
+//
+// In the common case, this is trivial; simply iterate over the ShapeTree and
+// add every leaf to `buffers`.  But under some circumstances XLA doesn't
+// statically know the address of a leaf buffer and has to derive it by walking
+// the on-device tuple.
+static Status AppendBuffersFor(const ShapeTree<BufferAllocation::Slice>& slices,
+                               const BufferAllocations* buffer_allocations,
+                               se::Stream* stream,
+                               std::vector<void*>* buffers) {
+  // Buffer addresses we've retrieved by following device tuples.
+  ShapeTree<void*> retrieved_addrs(slices.shape());
+
+  // We make this lambda an std::function so it can capture itself.
+  std::function<StatusOr<void*>(const ShapeIndexView&)> get_addr_for =
+      [&](ShapeIndexView index) -> StatusOr<void*> {
+    auto slice = slices.element(index);
+
+    // If we know the address of this sub-buffer statically, return it.
+    if (slice.allocation() != nullptr) {
+      return buffer_allocations->GetDeviceAddress(slice).opaque();
+    }
+    // If we've already pulled the address for this sub-buffer down from the
+    // GPU, return it.
+    if (retrieved_addrs.element(index) != nullptr) {
+      return retrieved_addrs.element(index);
+    }
+
+    // Recurse to get the address of the parent sub-buffer.
+    CHECK(!index.empty()) << "Address of tuple root cannot be unknown!";
+    TF_ASSIGN_OR_RETURN(void* parent_buffer, get_addr_for(index.ConsumeBack()));
+
+    // Pull down the entirety of parent_buffer from the GPU, getting the address
+    // we're interested in plus all of its siblings.  (Perhaps only some of the
+    // siblings are unknown and we could get away without retrieving all of
+    // them.  But in practice, getting them all in one fell swoop should be just
+    // as fast as getting just one.)
+    //
+    // TODO(jlebar): This is not as efficient as possible.  In particular, at
+    // the expense of some complexity we could batch up multiple parallel D2H
+    // copies (say for multiple unrelated sub-buffers, maybe even across
+    // different parameters) and do just one BlockHostUntilDone.  Hopefully the
+    // case when we have to do any copies at all is uncommon.
+    int64 num_siblings =
+        ShapeUtil::GetSubshape(slices.shape(), index.ConsumeBack())
+            .tuple_shapes_size();
+    std::vector<void*> sibling_addrs(num_siblings);
+    TF_RETURN_IF_ERROR(
+        stream
+            ->ThenMemcpy(sibling_addrs.data(),
+                         se::DeviceMemoryBase(parent_buffer, sizeof(void*)),
+                         num_siblings * sizeof(void*))
+            .BlockHostUntilDone());
+
+    // Save the data we retrieved into retrieved_addrs.
+    for (int64 i = 0; i < num_siblings; ++i) {
+      ShapeIndex sibling_index(index.ConsumeBack());
+      sibling_index.push_back(i);
+      *retrieved_addrs.mutable_element(sibling_index) = sibling_addrs[i];
+    }
+    return sibling_addrs[index.back()];
+  };
+
+  return slices.ForEachElementWithStatus(
+      [&](const ShapeIndex& index, const BufferAllocation::Slice&) {
+        if (slices.IsLeaf(index)) {
+          TF_ASSIGN_OR_RETURN(void* addr, get_addr_for(index));
+          buffers->push_back(addr);
+        }
+        return Status::OK();
+      });
+}
+
+Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   // gpu_stream is CUstream or e.g. the equivalent type in ROCm.
-  auto gpu_stream = se::gpu::AsGpuStreamValue(stream);
+  se::Stream* stream = params.stream;
+  auto gpu_stream = se::gpu::AsGpuStreamValue(params.stream);
   auto typed_call_target =
       reinterpret_cast<void (*)(decltype(gpu_stream), void** /*buffers*/,
                                 const char* /*opaque*/, size_t /*opaque_len*/)>(
           call_target_);
 
   std::vector<void*> buffers;
-  auto append_buffers = [&](const ShapeTree<BufferAllocation::Slice>& slices) {
-    slices.ForEachElement([&](const ShapeIndex& /*index*/,
-                              const BufferAllocation::Slice& slice) {
-      if (slice.allocation() == nullptr) {
-        buffers.push_back(nullptr);
-      }
-      buffers.push_back(buffer_allocations.GetDeviceAddress(slice).opaque());
-    });
-  };
   for (const auto& slices : operand_slices_) {
-    append_buffers(slices);
+    TF_RETURN_IF_ERROR(
+        AppendBuffersFor(slices, params.buffer_allocations, stream, &buffers));
   }
-  append_buffers(result_slices_);
+  TF_RETURN_IF_ERROR(AppendBuffersFor(result_slices_, params.buffer_allocations,
+                                      stream, &buffers));
 
   typed_call_target(gpu_stream, buffers.data(), opaque_.data(), opaque_.size());
-  return Status::OK();
+
+  // If the custom-call returns a tuple, populate the result tuple index
+  // buffers.
+  return result_slices_.ForEachElementWithStatus(
+      [&](const ShapeIndex& index, const BufferAllocation::Slice& slice) {
+        const Shape& subshape =
+            ShapeUtil::GetSubshape(result_slices_.shape(), index);
+        auto n = subshape.tuple_shapes_size();
+        if (!subshape.IsTuple() || n == 0) {
+          return Status::OK();
+        }
+        auto tuple_ptrs = absl::make_unique<void*[]>(n);
+        ShapeIndex subindex(index);
+        for (int i = 0; i < n; ++i) {
+          subindex.push_back(i);
+          tuple_ptrs[i] =
+              params.buffer_allocations
+                  ->GetDeviceAddress(result_slices_.element(subindex))
+                  .opaque();
+          subindex.pop_back();
+        }
+        SafeH2DMemcpy(se::DeviceMemory<void*>(
+                          params.buffer_allocations->GetDeviceAddress(slice)),
+                      std::move(tuple_ptrs), n, stream);
+        return Status::OK();
+      });
 }
 
 }  // namespace gpu

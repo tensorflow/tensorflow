@@ -93,9 +93,9 @@ class NcclAllReduceOpKernel : public NcclReduceOpBase {
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
     const Tensor* input = &c->input(0);
     Tensor* output;
-    OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, input->shape(), &output),
-                         done);
-
+    OP_REQUIRES_OK_ASYNC(
+        c, c->forward_input_or_allocate_output({0}, 0, input->shape(), &output),
+        done);
     auto actual_done = [c, done](Status s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();

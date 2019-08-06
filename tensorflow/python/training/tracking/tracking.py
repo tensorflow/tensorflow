@@ -20,6 +20,7 @@ from __future__ import print_function
 import functools
 import weakref
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import dtypes
@@ -74,6 +75,13 @@ class AutoTrackable(base.Trackable):
 
   def __setattr__(self, name, value):
     """Support self.foo = trackable syntax."""
+    try:
+      if getattr(self, name) is value:
+        # Short circuit for `self.$x = self.$x`.
+        return
+    except AttributeError:
+      pass
+
     if getattr(self, "_self_setattr_tracking", True):
       value = data_structures.sticky_attribute_assignment(
           trackable=self, value=value, name=name)
@@ -160,6 +168,28 @@ def resource_tracker_scope(resource_tracker):
     _RESOURCE_TRACKER_STACK = old
 
 
+class CapturableResourceDeleter(object):
+  """Deleter to destroy CapturableResource without overriding its __del__()."""
+
+  def __init__(self, destroy_resource_fn=None):
+    if destroy_resource_fn:
+      self._destroy_resource = destroy_resource_fn
+      self._destruction_context = (
+          context.eager_mode if context.executing_eagerly()
+          else ops.get_default_graph().as_default)
+    else:
+      self._destroy_resource = None
+
+  def destroy_resource(self):
+    if self._destroy_resource:
+      return self._destroy_resource()
+
+  def __del__(self):
+    if self._destroy_resource:
+      with self._destruction_context():
+        self._destroy_resource()
+
+
 class CapturableResource(base.Trackable):
   """Holds a Tensor which a tf.function can capture.
 
@@ -170,7 +200,7 @@ class CapturableResource(base.Trackable):
   `CapturableResource` directly.
   """
 
-  def __init__(self, device=""):
+  def __init__(self, device="", deleter=None):
     """Initialize the `CapturableResource`.
 
     Args:
@@ -178,9 +208,12 @@ class CapturableResource(base.Trackable):
         e.g. "CPU" if this resource must be created on a CPU device. A blank
         device allows the user to place resource creation, so generally this
         should be blank unless the resource only makes sense on one device.
+      deleter: A CapturableResourceDeleter that will destroy the created
+        resource during destruction.
     """
     self._resource_handle = None
     self._resource_device = device
+    self._resource_deleter = deleter or CapturableResourceDeleter()
 
   def _create_resource(self):
     """A function that creates a resource handle."""
@@ -210,16 +243,22 @@ class CapturableResource(base.Trackable):
       self._initialize()
       return 1  # Dummy return
 
+    @def_function.function(input_signature=[], autograph=False)
+    def _destroyer():
+      self._resource_deleter.destroy_resource()
+      return 1  # Dummy return
+
     return {
         "_create_resource": _creator,
         "_initialize": _initializer,
+        "_destroy_resource": _destroyer,
     }
 
 
 class TrackableResource(CapturableResource):
   """Adds scope tracking to CapturableResource."""
 
-  def __init__(self, device=""):
+  def __init__(self, device="", deleter=None):
     """Initialize the `TrackableResource`.
 
     Args:
@@ -227,11 +266,13 @@ class TrackableResource(CapturableResource):
         e.g. "CPU" if this resource must be created on a CPU device. A blank
         device allows the user to place resource creation, so generally this
         should be blank unless the resource only makes sense on one device.
+      deleter: A CapturableResourceDeleter that will destroy the created
+        resource during destruction.
     """
     global _RESOURCE_TRACKER_STACK
     for resource_tracker in _RESOURCE_TRACKER_STACK:
       resource_tracker.add_resource(self)
-    super(TrackableResource, self).__init__(device=device)
+    super(TrackableResource, self).__init__(device=device, deleter=deleter)
 
 
 class TrackableAsset(base.Trackable):
@@ -342,6 +383,8 @@ def cached_per_instance(f):
     if output is None:
       cache[item] = output = f(item)
     return output
+
+  wrapped.cache = cache
   return wrapped
 
 

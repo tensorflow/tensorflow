@@ -24,9 +24,11 @@ import contextlib
 import numpy as np
 import six
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import linalg_ops
@@ -44,7 +46,7 @@ __all__ = ["LinearOperator"]
 # TODO(langmore) Use matrix_solve_ls for singular or non-square matrices.
 @tf_export("linalg.LinearOperator")
 @six.add_metaclass(abc.ABCMeta)
-class LinearOperator(object):
+class LinearOperator(module.Module):
   """Base class defining a [batch of] linear operator[s].
 
   Subclasses of `LinearOperator` provide access to common methods on a
@@ -200,7 +202,7 @@ class LinearOperator(object):
     for i, t in enumerate(graph_parents):
       if t is None or not tensor_util.is_tensor(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
-    self._dtype = dtype
+    self._dtype = dtypes.as_dtype(dtype).base_dtype if dtype else dtype
     self._graph_parents = graph_parents
     self._is_non_singular = is_non_singular
     self._is_self_adjoint = is_self_adjoint
@@ -560,7 +562,7 @@ class LinearOperator(object):
 
   def _check_input_dtype(self, arg):
     """Check that arg.dtype == self.dtype."""
-    if arg.dtype != self.dtype:
+    if arg.dtype.base_dtype != self.dtype:
       raise TypeError(
           "Expected argument to have dtype %s.  Found: %s in tensor %s" %
           (self.dtype, arg.dtype, arg))
@@ -937,8 +939,6 @@ class LinearOperator(object):
 
   def _to_dense(self):
     """Generic and often inefficient implementation.  Override often."""
-    logging.warn("Using (possibly slow) default implementation of to_dense."
-                 "  Converts by self.matmul(identity).")
     if self.batch_shape.is_fully_defined():
       batch_shape = self.batch_shape
     else:
@@ -1045,8 +1045,10 @@ def _cholesky(input, name=None):   # pylint:disable=redefined-builtin
   return input.cholesky(name)
 
 
+# The signature has to match with the one in python/op/array_ops.py,
+# so we have k and padding_value even though we don't use them here.
 @dispatch.dispatch_for_types(linalg.diag_part, LinearOperator)
-def _diag_part(input, name=None):   # pylint:disable=redefined-builtin
+def _diag_part(input, name="diag_part", k=0, padding_value=0):  # pylint:disable=redefined-builtin, unused-argument
   return input.diag_part(name)
 
 
@@ -1112,6 +1114,3 @@ def _solve(
 @dispatch.dispatch_for_types(linalg.trace, LinearOperator)
 def _trace(x, name=None):
   return x.trace(name)
-
-
-

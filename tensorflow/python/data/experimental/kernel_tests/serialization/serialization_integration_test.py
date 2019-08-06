@@ -21,6 +21,7 @@ import os
 
 from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver as saver_lib
@@ -71,6 +72,7 @@ class SerializationIntegrationTest(test.TestCase):
       init_ops, get_next_ops, saver = self._build_graph(num_pipelines,
                                                         num_outputs)
       with self.session(graph=g) as sess:
+        self.evaluate(init_ops)
         saver.restore(sess, self._ckpt_path())
         for _ in range(num_outputs - break_point):
           output = self.evaluate(get_next_ops)
@@ -79,6 +81,15 @@ class SerializationIntegrationTest(test.TestCase):
 
     for output in all_outputs:
       self.assertSequenceEqual(sorted(output), range(num_outputs))
+
+  def testUninitializedIterator(self):
+    num_pipelines = 1
+    num_outputs = 1
+    with ops.Graph().as_default() as g:
+      _, _, saver = self._build_graph(num_pipelines, num_outputs)
+      with self.session(graph=g) as sess:
+        with self.assertRaises(errors.FailedPreconditionError):
+          saver.save(sess, self._ckpt_path())
 
 
 if __name__ == "__main__":

@@ -184,10 +184,10 @@ void StackOp::Compute(OpKernelContext* ctx) {
   ResourceMgr* rm = ctx->resource_manager();
   OP_REQUIRES(ctx, rm != nullptr, errors::Internal("No resource manager."));
   string key = strings::StrCat(kContainer, stack_name);
-  Stack* stack = new Stack(elem_type_, stack_name, size);
   auto* step_container = ctx->step_container();
   OP_REQUIRES(ctx, step_container != nullptr,
               errors::Internal("No step container."));
+  Stack* stack = new Stack(elem_type_, stack_name, size);
   OP_REQUIRES_OK(ctx, rm->Create(step_container->name(), key, stack));
   if (IsRefType(ctx->expected_output_dtype(0))) {
     // Create the stack handle.

@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.losses import binary_crossentropy
 from tensorflow.python.keras.losses import categorical_crossentropy
@@ -136,7 +137,10 @@ class Metric(Layer):
     super(Metric, self).__init__(name=name, dtype=dtype, **kwargs)
     self.stateful = True  # All metric layers are stateful.
     self.built = True
-    self._dtype = K.floatx() if dtype is None else dtypes.as_dtype(dtype).name
+    if not base_layer_utils.v2_dtype_behavior_enabled():
+      # We only do this when the V2 behavior is not enabled, as when it is
+      # enabled, the dtype already defaults to floatx.
+      self._dtype = K.floatx() if dtype is None else dtypes.as_dtype(dtype).name
 
   def __new__(cls, *args, **kwargs):
     obj = super(Metric, cls).__new__(cls)
@@ -247,6 +251,18 @@ class Metric(Layer):
                  initializer=None,
                  dtype=None):
     """Adds state variable. Only for use by subclasses."""
+    from tensorflow.python.distribute import distribution_strategy_context as ds_context  # pylint:disable=g-import-not-at-top
+    from tensorflow.python.keras.distribute import distributed_training_utils  # pylint:disable=g-import-not-at-top
+
+    if ds_context.has_strategy():
+      strategy = ds_context.get_strategy()
+    else:
+      strategy = None
+
+    # TODO(b/120571621): Make `ON_READ` work with Keras metrics on TPU.
+    if distributed_training_utils.is_tpu_strategy(strategy):
+      synchronization = tf_variables.VariableSynchronization.ON_WRITE
+
     return super(Metric, self).add_weight(
         name=name,
         shape=shape,
@@ -273,12 +289,13 @@ class Reduce(Metric):
     """
     super(Reduce, self).__init__(name=name, dtype=dtype)
     self.reduction = reduction
-    self.total = self.add_weight(
-        'total', initializer=init_ops.zeros_initializer)
-    if reduction in [metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
-                     metrics_utils.Reduction.WEIGHTED_MEAN]:
-      self.count = self.add_weight(
-          'count', initializer=init_ops.zeros_initializer)
+    with ops.init_scope():
+      self.total = self.add_weight(
+          'total', initializer=init_ops.zeros_initializer)
+      if reduction in [metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
+                       metrics_utils.Reduction.WEIGHTED_MEAN]:
+        self.count = self.add_weight(
+            'count', initializer=init_ops.zeros_initializer)
 
   def update_state(self, values, sample_weight=None):
     """Accumulates statistics for computing the reduction metric.
@@ -2800,7 +2817,8 @@ cosine_proximity = cosine_similarity
 def clone_metric(metric):
   """Returns a clone of the metric if stateful, otherwise returns it as is."""
   if isinstance(metric, Metric):
-    return metric.__class__.from_config(metric.get_config())
+    with ops.init_scope():
+      return metric.__class__.from_config(metric.get_config())
   return metric
 
 

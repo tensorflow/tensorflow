@@ -21,7 +21,7 @@ from __future__ import print_function
 import collections
 import contextlib
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
+from six.moves import xrange, zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import backprop
@@ -43,6 +43,8 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import object_identity
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -160,9 +162,7 @@ def _DefaultGradYs(grad_ys,
     raise ValueError("Passed %d grad_ys for %d ys" % (len(grad_ys), len(ys)))
   grad_ys = ops.convert_n_to_tensor_or_indexed_slices(grad_ys, name="grad_y")
   new_grad_ys = []
-  for i in xrange(len(grad_ys)):
-    grad_y = grad_ys[i]
-    y = ys[i]
+  for i, (y, grad_y) in enumerate(zip(ys, grad_ys)):
     with _maybe_colocate_with(y.op, gradient_uid, colocate_gradients_with_ops):
       if grad_y is None:
         if y.dtype.is_complex:
@@ -257,7 +257,8 @@ def _VerifyGeneratedGradients(grads, op):
   """
   # While ops have inputs added to them during the gradient computation, so we
   # skip the below check. See while_v2 for details.
-  if op.type == "While": return
+  if op.type == "While" or op.type == "StatelessWhile":
+    return
 
   if len(grads) != len(op.inputs):
     raise ValueError("Num gradients %d generated for op %s do not match num "
@@ -402,7 +403,7 @@ def _Captures(func_graph):
     return func_graph.captures
   else:
     assert isinstance(func_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
-    return func_graph._captured  # pylint: disable=protected-access
+    return func_graph._captured.items()  # pylint: disable=protected-access
 
 
 def _MaybeCaptured(t):
@@ -417,8 +418,8 @@ def _MaybeCaptured(t):
   # pylint: disable=protected-access
   if (not isinstance(t, ops.EagerTensor) and
       _IsFunction(t.op.graph) and t.op.type == "Placeholder"):
-    for input_t, placeholder_t in _Captures(t.op.graph).items():
-      if t == placeholder_t:
+    for input_t, placeholder_t in _Captures(t.op.graph):
+      if t is placeholder_t:
         return _MaybeCaptured(input_t)
   # pylint: enable=protected-access
   return t
@@ -454,6 +455,7 @@ def _Inputs(op, xs):
     A list of tensors. The tensors may be from multiple Graph/FuncGraphs if op
     is in a FuncGraph and has captured inputs.
   """
+  tensors = object_identity.ObjectIdentitySet(xs)
   if _IsFunction(op.graph):  # pylint: disable=protected-access
     inputs = []
     for t in op.inputs:
@@ -462,7 +464,7 @@ def _Inputs(op, xs):
       # even if it's a function input for a captured value, whereas usually we'd
       # like to traverse through these closures as if the captured value was the
       # direct input to op.
-      if t not in xs:
+      if t not in tensors:
         t = _MaybeCaptured(t)
       inputs.append(t)
     return inputs
@@ -483,8 +485,8 @@ def _Consumers(t, func_graphs):
   """
   consumers = t.consumers()
   for func in func_graphs:
-    for input_t, placeholder in _Captures(func).items():
-      if input_t == t:
+    for input_t, placeholder in _Captures(func):
+      if input_t is t:
         consumers.extend(_Consumers(placeholder, func_graphs))
   return consumers
 
@@ -730,7 +732,7 @@ def _HasAnyNotNoneGrads(grads, op):
   for out_grad in out_grads:
     if isinstance(out_grad, (ops.Tensor, ops.IndexedSlices)):
       return True
-    if out_grad and isinstance(out_grad, collections.Sequence):
+    if out_grad and isinstance(out_grad, collections_abc.Sequence):
       if any(g is not None for g in out_grad):
         return True
   return False
@@ -883,23 +885,23 @@ class AggregationMethod(object):
   aggregating gradients:
 
   *  `ADD_N`: All of the gradient terms are summed as part of one
-     operation using the "AddN" op (see `tf.add_n`). This 
-     method has the property that all gradients must be ready and 
+     operation using the "AddN" op (see `tf.add_n`). This
+     method has the property that all gradients must be ready and
      buffered separately in memory before any aggregation is performed.
   *  `DEFAULT`: The system-chosen default aggregation method.
 
-  The following aggregation methods are experimental and may not 
+  The following aggregation methods are experimental and may not
   be supported in future releases:
 
   * `EXPERIMENTAL_TREE`: Gradient terms are summed in pairs using
-    using the "AddN" op. This method of summing gradients may reduce 
-    performance, but it can improve memory utilization because the 
+    using the "AddN" op. This method of summing gradients may reduce
+    performance, but it can improve memory utilization because the
     gradients can be released earlier.
 
   * `EXPERIMENTAL_ACCUMULATE_N`: Gradient terms are summed using the
-    "AccumulateN" op (see `tf.accumulate_n`), which accumulates the 
+    "AccumulateN" op (see `tf.accumulate_n`), which accumulates the
     overall sum in a single buffer that is shared across threads.
-    This method of summing gradients can result in a lower memory footprint 
+    This method of summing gradients can result in a lower memory footprint
     and lower latency at the expense of higher CPU/GPU utilization.
     For gradients of types that "AccumulateN" does not support, this
     summation method falls back on the behavior of `EXPERIMENTAL_TREE`
@@ -955,11 +957,10 @@ def _AggregatedGrads(grads,
         assert control_flow_util.IsLoopSwitch(op)
         continue
     # Grads have to be Tensors or IndexedSlices
-    if (isinstance(out_grad, collections.Sequence) and not all(
+    if (isinstance(out_grad, collections_abc.Sequence) and not all(
         isinstance(g, (ops.Tensor, ops.IndexedSlices))
         for g in out_grad
-        if g is not None
-    )):
+        if g is not None)):
       raise TypeError("gradients have to be either all Tensors "
                       "or all IndexedSlices")
     # Aggregate multiple gradients, and convert [] to None.

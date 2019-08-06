@@ -222,7 +222,7 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
             values=[i * 3, i * 3 + 1, i * 3 + 2, i * 3 + 3, i * 3 + 4],
             dense_shape=[5, 1])
         self.assertTrue(sparse_tensor.is_sparse(actual))
-        self.assertSparseValuesEqual(actual, expected)
+        self.assertValuesEqual(actual, expected)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -257,7 +257,7 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
             values=expected_values,
             dense_shape=[5, i * 3 + 5 - 1])
         self.assertTrue(sparse_tensor.is_sparse(actual))
-        self.assertSparseValuesEqual(actual, expected)
+        self.assertValuesEqual(actual, expected)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -285,7 +285,7 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           values=[0, 1, 2, 3, 2, 3, 4, 5, 4, 5, 6, 7],
           dense_shape=[3, 4, 1])
       self.assertTrue(sparse_tensor.is_sparse(actual))
-      self.assertSparseValuesEqual(actual, expected)
+      self.assertValuesEqual(actual, expected)
       # Slide: 2nd batch.
       actual = sess.run(get_next)
       expected = sparse_tensor.SparseTensorValue(
@@ -295,7 +295,7 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           values=[2, 3, 4, 5, 4, 5, 6, 7, 6, 7, 8, 9],
           dense_shape=[3, 4, 1])
       self.assertTrue(sparse_tensor.is_sparse(actual))
-      self.assertSparseValuesEqual(actual, expected)
+      self.assertValuesEqual(actual, expected)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

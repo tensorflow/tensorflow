@@ -79,6 +79,8 @@ def copy_binary(directory, origin_tag, new_tag, version, package):
     zip_these_files = [
         "%s-%s.dist-info" % (package, version),
         "%s-%s.data" % (package, version),
+        "tensorflow",
+        "tensorflow_core",
     ]
     for dirname in zip_these_files:
       for root, _, files in os.walk(dirname):

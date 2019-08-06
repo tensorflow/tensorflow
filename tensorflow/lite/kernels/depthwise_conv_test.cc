@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdarg>
+#include <cstdint>
 #include <initializer_list>
+
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
@@ -581,12 +584,21 @@ class QuantizedDepthwiseConvolutionOpModel
   void SetInput(std::initializer_list<float> data) {
     QuantizeAndPopulate<uint8_t>(input_, data);
   }
+  void SetInput(const std::vector<float>& data) {
+    QuantizeAndPopulate<uint8_t>(input_, data);
+  }
 
   void SetFilter(std::initializer_list<float> data) {
     QuantizeAndPopulate<uint8_t>(filter_, data);
   }
+  void SetFilter(const std::vector<float>& data) {
+    QuantizeAndPopulate<uint8_t>(filter_, data);
+  }
 
   void SetBias(std::initializer_list<float> data) {
+    QuantizeAndPopulate<int32_t>(bias_, data);
+  }
+  void SetBias(const std::vector<float>& data) {
     QuantizeAndPopulate<int32_t>(bias_, data);
   }
 
@@ -603,6 +615,47 @@ class QuantizedDepthwiseConvolutionOpTest : public SingleOpTest {
     return *kKernelMap;
   }
 };
+
+TEST_F(QuantizedDepthwiseConvolutionOpTest, LargeOutputChannelTest) {
+  const TensorData input({TensorType_UINT8, {1, 4, 4, 2400}, -63.5, 64});
+  const TensorData filter({TensorType_UINT8, {1, 3, 3, 2400}, -63.5, 64});
+  const TensorData output({TensorType_UINT8, {}, -127, 128});
+  const Padding padding = Padding_VALID;
+
+  // Populate input, filter & bias data.
+  const int input_size = 1 * 4 * 4 * 2400;
+  const int filter_size = 1 * 3 * 3 * 2400;
+  const int bias_size = 2400;
+  std::vector<float> input_data(input_size);
+  std::vector<float> filter_data(filter_size);
+  std::vector<float> bias_data(bias_size);
+  for (int i = 0; i < input_size; ++i) {
+    input_data[i] = UniformRandomFloat(-1, -1);
+  }
+  for (int i = 0; i < filter_size; ++i) {
+    filter_data[i] = UniformRandomFloat(-1, -1);
+  }
+  for (int i = 0; i < bias_size; ++i) {
+    bias_data[i] = UniformRandomFloat(-1, -1);
+  }
+
+  // Make sure reference impl & optimized impl produce the same result.
+  QuantizedDepthwiseConvolutionOpModel reference_impl(
+      ops::builtin::Register_DEPTHWISE_CONVOLUTION_REF(), input, filter, output,
+      padding);
+  reference_impl.SetInput(input_data);
+  reference_impl.SetFilter(filter_data);
+  reference_impl.SetBias(bias_data);
+
+  QuantizedDepthwiseConvolutionOpModel optimized_impl(
+      ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT(), input, filter,
+      output, padding);
+  optimized_impl.SetInput(input_data);
+  optimized_impl.SetFilter(filter_data);
+  optimized_impl.SetBias(bias_data);
+
+  // EXPECT_THAT(reference_impl.GetOutput(), optimized_impl.GetOutput());
+}
 
 // In this test we set the input and output scales so that the results match
 // exactly the 'non-quantized' version.

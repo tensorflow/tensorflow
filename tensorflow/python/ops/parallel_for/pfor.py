@@ -22,9 +22,11 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -50,6 +52,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 
 flags.DEFINE_bool(
     "op_conversion_fallback_to_while_loop", False,
@@ -356,7 +359,7 @@ class WhileOp(object):
     output = False
     if op.type in [
         "Shape",
-        "Rank"
+        "Rank",
         "ShapeN",
         "ZerosLike",
         "TensorArrayV3",
@@ -797,12 +800,63 @@ class RegisterPFor(object):
     ...
 
   The above will register conversion function `_foo_converter` for handling
-  conversion of `foo_op_type`. During conversion, the registered functin will be
-  called with a single argument of type `PForInput` which will contain state
-  needed for the conversion.  This registered function should output a list of
-  WrappedTensor object with the same length as the number of outputs of op being
-  converted. If the op had zero outputs, then it should return a ops.Operation
-  object.
+  conversion of `foo_op_type`. These converters are called during vectorization
+  of a `pfor` loop body. For each operation node in this loop body,
+  the vectorization process will call the converter corresponding to the
+  operation type of the node.
+
+  During conversion, the registered function will be called with a single
+  argument `pfor_input`, of type `PForInput`, which will contain state needed
+  for the conversion.  When the converter is called for a node, all its inputs
+  should already have been converted and these converted values are stored in
+  `pfor_input.inputs`.  This registered function should output a list of
+  WrappedTensor objects with the same length as the number of outputs of the
+  node being converted. If the node had zero outputs, then it should return an
+  ops.Operation object.  These new sets of nodes should implement the
+  functionality of running that operation for the number of iterations specified
+  by `pfor_input.pfor.loop_len_vector[0]` where the inputs of the node for each
+  iteration are picked from `pfor_inputs.inputs()`.
+
+  One tricky aspect of the conversion process is keeping track of, and
+  leveraging loop invariance of computation. Each converted input is a
+  WrappedTensor which indicates whether the input was loop invariant or not. If
+  the converted value is loop invariant, its rank should match the rank of the
+  corresponding tensor in the loop body, else its rank is larger by 1. The
+  converter should look at the loop invariance of the inputs and generate new
+  nodes based on that. Note that the converter will not be called if all inputs
+  are loop invariant and the operation is not stateful. The converter should
+  determine if its own output is loop invariant and `wrap` its output
+  accordingly.
+
+  Example:
+
+  Here, the converter is trying to convert a Reshape node in the loop body. This
+  node will have two inputs: the tensor to reshape, and the new shape.  The
+  example here only handles the case where the shape is loop invariant.
+
+  @RegisterPFor("Reshape")
+  def _convert_reshape(pfor_input):
+    # We assume that input is not loop invariant. Call to `stacked_input`
+    # asserts that and returns the converted value. This value will have a rank
+    # larger by 1 compared to the rank of the input in the loop body.
+    t = pfor_input.stacked_input(0)
+
+    # We assume that shape input is loop invariant. Call to `unstacked_input`
+    # asserts that and returns the converted value.
+    shape = pfor_input.unstacked_input(1)
+
+    # We compute `new_shape` by prepending the number of iterations to the
+    # original shape.
+    new_shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape],
+                                 axis=0)
+
+    # The vectorized output involves reshaping the converted input `t` using
+    # `new_shape`.
+    new_output = array_ops.reshape(t, new_shape)
+
+    # The converted output is marked as not loop invariant using the call to
+    # wrap.
+    return wrap(new_output, True)
   """
 
   def __init__(self, op_type):
@@ -1069,7 +1123,7 @@ class PFor(object):
     self.all_indices = (
         math_ops.range(loop_len) if all_indices is None else all_indices)
 
-    self._conversion_map = {}
+    self._conversion_map = object_identity.ObjectIdentityDictionary()
     self._conversion_map[loop_var] = wrap(self.all_indices, True)
     self._pfor_ops = set(pfor_ops)
     self._pfor_op_ids = set([x._id for x in pfor_ops])
@@ -1173,6 +1227,7 @@ class PFor(object):
       return None
     if isinstance(y, sparse_tensor.SparseTensor):
       return self._convert_sparse(y)
+    assert isinstance(y, (ops.Tensor, ops.Operation)), y
     output = self._convert_helper(y)
     if isinstance(output, WrappedTensor):
       assert isinstance(y, ops.Tensor)
@@ -1189,6 +1244,8 @@ class PFor(object):
     return converted_t.t is not t
 
   def _add_conversion(self, old_output, new_output):
+    assert isinstance(old_output, (ops.Tensor, ops.Operation)), old_output
+    assert isinstance(new_output, (WrappedTensor, ops.Operation)), new_output
     self._conversion_map[old_output] = new_output
 
   def _convert_helper(self, op_or_tensor):
@@ -1307,10 +1364,11 @@ class PFor(object):
           # output as unstacked.
           new_outputs = [wrap(self._unwrap_or_tile(output), False)]
         # None of the inputs and control inputs were converted.
-        elif (not is_inside_loop or
-              (not is_stateful and not some_input_converted and
-               not some_control_input_converted)):
-          if y == y_op:
+        elif ((not is_inside_loop or
+               (not is_stateful and not some_input_converted and
+                not some_control_input_converted)) and
+              y.graph == ops.get_default_graph()):
+          if y is y_op:
             assert not isinstance(y_op, WhileOp)
             new_outputs = y_op
           else:
@@ -1353,10 +1411,12 @@ class PFor(object):
         logging.vlog(2, "converted %s %s", y_op, new_outputs)
 
         # Insert into self._conversion_map
-        if y == y_op:
+        if y is y_op:
           assert isinstance(new_outputs, ops.Operation)
           self._add_conversion(y_op, new_outputs)
         else:
+          assert len(y_op.outputs) == len(new_outputs), (
+              y_op, y_op.outputs, new_outputs)
           for old_output, new_output in zip(y_op.outputs, new_outputs):
             assert isinstance(new_output, WrappedTensor), (new_output, y, y_op)
             self._add_conversion(old_output, new_output)
@@ -1379,6 +1439,10 @@ class PFor(object):
     return self._pfor_ops
 
   @property
+  def pfor_config(self):
+    return self._pfor_config
+
+  @property
   def all_indices_partitioned(self):
     """all_indices_partitioned property.
 
@@ -1387,6 +1451,10 @@ class PFor(object):
       may be active.
     """
     return self._all_indices_partitioned
+
+
+# The code below defines converters for different operations. Please see comment
+# for RegisterPFor to see how converters should be defined.
 
 # nn_ops
 
@@ -1522,7 +1590,7 @@ def _convert_fused_batch_norm(pfor_input):
     y = _unflatten_first_dim(y, n)
     mean = pfor_input.unstacked_input(3)
     zeros = array_ops.zeros_like(mean)
-    return [wrap(y, True), wrap(zeros, False), wrap(zeros, False)]
+    return [wrap(y, True)] + [wrap(zeros, False)] * 5
 
   pfor_input.stack_inputs()
   data_format = pfor_input.get_attr("data_format")
@@ -1664,6 +1732,7 @@ def _convert_softmax(pfor_input, op_type, op_func):
 
 @RegisterPForWithArgs("Identity", array_ops.identity)
 @RegisterPForWithArgs("StopGradient", array_ops.stop_gradient)
+@RegisterPForWithArgs("MatrixDiag", array_ops.matrix_diag)
 @RegisterPForWithArgs("MatrixDiagPart", array_ops.matrix_diag_part)
 def _convert_identity(pfor_input, op_type, op_func):
   del op_type
@@ -1739,6 +1808,45 @@ def _convert_matrix_set_diag(pfor_input):
   t = pfor_input.stacked_input(0)
   diag = pfor_input.stacked_input(1)
   return wrap(array_ops.matrix_set_diag(t, diag), True)
+
+
+# Registrations for MatrixDiagV2, MatrixDiagPartv2, and MatrixSetDiagV2.
+# The input orders defined in the OpKernel and the actual python API are
+# different (for compatibility with V1), so we cannot use _convert_identity.
+@RegisterPFor("MatrixDiagV2")
+def _convert_matrix_diag_v2(pfor_input):
+  diagonal = pfor_input.stacked_input(0)
+  k = pfor_input.unstacked_input(1)
+  num_rows = pfor_input.unstacked_input(2)
+  num_cols = pfor_input.unstacked_input(3)
+  padding_value = pfor_input.unstacked_input(4)
+  return wrap(
+      array_ops.matrix_diag(
+          diagonal,
+          k=k,
+          num_rows=num_rows,
+          num_cols=num_cols,
+          padding_value=padding_value), True)
+
+
+# See notes for MatrixDiagV2
+@RegisterPFor("MatrixDiagPartV2")
+def _convert_matrix_diag_part_v2(pfor_input):
+  input = pfor_input.stacked_input(0)  # pylint:disable=redefined-builtin
+  k = pfor_input.unstacked_input(1)
+  padding_value = pfor_input.unstacked_input(2)
+  return wrap(
+      array_ops.matrix_diag_part(input, k=k, padding_value=padding_value), True)
+
+
+# See notes for MatrixDiagV2
+@RegisterPFor("MatrixSetDiagV2")
+def _convert_matrix_set_diag_v2(pfor_input):
+  pfor_input.stack_inputs([0, 1])
+  input = pfor_input.stacked_input(0)  # pylint:disable=redefined-builtin
+  diagonal = pfor_input.stacked_input(1)
+  k = pfor_input.unstacked_input(2)
+  return wrap(array_ops.matrix_set_diag(input, diagonal, k=k), True)
 
 
 @RegisterPFor("OneHot")
@@ -1857,7 +1965,7 @@ def _convert_gather(pfor_input):
     if axis_value is not None:
       axis = axis_value
   if indices_stacked and not param_stacked:
-    if indices == pfor_input.pfor.all_indices and axis == 0:
+    if indices is pfor_input.pfor.all_indices and axis == 0:
       param_shape0 = param.shape.dims[0].value
       indices_shape0 = indices.shape.dims[0].value
       if param_shape0 is not None and indices_shape0 == param_shape0:
@@ -2141,17 +2249,19 @@ def _convert_biasadd(pfor_input):
 
 @RegisterPFor("UnsortedSegmentSum")
 def _convert_unsortedsegmentsum(pfor_input):
-  data, data_stacked, _ = pfor_input.input(0)
-  # TODO(agarwal): handle unstacked?
+  pfor_input.stack_inputs([0, 1])
+  data = pfor_input.stacked_input(0)
   segment_ids = pfor_input.stacked_input(1)
   # TODO(agarwal): handle stacked?
   num_segments = pfor_input.unstacked_input(2)
-  if not data_stacked:
-    data = _stack(data, pfor_input.pfor.loop_len_vector).t
-  segment_shape = array_ops.shape(segment_ids)
+  if segment_ids.dtype != num_segments.dtype:
+    segment_ids = math_ops.cast(segment_ids, dtypes.int64)
+    num_segments = math_ops.cast(num_segments, dtypes.int64)
+  dtype = segment_ids.dtype
+  segment_shape = array_ops.shape(segment_ids, out_type=dtype)
   n = segment_shape[0]
-  ones = array_ops.ones_like(segment_shape)[1:]
-  segment_offset = num_segments * math_ops.range(n)
+  ones = array_ops.ones_like(segment_shape, dtype=dtype)[1:]
+  segment_offset = num_segments * math_ops.range(n, dtype=dtype)
   segment_offset = array_ops.reshape(segment_offset,
                                      array_ops.concat([[n], ones], axis=0))
   segment_ids += segment_offset
@@ -2263,10 +2373,10 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("Xlogy", math_ops.xlogy)
 @RegisterPForWithArgs("Zeta", math_ops.zeta)
 def _convert_cwise(pfor_input, op_type, op_func):
-  # Note that ops handled here do not have attributes except "T" and "Tout", and
-  # hence don't need extra arguments passed to the cwise_op call below.
+  # Note that ops handled here do not have attributes except those listed below
+  # and hence don't need extra arguments passed to the cwise_op call below.
   for attr in pfor_input.op.node_def.attr.keys():
-    assert attr in [u"T", u"Tout"], (op_type, attr)
+    assert attr in [u"T", u"Tout", u"_xla_compile_id"], (op_type, attr)
   pfor_input.expanddim_inputs_for_broadcast()
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
 
@@ -2378,6 +2488,16 @@ def _convert_select(pfor_input):
                               lambda: _unflatten_first_dim(outputs[0], n),
                               lambda: outputs[0])
   return [wrap(out, True) for x in outputs]
+
+
+@RegisterPFor("SelectV2")
+def _convert_selectv2(pfor_input):
+  pfor_input.expanddim_inputs_for_broadcast()
+  cond = pfor_input.input(0)[0]
+  t = pfor_input.input(1)[0]
+  e = pfor_input.input(2)[0]
+  out = array_ops.where_v2(cond, t, e)
+  return wrap(out, True)
 
 
 # random_ops
@@ -2982,3 +3102,44 @@ def _convert_parse_single_example(pfor_input):
       sparse_types=sparse_types,
       dense_shapes=dense_shapes)
   return [wrap(t, True, True) for t in nest.flatten(output)]
+
+
+# functional_ops
+
+
+@RegisterPFor("StatefulPartitionedCall")
+@RegisterPFor("PartitionedCall")
+def _convert_partitioned_call(pfor_input):
+  func_name = pfor_input.get_attr("f").name
+  func = pfor_input.op.graph._get_function(compat.as_bytes(func_name))
+  assert isinstance(func.graph, func_graph.FuncGraph), (
+      "Could not find FuncGraph object for %s. Got func %s" % (func_name, func))
+  pfor = pfor_input.pfor
+  converter = PFor(loop_var=pfor.loop_var,
+                   loop_len=pfor.loop_len_vector[0],
+                   pfor_ops=func.graph.get_operations(),
+                   all_indices=pfor.all_indices,
+                   all_indices_partitioned=pfor.all_indices_partitioned,
+                   pfor_config=pfor.pfor_config)
+
+  # TODO(agarwal): consider caching this function definition.
+  @def_function.function
+  def f(*args):
+    assert all(isinstance(arg, WrappedTensor) for arg in args), args
+    assert len(args) == len(func.graph.inputs), (args, func.graph.inputs)
+    #  Map inputs to function arguments.
+    for inp, arg in zip(func.graph.inputs, args):
+      converter._add_conversion(inp, arg)
+    # Convert output tensors.
+    return tuple([converter._convert_helper(x).t
+                  for x in func._func_graph_outputs])
+
+  call_outputs = f(*pfor_input.inputs)
+  assert len(call_outputs) == len(func._func_graph_outputs)
+  outputs = []
+  for call_output, output_tensor in zip(call_outputs, func._func_graph_outputs):
+    func_output = converter._convert_helper(output_tensor)
+    outputs.append(wrap(call_output,
+                        func_output.is_stacked,
+                        func_output.is_sparse_stacked))
+  return outputs

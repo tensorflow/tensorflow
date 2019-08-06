@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import dense_attention
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -412,6 +413,20 @@ class AttentionTest(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError, 'Attention layer mask must be a list of length 2'):
       attention_layer([q, q], mask=[mask, mask, mask])
+
+  def test_override_mask(self):
+    attention_layer = dense_attention.Attention()
+    q = core.Masking()(np.array([[[1.1]]], dtype=np.float32))
+    mask = np.array([[False]], dtype=np.bool_)
+    actual = attention_layer([q, q], mask=[mask, mask])
+    self.assertAllClose([[[0]]], actual)
+
+  def test_implicit_mask(self):
+    attention_layer = dense_attention.Attention()
+    q = core.Masking(1.1)(np.array([[[1.1], [1]]], dtype=np.float32))
+    v = core.Masking(1.2)(np.array([[[1.2], [1]]], dtype=np.float32))
+    actual = attention_layer([q, v])
+    self.assertAllClose([[[0], [1]]], actual)
 
 
 @test_util.run_all_in_graph_and_eager_modes

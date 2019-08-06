@@ -85,6 +85,24 @@ TFE_TensorHandle* TestMatrixTensorHandle() {
   return th;
 }
 
+TFE_TensorHandle* TestMatrixTensorHandle100x100() {
+  constexpr int64_t dims[] = {100, 100};
+  constexpr int num_elements = dims[0] * dims[1];
+  float data[num_elements];
+  for (int i = 0; i < num_elements; ++i) {
+    data[i] = 1.0f;
+  }
+  TF_Tensor* t = TF_AllocateTensor(
+      TF_FLOAT, &dims[0], sizeof(dims) / sizeof(int64_t), sizeof(data));
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TF_Status* status = TF_NewStatus();
+  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
 TFE_TensorHandle* DoubleTestMatrixTensorHandle3X2() {
   int64_t dims[] = {3, 2};
   double data[] = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
@@ -121,6 +139,19 @@ TFE_Op* MatMulOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b) {
   TFE_OpAddInput(op, a, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_OpAddInput(op, b, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+  TFE_OpSetAttrType(op, "T", TFE_TensorHandleDataType(a));
+
+  return op;
+}
+
+TFE_Op* IdentityOp(TFE_Context* ctx, TFE_TensorHandle* a) {
+  TF_Status* status = TF_NewStatus();
+
+  TFE_Op* op = TFE_NewOp(ctx, "Identity", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpAddInput(op, a, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
   TFE_OpSetAttrType(op, "T", TFE_TensorHandleDataType(a));

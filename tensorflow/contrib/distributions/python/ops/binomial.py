@@ -68,9 +68,9 @@ def _bdtr(k, n, p):
   #   where(unsafe, safe_output, betainc(where(unsafe, safe_input, input)))
   ones = array_ops.ones_like(n - k)
   k_eq_n = math_ops.equal(k, n)
-  safe_dn = array_ops.where(k_eq_n, ones, n - k)
+  safe_dn = array_ops.where_v2(k_eq_n, ones, n - k)
   dk = math_ops.betainc(a=safe_dn, b=k + 1, x=1 - p)
-  return array_ops.where(k_eq_n, ones, dk)
+  return array_ops.where_v2(k_eq_n, ones, dk)
 
 
 class Binomial(distribution.Distribution):
@@ -230,7 +230,7 @@ class Binomial(distribution.Distribution):
     return constant_op.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   @distribution_util.AppendDocstring(_binomial_sample_note)
   def _log_prob(self, counts):

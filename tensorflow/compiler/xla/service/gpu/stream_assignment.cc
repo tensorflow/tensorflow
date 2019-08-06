@@ -79,7 +79,7 @@ int ComputeStreamToAssign(
     return 0;
   }
 
-  if (!ImplementedAsGemm(hlo)) {
+  if (!(IsCublasGemm(hlo) || IsMatrixMultiplication(hlo))) {
     // If `hlo` is not implemented as a GEMM, keep it close to its operands to
     // avoid excessive synchronization.
     int stream_num = -1;
@@ -147,7 +147,7 @@ std::unique_ptr<StreamAssignment> AssignStreams(const HloModule& module) {
         stream_num_for_rng = stream_num;
       }
     }
-    if (ImplementedAsGemm(*hlo)) {
+    if (IsCublasGemm(*hlo) || IsMatrixMultiplication(*hlo)) {
       seen_gemms.push_back(hlo);
     }
   }

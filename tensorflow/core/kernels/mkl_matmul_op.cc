@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 // This header file is part of MKL ML, need equivalent file in MKL DNN
 #ifndef INTEL_MKL_DNN_ONLY
@@ -220,9 +221,12 @@ class MklMatMulOp : public OpKernel {
 #endif  // !INTEL_MKL_DNN_ONLY
 };
 
-#define REGISTER_CPU(T)                                         \
-  REGISTER_KERNEL_BUILDER(                                      \
-      Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+#define REGISTER_CPU(T)                                   \
+  REGISTER_KERNEL_BUILDER(                                \
+      Name("_MklMatMul")                                  \
+          .Device(DEVICE_CPU)                             \
+          .TypeConstraint<T>("T")                         \
+          .Label(mkl_op_registry::kMklNameChangeOpLabel), \
       MklMatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);
 
 #ifdef ENABLE_MKL

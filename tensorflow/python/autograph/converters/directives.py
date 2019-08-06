@@ -31,6 +31,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
+
 import gast
 
 from tensorflow.python.autograph.core import converter
@@ -113,7 +115,7 @@ class DirectivesTransformer(converter.Base):
   def visit_Attribute(self, node):
     node = self.generic_visit(node)
     parent_val = anno.getanno(node.value, STATIC_VALUE, default=None)
-    if parent_val is not None and tf_inspect.ismodule(parent_val):
+    if parent_val is not None and inspect.ismodule(parent_val):
       if hasattr(parent_val, node.attr):
         anno.setanno(node, STATIC_VALUE, getattr(parent_val, node.attr))
     return node

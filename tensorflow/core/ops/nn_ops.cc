@@ -220,6 +220,32 @@ REGISTER_OP("FusedBatchNormV3")
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormV3Shape);
 
+REGISTER_OP("_FusedBatchNormEx")
+    .Input("x: T")
+    .Input("scale: U")
+    .Input("offset: U")
+    .Input("mean: U")
+    .Input("variance: U")
+    .Input("side_input: num_side_inputs * T")
+    .Output("y: T")
+    .Output("batch_mean: U")
+    .Output("batch_variance: U")
+    .Output("reserve_space_1: U")
+    .Output("reserve_space_2: U")
+    .Output("reserve_space_3: U")
+    .Attr("T: {half, float}")
+    .Attr("U: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("num_side_inputs: int >= 0 = 0")
+    .Attr("activation_mode: string = \"Identity\"")
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("is_training: bool = true")
+    .SetShapeFn(shape_inference::FusedBatchNormExShape)
+    .Doc(R"doc(
+*NOTE*: Do not invoke this operator directly in Python. Grappler is
+expected to create these operators.
+)doc");
+
 REGISTER_OP("FusedBatchNormGrad")
     .Input("y_backprop: T")
     .Input("x: T")
@@ -1625,6 +1651,25 @@ MKL version of Conv2D operator. Uses MKL DNN APIs to perform 2D convolution.
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
+
+REGISTER_OP("_MklEagerConv2D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: {bfloat16, float}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
+    .Doc(R"doc(
+    MKL version of Conv2D operator for Eager mode. Uses MKL DNN APIs to perform 2D convolution.
+
+    NOTE Do not invoke this operator directly in Python. Eager Op rewrite is
+    expected to invoke these operators.
+    )doc");
 
 REGISTER_OP("__MklDummyConv2DWithBias")
     .Input("input: T")

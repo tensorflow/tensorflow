@@ -27,7 +27,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -55,6 +54,19 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
         self.assertAllEqual(component[i], result_component)
     with self.assertRaises(errors.OutOfRangeError):
       results = self.evaluate(get_next())
+
+  def testFromTensorSlicesDataset(self):
+    dss = [dataset_ops.Dataset.range(10) for _ in range(10)]
+    ds = dataset_ops.Dataset.from_tensor_slices(dss)
+    ds = ds.flat_map(lambda x: x)
+    self.assertDatasetProduces(ds, expected_output=list(range(10)) * 10)
+
+  def testFromTensorSlicesDatasetInFunction(self):
+    dss = [dataset_ops.Dataset.range(10) for _ in range(10)]
+    ds = dataset_ops.Dataset.from_tensors(dss)
+    ds = ds.flat_map(dataset_ops.Dataset.from_tensor_slices)
+    ds = ds.flat_map(lambda x: x)
+    self.assertDatasetProduces(ds, expected_output=list(range(10)) * 10)
 
   def testFromTensorSlicesSparse(self):
     """Test a dataset that represents the slices from a tuple of tensors."""
@@ -152,10 +164,7 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
       results = self.evaluate(get_next())
       for component, result_component in zip(
           (list(zip(*components[:3]))[i] + expected[i]), results):
-        if sparse_tensor.is_sparse(component):
-          self.assertSparseValuesEqual(component, result_component)
-        else:
-          self.assertAllEqual(component, result_component)
+        self.assertValuesEqual(component, result_component)
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
@@ -242,12 +251,7 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
       results = self.evaluate(get_next())
       for component, result_component in zip(
           (list(zip(*components[:3]))[i] + expected[i]), results):
-        if sparse_tensor.is_sparse(component):
-          self.assertSparseValuesEqual(component, result_component)
-        elif ragged_tensor.is_ragged(component):
-          self.assertRaggedEqual(component, result_component)
-        else:
-          self.assertAllEqual(component, result_component)
+        self.assertValuesEqual(component, result_component)
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 

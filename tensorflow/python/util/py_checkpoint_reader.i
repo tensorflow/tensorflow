@@ -110,7 +110,7 @@ static PyObject* CheckpointReader_GetTensor(
   reader->GetTensor(name, &tensor, status);
   if (TF_GetCode(status) == TF_OK) {
     tensorflow::Status s =
-        tensorflow::ConvertTensorToNdarray(*tensor.get(), &py_obj);
+        tensorflow::TensorToNdarray(*tensor.get(), &py_obj);
     if (!s.ok()) {
       Set_TF_Status_from_Status(status, s);
     }

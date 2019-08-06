@@ -129,6 +129,7 @@ TransposeOperator* FindTransposeOpWithInput(const Model& model,
 
   // Construct the new FullyConnectedOperator.
   auto* fc_op = new FullyConnectedOperator;
+  fc_op->inputs = {input_lhs, input_rhs};
   fc_op->outputs = matmul_op->outputs;
 
   // Insert the newly constructed FullyConnectedOperator.
@@ -173,14 +174,10 @@ TransposeOperator* FindTransposeOpWithInput(const Model& model,
     }
     CHECK_EQ(previous_op->inputs.size(), 2);
     input_lhs = previous_op->inputs[0];
+    fc_op->inputs = {input_lhs, input_rhs};
     // Only remove Reshape node if no other node uses its output.
     if (CountOpsWithInput(*model, previous_op_output) == 1) {
-      const auto& previous_op_shape = previous_op->inputs[1];
-      if (CountOpsWithInput(*model, previous_op_shape) == 1 &&
-          !GetOpWithOutput(*model, previous_op_shape)) {
-        model->EraseArray(previous_op_shape);
-      }
-      model->operators.erase(previous_op_it);
+      DeleteOpAndArrays(model, previous_op);
     }
 
     // We may have just invalidated matmul_it, so let's refresh it now.
@@ -197,7 +194,6 @@ TransposeOperator* FindTransposeOpWithInput(const Model& model,
                 LogName(*matmul_op));
   }
 
-  fc_op->inputs = {input_lhs, input_rhs};
 
   // erase the MatMul operator
   model->operators.erase(matmul_it);

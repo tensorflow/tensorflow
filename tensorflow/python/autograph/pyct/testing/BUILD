@@ -1,8 +1,8 @@
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 filegroup(
     name = "all_files",

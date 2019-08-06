@@ -56,6 +56,24 @@ REGISTER_KERNEL_BUILDER(Name("QueueIsClosed").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("QueueIsClosedV2").Device(DEVICE_CPU),
                         QueueIsClosedOp);
 
+REGISTER_KERNEL_BUILDER(
+    Name("QueueEnqueueV2").Device(DEVICE_DEFAULT).HostMemory("handle"),
+    EnqueueOp);
+REGISTER_KERNEL_BUILDER(
+    Name("QueueDequeueV2").Device(DEVICE_DEFAULT).HostMemory("handle"),
+    DequeueOp);
+REGISTER_KERNEL_BUILDER(
+    Name("QueueCloseV2").Device(DEVICE_DEFAULT).HostMemory("handle"),
+    QueueCloseOp);
+REGISTER_KERNEL_BUILDER(Name("QueueSizeV2")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("size")
+                            .HostMemory("handle"),
+                        QueueSizeOp);
+REGISTER_KERNEL_BUILDER(
+    Name("QueueIsClosedV2").Device(DEVICE_DEFAULT).HostMemory("handle"),
+    QueueIsClosedOp);
+
 class FakeQueueOp : public OpKernel {
  public:
   explicit FakeQueueOp(OpKernelConstruction* context) : OpKernel(context) {

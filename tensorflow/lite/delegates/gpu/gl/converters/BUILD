@@ -1,9 +1,9 @@
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 cc_library(
     name = "util",
@@ -30,7 +30,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
         "//tensorflow/lite/delegates/gpu/gl:gl_program",
         "//tensorflow/lite/delegates/gpu/gl:gl_shader",
-        "//tensorflow/lite/delegates/gpu/gl:uniform_parameter",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
     ],
 )
 
@@ -75,7 +75,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:gl_buffer",
         "//tensorflow/lite/delegates/gpu/gl:gl_program",
         "//tensorflow/lite/delegates/gpu/gl:gl_shader",
-        "//tensorflow/lite/delegates/gpu/gl:uniform_parameter",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
     ],
 )
 

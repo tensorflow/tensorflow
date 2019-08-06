@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -25,6 +26,7 @@ namespace xla {
 namespace gpu {
 namespace {
 // Utility functions to obtain NVPTX/AMDGPU specific information.
+using absl::StrCat;
 
 // Wrapper structure for carrying llvm intrinsic ids for NVPTX/AMDGPU platforms.
 struct TargetIntrinsics {
@@ -66,7 +68,93 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
     }
   }
 }
+
+// Wrapper structure for carrying math functions for NVPTX/AMDGPU platforms.
+struct TargetDeviceFunction {
+  const string nvptx_root;
+  const string amdgpu_root;
+};
+
+// Gets the device function name on different platforms (NVPTX, AMDGPU)
+// corresponding to the given TargetDeviceFunctionID.
+struct TargetDeviceFunction GetDeviceFunctionRoot(
+    TargetDeviceFunctionID func_id) {
+  switch (func_id) {
+    case TargetDeviceFunctionID::kPow: {
+      return {"__nv_pow", "__ocml_pow"};
+    }
+    case TargetDeviceFunctionID::kErfcinv: {
+      return {"__nv_erfcinv", "__ocml_erfcinv"};
+    }
+    case TargetDeviceFunctionID::kLog: {
+      return {"__nv_log", "__ocml_log"};
+    }
+    case TargetDeviceFunctionID::kLog1p: {
+      return {"__nv_log1p", "__ocml_log1p"};
+    }
+    case TargetDeviceFunctionID::kSin: {
+      return {"__nv_sin", "__ocml_sin"};
+    }
+    case TargetDeviceFunctionID::kCos: {
+      return {"__nv_cos", "__ocml_cos"};
+    }
+    case TargetDeviceFunctionID::kExp: {
+      return {"__nv_exp", "__ocml_exp"};
+    }
+    case TargetDeviceFunctionID::kExpm1: {
+      return {"__nv_expm1", "__ocml_expm1"};
+    }
+    case TargetDeviceFunctionID::kSqrt: {
+      return {"__nv_sqrt", "__ocml_sqrt"};
+    }
+    case TargetDeviceFunctionID::kRsqrt: {
+      return {"__nv_rsqrt", "__ocml_rsqrt"};
+    }
+    case TargetDeviceFunctionID::kAtan2: {
+      return {"__nv_atan2", "__ocml_atan2"};
+    }
+    case TargetDeviceFunctionID::kFmod: {
+      return {"__nv_fmod", "__ocml_fmod"};
+    }
+    case TargetDeviceFunctionID::kRound: {
+      return {"__nv_round", "__ocml_round"};
+    }
+    case TargetDeviceFunctionID::kHypot: {
+      return {"__nv_hypot", "__ocml_hypot"};
+    }
+  }
+}
 }  // namespace
+
+string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
+                                PrimitiveType output_type,
+                                llvm::IRBuilder<>* b) {
+  // The device math functions differentiate between "double" and "float" by
+  // appending a double or float specific suffix to a root name. The suffix and
+  // the root name are specific to the target.
+  llvm::Triple target_triple =
+      llvm::Triple(b->GetInsertBlock()->getModule()->getTargetTriple());
+  struct TargetDeviceFunction gpu_root_names = GetDeviceFunctionRoot(func_id);
+  if (target_triple.isNVPTX()) {
+    if (output_type == F32) {
+      return StrCat(gpu_root_names.nvptx_root, "f");
+    } else if (output_type == F64) {
+      return gpu_root_names.nvptx_root;
+    } else {
+      LOG(FATAL) << "Unexpected type while getting device function name.";
+    }
+  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+    if (output_type == F32) {
+      return StrCat(gpu_root_names.amdgpu_root, "_f32");
+    } else if (output_type == F64) {
+      return StrCat(gpu_root_names.amdgpu_root, "_f64");
+    } else {
+      LOG(FATAL) << "Unexpected type while getting device function name.";
+    }
+  } else {
+    LOG(FATAL) << "Invalid triple " << target_triple.str();
+  }
+}
 
 llvm::CallInst* EmitCallToTargetIntrinsic(
     TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
@@ -75,9 +163,7 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
   struct TargetIntrinsics gpu_intrinsic_id = GetIntrinsic(intrinsic_id);
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   llvm::Intrinsic::ID llvm_intrinsic_id = llvm::Intrinsic::not_intrinsic;
-
-  if ((target_triple.getArch() == llvm::Triple::nvptx) ||
-      (target_triple.getArch() == llvm::Triple::nvptx64)) {
+  if (target_triple.isNVPTX()) {
     llvm_intrinsic_id = gpu_intrinsic_id.nvptx_intrinsic;
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
     llvm_intrinsic_id = gpu_intrinsic_id.amdgpu_intrinsic;
@@ -88,6 +174,29 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
   llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
       module, llvm_intrinsic_id, llvm_ir::AsArrayRef(overloaded_types));
   return b->CreateCall(intrinsic, llvm_ir::AsArrayRef(operands));
+}
+
+void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
+                                 llvm::IRBuilder<>* b) {
+  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
+  if (target_triple.isNVPTX()) {
+    // Add the declaration of this kernel to llvm.nvvm.annotations so that NVPTX
+    // treats function as a CUDA kernel.
+    llvm::LLVMContext& context = module->getContext();
+    llvm::NamedMDNode* nvvm_annotations_node =
+        module->getOrInsertNamedMetadata("nvvm.annotations");
+    nvvm_annotations_node->addOperand(llvm::MDNode::get(
+        context, {llvm::ConstantAsMetadata::get(func),
+                  llvm::MDString::get(context, "kernel"),
+                  llvm::ConstantAsMetadata::get(b->getInt32(1))}));
+
+  } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+    // Attach information so AMDGPU can recognize function as a AMDGPU kernel.
+    func->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+    func->addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
+  } else {
+    LOG(FATAL) << "Invalid triple " << target_triple.str();
+  }
 }
 
 }  // namespace gpu
