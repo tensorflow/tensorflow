@@ -3742,7 +3742,8 @@ def rnn(step_function,
         for state, new_state in zip(states, new_states):
           # (see earlier comment for tile explanation)
           tiled_mask_t = _expand_mask(mask_t, new_state)
-          return_states.append(array_ops.where_v2(tiled_mask_t, new_state, state))
+          return_states.append(array_ops.where_v2(tiled_mask_t,
+                                                  new_state, state))
         states = return_states
         successive_outputs.append(output)
         successive_states.append(states)
@@ -4002,7 +4003,7 @@ def switch(condition, then_expression, else_expression):
       expr_shape = array_ops.shape(then_expression)
       shape_diff = expr_shape - cond_shape
       tile_shape = array_ops.where_v2(shape_diff > 0, expr_shape,
-                                   array_ops.ones_like(expr_shape))
+                                      array_ops.ones_like(expr_shape))
       condition = array_ops.tile(condition, tile_shape)
     x = array_ops.where_v2(condition, then_expression, else_expression)
   return x
