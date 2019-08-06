@@ -20,6 +20,8 @@
 
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Linalg/IR/LinalgTraits.h"
 #include "mlir/Linalg/IR/LinalgTypes.h"

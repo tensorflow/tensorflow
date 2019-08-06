@@ -20,6 +20,7 @@
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Linalg/IR/LinalgOps.h"
 #include "mlir/Linalg/IR/LinalgTypes.h"
@@ -241,17 +242,44 @@ public:
           linalg_load(genericOp.getOutput(i), indexing);
     }
 
-    // 2. Emit call.
-    auto m = genericOp.getParentOfType<ModuleOp>();
-    auto fun = m.lookupSymbol<FuncOp>(genericOp.fun());
-    Operation *callOp = call(fun, indexedValues);
-    assert(callOp->getNumResults() == genericOp.getNumOutputs());
+    auto funcOp = genericOp.getFunction();
+    if (funcOp) {
+      // 2. Emit call.
+      Operation *callOp = call(funcOp, indexedValues);
+      assert(callOp->getNumResults() == genericOp.getNumOutputs());
 
-    // 3. Emit linalg_store.
-    for (unsigned i = 0, e = nOutputs; i < e; ++i) {
-      ValueHandleArray indexing(foldedAffineApplies(
-          b, loc, genericOp.getOutputIndexingMap(i), allIvs, folder));
-      linalg_store(callOp->getResult(i), genericOp.getOutput(i), indexing);
+      // 3. Emit linalg_store.
+      for (unsigned i = 0, e = nOutputs; i < e; ++i) {
+        ValueHandleArray indexing(foldedAffineApplies(
+            b, loc, genericOp.getOutputIndexingMap(i), allIvs, folder));
+        linalg_store(callOp->getResult(i), genericOp.getOutput(i), indexing);
+      }
+    } else {
+      // TODO(ntv): When a region inliner exists, use it.
+      // 2. Inline region, currently only works for a single basic block.
+      BlockAndValueMapping map;
+      auto &block = genericOp.region().front();
+      for (auto it : llvm::zip(block.getArguments(), indexedValues))
+        map.map(std::get<0>(it), std::get<1>(it));
+      for (auto &op : block) {
+        // Skip terminator.
+        if (&op == &block.back())
+          continue;
+        assert(op.getNumRegions() == 0);
+        auto *newOp = b.clone(op, map);
+        for (auto it : llvm::zip(op.getResults(), newOp->getResults()))
+          map.map(std::get<0>(it), std::get<1>(it));
+      }
+
+      // 3. Emit linalg_store.
+      auto *yieldOp = cast<YieldOp>(block.back()).getOperation();
+      assert(yieldOp->getNumOperands() == nOutputs);
+      for (unsigned i = 0, e = nOutputs; i < e; ++i) {
+        ValueHandleArray indexing(foldedAffineApplies(
+            b, loc, genericOp.getOutputIndexingMap(i), allIvs, folder));
+        linalg_store(map.lookup(yieldOp->getOperand(i)), genericOp.getOutput(i),
+                     indexing);
+      }
     }
   }
 };

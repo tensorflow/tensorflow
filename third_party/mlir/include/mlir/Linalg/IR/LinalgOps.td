@@ -213,4 +213,15 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
   }];
 }
 
+def YieldOp : Linalg_Op<"yield", [NativeOpTrait<"IsTerminator">]>,
+    Arguments<(ins Variadic<AnyType>:$values)> {
+  let summary = "Linalg yield operation";
+  let description = [{
+    "linalg.yield" is a special terminator operation for blocks inside regions
+    in linalg ops. It returns values to the immediately enclosing linalg op.
+
+       linalg.yield %f0, %f1 : f32, f32
+  }];
+}
+
 #endif // LINALG_OPS

@@ -538,13 +538,15 @@ static void print(OpAsmPrinter *p, GenericOp op) {
   auto dictAttr = DictionaryAttr::get(attrs, op.getContext());
   *p << op.getOperationName() << " " << dictAttr << " ";
   p->printOperands(op.getOperands());
+  if (!op.region().empty())
+    p->printRegion(op.region());
   p->printOptionalAttrDict(op.getAttrs(), attrNames);
   *p << ": ";
   interleaveComma(op.getOperandTypes(), *p);
 }
 
 static ParseResult parseGenericOp(OpAsmParser *parser, OperationState *result) {
-  SmallVector<OpAsmParser::OperandType, 8> operandsInfo;
+  SmallVector<OpAsmParser::OperandType, 8> operandsInfo, regionOperandsInfo;
   DictionaryAttr dictAttr;
   // Parse the core linalg traits that must check into a dictAttr.
   // The name is unimportant as we will overwrite result->attributes.
@@ -556,8 +558,13 @@ static ParseResult parseGenericOp(OpAsmParser *parser, OperationState *result) {
   result->attributes.assign(dictAttr.getValue().begin(),
                             dictAttr.getValue().end());
 
+  Region &region = *result->addRegion();
+  SmallVector<Type, 8> operandTypes, regionTypes;
   // Optional attributes may be added.
-  SmallVector<Type, 8> operandTypes;
+  // Either Optional "fun" attribute or region must be specified.
+  if (!dictAttr.get("fun") &&
+      parser->parseOptionalRegion(region, regionOperandsInfo, regionTypes))
+    return failure();
   if (parser->parseOptionalAttributeDict(result->attributes) ||
       parser->parseColonTypeList(operandTypes))
     return failure();
@@ -572,18 +579,36 @@ static LogicalResult verify(GenericOp op) {
   if (nViews != llvm::size(op.views()))
     return op.emitError("op expected exactly ") << nViews << " view operands";
 
-  auto m = op.getParentOfType<ModuleOp>();
-  auto fun = m.lookupSymbol<FuncOp>(op.fun());
-  if (!fun || !fun.getType())
-    return op.emitError(
-        "op expected fun attribute to refer to a defined symbol");
+  auto &region = op.region();
+  auto funOp = op.getFunction();
+  auto funType = funOp ? funOp.getType() : FunctionType();
+  if (!region.empty()) {
+    if (region.getBlocks().size() != 1)
+      return op.emitError("op expected region with 1 block");
 
-  auto funType = fun.getType();
-  if (funType.getNumInputs() != nViews)
-    return op.emitError("op expected fun arguments to match number of views");
-  if (funType.getNumResults() != op.getNumOutputs())
-    return op.emitError(
-        "op expected fun results to match number of output views");
+    auto &block = region.getBlocks().front();
+    if (block.getNumArguments() != nViews)
+      return op.emitError(
+          "op expected number of block arguments to match number of views");
+
+    for (unsigned i = 0; i < nViews; ++i) {
+      auto viewType = op.getViewType(i);
+      if (viewType.getElementType() != block.getArgument(i)->getType())
+        return op.emitError("op expected block argument ")
+               << i << " of the same type as elemental type of "
+               << ((i < nInputViews) ? "input " : "output ")
+               << "view: " << viewType;
+    }
+  } else {
+    if (!funOp || !funOp.getType())
+      return op.emitError(
+          "op expected fun attribute to refer to a defined symbol");
+    if (funType.getNumInputs() != nViews)
+      return op.emitError("op expected fun arguments to match number of views");
+    if (funType.getNumResults() != op.getNumOutputs())
+      return op.emitError(
+          "op expected fun results to match number of output views");
+  }
 
   auto nLoops = op.getNumLoops();
   SmallVector<AffineMap, 4> indexingMaps;
@@ -615,15 +640,18 @@ static LogicalResult verify(GenericOp op) {
       return op.emitError("op expected indexing_map #")
              << idx << " results to match view rank: " << view;
 
-    if (funType.getInput(idx) != view.getElementType())
-      return op.emitError("op expected fun argument ")
-             << idx << " to match view element type: " << view.getElementType();
+    if (funType) {
+      if (funType.getInput(idx) != view.getElementType())
+        return op.emitError("op expected fun argument ")
+               << idx
+               << " to match view element type: " << view.getElementType();
 
-    if (idx >= nInputViews)
-      if (funType.getResult(idx - nInputViews) != view.getElementType())
-        return op.emitError("op expected fun result ")
-               << idx << " to match output view element type: "
-               << view.getElementType();
+      if (idx >= nInputViews)
+        if (funType.getResult(idx - nInputViews) != view.getElementType())
+          return op.emitError("op expected fun result ")
+                 << idx << " to match output view element type: "
+                 << view.getElementType();
+    }
   }
 
   auto concatMap = concatAffineMaps(indexingMaps);
@@ -632,6 +660,56 @@ static LogicalResult verify(GenericOp op) {
     return op.emitError("op expected the concatenation of maps in indexing_map "
                         "to be invertible");
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseYieldOp(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> opInfo;
+  SmallVector<Type, 2> types;
+  llvm::SMLoc loc = parser->getCurrentLocation();
+  return failure(parser->parseOperandList(opInfo) ||
+                 (!opInfo.empty() && parser->parseColonTypeList(types)) ||
+                 parser->resolveOperands(opInfo, types, loc, result->operands));
+}
+
+static void print(OpAsmPrinter *p, YieldOp op) {
+  *p << op.getOperationName();
+  if (op.getNumOperands() > 0) {
+    *p << ' ';
+    p->printOperands(op.operand_begin(), op.operand_end());
+    *p << " : ";
+    interleaveComma(op.getOperands(), *p,
+                    [&](Value *e) { p->printType(e->getType()); });
+  }
+}
+
+static LogicalResult verify(YieldOp op) {
+  auto *parentOp = op.getParentOp();
+  if (parentOp->getNumRegions() != 1 || parentOp->getRegion(0).empty())
+    return op.emitOpError("op expected single non-empty parent region");
+
+  auto genericOp = dyn_cast<GenericOp>(parentOp);
+  if (!genericOp)
+    return op.emitOpError("op expected '")
+           << GenericOp::getOperationName() << "' parent op";
+
+  // The operand number and types must match the view element types.
+  auto nOutputViews = genericOp.getNumOutputs();
+  if (op.getNumOperands() != nOutputViews)
+    return op.emitOpError("op expected ")
+           << nOutputViews << " operand to match enclosing linalg.generic op";
+
+  for (unsigned i = 0; i != nOutputViews; ++i) {
+    auto elementType = genericOp.getOutputViewType(i).getElementType();
+    if (op.getOperand(i)->getType() != elementType)
+      return op.emitError("type of return operand ")
+             << i << " (" << op.getOperand(i)->getType()
+             << ") doesn't match view element type (" << elementType << ")";
+  }
   return success();
 }
 

@@ -113,6 +113,11 @@ public:
   }
   /// Return the number of input and output views.
   unsigned getNumInputsAndOutputs() { return nInputs() + nOutputs(); }
+  /// Return the `i`-th view type.
+  mlir::linalg::ViewType getViewType(unsigned i) {
+    return (i < nInputs()) ? getInputViewType(i)
+                           : getOutputViewType(i - nInputs());
+  }
   /// Return the range over input and output views.
   Operation::operand_range getInputsAndOutputs() {
     auto range = this->getOperation()->getOperands();

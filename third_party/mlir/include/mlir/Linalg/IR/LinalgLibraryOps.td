@@ -335,12 +335,13 @@ def GenericOp : LinalgLibraryBase_Op<"generic", []> {
     ```
   }];
   let arguments = (ins Variadic<View>:$views,
-                   SymbolRefAttr:$fun,
                    AffineMapArrayAttr:$indexing_maps,
                    I64ArrayAttr:$n_loop_types,
                    I64ArrayAttr:$n_views,
                    OptionalAttr<StrAttr>:$doc,
+                   OptionalAttr<SymbolRefAttr>:$fun,
                    OptionalAttr<StrAttr>:$library_call);
+  let regions = (region AnyRegion:$region);
   let extraClassDeclaration = [{
     SmallVector<StringRef, 8> linalgTraitAttrNames() {
       return SmallVector<StringRef, 8>{
@@ -386,8 +387,10 @@ def GenericOp : LinalgLibraryBase_Op<"generic", []> {
       return getNumParallelLoops() + getNumReductionLoops() +
         getNumWindowLoops();
     }
-    StringRef getFunName() {
-      return fun();
+    FuncOp getFunction() {
+      auto moduleOp = getParentOfType<ModuleOp>();
+      return fun().hasValue() ?
+        moduleOp.lookupSymbol<FuncOp>(fun().getValue()) : FuncOp();
     }
     StringRef getLibraryCallName() {
       return library_call().hasValue() ? library_call().getValue() : "";
