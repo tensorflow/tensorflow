@@ -43,8 +43,28 @@ cc_library(
 )
 
 cc_library(
+    name = "annotation",
+    hdrs = ["annotation.h"],
+    deps = [
+        ":macros",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
+)
+
+cc_library(
+    name = "cpu_feature_guard",
+    srcs = ["cpu_feature_guard.cc"],
+    hdrs = ["cpu_feature_guard.h"],
+    deps = [
+        ":byte_order",
+        ":cpu_info",
+        ":logging",
+    ],
 )
 
 cc_library(
@@ -63,12 +83,37 @@ cc_library(
 )
 
 cc_library(
+    name = "denormal",
+    srcs = ["denormal.cc"],
+    hdrs = ["denormal.h"],
+    deps = [
+        ":byte_order",
+        ":cpu_info",
+        ":logging",
+        ":macros",
+        ":platform",
+    ],
+)
+
+cc_library(
     name = "env_time",
     srcs = ["env_time.cc"] + tf_env_time_srcs(),
     hdrs = ["env_time.h"],
     deps = [
         ":types",
     ],
+)
+
+cc_library(
+    name = "file_statistics",
+    hdrs = ["file_statistics.h"],
+    deps = [":types"],
+)
+
+cc_library(
+    name = "host_info",
+    hdrs = ["host_info.h"],
+    deps = [":types"],
 )
 
 cc_library(
@@ -102,6 +147,16 @@ cc_library(
         ":abi",
         ":platform",
         "//tensorflow/core/platform/default/build_config:stacktrace",
+    ],
+)
+
+cc_library(
+    name = "setround",
+    srcs = ["setround.cc"],
+    hdrs = ["setround.h"],
+    deps = [
+        ":logging",
+        ":macros",
     ],
 )
 
