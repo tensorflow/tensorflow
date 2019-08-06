@@ -336,7 +336,7 @@ class TFL_ConvOp<string mnemonic, string opSummary> :
   let arguments = (
     ins AnyTensor:$input,
     AnyTensor:$filter,
-    AnyTensor:$bias,
+    TFL_TensorOfOrNone<[AnyType]>:$bias,
     I32Attr:$dilation_h_factor,
     I32Attr:$dilation_w_factor,
     TFL_AFAttr:$fused_activation_function,
