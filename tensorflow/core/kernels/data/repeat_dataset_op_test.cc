@@ -71,51 +71,49 @@ struct TestCase {
 };
 
 TestCase FiniteRepeatTestCase() {
-  return {
-      /*input_tensors*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape{2, 1}, {"a", "b"})},
-      /*count*/ 2,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {1, 2}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape{1}, {"a"}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {3, 4}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape{1}, {"b"}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {1, 2}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape{1}, {"a"}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {3, 4}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape{1}, {"b"})},
-      /*expected_output_dtypes*/ {DT_INT64, DT_STRING},
-      /*expected_output_shapes*/
-      {PartialTensorShape({2}), PartialTensorShape({1})},
-      /*expected_cardinality*/ 4,
-      /*breakpoints*/ {0, 1, 3}};
+  return {/*input_tensors*/
+          {CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
+           CreateTensor<string>(TensorShape{2, 1}, {"a", "b"})},
+          /*count*/ 2,
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape{2}, {1, 2}),
+           CreateTensor<string>(TensorShape{1}, {"a"}),
+           CreateTensor<int64>(TensorShape{2}, {3, 4}),
+           CreateTensor<string>(TensorShape{1}, {"b"}),
+           CreateTensor<int64>(TensorShape{2}, {1, 2}),
+           CreateTensor<string>(TensorShape{1}, {"a"}),
+           CreateTensor<int64>(TensorShape{2}, {3, 4}),
+           CreateTensor<string>(TensorShape{1}, {"b"})},
+          /*expected_output_dtypes*/ {DT_INT64, DT_STRING},
+          /*expected_output_shapes*/
+          {PartialTensorShape({2}), PartialTensorShape({1})},
+          /*expected_cardinality*/ 4,
+          /*breakpoints*/ {0, 1, 3}};
 }
 
 TestCase EmptyRepeatTestCase() {
-  return {
-      /*input_tensors*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape{2, 1}, {"a", "b"})},
-      /*count*/ 0,
-      /*expected_outputs*/
-      {},
-      /*expected_output_dtypes*/ {DT_INT64, DT_STRING},
-      /*expected_output_shapes*/
-      {PartialTensorShape({2}), PartialTensorShape({1})},
-      /*expected_cardinality*/ 0,
-      /*breakpoints*/ {0, 1, 3}};
+  return {/*input_tensors*/
+          {CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
+           CreateTensor<string>(TensorShape{2, 1}, {"a", "b"})},
+          /*count*/ 0,
+          /*expected_outputs*/
+          {},
+          /*expected_output_dtypes*/ {DT_INT64, DT_STRING},
+          /*expected_output_shapes*/
+          {PartialTensorShape({2}), PartialTensorShape({1})},
+          /*expected_cardinality*/ 0,
+          /*breakpoints*/ {0, 1, 3}};
 }
 
 TestCase ForeverRepeatTestCase() {
   return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 1}, {1, 2})},
+          {CreateTensor<int64>(TensorShape{2, 1}, {1, 2})},
           /*count*/ -1,
           /*expected_outputs*/
           // Use the first group of the repeated tensors to represent the
           // infinite outputs.
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {2})},
+          {CreateTensor<int64>(TensorShape{1}, {1}),
+           CreateTensor<int64>(TensorShape{1}, {2})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({1})},
           /*expected_cardinality*/ -1,

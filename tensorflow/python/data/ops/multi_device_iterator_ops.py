@@ -348,7 +348,7 @@ class MultiDeviceIterator(object):
 
   def _eager_reset(self):
     """Resets the MultiDeviceIterator in eager mode."""
-    if not context.executing_eagerly():
+    if not ops.executing_eagerly_outside_functions():
       raise ValueError("Eager reset is only supported in eager mode.")
     # pylint: disable=protected-access
     self._incarnation_id = gen_dataset_ops.multi_device_iterator_init(

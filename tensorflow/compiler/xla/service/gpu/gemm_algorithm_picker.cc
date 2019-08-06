@@ -110,7 +110,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
 
     TF_ASSIGN_OR_RETURN(
         se::cuda::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
-        allocator.CheckRedzones(stream));
+        allocator.CheckRedzones());
     if (!rz_check_status.ok()) {
       result.mutable_failure()->set_kind(AutotuneResult::REDZONE_MODIFIED);
       *result.mutable_failure()->mutable_msg() =
@@ -244,8 +244,7 @@ static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
   se::cuda::RedzoneAllocator input_output_allocator(
-      executor->device_ordinal(), allocator,
-      PtxOptsFromConfig(hlo_module_config));
+      &stream, allocator, PtxOptsFromConfig(hlo_module_config));
 
   BufferComparator comparator(instr->shape(), hlo_module_config);
 
@@ -254,7 +253,7 @@ static StatusOr<bool> RunOnInstruction(HloInstruction* instr,
       [&](const HloInstruction* op) -> StatusOr<se::DeviceMemoryBase> {
     TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
                         input_output_allocator.AllocateBytes(
-                            &stream, ShapeUtil::ByteSizeOf(op->shape())));
+                            ShapeUtil::ByteSizeOf(op->shape())));
     InitializeFloatBuffer(&stream, op->shape().element_type(), &rng_state,
                           buffer);
     return buffer;

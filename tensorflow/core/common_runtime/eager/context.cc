@@ -304,12 +304,6 @@ EagerContext::~EagerContext() {
 #endif  // !IS_MOBILE_PLATFORM
 
   rendezvous_->Unref();
-
-  // Release resources ahead of destroying the device manager as the resource
-  // destructors (e.g. ~IteratorResource) assume devices still exist.
-  for (auto device : local_device_mgr()->ListDevices()) {
-    device->ClearResourceMgr();
-  }
 }
 
 bool EagerContext::FindFunctionByName(const string& name) {

@@ -41,7 +41,7 @@ struct TestPatternDriver : public FunctionPass<TestPatternDriver> {
     populateWithGenerated(&getContext(), &patterns);
 
     // Verify named pattern is generated with expected name.
-    RewriteListBuilder<TestNamedPatternRule>::build(patterns, &getContext());
+    patterns.insert<TestNamedPatternRule>(&getContext());
 
     applyPatternsGreedily(getFunction(), std::move(patterns));
   }
@@ -193,9 +193,9 @@ struct TestLegalizePatternDriver
     TestTypeConverter converter;
     mlir::OwningRewritePatternList patterns;
     populateWithGenerated(&getContext(), &patterns);
-    RewriteListBuilder<TestRegionRewriteBlockMovement, TestRegionRewriteUndo,
-                       TestDropOp, TestPassthroughInvalidOp,
-                       TestSplitReturnType>::build(patterns, &getContext());
+    patterns.insert<TestRegionRewriteBlockMovement, TestRegionRewriteUndo,
+                    TestDropOp, TestPassthroughInvalidOp, TestSplitReturnType>(
+        &getContext());
     mlir::populateFuncOpTypeConversionPattern(patterns, &getContext(),
                                               converter);
 

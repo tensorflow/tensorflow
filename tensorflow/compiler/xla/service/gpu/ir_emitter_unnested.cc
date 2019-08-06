@@ -1044,7 +1044,8 @@ Status IrEmitterUnnested::HandleScatter(HloInstruction* scatter) {
     thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
         /*source_address=*/operand_buffer,
         /*destination_buffer=*/destination_buffer,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(operand->shape()), scatter));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(operand->shape()),
+        /*hlo_instruction=*/nullptr));
   }
 
   thunks.push_back(

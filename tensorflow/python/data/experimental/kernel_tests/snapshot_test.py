@@ -21,7 +21,6 @@ import os
 import time
 from absl.testing import parameterized
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import snapshot
 from tensorflow.python.data.kernel_tests import test_base
@@ -188,38 +187,37 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testReadSnapshotParallelAfterWrite(self):
-    with compat.forward_compatibility_horizon(2019, 8, 16):
-      self.setUpTFRecord(10, 4000)
-      filenames = self.test_filenames
+    self.setUpTFRecord(10, 4000)
+    filenames = self.test_filenames
 
-      expected = [
-          b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
-          for f in range(0, 10)
-          for r in range(0, 4000)
-      ]
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in range(0, 4000)
+    ]
 
-      tmpdir = self.makeSnapshotDirectory()
-      dataset = core_readers._TFRecordDataset(filenames)
-      dataset = dataset.apply(
-          snapshot.snapshot(
-              tmpdir,
-              shard_size_bytes=1024 * 1024,
-              num_reader_threads=2,
-              reader_buffer_size=10))
-      self.assertDatasetProduces(dataset, expected, assert_items_equal=True)
+    tmpdir = self.makeSnapshotDirectory()
+    dataset = core_readers._TFRecordDataset(filenames)
+    dataset = dataset.apply(
+        snapshot.snapshot(
+            tmpdir,
+            shard_size_bytes=1024 * 1024,
+            num_reader_threads=2,
+            reader_buffer_size=10))
+    self.assertDatasetProduces(dataset, expected, assert_items_equal=True)
 
-      # remove the original files and try to read the data back only from
-      # snapshot.
-      self.removeTFRecords()
+    # remove the original files and try to read the data back only from
+    # snapshot.
+    self.removeTFRecords()
 
-      dataset2 = core_readers._TFRecordDataset(filenames)
-      dataset2 = dataset2.apply(
-          snapshot.snapshot(
-              tmpdir,
-              shard_size_bytes=1024 * 1024,
-              num_reader_threads=2,
-              reader_buffer_size=10))
-      self.assertDatasetProduces(dataset2, expected, assert_items_equal=True)
+    dataset2 = core_readers._TFRecordDataset(filenames)
+    dataset2 = dataset2.apply(
+        snapshot.snapshot(
+            tmpdir,
+            shard_size_bytes=1024 * 1024,
+            num_reader_threads=2,
+            reader_buffer_size=10))
+    self.assertDatasetProduces(dataset2, expected, assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
@@ -232,34 +230,33 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
               combinations.combine(threads=8, size=[1, 4, 8]))))
   def testReadSnapshotBackAfterMultiThreadedWrite(
       self, compression, threads, size):
-    with compat.forward_compatibility_horizon(2019, 8, 16):
-      self.setUpTFRecord()
-      filenames = self.test_filenames
+    self.setUpTFRecord()
+    filenames = self.test_filenames
 
-      expected = [
-          b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
-          for f in range(0, 10)
-          for r in range(0, 10)
-      ]
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in range(0, 10)
+        for r in range(0, 10)
+    ]
 
-      tmpdir = self.makeSnapshotDirectory()
-      dataset = core_readers._TFRecordDataset(filenames)
-      dataset = dataset.apply(
-          snapshot.snapshot(
-              tmpdir,
-              compression=compression,
-              num_writer_threads=threads,
-              writer_buffer_size=size))
-      self.assertDatasetProduces(dataset, expected)
+    tmpdir = self.makeSnapshotDirectory()
+    dataset = core_readers._TFRecordDataset(filenames)
+    dataset = dataset.apply(
+        snapshot.snapshot(
+            tmpdir,
+            compression=compression,
+            num_writer_threads=threads,
+            writer_buffer_size=size))
+    self.assertDatasetProduces(dataset, expected)
 
-      # remove the original files and try to read the data back only from
-      # snapshot
-      self.removeTFRecords()
+    # remove the original files and try to read the data back only from
+    # snapshot
+    self.removeTFRecords()
 
-      dataset2 = core_readers._TFRecordDataset(filenames)
-      dataset2 = dataset2.apply(
-          snapshot.snapshot(tmpdir, compression=compression))
-      self.assertDatasetProduces(dataset2, expected, assert_items_equal=True)
+    dataset2 = core_readers._TFRecordDataset(filenames)
+    dataset2 = dataset2.apply(
+        snapshot.snapshot(tmpdir, compression=compression))
+    self.assertDatasetProduces(dataset2, expected, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testSameFingerprintWithDifferentInitializationOrder(self):

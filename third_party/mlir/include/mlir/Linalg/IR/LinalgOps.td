@@ -148,29 +148,6 @@ def DimOp : Linalg_Op<"dim", [NoSideEffect]>,
   }];
 }
 
-def RangeIntersectOp : Linalg_Op<"range_intersect", [NoSideEffect]>,
-    Arguments<(ins Range, Range)>,
-    Results<(outs Range)> {
-  let summary = "range intersection operation";
-  let description = [{
-    The "linalg.range_intersect" operation takes two linalg.range and returns a
-    linalg.range that represents their intersection. This assumes both steps
-    are one for now. For example:
-
-      %2 = linalg.range_intersect %0, %1 : !linalg.range
-  }];
-
-  // Fully verified by traits.
-  let verifier = ?;
-
-  let builders = [OpBuilder<
-    "Builder *builder, OperationState *result, Value *range1, Value *range2",
-    [{
-      result->addOperands({range1, range2});
-      result->types.push_back(builder->getType<RangeType>());
-    }]>];
-}
-
 def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
     Arguments<(ins View:$view, Variadic<Index>:$ranges)>,
     Results<(outs View)> {
@@ -233,6 +210,17 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
         result->addOperands({r.min, r.max, r.step});
       result->types.push_back(view->getType());
     }
+  }];
+}
+
+def YieldOp : Linalg_Op<"yield", [NativeOpTrait<"IsTerminator">]>,
+    Arguments<(ins Variadic<AnyType>:$values)> {
+  let summary = "Linalg yield operation";
+  let description = [{
+    "linalg.yield" is a special terminator operation for blocks inside regions
+    in linalg ops. It returns values to the immediately enclosing linalg op.
+
+       linalg.yield %f0, %f1 : f32, f32
   }];
 }
 

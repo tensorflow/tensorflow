@@ -82,81 +82,66 @@ Status CreateTestFiles(const TestCase& test_case) {
 
 // Test case 1: multiple text files with ZLIB compression.
 TestCase TestCase1() {
-  return {
-      /*filenames*/ {absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_1"),
-                     absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_2")},
-      /*texts*/
-      {absl::StrCat("hello world\n", "11223334455\n"),
-       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
-      /*compression_type*/ CompressionType::ZLIB,
-      /*buffer_size*/ 10,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"hello world"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"11223334455"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"abcd, EFgH"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"           "}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"$%^&*()"})},
-      /*expected_output_dtypes*/ {DT_STRING},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ kUnknownCardinality,
-      /*breakpoints*/ {0, 2, 6}};
+  return {/*filenames*/ {absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_1"),
+                         absl::StrCat(testing::TmpDir(), "/text_line_ZLIB_2")},
+          /*texts*/
+          {absl::StrCat("hello world\n", "11223334455\n"),
+           absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
+          /*compression_type*/ CompressionType::ZLIB,
+          /*buffer_size*/ 10,
+          /*expected_outputs*/
+          {CreateTensor<string>(TensorShape({}), {"hello world"}),
+           CreateTensor<string>(TensorShape({}), {"11223334455"}),
+           CreateTensor<string>(TensorShape({}), {"abcd, EFgH"}),
+           CreateTensor<string>(TensorShape({}), {"           "}),
+           CreateTensor<string>(TensorShape({}), {"$%^&*()"})},
+          /*expected_output_dtypes*/ {DT_STRING},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ kUnknownCardinality,
+          /*breakpoints*/ {0, 2, 6}};
 }
 
 // Test case 2: multiple text files with GZIP compression.
 TestCase TestCase2() {
-  return {
-      /*filenames*/ {absl::StrCat(testing::TmpDir(), "/text_line_GZIP_1"),
-                     absl::StrCat(testing::TmpDir(), "/text_line_GZIP_2")},
-      /*texts*/
-      {absl::StrCat("hello world\n", "11223334455\n"),
-       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
-      /*compression_type*/ CompressionType::GZIP,
-      /*buffer_size*/ 10,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"hello world"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"11223334455"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"abcd, EFgH"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"           "}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"$%^&*()"})},
-      /*expected_output_dtypes*/ {DT_STRING},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ kUnknownCardinality,
-      /*breakpoints*/ {0, 2, 6}};
+  return {/*filenames*/ {absl::StrCat(testing::TmpDir(), "/text_line_GZIP_1"),
+                         absl::StrCat(testing::TmpDir(), "/text_line_GZIP_2")},
+          /*texts*/
+          {absl::StrCat("hello world\n", "11223334455\n"),
+           absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
+          /*compression_type*/ CompressionType::GZIP,
+          /*buffer_size*/ 10,
+          /*expected_outputs*/
+          {CreateTensor<string>(TensorShape({}), {"hello world"}),
+           CreateTensor<string>(TensorShape({}), {"11223334455"}),
+           CreateTensor<string>(TensorShape({}), {"abcd, EFgH"}),
+           CreateTensor<string>(TensorShape({}), {"           "}),
+           CreateTensor<string>(TensorShape({}), {"$%^&*()"})},
+          /*expected_output_dtypes*/ {DT_STRING},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ kUnknownCardinality,
+          /*breakpoints*/ {0, 2, 6}};
 }
 
 // Test case 3: multiple text files without compression.
 TestCase TestCase3() {
-  return {
-      /*filenames*/ {
-          absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_1"),
-          absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_2")},
-      /*texts*/
-      {absl::StrCat("hello world\n", "11223334455\n"),
-       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
-      /*compression_type*/ CompressionType::UNCOMPRESSED,
-      /*buffer_size*/ 10,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"hello world"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"11223334455"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"abcd, EFgH"}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}),
-                                                {"           "}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({}), {"$%^&*()"})},
-      /*expected_output_dtypes*/ {DT_STRING},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ kUnknownCardinality,
-      /*breakpoints*/ {0, 2, 6}};
+  return {/*filenames*/ {
+              absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_1"),
+              absl::StrCat(testing::TmpDir(), "/text_line_UNCOMPRESSED_2")},
+          /*texts*/
+          {absl::StrCat("hello world\n", "11223334455\n"),
+           absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")},
+          /*compression_type*/ CompressionType::UNCOMPRESSED,
+          /*buffer_size*/ 10,
+          /*expected_outputs*/
+          {CreateTensor<string>(TensorShape({}), {"hello world"}),
+           CreateTensor<string>(TensorShape({}), {"11223334455"}),
+           CreateTensor<string>(TensorShape({}), {"abcd, EFgH"}),
+           CreateTensor<string>(TensorShape({}), {"           "}),
+           CreateTensor<string>(TensorShape({}), {"$%^&*()"})},
+          /*expected_output_dtypes*/ {DT_STRING},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ kUnknownCardinality,
+          /*breakpoints*/ {0, 2, 6}};
 }
 
 class ParameterizedTextLineDatasetOpTest

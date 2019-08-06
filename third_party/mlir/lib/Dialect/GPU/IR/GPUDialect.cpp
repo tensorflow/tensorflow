@@ -372,7 +372,7 @@ class PropagateConstantBounds : public OpRewritePattern<LaunchOp> {
 
 void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
-  RewriteListBuilder<PropagateConstantBounds>::build(results, context);
+  results.insert<PropagateConstantBounds>(context);
 }
 
 //===----------------------------------------------------------------------===//

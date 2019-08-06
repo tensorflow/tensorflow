@@ -800,12 +800,63 @@ class RegisterPFor(object):
     ...
 
   The above will register conversion function `_foo_converter` for handling
-  conversion of `foo_op_type`. During conversion, the registered functin will be
-  called with a single argument of type `PForInput` which will contain state
-  needed for the conversion.  This registered function should output a list of
-  WrappedTensor object with the same length as the number of outputs of op being
-  converted. If the op had zero outputs, then it should return a ops.Operation
-  object.
+  conversion of `foo_op_type`. These converters are called during vectorization
+  of a `pfor` loop body. For each operation node in this loop body,
+  the vectorization process will call the converter corresponding to the
+  operation type of the node.
+
+  During conversion, the registered function will be called with a single
+  argument `pfor_input`, of type `PForInput`, which will contain state needed
+  for the conversion.  When the converter is called for a node, all its inputs
+  should already have been converted and these converted values are stored in
+  `pfor_input.inputs`.  This registered function should output a list of
+  WrappedTensor objects with the same length as the number of outputs of the
+  node being converted. If the node had zero outputs, then it should return an
+  ops.Operation object.  These new sets of nodes should implement the
+  functionality of running that operation for the number of iterations specified
+  by `pfor_input.pfor.loop_len_vector[0]` where the inputs of the node for each
+  iteration are picked from `pfor_inputs.inputs()`.
+
+  One tricky aspect of the conversion process is keeping track of, and
+  leveraging loop invariance of computation. Each converted input is a
+  WrappedTensor which indicates whether the input was loop invariant or not. If
+  the converted value is loop invariant, its rank should match the rank of the
+  corresponding tensor in the loop body, else its rank is larger by 1. The
+  converter should look at the loop invariance of the inputs and generate new
+  nodes based on that. Note that the converter will not be called if all inputs
+  are loop invariant and the operation is not stateful. The converter should
+  determine if its own output is loop invariant and `wrap` its output
+  accordingly.
+
+  Example:
+
+  Here, the converter is trying to convert a Reshape node in the loop body. This
+  node will have two inputs: the tensor to reshape, and the new shape.  The
+  example here only handles the case where the shape is loop invariant.
+
+  @RegisterPFor("Reshape")
+  def _convert_reshape(pfor_input):
+    # We assume that input is not loop invariant. Call to `stacked_input`
+    # asserts that and returns the converted value. This value will have a rank
+    # larger by 1 compared to the rank of the input in the loop body.
+    t = pfor_input.stacked_input(0)
+
+    # We assume that shape input is loop invariant. Call to `unstacked_input`
+    # asserts that and returns the converted value.
+    shape = pfor_input.unstacked_input(1)
+
+    # We compute `new_shape` by prepending the number of iterations to the
+    # original shape.
+    new_shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape],
+                                 axis=0)
+
+    # The vectorized output involves reshaping the converted input `t` using
+    # `new_shape`.
+    new_output = array_ops.reshape(t, new_shape)
+
+    # The converted output is marked as not loop invariant using the call to
+    # wrap.
+    return wrap(new_output, True)
   """
 
   def __init__(self, op_type):
@@ -1400,6 +1451,10 @@ class PFor(object):
       may be active.
     """
     return self._all_indices_partitioned
+
+
+# The code below defines converters for different operations. Please see comment
+# for RegisterPFor to see how converters should be defined.
 
 # nn_ops
 

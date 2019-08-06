@@ -108,7 +108,7 @@ void ConvertConstPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   auto *context = &getContext();
-  patterns.push_back(llvm::make_unique<QuantizedConstRewrite>(context));
+  patterns.insert<QuantizedConstRewrite>(context);
   applyPatternsGreedily(func, std::move(patterns));
 }
 

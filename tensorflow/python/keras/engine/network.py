@@ -191,7 +191,7 @@ class Network(base_layer.Layer):
     # self.updates
 
     generic_utils.validate_kwargs(kwargs, {'trainable', 'dtype', 'dynamic',
-                                           'experimental_autocast'})
+                                           'autocast'})
 
     # Object to store all thread local layer properties.
     self._thread_local = threading.local()
@@ -377,7 +377,7 @@ class Network(base_layer.Layer):
     self._base_init(name=name, **kwargs)
     self._is_graph_network = False
     self._init_call_fn_args()
-    self._autocast = kwargs.get('experimental_autocast',
+    self._autocast = kwargs.get('autocast',
                                 base_layer_utils.v2_dtype_behavior_enabled())
     self.outputs = []
     self.inputs = []
@@ -1121,7 +1121,8 @@ class Network(base_layer.Layer):
            filepath,
            overwrite=True,
            include_optimizer=True,
-           save_format=None):
+           save_format=None,
+           signatures=None):
     """Saves the model to Tensorflow SavedModel or a single HDF5 file.
 
     The savefile includes:
@@ -1147,6 +1148,9 @@ class Network(base_layer.Layer):
           to Tensorflow SavedModel or HDF5. The default is currently 'h5', but
           will switch to 'tf' in TensorFlow 2.0. The 'tf' option is currently
           disabled (use `tf.keras.experimental.export_saved_model` instead).
+      signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
+        format only. Please see the `signatures` argument in
+        `tf.saved_model.save` for details.
 
     Example:
 
@@ -1161,7 +1165,8 @@ class Network(base_layer.Layer):
     model = load_model('my_model.h5')
     ```
     """
-    saving.save_model(self, filepath, overwrite, include_optimizer, save_format)
+    saving.save_model(self, filepath, overwrite, include_optimizer, save_format,
+                      signatures)
 
   def save_weights(self, filepath, overwrite=True, save_format=None):
     """Saves all layer weights.

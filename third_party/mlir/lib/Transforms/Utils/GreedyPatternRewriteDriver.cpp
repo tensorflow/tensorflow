@@ -44,8 +44,8 @@ namespace {
 class GreedyPatternRewriteDriver : public PatternRewriter {
 public:
   explicit GreedyPatternRewriteDriver(MLIRContext *ctx,
-                                      OwningRewritePatternList &&patterns)
-      : PatternRewriter(ctx), matcher(std::move(patterns)) {
+                                      OwningRewritePatternList &patterns)
+      : PatternRewriter(ctx), matcher(patterns) {
     worklist.reserve(64);
   }
 
@@ -98,6 +98,10 @@ protected:
     addToWorklist(op->getOperands());
     removeFromWorklist(op);
     folder.notifyRemoval(op);
+    op->walk([this](Operation *operation) {
+      removeFromWorklist(operation);
+      folder.notifyRemoval(operation);
+    });
   }
 
   // When the root of a pattern is about to be replaced, it can trigger
@@ -224,7 +228,7 @@ bool mlir::applyPatternsGreedily(Operation *op,
   if (!op->isKnownIsolatedFromAbove())
     return false;
 
-  GreedyPatternRewriteDriver driver(op->getContext(), std::move(patterns));
+  GreedyPatternRewriteDriver driver(op->getContext(), patterns);
   bool converged = driver.simplify(op, maxPatternMatchIterations);
   LLVM_DEBUG(if (!converged) {
     llvm::dbgs() << "The pattern rewrite doesn't converge after scanning "

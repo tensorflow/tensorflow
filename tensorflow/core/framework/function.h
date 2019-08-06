@@ -634,7 +634,8 @@ class FunctionLibraryRuntime {
                              Handle* handle) = 0;
   Status Instantiate(const string& function_name, AttrSlice attrs,
                      Handle* handle) {
-    return Instantiate(function_name, attrs, {}, handle);
+    auto opts = absl::make_unique<InstantiateOptions>();
+    return Instantiate(function_name, attrs, *opts, handle);
   }
 
   // Releases state associated with the handle.

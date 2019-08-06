@@ -40,6 +40,9 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
+# pylint: disable=g-error-prone-assert-raises
+
+
 class AssertV2Asserts(test.TestCase):
 
   def test_passes_when_it_should(self):

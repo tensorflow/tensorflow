@@ -104,8 +104,7 @@ void GPUToSPIRVPass::runOnModule() {
   SPIRVTypeConverter typeConverter(context);
   SPIRVEntryFnTypeConverter entryFnConverter(context);
   OwningRewritePatternList patterns;
-  RewriteListBuilder<KernelFnConversion>::build(
-      patterns, context, typeConverter, entryFnConverter);
+  patterns.insert<KernelFnConversion>(context, typeConverter, entryFnConverter);
   populateStandardToSPIRVPatterns(context, patterns);
 
   ConversionTarget target(*context);

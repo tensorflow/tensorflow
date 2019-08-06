@@ -28,8 +28,6 @@ namespace data {
 namespace experimental {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit GroupByReducerDatasetOp(OpKernelConstruction* ctx)

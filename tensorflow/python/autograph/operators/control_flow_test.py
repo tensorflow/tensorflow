@@ -34,6 +34,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -62,6 +63,19 @@ class ForLoopTest(test.TestCase):
           init_vars=(0,))
       self.assertEqual(self.evaluate(s), (1234,))
 
+  def test_range_tensor_random_delta(self):
+
+    with ops.Graph().as_default():
+      random_one = random_ops.random_uniform((), 1, 2, dtype=dtypes.int32)
+      s = control_flow.for_stmt(
+          math_ops.range(0, 5, random_one),
+          extra_test=lambda s: True,
+          body=lambda i, s: (s * 10 + i,),
+          get_state=lambda: (),
+          set_state=lambda _: None,
+          init_vars=(0,))
+      self.assertEqual(self.evaluate(s), (1234,))
+
   def test_range_tensor_explicit_limit_delta(self):
     with ops.Graph().as_default():
       s = control_flow.for_stmt(
@@ -72,6 +86,21 @@ class ForLoopTest(test.TestCase):
           set_state=lambda _: None,
           init_vars=(0,))
       self.assertEqual(self.evaluate(s), (-171207,))
+
+  def test_range_tensor_random_negative_delta(self):
+    with ops.Graph().as_default():
+      random_neg_five = random_ops.random_uniform((),
+                                                  -5,
+                                                  -4,
+                                                  dtype=dtypes.int32)
+      s = control_flow.for_stmt(
+          math_ops.range(17, 3, random_neg_five),
+          extra_test=lambda s: True,
+          body=lambda i, s: (s * 100 + i,),
+          get_state=lambda: (),
+          set_state=lambda _: None,
+          init_vars=(0,))
+      self.assertEqual(self.evaluate(s), (171207,))
 
   def test_range_tensor_negative_delta(self):
     with ops.Graph().as_default():

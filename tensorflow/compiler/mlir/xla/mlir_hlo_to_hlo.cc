@@ -179,7 +179,7 @@ LogicalResult Lower(mlir::Operation* inst, xla::XlaBuilder* builder,
 
   // TODO(riverriddle) We currently don't support lowering constant operations.
   if (isa<mlir::XLA::ConstOp>(inst)) {
-    inst->emitError("unable to lower 'xla.constant' operation");
+    inst->emitError("unable to lower 'xla_hlo.constant' operation");
     return failure();
   }
 

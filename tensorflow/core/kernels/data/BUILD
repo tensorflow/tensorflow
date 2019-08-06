@@ -1156,6 +1156,7 @@ tf_kernel_library(
     srcs = ["cache_dataset_ops.cc"],
     hdrs = ["cache_dataset_ops.h"],
     deps = [
+        ":cache_ops",
         ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -1325,6 +1326,20 @@ tf_kernel_library(
     name = "random_seed_ops",
     srcs = ["random_seed_ops.cc"],
     hdrs = ["random_seed_ops.h"],
+    deps = [
+        ":dataset_utils",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
+    name = "cache_ops",
+    srcs = ["cache_ops.cc"],
+    hdrs = ["cache_ops.h"],
     deps = [
         ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",

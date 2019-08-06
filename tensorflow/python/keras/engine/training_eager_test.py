@@ -24,7 +24,6 @@ from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
@@ -35,7 +34,7 @@ from tensorflow.python.platform import test
 
 class TrainingTest(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_dynamic_model_has_trainable_weights(self):
     if not context.executing_eagerly():
       # Only test Eager modes, as Graph mode is not relevant for dynamic models.
@@ -52,7 +51,10 @@ class TrainingTest(keras_parameterized.TestCase):
         return self.dense(inputs)
 
     model = DynamicModel()
-    model.compile('rmsprop', 'mae')
+    model.compile(
+        'rmsprop', 'mae',
+        run_eagerly=True,
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     hist = model.fit(np.zeros((1, 1)), np.zeros((1, 1)))
     self.assertEqual(hist.history['loss'][-1], 1)
     self.assertEqual(len(model.trainable_weights), 2)

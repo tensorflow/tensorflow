@@ -155,6 +155,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/ops/losses:losses",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 py_test(

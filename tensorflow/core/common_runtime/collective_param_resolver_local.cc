@@ -59,22 +59,13 @@ namespace {
 const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
   switch (cp->instance.type) {
     case BROADCAST_COLLECTIVE:
-      if (nccl) {
-        return "NcclBroadcast";
-      } else {
-        return "HierarchicalTreeBroadcast";
-      }
+      return nccl ? "NcclBroadcast" : "HierarchicalTreeBroadcast";
 
-    case REDUCTION_COLLECTIVE: {
-      if (nccl) {
-        return "NcclReduce";
-      } else {
-        return "RingReduce";
-      }
-    }
+    case REDUCTION_COLLECTIVE:
+      return nccl ? "NcclReduce" : "RingReduce";
 
     case GATHER_COLLECTIVE:
-      return "RingGather";
+      return nccl ? "NcclGather" : "RingGather";
 
     default:
       return "undef";
@@ -100,15 +91,14 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
 
       // Initialize group runtime details.
       CollectiveImplementationInterface* col_impl;
-      // TODO(b/128853131): Remove NCCL special case when we have NCCL
-      // implementations for all collectives.
       status = CollectiveRegistry::LookupParamResolverInstance(
-          nccl_ ? "NcclReduce" : GetCollectiveName(cp, /*nccl=*/false),
-          &col_impl);
+          GetCollectiveName(cp, nccl_), &col_impl);
       if (status.ok()) {
         status = col_impl->InitializeCollectiveGroupRuntimeDetails(
             &gr->group.runtime_details);
-      } else {
+      }
+
+      if (!status.ok()) {
         done(status, gr);
         return;
       }

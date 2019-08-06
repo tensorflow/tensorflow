@@ -13,7 +13,7 @@ load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "tf_additional_license_deps")
 load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",

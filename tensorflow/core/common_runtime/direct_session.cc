@@ -385,9 +385,6 @@ DirectSession::~DirectSession() {
   for (auto d : device_mgr_->ListDevices()) {
     d->op_segment()->RemoveHold(session_handle_);
   }
-  for (auto d : device_mgr_->ListDevices()) {
-    d->ClearResourceMgr();
-  }
   functions_.clear();
   delete cancellation_manager_;
   for (const auto& p_and_owned : thread_pools_) {

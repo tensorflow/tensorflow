@@ -394,8 +394,39 @@ private:
 // Pattern-driven rewriters
 //===----------------------------------------------------------------------===//
 
-/// This is a vector that owns the patterns inside of it.
-using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
+class OwningRewritePatternList {
+  using PatternListT = std::vector<std::unique_ptr<RewritePattern>>;
+
+public:
+  PatternListT::iterator begin() { return patterns.begin(); }
+  PatternListT::iterator end() { return patterns.end(); }
+  PatternListT::const_iterator begin() const { return patterns.begin(); }
+  PatternListT::const_iterator end() const { return patterns.end(); }
+
+  //===--------------------------------------------------------------------===//
+  // Pattern Insertion
+  //===--------------------------------------------------------------------===//
+
+  void insert(RewritePattern *pattern) { patterns.emplace_back(pattern); }
+
+  /// Add an instance of each of the pattern types 'Ts' to the pattern list with
+  /// the given arguments.
+  // Note: ConstructorArg is necessary here to separate the two variadic lists.
+  template <typename... Ts, typename ConstructorArg,
+            typename... ConstructorArgs>
+  void insert(ConstructorArg &&arg, ConstructorArgs &&... args) {
+    // The following expands a call to emplace_back for each of the pattern
+    // types 'Ts'. This magic is necessary due to a limitation in the places
+    // that a parameter pack can be expanded in c++11.
+    // FIXME: In c++17 this can be simplified by using 'fold expressions'.
+    using dummy = int[];
+    (void)dummy{
+        0, (patterns.emplace_back(llvm::make_unique<Ts>(arg, args...)), 0)...};
+  }
+
+private:
+  PatternListT patterns;
+};
 
 /// This class manages optimization and execution of a group of rewrite
 /// patterns, providing an API for finding and applying, the best match against
@@ -404,7 +435,7 @@ using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
 class RewritePatternMatcher {
 public:
   /// Create a RewritePatternMatcher with the specified set of patterns.
-  explicit RewritePatternMatcher(OwningRewritePatternList &&patterns);
+  explicit RewritePatternMatcher(OwningRewritePatternList &patterns);
 
   /// Try to match the given operation to a pattern and rewrite it. Return
   /// true if any pattern matches.
@@ -416,7 +447,7 @@ private:
 
   /// The group of patterns that are matched for optimization through this
   /// matcher.
-  OwningRewritePatternList patterns;
+  std::vector<RewritePattern *> patterns;
 };
 
 /// Rewrite the regions of the specified operation, which must be isolated from
@@ -427,29 +458,6 @@ private:
 ///
 bool applyPatternsGreedily(Operation *op, OwningRewritePatternList &&patterns);
 
-/// Helper class to create a list of rewrite patterns given a list of their
-/// types and a list of attributes perfect-forwarded to each of the conversion
-/// constructors.
-template <typename Arg, typename... Args> struct RewriteListBuilder {
-  template <typename... ConstructorArgs>
-  static void build(OwningRewritePatternList &patterns,
-                    ConstructorArgs &&... constructorArgs) {
-    RewriteListBuilder<Args...>::build(
-        patterns, std::forward<ConstructorArgs>(constructorArgs)...);
-    RewriteListBuilder<Arg>::build(
-        patterns, std::forward<ConstructorArgs>(constructorArgs)...);
-  }
-};
-
-// Template specialization to stop recursion.
-template <typename Arg> struct RewriteListBuilder<Arg> {
-  template <typename... ConstructorArgs>
-  static void build(OwningRewritePatternList &patterns,
-                    ConstructorArgs &&... constructorArgs) {
-    patterns.emplace_back(llvm::make_unique<Arg>(
-        std::forward<ConstructorArgs>(constructorArgs)...));
-  }
-};
 } // end namespace mlir
 
 #endif // MLIR_PATTERN_MATCH_H

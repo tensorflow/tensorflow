@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
@@ -175,17 +176,28 @@ class SerializeTRTResource : public OpKernel {
     OP_REQUIRES(ctx, !filename.empty(),
                 errors::InvalidArgument("filename cannot be empty."));
 
+    // Lookup engine cache resource.
     TRTEngineCacheResource* resource = nullptr;
     OP_REQUIRES_OK(
         ctx, ctx->resource_manager()->Lookup(std::string(kTfTrtContainerName),
                                              resource_name, &resource));
     core::ScopedUnref unref_me(resource);
 
+    // Terminate the calibration if any.
+    if (resource->calib_ctx_) {
+      // We don't save the calibration_table for TF 2.0 at the moment, it's used
+      // in 1.x environment.
+      string calibration_table;
+      OP_REQUIRES_OK(
+          ctx, resource->calib_ctx_->SerializeToString(&calibration_table));
+    }
+
     // Serialize the engines and write them to file.
     std::unique_ptr<WritableFile> file;
     OP_REQUIRES_OK(ctx, ctx->env()->NewWritableFile(filename, &file));
     auto writer = absl::make_unique<io::RecordWriter>(file.get());
 
+    int num_serialized_engines = 0;
     for (const auto& pair : resource->cache_) {
       // Ignore engines that failed to build.
       const std::unique_ptr<EngineContext>& engine = pair.second;
@@ -205,10 +217,11 @@ class SerializeTRTResource : public OpKernel {
 
       OP_REQUIRES_OK(ctx,
                      writer->WriteRecord(engine_instance.SerializeAsString()));
+      ++num_serialized_engines;
     }
-    VLOG(1) << "Serialized " << resource->cache_.size()
-            << " TRT engines for op " << resource_name << " on device "
-            << ctx->device()->name() << " to file " << filename;
+    VLOG(1) << "Serialized " << num_serialized_engines << " TRT engines for op "
+            << resource_name << " on device " << ctx->device()->name()
+            << " to file " << filename;
 
     if (delete_resource_) {
       VLOG(1) << "Destroying TRT engine cache resource for op " << resource_name

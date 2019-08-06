@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import threading
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
@@ -47,31 +46,18 @@ class PrivateThreadPool(object):
     """Creates a `PrivateThreadPool` with the given number of threads."""
     if context.executing_eagerly():
       shared_name = _generate_shared_name("privatethreadpool")
-      if compat.forward_compatible(2019, 8, 3):
-        self._resource = ged_ops.thread_pool_handle(
-            num_threads=num_threads,
-            max_intra_op_parallelism=max_intra_op_parallelism,
-            display_name=display_name,
-            shared_name=shared_name)
-      else:
-        self._resource = ged_ops.experimental_thread_pool_handle(
-            num_threads=num_threads,
-            max_intra_op_parallelism=max_intra_op_parallelism,
-            display_name=display_name,
-            shared_name=shared_name)
+      self._resource = ged_ops.thread_pool_handle(
+          num_threads=num_threads,
+          max_intra_op_parallelism=max_intra_op_parallelism,
+          display_name=display_name,
+          shared_name=shared_name)
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._resource, handle_device=context.context().device_name)
     else:
-      if compat.forward_compatible(2019, 8, 3):
-        self._resource = ged_ops.thread_pool_handle(
-            num_threads=num_threads,
-            max_intra_op_parallelism=max_intra_op_parallelism,
-            display_name=display_name)
-      else:
-        self._resource = ged_ops.experimental_thread_pool_handle(
-            num_threads=num_threads,
-            max_intra_op_parallelism=max_intra_op_parallelism,
-            display_name=display_name)
+      self._resource = ged_ops.thread_pool_handle(
+          num_threads=num_threads,
+          max_intra_op_parallelism=max_intra_op_parallelism,
+          display_name=display_name)
 
 
 class _ThreadPoolDataset(dataset_ops.UnaryUnchangedStructureDataset):
@@ -80,16 +66,10 @@ class _ThreadPoolDataset(dataset_ops.UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, thread_pool):
     self._input_dataset = input_dataset
     self._thread_pool = thread_pool
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = ged_ops.thread_pool_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._thread_pool._resource,  # pylint: disable=protected-access
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.experimental_thread_pool_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._thread_pool._resource,  # pylint: disable=protected-access
-          **self._flat_structure)
+    variant_tensor = ged_ops.thread_pool_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._thread_pool._resource,  # pylint: disable=protected-access
+        **self._flat_structure)
     super(_ThreadPoolDataset, self).__init__(input_dataset, variant_tensor)
 
 

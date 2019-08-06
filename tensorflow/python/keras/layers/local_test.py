@@ -267,9 +267,16 @@ class LocallyConnected2DLayersTest(test.TestCase, parameterized.TestCase):
 
 
 @tf_test_util.run_all_in_graph_and_eager_modes
-class LocallyConnectedImplementationModeTest(test.TestCase):
+class LocallyConnectedImplementationModeTest(test.TestCase,
+                                             parameterized.TestCase):
 
-  def test_locallyconnected_implementation(self):
+  @parameterized.parameters([
+      {'width': 1, 'data_format': 'channels_first'},
+      {'width': 1, 'data_format': 'channels_last'},
+      {'width': 6, 'data_format': 'channels_first'},
+      {'width': 6, 'data_format': 'channels_last'},
+  ])
+  def test_locallyconnected_implementation(self, width, data_format):
     with self.cached_session():
       num_samples = 4
       num_classes = 3
@@ -278,80 +285,78 @@ class LocallyConnectedImplementationModeTest(test.TestCase):
       np.random.seed(1)
       targets = np.random.randint(0, num_classes, (num_samples,))
 
-      for width in [1, 6]:
-        for height in [7]:
-          for filters in [2]:
-            for data_format in ['channels_first', 'channels_last']:
-              inputs = get_inputs(data_format, filters, height, num_samples,
-                                  width)
+      height = 7
+      filters = 2
+      inputs = get_inputs(data_format, filters, height, num_samples, width)
 
-              for kernel_x in [(3,)]:
-                for kernel_y in [()] if width == 1 else [(2,)]:
-                  for stride_x in [(1,)]:
-                    for stride_y in [()] if width == 1 else [(3,)]:
-                      for layers in [2]:
-                        kwargs = {
-                            'layers': layers,
-                            'filters': filters,
-                            'kernel_size': kernel_x + kernel_y,
-                            'strides': stride_x + stride_y,
-                            'data_format': data_format,
-                            'num_classes': num_classes
-                        }
+      kernel_x = (3,)
+      kernel_y = () if width == 1 else (2,)
+      stride_x = (1,)
+      stride_y = () if width == 1 else (3,)
+      layers = 2
 
-                        model_1 = get_model(implementation=1, **kwargs)
-                        model_2 = get_model(implementation=2, **kwargs)
-                        model_3 = get_model(implementation=3, **kwargs)
+      kwargs = {
+          'layers': layers,
+          'filters': filters,
+          'kernel_size': kernel_x + kernel_y,
+          'strides': stride_x + stride_y,
+          'data_format': data_format,
+          'num_classes': num_classes
+      }
 
-                        # Build models.
-                        model_1.train_on_batch(inputs, targets)
-                        model_2.train_on_batch(inputs, targets)
-                        model_3.train_on_batch(inputs, targets)
+      model_1 = get_model(implementation=1, **kwargs)
+      model_2 = get_model(implementation=2, **kwargs)
+      model_3 = get_model(implementation=3, **kwargs)
 
-                        # Copy weights.
-                        copy_model_weights(model_from=model_2, model_to=model_1)
-                        copy_model_weights(model_from=model_2, model_to=model_3)
+      # Build models.
+      model_1.train_on_batch(inputs, targets)
+      model_2.train_on_batch(inputs, targets)
+      model_3.train_on_batch(inputs, targets)
 
-                        # Compare outputs at initialization.
-                        out_1 = model_1.call(inputs)
-                        out_2 = model_2.call(inputs)
-                        out_3 = model_3.call(inputs)
+      # Copy weights.
+      copy_model_weights(model_from=model_2, model_to=model_1)
+      copy_model_weights(model_from=model_2, model_to=model_3)
 
-                        self.assertAllCloseAccordingToType(
-                            out_2, out_1, rtol=1e-5, atol=1e-5)
-                        self.assertAllCloseAccordingToType(
-                            out_2, out_3, rtol=1e-5, atol=1e-5)
-                        self.assertAllCloseAccordingToType(
-                            out_1, out_3, rtol=1e-5, atol=1e-5)
+      # Compare outputs at initialization.
+      out_1 = model_1.call(inputs)
+      out_2 = model_2.call(inputs)
+      out_3 = model_3.call(inputs)
 
-                        # Train.
-                        model_1.fit(
-                            x=inputs,
-                            y=targets,
-                            epochs=num_epochs,
-                            batch_size=num_samples)
-                        model_2.fit(
-                            x=inputs,
-                            y=targets,
-                            epochs=num_epochs,
-                            batch_size=num_samples)
-                        model_3.fit(
-                            x=inputs,
-                            y=targets,
-                            epochs=num_epochs,
-                            batch_size=num_samples)
+      self.assertAllCloseAccordingToType(
+          out_2, out_1, rtol=1e-5, atol=1e-5)
+      self.assertAllCloseAccordingToType(
+          out_2, out_3, rtol=1e-5, atol=1e-5)
+      self.assertAllCloseAccordingToType(
+          out_1, out_3, rtol=1e-5, atol=1e-5)
 
-                        # Compare outputs after a few training steps.
-                        out_1 = model_1.call(inputs)
-                        out_2 = model_2.call(inputs)
-                        out_3 = model_3.call(inputs)
+      # Train.
+      model_1.fit(
+          x=inputs,
+          y=targets,
+          epochs=num_epochs,
+          batch_size=num_samples)
+      model_2.fit(
+          x=inputs,
+          y=targets,
+          epochs=num_epochs,
+          batch_size=num_samples)
+      model_3.fit(
+          x=inputs,
+          y=targets,
+          epochs=num_epochs,
+          batch_size=num_samples)
 
-                        self.assertAllCloseAccordingToType(
-                            out_2, out_1, atol=2e-4)
-                        self.assertAllCloseAccordingToType(
-                            out_2, out_3, atol=2e-4)
-                        self.assertAllCloseAccordingToType(
-                            out_1, out_3, atol=2e-4)
+      # Compare outputs after a few training steps.
+      out_1 = model_1.call(inputs)
+      out_2 = model_2.call(inputs)
+      out_3 = model_3.call(inputs)
+
+      self.assertAllCloseAccordingToType(
+          out_2, out_1, atol=2e-4)
+      self.assertAllCloseAccordingToType(
+          out_2, out_3, atol=2e-4)
+      self.assertAllCloseAccordingToType(
+          out_1, out_3, atol=2e-4)
 
   def test_make_2d(self):
     input_shapes = [

@@ -57,6 +57,8 @@ cudnnStatus_t GetSymbolNotFoundError() { return CUDNN_STATUS_INTERNAL_ERROR; }
 #include "tensorflow/stream_executor/cuda/cudnn_7_1.inc"
 #elif CUDNN_MINOR < 4
 #include "tensorflow/stream_executor/cuda/cudnn_7_3.inc"
-#else
+#elif CUDNN_MINOR < 6
 #include "tensorflow/stream_executor/cuda/cudnn_7_4.inc"
+#else
+#include "tensorflow/stream_executor/cuda/cudnn_7_6.inc"
 #endif

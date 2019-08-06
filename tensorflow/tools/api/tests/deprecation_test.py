@@ -39,7 +39,7 @@ class DeprecationTest(test.TestCase):
     tf.tables_initializer()
     self.assertEqual(1, mock_warning.call_count)
     self.assertRegexpMatches(mock_warning.call_args[0][1],
-                             "module_wrapper.py:")
+                             "deprecation_test.py:")
     self.assertRegexpMatches(
         mock_warning.call_args[0][2], r"tables_initializer")
     self.assertRegexpMatches(
@@ -60,7 +60,7 @@ class DeprecationTest(test.TestCase):
     tf.ragged.RaggedTensorValue(value, row_splits)
     self.assertEqual(1, mock_warning.call_count)
     self.assertRegexpMatches(mock_warning.call_args[0][1],
-                             "module_wrapper.py:")
+                             "deprecation_test.py:")
     self.assertRegexpMatches(
         mock_warning.call_args[0][2], r"ragged.RaggedTensorValue")
     self.assertRegexpMatches(
@@ -83,7 +83,7 @@ class DeprecationTest(test.TestCase):
     tf.sparse_mask(array, mask_indices)
     self.assertEqual(1, mock_warning.call_count)
     self.assertRegexpMatches(mock_warning.call_args[0][1],
-                             "module_wrapper.py:")
+                             "deprecation_test.py:")
     self.assertRegexpMatches(
         mock_warning.call_args[0][2], r"sparse_mask")
     self.assertRegexpMatches(
@@ -101,7 +101,7 @@ class DeprecationTest(test.TestCase):
     tf.VarLenFeature(tf.dtypes.int32)
     self.assertEqual(1, mock_warning.call_count)
     self.assertRegexpMatches(mock_warning.call_args[0][1],
-                             "module_wrapper.py:")
+                             "deprecation_test.py:")
     self.assertRegexpMatches(
         mock_warning.call_args[0][2], r"VarLenFeature")
     self.assertRegexpMatches(
@@ -119,7 +119,7 @@ class DeprecationTest(test.TestCase):
     tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY  # pylint: disable=pointless-statement
     self.assertEqual(1, mock_warning.call_count)
     self.assertRegexpMatches(mock_warning.call_args[0][1],
-                             "module_wrapper.py:")
+                             "deprecation_test.py:")
     self.assertRegexpMatches(
         mock_warning.call_args[0][2],
         r"saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY")

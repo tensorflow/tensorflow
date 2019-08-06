@@ -114,6 +114,13 @@ cc_test(
 )
 
 cc_library(
+    name = "custom_registry",
+    srcs = ["custom_registry.cc"],
+    hdrs = ["custom_registry.h"],
+    deps = ["//tensorflow/lite/delegates/gpu/gl:node_shader"],
+)
+
+cc_library(
     name = "depthwise_conv",
     srcs = ["depthwise_conv.cc"],
     hdrs = ["depthwise_conv.h"],
@@ -690,6 +697,7 @@ cc_library(
                "//tensorflow/lite/delegates/gpu:tflite_gpu_binary_release": [],
                "//conditions:default": NON_TFLITE_GPU_BINARY_RELEASE_OPERATORS,
            }) + [
+        ":custom_registry",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",

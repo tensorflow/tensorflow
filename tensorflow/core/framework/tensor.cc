@@ -515,7 +515,12 @@ TensorBuffer* FromProtoField<Variant>(Allocator* a, const TensorProto& in,
   if (in_n <= 0) {
     std::fill_n(data, n, Variant());
   } else {
-    for (int64 i = 0; i < in_n; ++i) {
+    // If tensor shape says we have n < in_n elements in the output tensor
+    // then make sure to only decode the first n out of the in_n elements in the
+    // in tensors. In all other cases, we decode all in_n elements of in and set
+    // the remaining elements up to n to be the default Variant() value.
+    const int64 real_n = n < in_n ? n : in_n;
+    for (int64 i = 0; i < real_n; ++i) {
       data[i] = in.variant_val(i);
       if (!DecodeUnaryVariant(&data[i])) {
         LOG(ERROR) << "Could not decode variant with type_name: \""

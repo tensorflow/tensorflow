@@ -25,7 +25,12 @@ TfLiteRegistration* Register_MAX_POOL_2D();
 TfLiteRegistration* Register_ABS();
 TfLiteRegistration* Register_PRELU();
 TfLiteRegistration* Register_FLOOR();
-
+TfLiteRegistration* Register_MAXIMUM();
+TfLiteRegistration* Register_MINIMUM();
+TfLiteRegistration* Register_ARG_MAX();
+TfLiteRegistration* Register_ARG_MIN();
+TfLiteRegistration* Register_LOGICAL_OR();
+TfLiteRegistration* Register_LOGICAL_AND();
 AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D());
   AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED(),
@@ -38,6 +43,12 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_ABS, Register_ABS());
   AddBuiltin(BuiltinOperator_PRELU, Register_PRELU());
   AddBuiltin(BuiltinOperator_FLOOR, Register_FLOOR());
+  AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM());
+  AddBuiltin(BuiltinOperator_MINIMUM, Register_MINIMUM());
+  AddBuiltin(BuiltinOperator_ARG_MAX, Register_ARG_MAX());
+  AddBuiltin(BuiltinOperator_ARG_MIN, Register_ARG_MIN());
+  AddBuiltin(BuiltinOperator_LOGICAL_OR, Register_LOGICAL_OR());
+  AddBuiltin(BuiltinOperator_LOGICAL_AND, Register_LOGICAL_AND());
 }
 
 }  // namespace micro

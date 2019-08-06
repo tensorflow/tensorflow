@@ -362,7 +362,7 @@ class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase):
 
     num_output = 100 // 16 + 1
     self.parallelCallsStats(
-        dataset_fn, {"ExperimentalMapAndBatchDataset"},
+        dataset_fn, {"MapAndBatchDataset"},
         num_output,
         check_elements=False,
         function_processing_time=True)
@@ -391,7 +391,7 @@ class FeatureStatsDatasetTest(
       num_output = total_records // batch_size + 1
 
     self.parallelCallsStats(
-        dataset_fn, {"ExperimentalParseExampleDataset"},
+        dataset_fn, {"ParseExampleDataset"},
         num_output,
         check_elements=False)
 
@@ -409,19 +409,19 @@ class FeatureStatsDatasetTest(
     handle = self.getHandle(aggregator)
     self.assertStatisticsHasCount(
         handle,
-        self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDataset",
                               "features_count"), total_records)
     self.assertStatisticsHasCount(
         handle,
-        self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDataset",
                               "feature_values_count"), total_records)
     self.assertStatisticsHasSum(
         handle,
-        self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDataset",
                               "features_count"), total_records * 4)
     self.assertStatisticsHasSum(
         handle,
-        self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
+        self.regexForNodeName("record_stats::ParseExampleDataset",
                               "feature_values_count"),
         self._sum_keywords(1) * num_epochs + 3 * total_records)
 

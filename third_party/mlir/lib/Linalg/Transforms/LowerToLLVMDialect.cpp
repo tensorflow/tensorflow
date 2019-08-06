@@ -55,12 +55,12 @@ using namespace mlir::linalg::intrinsics;
 using add = ValueBuilder<mlir::LLVM::AddOp>;
 using addi = ValueBuilder<mlir::AddIOp>;
 using bitcast = ValueBuilder<mlir::LLVM::BitcastOp>;
-using call = OperationBuilder<mlir::LLVM::CallOp>;
 using cmpi = ValueBuilder<mlir::CmpIOp>;
 using constant = ValueBuilder<mlir::LLVM::ConstantOp>;
 using extractvalue = ValueBuilder<mlir::LLVM::ExtractValueOp>;
 using gep = ValueBuilder<mlir::LLVM::GEPOp>;
 using insertvalue = ValueBuilder<mlir::LLVM::InsertValueOp>;
+using llvm_call = OperationBuilder<mlir::LLVM::CallOp>;
 using llvm_icmp = ValueBuilder<LLVM::ICmpOp>;
 using llvm_load = ValueBuilder<LLVM::LoadOp>;
 using llvm_store = OperationBuilder<LLVM::StoreOp>;
@@ -206,7 +206,7 @@ public:
     Value *allocSize =
         mul(size, constant(int64Ty, IntegerAttr::get(indexType, elementSize)));
     Value *allocated =
-        call(voidPtrTy, rewriter.getSymbolRefAttr(mallocFunc), allocSize)
+        llvm_call(voidPtrTy, rewriter.getSymbolRefAttr(mallocFunc), allocSize)
             .getOperation()
             ->getResult(0);
     allocated = bitcast(elementPtrType, allocated);
@@ -251,7 +251,7 @@ public:
     edsc::ScopedContext context(rewriter, op->getLoc());
     Value *casted = bitcast(voidPtrTy, extractvalue(elementPtrTy, operands[0],
                                                     positionAttr(rewriter, 0)));
-    call(ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), casted);
+    llvm_call(ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), casted);
     rewriter.replaceOp(op, llvm::None);
     return matchSuccess();
   }
@@ -372,53 +372,6 @@ public:
     desc = insertvalue(rangeDescriptorTy, desc, operands[1],
                        positionAttr(rewriter, 1));
     desc = insertvalue(rangeDescriptorTy, desc, operands[2],
-                       positionAttr(rewriter, 2));
-    rewriter.replaceOp(op, desc);
-    return matchSuccess();
-  }
-};
-
-// RangeIntersectOp creates a new range descriptor.
-class RangeIntersectOpConversion : public LLVMOpLowering {
-public:
-  explicit RangeIntersectOpConversion(MLIRContext *context,
-                                      LLVMTypeConverter &lowering_)
-      : LLVMOpLowering(RangeIntersectOp::getOperationName(), context,
-                       lowering_) {}
-
-  PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                  ConversionPatternRewriter &rewriter) const override {
-    auto rangeIntersectOp = cast<RangeIntersectOp>(op);
-    auto rangeDescriptorTy =
-        convertLinalgType(rangeIntersectOp.getResult()->getType(), lowering);
-    auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
-    auto int1Ty = lowering.convertType(rewriter.getIntegerType(1));
-
-    edsc::ScopedContext context(rewriter, op->getLoc());
-    auto min1 = extractvalue(int64Ty, operands[0], positionAttr(rewriter, 0));
-    auto min2 = extractvalue(int64Ty, operands[1], positionAttr(rewriter, 0));
-    auto max1 = extractvalue(int64Ty, operands[0], positionAttr(rewriter, 1));
-    auto max2 = extractvalue(int64Ty, operands[1], positionAttr(rewriter, 1));
-    auto step1 = extractvalue(int64Ty, operands[0], positionAttr(rewriter, 2));
-    auto step2 = extractvalue(int64Ty, operands[1], positionAttr(rewriter, 2));
-
-    // Fill in an aggregate value of the descriptor.
-    auto SLE =
-        rewriter.getI64IntegerAttr(static_cast<int64_t>(CmpIPredicate::SLE));
-    auto SGE =
-        rewriter.getI64IntegerAttr(static_cast<int64_t>(CmpIPredicate::SGE));
-    Value *desc = undef(rangeDescriptorTy);
-    desc = insertvalue(
-        rangeDescriptorTy, desc,
-        llvm_select(int64Ty, llvm_icmp(int1Ty, SGE, min1, min2), min1, min2),
-        positionAttr(rewriter, 0));
-    desc = insertvalue(
-        rangeDescriptorTy, desc,
-        llvm_select(int64Ty, llvm_icmp(int1Ty, SLE, max1, max2), max1, max2),
-        positionAttr(rewriter, 1));
-    // TODO(ntv): this assumes both steps are one for now. Enforce and extend.
-    desc = insertvalue(rangeDescriptorTy, desc, mul(step1, step2),
                        positionAttr(rewriter, 2));
     rewriter.replaceOp(op, desc);
     return matchSuccess();
@@ -611,8 +564,12 @@ template <typename LinalgOp>
 static FuncOp
 getLLVMLibraryCallDeclaration(Operation *op, LLVMTypeConverter &lowering,
                               ConversionPatternRewriter &rewriter) {
-  assert(isa<LinalgOp>(op));
-  auto fnName = LinalgOp::getLibraryCallName();
+  auto linalgOp = cast<LinalgOp>(op);
+  auto fnName = linalgOp.getLibraryCallName();
+  if (fnName.empty()) {
+    op->emitWarning("No library call defined for: ") << *op;
+    return FuncOp();
+  }
   auto module = op->getParentOfType<ModuleOp>();
   if (auto f = module.lookupSymbol<FuncOp>(fnName)) {
     return f;
@@ -661,7 +618,7 @@ static void getLLVMLibraryCallDefinition(FuncOp fn,
     implFnArgs.push_back(alloca);
     llvm_store(arg, alloca);
   }
-  call(ArrayRef<Type>(), builder.getSymbolRefAttr(implFn), implFnArgs);
+  llvm_call(ArrayRef<Type>(), builder.getSymbolRefAttr(implFn), implFnArgs);
   llvm_return{ArrayRef<Value *>()};
 }
 
@@ -704,6 +661,8 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     // Only emit library call declaration. Fill in the body later.
     auto f = getLLVMLibraryCallDeclaration<LinalgOp>(op, lowering, rewriter);
+    if (!f)
+      return matchFailure();
     static_cast<LinalgTypeConverter &>(lowering).addLibraryFnDeclaration(f);
 
     auto fAttr = rewriter.getSymbolRefAttr(f);
@@ -719,13 +678,11 @@ static void
 populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
                                        OwningRewritePatternList &patterns,
                                        MLIRContext *ctx) {
-  RewriteListBuilder<BufferAllocOpConversion, BufferDeallocOpConversion,
-                     BufferSizeOpConversion, DimOpConversion,
-                     LinalgOpConversion<DotOp>, LinalgOpConversion<MatmulOp>,
-                     LoadOpConversion, RangeOpConversion,
-                     RangeIntersectOpConversion, SliceOpConversion,
-                     StoreOpConversion, ViewOpConversion>::build(patterns, ctx,
-                                                                 converter);
+  patterns.insert<BufferAllocOpConversion, BufferDeallocOpConversion,
+                  BufferSizeOpConversion, DimOpConversion,
+                  LinalgOpConversion<DotOp>, LinalgOpConversion<MatmulOp>,
+                  LoadOpConversion, RangeOpConversion, SliceOpConversion,
+                  StoreOpConversion, ViewOpConversion>(ctx, converter);
 }
 
 namespace {

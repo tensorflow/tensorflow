@@ -1180,10 +1180,19 @@ Status GraphConstructor::Convert() {
       }
 
       if (src_node != nullptr && src_index >= src_node->num_outputs()) {
-        return errors::InvalidArgument(
-            "Node '", node_def.name(), "': Connecting to invalid output ",
-            tensor_id.index(), " of source node ", tensor_id.node(),
-            " which has ", src_node->num_outputs(), " outputs");
+        std::ostringstream out;
+        out << "Node '" << node_def.name() << "': Connecting to invalid output "
+            << tensor_id.index() << " of source node " << tensor_id.node()
+            << " which has " << src_node->num_outputs() << " outputs.";
+
+        if (src_node->type_string() == "If" ||
+            src_node->type_string() == "StatelessIf" ||
+            src_node->type_string() == "While" ||
+            src_node->type_string() == "StatelessWhile") {
+          out << " Try using "
+              << "tf.compat.v1.experimental.output_all_intermediates(True).";
+        }
+        return errors::InvalidArgument(out.str());
       }
 
       inputs.emplace_back(string(tensor_id.node()), src_node, src_index);

@@ -848,7 +848,8 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
           for (const NodeDef& ndef : fdef->node_def()) {
             if (ndef.op() == "CollectiveReduce" ||
                 ndef.op() == "CollectiveBcastSend" ||
-                ndef.op() == "CollectiveBcastRecv") {
+                ndef.op() == "CollectiveBcastRecv" ||
+                ndef.op() == "CollectiveGather") {
               int32 instance_key;
               TF_RETURN_IF_ERROR(
                   GetNodeAttr(ndef, "instance_key", &instance_key));

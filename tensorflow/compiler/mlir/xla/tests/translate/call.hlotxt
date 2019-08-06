@@ -5,7 +5,7 @@ HloModule foo
 // CHECK-LABEL: func @call(%arg0: tensor<i64>) -> tensor<i64> {
 %call (arg_1: s64[]) -> s64[] {
   %arg_1 = s64[] parameter(0), metadata={op_name="XLA_Args"}
-  // CHECK-NEXT: %0 = "xla.add"(%arg0, %arg0) {name = "compare.2"} : (tensor<i64>, tensor<i64>) -> tensor<i64>
+  // CHECK-NEXT: %0 = "xla_hlo.add"(%arg0, %arg0) {name = "compare.2"} : (tensor<i64>, tensor<i64>) -> tensor<i64>
   // CHECK-NEXT: return %0 : tensor<i64>
   ROOT %compare.2 = s64[] add(%arg_1, %arg_1), metadata={op_type="Less" op_name="Less"}
 }

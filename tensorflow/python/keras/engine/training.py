@@ -246,7 +246,7 @@ class Model(network.Network):
     """
     self._run_eagerly = kwargs.pop('run_eagerly', None)
     self._experimental_run_tf_function = kwargs.pop(
-        'experimental_run_tf_function', False)
+        'experimental_run_tf_function', True)
 
     if isinstance(optimizer, (list, tuple)):
       self.optimizer = [optimizers.get(opt) for opt in optimizer]
@@ -260,7 +260,7 @@ class Model(network.Network):
         or (target_tensors is not None)
         or (weighted_metrics is not None)
         or is_any_optimizer_v1
-        or not context.executing_eagerly()):
+        or not ops.executing_eagerly_outside_functions()):
       # Fallback out of things that aren't supported with v2 loops
       self._experimental_run_tf_function = False
 
@@ -2582,7 +2582,8 @@ class Model(network.Network):
     if target is not None:
       # We need to use `y` to set the model targets.
       if training_utils.has_tensors(target):
-        target = training_utils.cast_if_floating_dtype(target)
+        target = training_utils.cast_if_floating_dtype_and_mismatch(
+            target, self.outputs)
       training_utils.validate_input_types(target, orig_target,
                                           allow_dict=False, field_name='target')
       if isinstance(target, (list, tuple)):

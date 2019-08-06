@@ -76,6 +76,13 @@ def MixedNormalVariadicResults : TEST_Op<
 // Test Attributes
 //===----------------------------------------------------------------------===//
 
+def NonNegIntAttrOp : TEST_Op<"non_negative_int_attr"> {
+  let arguments = (ins
+      NonNegativeI32Attr:$i32attr,
+      NonNegativeI64Attr:$i64attr
+  );
+}
+
 def TypeArrayAttrOp : TEST_Op<"type_array_attr"> {
   let arguments = (ins TypeArrayAttr:$attr);
 }
@@ -307,6 +314,12 @@ def Constraint1 : AttrConstraint<
 def : Pat<(OpAllAttrConstraint1
             AllAttrConstraintsOf<[Constraint0, Constraint1]>:$attr),
           (OpAllAttrConstraint2 $attr)>;
+
+// Op for testing RewritePattern removing op with inner ops.
+def TestOpWithRegion : TEST_Op<"op_with_region"> {
+  let regions = (region SizedRegion<1>:$region);
+  let hasCanonicalizer = 1;
+}
 
 //===----------------------------------------------------------------------===//
 // Test Patterns (Symbol Binding)

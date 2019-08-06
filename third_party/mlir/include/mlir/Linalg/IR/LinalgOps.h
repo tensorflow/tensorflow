@@ -18,7 +18,10 @@
 #ifndef MLIR_LINALG_LINALGOPS_H_
 #define MLIR_LINALG_LINALGOPS_H_
 
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Linalg/IR/LinalgTraits.h"
 #include "mlir/Linalg/IR/LinalgTypes.h"
@@ -434,11 +437,6 @@ private:
     }
   };
 };
-
-void emitScalarImplementation(llvm::ArrayRef<Value *> parallelIvs,
-                              llvm::ArrayRef<Value *> reductionIvs,
-                              llvm::ArrayRef<Value *> windowIvs,
-                              LinalgOp &linalgOp, OperationFolder &folder);
 
 } // namespace linalg
 } // namespace mlir
