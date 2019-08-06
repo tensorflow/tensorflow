@@ -36,11 +36,6 @@ package(
 )
 
 cc_library(
-    name = "byte_order",
-    hdrs = ["byte_order.h"],
-)
-
-cc_library(
     name = "abi",
     srcs = ["abi.cc"],
     hdrs = ["abi.h"],
@@ -48,28 +43,22 @@ cc_library(
 )
 
 cc_library(
-    name = "macros",
-    hdrs = ["macros.h"],
+    name = "byte_order",
+    hdrs = ["byte_order.h"],
 )
 
 cc_library(
-    name = "platform",
-    hdrs = ["platform.h"],
-)
-
-cc_library(
-    name = "tstring",
-    hdrs = ["tstring.h"],
-)
-
-cc_library(
-    name = "types",
-    srcs = tf_platform_hdrs(["integral_types.h"]),
-    hdrs = ["types.h"],
+    name = "cpu_info",
+    srcs = ["cpu_info.cc"] + tf_platform_srcs([
+        "cpu_info.h",
+    ]),
+    hdrs = ["cpu_info.h"],
+    copts = tf_copts(),
     deps = [
+        ":byte_order",
+        ":logging",
         ":platform",
-        ":tstring",
-        "//tensorflow/core/platform/default/build_config:base",
+        ":types",
     ],
 )
 
@@ -96,18 +85,13 @@ cc_library(
 )
 
 cc_library(
-    name = "cpu_info",
-    srcs = ["cpu_info.cc"] + tf_platform_srcs([
-        "cpu_info.h",
-    ]),
-    hdrs = ["cpu_info.h"],
-    copts = tf_copts(),
-    deps = [
-        ":byte_order",
-        ":logging",
-        ":platform",
-        ":types",
-    ],
+    name = "macros",
+    hdrs = ["macros.h"],
+)
+
+cc_library(
+    name = "platform",
+    hdrs = ["platform.h"],
 )
 
 cc_library(
@@ -118,6 +102,22 @@ cc_library(
         ":abi",
         ":platform",
         "//tensorflow/core/platform/default/build_config:stacktrace",
+    ],
+)
+
+cc_library(
+    name = "tstring",
+    hdrs = ["tstring.h"],
+)
+
+cc_library(
+    name = "types",
+    srcs = tf_platform_hdrs(["integral_types.h"]),
+    hdrs = ["types.h"],
+    deps = [
+        ":platform",
+        ":tstring",
+        "//tensorflow/core/platform/default/build_config:base",
     ],
 )
 
