@@ -561,7 +561,6 @@ This release contains contributions from many people at Google, as well as:
 
 ## Bug Fixes and Other Changes
 
-<<<<<<< HEAD
 *   Documentation
     *   Update the doc with the details about the rounding mode used in
         quantize_and_dequantize_v2.
