@@ -106,7 +106,7 @@ namespace {
 
 void AddOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<AddToAddV2>::build(results, context);
+  results.insert<AddToAddV2>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -115,7 +115,7 @@ void AddOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void AddV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  RewriteListBuilder<AddV2OfNegLeft, AddV2OfNegRight>::build(results, context);
+  results.insert<AddV2OfNegLeft, AddV2OfNegRight>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -144,7 +144,7 @@ struct AssertWithTrue : public OpRewritePattern<AssertOp> {
 
 void AssertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
-  RewriteListBuilder<AssertWithTrue>::build(results, context);
+  results.insert<AssertWithTrue>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -153,7 +153,7 @@ void AssertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void BitcastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  RewriteListBuilder<BitcastSameType, BitcastNested>::build(results, context);
+  results.insert<BitcastSameType, BitcastNested>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -174,7 +174,7 @@ static LogicalResult Verify(BroadcastToOp op) {
 
 void CastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
-  RewriteListBuilder<CastSameType>::build(results, context);
+  results.insert<CastSameType>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -183,7 +183,7 @@ void CastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void ConjOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
-  RewriteListBuilder<ConjNested>::build(results, context);
+  results.insert<ConjNested>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -239,7 +239,7 @@ void ConstOp::build(Builder *builder, OperationState *result, Type type,
 
 void DivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<DivWithSqrtDivisor>::build(results, context);
+  results.insert<DivWithSqrtDivisor>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -415,7 +415,7 @@ static LogicalResult Verify(IfOp op) {
 
 void InvertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
-  RewriteListBuilder<InvertNested>::build(results, context);
+  results.insert<InvertNested>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -449,7 +449,7 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 
 void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<LogOfSoftmax>::build(results, context);
+  results.insert<LogOfSoftmax>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -458,10 +458,9 @@ void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void LogicalNotOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  RewriteListBuilder<LogicalNotNested, LogicalNotOfEqual, LogicalNotOfNotEqual,
-                     LogicalNotOfGreater, LogicalNotOfGreaterEqual,
-                     LogicalNotOfLess, LogicalNotOfLessEqual>::build(results,
-                                                                     context);
+  results.insert<LogicalNotNested, LogicalNotOfEqual, LogicalNotOfNotEqual,
+                 LogicalNotOfGreater, LogicalNotOfGreaterEqual,
+                 LogicalNotOfLess, LogicalNotOfLessEqual>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -470,7 +469,7 @@ void LogicalNotOp::getCanonicalizationPatterns(
 
 void NegOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<NegNested>::build(results, context);
+  results.insert<NegNested>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -479,7 +478,7 @@ void NegOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void ReciprocalOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  RewriteListBuilder<ReciprocalNested>::build(results, context);
+  results.insert<ReciprocalNested>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -538,7 +537,7 @@ void RankOp::build(Builder *builder, OperationState *result, Value *input) {
 
 void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  RewriteListBuilder<RealDivWithSqrtDivisor>::build(results, context);
+  results.insert<RealDivWithSqrtDivisor>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -698,7 +697,7 @@ static LogicalResult Verify(SoftmaxOp op) {
 
 void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
-  RewriteListBuilder<SquareOfSub>::build(results, context);
+  results.insert<SquareOfSub>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -707,7 +706,7 @@ void SquareOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 void SubOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  RewriteListBuilder<SubOfNeg>::build(results, context);
+  results.insert<SubOfNeg>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -778,7 +777,7 @@ void TransposeOp::build(Builder *builder, OperationState *result, Value *x,
 
 void TruncateDivOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  RewriteListBuilder<TruncateDivWithSqrtDivisor>::build(results, context);
+  results.insert<TruncateDivWithSqrtDivisor>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -867,7 +866,7 @@ static LogicalResult Verify(WhileOp op) {
 
 void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  RewriteListBuilder<XdivyWithSqrtDivisor>::build(results, context);
+  results.insert<XdivyWithSqrtDivisor>(context);
 }
 
 //===----------------------------------------------------------------------===//

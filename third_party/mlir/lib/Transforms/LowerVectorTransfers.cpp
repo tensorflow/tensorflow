@@ -365,12 +365,8 @@ struct LowerVectorTransfersPass
   void runOnFunction() {
     OwningRewritePatternList patterns;
     auto *context = &getContext();
-    patterns.push_back(
-        llvm::make_unique<VectorTransferRewriter<VectorTransferReadOp>>(
-            context));
-    patterns.push_back(
-        llvm::make_unique<VectorTransferRewriter<VectorTransferWriteOp>>(
-            context));
+    patterns.insert<VectorTransferRewriter<VectorTransferReadOp>,
+                    VectorTransferRewriter<VectorTransferWriteOp>>(context);
     applyPatternsGreedily(getFunction(), std::move(patterns));
   }
 };

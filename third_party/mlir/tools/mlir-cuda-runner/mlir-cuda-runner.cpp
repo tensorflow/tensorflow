@@ -133,7 +133,7 @@ static LogicalResult runMLIRPasses(ModuleOp m) {
   pm.addPass(createConvertToLLVMIRPass([](LLVMTypeConverter &converter,
                                           OwningRewritePatternList &patterns) {
     populateStdToLLVMConversionPatterns(converter, patterns);
-    patterns.push_back(llvm::make_unique<GPULaunchFuncOpLowering>(converter));
+    patterns.insert<GPULaunchFuncOpLowering>(converter);
   }));
   pm.addPass(createLowerGpuOpsToNVVMOpsPass());
   pm.addPass(createConvertGPUKernelToCubinPass(&compilePtxToCubin));

@@ -678,12 +678,11 @@ static void
 populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
                                        OwningRewritePatternList &patterns,
                                        MLIRContext *ctx) {
-  RewriteListBuilder<BufferAllocOpConversion, BufferDeallocOpConversion,
-                     BufferSizeOpConversion, DimOpConversion,
-                     LinalgOpConversion<DotOp>, LinalgOpConversion<MatmulOp>,
-                     LoadOpConversion, RangeOpConversion, SliceOpConversion,
-                     StoreOpConversion, ViewOpConversion>::build(patterns, ctx,
-                                                                 converter);
+  patterns.insert<BufferAllocOpConversion, BufferDeallocOpConversion,
+                  BufferSizeOpConversion, DimOpConversion,
+                  LinalgOpConversion<DotOp>, LinalgOpConversion<MatmulOp>,
+                  LoadOpConversion, RangeOpConversion, SliceOpConversion,
+                  StoreOpConversion, ViewOpConversion>(ctx, converter);
 }
 
 namespace {

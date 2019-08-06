@@ -381,8 +381,7 @@ void PrepareTFPass::runOnFunction() {
   // parameters from the TF Quant ops, thus this pattern should run with the
   // first `applyPatternsGreedily` method, which would otherwise removes the
   // TF FakeQuant ops by the constant folding.
-  patterns.push_back(
-      llvm::make_unique<InsertTFLQuantOpsAfterTFFakeQuantOp>(&getContext()));
+  patterns.insert<InsertTFLQuantOpsAfterTFFakeQuantOp>(&getContext());
   TFL::populateWithGenerated(&getContext(), &patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
@@ -394,9 +393,8 @@ void PrepareTFPass::runOnFunction() {
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
   TFL::populateWithGenerated(&getContext(), &patterns);
-  patterns.push_back(llvm::make_unique<ConvertTFConv2D>(&getContext()));
-  patterns.push_back(
-      llvm::make_unique<ConvertTFDepthwiseConv2dNative>(&getContext()));
+  patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
+      &getContext());
   applyPatternsGreedily(func, std::move(patterns));
 }
 

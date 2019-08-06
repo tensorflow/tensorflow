@@ -240,8 +240,8 @@ void Optimize::runOnFunction() {
   auto func = getFunction();
   // Add the generated patterns to the list.
   TFL::populateWithGenerated(ctx, &patterns);
-  RewriteListBuilder<FuseFullyConnectedAndAdd, FuseFullyConnectedAndRelu,
-                     PadStridedSliceDims>::build(patterns, ctx);
+  patterns.insert<FuseFullyConnectedAndAdd, FuseFullyConnectedAndRelu,
+                  PadStridedSliceDims>(ctx);
 
   applyPatternsGreedily(func, std::move(patterns));
 }

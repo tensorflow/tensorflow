@@ -60,12 +60,9 @@ void RemoveInstrumentationPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
   auto *context = &getContext();
-  patterns.push_back(
-      llvm::make_unique<RemoveIdentityOpRewrite<StatisticsOp>>(context));
-  patterns.push_back(
-      llvm::make_unique<RemoveIdentityOpRewrite<StatisticsRefOp>>(context));
-  patterns.push_back(
-      llvm::make_unique<RemoveIdentityOpRewrite<CoupledRefOp>>(context));
+  patterns.insert<RemoveIdentityOpRewrite<StatisticsOp>,
+                  RemoveIdentityOpRewrite<StatisticsRefOp>,
+                  RemoveIdentityOpRewrite<CoupledRefOp>>(context);
   applyPatternsGreedily(func, std::move(patterns));
 }
 

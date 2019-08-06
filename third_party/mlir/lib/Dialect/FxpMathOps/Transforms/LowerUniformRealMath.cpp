@@ -368,8 +368,7 @@ void LowerUniformRealMathPass::runOnFunction() {
   auto fn = getFunction();
   OwningRewritePatternList patterns;
   auto *context = &getContext();
-  patterns.push_back(llvm::make_unique<UniformRealAddEwPattern>(context));
-  patterns.push_back(llvm::make_unique<UniformRealMulEwPattern>(context));
+  patterns.insert<UniformRealAddEwPattern, UniformRealMulEwPattern>(context);
   applyPatternsGreedily(fn, std::move(patterns));
 }
 
@@ -389,7 +388,7 @@ void LowerUniformCastsPass::runOnFunction() {
   auto fn = getFunction();
   OwningRewritePatternList patterns;
   auto *context = &getContext();
-  patterns.push_back(llvm::make_unique<UniformDequantizePattern>(context));
+  patterns.insert<UniformDequantizePattern>(context);
   applyPatternsGreedily(fn, std::move(patterns));
 }
 
