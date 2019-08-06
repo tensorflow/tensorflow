@@ -86,14 +86,3 @@ LogicalResult ModuleOp::verify() {
 /// Return body of this module.
 Region &ModuleOp::getBodyRegion() { return getOperation()->getRegion(0); }
 Block *ModuleOp::getBody() { return &getBodyRegion().front(); }
-
-//===----------------------------------------------------------------------===//
-// Module Terminator Operation.
-//===----------------------------------------------------------------------===//
-
-LogicalResult ModuleTerminatorOp::verify() {
-  if (!isa_and_nonnull<ModuleOp>(getOperation()->getParentOp()))
-    return emitOpError() << "is expected to terminate a '"
-                         << ModuleOp::getOperationName() << "' operation";
-  return success();
-}
