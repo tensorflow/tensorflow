@@ -242,27 +242,16 @@ Status CudnnConvAlgorithmPicker::AllocateInitializeBuffers(
                           buffer);
   };
 
-  const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
-
-  // Allocate space for the input, filter, and output of the convolution.
-  se::cuda::RedzoneAllocator input_output_allocator(
-      &stream, allocator, PtxOptsFromConfig(hlo_module_config));
-  std::vector<se::DeviceMemoryBase> operand_buffers;
-  for (const auto* operand : instr->operands()) {
+  for (const auto* operand : instr.operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
-                        input_output_allocator.AllocateBytes(
+                        input_output_allocator->AllocateBytes(
                             ShapeUtil::ByteSizeOf(operand->shape())));
     initialize_buffer(buffer);
     operand_buffers->push_back(buffer);
   }
-  TF_ASSIGN_OR_RETURN(auto result_buffer,
-                      input_output_allocator.AllocateBytes(
-                          ShapeUtil::ByteSizeOf(result_shape)));
-  initialize_buffer(result_buffer);
 
-  TF_ASSIGN_OR_RETURN(*result_buffer,
-                      input_output_allocator->AllocateBytes(
-                          stream, ShapeUtil::ByteSizeOf(result_shape)));
+  TF_ASSIGN_OR_RETURN(*result_buffer, input_output_allocator->AllocateBytes(
+                                          ShapeUtil::ByteSizeOf(result_shape)));
   initialize_buffer(*result_buffer);
 
   return Status::OK();
@@ -291,12 +280,13 @@ Status CudnnConvAlgorithmPicker::ProfileConvCandidates(
   *crash_on_checking_failure =
       debug_options.xla_gpu_crash_on_verification_failures();
 
-  const auto canonical_hlo =
-      std::get<1>(AutotuneCacheKeyfromInstruction(instr, stream_exec_));
+  // ROCM TODO: re-enable logic here.
+  // const auto canonical_hlo =
+  //    std::get<1>(AutotuneCacheKeyfromInstruction(instr, stream_exec_));
 
-  absl::Span<const AlgorithmDesc> blacklisted_algos =
-      GetBlacklistedAlgorithms(GetComputeCapability(stream_exec_),
-                               GetCudnnVersion(stream_exec_), canonical_hlo);
+  // absl::Span<const AlgorithmDesc> blacklisted_algos =
+  //    GetBlacklistedAlgorithms(GetComputeCapability(stream_exec_),
+  //                             GetCudnnVersion(stream_exec_), canonical_hlo);
 
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
@@ -304,14 +294,14 @@ Status CudnnConvAlgorithmPicker::ProfileConvCandidates(
                      AlgorithmToString(alg)),
         2);
 
-    if (absl::c_linear_search(blacklisted_algos, alg)) {
-      LOG(INFO) << "Omitted potentially buggy algorithm "
-                << AlgorithmToString(alg) << " for conv " << instr->ToString();
-      continue;
-    }
+    // ROCM TODO: re-enable logic here.
+    // if (absl::c_linear_search(blacklisted_algos, alg)) {
+    //  LOG(INFO) << "Omitted potentially buggy algorithm "
+    //            << AlgorithmToString(alg) << " for conv " <<
+    //            instr->ToString();
+    //  continue;
+    //}
 
-    se::cuda::RedzoneAllocator scratch_allocator(
-        &stream, allocator, PtxOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr.ToString();
@@ -354,22 +344,23 @@ Status CudnnConvAlgorithmPicker::ProfileConvCandidates(
 
     if (!input_output_allocator_redzone_clear ||
         !scratch_allocator_redzone_clear) {
-      CudnnConvolutionList proto;
-      auto entry = proto.add_entries();
-      entry->set_hlo(canonical_hlo);
-      *entry->mutable_cc() = GetComputeCapability(stream_exec_);
-      *entry->add_cudnn_versions() = GetCudnnVersion(stream_exec_);
-      auto algo = entry->add_algos();
-      algo->set_id(alg.algo_id());
-      algo->set_tensor_ops(alg.tensor_ops_enabled());
+      // ROCM TODO: re-enable logic here.
+      // CudnnConvolutionList proto;
+      // auto entry = proto.add_entries();
+      // entry->set_hlo(canonical_hlo);
+      //*entry->mutable_cc() = GetComputeCapability(stream_exec_);
+      //*entry->add_cudnn_versions() = GetCudnnVersion(stream_exec_);
+      // auto algo = entry->add_algos();
+      // algo->set_id(alg.algo_id());
+      // algo->set_tensor_ops(alg.tensor_ops_enabled());
 
-      LOG(ERROR)
-          << "To blacklist this algorithm for this convolution, "
-             "copy-paste the following "
-             "proto to the blacklist file pointed by XLA_FLAGS "
-             "--xla_gpu_cudnn_conv_blacklist_path="
-          << GetDebugOptionsFromFlags().xla_gpu_cudnn_conv_blacklist_path()
-          << " : " << proto.ShortDebugString();
+      // LOG(ERROR)
+      //    << "To blacklist this algorithm for this convolution, "
+      //       "copy-paste the following "
+      //       "proto to the blacklist file pointed by XLA_FLAGS "
+      //       "--xla_gpu_cudnn_conv_blacklist_path="
+      //    << GetDebugOptionsFromFlags().xla_gpu_cudnn_conv_blacklist_path()
+      //    << " : " << proto.ShortDebugString();
       continue;
     }
 
@@ -413,9 +404,9 @@ Status CudnnConvAlgorithmPicker::ProfileConvCandidates(
       comparator.emplace(result_shape, hlo_module_config);
       TF_ASSIGN_OR_RETURN(
           reference_result_buffer,
-          input_output_allocator.AllocateBytes(result_buffer.size()));
-      stream.ThenMemcpy(&reference_result_buffer, result_buffer,
-                        result_buffer.size());
+          input_output_allocator->AllocateBytes(result_buffer->size()));
+      stream->ThenMemcpy(&reference_result_buffer, *result_buffer,
+                         result_buffer->size());
       first_algorithm = alg;
     }
   }
