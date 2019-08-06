@@ -194,7 +194,7 @@ class DeviceMemoryAllocator {
 
   // Can we call Deallocate() as soon as a computation has been scheduled on
   // a stream, or do we have to wait for the computation to complete first?
-  virtual bool AllowsAsynchronousDeallocation() const = 0;
+  virtual bool AllowsAsynchronousDeallocation() const { return false; }
 
  protected:
   const Platform* platform_;

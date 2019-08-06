@@ -1030,7 +1030,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
       se::cuda::RedzoneAllocator rz_scratch_allocator(
-          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions());
+          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+          /*memory_limit=*/ConvolveScratchSize);
       DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
       se::ScratchAllocator* allocator_used =
           !RedzoneCheckDisabled()
