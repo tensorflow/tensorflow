@@ -99,8 +99,12 @@ struct GenericFullQuantizationPattern : public RewritePattern {
     inputs.reserve(quantized_op->getNumOperands());
     for (int i = 0, e = quantized_op->getNumOperands(); i != e; ++i) {
       auto* operand = quantized_op->getOperand(i);
-      auto operand_ele_type =
-          operand->getType().template cast<TensorType>().getElementType();
+      auto tensor_type = operand->getType().template dyn_cast<TensorType>();
+      if (!tensor_type) {
+        // There are none type values.
+        return matchFailure();
+      }
+      auto operand_ele_type = tensor_type.getElementType();
       if (auto op_inst = dyn_cast_or_null<DQ>(operand->getDefiningOp())) {
         inputs.push_back(op_inst.input());
       } else if (operand_ele_type.template isa<IntegerType>()) {
