@@ -1013,3 +1013,10 @@ func @resize_nearest_neighbor_with_half_pixel_centers(%arg0: tensor<1x100x100x3x
   // CHECK-LABEL: resize_nearest_neighbor_with_half_pixel_centers
   // CHECK: "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true, half_pixel_centers = true}
 }
+
+func @where(%arg0: tensor<3x5xi1>) -> tensor<?x2xi64> {
+  %0 = "tf.Where"(%arg0) : (tensor<3x5xi1>) -> tensor<?x2xi64>
+  return %0 : tensor<?x2xi64>
+  // CHECK-LABEL: where
+  // CHECK: "tfl.where"(%arg0) : (tensor<3x5xi1>) -> tensor<?x2xi64>
+}

@@ -1067,3 +1067,11 @@ func @testSplitVWithQuantizedTypes(%arg0 : tensor<10x!quant.uniform<u8:f32, 1.0>
   %0 = "tfl.split_v"(%arg0, %arg1, %arg2) {num_splits = 1 : i32} : (tensor<10x!quant.uniform<u8:f32, 1.0>>, tensor<i32>, tensor<i32>) -> tensor<10x!quant.uniform<u8:f32, 1.0>>
   return %0 : tensor<10x!quant.uniform<u8:f32, 1.0>>
 }
+
+// -----
+
+func @whereWithI32Input(%arg0: tensor<3x5xi32>) -> tensor<?x2xi64> {
+  // expected-error @+1 {{'tfl.where' op operand #0 must be tensor of 1-bit integer values}}
+  %0 = "tfl.where"(%arg0) : (tensor<3x5xi32>) -> tensor<?x2xi64>
+  return %0 : tensor<?x2xi64>
+}
