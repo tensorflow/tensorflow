@@ -293,6 +293,25 @@ Status DatasetOpsTestBase::MakeRangeDataset(
   return Status::OK();
 }
 
+// Create a `RangeDataset` dataset as a variant tensor.
+Status DatasetOpsTestBase::MakeRangeDataset(
+    const RangeDatasetParams& range_dataset_params, Tensor* range_dataset) {
+  GraphConstructorOptions graph_opts;
+  graph_opts.allow_internal_ops = true;
+  graph_opts.expect_device_spec = false;
+  TF_RETURN_IF_ERROR(RunFunction(
+      test::function::MakeRangeDataset(),
+      /*attrs*/
+      {{RangeDatasetOp::kOutputTypes, range_dataset_params.output_dtypes},
+       {RangeDatasetOp::kOutputShapes, range_dataset_params.output_shapes}},
+      /*inputs*/
+      {range_dataset_params.start, range_dataset_params.stop,
+       range_dataset_params.step},
+      graph_opts,
+      /*rets*/ {range_dataset}));
+  return Status::OK();
+}
+
 // Create a `TakeDataset` dataset as a variant tensor.
 Status DatasetOpsTestBase::MakeTakeDataset(
     const Tensor& input_dataset, int64 count,

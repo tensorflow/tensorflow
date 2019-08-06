@@ -100,6 +100,8 @@ std::vector<Tensor> CreateTensors(
 
 class DatasetParams {
  public:
+  DatasetParams() = default;
+
   DatasetParams(DataTypeVector output_dtypes,
                 std::vector<PartialTensorShape> output_shapes, string node_name)
       : output_dtypes(std::move(output_dtypes)),
@@ -117,6 +119,8 @@ class DatasetParams {
 
 class RangeDatasetParams : public DatasetParams {
  public:
+  RangeDatasetParams() = default;
+
   RangeDatasetParams(int64 start, int64 stop, int64 step,
                      DataTypeVector output_dtypes,
                      std::vector<PartialTensorShape> output_shapes,
@@ -306,6 +310,10 @@ class DatasetOpsTestBase : public ::testing::Test {
                           const Tensor& step,
                           const DataTypeVector& output_types,
                           const std::vector<PartialTensorShape>& output_shapes,
+                          Tensor* range_dataset);
+
+  // Creates a `RangeDataset` dataset as a variant tensor.
+  Status MakeRangeDataset(const RangeDatasetParams& range_dataset_params,
                           Tensor* range_dataset);
 
   // Creates a `TakeDataset` dataset as a variant tensor.
