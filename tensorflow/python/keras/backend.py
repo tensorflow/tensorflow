@@ -5309,6 +5309,16 @@ def bias_add(x, bias, data_format=None):
 def random_normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
   """Returns a tensor with normal distribution of values.
 
+  For example:
+  ```python
+      a = tf.keras.backend.random_uniform((2,2), 0, 1, dtype=tf.float32)
+      # output [[0.49320602, 0.98021984],[0.32740533, 0.6732602 ]]
+      
+      b = tf.keras.backend.random_uniform((2,3), 0, 32, dtype=tf.int32)
+      # output [[ 1, 19, 21], [26, 13, 22]]
+  ```
+
+  
   Arguments:
       shape: A tuple of integers, the shape of tensor to create.
       mean: A float, mean of the normal distribution to draw samples.
@@ -5319,6 +5329,12 @@ def random_normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
 
   Returns:
       A tensor.
+      
+      
+  Raises:
+      ValueError: if `dtype` is not one of `tf.float16`, `tf.float32`,
+      `tf.float64`, `tf.int32`, or `tf.int64`.
+
   """
   if dtype is None:
     dtype = floatx()
