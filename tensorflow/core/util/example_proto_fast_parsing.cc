@@ -1273,8 +1273,8 @@ Status FastParseExample(const Config& config,
   return Status::OK();
 }
 
-Status FastParseSingleExample(const Config& config, const string& serialized,
-                              Result* result) {
+Status FastParseSingleExample(const Config& config,
+                              absl::string_view serialized, Result* result) {
   DCHECK(result != nullptr);
   // Check config so we can safely CHECK(false) in switches on config.*.dtype
   for (auto& c : config.sparse) {

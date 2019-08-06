@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_errors.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -56,14 +57,17 @@ struct ParameterSetter {
     return TFLITE_GPU_CALL_GL(glProgramUniform1i, program_id, uniform_id,
                               value);
   }
+
   Status operator()(const int2& value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform2i, program_id, uniform_id,
                               value.x, value.y);
   }
+
   Status operator()(const int4& value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform4i, program_id, uniform_id,
                               value.x, value.y, value.z, value.w);
   }
+
   Status operator()(const std::vector<int2>& value) {
     std::vector<GLint> ints(value.size() * 2, 0);
     for (int i = 0; i < value.size(); ++i) {
@@ -73,25 +77,42 @@ struct ParameterSetter {
     return TFLITE_GPU_CALL_GL(glProgramUniform2iv, program_id, uniform_id,
                               ints.size(), ints.data());
   }
+
   Status operator()(unsigned int value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform1ui, program_id, uniform_id,
                               value);
   }
+
   Status operator()(const uint4& value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform4ui, program_id, uniform_id,
                               value.x, value.y, value.z, value.w);
   }
+
   Status operator()(float value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform1f, program_id, uniform_id,
                               value);
   }
+
   Status operator()(const float2& value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform2f, program_id, uniform_id,
                               value.x, value.y);
   }
+
   Status operator()(const float4& value) {
     return TFLITE_GPU_CALL_GL(glProgramUniform4f, program_id, uniform_id,
                               value.x, value.y, value.z, value.w);
+  }
+
+  Status operator()(const std::vector<float4>& value) {
+    std::vector<GLfloat> floats(value.size() * 4, 0);
+    for (int i = 0; i < value.size(); ++i) {
+      floats[i * 4] = value[i].x;
+      floats[i * 4 + 1] = value[i].y;
+      floats[i * 4 + 2] = value[i].z;
+      floats[i * 4 + 3] = value[i].w;
+    }
+    return TFLITE_GPU_CALL_GL(glProgramUniform4fv, program_id, uniform_id,
+                              floats.size(), floats.data());
   }
 
   const GLuint program_id;
@@ -180,7 +201,7 @@ GlProgram& GlProgram::operator=(GlProgram&& program) {
 
 GlProgram::~GlProgram() { Invalidate(); }
 
-Status GlProgram::SetParameter(const UniformParameter& param) {
+Status GlProgram::SetParameter(const Variable& param) {
   GLint uniform_location;
   RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glGetUniformLocation, &uniform_location,
                                      id_, param.name.c_str()));

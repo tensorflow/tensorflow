@@ -71,10 +71,10 @@ class SpecsTest(test.TestCase):
       variables.global_variables_initializer().run()
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (17, 10))
-      self.assertEqual(
+      self.assertRegexpMatches(
           summaries.tf_spec_structure(spec, inputs),
           "_ variablev2 dot variablev2 biasadd sig "
-          "<> variablev2 dot variablev2 biasadd relu add")
+          "<> variablev2 dot variablev2 biasadd relu add(v2)?")
 
   def testMpPower(self):
     with self.cached_session():

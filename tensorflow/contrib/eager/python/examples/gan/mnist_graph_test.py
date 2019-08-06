@@ -49,9 +49,9 @@ class MnistGraphGanBenchmark(tf.test.Benchmark):
     generator = mnist.Generator(data_format())
     discriminator = mnist.Discriminator(data_format())
     with tf.variable_scope('generator'):
-      generator_optimizer = tf.train.AdamOptimizer(0.001)
+      generator_optimizer = tf.compat.v1.train.AdamOptimizer(0.001)
     with tf.variable_scope('discriminator'):
-      discriminator_optimizer = tf.train.AdamOptimizer(0.001)
+      discriminator_optimizer = tf.compat.v1.train.AdamOptimizer(0.001)
 
     # Run models and compute loss
     noise_placeholder = tf.placeholder(tf.float32,
@@ -96,7 +96,7 @@ class MnistGraphGanBenchmark(tf.test.Benchmark):
           (generator_train, discriminator_train, noise_placeholder
           ) = self._create_graph(batch_size)
 
-          with tf.Session() as sess:
+          with tf.compat.v1.Session() as sess:
             tf.contrib.summary.initialize(graph=tf.get_default_graph(),
                                           session=sess)
 
@@ -132,7 +132,7 @@ class MnistGraphGanBenchmark(tf.test.Benchmark):
         generated_images = generator(noise_placeholder)
 
         init = tf.global_variables_initializer()
-        with tf.Session() as sess:
+        with tf.compat.v1.Session() as sess:
           sess.run(init)
           noise = np.random.uniform(-1.0, 1.0, size=[batch_size, NOISE_DIM])
           num_burn, num_iters = (30, 1000)

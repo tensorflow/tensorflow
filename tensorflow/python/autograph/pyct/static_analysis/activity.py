@@ -271,6 +271,9 @@ class ActivityAnalyzer(transformer.Base):
   def visit_Assign(self, node):
     return self._process_statement(node)
 
+  def visit_AnnAssign(self, node):
+    return self._process_statement(node)
+
   def visit_AugAssign(self, node):
     # Special rules for AugAssign. Here, the AST only shows the target as
     # written, when it is in fact also read.
@@ -357,6 +360,7 @@ class ActivityAnalyzer(transformer.Base):
     assert not self._in_function_def_args
     self.state[_Lambda].enter()
     node = self.generic_visit(node)
+    anno.setanno(node, anno.Static.SCOPE, self.scope)
     self.state[_Lambda].exit()
     return node
 
@@ -399,6 +403,22 @@ class ActivityAnalyzer(transformer.Base):
 
   def visit_arguments(self, node):
     return self._process_statement(node)
+
+  def visit_ClassDef(self, node):
+    # The ClassDef node itself has a Scope object that tracks the creation
+    # of its name, along with the usage of any decorator accompanying it.
+    self._enter_scope(False)
+    node.decorator_list = self.visit_block(node.decorator_list)
+    self.scope.mark_modified(qual_names.QN(node.name))
+    anno.setanno(node, anno.Static.SCOPE, self.scope)
+    self._exit_scope()
+
+    # A separate Scope tracks the actual class definition.
+    self._enter_scope(True)
+    assert not (self._in_function_def_args or self.state[_Lambda].level)
+    node = self.generic_visit(node)
+    self._exit_scope()
+    return node
 
   def visit_FunctionDef(self, node):
     # The FunctionDef node itself has a Scope object that tracks the creation

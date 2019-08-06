@@ -22,12 +22,150 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg_impl as linalg
+
+
+################################################################################
+# To make more friendly for TF2.
+################################################################################
+
+
+def convert_nonref_to_tensor(value, dtype=None, dtype_hint=None, name=None):
+  """Converts the given `value` to a `Tensor` if input is nonreference type.
+
+  This function converts Python objects of various types to `Tensor` objects
+  except if the input has nonreference semantics. Reference semantics are
+  characterized by `is_ref` and is any object which is a
+  `tf.Variable` or instance of `tf.Module`. This function accepts any input
+  which `tf.convert_to_tensor` would also.
+
+  Note: This function diverges from default Numpy behavior for `float` and
+    `string` types when `None` is present in a Python list or scalar. Rather
+    than silently converting `None` values, an error will be thrown.
+
+  Args:
+    value: An object whose type has a registered `Tensor` conversion function.
+    dtype: Optional element type for the returned tensor. If missing, the
+      type is inferred from the type of `value`.
+    dtype_hint: Optional element type for the returned tensor,
+      used when dtype is None. In some cases, a caller may not have a
+      dtype in mind when converting to a tensor, so dtype_hint
+      can be used as a soft preference.  If the conversion to
+      `dtype_hint` is not possible, this argument has no effect.
+    name: Optional name to use if a new `Tensor` is created.
+
+  Returns:
+    tensor: A `Tensor` based on `value`.
+
+  Raises:
+    TypeError: If no conversion function is registered for `value` to `dtype`.
+    RuntimeError: If a registered conversion function returns an invalid value.
+    ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
+
+
+  #### Examples:
+
+  ```python
+
+  x = tf.Variable(0.)
+  y = convert_nonref_to_tensor(x)
+  x is y
+  # ==> True
+
+  x = tf.constant(0.)
+  y = convert_nonref_to_tensor(x)
+  x is y
+  # ==> True
+
+  x = np.array(0.)
+  y = convert_nonref_to_tensor(x)
+  x is y
+  # ==> False
+  tf.is_tensor(y)
+  # ==> True
+
+  x = tfp.util.DeferredTensor(lambda x: x, 13.37)
+  y = convert_nonref_to_tensor(x)
+  x is y
+  # ==> True
+  tf.is_tensor
+  # ==> False
+  tf.equal(y, 13.37)
+  # ==> True
+  ```
+
+  """
+  # We explicitly do not use a tf.name_scope to avoid graph clutter.
+  if value is None:
+    return None
+  if is_ref(value):
+    if dtype is None:
+      return value
+    dtype_base = base_dtype(dtype)
+    value_dtype_base = base_dtype(value.dtype)
+    if dtype_base != value_dtype_base:
+      raise TypeError('Mutable type must be of dtype "{}" but is "{}".'.format(
+          dtype_name(dtype_base), dtype_name(value_dtype_base)))
+    return value
+  return ops.convert_to_tensor(
+      value, dtype=dtype, dtype_hint=dtype_hint, name=name)
+
+
+def base_dtype(dtype):
+  """Returns a non-reference `dtype` based on this `dtype`."""
+  dtype = dtypes.as_dtype(dtype)
+  if hasattr(dtype, "base_dtype"):
+    return dtype.base_dtype
+  return dtype
+
+
+def dtype_name(dtype):
+  """Returns the string name for this `dtype`."""
+  dtype = dtypes.as_dtype(dtype)
+  if hasattr(dtype, "name"):
+    return dtype.name
+  if hasattr(dtype, "__name__"):
+    return dtype.__name__
+  return str(dtype)
+
+
+def is_ref(x):
+  """Evaluates if the object has reference semantics.
+
+  An object is deemed "reference" if it is a `tf.Variable` instance or is
+  derived from a `tf.Module` with `dtype` and `shape` properties.
+
+  Args:
+    x: Any object.
+
+  Returns:
+    is_ref: Python `bool` indicating input is has nonreference semantics, i.e.,
+      is a `tf.Variable` or a `tf.Module` with `dtype` and `shape` properties.
+  """
+  return (
+      # Note: we check that tf.Variable is a class because we might be using a
+      # different backend other than TF.
+      isinstance(x, variables_module.Variable) or
+      (isinstance(x, module.Module) and hasattr(x, "dtype") and
+       hasattr(x, "shape")))
+
+
+def assert_not_ref_type(x, arg_name):
+  if is_ref(x):
+    raise TypeError(
+        "Argument %s cannot be reference type. Found: %s" % (arg_name, type(x)))
+
+
+################################################################################
+# Asserts.
+################################################################################
 
 
 def assert_no_entries_with_modulus_zero(
@@ -91,7 +229,9 @@ def assert_compatible_matrix_dimensions(operator, x):
   assert_same_dd = check_ops.assert_equal(
       array_ops.shape(x)[-2],
       operator.domain_dimension_tensor(),
-      message=("Incompatible matrix dimensions.  "
+      # This error message made to look similar to error raised by static check
+      # in the base class.
+      message=("Dimensions are not compatible.  "
                "shape[-2] of argument to be the same as this operator"))
 
   return assert_same_dd
@@ -384,3 +524,38 @@ def _reshape_for_efficiency(a,
     return array_ops.transpose(y_extra_on_end, perm=inverse_perm)
 
   return a, b_squashed_end, reshape_inv, still_need_to_transpose
+
+
+################################################################################
+# Helpers for hints.
+################################################################################
+
+
+def use_operator_or_provided_hint_unless_contradicting(
+    operator, hint_attr_name, provided_hint_value, message):
+  """Get combined hint in the case where operator.hint should equal hint.
+
+  Args:
+    operator:  LinearOperator that a meta-operator was initialized with.
+    hint_attr_name:  String name for the attribute.
+    provided_hint_value:  Bool or None. Value passed by user in initialization.
+    message:  Error message to print if hints contradict.
+
+  Returns:
+    True, False, or None.
+
+  Raises:
+    ValueError: If hints contradict.
+  """
+  op_hint = getattr(operator, hint_attr_name)
+  # pylint: disable=g-bool-id-comparison
+  if op_hint is False and provided_hint_value:
+    raise ValueError(message)
+  if op_hint and provided_hint_value is False:
+    raise ValueError(message)
+  if op_hint or provided_hint_value:
+    return True
+  if op_hint is False or provided_hint_value is False:
+    return False
+  # pylint: enable=g-bool-id-comparison
+  return None

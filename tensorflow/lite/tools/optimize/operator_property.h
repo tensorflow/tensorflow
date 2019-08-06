@@ -22,30 +22,34 @@ namespace tflite {
 namespace optimize {
 namespace operator_property {
 
-struct OperatorProperty {
-  // Is a quantized operations currently supported.
-  bool quantizable = true;
-  // Per axis.
+struct TensorProperty {
+  // per_axis also implies symmetric currently.
   bool per_axis = false;
   // TODO(jianlijianli): remove dimension index and read it from tensor instead.
   int per_axis_index = 0;
+  bool symmetric = false;
+
+  // Constraints.
+  bool restriction = false;
+  // scale/zero_point hardcoded.
+  std::pair<float, int> restricted_value = {0.0, 0};
+};
+
+struct OperatorProperty {
+  // Is a quantized operations currently supported.
+  bool quantizable = true;
 
   // Op has arbitrary number of inputs, such as concat.
   bool arbitrary_inputs = false;
-  // Input and weight indexes. Unable to separate the two because of ops such as
-  // ADD.
-  std::vector<int> input_indexes = {};
-
-  // Output indexes
-  std::vector<int> output_indexes = {};
-
+  // Input indexes -> input tensor property.
+  std::vector<std::pair<int, TensorProperty>> inputs = {};
+  // Output indexes -> output tensor property.
+  std::vector<std::pair<int, TensorProperty>> outputs = {};
   // Bias indexes.
   std::vector<int> biases = {};
 
   // Constraints.
   bool restrict_same_input_output_scale = false;
-  bool restriction_on_output = false;
-  std::pair<float, float> restricted_value_on_output = {0.0, 0.0};
 
   // Op version.
   int version = 1;

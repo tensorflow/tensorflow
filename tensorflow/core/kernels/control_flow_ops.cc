@@ -52,6 +52,9 @@ void SwitchNOp::Compute(OpKernelContext* context) {
   context->set_output(output_index, context->input(0));
 }
 
+REGISTER_KERNEL_BUILDER(
+    Name("Switch").Device(DEVICE_DEFAULT).HostMemory("pred"), SwitchOp);
+
 #define REGISTER_CPU_SWITCH(type)                         \
   REGISTER_KERNEL_BUILDER(Name("Switch")                  \
                               .Device(DEVICE_CPU)         \
@@ -274,6 +277,8 @@ void MergeOp::Compute(OpKernelContext* context) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("Merge").Device(DEVICE_CPU), MergeOp);
+REGISTER_KERNEL_BUILDER(
+    Name("Merge").Device(DEVICE_DEFAULT).HostMemory("value_index"), MergeOp);
 REGISTER_KERNEL_BUILDER(Name("RefMerge").Device(DEVICE_CPU), MergeOp);
 
 #define REGISTER_GPU_KERNEL(type)                         \
@@ -382,7 +387,7 @@ void EnterOp::Compute(OpKernelContext* context) {
   }
 }
 
-REGISTER_KERNEL_BUILDER(Name("Enter").Device(DEVICE_CPU), EnterOp);
+REGISTER_KERNEL_BUILDER(Name("Enter").Device(DEVICE_DEFAULT), EnterOp);
 REGISTER_KERNEL_BUILDER(Name("RefEnter").Device(DEVICE_CPU), EnterOp);
 
 #define REGISTER_GPU_KERNEL(type) \
@@ -478,7 +483,7 @@ void ExitOp::Compute(OpKernelContext* context) {
   }
 }
 
-REGISTER_KERNEL_BUILDER(Name("Exit").Device(DEVICE_CPU), ExitOp);
+REGISTER_KERNEL_BUILDER(Name("Exit").Device(DEVICE_DEFAULT), ExitOp);
 REGISTER_KERNEL_BUILDER(Name("RefExit").Device(DEVICE_CPU), ExitOp);
 
 #define REGISTER_GPU_KERNEL(type) \
@@ -559,7 +564,7 @@ void NextIterationOp::Compute(OpKernelContext* context) {
   }
 }
 
-REGISTER_KERNEL_BUILDER(Name("NextIteration").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("NextIteration").Device(DEVICE_DEFAULT),
                         NextIterationOp);
 REGISTER_KERNEL_BUILDER(Name("RefNextIteration").Device(DEVICE_CPU),
                         NextIterationOp);
@@ -651,30 +656,14 @@ bool LoopCondOp::IsExpensive() { return false; }
 
 REGISTER_KERNEL_BUILDER(Name("LoopCond").Device(DEVICE_CPU), LoopCondOp);
 REGISTER_KERNEL_BUILDER(Name("LoopCond")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("input")
                             .HostMemory("output"),
                         LoopCondOp);
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("LoopCond")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("input")
-                            .HostMemory("output"),
-                        LoopCondOp);
-#endif  // TENSORFLOW_USE_SYCL
-
-// ControlTrigger kernels
-REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE_CPU),
+// ControlTrigger kernel
+REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE_DEFAULT),
                         ControlTriggerOp);
-
-REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE_GPU),
-                        ControlTriggerOp);
-
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE_SYCL),
-                        ControlTriggerOp);
-#endif  // TENSORFLOW_USE_SYCL
 
 // When called, abort op will abort the current process. This can be used to
 // abort remote PSs when needed.

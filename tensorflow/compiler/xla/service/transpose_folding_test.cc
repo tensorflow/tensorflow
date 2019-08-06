@@ -69,7 +69,7 @@ ENTRY entry_computation {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   FoldTranspose(module.get());
 
@@ -91,7 +91,7 @@ ENTRY entry_computation {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   TransposeFolding transpose_folding(
       [](const HloInstruction& dot,
@@ -119,7 +119,7 @@ ENTRY entry_computation {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   TransposeFolding transpose_folding(
       [](const HloInstruction& dot,
@@ -147,7 +147,7 @@ ENTRY entry_computation {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
 
   FoldTranspose(module.get());
 
@@ -205,7 +205,7 @@ ENTRY entry_computation {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+                          ParseAndReturnUnverifiedModule(hlo_string));
   FoldTranspose(module.get());
 
   const HloComputation* callee = module->GetComputationWithName("callee");

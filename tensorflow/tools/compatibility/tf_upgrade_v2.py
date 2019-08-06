@@ -629,6 +629,10 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.train.sdca_fprint",
         "tf.train.sdca_optimizer",
         "tf.train.sdca_shrink_l1",
+        "tf.data.experimental.TensorStructure",
+        "tf.data.experimental.SparseTensorStructure",
+        "tf.data.experimental.RaggedTensorStructure",
+        "tf.data.experimental.TensorArrayStructure",
     }
 
     # Manual mapping of function names to be reordered to their list of argument
@@ -683,6 +687,14 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "`tf.keras.layers.LayerNormalization` in TensorFlow 2.0. "
         "Note that, the default value of `epsilon` is changed to `1e-3` in the "
         "new API from `1e-12`, and this may introduce numerical differences. "
+        "Please check the new API and use that instead."
+    )
+
+    contrib_estimator_head_comment = (
+        ast_edits.WARNING,
+        "(Manual edit required) `tf.contrib.estimator.*_head` has been "
+        "deprecated, and its implementation has been integrated with "
+        "`tf.estimator.*Head` in TensorFlow 2.0. "
         "Please check the new API and use that instead."
     )
 
@@ -892,6 +904,20 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             assert_rank_comment,
         "tf.contrib.layers.layer_norm":
             contrib_layers_layer_norm_comment,
+        "tf.contrib.estimator.binary_classification_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.logistic_regression_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.multi_class_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.multi_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.multi_label_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.poisson_regression_head":
+            contrib_estimator_head_comment,
+        "tf.contrib.estimator.regression_head":
+            contrib_estimator_head_comment,
         "tf.contrib.summary.all_summary_ops":
             contrib_summary_comment,
         "tf.contrib.summary.audio":
@@ -1182,6 +1208,15 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.summary.tensor_summary": summary_api_comment,
         "tf.summary.text": summary_api_comment,
     }
+
+    for symbol, replacement in all_renames_v2.addons_symbol_mappings.items():
+      warning = (
+          ast_edits.WARNING, (
+              "(Manual edit required) `{}` has been migrated to `{}` in "
+              "TensorFlow Addons. The API spec may have changed during the "
+              "migration. Please see https://github.com/tensorflow/addons "
+              "for more info.").format(symbol, replacement))
+      self.function_warnings[symbol] = warning
 
     # Warnings that are emitted only if a specific arg is found.
     self.function_arg_warnings = {
@@ -1491,6 +1526,10 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
             "'merge_repeated' argument and behaves as if merge_repeated=False. "
             "This call site specifies something other than "
             "merge_repeated=False, so it was converted to compat.v1."),
+        "tf.nn.dilation2d": functools.partial(
+            _add_argument_transformer,
+            arg_name="data_format",
+            arg_value_ast=ast.Str("NHWC")),
         "tf.nn.erosion2d": functools.partial(
             _add_argument_transformer,
             arg_name="data_format",
@@ -1989,7 +2028,7 @@ def _add_loss_reduction_transformer(parent, node, full_name, name, logs):
 
   Default value for tf.estimator.*Classifier and tf.estimator.*Regressor
   loss_reduction argument changed to SUM_OVER_BATCH_SIZE. So, we update
-  existing calls to use the old default value `tf.losses.Reduction.SUM`.
+  existing calls to use the old default value `tf.keras.losses.Reduction.SUM`.
 
   Note: to apply this transformation, symbol must be added
   to reordered_function_names above.
@@ -1997,9 +2036,7 @@ def _add_loss_reduction_transformer(parent, node, full_name, name, logs):
   for keyword_arg in node.keywords:
     if keyword_arg.arg == "loss_reduction":
       return node
-  # TODO(annarev): this should be updated to tf.keras.losses.Reduction.SUM
-  # once b/125525822 is fixed.
-  default_value = "tf.compat.v1.losses.Reduction.SUM"
+  default_value = "tf.keras.losses.Reduction.SUM"
   # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
   ast_value = pasta.parse(default_value)
   node.keywords.append(ast.keyword(arg="loss_reduction", value=ast_value))

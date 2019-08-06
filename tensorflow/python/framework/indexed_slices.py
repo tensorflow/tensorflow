@@ -23,6 +23,7 @@ import collections
 import warnings
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -88,10 +89,7 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
 
   def __init__(self, values, indices, dense_shape=None):
     """Creates an `IndexedSlices`."""
-    # TODO(b/133606651) Remove this conditional (and get rid of the LazyLoader
-    # import of tensor_spec) once TypeSpecs have been added.
-    if not isinstance(values, tensor_spec.TensorSpec):
-      ops._get_graph_from_inputs([values, indices, dense_shape])  # pylint: disable=protected-access
+    ops._get_graph_from_inputs([values, indices, dense_shape])  # pylint: disable=protected-access
     self._values = values
     self._indices = indices
     self._dense_shape = dense_shape
@@ -145,28 +143,33 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)
 
-  def _to_components(self):
-    if self._dense_shape is None:
-      return (self._values, self._indices)
-    else:
-      return (self._values, self._indices, self._dense_shape)
-
-  @classmethod
-  def _from_components(cls, components, metadata):
-    return cls(*components)
-
-  def _shape_invariant_to_components(self, shape=None):
-    if shape is None:
-      shape = self._values.shape
-    if self._dense_shape is None:
-      return (shape, shape[:1])  # values, indices
-    else:
-      # values, indices, dense_shape
-      return (shape, shape[:1], tensor_shape.TensorShape([shape.ndims]))
-
   @property
-  def _is_graph_tensor(self):
-    return hasattr(self._values, "graph")
+  def _type_spec(self):
+    indices_shape = self._indices.shape.merge_with(self._values.shape[:1])
+    dense_shape = tensor_shape.TensorShape([None]).concatenate(
+        self._values.shape[1:])
+    if self._dense_shape is not None:
+      dense_shape_dtype = self._dense_shape.dtype
+      dense_shape = dense_shape.merge_with(
+          tensor_util.constant_value_as_shape(self._dense_shape))
+    else:
+      dense_shape_dtype = None
+    return IndexedSlicesSpec(dense_shape, self.dtype, self._indices.dtype,
+                             dense_shape_dtype, indices_shape)
+
+  def _shape_invariant_to_type_spec(self, shape):
+    # From tf.while_loop docs: "If a loop variable is an IndexedSlices, the
+    # shape invariant must be a shape invariant of the values tensor of the
+    # IndexedSlices. It means the shapes of the three tensors of the
+    # IndexedSlices are (shape, [shape[0]], [shape.ndims])."
+    indices_shape = shape[:1]
+    dense_shape = tensor_shape.TensorShape([None]).concatenate(shape[1:])
+    if self._dense_shape is None:
+      dense_shape_dtype = None
+    else:
+      dense_shape_dtype = self._dense_shape.dtype
+    return IndexedSlicesSpec(dense_shape, self.dtype, self._indices.dtype,
+                             dense_shape_dtype, indices_shape)
 
   def consumers(self):
     return self._consumers()
@@ -176,7 +179,7 @@ IndexedSlicesValue = collections.namedtuple(
     "IndexedSlicesValue", ["values", "indices", "dense_shape"])
 
 
-# TODO(b/133606651) Export this as tf.IndexedSlicesSpec.
+@tf_export("IndexedSlicesSpec")
 class IndexedSlicesSpec(type_spec.TypeSpec):
   """Type specification for a `tf.IndexedSlices`."""
 
@@ -186,7 +189,7 @@ class IndexedSlicesSpec(type_spec.TypeSpec):
   value_type = property(lambda self: IndexedSlices)
 
   def __init__(self, shape=None, dtype=dtypes.float32,
-               indices_dtype=dtypes.int64, dense_shape_dtype=True,
+               indices_dtype=dtypes.int64, dense_shape_dtype=None,
                indices_shape=None):
     """Constructs a type specification for a `tf.IndexedSlices`.
 
@@ -209,7 +212,7 @@ class IndexedSlicesSpec(type_spec.TypeSpec):
       self._dense_shape_dtype = None
     else:
       self._dense_shape_dtype = dtypes.as_dtype(dense_shape_dtype)
-    self._indices_shape = tensor_shape.as_shape(indices_shape)
+    self._indices_shape = tensor_shape.as_shape(indices_shape).with_rank(1)
 
   def _serialize(self):
     return (self._shape, self._values_dtype, self._indices_dtype,
@@ -224,7 +227,7 @@ class IndexedSlicesSpec(type_spec.TypeSpec):
     if self._dense_shape_dtype is not None:
       specs.append(
           tensor_spec.TensorSpec([self._shape.ndims], self._dense_shape_dtype))
-    return specs
+    return tuple(specs)
 
   def _to_components(self, value):
     if value.dense_shape is None:
@@ -233,7 +236,14 @@ class IndexedSlicesSpec(type_spec.TypeSpec):
       return (value.values, value.indices, value.dense_shape)
 
   def _from_components(self, tensor_list):
-    return IndexedSlices(*tensor_list)
+    if (all(isinstance(t, np.ndarray) for t in tensor_list) and
+        not tf2.enabled()):
+      if len(tensor_list) == 2:
+        return IndexedSlicesValue(tensor_list[0], tensor_list[1], None)
+      else:
+        return IndexedSlicesValue(*tensor_list)
+    else:
+      return IndexedSlices(*tensor_list)
 
 
 @tf_export(v1=["convert_to_tensor_or_indexed_slices"])
@@ -419,4 +429,3 @@ def _indexed_slices_to_tensor(value, dtype=None, name=None, as_ref=False):
 
 tensor_conversion_registry.register_tensor_conversion_function(
     IndexedSlices, _indexed_slices_to_tensor)
-

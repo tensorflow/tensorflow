@@ -29,6 +29,7 @@ tensorflow_rbe_config(
 
 tensorflow_rbe_config(
     name = "centos6-py3-gcc7-cuda10.0-cudnn7-tensorrt5",
+    build_bazel_src = True,
     compiler = "gcc",
     compiler_prefix = "/opt/rh/devtoolset-7/root/usr/bin",
     cuda_version = "10.0",
@@ -36,7 +37,21 @@ tensorflow_rbe_config(
     cudnn_version = "7",
     os = "centos6",
     python_version = "3",
-    tensorrt_install_path = "/usr/lib64",
+    tensorrt_install_path = "/usr",
+    tensorrt_version = "5",
+)
+
+tensorflow_rbe_config(
+    name = "centos6-py3-gcc7-cuda10.1-cudnn7-tensorrt5",
+    build_bazel_src = True,
+    compiler = "gcc",
+    compiler_prefix = "/opt/rh/devtoolset-7/root/usr/bin",
+    cuda_version = "10.1",
+    cudnn_install_path = "/usr/local/cuda-10.1",
+    cudnn_version = "7",
+    os = "centos6",
+    python_version = "3",
+    tensorrt_install_path = "/usr",
     tensorrt_version = "5",
 )
 
@@ -68,4 +83,40 @@ tensorflow_rbe_config(
     os = "ubuntu14.04",
     python_version = "3",
     tensorrt_version = "5",
+)
+
+tensorflow_rbe_config(
+    name = "ubuntu16.04-py-gcc7_manylinux2010",
+    compiler = "/dt7/usr/bin/gcc",
+    compiler_prefix = "/usr/bin",
+    os = "ubuntu16.04-manylinux2010",
+    python_version = "2",
+)
+
+tensorflow_rbe_config(
+    name = "ubuntu16.04-py3-gcc7_manylinux2010",
+    compiler = "/dt7/usr/bin/gcc",
+    compiler_prefix = "/usr/bin",
+    os = "ubuntu16.04-manylinux2010",
+    python_version = "3.6",
+)
+
+tensorflow_rbe_config(
+    name = "ubuntu16.04-py3-gcc7_manylinux2010-cuda10.0-cudnn7-tensorrt5.1",
+    compiler = "/dt7/usr/bin/gcc",
+    compiler_prefix = "/usr/bin",
+    cuda_version = "10.0",
+    cudnn_version = "7",
+    os = "ubuntu16.04-manylinux2010",
+    python_version = "3.6",
+    tensorrt_install_path = "/usr/local/tensorrt",
+    tensorrt_version = "5.1",
+)
+
+tensorflow_rbe_config(
+    name = "ubuntu16.04-py3_opt-gcc5-rocm",
+    compiler = "gcc",
+    os = "ubuntu16.04",
+    python_version = "3",
+    rocm_version = "2.5",  # Any version will do.
 )

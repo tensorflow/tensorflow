@@ -166,6 +166,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.compat import collections_abc
 
 
 def _internal_input_layer(features,
@@ -1757,6 +1758,48 @@ class _FeatureColumn(object):
     """Returns string. Used for naming and for name_scope."""
     pass
 
+  def __lt__(self, other):
+    """Allows feature columns to be sorted in Python 3 as they are in Python 2.
+
+    Feature columns need to occasionally be sortable, for example when used as
+    keys in a features dictionary passed to a layer.
+
+    In CPython, `__lt__` must be defined for all objects in the
+    sequence being sorted. If any objects do not have an `__lt__` compatible
+    with feature column objects (such as strings), then CPython will fall back
+    to using the `__gt__` method below.
+    https://docs.python.org/3/library/stdtypes.html#list.sort
+
+    Args:
+      other: The other object to compare to.
+
+    Returns:
+      True if the string representation of this object is lexicographically less
+      than the string representation of `other`. For FeatureColumn objects,
+      this looks like "<__main__.FeatureColumn object at 0xa>".
+    """
+    return str(self) < str(other)
+
+  def __gt__(self, other):
+    """Allows feature columns to be sorted in Python 3 as they are in Python 2.
+
+    Feature columns need to occasionally be sortable, for example when used as
+    keys in a features dictionary passed to a layer.
+
+    `__gt__` is called when the "other" object being compared during the sort
+    does not have `__lt__` defined.
+    Example: http://gpaste/4803354716798976
+
+    Args:
+      other: The other object to compare to.
+
+    Returns:
+      True if the string representation of this object is lexicographically
+      greater than the string representation of `other`. For FeatureColumn
+      objects, this looks like "<__main__.FeatureColumn object at 0xa>".
+    """
+    return str(self) > str(other)
+
   @property
   def _var_scope_name(self):
     """Returns string. Used for variable_scope. Defaults to self.name."""
@@ -2245,7 +2288,7 @@ def _normalize_feature_columns(feature_columns):
   if isinstance(feature_columns, _FeatureColumn):
     feature_columns = [feature_columns]
 
-  if isinstance(feature_columns, collections.Iterator):
+  if isinstance(feature_columns, collections_abc.Iterator):
     feature_columns = list(feature_columns)
 
   if isinstance(feature_columns, dict):
@@ -2420,7 +2463,7 @@ class _EmbeddingColumn(
   @property
   def _variable_shape(self):
     if not hasattr(self, '_shape'):
-      self._shape = tensor_shape.vector(self.dimension)
+      self._shape = tensor_shape.TensorShape([self.dimension])
     return self._shape
 
   def _get_dense_tensor_internal(self,
@@ -2531,7 +2574,7 @@ class _SharedEmbeddingColumn(
   @property
   def _variable_shape(self):
     if not hasattr(self, '_shape'):
-      self._shape = tensor_shape.vector(self.dimension)
+      self._shape = tensor_shape.TensorShape([self.dimension])
     return self._shape
 
   def _get_dense_tensor_internal(self,

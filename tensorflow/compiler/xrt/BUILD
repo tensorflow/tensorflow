@@ -1,14 +1,5 @@
 # Description: Operations defined for XRT
 
-licenses(["notice"])  # Apache 2.0
-
-package(
-    default_visibility = [
-        "//learning/brain:__subpackages__",
-        "//tensorflow/compiler/xrt:__subpackages__",
-    ],
-)
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_py_library",
@@ -17,8 +8,16 @@ load(
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_proto_library_py",
+)
+
+package(
+    default_visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow/compiler/xrt:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 xla_proto_library(

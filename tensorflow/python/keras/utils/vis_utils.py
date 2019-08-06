@@ -178,15 +178,19 @@ def model_to_dot(model,
 
     # Rebuild the label as a table including input/output shapes.
     if show_shapes:
+
+      def format_shape(shape):
+        return str(shape).replace(str(None), '?')
+
       try:
-        outputlabels = str(layer.output_shape)
+        outputlabels = format_shape(layer.output_shape)
       except AttributeError:
         outputlabels = '?'
       if hasattr(layer, 'input_shape'):
-        inputlabels = str(layer.input_shape)
+        inputlabels = format_shape(layer.input_shape)
       elif hasattr(layer, 'input_shapes'):
         inputlabels = ', '.join(
-            [str(ishape) for ishape in layer.input_shapes])
+            [format_shape(ishape) for ishape in layer.input_shapes])
       else:
         inputlabels = '?'
       label = '%s\n|{input:|output:}|{{%s}|{%s}}' % (label,

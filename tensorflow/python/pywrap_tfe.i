@@ -20,7 +20,9 @@ limitations under the License.
 %ignore "";
 
 %rename("%s") TF_SetXlaEnableLazyCompilation;
-%rename("%s") TF_SetXLaAutoJitMode;
+%rename("%s") TF_SetXlaAutoJitMode;
+%rename("%s") TF_SetXlaConstantFoldingDisabled;
+%rename("%s") TF_GetXlaConstantFoldingDisabled;
 %rename("%s") TF_SetXlaMinClusterSize;
 %rename("%s") TFE_NewContext;
 %rename("%s") TFE_DeleteContext;
@@ -36,28 +38,33 @@ limitations under the License.
 %rename("%s") TFE_ContextExportRunMetadata;
 %rename("%s") TFE_ContextClearCaches;
 %rename("%s") TFE_ContextGetDevicePlacementPolicy;
+%rename("%s") TFE_ContextGetMirroringPolicy;
 %rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
-%rename("%s") TFE_ContextSetAsyncForThread;
+%rename("%s") TFE_ContextSetThreadLocalMirroringPolicy;
 %rename("%s") TFE_ContextSetServerDef;
 %rename("%s") TFE_ContextAsyncWait;
 %rename("%s") TFE_ContextAsyncClearError;
+%rename("%s") TFE_NewExecutor;
+%rename("%s") TFE_DeleteExecutor;
+%rename("%s") TFE_ExecutorWaitForAllPendingNodes;
+%rename("%s") TFE_ContextSetExecutorForThread;
+%rename("%s") TFE_ContextClearExecutorForThread;
 %rename("%s") TFE_NewProfiler;
 %rename("%s") TFE_ProfilerIsOk;
 %rename("%s") TFE_DeleteProfiler;
 %rename("%s") TFE_ProfilerSerializeToString;
-%rename("%s") TFE_NewProfilerContext;
-%rename("%s") TFE_ProfilerContextSetEagerContext;
-%rename("%s") TFE_DeleteProfilerContext;
 %rename("%s") TFE_StartProfilerServer;
 %rename("%s") TFE_ProfilerClientStartTracing;
+%rename("%s") TFE_ProfilerClientMonitor;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;
 %rename("%s") TFE_Py_RegisterExceptionClass;
+%rename("%s") TFE_Py_RegisterForwardGradientFunction;
 %rename("%s") TFE_Py_RegisterGradientFunction;
 %rename("%s") TFE_Py_RegisterFallbackExceptionClass;
-%rename("%s") TFE_Py_RegisterResourceVariableType;
 %rename("%s") TFE_Py_Execute;
+%rename("%s") TFE_Py_ExecuteCancelable;
 %rename("%s") TFE_Py_FastPathExecute;
 %rename("%s") TFE_Py_RecordGradient;
 %rename("%s") TFE_Py_UID;
@@ -66,8 +73,10 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeSetRemove;
 %rename("%s") TFE_Py_TapeSetStopOnThread;
 %rename("%s") TFE_Py_TapeSetRestartOnThread;
+%rename("%s") TFE_Py_TapeSetIsStopped;
 %rename("%s") TFE_Py_TapeSetIsEmpty;
 %rename("%s") TFE_Py_TapeSetShouldRecord;
+%rename("%s") TFE_Py_TapeSetPossibleGradientTypes;
 %rename("%s") TFE_Py_TapeSetDeleteTrace;
 %rename("%s") TFE_Py_TapeSetRecordOperation;
 %rename("%s") TFE_Py_TapeGradient;
@@ -75,14 +84,20 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeWatch;
 %rename("%s") TFE_Py_TapeWatchVariable;
 %rename("%s") TFE_Py_TapeWatchedVariables;
+%rename("%s") TFE_Py_ForwardAccumulatorNew;
+%rename("%s") TFE_Py_ForwardAccumulatorSetRemove;
+%rename("%s") TFE_Py_ForwardAccumulatorWatch;
+%rename("%s") TFE_Py_ForwardAccumulatorJVP;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
+%rename("%s") TFE_ContextOptionsSetMirroringPolicy;
 %rename("%s") TFE_ContextOptionsSetAsync;
 %rename("%s") TFE_DeleteContextOptions;
 %rename("%s") TFE_Py_TensorShapeSlice;
 %rename("%s") TFE_Py_TensorShapeOnDevice;
 %rename("%s") TFE_Py_EnableInteractivePythonLogging;
+%rename("%s") TFE_Py_SetEagerContext;
 %rename("%s") TFE_ContextStartStep;
 %rename("%s") TFE_ContextEndStep;
 %rename("%s") TFE_Py_RegisterVSpace;
@@ -147,6 +162,12 @@ limitations under the License.
 %rename("%s") TFE_MonitoringNewSampler2;
 %rename("%s") TFE_MonitoringDeleteSampler2;
 %rename("%s") TFE_MonitoringGetCellSampler2;
+%rename("%s") TFE_NewCancellationManager;
+%rename("%s") TFE_CancellationManagerIsCancelled;
+%rename("%s") TFE_CancellationManagerStartCancel;
+%rename("%s") TFE_DeleteCancellationManager;
+%rename("%s") TF_ImportGraphDefOptionsSetValidateColocationConstraints;
+%rename("%s") TFE_ClearScalarCache;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
@@ -173,6 +194,16 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status) {
 }
 %}
 static PyObject* TF_ListPhysicalDevices(TF_Status* status);
+
+%{
+#include "tensorflow/python/eager/pywrap_tensor_conversion.h"
+
+static PyObject* TFE_ClearScalarCache() {
+  tensorflow::TFE_TensorHandleCache::Get()->Clear();
+  Py_RETURN_NONE;
+}
+%}
+static PyObject* TFE_ClearScalarCache();
 
 %typemap(in) (const void* proto) {
   char* c_string;
@@ -313,6 +344,10 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
 %rename("%s") TFE_DEVICE_PLACEMENT_SILENT;
 %rename("%s") TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32;
 
+%rename("%s") TFE_ContextMirroringPolicy;
+%rename("%s") TFE_MIRRORING_NONE;
+%rename("%s") TFE_MIRRORING_ALL;
+
 %include "tensorflow/c/eager/c_api.h"
 
 %typemap(in) TFE_InputTensorHandles* inputs (TFE_InputTensorHandles temp) {
@@ -334,6 +369,8 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
       } else if (tensorflow::swig::IsTensor(elem)) {
         // If it isnt an EagerTensor, but is still a Tensor, it must be a graph
         // tensor.
+        tensorflow::Safe_PyObjectPtr name_attr(
+            PyObject_GetAttrString(elem, "name"));
         SWIG_exception_fail(
             SWIG_TypeError,
             tensorflow::strings::StrCat(
@@ -348,8 +385,8 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
                 "    with tf.init_scope():\n",
                 "      added = my_constant * 2\n",
                 "The graph tensor has name: ",
-                TFE_GetPythonString(PyObject_GetAttrString(elem, "name")))
-                .c_str());
+                TFE_GetPythonString(name_attr.get())
+            ).c_str());
       } else {
         SWIG_exception_fail(
             SWIG_TypeError,

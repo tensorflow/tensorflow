@@ -60,10 +60,10 @@ class Registry : public NodeShader {
     using Type = OperationType;
     using NewShaderFunc = std::function<std::unique_ptr<NodeShader>()>;
 
-    auto insert_op = [&](Type type, NewShaderFunc func) {
+    const auto insert_op = [&](Type type, NewShaderFunc func) {
       shaders_[ToString(type)].push_back(func());
     };
-    auto insert_elementwise_op = [&](Type operation_type) {
+    const auto insert_elementwise_op = [&](Type operation_type) {
       shaders_[ToString(operation_type)].push_back(
           NewElementwiseNodeShader(operation_type));
     };
@@ -82,26 +82,27 @@ class Registry : public NodeShader {
     insert_op(Type::MULTIPLY_SCALAR, NewMultiplyScalarNodeShader);
     insert_op(Type::PAD, NewPadNodeShader);
     insert_op(Type::POOLING_2D, NewPoolingNodeShader);
+    insert_op(Type::PRELU, NewPReLUNodeShader);
     insert_op(Type::RELU, NewReLUNodeShader);
     insert_op(Type::RESHAPE, NewReshapeNodeShader);
-    insert_op(Type::PRELU, NewPReLUNodeShader);
     insert_op(Type::SLICE, NewSliceNodeShader);
-    insert_op(Type::SOFT_MAX, NewSoftMaxNodeShader);
+    insert_op(Type::SOFTMAX, NewSoftmaxNodeShader);
     insert_op(Type::UPSAMPLE_2D, NewUpsamplingNodeShader);
 
     insert_elementwise_op(Type::ABS);
     insert_elementwise_op(Type::COS);
+    insert_elementwise_op(Type::DIV);
+    insert_elementwise_op(Type::HARD_SWISH);
     insert_elementwise_op(Type::LOG);
+    insert_elementwise_op(Type::POW);
     insert_elementwise_op(Type::RSQRT);
     insert_elementwise_op(Type::SIGMOID);
     insert_elementwise_op(Type::SIN);
     insert_elementwise_op(Type::SQRT);
     insert_elementwise_op(Type::SQUARE);
-    insert_elementwise_op(Type::TANH);
-    insert_elementwise_op(Type::SUB);
-    insert_elementwise_op(Type::DIV);
-    insert_elementwise_op(Type::POW);
     insert_elementwise_op(Type::SQUARED_DIFF);
+    insert_elementwise_op(Type::SUB);
+    insert_elementwise_op(Type::TANH);
 
 #ifndef TFLITE_GPU_BINARY_RELEASE
     insert_op(Type::MAX_UNPOOLING_2D, NewMaxUnpoolingNodeShader);

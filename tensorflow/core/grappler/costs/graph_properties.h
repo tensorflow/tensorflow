@@ -91,11 +91,23 @@ class GraphProperties {
   // output values when possible and does other aggressive strategies.
   // Similar to assuming_valid_feeds, this may cause incorrectness in graph
   // analyses, but is useful for simulation or scheduling.
-  // If include_values is true, the values of constant tensors will be
-  // included in the input and output properties.
+  // If include_input_tensor_values is true, the values of constant tensors
+  // will included in the input properties.
+  // If include_output_tensor_values is true, the values of constant tensors
+  // will be included in the output properties.
   Status InferStatically(bool assume_valid_feeds,
                          bool aggressive_shape_inference,
-                         bool include_tensor_values);
+                         bool include_input_tensor_values,
+                         bool include_output_tensor_values);
+  Status InferStatically(bool assume_valid_feeds,
+                         bool aggressive_shape_inference,
+                         bool include_tensor_values) {
+    return InferStatically(
+        assume_valid_feeds,
+        /*aggressive_shape_inference=*/aggressive_shape_inference,
+        /*include_input_tensor_values=*/include_tensor_values,
+        /*include_output_tensor_values=*/include_tensor_values);
+  }
   Status InferStatically(bool assume_valid_feeds) {
     return InferStatically(assume_valid_feeds,
                            /*aggressive_shape_inference=*/false,

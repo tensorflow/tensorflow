@@ -22,8 +22,6 @@ cd /tensorflow
 
 ln -s $(which ${PYTHON}) /usr/local/bin/python 
 
-ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
-
 LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH} \
 tensorflow/tools/ci_build/builds/configured GPU \
 bazel build -c opt --copt=-mavx --config=cuda \

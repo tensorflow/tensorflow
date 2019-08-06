@@ -30,6 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 static mutex* get_counters_map_lock() {
@@ -296,18 +297,26 @@ class StatsAggregatorSetSummaryWriterOp : public OpKernel {
   }
 };
 
+REGISTER_KERNEL_BUILDER(Name("StatsAggregatorHandle").Device(DEVICE_CPU),
+                        StatsAggregatorHandleOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalStatsAggregatorHandle").Device(DEVICE_CPU),
     StatsAggregatorHandleOp);
+
 REGISTER_KERNEL_BUILDER(Name("StatsAggregatorHandleV2").Device(DEVICE_CPU),
                         StatsAggregatorHandleOpV2);
+
+REGISTER_KERNEL_BUILDER(Name("StatsAggregatorSummary").Device(DEVICE_CPU),
+                        StatsAggregatorSummaryOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalStatsAggregatorSummary").Device(DEVICE_CPU),
     StatsAggregatorSummaryOp);
+
 REGISTER_KERNEL_BUILDER(
     Name("StatsAggregatorSetSummaryWriter").Device(DEVICE_CPU),
     StatsAggregatorSetSummaryWriterOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

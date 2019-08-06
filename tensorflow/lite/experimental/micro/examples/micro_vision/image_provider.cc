@@ -14,19 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/experimental/micro/examples/micro_vision/image_provider.h"
-
 #include "tensorflow/lite/experimental/micro/examples/micro_vision/model_settings.h"
 
-namespace {
-uint8_t g_dummy_image_data[kMaxImageSize];
-}  // namespace
-
-TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int* image_size,
-                      uint8_t** image_data) {
-  for (int i = 0; i < kMaxImageSize; ++i) {
-    g_dummy_image_data[i] = 0;
+TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int image_width,
+                      int image_height, int channels, uint8_t* image_data) {
+  for (int i = 0; i < image_width * image_height * channels; ++i) {
+    image_data[i] = 0;
   }
-  *image_size = kMaxImageSize;
-  *image_data = g_dummy_image_data;
   return kTfLiteOk;
 }

@@ -61,10 +61,11 @@ StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
 }
 
 StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
-    const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
+    const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments) {
   se::Stream* stream = run_options->stream();
   std::unique_ptr<se::Timer> timer;
+  ExecutionProfile* profile = run_options->run_options().execution_profile();
   if (profile != nullptr) {
     timer.reset(new se::Timer(stream->parent()));
     stream->InitTimer(timer.get()).ThenStartTimer(timer.get());
@@ -102,11 +103,6 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     VLOG(1) << "done with block-host-until-done";
 
     // Merge in run-time profile information from execution_profile.
-    //
-    // TODO(b/71713097): This is buggy -- even though the mutex takes care of
-    // C++ level races, some other concurrent ExecuteOnStreamWrapper call could
-    // have rewritten the execution_profile before we get to it.
-    profile->MergeFrom(execution_profile());
 
     // Overall execution time (in nanoseconds) from the executor timer.
     if (stream->ok()) {
@@ -128,7 +124,7 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
       profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
     }
 
-    const int64 executable_size_in_bytes = SizeInBytes();
+    const int64 executable_size_in_bytes = SizeOfGeneratedCodeInBytes();
     if (executable_size_in_bytes != 0) {
       profile->set_executable_size_in_bytes(executable_size_in_bytes);
     }
@@ -143,6 +139,6 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
   return return_value;
 }
 
-int64 Executable::SizeInBytes() { return -1; }
+int64 Executable::SizeOfGeneratedCodeInBytes() { return -1; }
 
 }  // namespace xla

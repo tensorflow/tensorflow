@@ -1,19 +1,18 @@
-package(
-    default_visibility = [
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-    ],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cuda_library",
 )
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_profiler_lib_deps",
+)
+
+package(
+    default_visibility = [
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+    ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_cuda_library(
@@ -28,6 +27,7 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:android": [],
         "//conditions:default": [
@@ -43,18 +43,9 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
-    name = "profiler_graph_lib",
+    name = "profiler_lib",
     visibility = ["//tensorflow:internal"],
     deps = tf_additional_profiler_lib_deps(),
-    alwayslink = 1,
-)
-
-tf_cuda_library(
-    name = "profiler_eager_lib",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core/profiler/internal/runtime:eager_profiler",
-    ] + tf_additional_profiler_lib_deps(),
     alwayslink = 1,
 )
 

@@ -207,17 +207,6 @@ message HotIdReplicationConfiguration {
     DISABLED = 2;
   }
   Status status = 1;
-
-  // The following field(s) are never expected to be set by the TF model.
-  // However, a TF model could set them if it chooses to. If the fields are not
-  // set, meaningful default values will be chosen by the TPU software.
-
-  // The maximum number of slots reserved in HBM (across the entire TPU system)
-  // for storing the replicas of hot IDs for the embedding table. In future, the
-  // number of replicas for a particular hot ID could be adjusted based on its
-  // frequency. The max_slot_count value captures the total number of replicas
-  // across all hot IDs for the table.
-  int32 max_slot_count = 4;
 }
 
 message OptimizationParameters {

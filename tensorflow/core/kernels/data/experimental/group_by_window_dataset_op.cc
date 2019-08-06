@@ -15,6 +15,7 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -25,22 +26,22 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit GroupByWindowDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "key_func", /*params=*/{},
+    FunctionMetadata::Params params;
+    params.is_multi_device_function = true;
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "key_func", params,
                                                  &key_func_metadata_));
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "reduce_func", params,
+                                                 &reduce_func_metadata_));
     OP_REQUIRES_OK(ctx,
-                   FunctionMetadata::Create(ctx, "reduce_func", /*params=*/{},
-                                            &reduce_func_metadata_));
-    OP_REQUIRES_OK(
-        ctx, FunctionMetadata::Create(ctx, "window_size_func", /*params=*/{},
-                                      &window_size_func_metadata_));
+                   FunctionMetadata::Create(ctx, "window_size_func", params,
+                                            &window_size_func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
@@ -105,6 +106,12 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override {
       return "GroupByWindowDatasetOp::Dataset";
+    }
+
+    bool IsStateful() const override {
+      return captured_key_func_->IsStateful() ||
+             captured_reduce_func_->IsStateful() ||
+             captured_window_size_func_->IsStateful() || input_->IsStateful();
     }
 
    protected:
@@ -505,10 +512,16 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("GroupByWindowDataset").Device(DEVICE_CPU),
+                        GroupByWindowDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalGroupByWindowDataset").Device(DEVICE_CPU),
     GroupByWindowDatasetOp);
 
+REGISTER_INPUT_COLOCATION_EXEMPTION("GroupByWindowDataset");
+REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalGroupByWindowDataset");
+
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

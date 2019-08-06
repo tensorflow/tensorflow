@@ -3,7 +3,7 @@ load(
     "docker_toolchain_autoconfig",
 )
 
-def _tensorflow_rbe_config(name, compiler, python_version, os, cuda_version = None, cudnn_version = None, tensorrt_version = None, tensorrt_install_path = None, cudnn_install_path = None, compiler_prefix = None, build_bazel_src = False):
+def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = None, cuda_version = None, cudnn_version = None, tensorrt_version = None, tensorrt_install_path = None, cudnn_install_path = None, compiler_prefix = None, build_bazel_src = False):
     base = "@%s//image" % os
     config_repos = [
         "local_config_python",
@@ -24,6 +24,9 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, cuda_version = No
         "HOST_CXX_COMPILER": compiler,
         "HOST_C_COMPILER": compiler,
     }
+
+    if cuda_version != None and rocm_version != None:
+        fail("Specifying both cuda_version and rocm_version is not supported.")
 
     if cuda_version != None:
         base = "@cuda%s-cudnn%s-%s//image" % (cuda_version, cudnn_version, os)
@@ -48,6 +51,20 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, cuda_version = No
             "TENSORRT_INSTALL_PATH": tensorrt_install_path if tensorrt_install_path != None else "/usr/lib/x86_64-linux-gnu",
             "GCC_HOST_COMPILER_PATH": compiler if compiler != "clang" else "",
             "GCC_HOST_COMPILER_PREFIX": compiler_prefix if compiler_prefix != None else "/usr/bin",
+        })
+
+    if rocm_version != None:
+        base = "@rocm-%s//image" % (os)
+
+        # The rocm toolchain currently contains its own C++ toolchain definition,
+        # so we do not fetch local_config_cc.
+        config_repos = [
+            "local_config_python",
+            "local_config_rocm",
+        ]
+        env.update({
+            "TF_NEED_ROCM": "1",
+            "TF_ENABLE_XLA": "0",
         })
 
     docker_toolchain_autoconfig(

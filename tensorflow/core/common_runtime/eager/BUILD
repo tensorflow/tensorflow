@@ -1,15 +1,19 @@
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+    "tf_cuda_library",
+)
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
+
 package(
     default_visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-    "tf_cuda_library",
 )
 
 tf_cuda_library(
@@ -48,6 +52,7 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
+        "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
     ] + select({
@@ -86,7 +91,31 @@ tf_cuda_library(
         ":attr_builder",
         ":context",
         ":tensor_handle",
+        "//tensorflow/core:framework",
     ],
+)
+
+tf_cuda_library(
+    name = "tensor_handle_data",
+    srcs = [
+        "tensor_handle_data.cc",
+    ],
+    hdrs = [
+        "tensor_handle_data.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":eager_executor",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+        ],
+    }),
 )
 
 tf_cuda_library(
@@ -102,6 +131,7 @@ tf_cuda_library(
         ":context",
         ":eager_executor",
         ":kernel_and_device",
+        ":tensor_handle_data",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -115,6 +145,8 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:session_options",
+            "//tensorflow/core/distributed_runtime/eager:eager_client",
+            "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle_data",
         ],
     }),
 )
@@ -215,15 +247,19 @@ cc_library(
         ":context",
         ":copy_to_device_node",
         ":eager_executor",
+        ":eager_op_rewrite_registry",
         ":eager_operation",
         ":kernel_and_device",
         ":tensor_handle",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "//tensorflow/core/profiler/lib:traceme",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "//tensorflow/core/distributed_runtime/eager:remote_mgr",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -232,8 +268,39 @@ cc_library(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
+            "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
         ],
-    }),
+    }) + if_mkl([":mkl_eager_op_rewrite"]),
+)
+
+cc_library(
+    name = "mkl_eager_op_rewrite",
+    srcs = ["mkl_eager_op_rewrite.cc"],
+    deps = [
+        ":eager_op_rewrite_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:mkl_graph_util",
+    ],
+)
+
+cc_library(
+    name = "eager_op_rewrite_registry",
+    srcs = ["eager_op_rewrite_registry.cc"],
+    hdrs = ["eager_op_rewrite_registry.h"],
+    deps = [":eager_operation"],
+)
+
+tf_cc_test(
+    name = "eager_op_rewrite_registry_test",
+    srcs = ["eager_op_rewrite_registry_test.cc"],
+    deps = [
+        ":eager_op_rewrite_registry",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 tf_cuda_library(
@@ -288,6 +355,9 @@ filegroup(
             "*.cc",
             "*.h",
         ],
-        exclude = ["*_test.cc"],
+        exclude = [
+            "*_test.cc",
+            "remote_*",
+        ],
     ),
 )

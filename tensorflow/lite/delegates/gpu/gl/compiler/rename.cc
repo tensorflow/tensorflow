@@ -25,34 +25,34 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/object_accessor.h"
-#include "tensorflow/lite/delegates/gpu/gl/compiler/parameter_accessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
+#include "tensorflow/lite/delegates/gpu/gl/compiler/variable_accessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
-#include "tensorflow/lite/delegates/gpu/gl/uniform_parameter.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
 namespace gl {
 namespace {
 
-// Rewrites names of all parameters according to returned values from the
+// Rewrites names of all variables according to returned values from the
 // given NameFunctor.
-class ParameterRewriter : public InlineRewrite {
+class VariableRewriter : public InlineRewrite {
  public:
-  ParameterRewriter(const std::string& inline_delimiter,
-                    const NameFunctor& name_func)
+  VariableRewriter(const std::string& inline_delimiter,
+                   const NameFunctor& name_func)
       : inline_delimiter_(inline_delimiter), name_func_(name_func) {}
 
   RewriteStatus Rewrite(absl::string_view input, std::string* output) final {
-    auto ref = parameter_accessor_internal::Parse(input);
+    auto ref = variable_accessor_internal::Parse(input);
     if (ref.name.empty()) {
       absl::StrAppend(output, "INVALID_SYNTAX");
       return RewriteStatus::ERROR;
     }
 
     auto it =
-        name_to_param_.find(std::string(ref.name.data(), ref.name.size()));
-    if (it == name_to_param_.end()) {
+        name_to_variable_.find(std::string(ref.name.data(), ref.name.size()));
+    if (it == name_to_variable_.end()) {
       return RewriteStatus::NOT_RECOGNIZED;
     }
 
@@ -65,28 +65,28 @@ class ParameterRewriter : public InlineRewrite {
     return RewriteStatus::SUCCESS;
   }
 
-  // Return true if parameter was successfully added.
-  bool AddParameter(UniformParameter param) {
-    std::string old_name = param.name;
-    param.name = name_func_(old_name);
-    return name_to_param_.insert({old_name, std::move(param)}).second;
+  // Return true if variable was successfully added.
+  bool AddVariable(Variable&& variable) {
+    std::string old_name = variable.name;
+    variable.name = name_func_(old_name);
+    return name_to_variable_.insert({old_name, std::move(variable)}).second;
   }
 
   // Returns a collection of uniform parameters with updated names.
-  std::vector<UniformParameter> GetUniformParameters() const {
-    std::vector<UniformParameter> params;
-    params.reserve(name_to_param_.size());
-    for (auto& param : name_to_param_) {
-      params.push_back(param.second);
+  std::vector<Variable> GetUniformParameters() const {
+    std::vector<Variable> variables;
+    variables.reserve(name_to_variable_.size());
+    for (const auto& variable : name_to_variable_) {
+      variables.push_back(variable.second);
     }
-    return params;
+    return variables;
   }
 
  private:
   const std::string inline_delimiter_;
   const NameFunctor name_func_;
 
-  std::unordered_map<std::string, UniformParameter> name_to_param_;
+  std::unordered_map<std::string, Variable> name_to_variable_;
 };
 
 // Rewrites names of all objects according to returned values from the
@@ -122,7 +122,7 @@ class ObjectRewriter : public InlineRewrite {
   std::vector<std::pair<std::string, Object>> GetObjects() const {
     std::vector<std::pair<std::string, Object>> objects;
     objects.reserve(name_to_object_.size());
-    for (auto& o : name_to_object_) {
+    for (const auto& o : name_to_object_) {
       objects.push_back(o.second);
     }
     return objects;
@@ -175,11 +175,11 @@ class ObjectRewriter : public InlineRewrite {
 }  // namespace
 
 Status Rename(const NameFunctor& name_func, GeneratedCode* code) {
-  ParameterRewriter param_rewriter("$", name_func);
+  VariableRewriter variable_rewriter("$", name_func);
   ObjectRewriter object_rewriter("$", name_func);
-  for (auto&& param : code->parameters) {
-    if (!param_rewriter.AddParameter(std::move(param))) {
-      return InternalError("Parameter name already exists");
+  for (auto&& uniform_parameter : code->parameters) {
+    if (!variable_rewriter.AddVariable(std::move(uniform_parameter))) {
+      return InternalError("Variable name already exists");
     }
   }
   for (auto&& object : code->objects) {
@@ -187,13 +187,13 @@ Status Rename(const NameFunctor& name_func, GeneratedCode* code) {
       return InternalError("Object name already exists");
     }
   }
-  TextPreprocessor preprocessor('$', /* keep_unknown_rewrites = */ true);
-  preprocessor.AddRewrite(&param_rewriter);
+  TextPreprocessor preprocessor('$', /*keep_unknown_rewrites=*/true);
+  preprocessor.AddRewrite(&variable_rewriter);
   preprocessor.AddRewrite(&object_rewriter);
   std::string source_code;
   RETURN_IF_ERROR(preprocessor.Rewrite(code->source_code, &source_code));
   code->source_code = source_code;
-  code->parameters = param_rewriter.GetUniformParameters();
+  code->parameters = variable_rewriter.GetUniformParameters();
   code->objects = object_rewriter.GetObjects();
   return OkStatus();
 }

@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from collections import namedtuple
 import threading
+import time
 import warnings
 
 from absl.testing import parameterized
@@ -1094,6 +1095,30 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensors(constant_op.constant(1.0))
     dataset.map(func)
 
+  @parameterized.named_parameters(
+      ("Sequential", None),
+      ("Parallel", 12),
+  )
+  @test_util.run_v1_only("graph-mode specific test")
+  def testSkipEagerMapCancellation(self, num_parallel_calls):
+    # Checks that a cancellation of is threaded through to map transformation.
+    queue = data_flow_ops.FIFOQueue(10, dtypes.int32, ())
+
+    def fn(_):
+      return queue.dequeue()
+
+    dataset = dataset_ops.Dataset.range(1).map(
+        fn, num_parallel_calls=num_parallel_calls)
+    get_next = self.getNext(dataset, requires_initialization=True)
+
+    with self.cached_session() as sess:
+      thread = self.checkedThread(self.assert_op_cancelled, args=(get_next(),))
+      thread.start()
+      time.sleep(0.2)
+      sess.close()
+      thread.join()
+
+
 # TODO(shivaniagarwal): separate out `map` and `map_with_legacy_function` tests
 # as later would not work in v2.
 @test_util.run_all_in_graph_and_eager_modes
@@ -1199,7 +1224,7 @@ class MapWithCapturedVariableTests(test_base.DatasetTestBase,
 
   # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
   @test_util.run_v1_only("b/121264236")
-  def testSkipEagerRefVariablesWithConflictingDevices(self):
+  def testSkipEagerRefVariablesWithMultipleDevices(self):
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
 
@@ -1223,34 +1248,33 @@ class MapWithCapturedVariableTests(test_base.DatasetTestBase,
 
   # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
   @test_util.run_v1_only("b/121264236")
-  def testSkipEagerResourceVariablesWithConflictingDevices(self):
+  def testSkipEagerResourceVariablesWithMultipleDevices(self):
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
 
     def func(_):
       with variable_scope.variable_scope(
           "variable", reuse=variable_scope.AUTO_REUSE):
         with ops.device("/device:CPU:0"):
-          a = variable_scope.get_variable(
+          a_var = variable_scope.get_variable(
               "a", (), dtypes.int32, use_resource=True)
-          a = math_ops.add(a, 1)
+          a_var = math_ops.add(a_var, 1)
         with ops.device("/device:CPU:1"):
-          b = variable_scope.get_variable(
+          b_var = variable_scope.get_variable(
               "b", (), dtypes.int32, use_resource=True)
-      return math_ops.add(a, b)
+      return math_ops.add(a_var, b_var)
 
     g_1 = ops.Graph()
     with self.session(config=config, graph=g_1):
       # The MapDataset node ends up with two ResourceVariable inputs, one on
-      # device CPU:0 and the other on device CPU:1. The placer cannot resolve
-      # this as it cannot place the MapDatasetOp on both devices.
+      # device CPU:0 and the other on device CPU:1.
       dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
       dataset = dataset.map(func)
-      expected_error = (
-          errors.InvalidArgumentError,
-          "Cannot place the graph because a reference or resource edge "
-          "connects colocation groups with incompatible resource devices")
+      self.evaluate(variables.global_variables_initializer())
+      expected_output = [1] * 10
       self.assertDatasetProduces(
-          dataset, expected_error=expected_error, requires_initialization=True)
+          dataset,
+          expected_output=expected_output,
+          requires_initialization=True)
 
     g_2 = ops.Graph()
     with self.session(config=config, graph=g_2):

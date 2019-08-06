@@ -8,6 +8,19 @@
 # Note that proto3 well-known types (e.g. Any) are not handled in a special way
 # by the generated code.
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_ios",
+    "tf_cc_test",
+    "tf_generate_proto_text_sources",
+)
+
+# For platform specific build config
+load(
+    "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_proto_library_cc",
+)
+
 package(
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],  # Apache 2.0
@@ -18,19 +31,6 @@ exports_files([
     "placeholder.txt",
 ])
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "if_ios",
-    "tf_cc_test",
-    "tf_generate_proto_text_sources",
-)
-
-# For platform specific build config
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library_cc",
-)
-
 cc_binary(
     name = "gen_proto_text_functions",
     srcs = ["gen_proto_text_functions.cc"],
@@ -38,7 +38,7 @@ cc_binary(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_proto_text_functions_lib",
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:lib_proto_compiler",
     ] + if_ios(["//tensorflow/core/platform/default/build_config:logging"]),

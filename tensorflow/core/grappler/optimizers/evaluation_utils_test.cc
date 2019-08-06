@@ -29,8 +29,7 @@ namespace grappler {
 TEST(EvaluationUtilsTest, DeviceSimple_BasicProperties) {
   DeviceSimple dsimple;
   ASSERT_TRUE(dsimple.has_eigen_cpu_device());
-  EXPECT_EQ(dsimple.eigen_cpu_device()->numThreads(),
-            port::NumSchedulableCPUs());
+  EXPECT_EQ(dsimple.eigen_cpu_device()->numThreads(), port::MaxParallelism());
   const Eigen::ThreadPoolInterface* pool =
       dsimple.eigen_cpu_device()->getPool();
   ASSERT_NE(pool, nullptr);

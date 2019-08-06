@@ -22,6 +22,14 @@ namespace llvm_ir {
 llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input) {
   llvm::Type* type = input->getType();
 
+  // For small values of x, we can approximate tanh(x)=x. For extremely small
+  // values of x (|x| < 1e-37), the other approximation evaluates tanh(x) = 0.
+  const auto kCanUseApprox = 0.0004;
+  auto abs_x =
+      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {input}, {type}, b);
+  auto use_aprox =
+      b->CreateFCmpOLT(abs_x, llvm::ConstantFP::get(type, kCanUseApprox));
+
   // Clamp the input to [-9, 9].
   llvm::Value* input_clamped = llvm_ir::EmitFloatMin(
       llvm_ir::EmitFloatMax(input, llvm::ConstantFP::get(type, -9.0), b),
@@ -52,7 +60,8 @@ llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input) {
                       llvm::ConstantFP::get(type, denominator_coeffs[i]));
   }
 
-  return b->CreateFDiv(numerator, denominator);
+  return b->CreateSelect(use_aprox, input,
+                         b->CreateFDiv(numerator, denominator));
 }
 
 }  // namespace llvm_ir

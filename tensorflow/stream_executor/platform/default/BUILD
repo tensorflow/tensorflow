@@ -2,7 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow/stream_executor:__subpackages__"])
 
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 cc_library(
@@ -27,5 +27,6 @@ cc_library(
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_tensorrt//:tensorrt_headers",
     ],
 )

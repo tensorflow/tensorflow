@@ -74,11 +74,9 @@ std::string PrependDisabledIfIndicated(absl::string_view test_case_name,
   // If the test name ends with a slash followed by one or more digits, strip
   // that off; this is just a shard number, and matching on this would be
   // unstable even if someone wanted to do it.
-  static auto* shard_num_pattern = new RE2(R"(/\d+$)");
-  tensorflow::RegexpStringPiece suffix;
-  if (RE2::PartialMatch(
-          tensorflow::RegexpStringPiece(test_name.data(), test_name.size()),
-          *shard_num_pattern, &suffix)) {
+  static LazyRE2 shard_num_pattern = {R"(/\d+$)"};
+  absl::string_view suffix;
+  if (RE2::PartialMatch(test_name, *shard_num_pattern, &suffix)) {
     test_name.remove_suffix(suffix.size());
   }
 

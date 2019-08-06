@@ -10,6 +10,8 @@ ARG PYTHON="python"
 ARG WHL_DIR="/tmp/pip"
 ARG PIP="pip"
 ARG TARGET_PLATFORM="haswell"
+ARG CONFIG_V2_DISABLE="--disable-v2"
+ARG ENABLE_SECURE_BUILD
 
 # Download and build TensorFlow from the latest sources found in the root container
 # make sure that if they pass in a tag, that it is loaded or we'll get an error
@@ -26,7 +28,8 @@ ENV CI_BUILD_PYTHON ${PYTHON}
 # This script detects the version of gcc in the container, sets the appropriate
 # compiler flags based on parameters
 ADD set-build-env.py .
-RUN ${PYTHON} set-build-env.py -p ${TARGET_PLATFORM} -f /root/.mkl.bazelrc --disable-v2
+RUN ${PYTHON} set-build-env.py -p ${TARGET_PLATFORM} -f /root/.mkl.bazelrc \
+    ${CONFIG_V2_DISABLE} ${ENABLE_SECURE_BUILD}
 
 # Pull the compiler flags we just wrote into root user's .bazelrc file
 RUN echo "import /root/.mkl.bazelrc" >>/root/.bazelrc

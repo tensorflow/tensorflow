@@ -107,7 +107,7 @@ Status FastParseExample(const FastParseExampleConfig& config,
 typedef FastParseExampleConfig FastParseSingleExampleConfig;
 
 Status FastParseSingleExample(const FastParseSingleExampleConfig& config,
-                              const string& serialized, Result* result);
+                              absl::string_view serialized, Result* result);
 
 // Parses a batch of serialized SequenceExample protos and converts them into
 // result according to given config.

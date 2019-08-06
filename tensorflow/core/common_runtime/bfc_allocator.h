@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -47,7 +48,8 @@ class BFCAllocator : public Allocator {
  public:
   // Takes ownership of sub_allocator.
   BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
-               bool allow_growth, const string& name);
+               bool allow_growth, const string& name,
+               bool garbage_collection = false);
   ~BFCAllocator() override;
 
   string Name() override { return name_; }
@@ -309,6 +311,11 @@ class BFCAllocator : public Allocator {
       regions_.insert(entry, AllocationRegion(ptr, memory_size));
     }
 
+    std::vector<AllocationRegion>::iterator RemoveAllocationRegion(
+        std::vector<AllocationRegion>::iterator it) {
+      return regions_.erase(it);
+    }
+
     ChunkHandle get_handle(const void* p) const {
       return RegionFor(p)->get_handle(p);
     }
@@ -352,6 +359,18 @@ class BFCAllocator : public Allocator {
   // 'rounded_bytes' bytes.  Returns true on success and false on
   // failure.
   bool Extend(size_t alignment, size_t rounded_bytes)
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Deallocate free regions to give back the memory to suballocator, so that
+  // we can re-allocate a larger region.  The main use scenario of this function
+  // is when OOM happens but we have free regions and the sum of sizes of free
+  // regions and unallocated bytes is larger than the requested size, implying
+  // (external) memory fragmentation.  Returns true if any free regions are
+  // found and freed; false otherwise.
+  bool DeallocateFreeRegions(size_t rounded_bytes);
+
+  // Helper function to deallocate regions.
+  void DeallocateRegions(const absl::flat_hash_set<void*>& region_ptrs)
       EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Returns a pointer to an underlying allocated chunk of size
@@ -468,6 +487,10 @@ class BFCAllocator : public Allocator {
   // An indicator that expansion of a region has hit the limits
   // of the available memory.
   bool started_backpedal_ = false;
+
+  // Whether the allocator will deallocate free regions to avoid OOM due to
+  // memory fragmentation.
+  bool garbage_collection_;
 
   std::unique_ptr<SubAllocator> sub_allocator_;
   string name_;

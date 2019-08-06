@@ -37,7 +37,7 @@ namespace xla {
 Status WithLogBacktrace(const Status& status) {
   CHECK(!status.ok());
   VLOG(1) << status.ToString();
-  VLOG(1) << tensorflow::CurrentStackTrace();
+  VLOG(2) << tensorflow::CurrentStackTrace();
   return status;
 }
 

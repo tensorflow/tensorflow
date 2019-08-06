@@ -17,8 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
@@ -30,7 +33,277 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
 
+# Test cases shared by MatrixDiagV2, MatrixDiagPartV2, and MatrixSetDiagV2.
+def square_cases():
+  # pyformat: disable
+  mat = np.array([[[1, 2, 3, 4, 5],
+                   [6, 7, 8, 9, 1],
+                   [3, 4, 5, 6, 7],
+                   [8, 9, 1, 2, 3],
+                   [4, 5, 6, 7, 8]],
+                  [[9, 1, 2, 3, 4],
+                   [5, 6, 7, 8, 9],
+                   [1, 2, 3, 4, 5],
+                   [6, 7, 8, 9, 1],
+                   [2, 3, 4, 5, 6]]])
+  tests = dict()
+  tests[(-1, -1)] = (np.array([[6, 4, 1, 7],
+                               [5, 2, 8, 5]]),
+                     np.array([[[0, 0, 0, 0, 0],
+                                [6, 0, 0, 0, 0],
+                                [0, 4, 0, 0, 0],
+                                [0, 0, 1, 0, 0],
+                                [0, 0, 0, 7, 0]],
+                               [[0, 0, 0, 0, 0],
+                                [5, 0, 0, 0, 0],
+                                [0, 2, 0, 0, 0],
+                                [0, 0, 8, 0, 0],
+                                [0, 0, 0, 5, 0]]]))
+  tests[(-4, -3)] = (np.array([[[8, 5],
+                                [4, 0]],
+                               [[6, 3],
+                                [2, 0]]]),
+                     np.array([[[0, 0, 0, 0, 0],
+                                [0, 0, 0, 0, 0],
+                                [0, 0, 0, 0, 0],
+                                [8, 0, 0, 0, 0],
+                                [4, 5, 0, 0, 0]],
+                               [[0, 0, 0, 0, 0],
+                                [0, 0, 0, 0, 0],
+                                [0, 0, 0, 0, 0],
+                                [6, 0, 0, 0, 0],
+                                [2, 3, 0, 0, 0]]]))
+  tests[(-2, 1)] = (np.array([[[2, 8, 6, 3, 0],
+                               [1, 7, 5, 2, 8],
+                               [6, 4, 1, 7, 0],
+                               [3, 9, 6, 0, 0]],
+                              [[1, 7, 4, 1, 0],
+                               [9, 6, 3, 9, 6],
+                               [5, 2, 8, 5, 0],
+                               [1, 7, 4, 0, 0]]]),
+                    np.array([[[1, 2, 0, 0, 0],
+                               [6, 7, 8, 0, 0],
+                               [3, 4, 5, 6, 0],
+                               [0, 9, 1, 2, 3],
+                               [0, 0, 6, 7, 8]],
+                              [[9, 1, 0, 0, 0],
+                               [5, 6, 7, 0, 0],
+                               [1, 2, 3, 4, 0],
+                               [0, 7, 8, 9, 1],
+                               [0, 0, 4, 5, 6]]]))
+  tests[(2, 4)] = (np.array([[[5, 0, 0],
+                              [4, 1, 0],
+                              [3, 9, 7]],
+                             [[4, 0, 0],
+                              [3, 9, 0],
+                              [2, 8, 5]]]),
+                   np.array([[[0, 0, 3, 4, 5],
+                              [0, 0, 0, 9, 1],
+                              [0, 0, 0, 0, 7],
+                              [0, 0, 0, 0, 0],
+                              [0, 0, 0, 0, 0]],
+                             [[0, 0, 2, 3, 4],
+                              [0, 0, 0, 8, 9],
+                              [0, 0, 0, 0, 5],
+                              [0, 0, 0, 0, 0],
+                              [0, 0, 0, 0, 0]]]))
+  # pyformat: enable
+  return (mat, tests)
+
+
+def tall_cases():
+  # pyformat: disable
+  mat = np.array([[[1, 2, 3],
+                   [4, 5, 6],
+                   [7, 8, 9],
+                   [9, 8, 7],
+                   [6, 5, 4]],
+                  [[3, 2, 1],
+                   [1, 2, 3],
+                   [4, 5, 6],
+                   [7, 8, 9],
+                   [9, 8, 7]]])
+  tests = dict()
+  tests[(0, 0)] = (np.array([[1, 5, 9],
+                             [3, 2, 6]]),
+                   np.array([[[1, 0, 0],
+                              [0, 5, 0],
+                              [0, 0, 9],
+                              [0, 0, 0]],
+                             [[3, 0, 0],
+                              [0, 2, 0],
+                              [0, 0, 6],
+                              [0, 0, 0]]]))
+  tests[(-4, -3)] = (np.array([[[9, 5],
+                                [6, 0]],
+                               [[7, 8],
+                                [9, 0]]]),
+                     np.array([[[0, 0, 0],
+                                [0, 0, 0],
+                                [0, 0, 0],
+                                [9, 0, 0],
+                                [6, 5, 0]],
+                               [[0, 0, 0],
+                                [0, 0, 0],
+                                [0, 0, 0],
+                                [7, 0, 0],
+                                [9, 8, 0]]]))
+  tests[(-2, -1)] = (np.array([[[4, 8, 7],
+                                [7, 8, 4]],
+                               [[1, 5, 9],
+                                [4, 8, 7]]]),
+                     np.array([[[0, 0, 0],
+                                [4, 0, 0],
+                                [7, 8, 0],
+                                [0, 8, 7],
+                                [0, 0, 4]],
+                               [[0, 0, 0],
+                                [1, 0, 0],
+                                [4, 5, 0],
+                                [0, 8, 9],
+                                [0, 0, 7]]]))
+  tests[(-2, 1)] = (np.array([[[2, 6, 0],
+                               [1, 5, 9],
+                               [4, 8, 7],
+                               [7, 8, 4]],
+                              [[2, 3, 0],
+                               [3, 2, 6],
+                               [1, 5, 9],
+                               [4, 8, 7]]]),
+                    np.array([[[1, 2, 0],
+                               [4, 5, 6],
+                               [7, 8, 9],
+                               [0, 8, 7],
+                               [0, 0, 4]],
+                              [[3, 2, 0],
+                               [1, 2, 3],
+                               [4, 5, 6],
+                               [0, 8, 9],
+                               [0, 0, 7]]]))
+  tests[(1, 2)] = (np.array([[[3, 0],
+                              [2, 6]],
+                             [[1, 0],
+                              [2, 3]]]),
+                   np.array([[[0, 2, 3],
+                              [0, 0, 6],
+                              [0, 0, 0],
+                              [0, 0, 0],
+                              [0, 0, 0]],
+                             [[0, 2, 1],
+                              [0, 0, 3],
+                              [0, 0, 0],
+                              [0, 0, 0],
+                              [0, 0, 0]]]))
+  # pyformat: enable
+  return (mat, tests)
+
+
+def fat_cases():
+  # pyformat: disable
+  mat = np.array([[[1, 2, 3, 4],
+                   [5, 6, 7, 8],
+                   [9, 1, 2, 3]],
+                  [[4, 5, 6, 7],
+                   [8, 9, 1, 2],
+                   [3, 4, 5, 6]]])
+  tests = dict()
+  tests[(2, 2)] = (np.array([[3, 8],
+                             [6, 2]]),
+                   np.array([[[0, 0, 3, 0],
+                              [0, 0, 0, 8],
+                              [0, 0, 0, 0]],
+                             [[0, 0, 6, 0],
+                              [0, 0, 0, 2],
+                              [0, 0, 0, 0]]]))
+  tests[(-2, 0)] = (np.array([[[1, 6, 2],
+                               [5, 1, 0],
+                               [9, 0, 0]],
+                              [[4, 9, 5],
+                               [8, 4, 0],
+                               [3, 0, 0]]]),
+                    np.array([[[1, 0, 0, 0],
+                               [5, 6, 0, 0],
+                               [9, 1, 2, 0]],
+                              [[4, 0, 0, 0],
+                               [8, 9, 0, 0],
+                               [3, 4, 5, 0]]]))
+  tests[(-1, 1)] = (np.array([[[2, 7, 3],
+                               [1, 6, 2],
+                               [5, 1, 0]],
+                              [[5, 1, 6],
+                               [4, 9, 5],
+                               [8, 4, 0]]]),
+                    np.array([[[1, 2, 0, 0],
+                               [5, 6, 7, 0],
+                               [0, 1, 2, 3]],
+                              [[4, 5, 0, 0],
+                               [8, 9, 1, 0],
+                               [0, 4, 5, 6]]]))
+  tests[(0, 3)] = (np.array([[[4, 0, 0],
+                              [3, 8, 0],
+                              [2, 7, 3],
+                              [1, 6, 2]],
+                             [[7, 0, 0],
+                              [6, 2, 0],
+                              [5, 1, 6],
+                              [4, 9, 5]]]),
+                   np.array([[[1, 2, 3, 4],
+                              [0, 6, 7, 8],
+                              [0, 0, 2, 3]],
+                             [[4, 5, 6, 7],
+                              [0, 9, 1, 2],
+                              [0, 0, 5, 6]]]))
+  # pyformat: enable
+  return (mat, tests)
+
+
 class MatrixDiagTest(test.TestCase):
+
+  def _moreCases(self):
+    # Diagonal bands.
+    # pyformat: disable
+    vecs = np.array([[[1, 2, 3, 4],  # Input shape: (2, 3, 4)
+                      [5, 6, 7, 8],
+                      [9, 8, 7, 6]],
+                     [[5, 4, 3, 2],
+                      [1, 2, 3, 4],
+                      [5, 6, 7, 8]]])
+    tests = dict()
+    tests[(-3, -1)] = (vecs,
+                       np.array([[[0, 0, 0, 0, 0],
+                                  [1, 0, 0, 0, 0],
+                                  [5, 2, 0, 0, 0],
+                                  [9, 6, 3, 0, 0],
+                                  [0, 8, 7, 4, 0]],
+                                 [[0, 0, 0, 0, 0],
+                                  [5, 0, 0, 0, 0],
+                                  [1, 4, 0, 0, 0],
+                                  [5, 2, 3, 0, 0],
+                                  [0, 6, 3, 2, 0]]]))
+    tests[(-1, 1)] = (vecs,
+                      np.array([[[5, 1, 0, 0],
+                                 [9, 6, 2, 0],
+                                 [0, 8, 7, 3],
+                                 [0, 0, 7, 8]],
+                                [[1, 5, 0, 0],
+                                 [5, 2, 4, 0],
+                                 [0, 6, 3, 3],
+                                 [0, 0, 7, 4]]]))
+    tests[(2, 4)] = (vecs,
+                     np.array([[[0, 0, 9, 5, 1, 0],
+                                [0, 0, 0, 8, 6, 2],
+                                [0, 0, 0, 0, 7, 7],
+                                [0, 0, 0, 0, 0, 6],
+                                [0, 0, 0, 0, 0, 0],
+                                [0, 0, 0, 0, 0, 0]],
+                               [[0, 0, 5, 1, 5, 0],
+                                [0, 0, 0, 6, 2, 4],
+                                [0, 0, 0, 0, 7, 3],
+                                [0, 0, 0, 0, 0, 8],
+                                [0, 0, 0, 0, 0, 0],
+                                [0, 0, 0, 0, 0, 0]]]))
+    # pyformat: enable
+    return (None, tests)
 
   @test_util.run_deprecated_v1
   def testVector(self):
@@ -40,6 +313,24 @@ class MatrixDiagTest(test.TestCase):
       v_diag = array_ops.matrix_diag(v)
       self.assertEqual((3, 3), v_diag.get_shape())
       self.assertAllEqual(v_diag.eval(), mat)
+
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 8, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
+        # {Sub,Super}diagonals.
+        for offset in [1, -2, 5]:
+          mat = np.diag(v, offset)
+          v_diag = array_ops.matrix_diag(v, k=offset)
+          self.assertEqual(mat.shape, v_diag.get_shape())
+          self.assertAllEqual(v_diag.eval(), mat)
+
+        # Diagonal bands.
+        for _, tests in [self._moreCases(), square_cases()]:
+          for diags, (vecs, solution) in tests.items():
+            v_diags = array_ops.matrix_diag(vecs[0], k=diags)
+            self.assertEqual(v_diags.get_shape(), solution[0].shape)
+            self.assertAllEqual(v_diags.eval(), solution[0])
 
   def _testBatchVector(self, dtype):
     with self.cached_session(use_gpu=True):
@@ -51,6 +342,31 @@ class MatrixDiagTest(test.TestCase):
       self.assertEqual((2, 3, 3), v_batch_diag.get_shape())
       self.assertAllEqual(v_batch_diag.eval(), mat_batch)
 
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 8, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
+        # {Sub,Super}diagonals.
+        for offset in [1, -2, 5]:
+          v_batch_diag = array_ops.matrix_diag(v_batch, k=offset)
+          mats = [
+              np.diag(v_batch[i], offset) for i in range(0, v_batch.shape[0])
+          ]
+          mat_batch = np.stack(mats, axis=0)
+          self.assertEqual(mat_batch.shape, v_batch_diag.get_shape())
+          self.assertAllEqual(v_batch_diag.eval(), mat_batch)
+
+        # Diagonal bands with padding_value.
+        for padding_value in [0, 555, -11]:
+          for _, tests in [self._moreCases(), square_cases()]:
+            for diags, (vecs, solution) in tests.items():
+              v_diags = array_ops.matrix_diag(
+                  vecs.astype(dtype), k=diags, padding_value=padding_value)
+              mask = solution == 0
+              solution = (solution + padding_value * mask).astype(dtype)
+              self.assertEqual(v_diags.get_shape(), solution.shape)
+              self.assertAllEqual(v_diags.eval(), solution)
+
   @test_util.run_deprecated_v1
   def testBatchVector(self):
     self._testBatchVector(np.float32)
@@ -58,6 +374,94 @@ class MatrixDiagTest(test.TestCase):
     self._testBatchVector(np.int32)
     self._testBatchVector(np.int64)
     self._testBatchVector(np.bool)
+
+  @test_util.run_deprecated_v1
+  def testRectangularBatch(self):
+    # LINT.IfChange
+    if compat.forward_compatible(2019, 8, 31):
+    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
+      with self.cached_session(use_gpu=True):
+        # Stores expected num_rows and num_cols (when the other is given).
+        # expected[(d_lower, d_upper)] = (expected_num_rows, expected_num_cols)
+        test_list = list()
+
+        # Square cases:
+        expected = {
+            (-1, -1): (5, 4),
+            (-4, -3): (5, 2),
+            (-2, 1): (5, 5),
+            (2, 4): (3, 5),
+        }
+        test_list.append((expected, square_cases()))
+
+        # More cases:
+        expected = {(-3, -1): (5, 4), (-1, 1): (4, 4), (2, 4): (4, 6)}
+        test_list.append((expected, self._moreCases()))
+
+        # Tall cases
+        expected = {
+            (0, 0): (3, 3),
+            (-4, -3): (5, 2),
+            (-2, -1): (4, 3),
+            (-2, 1): (3, 3),
+            (1, 2): (2, 3)
+        }
+        test_list.append((expected, tall_cases()))
+
+        # Fat cases
+        expected = {
+            (2, 2): (2, 4),
+            (-2, 0): (3, 3),
+            (-1, 1): (3, 3),
+            (0, 3): (3, 3)
+        }
+        test_list.append((expected, fat_cases()))
+
+        for padding_value in [0, 555, -11]:
+          # Giving both num_rows and num_cols
+          for _, tests in [tall_cases(), fat_cases()]:
+            for diags, (vecs, solution) in tests.items():
+              v_diags = array_ops.matrix_diag(
+                  vecs,
+                  k=diags,
+                  num_rows=solution.shape[-2],
+                  num_cols=solution.shape[-1],
+                  padding_value=padding_value)
+              mask = solution == 0
+              solution = solution + padding_value * mask
+              self.assertEqual(v_diags.get_shape(), solution.shape)
+              self.assertAllEqual(v_diags.eval(), solution)
+
+          # Giving just num_rows.
+          for expected, (_, tests) in test_list:
+            for diags, (_, new_num_cols) in expected.items():
+              vecs, solution = tests[diags]
+              solution = solution.take(indices=range(new_num_cols), axis=-1)
+              v_diags = array_ops.matrix_diag(
+                  vecs,
+                  k=diags,
+                  num_rows=solution.shape[-2],
+                  padding_value=padding_value)
+              mask = solution == 0
+              solution = solution + padding_value * mask
+              self.assertEqual(v_diags.get_shape(), solution.shape)
+              self.assertAllEqual(v_diags.eval(), solution)
+
+          # Giving just num_cols.
+          for expected, (_, tests) in test_list:
+            for diags, (new_num_rows, _) in expected.items():
+              vecs, solution = tests[diags]
+              solution = solution.take(indices=range(new_num_rows), axis=-2)
+              v_diags = array_ops.matrix_diag(
+                  vecs,
+                  k=diags,
+                  num_cols=solution.shape[-1],
+                  padding_value=padding_value)
+              mask = solution == 0
+              solution = solution + padding_value * mask
+              self.assertEqual(v_diags.get_shape(), solution.shape)
+              self.assertAllEqual(v_diags.eval(), solution)
 
   @test_util.run_deprecated_v1
   def testInvalidShape(self):
@@ -69,7 +473,7 @@ class MatrixDiagTest(test.TestCase):
   def testInvalidShapeAtEval(self):
     with self.session(use_gpu=True):
       v = array_ops.placeholder(dtype=dtypes_lib.float32)
-      with self.assertRaisesOpError("input must be at least 1-dim"):
+      with self.assertRaisesOpError("diagonal must be at least 1-dim"):
         array_ops.matrix_diag(v).eval(feed_dict={v: 0.0})
 
   @test_util.run_deprecated_v1
@@ -85,6 +489,24 @@ class MatrixDiagTest(test.TestCase):
                                                         y.get_shape().as_list())
         self.assertLess(error, 1e-4)
 
+    # LINT.IfChange
+    if compat.forward_compatible(2019, 8, 31):
+    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
+      # {Sub,super}diagonals/band.
+      tests = dict()  # tests[shape] = (d_lower, d_upper)
+      tests[(3,)] = (-1, -1)
+      tests[(7, 3, 4)] = (-1, 1)
+      with self.session(use_gpu=True):
+        for shape, diags in tests.items():
+          x = constant_op.constant(np.random.rand(*shape), np.float32)
+          y = array_ops.matrix_diag(x, k=diags)
+          error = gradient_checker.compute_gradient_error(
+              x,
+              x.get_shape().as_list(), y,
+              y.get_shape().as_list())
+          self.assertLess(error, 1e-4)
+
 
 class MatrixSetDiagTest(test.TestCase):
 
@@ -98,6 +520,21 @@ class MatrixSetDiagTest(test.TestCase):
       output = array_ops.matrix_set_diag(mat, v)
       self.assertEqual((3, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag, self.evaluate(output))
+
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 8, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
+        # Diagonal bands.
+        _, tests = square_cases()
+        for diags, pair in tests.items():
+          vecs, banded_mat = pair
+          mask = banded_mat[0] == 0
+          input_mat = np.random.randint(10, size=mask.shape)
+          solution = input_mat * mask + banded_mat[0]
+          output = array_ops.matrix_set_diag(input_mat, vecs[0], k=diags)
+          self.assertEqual(output.get_shape(), solution.shape)
+          self.assertAllEqual(output.eval(), solution)
 
   @test_util.run_deprecated_v1
   def testRectangular(self):
@@ -116,6 +553,21 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertEqual((3, 2), output.get_shape())
       self.assertAllEqual(expected, self.evaluate(output))
 
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 8, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
+        # Diagonal bands.
+        for _, tests in [tall_cases(), fat_cases()]:
+          for diags, pair in tests.items():
+            vecs, banded_mat = pair
+            mask = banded_mat[0] == 0
+            input_mat = np.random.randint(10, size=mask.shape)
+            solution = input_mat * mask + banded_mat[0]
+            output = array_ops.matrix_set_diag(input_mat, vecs[0], k=diags)
+            self.assertEqual(output.get_shape(), solution.shape)
+            self.assertAllEqual(output.eval(), solution)
+
   def _testSquareBatch(self, dtype):
     with self.cached_session(use_gpu=True):
       v_batch = np.array([[-1.0, 0.0, -3.0], [-4.0, -5.0, -6.0]]).astype(dtype)
@@ -131,6 +583,22 @@ class MatrixSetDiagTest(test.TestCase):
       output = array_ops.matrix_set_diag(mat_batch, v_batch)
       self.assertEqual((2, 3, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag_batch, self.evaluate(output))
+
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 8, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
+        # Diagonal bands.
+        _, tests = square_cases()
+        for diags, pair in tests.items():
+          vecs, banded_mat = pair
+          mask = banded_mat == 0
+          input_mat = np.random.randint(10, size=mask.shape).astype(dtype)
+          solution = (input_mat * mask + banded_mat).astype(dtype)
+          output = array_ops.matrix_set_diag(
+              input_mat, vecs.astype(dtype), k=diags)
+          self.assertEqual(output.get_shape(), solution.shape)
+          self.assertAllEqual(output.eval(), solution)
 
   @test_util.run_deprecated_v1
   def testSquareBatch(self):
@@ -153,6 +621,21 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertEqual((2, 2, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag_batch, self.evaluate(output))
 
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 8, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
+        # Diagonal bands.
+        for _, tests in [tall_cases(), fat_cases()]:
+          for diags, pair in tests.items():
+            vecs, banded_mat = pair
+            mask = banded_mat == 0
+            input_mat = np.random.randint(10, size=mask.shape)
+            solution = input_mat * mask + banded_mat
+            output = array_ops.matrix_set_diag(input_mat, vecs, k=diags)
+            self.assertEqual(output.get_shape(), solution.shape)
+            self.assertAllEqual(output.eval(), solution)
+
   @test_util.run_deprecated_v1
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
@@ -160,37 +643,69 @@ class MatrixSetDiagTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
       array_ops.matrix_set_diag([[0]], 0)
 
+  # TODO(penporn): Un-skip the XLA test when XLA has MatrixSetDiagV2.
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("XLA op hasn't supported new features in V2, which"
+                         "change the shape requirements.")
   def testInvalidShapeAtEval(self):
     with self.session(use_gpu=True):
       v = array_ops.placeholder(dtype=dtypes_lib.float32)
       with self.assertRaisesOpError("input must be at least 2-dim"):
         array_ops.matrix_set_diag(v, [v]).eval(feed_dict={v: 0.0})
-      with self.assertRaisesOpError(
-          r"but received input shape: \[1,1\] and diagonal shape: \[\]"):
+      with self.assertRaisesOpError("diagonal must be at least 1-dim"):
         array_ops.matrix_set_diag([[v]], v).eval(feed_dict={v: 0.0})
+
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 8, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
+        d = array_ops.placeholder(dtype=dtypes_lib.float32)
+        with self.assertRaisesOpError(
+            "first dimensions of diagonal don't match"):
+          array_ops.matrix_set_diag(v, d).eval(feed_dict={
+              v: np.zeros((2, 3, 3)),
+              d: np.ones((2, 4))
+          })
+
+  def _testGrad(self, input_shape, diag_shape, diags):
+    with self.session(use_gpu=True):
+      x = constant_op.constant(
+          np.random.rand(*input_shape), dtype=dtypes_lib.float32)
+      x_diag = constant_op.constant(
+          np.random.rand(*diag_shape), dtype=dtypes_lib.float32)
+
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 8, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+        y = array_ops.matrix_set_diag(x, x_diag, k=diags)
+      else:
+        y = array_ops.matrix_set_diag(x, x_diag)
+      error_x = gradient_checker.compute_gradient_error(x,
+                                                        x.get_shape().as_list(),
+                                                        y,
+                                                        y.get_shape().as_list())
+      self.assertLess(error_x, 1e-4)
+      error_x_diag = gradient_checker.compute_gradient_error(
+          x_diag,
+          x_diag.get_shape().as_list(), y,
+          y.get_shape().as_list())
+      self.assertLess(error_x_diag, 1e-4)
 
   @test_util.run_deprecated_v1
   def testGrad(self):
-    shapes = ((3, 4, 4), (3, 3, 4), (3, 4, 3), (7, 4, 8, 8))
-    with self.session(use_gpu=True):
-      for shape in shapes:
-        x = constant_op.constant(
-            np.random.rand(*shape), dtype=dtypes_lib.float32)
-        diag_shape = shape[:-2] + (min(shape[-2:]),)
-        x_diag = constant_op.constant(
-            np.random.rand(*diag_shape), dtype=dtypes_lib.float32)
-        y = array_ops.matrix_set_diag(x, x_diag)
-        error_x = gradient_checker.compute_gradient_error(
-            x,
-            x.get_shape().as_list(), y,
-            y.get_shape().as_list())
-        self.assertLess(error_x, 1e-4)
-        error_x_diag = gradient_checker.compute_gradient_error(
-            x_diag,
-            x_diag.get_shape().as_list(), y,
-            y.get_shape().as_list())
-        self.assertLess(error_x_diag, 1e-4)
+    input_shapes = [(3, 4, 4), (3, 3, 4), (3, 4, 3), (7, 4, 8, 8)]
+    diag_bands = [(0, 0)]
+
+    # LINT.IfChange
+    if compat.forward_compatible(2019, 8, 31):
+    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+      diag_bands.append((-1, 1))
+    for input_shape, diags in itertools.product(input_shapes, diag_bands):
+      lower_diag_index, upper_diag_index = diags
+      num_diags = upper_diag_index - lower_diag_index + 1
+      num_diags_dim = () if num_diags == 1 else (num_diags,)
+      diag_shape = input_shape[:-2] + num_diags_dim + (min(input_shape[-2:]),)
+      self._testGrad(input_shape, diag_shape, diags)
 
   @test_util.run_deprecated_v1
   def testGradWithNoShapeInformation(self):
@@ -224,6 +739,23 @@ class MatrixDiagPartTest(test.TestCase):
       self.assertEqual((3,), mat_diag.get_shape())
       self.assertAllEqual(mat_diag.eval(), v)
 
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 8, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+        for offset in [-2, 3]:
+          mat = np.diag(v, offset)
+          mat_diag = array_ops.matrix_diag_part(mat, k=offset)
+          self.assertEqual((3,), mat_diag.get_shape())
+          self.assertAllEqual(mat_diag.eval(), v)
+
+        # Diagonal bands.
+        mat, tests = square_cases()
+        for diags, pair in tests.items():
+          solution, _ = pair
+          mat_diag = array_ops.matrix_diag_part(mat[0], k=diags)
+          self.assertEqual(mat_diag.get_shape(), solution[0].shape)
+          self.assertAllEqual(mat_diag.eval(), solution[0])
+
   @test_util.run_deprecated_v1
   def testRectangular(self):
     with self.session(use_gpu=True):
@@ -233,6 +765,18 @@ class MatrixDiagPartTest(test.TestCase):
       mat = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
       mat_diag = array_ops.matrix_diag_part(mat)
       self.assertAllEqual(mat_diag.eval(), np.array([1.0, 4.0]))
+
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 8, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
+        # Diagonal bands.
+        for mat, tests in [tall_cases(), fat_cases()]:
+          for diags, pair in tests.items():
+            solution, _ = pair
+            mat_diag = array_ops.matrix_diag_part(mat[0], k=diags)
+            self.assertEqual(mat_diag.get_shape(), solution[0].shape)
+            self.assertAllEqual(mat_diag.eval(), solution[0])
 
   def _testSquareBatch(self, dtype):
     with self.cached_session(use_gpu=True):
@@ -244,6 +788,22 @@ class MatrixDiagPartTest(test.TestCase):
       mat_batch_diag = array_ops.matrix_diag_part(mat_batch)
       self.assertEqual((2, 3), mat_batch_diag.get_shape())
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
+
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 8, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
+        # Diagonal bands with padding_value.
+        mat, tests = square_cases()
+        for padding_value in [0, 555, -11]:
+          for diags, pair in tests.items():
+            solution, _ = pair
+            mat_batch_diag = array_ops.matrix_diag_part(
+                mat.astype(dtype), k=diags, padding_value=padding_value)
+            mask = solution == 0
+            solution = (solution + padding_value * mask).astype(dtype)
+            self.assertEqual(mat_batch_diag.get_shape(), solution.shape)
+            self.assertAllEqual(mat_batch_diag.eval(), solution)
 
   @test_util.run_deprecated_v1
   def testSquareBatch(self):
@@ -263,6 +823,22 @@ class MatrixDiagPartTest(test.TestCase):
       mat_batch_diag = array_ops.matrix_diag_part(mat_batch)
       self.assertEqual((2, 2), mat_batch_diag.get_shape())
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
+
+      # LINT.IfChange
+      if compat.forward_compatible(2019, 8, 31):
+      # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
+
+        # Diagonal bands with padding_value.
+        for padding_value in [0, 555, -11]:
+          for mat, tests in [tall_cases(), fat_cases()]:
+            for diags, pair in tests.items():
+              solution, _ = pair
+              mat_batch_diag = array_ops.matrix_diag_part(
+                  mat, k=diags, padding_value=padding_value)
+              mask = solution == 0
+              solution = solution + padding_value * mask
+              self.assertEqual(mat_batch_diag.get_shape(), solution.shape)
+              self.assertAllEqual(mat_batch_diag.eval(), solution)
 
   @test_util.run_deprecated_v1
   def testInvalidShape(self):

@@ -17,7 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import ctypes
 import io
+import sys
 import numpy as np
 import six
 
@@ -158,7 +160,7 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
         model_path=resource_loader.get_path_to_datafile(
             'testdata/permute_float.tflite'))
     interpreter.allocate_tensors()
-    #Invalid tensor index passed.
+    # Invalid tensor index passed.
     with self.assertRaisesRegexp(ValueError, 'Tensor with no shape found.'):
       interpreter._get_tensor_details(4)
 
@@ -218,6 +220,154 @@ class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):
     in0safe = self.interpreter.tensor(self.input0)
     _ = self.interpreter.allocate_tensors()
     del in0safe  # make sure in0Safe is held but lint doesn't complain
+
+
+class InterpreterDelegateTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    self._delegate_file = resource_loader.get_path_to_datafile(
+        'testdata/test_delegate.so')
+    self._model_file = resource_loader.get_path_to_datafile(
+        'testdata/permute_float.tflite')
+
+    # Load the library to reset the counters.
+    library = ctypes.pydll.LoadLibrary(self._delegate_file)
+    library.initialize_counters()
+
+  def _TestInterpreter(self, model_path, options=None):
+    """Test wrapper function that creates an interpreter with the delegate."""
+    # TODO(b/137299813): Enable when we fix for mac
+    if sys.platform == 'darwin': return
+    delegate = interpreter_wrapper.load_delegate(self._delegate_file, options)
+    return interpreter_wrapper.Interpreter(
+        model_path=model_path, experimental_delegates=[delegate])
+
+  def testDelegate(self):
+    """Tests the delegate creation and destruction."""
+    # TODO(b/137299813): Enable when we fix for mac
+    if sys.platform == 'darwin': return
+
+    interpreter = self._TestInterpreter(model_path=self._model_file)
+    lib = interpreter._delegates[0]._library
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 0)
+    self.assertEqual(lib.get_num_delegates_invoked(), 1)
+
+    del interpreter
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 1)
+    self.assertEqual(lib.get_num_delegates_invoked(), 1)
+
+  def testMultipleInterpreters(self):
+    # TODO(b/137299813): Enable when we fix for mac
+    if sys.platform == 'darwin': return
+
+    delegate = interpreter_wrapper.load_delegate(self._delegate_file)
+    lib = delegate._library
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 0)
+    self.assertEqual(lib.get_num_delegates_invoked(), 0)
+
+    interpreter_a = interpreter_wrapper.Interpreter(
+        model_path=self._model_file, experimental_delegates=[delegate])
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 0)
+    self.assertEqual(lib.get_num_delegates_invoked(), 1)
+
+    interpreter_b = interpreter_wrapper.Interpreter(
+        model_path=self._model_file, experimental_delegates=[delegate])
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 0)
+    self.assertEqual(lib.get_num_delegates_invoked(), 2)
+
+    del delegate
+    del interpreter_a
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 0)
+    self.assertEqual(lib.get_num_delegates_invoked(), 2)
+
+    del interpreter_b
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 1)
+    self.assertEqual(lib.get_num_delegates_invoked(), 2)
+
+  def testDestructionOrder(self):
+    """Make sure internal _interpreter object is destroyed before delegate."""
+    # Track which order destructions were doned in
+    # TODO(b/137299813): Enable when we fix for mac
+    if sys.platform == 'darwin': return
+    destructions = []
+    def register_destruction(x):
+      destructions.append(x)
+      return 0
+    # Make a wrapper for the callback so we can send this to ctypes
+    delegate = interpreter_wrapper.load_delegate(self._delegate_file)
+    prototype = ctypes.CFUNCTYPE(ctypes.c_int, (ctypes.c_char_p))
+    destroy_callback = prototype(register_destruction)
+    delegate._library.set_destroy_callback(destroy_callback)
+    # Make an interpreter with the delegate
+    interpreter = interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'), experimental_delegates=[delegate])
+
+    class InterpreterDestroyCallback(object):
+
+      def __del__(self):
+        register_destruction('interpreter')
+
+    interpreter._interpreter.stuff = InterpreterDestroyCallback()
+    # Destroy both delegate and interpreter
+    del delegate
+    del interpreter
+    # check the interpreter was destroyed before the delegate
+    self.assertEqual(destructions, ['interpreter', 'test_delegate'])
+
+  def testOptions(self):
+    # TODO(b/137299813): Enable when we fix for mac
+    if sys.platform == 'darwin': return
+    delegate_a = interpreter_wrapper.load_delegate(self._delegate_file)
+    lib = delegate_a._library
+
+    self.assertEqual(lib.get_num_delegates_created(), 1)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 0)
+    self.assertEqual(lib.get_num_delegates_invoked(), 0)
+    self.assertEqual(lib.get_options_counter(), 0)
+
+    delegate_b = interpreter_wrapper.load_delegate(
+        self._delegate_file, options={
+            'unused': False,
+            'options_counter': 2
+        })
+    lib = delegate_b._library
+
+    self.assertEqual(lib.get_num_delegates_created(), 2)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 0)
+    self.assertEqual(lib.get_num_delegates_invoked(), 0)
+    self.assertEqual(lib.get_options_counter(), 2)
+
+    del delegate_a
+    del delegate_b
+
+    self.assertEqual(lib.get_num_delegates_created(), 2)
+    self.assertEqual(lib.get_num_delegates_destroyed(), 2)
+    self.assertEqual(lib.get_num_delegates_invoked(), 0)
+    self.assertEqual(lib.get_options_counter(), 2)
+
+  def testFail(self):
+    # TODO(b/137299813): Enable when we fix for mac
+    if sys.platform == 'darwin': return
+    with self.assertRaisesRegexp(
+        ValueError, 'Failed to load delegate from .*\nFail argument sent.'):
+      interpreter_wrapper.load_delegate(
+          self._delegate_file, options={'fail': 'fail'})
+
 
 if __name__ == '__main__':
   test.main()

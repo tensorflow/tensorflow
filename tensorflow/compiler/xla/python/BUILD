@@ -1,12 +1,12 @@
+load("//tensorflow/core/platform:default/build_config.bzl", "pyx_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps", "xla_python_default_plugins")
+load("//tensorflow:tensorflow.bzl", "tf_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_python_default_plugins")
-load("//tensorflow:tensorflow.bzl", "tf_pybind_extension")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 py_library(
     name = "xla_client",
@@ -29,15 +29,14 @@ py_test(
     name = "xla_client_test",
     srcs = ["xla_client_test.py"],
     main = "xla_client_test.py",
-    python_version = "PY2",
     srcs_version = "PY2AND3",
-    tags = ["no_oss"],
+    tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
     deps = [
         ":custom_call_for_test",
         ":xla_client",
-        "//tensorflow/compiler/xla:xla_data_proto_py",
-        "//tensorflow/python:platform_test",
-    ],
+        ":xla_extension",
+        "@absl_py//absl/testing:absltest",
+    ] + xla_py_test_deps(),
 )
 
 cc_library(
@@ -69,7 +68,6 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
@@ -105,10 +103,48 @@ cc_library(
 )
 
 cc_library(
+    name = "event_pool",
+    srcs = ["event_pool.cc"],
+    hdrs = ["event_pool.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:stream_executor",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "semaphore",
+    srcs = ["semaphore.cc"],
+    hdrs = ["semaphore.h"],
+    deps = [
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "semaphore_test",
+    srcs = ["semaphore_test.cc"],
+    deps = [
+        ":semaphore",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "shared_device_buffer",
     srcs = ["shared_device_buffer.cc"],
     hdrs = ["shared_device_buffer.h"],
     deps = [
+        ":event_pool",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
@@ -133,19 +169,29 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "device",
+    srcs = ["device.cc"],
+    hdrs = ["device.h"],
+    deps = [
+        ":event_pool",
+        ":semaphore",
+        ":worker_thread",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
     name = "local_client",
     srcs = ["local_client.cc"],
     hdrs = ["local_client.h"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-        "-Wno-c++98-c++11-compat",
-    ],
-    features = ["-use_header_modules"],
     deps = [
+        ":device",
         ":shared_device_buffer",
-        ":types",
-        ":worker_thread",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -159,9 +205,9 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/core:allocator",
         "//tensorflow/core:bfc_allocator",
         "//tensorflow/core:gpu_mem_allocator",
         "//tensorflow/core:lib",
@@ -171,6 +217,23 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "python_ref_manager",
+    srcs = ["python_ref_manager.cc"],
+    hdrs = ["python_ref_manager.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+        "-Wno-c++98-c++11-compat",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
@@ -191,11 +254,13 @@ tf_pybind_extension(
     deps = [
         ":local_client",
         ":shared_device_buffer",
+        ":python_ref_manager",
         ":types",
-        ":worker_thread",
         ":xrt",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
@@ -218,7 +283,9 @@ tf_pybind_extension(
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
         "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service:platform_util",

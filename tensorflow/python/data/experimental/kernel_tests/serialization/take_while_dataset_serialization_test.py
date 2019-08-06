@@ -33,10 +33,9 @@ class TakeWhileDatasetSerializationTest(
     return dataset_ops.Dataset.range(num_elements).apply(
         take_while_ops.take_while(lambda x: x < upper_bound))
 
-  @parameterized.parameters((23, 10, 7), (10, 50, 0), (25, 30, 25))
-  def testCore(self, num_elem1, num_elem2, upper_bound):
-    self.run_core_tests(lambda: self._build_dataset(num_elem1, upper_bound),
-                        lambda: self._build_dataset(num_elem2, upper_bound),
+  @parameterized.parameters((23, 7), (10, 0), (25, 25))
+  def testCore(self, num_elem, upper_bound):
+    self.run_core_tests(lambda: self._build_dataset(num_elem, upper_bound),
                         upper_bound)
 
 

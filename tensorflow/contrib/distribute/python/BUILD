@@ -1,7 +1,7 @@
 # Implementation of a prototype TF distributed computation library.
 
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
-load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
+load("//tensorflow/core/platform:default/distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -147,8 +147,11 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "no_oss",
         "nomsan",  # TODO(b/130299192)
+        "notap",  # TODO(b/130432997)
     ],
 )
 

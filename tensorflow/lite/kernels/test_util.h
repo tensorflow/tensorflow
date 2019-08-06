@@ -117,10 +117,11 @@ struct TensorData {
 
 class SingleOpResolver : public OpResolver {
  public:
-  SingleOpResolver(const BuiltinOperator op, TfLiteRegistration* registration)
+  SingleOpResolver(const BuiltinOperator op, TfLiteRegistration* registration,
+                   int version = 1)
       : op_(op), registration_(*registration) {
     registration_.builtin_code = static_cast<int32_t>(op);
-    registration_.version = 1;
+    registration_.version = version;
   }
   const TfLiteRegistration* FindOp(BuiltinOperator op,
                                    int version) const override {
@@ -150,6 +151,8 @@ class SingleOpModel {
     apply_delegate_fn_ = apply_delegate_fn;
   }
 
+  void ApplyDelegate();
+
   // Copying or assignment is disallowed to simplify ownership semantics.
   SingleOpModel(const SingleOpModel&) = delete;
   SingleOpModel& operator=(const SingleOpModel&) = delete;
@@ -162,11 +165,15 @@ class SingleOpModel {
 
   // Templated version of AddConstInput().
   template <typename T>
-  int AddConstInput(TensorType type, std::initializer_list<T> data,
-                    std::initializer_list<int> shape) {
-    int id = AddTensor(TensorData{type, shape}, data);
+  int AddConstInput(const TensorData& t, std::initializer_list<T> data) {
+    int id = AddTensor(t, data);
     inputs_.push_back(id);
     return id;
+  }
+  template <typename T>
+  int AddConstInput(TensorType type, std::initializer_list<T> data,
+                    std::initializer_list<int> shape) {
+    return AddConstInput(TensorData{type, shape}, data);
   }
 
   // Add a null input tensor (optional input) and return kOptionalTensor.
@@ -250,9 +257,22 @@ class SingleOpModel {
   // Build the interpreter for this model. Also, resize and allocate all
   // tensors given the shapes of the inputs.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                        bool allow_fp32_relax_to_fp16 = false);
+                        int num_threads, bool allow_fp32_relax_to_fp16,
+                        bool apply_delegate = true);
 
+  void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                        int num_threads);
+
+  void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                        bool allow_fp32_relax_to_fp16, bool apply_delegate);
+
+  void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
+
+  // Executes inference, asserting success.
   void Invoke();
+
+  // Executes inference *without* asserting success.
+  TfLiteStatus InvokeUnchecked();
 
   void PopulateStringTensor(int index, const std::vector<string>& content) {
     auto tensor = interpreter_->tensor(index);
@@ -272,9 +292,11 @@ class SingleOpModel {
       auto* t = interpreter_->tensor(index);
       CHECK(t) << "No tensor with index " << index << ".";
       CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      CHECK(v) << "Type mismatch for tensor with index " << index
-               << ". Requested " << typeToTfLiteType<T>() << ", got "
-               << t->type;
+      CHECK_EQ(t->type, typeToTfLiteType<T>())
+          << "Type mismatch for tensor with index " << index << ". Requested "
+          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
+          << TfLiteTypeGetName(t->type) << ".";
+      LOG(FATAL) << "Unknown tensor error.";
     }
     for (const T& f : data) {
       *v = f;
@@ -292,9 +314,11 @@ class SingleOpModel {
       auto* t = interpreter_->tensor(index);
       CHECK(t) << "No tensor with index " << index << ".";
       CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      CHECK(v) << "Type mismatch for tensor with index " << index
-               << ". Requested " << typeToTfLiteType<T>() << ", got "
-               << t->type;
+      CHECK_EQ(t->type, typeToTfLiteType<T>())
+          << "Type mismatch for tensor with index " << index << ". Requested "
+          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
+          << TfLiteTypeGetName(t->type) << ".";
+      LOG(FATAL) << "Unknown tensor error.";
     }
     for (const T& f : data) {
       *v = f;
@@ -311,8 +335,8 @@ class SingleOpModel {
 
   // Return a vector with the flattened contents of a tensor.
   template <typename T>
-  std::vector<T> ExtractVector(int index) {
-    T* v = interpreter_->typed_tensor<T>(index);
+  std::vector<T> ExtractVector(int index) const {
+    const T* v = interpreter_->typed_tensor<T>(index);
     CHECK(v);
     return std::vector<T>(v, v + GetTensorSize(index));
   }
@@ -337,6 +361,7 @@ class SingleOpModel {
 
   // Enables NNAPI delegate application during interpreter creation.
   static void SetForceUseNnapi(bool use_nnapi);
+  static bool GetForceUseNnapi();
 
  protected:
   int32_t GetTensorSize(int index) const;
@@ -573,14 +598,16 @@ TensorType GetTensorType() {
   if (std::is_same<T, float>::value) return TensorType_FLOAT32;
   if (std::is_same<T, TfLiteFloat16>::value) return TensorType_FLOAT16;
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
+  if (std::is_same<T, int64_t>::value) return TensorType_INT64;
   if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
+  if (std::is_same<T, int8_t>::value) return TensorType_INT8;
   if (std::is_same<T, string>::value) return TensorType_STRING;
   return TensorType_MIN;  // default value
 }
 
 // Strings have a special implementation that is in test_util.cc
 template <>
-std::vector<string> SingleOpModel::ExtractVector(int index);
+std::vector<string> SingleOpModel::ExtractVector(int index) const;
 
 // The TypeUnion struct specializations hold a collection of related types.
 // Each struct holds: 1. a primitive type (e.g. float), 2. a TensorType (e.g.

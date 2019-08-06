@@ -170,6 +170,10 @@ message LayoutProto {
   // TODO(b/119839262): implement in each backend or add Unimplemented error.
   int64 element_size_in_bits = 7;
 
+  // Memory space where this array resides. The integer field is interpreted in
+  // a backend-specific manner.
+  int64 memory_space = 8;
+
   // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
   // LayoutUtil::Hash appropriately to account for the new field.
 }
@@ -290,6 +294,10 @@ message ExecutionProfile {
 
   // The size of the binary code in the executable.
   int64 executable_size_in_bytes = 6;
+
+  // Whether this profile was drawn from a cache of profiles instead of from
+  // execution on the hardware.
+  bool profile_cache_hit = 7;
 }
 
 // Handle given to a user that represents an execution that the user launched

@@ -89,6 +89,9 @@ def main(argv):
       tpu=FLAGS.tpu)
   strategy = tf.contrib.distribute.TPUStrategy(cluster_resolver)
 
+  # TODO(rxsang): This doesn't work on cloud for some reason
+  strategy.extended.experimental_enable_get_next_as_optional = False
+
   with strategy.scope():
     train_ds, test_ds = mnist_datasets()
     train_ds = train_ds.shuffle(NUM_TRAIN_IMAGES).batch(FLAGS.batch_size)
@@ -126,13 +129,15 @@ def main(argv):
       with tf.control_dependencies([update_loss, update_accuracy]):
         return tf.identity(loss)
 
-    train_iterator = strategy.make_dataset_iterator(train_ds)
-    test_iterator = strategy.make_dataset_iterator(test_ds)
+    train_iterator = strategy.experimental_distribute_dataset(
+        train_ds).make_initializable_iterator()
+    test_iterator = strategy.experimental_distribute_dataset(
+        test_ds).make_initializable_iterator()
 
-    dist_train = strategy.unwrap(
-        strategy.experimental_run(train_step, train_iterator))
-    dist_test = strategy.unwrap(
-        strategy.experimental_run(test_step, test_iterator))
+    dist_train = strategy.experimental_local_results(
+        strategy.experimental_run_v2(train_step, args=(next(train_iterator),)))
+    dist_test = strategy.experimental_local_results(
+        strategy.experimental_run_v2(test_step, args=(next(test_iterator),)))
 
     training_loss_result = training_loss.result()
     training_accuracy_result = training_accuracy.result()
@@ -151,7 +156,12 @@ def main(argv):
         test_loss.variables +
         test_accuracy.variables)
 
-    with tf.Session(cluster_resolver.master()) as session:
+    config = tf.ConfigProto()
+    cluster_spec = cluster_resolver.cluster_spec()
+    if cluster_spec:
+      config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+
+    with tf.Session(cluster_resolver.master(), config=config) as session:
       session.run([v.initializer for v in all_variables])
 
       for epoch in range(0, FLAGS.num_epochs):

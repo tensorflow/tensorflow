@@ -78,10 +78,26 @@ download_and_extract() {
   local tempdir=$(mktemp -d)
   local tempdir2=$(mktemp -d)
   local tempfile=${tempdir}/temp_file
+  local curl_retries=3
 
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
-  curl -Ls "${url}" > ${tempfile}
+  # We've been seeing occasional 56 errors from valid URLs, so set up a retry
+  # loop to attempt to recover from them.
+  for (( i=1; i<=$curl_retries; ++i ))
+  do  
+    CURL_RESULT=$(curl -Ls --retry 5 "${url}" > ${tempfile} || true)
+    if [[ $CURL_RESULT -eq 0 ]]
+    then
+      break
+    fi
+    if [[ ( $CURL_RESULT -ne 56 ) || ( $i -eq $curl_retries ) ]]
+    then
+      echo "Error $CURL_RESULT downloading '${url}'"
+      exit 1
+    fi
+    sleep 2
+  done
 
   # Check that the file was downloaded correctly using a checksum.
   DOWNLOADED_MD5=$(openssl dgst -md5 ${tempfile} | sed 's/.* //g')

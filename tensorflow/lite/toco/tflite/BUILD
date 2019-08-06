@@ -1,12 +1,12 @@
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
+
 package(
     # To suppress build cleaner error about inclusion of schema_generate.h.
     features = ["-layering_check"],
     licenses = ["notice"],  # Apache 2.0
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
 )
 
 cc_library(
@@ -89,6 +89,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":op_version",
         ":operator",
         ":types",
         "//tensorflow/lite:schema_fbs_version",
@@ -108,9 +109,11 @@ tf_cc_test(
     ],
     deps = [
         ":export",
+        ":operator",
         "//tensorflow/core:ops",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
     ],
 )
 

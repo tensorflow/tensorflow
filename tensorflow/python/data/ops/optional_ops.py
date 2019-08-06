@@ -21,10 +21,10 @@ import abc
 
 import six
 
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_dataset_ops
@@ -34,14 +34,16 @@ from tensorflow.python.util.tf_export import tf_export
 @tf_export("data.experimental.Optional")
 @six.add_metaclass(abc.ABCMeta)
 class Optional(composite_tensor.CompositeTensor):
-  """Wraps a nested structure of tensors that may/may not be present at runtime.
+  """Wraps a value that may/may not be present at runtime.
 
   An `Optional` can represent the result of an operation that may fail as a
   value, rather than raising an exception and halting execution. For example,
   `tf.data.experimental.get_next_as_optional` returns an `Optional` that either
   contains the next value from a `tf.compat.v1.data.Iterator` if one exists, or
-  a "none"
-  value that indicates the end of the sequence has been reached.
+  a "none" value that indicates the end of the sequence has been reached.
+
+  `Optional` can only be used by values that are convertible to `Tensor` or
+  `CompositeTensor`.
   """
 
   @abc.abstractmethod
@@ -58,7 +60,7 @@ class Optional(composite_tensor.CompositeTensor):
 
   @abc.abstractmethod
   def get_value(self, name=None):
-    """Returns a nested structure of values wrapped by this optional.
+    """Returns the value wrapped by this optional.
 
     If this optional does not have a value (i.e. `self.has_value()` evaluates
     to `False`), this operation will raise `tf.errors.InvalidArgumentError`
@@ -68,7 +70,7 @@ class Optional(composite_tensor.CompositeTensor):
       name: (Optional.) A name for the created operation.
 
     Returns:
-      A nested structure of `tf.Tensor` and/or `tf.SparseTensor` objects.
+      The wrapped value.
     """
     raise NotImplementedError("Optional.get_value()")
 
@@ -87,15 +89,16 @@ class Optional(composite_tensor.CompositeTensor):
     """Returns an `Optional` that wraps the given value.
 
     Args:
-      value: A nested structure of `tf.Tensor` and/or `tf.SparseTensor` objects.
+      value: A value to wrap. The value must be convertible to `Tensor` or
+        `CompositeTensor`.
 
     Returns:
       An `Optional` that wraps `value`.
     """
     with ops.name_scope("optional") as scope:
       with ops.name_scope("value"):
-        value_structure = type_spec.type_spec_from_value(value)
-        encoded_value = value_structure._to_tensor_list(value)  # pylint: disable=protected-access
+        value_structure = structure.type_spec_from_value(value)
+        encoded_value = structure.to_tensor_list(value_structure, value)
 
     return _OptionalImpl(
         gen_dataset_ops.optional_from_value(encoded_value, name=scope),
@@ -137,40 +140,28 @@ class _OptionalImpl(Optional):
     # in `Iterator.get_next()` and `StructuredFunctionWrapper`.
     with ops.name_scope(name, "OptionalGetValue",
                         [self._variant_tensor]) as scope:
-      # pylint: disable=protected-access
-      return self._value_structure._from_tensor_list(
+      return structure.from_tensor_list(
+          self._value_structure,
           gen_dataset_ops.optional_get_value(
               self._variant_tensor,
               name=scope,
-              output_types=self._value_structure._flat_types,
-              output_shapes=self._value_structure._flat_shapes))
+              output_types=structure.get_flat_tensor_types(
+                  self._value_structure),
+              output_shapes=structure.get_flat_tensor_shapes(
+                  self._value_structure)))
 
   @property
   def value_structure(self):
     return self._value_structure
 
-  def _to_components(self):
-    return [self._variant_tensor]
-
-  def _component_metadata(self):
-    return self._value_structure
-
-  @classmethod
-  def _from_components(cls, components, metadata):
-    return _OptionalImpl(components[0], metadata)
-
-  def _shape_invariant_to_components(self, shape=None):
-    del shape  # not used
-    return tensor_shape.TensorShape([])  # optional component is always a scalar
-
   @property
-  def _is_graph_tensor(self):
-    return hasattr(self._variant_tensor, "graph")
+  def _type_spec(self):
+    return OptionalSpec.from_value(self)
 
 
-# TODO(b/133606651) Rename this class to OptionalSpec
-@tf_export("data.experimental.OptionalStructure")
-class OptionalStructure(type_spec.TypeSpec):
+@tf_export(
+    "OptionalSpec", v1=["OptionalSpec", "data.experimental.OptionalStructure"])
+class OptionalSpec(type_spec.TypeSpec):
   """Represents an optional potentially containing a structured value."""
 
   __slots__ = ["_value_structure"]
@@ -198,7 +189,7 @@ class OptionalStructure(type_spec.TypeSpec):
 
   @staticmethod
   def from_value(value):
-    return OptionalStructure(value.value_structure)
+    return OptionalSpec(value.value_structure)
 
   def _to_legacy_output_types(self):
     return self
@@ -208,9 +199,3 @@ class OptionalStructure(type_spec.TypeSpec):
 
   def _to_legacy_output_classes(self):
     return self
-
-
-type_spec.register_type_spec_from_value_converter(Optional,
-                                                  OptionalStructure.from_value)
-type_spec.register_type_spec_from_value_converter(_OptionalImpl,
-                                                  OptionalStructure.from_value)

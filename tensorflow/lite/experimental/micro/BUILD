@@ -1,11 +1,11 @@
-package(
-    default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load(
     "//tensorflow/lite/experimental/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
@@ -13,6 +13,7 @@ cc_library(
     srcs = [
         "debug_log.cc",
         "debug_log_numbers.cc",
+        "micro_allocator.cc",
         "micro_error_reporter.cc",
         "micro_interpreter.cc",
         "micro_mutable_op_resolver.cc",
@@ -22,6 +23,7 @@ cc_library(
         "compatibility.h",
         "debug_log.h",
         "debug_log_numbers.h",
+        "micro_allocator.h",
         "micro_error_reporter.h",
         "micro_interpreter.h",
         "micro_mutable_op_resolver.h",

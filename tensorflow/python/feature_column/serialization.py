@@ -22,12 +22,11 @@ import six
 
 from tensorflow.python.feature_column import feature_column_v2 as fc_lib
 from tensorflow.python.feature_column import sequence_feature_column as sfc_lib
-from tensorflow.python.keras import utils
 from tensorflow.python.ops import init_ops
 
 
 _FEATURE_COLUMNS = [
-    fc_lib.BucketizedColumn, fc_lib.EmbeddingColumn,
+    fc_lib.BucketizedColumn, fc_lib.CrossedColumn, fc_lib.EmbeddingColumn,
     fc_lib.HashedCategoricalColumn, fc_lib.IdentityCategoricalColumn,
     fc_lib.IndicatorColumn, fc_lib.NumericColumn,
     fc_lib.SequenceCategoricalColumn, fc_lib.SequenceDenseColumn,
@@ -77,11 +76,14 @@ def serialize_feature_column(fc):
   Raises:
     ValueError if called with input that is not string or FeatureColumn.
   """
+  # Import here to avoid circular imports.
+  from tensorflow.python.keras.utils import generic_utils  # pylint: disable=g-import-not-at-top
+
   if isinstance(fc, six.string_types):
     return fc
   elif isinstance(fc, fc_lib.FeatureColumn):
-    return utils.serialize_keras_class_and_config(fc.__class__.__name__,
-                                                  fc._get_config())  # pylint: disable=protected-access
+    return generic_utils.serialize_keras_class_and_config(
+        fc.__class__.__name__, fc._get_config())  # pylint: disable=protected-access
   else:
     raise ValueError('Instance: {} is not a FeatureColumn'.format(fc))
 
@@ -111,6 +113,9 @@ def deserialize_feature_column(config,
   Returns:
     A FeatureColumn corresponding to the input `config`.
   """
+  # Import here to avoid circular imports.
+  from tensorflow.python.keras.utils import generic_utils  # pylint: disable=g-import-not-at-top
+
   if isinstance(config, six.string_types):
     return config
   # A dict from class_name to class for all FeatureColumns in this module.
@@ -120,11 +125,12 @@ def deserialize_feature_column(config,
   if columns_by_name is None:
     columns_by_name = {}
 
-  (cls, cls_config) = utils.class_and_config_for_serialized_keras_object(
-      config,
-      module_objects=module_feature_column_classes,
-      custom_objects=custom_objects,
-      printable_module_name='feature_column_v2')
+  (cls,
+   cls_config) = generic_utils.class_and_config_for_serialized_keras_object(
+       config,
+       module_objects=module_feature_column_classes,
+       custom_objects=custom_objects,
+       printable_module_name='feature_column_v2')
 
   if not issubclass(cls, fc_lib.FeatureColumn):
     raise ValueError(

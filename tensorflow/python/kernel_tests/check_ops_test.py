@@ -40,6 +40,9 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
+# pylint: disable=g-error-prone-assert-raises
+
+
 class AssertV2Asserts(test.TestCase):
 
   def test_passes_when_it_should(self):
@@ -307,6 +310,15 @@ First 2 elements of y:
     with ops.control_dependencies([check_ops.assert_equal(larry, curly)]):
       out = array_ops.identity(larry)
     self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_noop_when_both_identical(self):
+    larry = constant_op.constant([])
+    check_op = check_ops.assert_equal(larry, larry)
+    if context.executing_eagerly():
+      self.assertIs(check_op, None)
+    else:
+      self.assertEqual(check_op.type, "NoOp")
 
 
 class AssertNoneEqualTest(test.TestCase):
@@ -1463,10 +1475,10 @@ class AssertShapesTest(test.TestCase):
   def test_raise_static_shape_mismatch(self):
     x = array_ops.ones([3, 2], name="x")
     y = array_ops.ones([2, 3], name="y")
-    shapes = {
-        x: ("N", "Q"),
-        y: ("N", "D"),
-    }
+    shapes = [
+        (x, ("N", "Q")),
+        (y, ("N", "D")),
+    ]
     regex = (r"Specified by tensor .* dimension 0.  "
              r"Tensor .* dimension 0 must have size 3.  "
              r"Received size 2")
@@ -1476,10 +1488,10 @@ class AssertShapesTest(test.TestCase):
     with ops.Graph().as_default():
       x = array_ops.placeholder(dtypes.float32, [None, 2], name="x")
       y = array_ops.placeholder(dtypes.float32, [None, 3], name="y")
-      shapes = {
-          x: ("N", "Q"),
-          y: ("N", "D"),
-      }
+      shapes = [
+          (x, ("N", "Q")),
+          (y, ("N", "D")),
+      ]
       regex = (r"\[Specified by tensor x.* dimension 0\] "
                r"\[Tensor y.* dimension\] \[0\] \[must have size\] \[3\]")
       feed_dict = {x: np.ones([3, 2]), y: np.ones([2, 3])}
@@ -1489,10 +1501,10 @@ class AssertShapesTest(test.TestCase):
   def test_raise_static_shape_explicit_mismatch(self):
     x = array_ops.ones([3, 2], name="x")
     y = array_ops.ones([2, 3], name="y")
-    shapes = {
-        x: (3, "Q"),
-        y: (3, "D"),
-    }
+    shapes = [
+        (x, (3, "Q")),
+        (y, (3, "D")),
+    ]
     regex = (r"Specified explicitly.  "
              r"Tensor .* dimension 0 must have size 3.  "
              r"Received size 2")
@@ -1502,21 +1514,21 @@ class AssertShapesTest(test.TestCase):
   def test_rank_zero_rank_one_size_one_equivalence(self):
     rank_one_size_one = array_ops.ones([1], name="rank_one_size_one")
     rank_zero = array_ops.constant(5, name="rank_zero")
-    check_ops.assert_shapes({
-        rank_one_size_one: (),
-        rank_zero: (),
-    })
-    check_ops.assert_shapes({
-        rank_one_size_one: (1,),
-        rank_zero: (1,),
-    })
+    check_ops.assert_shapes([
+        (rank_one_size_one, ()),
+        (rank_zero, ()),
+    ])
+    check_ops.assert_shapes([
+        (rank_one_size_one, (1,)),
+        (rank_zero, (1,)),
+    ])
 
   @test_util.run_in_graph_and_eager_modes
   def test_raise_static_rank_1_size_not_1_mismatch_scalar(self):
     x = array_ops.constant([2, 2], name="x")
-    shapes = {
-        x: (),
-    }
+    shapes = [
+        (x, ()),
+    ]
     regex = (r"Specified explicitly.  "
              r"Tensor .* dimension 0 must have size 1.  "
              r"Received size 2")
@@ -1525,9 +1537,9 @@ class AssertShapesTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_raise_static_scalar_mismatch_rank_1_size_not_1(self):
     x = array_ops.constant(2, name="x")
-    shapes = {
-        x: (2,),
-    }
+    shapes = [
+        (x, (2,)),
+    ]
     regex = (r"Specified explicitly.  "
              r"Tensor .* dimension 0 must have size 2.  "
              r"Received size 1")
@@ -1537,7 +1549,7 @@ class AssertShapesTest(test.TestCase):
   def test_scalar_implies_size_one(self):
     scalar = array_ops.constant(5, name="rank_zero")
     x = array_ops.ones([2, 2], name="x")
-    shapes = {scalar: ("a",), x: ("a", 2)}
+    shapes = [(scalar, ("a",)), (x, ("a", 2))]
     regex = (r"Specified by tensor .* dimension 0.  "
              r"Tensor .* dimension 0 must have size 1.  "
              r"Received size 2")
@@ -1546,7 +1558,7 @@ class AssertShapesTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_raise_not_iterable(self):
     x = array_ops.constant([1, 2], name="x")
-    shapes = {x: 2}
+    shapes = [(x, 2)]
     regex = (r"Tensor .*.  "
              r"Specified shape must be an iterable.  "
              r"An iterable has the attribute `__iter__` or `__getitem__`.  "
@@ -1557,10 +1569,10 @@ class AssertShapesTest(test.TestCase):
     with ops.Graph().as_default():
       x = array_ops.placeholder(dtypes.float32, [None, 2], name="xa")
       y = array_ops.placeholder(dtypes.float32, [None, 3], name="y")
-      shapes = {
-          x: (3, "Q"),
-          y: (3, "D"),
-      }
+      shapes = [
+          (x, (3, "Q")),
+          (y, (3, "D")),
+      ]
       regex = (r"\[Specified explicitly\] "
                r"\[Tensor y.* dimension\] \[0\] \[must have size\] \[3\]")
       feed_dict = {x: np.ones([3, 2]), y: np.ones([2, 3])}
@@ -1569,7 +1581,7 @@ class AssertShapesTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_no_op_when_specified_as_unknown(self):
     x = array_ops.constant([1, 1], name="x")
-    assertion = check_ops.assert_shapes({x: None})
+    assertion = check_ops.assert_shapes([(x, None)])
     with ops.control_dependencies([assertion]):
       out = array_ops.identity(x)
     self.evaluate(out)
@@ -1606,6 +1618,8 @@ class AssertShapesTest(test.TestCase):
         rank_three_shapes, array_ops.constant(1), correct_rank=3, actual_rank=0)
 
   def test_raises_dynamic_incorrect_rank(self):
+    self.skipTest("b/134600611")
+
     x_value = 5
     rank_two_shapes = [(1, 1), (1, 3), ("a", "b"), (None, None)]
     with ops.Graph().as_default():
@@ -1614,7 +1628,7 @@ class AssertShapesTest(test.TestCase):
       for shape in rank_two_shapes:
         regex = r"Tensor .* must have rank\] \[2\]"
         self.raises_dynamic_error(
-            shapes={x: shape}, regex=regex, feed_dict={x: x_value})
+            shapes=[(x, shape)], regex=regex, feed_dict={x: x_value})
 
   @test_util.run_in_graph_and_eager_modes
   def test_correctly_matching(self):
@@ -1624,25 +1638,25 @@ class AssertShapesTest(test.TestCase):
     x = array_ops.ones([1, 2, 3], name="x")
     y = array_ops.ones([3, 1, 2], name="y")
     z = array_ops.ones([2, 3, 1], name="z")
-    assertion = check_ops.assert_shapes({
-        x: ("a", "b", "c"),
-        y: ("c", "a", "b"),
-        z: ("b", "c", "a"),
-        v: ("a", "b"),
-        w: ("c",),
-        u: "a"
-    })
+    assertion = check_ops.assert_shapes([
+        (x, ("a", "b", "c")),
+        (y, ("c", "a", "b")),
+        (z, ("b", "c", "a")),
+        (v, ("a", "b")),
+        (w, ("c",)),
+        (u, "a")
+    ])
     with ops.control_dependencies([assertion]):
       out = array_ops.identity(x)
     self.evaluate(out)
-    assertion = check_ops.assert_shapes({
-        x: (1, "b", "c"),
-        y: ("c", "a", 2),
-        z: ("b", 3, "a"),
-        v: ("a", 2),
-        w: (3,),
-        u: ()
-    })
+    assertion = check_ops.assert_shapes([
+        (x, (1, "b", "c")),
+        (y, ("c", "a", 2)),
+        (z, ("b", 3, "a")),
+        (v, ("a", 2)),
+        (w, (3,)),
+        (u, ())
+    ])
     with ops.control_dependencies([assertion]):
       out = array_ops.identity(x)
     self.evaluate(out)
@@ -1651,10 +1665,10 @@ class AssertShapesTest(test.TestCase):
   def test_variable_length_symbols(self):
     x = array_ops.ones([4, 1], name="x")
     y = array_ops.ones([4, 2], name="y")
-    assertion = check_ops.assert_shapes({
-        x: ("num_observations", "input_dim"),
-        y: ("num_observations", "output_dim"),
-    })
+    assertion = check_ops.assert_shapes([
+        (x, ("num_observations", "input_dim")),
+        (y, ("num_observations", "output_dim")),
+    ])
     with ops.control_dependencies([assertion]):
       out = array_ops.identity(x)
     self.evaluate(out)
@@ -1663,22 +1677,22 @@ class AssertShapesTest(test.TestCase):
   def test_raise_implicit_mismatch_using_iterable_alternatives(self):
     x = array_ops.ones([2, 2], name="x")
     y = array_ops.ones([1, 3], name="y")
-    styles = [{
-        x: ("A", "B"),
-        y: ("A", "C"),
-    }, {
-        x: "AB",
-        y: "AC"
-    }, {
-        x: ["A", "B"],
-        y: ["A", "C"],
-    }, {
-        x: np.array(["A", "B"]),
-        y: np.array(["A", "C"])
-    }, {
-        x: ("A", "B"),
-        y: "AC"
-    }]
+    styles = [[
+        (x, ("A", "B")),
+        (y, ("A", "C")),
+    ], [
+        (x, "AB"),
+        (y, "AC")
+    ], [
+        (x, ["A", "B"]),
+        (y, ["A", "C"]),
+    ], [
+        (x, np.array(["A", "B"])),
+        (y, np.array(["A", "C"]))
+    ], [
+        (x, ("A", "B")),
+        (y, "AC")
+    ]]
     for shapes in styles:
       self.raises_static_error(
           shapes=shapes,
@@ -1690,22 +1704,22 @@ class AssertShapesTest(test.TestCase):
   def test_raise_explicit_mismatch_using_iterable_alternatives(self):
     x = array_ops.ones([2, 2], name="x")
     y = array_ops.ones([1, 3], name="y")
-    styles = [{
-        x: (2, 2),
-        y: (2, 3),
-    }, {
-        x: "22",
-        y: "23"
-    }, {
-        x: [2, 2],
-        y: [2, 3],
-    }, {
-        x: np.array([2, 2]),
-        y: np.array([2, 3])
-    }, {
-        x: (2, 2),
-        y: "23"
-    }]
+    styles = [[
+        (x, (2, 2)),
+        (y, (2, 3)),
+    ], [
+        (x, "22"),
+        (y, "23")
+    ], [
+        (x, [2, 2]),
+        (y, [2, 3]),
+    ], [
+        (x, np.array([2, 2])),
+        (y, np.array([2, 3]))
+    ], [
+        (x, (2, 2)),
+        (y, "23")
+    ]]
     for shapes in styles:
       self.raises_static_error(
           shapes=shapes,
@@ -1718,16 +1732,16 @@ class AssertShapesTest(test.TestCase):
     x = array_ops.ones([1, 2, 3], name="x")
     y = array_ops.ones([2, 1], name="y")
     a1 = check_ops.assert_shapes({
-        x: (None, 2, None),
-        y: (None, 1),
+        (x, (None, 2, None)),
+        (y, (None, 1)),
     })
     a2 = check_ops.assert_shapes({
-        x: (".", 2, "."),
-        y: (".", 1),
+        (x, (".", 2, ".")),
+        (y, (".", 1)),
     })
     a3 = check_ops.assert_shapes({
-        x: ".2.",
-        y: ".1",
+        (x, ".2."),
+        (y, ".1"),
     })
     with ops.control_dependencies([a1, a2, a3]):
       out = array_ops.identity(x)
@@ -1737,14 +1751,14 @@ class AssertShapesTest(test.TestCase):
   def test_raise_static_shape_explicit_mismatch_innermost_dims(self):
     x = array_ops.ones([3, 2], name="x")
     y = array_ops.ones([2, 3], name="y")
-    s1 = {
-        x: (3, "Q"),
-        y: (Ellipsis, 3, "D"),
-    }
-    s2 = {
-        x: "3Q",
-        y: "*3D",
-    }
+    s1 = [
+        (x, (3, "Q")),
+        (y, (Ellipsis, 3, "D")),
+    ]
+    s2 = [
+        (x, "3Q"),
+        (y, "*3D"),
+    ]
     regex = (r"Specified explicitly.  "
              r"Tensor .* dimension -2 must have size 3.  "
              r"Received size 2")
@@ -1755,14 +1769,14 @@ class AssertShapesTest(test.TestCase):
   def test_correctly_matching_innermost_dims(self):
     x = array_ops.ones([1, 2, 3, 2], name="x")
     y = array_ops.ones([2, 3, 3], name="y")
-    a1 = check_ops.assert_shapes({
-        x: (Ellipsis, "N", "Q"),
-        y: (Ellipsis, "N", "D"),
-    })
-    a2 = check_ops.assert_shapes({
-        x: "*NQ",
-        y: "*ND",
-    })
+    a1 = check_ops.assert_shapes([
+        (x, (Ellipsis, "N", "Q")),
+        (y, (Ellipsis, "N", "D")),
+    ])
+    a2 = check_ops.assert_shapes([
+        (x, "*NQ"),
+        (y, "*ND"),
+    ])
     with ops.control_dependencies([a1, a2]):
       out = array_ops.identity(x)
     self.evaluate(out)
@@ -1770,12 +1784,12 @@ class AssertShapesTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_raise_variable_num_outer_dims_prefix_misuse(self):
     x = array_ops.ones([1, 2], name="x")
-    s1 = {
-        x: ("N", Ellipsis, "Q"),
-    }
-    s2 = {
-        x: "N*Q",
-    }
+    s1 = [
+        (x, ("N", Ellipsis, "Q")),
+    ]
+    s2 = [
+        (x, "N*Q"),
+    ]
     regex = (r"Tensor .* specified shape index .*.  "
              r"Symbol `...` or `\*` for a variable number of "
              r"unspecified dimensions is only allowed as the first entry")
@@ -1784,7 +1798,7 @@ class AssertShapesTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_empty_shapes_dict_no_op(self):
-    assertion = check_ops.assert_shapes({})
+    assertion = check_ops.assert_shapes([])
     with ops.control_dependencies([assertion]):
       out = array_ops.identity(0)
     self.evaluate(out)

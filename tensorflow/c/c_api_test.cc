@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/c_test_util.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/core/example/example.pb.h"
@@ -2497,6 +2498,38 @@ TEST(TestKernel, TestGetRegisteredKernelsForOpNoKernels) {
 }
 
 #undef EXPECT_TF_META
+
+TEST(CAPI, TestTensorAligned) {
+  int64_t dim = 7;
+  size_t tensor_size_bytes = dim * TF_DataTypeSize(TF_FLOAT);
+  TF_Tensor* a = TF_AllocateTensor(
+      /*dtype=*/TF_FLOAT, /*dims=*/&dim, /*num_dims=*/1,
+      /*len=*/tensor_size_bytes);
+  float* data = reinterpret_cast<float*>(TF_TensorData(a));
+  for (int i = 0; i < dim; ++i) {
+    data[i] = 0;
+  }
+  if (EIGEN_MAX_ALIGN_BYTES > 0) {
+    EXPECT_TRUE(TF_TensorIsAligned(a));
+  }
+  TF_DeleteTensor(a);
+}
+
+TEST(CAPI, TestTensorIsNotAligned) {
+  // Test unaligned access via a Slice.
+  Tensor x(DT_FLOAT, TensorShape({30}));
+  x.flat<float>().setConstant(0.0);
+
+  // Take an unaligned slice.
+  Tensor y = x.Slice(1, 13);
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* a = TF_TensorFromTensor(y, status);
+  if (EIGEN_MAX_ALIGN_BYTES > 0) {
+    EXPECT_FALSE(TF_TensorIsAligned(a));
+  }
+  TF_DeleteStatus(status);
+  TF_DeleteTensor(a);
+}
 
 }  // namespace
 }  // namespace tensorflow

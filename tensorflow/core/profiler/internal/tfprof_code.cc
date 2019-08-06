@@ -295,13 +295,23 @@ class PprofProfileImpl : public PprofProfile {
     io::ZlibOutputBuffer* zlib_output_buffer = new io::ZlibOutputBuffer(
         file.get(), buf_size, buf_size, io::ZlibCompressionOptions::GZIP());
     s = zlib_output_buffer->Init();
-    if (!s.ok()) return s;
+    if (!s.ok()) {
+      delete zlib_output_buffer;
+      return s;
+    }
     s = zlib_output_buffer->Append(profile_pb.SerializeAsString());
-    if (!s.ok()) return s;
+    if (!s.ok()) {
+      delete zlib_output_buffer;
+      return s;
+    }
     s = zlib_output_buffer->Close();
-    if (!s.ok()) return s;
+    if (!s.ok()) {
+      delete zlib_output_buffer;
+      return s;
+    }
     fprintf(stdout, "\nRun pprof -png --nodecount=100 --sample_index=1 <%s>\n",
             filename.c_str());
+    delete zlib_output_buffer;
     return s;
   }
 

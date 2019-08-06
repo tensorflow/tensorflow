@@ -16,39 +16,36 @@
 
 set -e
 
+PYTHON="${PYTHON:-python}"
+
 # Find where this script lives and then the Tensorflow root.
-MY_DIRECTORY=`dirname $0`
-export TENSORFLOW_SRC_ROOT=`realpath $MY_DIRECTORY/../../../..`
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-export TENSORFLOW_VERSION=`grep "_VERSION = " $TENSORFLOW_SRC_ROOT/tensorflow/tools/pip_package/setup.py  | cut -d'=' -f 2 | sed "s/[ '-]//g"`;
+export TENSORFLOW_SRC_ROOT="${SCRIPT_DIR}/../../../.."
+export TENSORFLOW_VERSION=`grep "_VERSION = " "${TENSORFLOW_SRC_ROOT}/tensorflow/tools/pip_package/setup.py" | cut -d'=' -f 2 | sed "s/[ '-]//g"`;
 
+TFLITE_ROOT="${TENSORFLOW_SRC_ROOT}/tensorflow/lite"
 
 # Build a pip build tree.
-BUILD_ROOT=/tmp/tflite_pip
-rm -rf $BUILD_ROOT
-mkdir -p $BUILD_ROOT/tflite_runtime/lite
-mkdir -p $BUILD_ROOT/tflite_runtime/lite/python
+BUILD_ROOT="/tmp/tflite_pip/${PYTHON}"
+rm -rf "${BUILD_ROOT}"
+mkdir -p "${BUILD_ROOT}/tflite_runtime/"
 
-# Build an importable module tree
-cat > $BUILD_ROOT/tflite_runtime/__init__.py <<EOF;
-import tflite_runtime.lite.interpreter
-EOF
+# Copy necessary source files.
+touch "${BUILD_ROOT}/tflite_runtime/__init__.py"
+cp -r "${TFLITE_ROOT}/python/interpreter_wrapper" "${BUILD_ROOT}"
+cp "${TFLITE_ROOT}/python/interpreter.py" "${BUILD_ROOT}/tflite_runtime/"
+cp "${TFLITE_ROOT}/tools/pip_package/setup.py" "${BUILD_ROOT}"
+cp "${TFLITE_ROOT}/tools/pip_package/MANIFEST.in" "${BUILD_ROOT}"
 
-cat > $BUILD_ROOT/tflite_runtime/lite/__init__.py <<EOF;
-from interpreter import Interpreter as Interpreter
-EOF
+# Build wheel file.
+cd "${BUILD_ROOT}"
 
-cat > $BUILD_ROOT/tflite_runtime/lite/python/__init__.py <<EOF;
-# Python module for TensorFlow Lite
-EOF
+if [[ "${TENSORFLOW_TARGET}" == "rpi" ]]; then
+  ${PYTHON} setup.py bdist_wheel --plat-name=linux-armv7l
+elif [[ "${TENSORFLOW_TARGET}" == "aarch64" ]]; then
+  ${PYTHON} setup.py bdist_wheel --plat-name=linux-aarch64
+else
+  ${PYTHON} setup.py bdist_wheel
+fi
 
-# Copy necessary source files
-TFLITE_ROOT=$TENSORFLOW_SRC_ROOT/tensorflow/lite
-cp -r  $TFLITE_ROOT/python/interpreter_wrapper $BUILD_ROOT
-cp $TFLITE_ROOT/python/interpreter.py $BUILD_ROOT/tflite_runtime/lite/
-cp $TFLITE_ROOT/tools/pip_package/setup.py $BUILD_ROOT
-cp $TFLITE_ROOT/tools/pip_package/MANIFEST.in $BUILD_ROOT
-
-# Build the Pip
-cd $BUILD_ROOT
-python setup.py bdist_wheel

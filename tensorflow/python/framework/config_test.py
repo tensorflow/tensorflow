@@ -43,9 +43,10 @@ def reset_eager(fn):
     try:
       return fn(*args, **kwargs)
     finally:
-      del context._context
-      context._context = context.Context()
-      ops.enable_eager_execution()
+      # Reset the context.
+      context._context = None
+      ops.enable_eager_execution_internal()
+      assert context._context is not None
 
   return wrapper
 
@@ -133,6 +134,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(RuntimeError):
       config.set_intra_op_parallelism_threads(1)
 
+    config.set_intra_op_parallelism_threads(10)
+
   @reset_eager
   def testInterOpParallelismThreads(self):
     config.set_inter_op_parallelism_threads(10)
@@ -144,6 +147,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaises(RuntimeError):
       config.set_inter_op_parallelism_threads(1)
+
+    config.set_inter_op_parallelism_threads(10)
 
   @test_util.run_gpu_only
   @reset_eager
@@ -353,8 +358,8 @@ class DeviceTest(test.TestCase):
 
     context.ensure_initialized()
 
-    cpus = config.list_logical_devices('CPU')
-    self.assertEqual(len(cpus), 2)
+    vcpus = config.list_logical_devices('CPU')
+    self.assertEqual(len(vcpus), 2)
 
     with ops.device('/device:CPU:0'):
       a = constant_op.constant(1.0)
@@ -368,10 +373,24 @@ class DeviceTest(test.TestCase):
         self.evaluate(c)
 
     # Ensure we can place ops on each of the device names
-    for cpu in cpus:
-      with ops.device(cpu.name):
+    for vcpu in vcpus:
+      with ops.device(vcpu.name):
         d = constant_op.constant(1.0)
         self.evaluate(d)
+
+    # Modifying the CPU configuration is not supported
+    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+      config.set_virtual_device_configuration(cpus[0], [
+          context.VirtualDeviceConfiguration(),
+          context.VirtualDeviceConfiguration(),
+          context.VirtualDeviceConfiguration()
+      ])
+
+    # Setting the same CPU configuration is fine
+    config.set_virtual_device_configuration(cpus[0], [
+        context.VirtualDeviceConfiguration(),
+        context.VirtualDeviceConfiguration()
+    ])
 
   @test_util.run_gpu_only
   @reset_eager
@@ -392,6 +411,13 @@ class DeviceTest(test.TestCase):
       with ops.device('/device:GPU:0'):
         a = constant_op.constant(1.0)
         self.evaluate(a)
+
+    # Modifying the visible devices is not supported
+    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+      config.set_visible_devices(gpus)
+
+    # Setting the same visible devices is fine
+    config.set_visible_devices(cpus[0])
 
   @reset_eager
   def testGpuMultiple(self):
@@ -436,11 +462,77 @@ class DeviceTest(test.TestCase):
         a = constant_op.constant(1.0)
         self.evaluate(a)
 
+    # Modifying the GPU configuration is not supported
+    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+      config.set_virtual_device_configuration(gpus[-1], [
+          context.VirtualDeviceConfiguration(memory_limit=20),
+          context.VirtualDeviceConfiguration(memory_limit=20)
+      ])
+
+    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+      config.set_virtual_device_configuration(gpus[-1], [
+          context.VirtualDeviceConfiguration(memory_limit=10),
+          context.VirtualDeviceConfiguration(memory_limit=10),
+          context.VirtualDeviceConfiguration(memory_limit=10)
+      ])
+
+    # Setting the same GPU configuration is fine
+    config.set_virtual_device_configuration(gpus[-1], [
+        context.VirtualDeviceConfiguration(memory_limit=10),
+        context.VirtualDeviceConfiguration(memory_limit=10)
+    ])
+
+  @test_util.run_gpu_only
+  @reset_eager
+  def testGpuGrowth(self):
+    gpus = config.list_physical_devices('GPU')
+    self.assertNotEqual(len(gpus), 0)
+
+    self.assertIsNone(config.get_memory_growth(gpus[-1]))
+    for gpu in gpus:
+      config.set_memory_growth(gpu, True)
+
+    c = context.context().config
+    self.assertTrue(c.gpu_options.allow_growth)
+
+    logical_gpus = config.list_logical_devices('GPU')
+    self.assertTrue(len(logical_gpus), len(gpus))
+
+    # Modifying the GPU configuration is not supported
+    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+      for gpu in gpus:
+        config.set_memory_growth(gpu, False)
+
+    # Setting the same GPU configuration is fine
+    for gpu in gpus:
+      config.set_memory_growth(gpu, True)
+
   @test_util.run_gpu_only
   @reset_eager
   def testGpuInvalidConfig(self):
     gpus = config.list_physical_devices('GPU')
     self.assertNotEqual(len(gpus), 0)
+
+    if len(gpus) > 1:
+      # Assert if other GPUs were not configured
+      config.set_memory_growth(gpus[0], True)
+      with self.assertRaisesRegexp(ValueError, 'cannot differ'):
+        c = context.context().config
+
+      # If we limit visibility to GPU 0, growth is fine
+      config.set_visible_devices(gpus[0], 'GPU')
+      c = context.context().config
+      self.assertTrue(c.gpu_options.allow_growth)
+
+      # Default setting for second GPU is False and works if we set visibility
+      config.set_visible_devices(gpus[1], 'GPU')
+      c = context.context().config
+      self.assertFalse(c.gpu_options.allow_growth)
+
+      # Growth now fails because all the GPUs are visible and not the same
+      config.set_visible_devices(gpus, 'GPU')
+      with self.assertRaisesRegexp(ValueError, 'cannot differ'):
+        c = context.context().config
 
     for gpu in gpus:
       config.set_memory_growth(gpu, True)

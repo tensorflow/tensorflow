@@ -230,6 +230,9 @@ enum BuiltinOperator : byte {
   QUANTIZE = 114,
   MATRIX_SET_DIAG = 115,
   ROUND = 116,
+  HARD_SWISH = 117,
+  IF = 118,
+  WHILE = 119,
 }
 
 // Options for the builtin operators.
@@ -323,7 +326,10 @@ union BuiltinOptions {
   ReverseSequenceOptions,
   MatrixDiagOptions,
   QuantizeOptions,
-  MatrixSetDiagOptions
+  MatrixSetDiagOptions,
+  HardSwishOptions,
+  IfOptions,
+  WhileOptions
 }
 
 enum Padding : byte { SAME, VALID }
@@ -701,6 +707,9 @@ table AbsOptions {
 }
 
 
+table HardSwishOptions {
+}
+
 table LogicalAndOptions {
 }
 
@@ -778,6 +787,16 @@ table QuantizeOptions {
 table MatrixSetDiagOptions {
 }
 
+table IfOptions {
+  then_subgraph_index:int;
+  else_subgraph_index:int;
+}
+
+table WhileOptions {
+  cond_subgraph_index:int;
+  body_subgraph_index:int;
+}
+
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
 table OperatorCode {
@@ -819,6 +838,15 @@ table Operator {
   // If the list is empty, no variable is mutated in this operator.
   // The list either has the same length as `inputs`, or is empty.
   mutating_variable_inputs:[bool];
+
+  // A list of indices to the subgraph's "tensors" that are internal to an Op.
+  // Internal tensors are those that do not flow in or out of the operation,
+  // but instead are part of internal computation. As such, the operation's
+  // implementation may manage its memory more efficiently. They are needed
+  // however (i.e. not just an implementation detail) since they are part of the
+  // computation, which may require relevant metadata such as quantization
+  // parameters.
+  intermediates:[int];
 }
 
 // The root type, defining a subgraph, which typically represents an entire

@@ -44,6 +44,7 @@ class RebatchOptimizer : public TFDataOptimizerBase {
 
  private:
   int64 num_workers_;
+  bool use_fallback_;
 };
 
 }  // namespace grappler

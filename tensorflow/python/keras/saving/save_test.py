@@ -19,11 +19,17 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 import numpy as np
 
+from tensorflow.python import keras
+from tensorflow.python.eager import context
+from tensorflow.python.feature_column import feature_column_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import save
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl
 
@@ -74,6 +80,42 @@ class TestSaveModel(test.TestCase):
     self.subclassed_model.predict(np.random.random((3, 5)))
     save.save_model(self.subclassed_model, path, save_format='tf')
     self.assert_saved_model(path)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_saving_with_dense_features(self):
+    cols = [
+        feature_column_lib.numeric_column('a'),
+        feature_column_lib.indicator_column(
+            feature_column_lib.categorical_column_with_vocabulary_list(
+                'b', ['one', 'two']))
+    ]
+    input_layers = {
+        'a': keras.layers.Input(shape=(1,), name='a'),
+        'b': keras.layers.Input(shape=(1,), name='b', dtype='string')
+    }
+
+    fc_layer = feature_column_lib.DenseFeatures(cols)(input_layers)
+    output = keras.layers.Dense(10)(fc_layer)
+
+    model = keras.models.Model(input_layers, output)
+
+    model.compile(
+        loss=keras.losses.MSE,
+        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+        metrics=[keras.metrics.categorical_accuracy])
+
+    config = model.to_json()
+    loaded_model = model_config.model_from_json(config)
+
+    inputs_a = np.arange(10).reshape(10, 1)
+    inputs_b = np.arange(10).reshape(10, 1).astype('str')
+
+    # Initialize tables for V1 lookup.
+    if not context.executing_eagerly():
+      self.evaluate(lookup_ops.tables_initializer())
+
+    self.assertLen(loaded_model.predict({'a': inputs_a, 'b': inputs_b}), 10)
+
 
 if __name__ == '__main__':
   test.main()

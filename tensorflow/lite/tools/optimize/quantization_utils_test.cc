@@ -386,7 +386,7 @@ TEST(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
   // Call and verify.
   EXPECT_EQ(SymmetricPerChannelBiasQuantize(
                 model.get(), model->subgraphs[0]->tensors[0].get(), input_scale,
-                weight_scales.data(), 2, 0),
+                weight_scales.data(), 2),
             kTfLiteOk);
   EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data,
               ElementsAreArray({16, 0, 0, 0, 2, 0, 0, 0}));

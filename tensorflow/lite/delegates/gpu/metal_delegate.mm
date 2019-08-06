@@ -107,10 +107,12 @@ class GpuAlarmClock {
       total_alarms_ = 1;
       NSString* error;
       id<MTLComputePipelineState> program;
+      // TODO(impjdi): Properly handle returned status.
       CreateComputeProgram(device_,
                            @"kernel void ComputeFunction(device int* output_buffer [[buffer(0)]]) "
                            @"{ output_buffer[0] = 0; }",
-                           @"ComputeFunction", nullptr, &program);
+                           @"ComputeFunction", nullptr, &program)
+          .IgnoreError();
       stub_program_ = program;
       stub_buffer_ = [device_ newBufferWithLength:sizeof(int) * 4
                                           options:MTLResourceHazardTrackingModeUntracked];
@@ -185,7 +187,9 @@ class Delegate {
         )";
       NSString* error;
       id<MTLComputePipelineState> signal_program;
-      CreateComputeProgram(metal_device_, code, @"ComputeFunction", nullptr, &signal_program);
+      // TODO(impjdi): Properly handle returned status.
+      CreateComputeProgram(metal_device_, code, @"ComputeFunction", nullptr, &signal_program)
+          .IgnoreError();
       signal_program_ = signal_program;
       signal_buffer_ = [metal_device_ newBufferWithLength:sizeof(int) * 4
                                                   options:MTLResourceStorageModeShared |
@@ -234,7 +238,7 @@ class Delegate {
 
     // TODO(impjdi): Remove code duplication.
     auto values = graph.values();
-    auto find_value = [&](int tensor_index) -> Value<TensorRefFloat32>* {
+    auto find_value = [&](int tensor_index) -> Value<TensorRef<BHWC>>* {
       for (auto value : values) {
         if (value->tensor.ref == tensor_index) return value;
       }
@@ -578,7 +582,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         // forbids that.
         const auto status = metal_delegate->Prepare(context, params);
         if (status.ok()) return metal_delegate;
-        context->ReportError(context, "TfLiteGpuDelegate Prepare: %s", status.message().data());
+        context->ReportError(context, "TfLiteGpuDelegate Prepare: %s",
+                             status.error_message().c_str());
         return nullptr;
       },
       // .free
@@ -591,7 +596,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
         const auto status = GetMetalDelegate(node)->Invoke(context);
         if (status.ok()) return kTfLiteOk;
-        context->ReportError(context, "TfLiteMetalDelegate Invoke: %s", status.message().data());
+        context->ReportError(context, "TfLiteMetalDelegate Invoke: %s",
+                             status.error_message().c_str());
         return kTfLiteError;
       },
       nullptr,                // .profiling_string
@@ -626,6 +632,8 @@ bool BindMetalBufferToTensor(TfLiteDelegate* delegate, int tensor_index, id<MTLB
   return metal_delegate && metal_delegate->BindBufferToTensor(buffer, tensor_index).ok();
 }
 
+// Note: This function is not exposed in `metal_delegate.h`, but it's exposed in
+// `metal_delegate_internal.h`.
 bool TFLSetCommandEncoder(
     TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder,
     std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder) {

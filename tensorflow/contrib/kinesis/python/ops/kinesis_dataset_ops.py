@@ -20,9 +20,9 @@ from __future__ import print_function
 from tensorflow.contrib.kinesis.python.ops import gen_dataset_ops
 from tensorflow.contrib.kinesis.python.ops import kinesis_op_loader  # pylint: disable=unused-import
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.util import deprecation
 
 
@@ -86,5 +86,5 @@ class KinesisDataset(dataset_ops.DatasetSource):
         self._stream, self._shard, self._read_indefinitely, self._interval)
 
   @property
-  def _element_structure(self):
-    return structure.TensorStructure(dtypes.string, [])
+  def element_spec(self):
+    return tensor_spec.TensorSpec([], dtypes.string)

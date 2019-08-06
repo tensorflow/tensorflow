@@ -29,6 +29,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 
 
@@ -106,11 +107,10 @@ def get_reachable_from_inputs(inputs, targets=None):
   Returns:
     A set of tensors reachable from the inputs (includes the inputs themselves).
   """
-  inputs = nest.flatten(inputs)
-  reachable = set(inputs)
-  if targets and not isinstance(targets, set):
-    targets = nest.flatten(targets)
-    targets = set(targets)
+  inputs = nest.flatten(inputs, expand_composites=True)
+  reachable = object_identity.ObjectIdentitySet(inputs)
+  if targets:
+    remaining_targets = object_identity.ObjectIdentitySet(nest.flatten(targets))
   queue = inputs[:]
 
   while queue:
@@ -136,10 +136,13 @@ def get_reachable_from_inputs(inputs, targets=None):
     for y in outputs:
       if y not in reachable:
         reachable.add(y)
+        if targets:
+          remaining_targets.discard(y)
         queue.insert(0, y)
 
-    if targets and targets.issubset(reachable):
+    if targets and not remaining_targets:
       return reachable
+
   return reachable
 
 
@@ -250,10 +253,7 @@ def convert_inner_node_data(nested, wrap=False):
     Structure of same type as nested, with lists wrapped/unwrapped.
   """
 
-  def _is_atomic_nested(nested):
-    """Returns `True` if `nested` is a list representing node data."""
-    if isinstance(nested, ListWrapper):
-      return True
+  def _is_serialized_node_data(nested):
     # Node data can be of form `[layer_name, node_id, tensor_id]` or
     # `[layer_name, node_id, tensor_id, kwargs]`.
     if (isinstance(nested, list) and (len(nested) in [3, 4]) and
@@ -261,12 +261,22 @@ def convert_inner_node_data(nested, wrap=False):
       return True
     return False
 
+  def _is_atomic_nested(nested):
+    """Returns `True` if `nested` is a list representing node data."""
+    if isinstance(nested, ListWrapper):
+      return True
+    if _is_serialized_node_data(nested):
+      return True
+    return not nest.is_sequence(nested)
+
   def _convert_object_or_list(nested):
     """Convert b/t `ListWrapper` object and list representations."""
     if wrap:
       if isinstance(nested, ListWrapper):
         return nested
-      return ListWrapper(nested)
+      if _is_serialized_node_data(nested):
+        return ListWrapper(nested)
+      return nested
     else:
       if isinstance(nested, ListWrapper):
         return nested.as_list()
