@@ -147,9 +147,10 @@ class ScopedDeviceMemory {
 // Type alias for compatibility with the previous managed memory implementation.
 using OwningDeviceMemory = ScopedDeviceMemory<uint8>;
 
-// Interface for device memory allocators used within the XLA service. An
-// allocator is responsible for allocating memory on all devices of a particular
-// platform.
+// Memory allocator interface for the device.
+//
+// Intended usage is through Allocate() functions which return an owning smart
+// pointer.
 class DeviceMemoryAllocator {
  public:
   // Parameter platform indicates which platform the allocator allocates memory
@@ -186,7 +187,9 @@ class DeviceMemoryAllocator {
     return Allocate(device_ordinal, size, retry_on_failure);
   }
 
-  // Must be a nop for null pointers.
+  // Must be a nop for null pointers. Should not be used.
+  //
+  // TODO(cheshire): Add deprecation notice.
   virtual port::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) = 0;
 
   // Return the platform that the allocator allocates memory on.
