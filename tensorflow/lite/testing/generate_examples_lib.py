@@ -69,8 +69,6 @@ KNOWN_BUGS = {
     # TOCO doesn't support scalars as input.
     # Concat doesn't work with a single input tensor
     r"concat.*num_tensors=1": "67378344",
-    # Transposition in MatMul is not fully supported.
-    "fully_connected.*transpose_a=True": "67586970",
     # Softmax graphs are too complex.
     r"softmax.*dim=0": "67749831",
     # BatchToSpaceND only supports 4D tensors.
@@ -2177,6 +2175,12 @@ def make_fully_connected_tests(options):
       "shape2": [[40, 37]],
       "transpose_a": [False],
       "transpose_b": [True],
+      "constant_filter": [True, False],
+  }, {
+      "shape1": [[5, 3]],
+      "shape2": [[5, 3]],
+      "transpose_a": [True],
+      "transpose_b": [False],
       "constant_filter": [True, False],
   }]
 
