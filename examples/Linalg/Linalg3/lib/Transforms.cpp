@@ -169,8 +169,8 @@ writeContractionAsLoops(ContractionOp contraction) {
 
   SmallVector<IndexHandle, 4> parallelIvs(contraction.getNumParallelDims());
   SmallVector<IndexHandle, 4> reductionIvs(contraction.getNumReductionDims());
-  auto pivs = IndexHandle::makeIndexHandlePointers(parallelIvs);
-  auto rivs = IndexHandle::makeIndexHandlePointers(reductionIvs);
+  auto pivs = makeIndexHandlePointers(parallelIvs);
+  auto rivs = makeIndexHandlePointers(reductionIvs);
   assert(loopRanges.size() == pivs.size() + rivs.size());
 
   // clang-format off

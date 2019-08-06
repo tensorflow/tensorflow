@@ -61,19 +61,31 @@ struct IndexHandle : public ValueHandle {
     this->v = v.getValue();
     return *this;
   }
-  static SmallVector<IndexHandle, 8> makeIndexHandles(unsigned rank) {
-    return SmallVector<IndexHandle, 8>(rank);
-  }
-  static SmallVector<ValueHandle *, 8>
-  makeIndexHandlePointers(SmallVectorImpl<IndexHandle> &ivs) {
-    SmallVector<ValueHandle *, 8> pivs;
-    pivs.reserve(ivs.size());
-    for (auto &iv : ivs) {
-      pivs.push_back(&iv);
-    }
-    return pivs;
-  }
 };
+
+inline SmallVector<IndexHandle, 8> makeIndexHandles(unsigned rank) {
+  return SmallVector<IndexHandle, 8>(rank);
+}
+
+inline SmallVector<ValueHandle *, 8>
+makeIndexHandlePointers(MutableArrayRef<IndexHandle> ivs) {
+  SmallVector<ValueHandle *, 8> pivs;
+  pivs.reserve(ivs.size());
+  for (auto &iv : ivs) {
+    pivs.push_back(&iv);
+  }
+  return pivs;
+}
+
+/// Returns a vector of the underlying Value* from `ivs`.
+inline SmallVector<Value *, 8> extractValues(ArrayRef<IndexHandle> ivs) {
+  SmallVector<Value *, 8> vals;
+  vals.reserve(ivs.size());
+  for (auto &iv : ivs) {
+    vals.push_back(iv.getValue());
+  }
+  return vals;
+}
 
 /// Provides a set of first class intrinsics.
 /// In the future, most of intrinsics related to Operation that don't contain

@@ -150,7 +150,7 @@ writeContractionAsTiledViews(TensorContractionBase<ConcreteOp> &contraction,
   mlir::OpBuilder builder(op->getOperation());
   ScopedContext scope(builder, op->getLoc());
   SmallVector<IndexHandle, 4> ivs(tileSizes.size());
-  auto pivs = IndexHandle::makeIndexHandlePointers(ivs);
+  auto pivs = makeIndexHandlePointers(ivs);
 
   // clang-format off
   using linalg::common::LoopNestRangeBuilder;

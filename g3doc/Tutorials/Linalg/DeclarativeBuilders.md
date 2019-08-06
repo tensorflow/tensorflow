@@ -83,8 +83,8 @@ def AddOp : Op<"x.add">,
     Arguments<(ins Tensor:$A, Tensor:$B)>,
     Results<(outs Tensor: $C)> {
   code referenceImplementation = [{
-    auto ivs = IndexHandle::makeIndexHandles(view_A.rank());
-    auto pivs = IndexHandle::makePIndexHandles(ivs);
+    auto ivs = makeIndexHandles(view_A.rank());
+    auto pivs = makePIndexHandles(ivs);
     IndexedValue A(arg_A), B(arg_B), C(arg_C);
     LoopNestBuilder(pivs, view_A.getLbs(), view_A.getUbs(), view_A.getSteps())(
       [&]{

@@ -16,8 +16,8 @@ def X_AddOp : X_Op<"add">,
     Results<(outs AnyTensor: $C)> {
     // TODO: extract referenceImplementation to Op.
   code referenceImplementation = [{
-    auto ivs = IndexHandle::makeIndexHandles(view_A.rank());
-    auto pivs = IndexHandle::makeIndexHandlePointers(ivs);
+    auto ivs = IndexedLinalgValuemakeIndexHandles(view_A.rank());
+    auto pivs = IndexedLinalgValuemakeIndexHandlePointers(ivs);
     IndexedValue A(arg_A), B(arg_B), C(arg_C);
     LoopNestBuilder(pivs, view_A.getLbs(), view_A.getUbs(), view_A.getSteps())({
       C(ivs) = A(ivs) + B(ivs)
