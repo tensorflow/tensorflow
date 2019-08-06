@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdarg>
+#include <cstdint>
 #include <initializer_list>
+
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
@@ -42,76 +45,9 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
   BaseDepthwiseConvolutionOpModel(
       TfLiteRegistration* registration, const TensorData& input,
       const TensorData& filter, const TensorData& output, Padding padding_type,
-      int stride_width, int stride_height,
-      const ActivationFunctionType& fused_activation_function,
-      int dilation_factor = 1) {
-    input_ = AddInput(input);
-    filter_ = AddInput(filter);
-
-    int bias_size = GetShape(filter_)[3];
-    if (input.type == TensorType_FLOAT32) {
-      bias_ = AddInput({TensorType_FLOAT32, {bias_size}});
-    } else {
-      // This is a quantized version. The scale of 'bias' depends on the scales
-      // of input and filter. Supposedly this is correctly set during quantized
-      // training.
-      if (filter.per_channel_quantization) {
-        // per channel quantization.
-        std::vector<float> bias_scale(
-            filter.per_channel_quantization_scales.size());
-        std::vector<int64_t> bias_zero_points(
-            filter.per_channel_quantization_scales.size());
-        for (int i = 0; i < filter.per_channel_quantization_scales.size();
-             ++i) {
-          bias_scale[i] =
-              input.scale * filter.per_channel_quantization_scales[i];
-          bias_zero_points[i] = 0;
-        }
-        TensorData bias{TensorType_INT32,
-                        {bias_size},
-                        /*min=*/0,
-                        /*max=*/0,
-                        /*scale=*/0,
-                        /*zero_point=*/0,
-                        true,
-                        /*per_channel_scale=*/bias_scale,
-                        /*per_channel_zero_point=*/bias_zero_points,
-                        /*channel_index==*/0};
-        bias_ = AddInput(bias);
-      } else {
-        // per tensor quantization.
-        auto bias_scale = GetScale(input_) * GetScale(filter_);
-        TensorData bias{TensorType_INT32, {bias_size}, 0, 0, bias_scale};
-        bias_ = AddInput(bias);
-      }
-    }
-
-    output_ = AddOutput(output);
-
-    int input_depth = GetShape(input_)[3];
-    int output_depth = GetShape(filter_)[3];
-    int depth_mul = output_depth / input_depth;
-
-    SetBuiltinOp(
-        BuiltinOperator_DEPTHWISE_CONV_2D,
-        BuiltinOptions_DepthwiseConv2DOptions,
-        CreateDepthwiseConv2DOptions(
-            builder_, padding_type, stride_width, stride_height, depth_mul,
-            fused_activation_function, dilation_factor, dilation_factor)
-            .Union());
-
-    resolver_ = absl::make_unique<SingleOpResolver>(
-        BuiltinOperator_DEPTHWISE_CONV_2D, registration);
-
-    BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)});
-  }
-
-  BaseDepthwiseConvolutionOpModel(TfLiteRegistration* registration,
-                                  const TensorData& input,
-                                  const TensorData& filter,
-                                  const TensorData& output,
-                                  Padding padding_type, int dilation_factor = 1,
-                                  int stride_width = 1, int stride_height = 1) {
+      int dilation_factor = 1, int stride_width = 1, int stride_height = 1,
+      ActivationFunctionType fused_activation_function =
+          ActivationFunctionType_NONE) {
     input_ = AddInput(input);
     filter_ = AddInput(filter);
 
@@ -164,7 +100,7 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
         BuiltinOptions_DepthwiseConv2DOptions,
         CreateDepthwiseConv2DOptions(
             builder_, padding_type, stride_width, stride_height, depth_mul,
-            ActivationFunctionType_NONE, dilation_factor, dilation_factor)
+            fused_activation_function, dilation_factor, dilation_factor)
             .Union());
 
     resolver_ = absl::make_unique<SingleOpResolver>(
@@ -214,6 +150,7 @@ TEST_P(DepthwiseConvolutionOpTest, ActivationReluTest) {
       GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
       {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
       Padding_VALID,
+      /*dilation_factor*/ 1,
       /*stride_width*/ 1,
       /*stride_height*/ 1,
       /*ActivationFunctionType*/ ActivationFunctionType_RELU);
@@ -244,6 +181,7 @@ TEST_P(DepthwiseConvolutionOpTest, ActivationReluN1Test) {
       GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
       {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
       Padding_VALID,
+      /*dilation_factor*/ 1,
       /*stride_width*/ 1,
       /*stride_height*/ 1,
       /*ActivationFunctionType*/ ActivationFunctionType_RELU_N1_TO_1);
@@ -274,6 +212,7 @@ TEST_P(DepthwiseConvolutionOpTest, ActivationRelu6Test) {
       GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
       {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
       Padding_VALID,
+      /*dilation_factor*/ 1,
       /*stride_width*/ 1,
       /*stride_height*/ 1,
       /*ActivationFunctionType*/ ActivationFunctionType_RELU6);
@@ -304,6 +243,7 @@ void StrideTest(TfLiteRegistration* registration, int num_thread) {
       registration, {TensorType_FLOAT32, {1, 3, 2, 2}},
       {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
       Padding_VALID,
+      /*dilation_factor*/ 1,
       /*stride_width*/ 2,
       /*stride_height*/ 2,
       /*ActivationFunctionType*/ ActivationFunctionType_NONE);
@@ -341,6 +281,7 @@ void PaddingTest(TfLiteRegistration* registration, int num_thread) {
       registration, {TensorType_FLOAT32, {1, 3, 2, 2}},
       {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
       Padding_SAME,
+      /*dilation_factor*/ 1,
       /*stride_width*/ 2,
       /*stride_height*/ 2,
       /*ActivationFunctionType*/ ActivationFunctionType_NONE);
@@ -643,12 +584,21 @@ class QuantizedDepthwiseConvolutionOpModel
   void SetInput(std::initializer_list<float> data) {
     QuantizeAndPopulate<uint8_t>(input_, data);
   }
+  void SetInput(const std::vector<float>& data) {
+    QuantizeAndPopulate<uint8_t>(input_, data);
+  }
 
   void SetFilter(std::initializer_list<float> data) {
     QuantizeAndPopulate<uint8_t>(filter_, data);
   }
+  void SetFilter(const std::vector<float>& data) {
+    QuantizeAndPopulate<uint8_t>(filter_, data);
+  }
 
   void SetBias(std::initializer_list<float> data) {
+    QuantizeAndPopulate<int32_t>(bias_, data);
+  }
+  void SetBias(const std::vector<float>& data) {
     QuantizeAndPopulate<int32_t>(bias_, data);
   }
 
@@ -665,6 +615,52 @@ class QuantizedDepthwiseConvolutionOpTest : public SingleOpTest {
     return *kKernelMap;
   }
 };
+
+// Only enable this test for neon.
+#ifdef USE_NEON
+TEST_F(QuantizedDepthwiseConvolutionOpTest, LargeOutputChannelTest) {
+  const TensorData input({TensorType_UINT8, {1, 4, 4, 2400}, -63.5, 64});
+  const TensorData filter({TensorType_UINT8, {1, 3, 3, 2400}, -63.5, 64});
+  const TensorData output({TensorType_UINT8, {}, -127, 128});
+  const Padding padding = Padding_VALID;
+
+  // Populate input, filter & bias data.
+  const int input_size = 1 * 4 * 4 * 2400;
+  const int filter_size = 1 * 3 * 3 * 2400;
+  const int bias_size = 2400;
+  std::vector<float> input_data(input_size);
+  std::vector<float> filter_data(filter_size);
+  std::vector<float> bias_data(bias_size);
+  for (int i = 0; i < input_size; ++i) {
+    input_data[i] = UniformRandomFloat(-1, -1);
+  }
+  for (int i = 0; i < filter_size; ++i) {
+    filter_data[i] = UniformRandomFloat(-1, -1);
+  }
+  for (int i = 0; i < bias_size; ++i) {
+    bias_data[i] = UniformRandomFloat(-1, -1);
+  }
+
+  // Make sure reference impl & optimized impl produce the same result.
+  QuantizedDepthwiseConvolutionOpModel reference_impl(
+      ops::builtin::Register_DEPTHWISE_CONVOLUTION_REF(), input, filter, output,
+      padding);
+  reference_impl.SetInput(input_data);
+  reference_impl.SetFilter(filter_data);
+  reference_impl.SetBias(bias_data);
+  reference_impl.Invoke();
+
+  QuantizedDepthwiseConvolutionOpModel optimized_impl(
+      ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT(), input, filter,
+      output, padding);
+  optimized_impl.SetInput(input_data);
+  optimized_impl.SetFilter(filter_data);
+  optimized_impl.SetBias(bias_data);
+  optimized_impl.Invoke();
+
+  EXPECT_THAT(reference_impl.GetOutput(), optimized_impl.GetOutput());
+}
+#endif
 
 // In this test we set the input and output scales so that the results match
 // exactly the 'non-quantized' version.

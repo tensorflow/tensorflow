@@ -18,8 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
-import enum
 
+from tensorflow.python import tf2
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -28,7 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
@@ -38,27 +38,11 @@ from tensorflow.python.util import tf_contextlib
 _call_context = threading.local()
 
 
-class CallConvention(enum.Enum):
-  """Calling conventions for passing `Layer` inputs to `Layer.call`."""
-  # The Layer takes inputs as its first argument, named "inputs" for
-  # compatibility with the signature of Layer.__call__. This is the mode assumed
-  # for Layers which are not subclassed Models.
-  EXPLICIT_INPUTS_ARGUMENT = 1
-  # The Layer takes a single positional argument, not named "inputs". It's
-  # treated like an "inputs" argument.
-  SINGLE_POSITIONAL_ARGUMENT = 2
-  # The Layer has multiple positional arguments to which its inputs should be
-  # bound.
-  POSITIONAL_ARGUMENTS_ARE_INPUTS = 3
-
-
 def create_mean_metric(value, name=None):
   # TODO(psv): Remove this import when b/110718070 is fixed.
   from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.keras.distribute import distributed_training_utils  # pylint: disable=g-import-not-at-top
   metric_obj = metrics_module.Mean(name=name)
-  return (metric_obj,
-          distributed_training_utils.call_replica_local_fn(metric_obj, value))
+  return metric_obj, metric_obj(value)
 
 
 def make_variable(name,
@@ -290,8 +274,20 @@ def is_in_eager_or_tf_function():
 
 def is_in_tf_function():
   """Returns if inside of a tf.function."""
-  return (ops.executing_eagerly_outside_functions() and
-          not context.executing_eagerly() and not is_in_keras_graph())
+  # Check if running in V1 graph mode.
+  if not ops.executing_eagerly_outside_functions():
+    return False
+  if not ops.inside_function():
+    return False
+  # Check if inside Keras FuncGraph.
+  if is_in_keras_graph():
+    return False
+  # Check for a v1 `wrap_function` FuncGraph.
+  graph = ops.get_default_graph()
+  if (getattr(graph, 'name', False) and
+      graph.name.startswith('wrapped_function')):
+    return False
+  return True
 
 
 def uses_keras_history(tensors):
@@ -313,21 +309,25 @@ def uses_keras_history(tensors):
   tensors_to_check = nest.flatten(tensors)
 
   while tensors_to_check:
-    new_tensors_to_check = set()
+    new_tensors_to_check = []
     for tensor in tensors_to_check:
+      if id(tensor) in checked_tensors:
+        continue
+
+      checked_tensors.add(id(tensor))
+
       if getattr(tensor, '_keras_history_checked', None) is not None:
         continue
       if getattr(tensor, '_keras_history', None) is not None:
         return True
 
       try:
-        new_tensors_to_check.update(tensor.op.inputs)
+        new_tensors_to_check.extend(tensor.op.inputs)
       except AttributeError:
         # In case `tensor` is a Variable created in an Eager context.
         pass
 
-    checked_tensors.update(tensors_to_check)
-    tensors_to_check = list(new_tensors_to_check - checked_tensors)
+    tensors_to_check = new_tensors_to_check
 
   # Mark that these Tensors have been checked once for `_keras_history`,
   # and should not be checked again for performance reasons.
@@ -367,6 +367,7 @@ class CallContext(object):
     frozen: Whether currently executing inside a `Layer` with `trainable` set to
       `False`.
     in_call: Whether currently inside the `call` of a Layer.
+    training: Whether currently executing in training or inference mode.
     in_keras_graph: Whether executing inside the Keras Graph.
   """
 
@@ -375,25 +376,29 @@ class CallContext(object):
     self.inputs = None
     self.frozen = False
     self.in_call = False
+    self.training = None
     self._in_keras_graph = False
 
   @tf_contextlib.contextmanager
-  def enter(self, layer, inputs, build_graph):
+  def enter(self, layer, inputs, build_graph, training):
     """Push a Layer and its inputs and state onto the current call context."""
     prev_layer = self.layer
     prev_inputs = self.inputs
     prev_frozen = self.frozen
     prev_in_call = self.in_call
+    prev_training = self.training
     prev_in_keras_graph = self._in_keras_graph
 
     self.layer = layer
     self.inputs = inputs
     self.frozen = self.frozen or not layer.trainable
     self.in_call = True
+    self.training = training
     self._in_keras_graph = (
         self._in_keras_graph or
         (build_graph and
          getattr(backend.get_graph(), 'name', None) == 'keras_graph'))
+
     try:
       yield
     finally:
@@ -401,6 +406,7 @@ class CallContext(object):
       self.inputs = prev_inputs
       self.frozen = prev_frozen
       self.in_call = prev_in_call
+      self.training = prev_training
       self._in_keras_graph = prev_in_keras_graph
 
   @property
@@ -421,37 +427,32 @@ def training_arg_passed_to_call(argspec, args, kwargs):
   return 'training' in full_args and full_args['training'] is not None
 
 
-def _get_var_read_dtype(input_list, should_cast):
-  """Gets the dtype that AutoCastVariables should be read in."""
-  if should_cast and input_list and input_list[0].dtype.is_floating:
-    return input_list[0].dtype.base_dtype
-  else:
-    return None
-
-
-def autocast_context_manager(input_list, should_cast):
+def autocast_context_manager(dtype):
   """Returns a context manager to autocast AutoCastVariables.
 
-  Under this context manager, if `should_cast` is True, AutoCastVariables will
-  be casted. If `should_cast` is False, AutoCastVariables will not be casted,
-  which can be used to disable autocasting if nested under another
-  call to `autocast_context_manager`.
+  Under this context manager, AutoCastVariables will be casted to `dtype` if
+  `dtype` is floating-point. Otherwise, AutoCastVariables will not be casted.
 
   Args:
-    input_list: The inputs to the layer with the AutoCastVariables.
-    should_cast: Whether AutoCastVariables should be casted.
+    dtype: The dtype to cast AutoCastVariables to, or None.
 
   Returns:
     A context manager to automatically cast AutoCastVariables.
   """
-  var_read_dtype = _get_var_read_dtype(input_list, should_cast)
-  return ops.get_default_graph()._enable_auto_casting_variables(  # pylint: disable=protected-access
-      var_read_dtype)
+  if dtype and not dtypes.as_dtype(dtype).is_floating:
+    dtype = None
+  return ops.get_default_graph()._enable_auto_casting_variables(dtype)  # pylint: disable=protected-access
 
 
 def is_subclassed(layer):
+  """Returns True if the object is a subclassed layer or subclassed model."""
   return (layer.__module__.find('keras.engine') == -1 and
           layer.__module__.find('keras.layers') == -1)
+
+
+def from_saved_model(layer):
+  """Returns whether the layer is loaded from a SavedModel."""
+  return layer.__module__.find('keras.saving.saved_model') != -1
 
 
 def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
@@ -470,12 +471,13 @@ def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
   Raises:
     RuntimeError: In case of an out-of-graph tensor.
   """
-  if (force_raise or (ops.executing_eagerly_outside_functions() and
-                      hasattr(tensor, 'graph') and
-                      isinstance(tensor.graph,
-                                 (control_flow_util_v2.CondBranchFuncGraph,
-                                  control_flow_util_v2.WhileCondFuncGraph,
-                                  control_flow_util_v2.WhileBodyFuncGraph)))):
+  if (force_raise or
+      (ops.executing_eagerly_outside_functions() and
+       hasattr(tensor, 'graph') and
+       isinstance(tensor.graph,
+                  (control_flow_v2_func_graphs.CondBranchFuncGraph,
+                   control_flow_v2_func_graphs.WhileCondFuncGraph,
+                   control_flow_v2_func_graphs.WhileBodyFuncGraph)))):
     if method == 'activity_regularizer':
       bad_example = """
       class TestModel(tf.keras.Model):
@@ -605,3 +607,66 @@ def mark_as_return(outputs, acd):
     # pylint: enable=protected-access
 
   return nest.map_structure(_mark_as_return, outputs)
+
+
+def default(method):
+  """Decorates a method to detect overrides in subclasses."""
+  method._is_default = True  # pylint: disable=protected-access
+  return method
+
+
+V2_DTYPE_BEHAVIOR = None
+
+
+# These two functions are not exported because we plan on removing them in the
+# future.
+def enable_v2_dtype_behavior():
+  """Enable the V2 dtype behavior for Keras layers.
+
+  By default, the V2 dtype behavior is enabled in TensorFlow 2.
+
+  When enabled, the dtype of Keras layers defaults to floatx (which is typically
+  float32) instead of None. In addition, layers will automatically cast
+  floating-point inputs to the layer's dtype.
+
+  For example, once enabled, the following block will run a Conv2D layer
+  in float32:
+
+  ```python
+  x = tf.ones((4, 4, 4, 4), dtype='float64')
+  layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
+  print(layer.dtype)  # Float32 when enabled. None when disabled.
+  # When enabled, will cast inputs to the layer's dtype, which is float32. When
+  # disabled, will do no casting, so the layer is done in float64.
+  y = layer(x)
+  ```
+
+  A layer author can opt-out their layer from the automatic input casting by
+  passing `autocast=False` to the base Layer's constructor. This disables the
+  autocasting part of the V2 behavior for that layer, but not the defaulting to
+  floatx part of the V2 behavior.
+
+  When a global `tf.keras.mixed_precision.experimental.Policy` is set, the
+  layer's dtype will default to the global policy instead of floatx. Layers
+  will automatically cast inputs to the policy's compute_dtype.
+  """
+  global V2_DTYPE_BEHAVIOR
+  V2_DTYPE_BEHAVIOR = True
+
+
+def disable_v2_dtype_behavior():
+  """Disables the V2 dtype behavior for Keras layers.
+
+  See `enable_v2_dtype_behavior`.
+
+  This function will be removed in the future.
+  """
+  global V2_DTYPE_BEHAVIOR
+  V2_DTYPE_BEHAVIOR = False
+
+
+def v2_dtype_behavior_enabled():
+  """Returns True if the V2 dtype behavior is enabled."""
+  if V2_DTYPE_BEHAVIOR is None:
+    return tf2.enabled()
+  return V2_DTYPE_BEHAVIOR

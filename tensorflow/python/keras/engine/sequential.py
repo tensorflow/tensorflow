@@ -23,6 +23,7 @@ import copy
 
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_utils
@@ -105,6 +106,8 @@ class Sequential(training.Model):
 
     # Add to the model any layers passed to the constructor.
     if layers:
+      if not isinstance(layers, (list, tuple)):
+        layers = [layers]
       tf_utils.assert_no_legacy_layers(layers)
       for layer in layers:
         self.add(layer)
@@ -196,9 +199,14 @@ class Sequential(training.Model):
                         'For multi-output layers, '
                         'use the functional API.')
       self.outputs = [output_tensor]
+
+    if self.outputs:
+      # True if set_inputs or self._is_graph_network or if adding a layer
+      # to an already built deferred seq model.
+      self.built = True
+
     if set_inputs or self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
-      self.built = True
     else:
       self._layers.append(layer)
     if self._layers:
@@ -228,7 +236,7 @@ class Sequential(training.Model):
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
       self.built = True
 
-  @base_layer.default
+  @base_layer_utils.default
   def build(self, input_shape=None):
     if self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
@@ -328,6 +336,14 @@ class Sequential(training.Model):
           'class_name': layer.__class__.__name__,
           'config': layer.get_config()
       })
+    # When constructed using an `InputLayer` the first non-input layer may not
+    # have the shape information to reconstruct `Sequential` as a graph network.
+    if (self._is_graph_network and layer_configs and
+        'batch_input_shape' not in layer_configs[0]['config'] and
+        isinstance(self._layers[0], input_layer.InputLayer)):
+      batch_input_shape = self._layers[0]._batch_input_shape
+      layer_configs[0]['config']['batch_input_shape'] = batch_input_shape
+
     config = {
         'name': self.name,
         'layers': copy.deepcopy(layer_configs)
@@ -360,3 +376,7 @@ class Sequential(training.Model):
     if self.layers and hasattr(self.layers[0], 'input_spec'):
       return self.layers[0].input_spec
     return None
+
+  @property
+  def _object_identifier(self):
+    return '_tf_keras_sequential'

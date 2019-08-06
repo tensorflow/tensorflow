@@ -474,6 +474,14 @@ REGISTER_OP("TridiagonalSolve")
     .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(TridiagonalSolveShapeFn);
 
+REGISTER_OP("Einsum")
+    .Input("inputs: N * T")
+    .Output("output: T")
+    .Attr("equation: string")
+    .Attr("N: int >= 1")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::EinsumShape);
+
 // Deprecated op registrations:
 
 // Can be deleted after 3feb2017.

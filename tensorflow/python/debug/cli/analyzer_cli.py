@@ -1438,8 +1438,7 @@ class DebugAnalyzer(object):
 
     hang += DEPTH_TEMPLATE % depth
 
-    for i in xrange(len(all_inputs)):
-      inp = all_inputs[i]
+    for i, inp in enumerate(all_inputs):
       op_type = self._debug_dump.node_op_type(debug_graphs.get_node_name(inp))
       if op_type in self._GRAPH_STRUCT_OP_TYPE_BLACKLIST:
         continue

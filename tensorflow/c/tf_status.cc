@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status.h"
 
-#include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/lib/core/status.h"
 
 using ::tensorflow::Status;

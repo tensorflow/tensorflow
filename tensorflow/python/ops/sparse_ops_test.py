@@ -54,6 +54,15 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         test_one(n, m, True)
         test_one(n, m, False)
 
+  def testDenseFromConstantToSparse(self):
+    expected_constant = np.reshape(np.arange(24, dtype=np.int64), (3, 4, 2))
+    tensor = constant_op.constant(expected_constant)
+    sparse = sparse_ops.from_dense(tensor)
+    dense = sparse_ops.sparse_to_dense(sparse.indices, sparse.dense_shape,
+                                       sparse.values)
+    constant = self.evaluate(dense)
+    self.assertAllEqual(expected_constant, constant)
+
   def testSparseExpandDims(self):
     for rank in range(1, 4):
       # Create a dummy input. When rank=3, shape=[2, 4, 6].
@@ -115,6 +124,14 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             constant_op.constant(0.0)])
     epsilon = 1e-4
     self.assertLess(gradient_checker.max_error(*grads), epsilon)
+
+  def testSparseTensorToDenseString(self):
+    sp = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=['a', 'b'], dense_shape=[2, 3])
+    dense = sparse_ops.sparse_tensor_to_dense(sp)
+    expected_dense = [[b'a', b'', b''], [b'', b'', b'b']]
+    result_dense = self.evaluate(dense)
+    self.assertAllEqual(expected_dense, result_dense)
 
 
 if __name__ == '__main__':

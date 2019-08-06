@@ -26,9 +26,8 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    BigtableTableResource* table;
+    core::RefCountPtr<BigtableTableResource> table;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &table));
-    core::ScopedUnref scoped_unref(table);
 
     std::vector<string> column_families;
     std::vector<string> columns;
@@ -50,7 +49,7 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
     }
 
     *output =
-        new Dataset(ctx, input, table, std::move(column_families),
+        new Dataset(ctx, input, table.get(), std::move(column_families),
                     std::move(columns), output_types, std::move(output_shapes));
   }
 
@@ -98,12 +97,14 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
       return "BigtableLookupDatasetOp::Dataset";
     }
 
+    bool IsStateful() const override { return true; }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented("%s does not support serialization",
-                                   DebugString());
+      return errors::Unimplemented(DebugString(),
+                                   " does not support serialization");
     }
 
    private:

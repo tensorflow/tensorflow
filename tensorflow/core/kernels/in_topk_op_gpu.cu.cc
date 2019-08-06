@@ -118,13 +118,13 @@ struct InTopKFunctor<GPUDevice, T, TargetT> {
     const auto& d = context->eigen_device<GPUDevice>();
 
     // Compute a mask for all predictions.
-    CudaLaunchConfig config = GetCudaLaunchConfig(num_targets * num_classes, d);
-    OP_REQUIRES_OK(context, CudaLaunchKernel(
-                                ComputePredictionMaskKernel<T, TargetT>,
-                                config.block_count, config.thread_per_block, 0,
-                                d.stream(), predictions.data(), targets.data(),
-                                predictions_mask.flat<int64>().data(),
-                                num_targets, num_classes));
+    CudaLaunchConfig config = GetGpuLaunchConfig(num_targets * num_classes, d);
+    OP_REQUIRES_OK(
+        context, GpuLaunchKernel(ComputePredictionMaskKernel<T, TargetT>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 d.stream(), predictions.data(), targets.data(),
+                                 predictions_mask.flat<int64>().data(),
+                                 num_targets, num_classes));
 
     // Reduce prediction masks to number of predictions larger than the target
     // prediction, or to the negative value if we can't compute an answer.

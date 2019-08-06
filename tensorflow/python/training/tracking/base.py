@@ -31,7 +31,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.saving import saveable_object
-from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 
 # Key where the object graph proto is saved in a TensorBundle
@@ -306,7 +306,7 @@ class CheckpointPosition(object):
         value_tensors[serialized_tensor.name] = array_ops.identity(value)
       return value_tensors
 
-  def _gather_ops_or_named_saveables(self):
+  def gather_ops_or_named_saveables(self):
     """Looks up or creates SaveableObjects which don't have cached ops."""
     saveables = self.trackable._gather_saveables_for_checkpoint()  # pylint: disable=protected-access
     # Name saveables based on the name this object had when it was checkpointed.
@@ -390,7 +390,7 @@ class CheckpointPosition(object):
       eagerly.
     """
     (restore_ops, tensor_saveables,
-     python_saveables) = self._gather_ops_or_named_saveables()
+     python_saveables) = self.gather_ops_or_named_saveables()
     restore_ops.extend(
         self._checkpoint.restore_saveables(tensor_saveables, python_saveables))
     return restore_ops
@@ -461,6 +461,38 @@ def no_automatic_dependency_tracking(method):
 
   return tf_decorator.make_decorator(
       target=method, decorator_func=_method_wrapper)
+
+
+@tf_contextlib.contextmanager
+def no_automatic_dependency_tracking_scope(obj):
+  """A context that disables automatic dependency tracking when assigning attrs.
+
+  Objects that inherit from Autotrackable automatically creates dependencies
+  to trackable objects through attribute assignments, and wraps data structures
+  (lists or dicts) with trackable classes. This scope may be used to temporarily
+  disable this behavior. This works similar to the decorator
+  `no_automatic_dependency_tracking`.
+
+  Example usage:
+  ```
+  model = tf.keras.Model()
+  model.arr1 = []  # Creates a ListWrapper object
+  with no_automatic_dependency_tracking_scope(model):
+    model.arr2 = []  # Creates a regular, untracked python list
+  ```
+
+  Args:
+    obj: A trackable object.
+
+  Yields:
+    a scope in which the object doesn't track dependencies.
+  """
+  previous_value = getattr(obj, "_setattr_tracking", True)
+  obj._setattr_tracking = False  # pylint: disable=protected-access
+  try:
+    yield
+  finally:
+    obj._setattr_tracking = previous_value  # pylint: disable=protected-access
 
 
 class Trackable(object):
@@ -547,6 +579,23 @@ class Trackable(object):
     # restore-on-create when executing eagerly, and so is unused when graph
     # building.
     self._self_name_based_restores = set()
+
+  @property
+  def _object_identifier(self):
+    """String used to identify this object in a SavedModel.
+
+    Generally, the object identifier is constant across objects of the same
+    class, while the metadata field is used for instance-specific data.
+
+    Returns:
+      String object identifier.
+    """
+    return "_generic_user_object"
+
+  @property
+  def _tracking_metadata(self):
+    """String containing object metadata, which is saved to the SavedModel."""
+    return ""
 
   def _no_dependency(self, value):
     """If automatic dependency tracking is enabled, ignores `value`."""
@@ -808,13 +857,21 @@ class Trackable(object):
     # traversals will happen later).
     visit_queue = collections.deque([checkpoint_position])
     restore_ops = []
+    tensor_saveables = {}
+    python_saveables = []
     while visit_queue:
       current_position = visit_queue.popleft()
-      restore_ops.extend(
-          nest.flatten(current_position.trackable  # pylint: disable=protected-access
-                       ._single_restoration_from_checkpoint_position(
-                           checkpoint_position=current_position,
-                           visit_queue=visit_queue)))
+      new_restore_ops, new_tensor_saveables, new_python_saveables = (
+          current_position.trackable  # pylint: disable=protected-access
+          ._single_restoration_from_checkpoint_position(
+              checkpoint_position=current_position,
+              visit_queue=visit_queue))
+      restore_ops.extend(new_restore_ops)
+      tensor_saveables.update(new_tensor_saveables)
+      python_saveables.extend(new_python_saveables)
+    restore_ops.extend(
+        current_position.checkpoint.restore_saveables(
+            tensor_saveables, python_saveables))
     return restore_ops
 
   def _single_restoration_from_checkpoint_position(self, checkpoint_position,
@@ -826,10 +883,13 @@ class Trackable(object):
     # need to actually restore the object. However, we should pass the
     # restoration on to our dependencies.
     if checkpoint.restore_uid > self._self_update_uid:
-      restore_ops = checkpoint_position.restore_ops()
+      restore_ops, tensor_saveables, python_saveables = (
+          checkpoint_position.gather_ops_or_named_saveables())
       self._self_update_uid = checkpoint.restore_uid
     else:
       restore_ops = ()
+      tensor_saveables = {}
+      python_saveables = ()
     for child in checkpoint_position.object_proto.children:
       child_position = CheckpointPosition(
           checkpoint=checkpoint, proto_id=child.node_id)
@@ -846,7 +906,7 @@ class Trackable(object):
           # resolution order (shallowest paths first). The caller is responsible
           # for emptying visit_queue.
           visit_queue.append(child_position)
-    return restore_ops
+    return restore_ops, tensor_saveables, python_saveables
 
   def _gather_saveables_for_checkpoint(self):
     """Returns a dictionary of values to checkpoint with this object.
@@ -881,15 +941,50 @@ class Trackable(object):
     """
     return {}
 
-  def _list_functions_for_serialization(self):
+  def _list_extra_dependencies_for_serialization(self, serialization_cache):
+    """Lists extra dependencies to serialize.
+
+    Internal sub-classes can override this method to return extra dependencies
+    that should be saved with the object during SavedModel serialization. For
+    example, this is used to save `trainable_variables` in Keras models. The
+    python property `trainable_variables` contains logic to iterate through the
+    weights from the model and its sublayers. The serialized Keras model saves
+    `trainable_weights` as a trackable list of variables.
+
+    PLEASE NOTE when overriding this method:
+      1. This function may only generate new trackable objects the first time it
+         is called.
+      2. The returned dictionary must not have naming conflicts with
+         dependencies tracked by the root. In other words, if the root is
+         tracking `object_1` with name 'x', and this functions returns
+         `{'x': object_2}`, an error is raised when saving.
+
+    Args:
+      serialization_cache: A dictionary shared between all objects in the same
+        object graph. This object is passed to both
+        `_list_extra_dependencies_for_serialization` and
+        `_list_functions_for_serialization`.
+
+    Returns:
+      A dictionary mapping attribute names to trackable objects.
+    """
+    del serialization_cache
+    return dict()
+
+  def _list_functions_for_serialization(self, serialization_cache):
     """Lists the functions of this trackable to serialize.
 
     Internal sub-classes can override this with specific logic. E.g.
     `AutoTrackable` provides an implementation that returns the `attr`
     that return functions.
 
+    Args:
+      serialization_cache: Dictionary passed to all objects in the same object
+        graph during serialization.
+
     Returns:
         A dictionary mapping attribute names to `Function` or
         `ConcreteFunction`.
     """
+    del serialization_cache
     return dict()

@@ -20,8 +20,9 @@ from __future__ import print_function
 import collections
 import functools
 import itertools
-from multiprocessing.pool import ThreadPool
+import multiprocessing.pool
 import sys
+import time
 import weakref
 
 from absl.testing import parameterized
@@ -30,18 +31,23 @@ import numpy
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function as tf_function
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import sparse_tensor_spec
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
@@ -50,11 +56,11 @@ from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.layers import convolutional
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -68,7 +74,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_tensor_spec
 from tensorflow.python.platform import test
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
@@ -106,17 +111,28 @@ class DefunnedMiniModel(MiniModel):
 
 
 def _example_indexed_slices_with_dense_shape():
-  return ops.IndexedSlices(
+  return indexed_slices.IndexedSlices(
       constant_op.constant([1, 2]), constant_op.constant([0, 1]),
       constant_op.constant([2]))
 
 
 def _example_indexed_slices_without_dense_shape():
-  return ops.IndexedSlices(
+  return indexed_slices.IndexedSlices(
       constant_op.constant([1, 2]), constant_op.constant([0, 1]))
 
 
 class FunctionTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    super(FunctionTest, self).setUp()
+    cpus = config.list_physical_devices('CPU')
+    # Set 4 virtual CPUs
+    config.set_virtual_device_configuration(cpus[0], [
+        context.VirtualDeviceConfiguration(),
+        context.VirtualDeviceConfiguration(),
+        context.VirtualDeviceConfiguration(),
+        context.VirtualDeviceConfiguration()
+    ])
 
   def testBasic(self):
     matmul = def_function.function(math_ops.matmul)
@@ -410,7 +426,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def stateless(x):
       return math_ops.multiply(2.0, x)
 
-    pool = ThreadPool()
+    pool = multiprocessing.pool.ThreadPool()
     inputs = [constant_op.constant(1.0 * x) for x in range(100)]
     outputs = [float(out) for out in pool.map(stateless, inputs)]
     expected = [float(2.0 * x) for x in inputs]
@@ -423,12 +439,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       del x
       return math_ops.multiply(2.0, 2.0)
 
-    pool = ThreadPool()
+    pool = multiprocessing.pool.ThreadPool()
     # `pool.map` below instantiates 100 functions, one for each object.
-    outputs = [
-        float(out)
-        for out in pool.map(stateless, [object() for _ in range(100)])
-    ]
+    objects = [object() for _ in range(100)]
+    outputs = [float(out) for out in pool.map(stateless, objects)]
     expected = [4.0] * 100
     self.assertSequenceEqual(outputs, expected)
 
@@ -440,7 +454,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def stateful(x):
       v.assign(x)
 
-    pool = ThreadPool()
+    pool = multiprocessing.pool.ThreadPool()
     inputs = [constant_op.constant(0.0)] * 100
     pool.map(stateful, inputs)
     self.assertEqual(float(v.read_value()), 0.0)
@@ -454,7 +468,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       del x
       return v.assign(0.0)
 
-    pool = ThreadPool()
+    pool = multiprocessing.pool.ThreadPool()
     # `pool.map` below instantiates 100 functions, one for each object.
     pool.map(stateful, [object() for _ in range(100)])
     self.assertEqual(float(v.read_value()), 0.0)
@@ -670,7 +684,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     compiled = def_function.function(f)
     var_handle = compiled()
     self.assertEqual(var_handle.dtype, dtypes.resource)
-    self.assertEqual(var_handle.shape, tensor_shape.scalar())
+    self.assertEqual(var_handle.shape, tensor_shape.TensorShape([]))
     var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
     self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
@@ -747,7 +761,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       compiled = def_function.function(f)
       var_handle = compiled()
       self.assertEqual(var_handle.dtype, dtypes.resource)
-      self.assertEqual(var_handle.shape, tensor_shape.scalar())
+      self.assertEqual(var_handle.shape, tensor_shape.TensorShape([]))
       var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
       self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
@@ -777,14 +791,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       def f():
         tl, value = list_ops.tensor_list_pop_back(
             tensor_list, element_dtype=dtypes.float32)
-        self.assertEqual(value.shape, tensor_shape.scalar())
+        self.assertEqual(value.shape, tensor_shape.TensorShape([]))
         return tl
 
       compiled = def_function.function(f)
       output_tensor_list = compiled()
       _, value = list_ops.tensor_list_pop_back(
           output_tensor_list, element_dtype=dtypes.float32)
-      self.assertEqual(value.shape, tensor_shape.scalar())
+      self.assertEqual(value.shape, tensor_shape.TensorShape([]))
 
   @test_util.run_in_graph_and_eager_modes
   def testDefunForcesResourceVariables(self):
@@ -920,14 +934,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = def_function.function(sum_gather)
     self.assertAllEqual(sum_gather(), defined())
 
-  @parameterized.parameters([
-      (_example_indexed_slices_with_dense_shape,),
-      (_example_indexed_slices_without_dense_shape,),
-      (ragged_tensor.RaggedTensor.from_row_lengths,
+  @parameterized.named_parameters([
+      ('IndexedSlicesWithDenseShape',
+       _example_indexed_slices_with_dense_shape,),
+      ('IndexedSlicesWithoutDenseShape',
+       _example_indexed_slices_without_dense_shape,),
+      ('RaggedTensorRaggedRank1', ragged_tensor.RaggedTensor.from_row_lengths,
        {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]}),
-      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+      ('RaggedTensorRaggedRank2',
+       ragged_tensor.RaggedTensor.from_nested_row_lengths,
        {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]}),
-      (sparse_tensor.SparseTensor,
+      ('SparseTensor', sparse_tensor.SparseTensor,
        {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]}),
   ])  # pyformat: disable
   def testReturnCompositeTensorWithDefun(self,
@@ -949,25 +966,32 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     for (input_component, output_component) in zip(input_flat, output_flat):
       self.assertAllEqual(input_component, output_component)
 
-  @parameterized.parameters([
-      (_example_indexed_slices_with_dense_shape,),
-      (_example_indexed_slices_without_dense_shape,),
-      (ragged_tensor.RaggedTensor.from_row_lengths,
+  @parameterized.named_parameters([
+      ('IndexedSlicesWithDenseShape',
+       _example_indexed_slices_with_dense_shape,),
+      ('IndexedSlicesWithoutDenseShape',
+       _example_indexed_slices_without_dense_shape,),
+      ('RaggedTensorRaggedRank1',
+       ragged_tensor.RaggedTensor.from_row_lengths,
        {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]}),
-      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+      ('RaggedTensorRaggedRank2',
+       ragged_tensor.RaggedTensor.from_nested_row_lengths,
        {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]}),
-      (sparse_tensor.SparseTensor,
+      ('SparseTensor',
+       sparse_tensor.SparseTensor,
        {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]}),
-      (ragged_tensor.RaggedTensor.from_row_lengths,
+      ('RaggedTensorRaggedRank1WithSignature',
+       ragged_tensor.RaggedTensor.from_row_lengths,
        {'values': [1, 2, 3], 'row_lengths': [2, 0, 1]},
-       [ragged_tensor_spec.ragged_tensor_spec([None, None], dtypes.int32)]),
-      (ragged_tensor.RaggedTensor.from_nested_row_lengths,
+       [ragged_tensor.RaggedTensorSpec([None, None], dtypes.int32)]),
+      ('RaggedTensorRaggedRank2WithSignature',
+       ragged_tensor.RaggedTensor.from_nested_row_lengths,
        {'flat_values': [1, 2, 3], 'nested_row_lengths': [[1, 2], [2, 0, 1]]},
-       [ragged_tensor_spec.ragged_tensor_spec([None, None, None],
-                                              dtypes.int32)]),
-      (sparse_tensor.SparseTensor,
+       [ragged_tensor.RaggedTensorSpec([None, None, None], dtypes.int32)]),
+      ('SparseTensorWithSignature',
+       sparse_tensor.SparseTensor,
        {'values': [1, 2, 3], 'indices': [[0], [8], [10]], 'dense_shape': [20]},
-       [sparse_tensor_spec.sparse_tensor_spec([None], dtypes.int32)]),
+       [sparse_tensor.SparseTensorSpec([None], dtypes.int32)]),
   ])  # pyformat: disable
   def testCompositeAsArgumentTensorWithDefun(self,
                                              factory_fn,
@@ -987,7 +1011,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     output_flat = nest.flatten(output_ct, expand_composites=True)
     for (input_component, output_component) in zip(input_flat, output_flat):
       self.assertAllEqual(input_component, output_component)
-
 
   @test_util.run_gpu_only
   def testFunctionOnDevice(self):
@@ -1240,11 +1263,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # `Function` --(instancemethod on `MiniModel`)--> `MiniModel`
     del model.call
 
-  # Note: The ConfigProto below unfortunately only configures graph
-  # construction. Eager's configuration is controlled in `__main__`.
-  @test_util.run_in_graph_and_eager_modes(
-      config=config_pb2.ConfigProto(device_count={'CPU': 4}))
-  @test_util.run_v1_only('b/120545219')
+  @test_util.run_in_graph_and_eager_modes
   def testDeviceAnnotationsRespected(self):
 
     def multi_device_fn():
@@ -1281,9 +1300,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
     self.assertIn(compat.as_bytes('CPU:0'), outputs[3])
 
-  @test_util.run_in_graph_and_eager_modes(
-      config=config_pb2.ConfigProto(device_count={'CPU': 2}))
-  @test_util.run_v1_only('b/120545219')
+  @test_util.run_in_graph_and_eager_modes
   def testCallingGraphFunctionOnDifferentDevice(self):
 
     def func():
@@ -1431,7 +1448,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertLen(defined._function_cache.arg_relaxed_shapes, 1)
       relaxed_shapes = (
           list(defined._function_cache.arg_relaxed_shapes.values())[0])
-      self.assertEqual(len(relaxed_shapes), 1)
+      self.assertLen(relaxed_shapes, 1)
       relaxed_shape = relaxed_shapes[0]
       # pylint: enable=protected-access
       self.assertEqual(relaxed_shape.rank, 1)
@@ -1662,7 +1679,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
-    with self.assertRaisesRegexp(TypeError, 'Received 2 argument\(s\)'):
+    with self.assertRaisesRegexp(TypeError, r'Received 2 argument\(s\)'):
       defined(array_ops.ones([2]), array_ops.ones([2]))
     with self.assertRaisesRegexp(ValueError,
                                  'Structure of Python function inputs.*'):
@@ -1795,7 +1812,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(rt.row_splits.shape.as_list(), [4])
       return rt
 
-    signature = [ragged_tensor_spec.ragged_tensor_spec(
+    signature = [ragged_tensor.RaggedTensorSpec(
         shape=[3, None], dtype=dtypes.int32)]
     defined = function.defun(f, input_signature=signature)
     rt1 = ragged_factory_ops.constant([[1], [], [2, 3, 4]])
@@ -1818,7 +1835,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # Different dtype
     rt4 = ragged_factory_ops.constant([[1.0, 2.0], [], [3.0]])
-    with self.assertRaisesRegexp(ValueError, 'incompatible'):
+    with self.assertRaisesRegexp(ValueError, 'Structure .* does not match'):
       defined(rt4)
 
     # Different rank
@@ -2076,7 +2093,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
         t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-        composite.add_to_graph(register_gradient_functions=True)
+        composite.add_to_graph()
+        composite.add_gradient_functions_to_graph()
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
@@ -2107,6 +2125,32 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # Make sure the pre registered function is used, and no other function
         # is added.
         self.assertLen(graph._functions, 6)
+
+  @parameterized.named_parameters(
+      dict(testcase_name='Defun',
+           function_decorator=function.defun),
+      dict(testcase_name='DefFunction',
+           function_decorator=def_function.function))
+  def testEagerCaptures(self, function_decorator):
+    with context.eager_mode():
+      large_tensor = array_ops.ones(shape=(256,))
+      self.assertGreater(256, func_graph._EAGER_CONST_THRESHOLD)
+
+      small_tensor = array_ops.ones(shape=(4,))
+      self.assertLessEqual(4, func_graph._EAGER_CONST_THRESHOLD)
+
+      v = resource_variable_ops.ResourceVariable(0.0)
+
+    for captured, op_type in [(large_tensor, 'Placeholder'),
+                              (small_tensor, 'Const'), (v, 'Placeholder')]:
+      @function_decorator
+      def test_fn():
+        return captured + 1  # pylint: disable=cell-var-from-loop
+
+      g = test_fn.get_concrete_function().graph
+      internal_captures = g.internal_captures
+      self.assertLen(internal_captures, 1)
+      self.assertEqual(internal_captures[0].op.type, op_type)
 
   def testRegisterFunctionWithInputSignature(self):
     def matmul(x, y):
@@ -2193,10 +2237,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     rewrites.min_graph_nodes = -1
     graph_options = config_pb2.GraphOptions(
         rewrite_options=rewrites, build_cost_model=1)
-    config = config_pb2.ConfigProto(graph_options=graph_options)
+    config_proto = config_pb2.ConfigProto(graph_options=graph_options)
 
     with context.graph_mode(), self.cached_session(
-        config=config, graph=ops.Graph(), use_gpu=True):
+        config=config_proto, graph=ops.Graph(), use_gpu=True):
 
       @function.defun_with_attributes(
           attributes={
@@ -2233,21 +2277,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     context.context().set_optimizer_experimental_options(
         {'min_graph_nodes': -1, 'implementation_selector': True})
 
-    # TODO(b/133178886): Remove _noinline=True once the function is not default
-    # inlined in eager mode with api_implements attribute.
     @function.defun_with_attributes(
         attributes={'api_implements': 'foo',
-                    'api_preferred_device': 'CPU',
-                    '_noinline': True})
+                    'api_preferred_device': 'CPU'})
     def on_cpu(x):
       return x + 2
 
-    # TODO(b/133178886): Remove _noinline=True once the function is not default
-    # inlined in eager mode with api_implements attribute.
     @function.defun_with_attributes(
         attributes={'api_implements': 'foo',
-                    'api_preferred_device': 'GPU',
-                    '_noinline': True})
+                    'api_preferred_device': 'GPU'})
     def on_gpu(x):
       return x + 4
 
@@ -2720,6 +2758,76 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual((5, 4, 2), self.evaluate(output1).shape)
     self.assertEqual((10, 4, 3), self.evaluate(output2).shape)
 
+  def testAutoGraphContext(self):
+
+    @def_function.function
+    def test_fn():
+      self.assertEqual(
+          ag_ctx.control_status_ctx().status, ag_ctx.Status.ENABLED)
+
+    prev_status = ag_ctx.control_status_ctx().status
+    test_fn()
+    self.assertEqual(ag_ctx.control_status_ctx().status, prev_status)
+
+  def testCancelBeforeFunctionExecution(self):
+    if not context.executing_eagerly():
+      self.skipTest('eager only')
+
+    q = data_flow_ops.FIFOQueue(1, dtypes.int32)
+
+    @def_function.function
+    def f():
+      return q.dequeue()
+
+    c_mgr = cancellation.CancellationManager()
+    cancelable_func = c_mgr.get_cancelable_function(f.get_concrete_function())
+
+    c_mgr.start_cancel()
+    with self.assertRaises(errors.CancelledError):
+      cancelable_func()
+
+  def testCancelBlockedFunctionExecution(self):
+    if not context.executing_eagerly():
+      self.skipTest('eager only')
+
+    q = data_flow_ops.FIFOQueue(1, dtypes.int32)
+
+    @def_function.function
+    def f():
+      return q.dequeue()
+
+    c_mgr = cancellation.CancellationManager()
+    cancelable_func = c_mgr.get_cancelable_function(f.get_concrete_function())
+
+    def cancel_thread():
+      time.sleep(0.5)
+      c_mgr.start_cancel()
+
+    t = self.checkedThread(cancel_thread)
+    t.start()
+    with self.assertRaises(errors.CancelledError):
+      cancelable_func()
+    t.join()
+
+  def testCancelAfterFunctionExecution(self):
+    if not context.executing_eagerly():
+      self.skipTest('eager only')
+
+    q = data_flow_ops.FIFOQueue(1, dtypes.int32)
+    q.enqueue(37)
+
+    @def_function.function
+    def f():
+      return q.dequeue()
+
+    c_mgr = cancellation.CancellationManager()
+    cancelable_func = c_mgr.get_cancelable_function(f.get_concrete_function())
+
+    self.assertAllEqual(37, cancelable_func().numpy())
+
+    # Cancellation after the function executes is a no-op.
+    c_mgr.start_cancel()
+
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
@@ -2901,6 +3009,78 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     check_handle(res2, 2.0)
 
   @test_util.run_gpu_only
+  def testPassResourceThroughNestedFunctionCall(self):
+    """Test passing GPU resource to noinline function call placed on CPU.
+
+    PartitionedCallOp must not enforce any particular device assignment for the
+    resource output. Inner function marked as `_nospecialize`, so Grappler would
+    not prune unused function output.
+    """
+
+    with ops.device('/device:GPU:0'):
+      g1 = resource_variable_ops.ResourceVariable(3.0)
+
+    @function.defun_with_attributes(attributes={
+        '_noinline': True,
+        '_nospecialize': True
+    })
+    def inner(resource1):
+      return resource1 * 2, resource1.handle
+
+    @function.defun
+    def outer(resource1):
+      with ops.device('/device:CPU:0'):
+        r1, _ = inner(resource1)
+      return r1
+
+    r1 = outer(g1)
+
+    self.assertEqual(r1.numpy(), 6.0)
+    self.assertRegexpMatches(r1.backing_device, 'CPU')
+
+  @test_util.run_gpu_only
+  def testReturnResourceFromNestedFunctionCall(self):
+    """Test returning GPU resource from noinline function call placed on CPU.
+
+    When inferring output devices for the return value, do not set a device for
+    returns of DT_RESOURCE data type based on the device assignment of the node
+    that produced that resource. As an example function call placed on CPU can
+    return resources on GPU.
+    """
+
+    with ops.device('/device:GPU:0'):
+      g1 = resource_variable_ops.ResourceVariable(3.0)
+
+    @function.defun_with_attributes(attributes={
+        '_noinline': True
+    })
+    def inner(resource1):
+      resource1.assign_add(2.0)
+      return resource1 * 2, resource1.handle
+
+    @function.defun
+    def outer(resource1):
+      with ops.device('/device:CPU:0'):
+        r1, res1 = inner(resource1)
+      return r1, res1
+
+    r1, res1 = outer(g1)
+
+    self.assertEqual(r1.numpy(), 10.0)
+    self.assertRegexpMatches(r1.backing_device, 'CPU')
+
+    def check_handle(handle, expected_value):
+      self.assertRegexpMatches(handle.backing_device, 'CPU')
+      tensor = gen_resource_variable_ops.read_variable_op(
+          handle, dtypes.float32)
+      self.assertEqual(tensor.numpy(), expected_value)
+
+    # Check that handles returned from functions are on CPU and an op using
+    # the resource handle is correctly placed on the device backing the
+    # resource.
+    check_handle(res1, 5.0)
+
+  @test_util.run_gpu_only
   def testComplexInputOutputDevicePattern(self):
     """Tests input/output mapping logic in partitioning."""
     with ops.device('/device:CPU:0'):
@@ -3049,7 +3229,121 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     train()
 
+  def testDeferredCapture(self):
+    value = 1.0
+
+    @def_function.function
+    def lazy_capture(x):
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: value, tensor_spec.TensorSpec(None))
+      return x + y
+
+    self.assertAllEqual(lazy_capture(2.0), 3.0)
+    # After changing the value of `value` the function call should return a
+    # different result.
+    value = 2.0
+    self.assertAllEqual(lazy_capture(2.0), 4.0)
+
+  def testDeferredCaptureWithKey(self):
+    value0 = 1.0
+    value1 = 2.0
+
+    @def_function.function
+    def lazy_capture(x):
+      w = ops.get_default_graph().capture_call_time_value(
+          lambda: value0, tensor_spec.TensorSpec(None), key=0)
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: value1, tensor_spec.TensorSpec(None), key=1)
+      def bad_closure():
+        raise ValueError('Should not run')
+      z = ops.get_default_graph().capture_call_time_value(
+          bad_closure, tensor_spec.TensorSpec(None), key=1)
+      return x + y + w + z
+
+    self.assertAllEqual(lazy_capture(2.0), 7.0)
+    value0 = 2.0
+    value1 = 3.0
+    self.assertAllEqual(lazy_capture(2.0), 10.0)
+
+  def testDeferredCaptureTypeError(self):
+    value = constant_op.constant(1.0)
+
+    @def_function.function
+    def lazy_capture(x):
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: value, tensor_spec.TensorSpec(()))
+      return x + y
+
+    self.assertAllEqual(lazy_capture(2.0), 3.0)
+
+    # dtype mismatch
+    value = constant_op.constant(1)
+    with self.assertRaisesRegexp(ValueError, 'Value .* to a tensor with dtype'):
+      lazy_capture(2.0)
+
+    # shape mismatch
+    value = constant_op.constant([1.0])
+    with self.assertRaisesRegexp(ValueError, 'Value .* shape'):
+      lazy_capture(2.0)
+
+  def testDeferredCaptureReturnNestWithCompositeTensor(self):
+    i_s = indexed_slices.IndexedSlices(
+        constant_op.constant([1, 2]),
+        constant_op.constant([0, 1], dtype=dtypes.int64),
+        constant_op.constant([2]))
+    r_t = ragged_factory_ops.constant([[[1, 2], [3]], [[4, 5, 6]]])
+    s_t = sparse_tensor.SparseTensor(
+        values=[1, 2, 3], indices=[[0], [8], [10]], dense_shape=[20])
+
+    @def_function.function
+    def lazy_capture():
+      y = ops.get_default_graph().capture_call_time_value(
+          lambda: {'i': i_s, 't': (r_t, s_t)},
+          {'i': indexed_slices.IndexedSlicesSpec(
+              dtype=dtypes.int32, dense_shape_dtype=dtypes.int32),
+           't': (ragged_tensor.RaggedTensorSpec([2, None, None], dtypes.int32),
+                 sparse_tensor.SparseTensorSpec([None], dtypes.int32))})
+      return y['i'], y['t']
+
+    i, (r, s) = lazy_capture()
+    self.assertAllEqual(i_s.values, i.values)
+    self.assertAllEqual(i_s.indices, i.indices)
+    self.assertAllEqual(i_s.dense_shape, i.dense_shape)
+    self.assertAllEqual(r_t, r)
+    self.assertAllEqual(s_t.indices, s.indices)
+    self.assertAllEqual(s_t.values, s.values)
+    self.assertAllEqual(s_t.dense_shape, s.dense_shape)
+
+  def testDeferredCaptureCompositeTensorSpecTypeMismatch(self):
+    value = indexed_slices.IndexedSlices(
+        constant_op.constant([1, 2]),
+        constant_op.constant([0, 1], dtype=dtypes.int64))
+
+    @def_function.function
+    def lazy_capture():
+      return ops.get_default_graph().capture_call_time_value(
+          lambda: value,
+          indexed_slices.IndexedSlicesSpec(dtype=dtypes.int32))
+
+    # Type matches spec.
+    lazy_capture()
+
+    # Extra dense shape component.
+    value = indexed_slices.IndexedSlices(
+        constant_op.constant([1, 2]),
+        constant_op.constant([0, 1], dtype=dtypes.int64),
+        constant_op.constant([2]))
+    with self.assertRaises(ValueError):
+      lazy_capture()
+
+    # Index dtype mismatch int32 vs. int64.
+    value = indexed_slices.IndexedSlices(
+        constant_op.constant([1, 2]),
+        constant_op.constant([0, 1]))
+    with self.assertRaises(ValueError):
+      lazy_capture()
+
+
 if __name__ == '__main__':
-  ops.enable_eager_execution(
-      config=config_pb2.ConfigProto(device_count={'CPU': 4}))
+  ops.enable_eager_execution()
   test.main()

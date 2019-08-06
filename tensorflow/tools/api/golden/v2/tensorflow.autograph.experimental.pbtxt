@@ -6,7 +6,7 @@ tf_module {
   }
   member_method {
     name: "do_not_convert"
-    argspec: "args=[\'run_as\', \'return_dtypes\'], varargs=None, keywords=None, defaults=[\'RunMode.GRAPH\', \'None\'], "
+    argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "set_loop_options"

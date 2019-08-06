@@ -15,7 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 
 #include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
@@ -28,15 +28,15 @@ namespace data {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-constexpr const char MapDatasetOp::kDatasetType[];
-constexpr const char MapDatasetOp::kInputDataset[];
-constexpr const char MapDatasetOp::kOtherArguments[];
-constexpr const char MapDatasetOp::kF[];
-constexpr const char MapDatasetOp::kTarguments[];
-constexpr const char MapDatasetOp::kOutputTypes[];
-constexpr const char MapDatasetOp::kOutputShapes[];
-constexpr const char MapDatasetOp::kUseInterOpParallelism[];
-constexpr const char MapDatasetOp::kPreserveCardinality[];
+/* static */ constexpr const char* const MapDatasetOp::kDatasetType;
+/* static */ constexpr const char* const MapDatasetOp::kInputDataset;
+/* static */ constexpr const char* const MapDatasetOp::kOtherArguments;
+/* static */ constexpr const char* const MapDatasetOp::kFunc;
+/* static */ constexpr const char* const MapDatasetOp::kTarguments;
+/* static */ constexpr const char* const MapDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const MapDatasetOp::kOutputShapes;
+/* static */ constexpr const char* const MapDatasetOp::kUseInterOpParallelism;
+/* static */ constexpr const char* const MapDatasetOp::kPreserveCardinality;
 
 class MapDatasetOp::Dataset : public DatasetBase {
  public:
@@ -63,6 +63,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
+
   const std::vector<PartialTensorShape>& output_shapes() const override {
     return output_shapes_;
   }
@@ -72,6 +73,10 @@ class MapDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override { return input_->Cardinality(); }
+
+  bool IsStateful() const override {
+    return captured_func_->IsStateful() || input_->IsStateful();
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -105,7 +110,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {std::make_pair(0, input_graph_node)},  // Single tensor inputs.
         {std::make_pair(1, other_arguments)},         // Tensor list inputs.
-        {std::make_pair(kF, f_attr),
+        {std::make_pair(kFunc, f_attr),
          std::make_pair(kTarguments, other_arguments_types_attr),
          std::make_pair(kUseInterOpParallelism, use_inter_op_parallelism_attr),
          std::make_pair(kPreserveCardinality,
@@ -191,6 +196,20 @@ class MapDatasetOp::Dataset : public DatasetBase {
   const std::vector<PartialTensorShape> output_shapes_;
 };
 
+MapDatasetOp::MapDatasetOp(OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx) {
+  FunctionMetadata::Params params;
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kUseInterOpParallelism,
+                                   &params.use_inter_op_parallelism));
+  params.is_multi_device_function = true;
+  OP_REQUIRES_OK(ctx,
+                 FunctionMetadata::Create(ctx, kFunc, params, &func_metadata_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx,
+                 ctx->GetAttr(kPreserveCardinality, &preserve_cardinality_));
+}
+
 void MapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                DatasetBase** output) {
   std::unique_ptr<CapturedFunction> captured_func;
@@ -203,13 +222,15 @@ void MapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 }
 
 namespace {
+
 REGISTER_KERNEL_BUILDER(Name("MapDataset").Device(DEVICE_CPU), MapDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalMapDataset")
                             .Device(DEVICE_GPU)
                             .HostMemory("input_dataset")
                             .HostMemory("handle"),
                         MapDatasetOp);
-}  // namespace
+REGISTER_INPUT_COLOCATION_EXEMPTION("MapDataset");
 
+}  // namespace
 }  // namespace data
 }  // namespace tensorflow

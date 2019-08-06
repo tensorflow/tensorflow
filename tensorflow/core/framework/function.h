@@ -363,19 +363,20 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // a non-OK status if "func" was not found in the library, OK otherwise.
   // Please be careful when replacing function: make sure all previous pointers
   // returned by `Find()` are no longer in use.
-  Status ReplaceFunction(const string& func, const FunctionDef& fdef);
+  Status ReplaceFunction(const string& func, const FunctionDef& fdef)
+      LOCKS_EXCLUDED(mu_);
 
   // Replaces the gradient corresponding to `grad.function_name()`. Returns
   // a non-OK status if "grad.function_name()" was not found in the library, OK
   // otherwise.
-  Status ReplaceGradient(const GradientDef& grad);
+  Status ReplaceGradient(const GradientDef& grad) LOCKS_EXCLUDED(mu_);
 
   // Removes the function corresponding to 'func'. Returns a non-OK status if
   // 'func' was not found in the library, OK otherwise.
   // Please be careful when removing function: make sure there are no other
   // nodes using the function, and all previous pointers returned by `Find()`
   // are no longer in use.
-  Status RemoveFunction(const string& func);
+  Status RemoveFunction(const string& func) LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.
@@ -441,20 +442,34 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   FunctionLibraryDefinition ReachableDefinitions(const GraphDef& graph) const;
   FunctionLibraryDefinition ReachableDefinitions(const FunctionDef& func) const;
 
+  // Copies the function named `func` from `other` to this
+  // FunctionLibraryDefinition.
+  // REQUIRES: `this->default_registry() == other.default_registry()`.
+  // Returns OK on success, or error otherwise. This is a no-op if a function
+  // name `func` already exists in this function library, and has the same
+  // implementation as in `other`. If the implementations conflict, an invalid
+  // argument error is returned.
+  Status CopyFunctionDefFrom(const string& func,
+                             const FunctionLibraryDefinition& other)
+      LOCKS_EXCLUDED(mu_);
+
  private:
   // Shape inference for functions is handled separately by ShapeRefiner.
 
   struct FunctionDefAndOpRegistration {
     explicit FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
 
-    FunctionDef fdef;
-    OpRegistrationData op_registration_data;
+    const FunctionDef fdef;
+    const OpRegistrationData op_registration_data;
   };
 
-  const FunctionDef* FindHelper(const string& func) const
-      SHARED_LOCKS_REQUIRED(mu_);
+  std::shared_ptr<FunctionDefAndOpRegistration> FindHelper(
+      const string& func) const SHARED_LOCKS_REQUIRED(mu_);
   string FindGradientHelper(const string& func) const
       SHARED_LOCKS_REQUIRED(mu_);
+
+  Status AddHelper(std::shared_ptr<FunctionDefAndOpRegistration> registration,
+                   bool* added) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
@@ -484,7 +499,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   mutable mutex mu_;
   const OpRegistryInterface* const default_registry_;
-  gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>>
+  gtl::FlatMap<string, std::shared_ptr<FunctionDefAndOpRegistration>>
       function_defs_ GUARDED_BY(mu_);
   gtl::FlatMap<string, string> func_grad_ GUARDED_BY(mu_);
 };
@@ -521,15 +536,31 @@ class FunctionLibraryRuntime {
     std::vector<string> input_devices;
 
     // For multi-device functions, a vector of canonical device names for
-    // function's outputs. The device of resource outputs should be the CPU
-    // device, not the device backing the resource.
-    // If specified, must have the same length as the number of function
-    // outputs.
-    // If not specified, output devices are picked automatically. If operations
-    // producing the output tensors have explicit device specification, they
-    // will be respected. These device specifications must identify a unique
-    // device, i.e.  a general specification like "job:foo" matching multiple
-    // devices will result in an error.
+    // function's outputs.
+    //
+    // (a) If specified (must have the same length as number of outputs):
+    //
+    // Specified devices will be assigned to Retval nodes inserted into the
+    // function body graph in place of function outputs. It is allowed to
+    // specify output device as empty string, in this case Retval device
+    // assignment will be inferred later when function graph will be placed
+    // before partitioning (this is required for resource outputs). Placer will
+    // respect colocation constraints.
+    //
+    // (b) If not specified:
+    //
+    // Function runtime will infer Retval device by following input edges, until
+    // it will reach a node with a device specification. This device
+    // specification must identify a unique device, i.e. a general specification
+    // like "job:foo" matching multiple devices will result in an error.
+    //
+    // IMPORTANT: Resource outputs
+    //
+    // Multi device functions might return resources on a devices different from
+    // the function call device. If output device is not specified for the
+    // resource output, and node producing that resource is a function call,
+    // runtime will leave device specification empty and will rely on Placer to
+    // infer correct device.
     std::vector<string> output_devices;
 
     // This interface is EXPERIMENTAL and subject to change.
@@ -546,7 +577,7 @@ class FunctionLibraryRuntime {
     // shape for input resources.
     // REQUIRES: if input_resource_dtypes_and_shapes.count(i) > 0 then i-th
     // argument type must be DT_RESOURCE.
-    std::unordered_map<int, std::pair<DataType, TensorShape>>
+    std::unordered_map<int, DtypeAndPartialTensorShape>
         input_resource_dtypes_and_shapes;
 
     // This interface is EXPERIMENTAL and subject to change.
@@ -603,7 +634,8 @@ class FunctionLibraryRuntime {
                              Handle* handle) = 0;
   Status Instantiate(const string& function_name, AttrSlice attrs,
                      Handle* handle) {
-    return Instantiate(function_name, attrs, {}, handle);
+    auto opts = absl::make_unique<InstantiateOptions>();
+    return Instantiate(function_name, attrs, *opts, handle);
   }
 
   // Releases state associated with the handle.
@@ -792,6 +824,9 @@ class DistributedFunctionLibraryRuntime {
                    FunctionLibraryRuntime::LocalHandle handle,
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    FunctionLibraryRuntime::DoneCallback done) = 0;
+  virtual void CleanUp(uint64 step_id,
+                       FunctionLibraryRuntime::LocalHandle handle,
+                       FunctionLibraryRuntime::DoneCallback done) = 0;
 
   // DeviceMgr with *all* available devices.
   virtual DeviceMgr* remote_device_mgr() const = 0;

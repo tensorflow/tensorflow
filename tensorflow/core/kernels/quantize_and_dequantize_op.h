@@ -45,7 +45,8 @@ struct QuantizeAndDequantizeOneScaleFunctor {
   void operator()(const Device& d, typename TTypes<T>::ConstVec input,
                   bool signed_input, int num_bits, bool range_given,
                   Tensor* input_min_tensor, Tensor* input_max_tensor,
-                  QuantizerRoundMode round_mode, typename TTypes<T>::Vec out);
+                  QuantizerRoundMode round_mode, bool narrow_range,
+                  typename TTypes<T>::Vec out);
 };
 
 // The implementation below runs on both CPU and GPU.
@@ -107,7 +108,7 @@ struct QuantizeAndDequantizeOneScaleImpl {
   static void Compute(const Device& d, typename TTypes<T>::ConstVec input,
                       bool signed_input, int num_bits, bool range_given,
                       Tensor* input_min_tensor, Tensor* input_max_tensor,
-                      QuantizerRoundMode round_mode,
+                      QuantizerRoundMode round_mode, bool narrow_range,
                       typename TTypes<T>::Vec out) {
     T min_range;
     T max_range;
@@ -125,11 +126,15 @@ struct QuantizeAndDequantizeOneScaleImpl {
     }
 
     // Calculate the range for the simulated integer quantization:
-    // e.g. [-128,127] for signed = true, num_bits = 8,
+    // e.g. [-127,127] for signed = true, narrow_range = true, num_bits = 8,
+    // or [-128,127] for signed = true, narrow_range = false, num_bits = 8,
     // or [0, 255] for signed = false, num_bits = 8.
-    const int64 min_quantized = signed_input ? -(1ULL << (num_bits - 1)) : 0;
-    const int64 max_quantized = min_quantized + ((1ULL << num_bits) - 1);
-
+    const int64 min_quantized =
+        signed_input ? narrow_range ? -(1ULL << (num_bits - 1)) + 1
+                                    : -(1ULL << (num_bits - 1))
+                     : 0;
+    const int64 max_quantized =
+        signed_input ? (1ULL << (num_bits - 1)) - 1 : (1ULL << num_bits) - 1;
     // Determine the maximum scaling factor that would scale
     // [min_range, max_range] to not exceed [min_quantized, max_quantized],
     // while keeping 0 unchanged.

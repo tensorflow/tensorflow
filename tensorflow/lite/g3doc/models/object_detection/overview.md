@@ -20,7 +20,7 @@ If you are using a platform other than Android or iOS, or you are already
 familiar with the <a href="https://www.tensorflow.org/api_docs/python/tf/lite">TensorFlow Lite APIs</a>, you can
 download our starter object detection model and the accompanying labels.
 
-<a class="button button-primary" href="http://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download
+<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download
 starter model and labels</a>
 
 For more information about the starter model, see
@@ -185,7 +185,7 @@ Note: Object detection models accept input images of a specific size. This is li
 We recommend starting with this pre-trained quantized COCO SSD MobileNet v1
 model.
 
-<a class="button button-primary" href="http://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download
+<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download
 starter model and labels</a>
 
 ### Uses and limitations
@@ -193,7 +193,7 @@ starter model and labels</a>
 The object detection model we provide can identify and locate up to 10 objects
 in an image. It is trained to recognize 80 classes of object. For a full list of
 classes, see the labels file in the
-<a href="http://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">model
+<a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">model
 zip</a>.
 
 If you want to train a model to recognize new classes, see
@@ -256,7 +256,7 @@ each object. There will always be 10 objects detected.
 
 The pre-trained models we provide are trained to detect 80 classes of object.
 For a full list of classes, see the labels file in the
-<a href="http://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">model
+<a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">model
 zip</a>.
 
 You can use a technique known as transfer learning to re-train a model to

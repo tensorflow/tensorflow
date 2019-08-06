@@ -9,6 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/window_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -17,7 +18,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "window_dataset";
-constexpr char kOpName[] = "WindowDataset";
 
 class WindowDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -27,9 +27,12 @@ class WindowDatasetOpTest : public DatasetOpsTestBase {
       const std::vector<PartialTensorShape>& output_shapes,
       std::unique_ptr<OpKernel>* op_kernel) {
     NodeDef node_def = test::function::NDef(
-        kNodeName, kOpName,
-        {"input_dataset", "size", "shift", "stride", "drop_remainder"},
-        {{"output_types", output_types}, {"output_shapes", output_shapes}});
+        kNodeName, name_utils::OpName(WindowDatasetOp::kDatasetType),
+        {WindowDatasetOp::kInputDataset, WindowDatasetOp::kSize,
+         WindowDatasetOp::kShift, WindowDatasetOp::kStride,
+         WindowDatasetOp::kDropRemainder},
+        {{WindowDatasetOp::kOutputTypes, output_types},
+         {WindowDatasetOp::kOutputShapes, output_shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
@@ -66,247 +69,234 @@ struct TestCase {
 
 // Test case 1: size=2, shift=2, stride=1, drop_remainder=false.
 TestCase TestCase1() {
-  return {
-      /*range_data_param*/ {0, 7, 1},
-      /*size*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*shift*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*stride*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
-      /*expected_outputs*/
-      {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {6})}},
-      /*expected_output_dtypes*/ {DT_VARIANT},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 4,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 7, 1},
+          /*size*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*shift*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*stride*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {false}),
+          /*expected_outputs*/
+          {{CreateTensor<int64>(TensorShape({}), {0}),
+            CreateTensor<int64>(TensorShape({}), {1})},
+           {CreateTensor<int64>(TensorShape({}), {2}),
+            CreateTensor<int64>(TensorShape({}), {3})},
+           {CreateTensor<int64>(TensorShape({}), {4}),
+            CreateTensor<int64>(TensorShape({}), {5})},
+           {CreateTensor<int64>(TensorShape({}), {6})}},
+          /*expected_output_dtypes*/ {DT_VARIANT},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 4,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 2: size=2, shift=2, stride=2, drop_remainder=true.
 TestCase TestCase2() {
-  return {
-      /*range_data_param*/ {0, 7, 1},
-      /*size*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*shift*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*stride*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
-      /*expected_outputs*/
-      {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {6})}},
-      /*expected_output_dtypes*/ {DT_VARIANT},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 3,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 7, 1},
+          /*size*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*shift*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*stride*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {true}),
+          /*expected_outputs*/
+          {{CreateTensor<int64>(TensorShape({}), {0}),
+            CreateTensor<int64>(TensorShape({}), {2})},
+           {CreateTensor<int64>(TensorShape({}), {2}),
+            CreateTensor<int64>(TensorShape({}), {4})},
+           {CreateTensor<int64>(TensorShape({}), {4}),
+            CreateTensor<int64>(TensorShape({}), {6})}},
+          /*expected_output_dtypes*/ {DT_VARIANT},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 3,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 3: size=8, shift=3, stride=1, drop_remainder=false.
 TestCase TestCase3() {
-  return {
-      /*range_data_param*/ {0, 7, 1},
-      /*size*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {8}),
-      /*shift*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
-      /*stride*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
-      /*expected_outputs*/
-      {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {6})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {6})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {6})}},
-      /*expected_output_dtypes*/ {DT_VARIANT},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 3,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 7, 1},
+          /*size*/ CreateTensor<int64>(TensorShape({}), {8}),
+          /*shift*/ CreateTensor<int64>(TensorShape({}), {3}),
+          /*stride*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {false}),
+          /*expected_outputs*/
+          {{CreateTensor<int64>(TensorShape({}), {0}),
+            CreateTensor<int64>(TensorShape({}), {1}),
+            CreateTensor<int64>(TensorShape({}), {2}),
+            CreateTensor<int64>(TensorShape({}), {3}),
+            CreateTensor<int64>(TensorShape({}), {4}),
+            CreateTensor<int64>(TensorShape({}), {5}),
+            CreateTensor<int64>(TensorShape({}), {6})},
+           {CreateTensor<int64>(TensorShape({}), {3}),
+            CreateTensor<int64>(TensorShape({}), {4}),
+            CreateTensor<int64>(TensorShape({}), {5}),
+            CreateTensor<int64>(TensorShape({}), {6})},
+           {CreateTensor<int64>(TensorShape({}), {6})}},
+          /*expected_output_dtypes*/ {DT_VARIANT},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 3,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 4: size=8, shift=3, stride=1, drop_remainder=true.
 TestCase TestCase4() {
-  return {
-      /*range_data_param*/ {0, 7, 1},
-      /*size*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {8}),
-      /*shift*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
-      /*stride*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
-      /*expected_outputs*/ {},
-      /*expected_output_dtypes*/ {DT_VARIANT},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 0,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 7, 1},
+          /*size*/ CreateTensor<int64>(TensorShape({}), {8}),
+          /*shift*/ CreateTensor<int64>(TensorShape({}), {3}),
+          /*stride*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {true}),
+          /*expected_outputs*/ {},
+          /*expected_output_dtypes*/ {DT_VARIANT},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 0,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 5: size=2, shift=8, stride=1, drop_remainder=false.
 TestCase TestCase5() {
-  return {
-      /*range_data_param*/ {0, 7, 1},
-      /*size*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*shift*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {8}),
-      /*stride*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
-      /*expected_outputs*/
-      {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1})}},
-      /*expected_output_dtypes*/ {DT_VARIANT},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 1,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 7, 1},
+          /*size*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*shift*/ CreateTensor<int64>(TensorShape({}), {8}),
+          /*stride*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {false}),
+          /*expected_outputs*/
+          {{CreateTensor<int64>(TensorShape({}), {0}),
+            CreateTensor<int64>(TensorShape({}), {1})}},
+          /*expected_output_dtypes*/ {DT_VARIANT},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 1,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 6: size=2, shift=8, stride=1, drop_remainder=true.
 TestCase TestCase6() {
-  return {
-      /*range_data_param*/ {0, 7, 1},
-      /*size*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*shift*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {8}),
-      /*stride*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
-      /*expected_outputs*/
-      {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1})}},
-      /*expected_output_dtypes*/ {DT_VARIANT},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 1,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 7, 1},
+          /*size*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*shift*/ CreateTensor<int64>(TensorShape({}), {8}),
+          /*stride*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {true}),
+          /*expected_outputs*/
+          {{CreateTensor<int64>(TensorShape({}), {0}),
+            CreateTensor<int64>(TensorShape({}), {1})}},
+          /*expected_output_dtypes*/ {DT_VARIANT},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 1,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 7: size=2, shift=2, stride=8, drop_remainder=false.
 TestCase TestCase7() {
-  return {
-      /*range_data_param*/ {0, 7, 1},
-      /*size*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*shift*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*stride*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {8}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
-      /*expected_outputs*/
-      {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {6})}},
-      /*expected_output_dtypes*/ {DT_VARIANT},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 4,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 7, 1},
+          /*size*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*shift*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*stride*/ CreateTensor<int64>(TensorShape({}), {8}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {false}),
+          /*expected_outputs*/
+          {{CreateTensor<int64>(TensorShape({}), {0})},
+           {CreateTensor<int64>(TensorShape({}), {2})},
+           {CreateTensor<int64>(TensorShape({}), {4})},
+           {CreateTensor<int64>(TensorShape({}), {6})}},
+          /*expected_output_dtypes*/ {DT_VARIANT},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 4,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 8: size=2, shift=2, stride=8, drop_remainder=true.
 TestCase TestCase8() {
-  return {
-      /*range_data_param*/ {0, 7, 1},
-      /*size*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*shift*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*stride*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {8}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
-      /*expected_outputs*/ {},
-      /*expected_output_dtypes*/ {DT_VARIANT},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 0,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 7, 1},
+          /*size*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*shift*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*stride*/ CreateTensor<int64>(TensorShape({}), {8}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {true}),
+          /*expected_outputs*/ {},
+          /*expected_output_dtypes*/ {DT_VARIANT},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 0,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 9: size=4, shift=2, stride=2, drop_remainder=true.
 TestCase TestCase9() {
-  return {
-      /*range_data_param*/ {0, 7, 1},
-      /*size*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
-      /*shift*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*stride*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
-      /*expected_outputs*/
-      {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {6})}},
-      /*expected_output_dtypes*/ {DT_VARIANT},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 1,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 7, 1},
+          /*size*/ CreateTensor<int64>(TensorShape({}), {4}),
+          /*shift*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*stride*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {true}),
+          /*expected_outputs*/
+          {{CreateTensor<int64>(TensorShape({}), {0}),
+            CreateTensor<int64>(TensorShape({}), {2}),
+            CreateTensor<int64>(TensorShape({}), {4}),
+            CreateTensor<int64>(TensorShape({}), {6})}},
+          /*expected_output_dtypes*/ {DT_VARIANT},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 1,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 10: size=5, shift=2, stride=2, drop_remainder=true.
 TestCase TestCase10() {
-  return {
-      /*range_data_param*/ {0, 7, 1},
-      /*size*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
-      /*shift*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*stride*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
-      /*expected_outputs*/ {},
-      /*expected_output_dtypes*/ {DT_VARIANT},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 0,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 7, 1},
+          /*size*/ CreateTensor<int64>(TensorShape({}), {5}),
+          /*shift*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*stride*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {true}),
+          /*expected_outputs*/ {},
+          /*expected_output_dtypes*/ {DT_VARIANT},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 0,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 11: size=0, shift=2, stride=2, drop_remainder=true.
 TestCase InvalidWindowSizeTestCase() {
-  return {
-      /*range_data_param*/ {0, 7, 1},
-      /*size*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-      /*shift*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*stride*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
-      /*expected_outputs*/ {},
-      /*expected_output_dtypes*/ {DT_VARIANT},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 0,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 7, 1},
+          /*size*/ CreateTensor<int64>(TensorShape({}), {0}),
+          /*shift*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*stride*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {true}),
+          /*expected_outputs*/ {},
+          /*expected_output_dtypes*/ {DT_VARIANT},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 0,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 12: size=2, shift=0, stride=2, drop_remainder=true.
 TestCase InvalidWindowShiftTestCase() {
-  return {
-      /*range_data_param*/ {0, 7, 1},
-      /*size*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*shift*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-      /*stride*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
-      /*expected_outputs*/ {},
-      /*expected_output_dtypes*/ {DT_VARIANT},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 0,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 7, 1},
+          /*size*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*shift*/ CreateTensor<int64>(TensorShape({}), {0}),
+          /*stride*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {true}),
+          /*expected_outputs*/ {},
+          /*expected_output_dtypes*/ {DT_VARIANT},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 0,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 13: size=2, shift=2, stride=0, drop_remainder=true.
 TestCase InvalidWindowStrideTestCase() {
-  return {
-      /*range_data_param*/ {0, 7, 1},
-      /*size*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*shift*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*stride*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
-      /*expected_outputs*/ {},
-      /*expected_output_dtypes*/ {DT_VARIANT},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 0,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 7, 1},
+          /*size*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*shift*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*stride*/ CreateTensor<int64>(TensorShape({}), {0}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {true}),
+          /*expected_outputs*/ {},
+          /*expected_output_dtypes*/ {DT_VARIANT},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 0,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 class ParameterizedWindowDatasetOpTest
@@ -336,7 +326,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, GetNext) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -412,7 +404,9 @@ TEST_F(WindowDatasetOpTest, DatasetNodeName) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -448,7 +442,9 @@ TEST_F(WindowDatasetOpTest, DatasetTypeString) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -458,7 +454,8 @@ TEST_F(WindowDatasetOpTest, DatasetTypeString) {
                              window_dataset_op_ctx.get(), &dataset));
   core::ScopedUnref scoped_unref_dataset(dataset);
 
-  EXPECT_EQ(dataset->type_string(), kOpName);
+  EXPECT_EQ(dataset->type_string(),
+            name_utils::OpName(WindowDatasetOp::kDatasetType));
 }
 
 TEST_P(ParameterizedWindowDatasetOpTest, DatasetOutputDtypes) {
@@ -484,7 +481,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, DatasetOutputDtypes) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -521,7 +520,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, DatasetOutputShapes) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -558,7 +559,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, Cardinality) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -594,7 +597,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, DatasetSave) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -635,7 +640,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, IteratorOutputDtypes) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -679,7 +686,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, IteratorOutputShapes) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -723,7 +732,9 @@ TEST_F(WindowDatasetOpTest, IteratorOutputPrefix) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -740,7 +751,8 @@ TEST_F(WindowDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(
       dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
 
-  EXPECT_EQ(iterator->prefix(), "Iterator::Window");
+  EXPECT_EQ(iterator->prefix(), name_utils::IteratorPrefix(
+                                    WindowDatasetOp::kDatasetType, "Iterator"));
 }
 
 TEST_P(ParameterizedWindowDatasetOpTest, Roundtrip) {
@@ -766,7 +778,9 @@ TEST_P(ParameterizedWindowDatasetOpTest, Roundtrip) {
   Tensor stride = test_case.stride;
   Tensor drop_remainder = test_case.drop_remainder;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+      {TensorValue(&range_dataset_tensor), TensorValue(&size),
+       TensorValue(&shift), TensorValue(&stride),
+       TensorValue(&drop_remainder)});
 
   std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
   TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(), &inputs,
@@ -865,7 +879,9 @@ TEST_F(WindowDatasetOpTest, InvalidArguments) {
     Tensor stride = test_case.stride;
     Tensor drop_remainder = test_case.drop_remainder;
     gtl::InlinedVector<TensorValue, 4> inputs(
-        {&range_dataset_tensor, &size, &shift, &stride, &drop_remainder});
+        {TensorValue(&range_dataset_tensor), TensorValue(&size),
+         TensorValue(&shift), TensorValue(&stride),
+         TensorValue(&drop_remainder)});
 
     std::unique_ptr<OpKernelContext> window_dataset_op_ctx;
     TF_ASSERT_OK(CreateWindowDatasetContext(window_dataset_kernel.get(),

@@ -34,7 +34,8 @@ TEST(UtilTest, SimpleE2ETest) {
       "tensorflow/lite/testdata/test_input.csv";
   options.dump_output_to_file = FLAGS_test_tmpdir + "/test_out.csv";
   options.kernel_type = "REFERENCE";
-  std::unique_ptr<TestRunner> runner(new TfLiteDriver(false, "", true));
+  std::unique_ptr<TestRunner> runner(new TfLiteDriver(
+      TfLiteDriver::DelegateType::kNone, /*reference_kernel=*/true));
   RunKernelTest(options, runner.get());
   std::string expected = "3";
   for (int i = 0; i < 1 * 8 * 8 * 3 - 1; i++) {

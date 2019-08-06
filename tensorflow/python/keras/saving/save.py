@@ -23,9 +23,9 @@ import os
 import six
 
 from tensorflow.python import tf2
-from tensorflow.python.framework import ops
 from tensorflow.python.keras.saving import hdf5_format
-from tensorflow.python.keras.saving import saved_model
+from tensorflow.python.keras.saving.saved_model import load as saved_model_load
+from tensorflow.python.keras.saving.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.util.tf_export import keras_export
 
@@ -48,7 +48,8 @@ def save_model(model,
                filepath,
                overwrite=True,
                include_optimizer=True,
-               save_format=None):
+               save_format=None,
+               signatures=None):
   """Saves a model as a TensorFlow SavedModel or HDF5 file.
 
   The saved model contains:
@@ -60,6 +61,14 @@ def save_model(model,
   the exact same state, without any of the code
   used for model definition or training.
 
+  _SavedModel serialization_ (not yet added)
+
+  The SavedModel serialization path uses `tf.saved_model.save` to save the model
+  and all trackable objects attached to the model (e.g. layers and variables).
+  `@tf.function`-decorated methods are also saved. Additional trackable objects
+  and functions are added to the SavedModel to allow the model to be
+  loaded back as a Keras Model object.
+
   Arguments:
       model: Keras model instance to be saved.
       filepath: One of the following:
@@ -69,32 +78,19 @@ def save_model(model,
         location, or instead ask the user with a manual prompt.
       include_optimizer: If True, save optimizer's state together.
       save_format: Either 'tf' or 'h5', indicating whether to save the model
-        to Tensorflow SavedModel or HDF5. The 'tf' option is currently disabled,
-        and will be enabled when Keras SavedModel export is no longer
-        experimental. (The experimental function is
-        tf.keras.experimental.export_saved_model).
+        to Tensorflow SavedModel or HDF5. Defaults to 'tf' in TF 2.X, and 'h5'
+        in TF 1.X.
+      signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
+        format only. Please see the `signatures` argument in
+        `tf.saved_model.save` for details.
 
   Raises:
       ImportError: If save format is hdf5, and h5py is not available.
   """
   from tensorflow.python.keras.engine import sequential  # pylint: disable=g-import-not-at-top
 
-  if (not tf2.enabled() and
-      not ops.executing_eagerly_outside_functions()
-      and save_format == 'tf'):
-    raise NotImplementedError(
-        'Saving the model as SavedModel is not supported in TensorFlow 1.X'
-        'graph mode. Please enable eager execution or use the "h5" save format.'
-        )
-
-  if _KERAS_SAVED_MODEL_STILL_EXPERIMENTAL and save_format == 'tf':
-    raise NotImplementedError(
-        'Saving the model as SavedModel is still in experimental stages. '
-        'Please use tf.keras.experimental.export_saved_model, or use '
-        'save_format="h5" to save to HDF5.')
-
-  # TODO(kathywu): Remove this when Keras SavedModel is not experimental.
-  save_format = 'h5'
+  default_format = 'tf' if tf2.enabled() else 'h5'
+  save_format = save_format or default_format
 
   if (save_format == 'h5' or
       (h5py is not None and isinstance(filepath, h5py.File)) or
@@ -111,7 +107,9 @@ def save_model(model,
           'or using `save_weights`.')
     hdf5_format.save_model_to_hdf5(
         model, filepath, overwrite, include_optimizer)
-    return
+  else:
+    saved_model_save.save(model, filepath, overwrite, include_optimizer,
+                          signatures)
 
 
 @keras_export('keras.models.load_model')
@@ -140,14 +138,13 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
       ImportError: if loading from an hdf5 file and h5py is not available.
       IOError: In case of an invalid savefile.
   """
-  if not tf2.enabled() or (
-      h5py is not None and (
-          isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath))):
+  if (h5py is not None and (
+      isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath))):
     return hdf5_format.load_model_from_hdf5(filepath, custom_objects, compile)
 
   if isinstance(filepath, six.string_types):
     loader_impl.parse_saved_model(filepath)
-    return saved_model.load_from_saved_model(filepath)
+    return saved_model_load.load(filepath, compile)
 
   raise IOError(
       'Unable to load model. Filepath is not an hdf5 file (or h5py is not '

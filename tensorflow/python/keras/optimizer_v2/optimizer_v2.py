@@ -47,7 +47,9 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -108,7 +110,7 @@ class OptimizerV2(trackable.Trackable):
   opt = tf.keras.optimizers.SGD(learning_rate=0.1)
   model = tf.keras.Sequential()
   model.add(tf.keras.layers.Dense(num_hidden, activation='relu'))
-  model.add(tf.keras.layers.Dense(num_classes, activation='sigmoid')
+  model.add(tf.keras.layers.Dense(num_classes, activation='sigmoid'))
   loss_fn = lambda: tf.keras.losses.mse(model(input), output)
   var_list_fn = lambda: model.trainable_weights
   for input, output in data:
@@ -259,9 +261,6 @@ class OptimizerV2(trackable.Trackable):
 
     self._use_locking = True
     self._init_set_name(name)
-    # in graph mode, name_scope performs uniquification, so keep scope_context.
-    with backend.name_scope(self._name) as name_scope:
-      self._scope_ctx = name_scope
     self._hyper = {}
     # dict: {variable name : {slot name : variable}}
     self._slots = {}
@@ -353,7 +352,7 @@ class OptimizerV2(trackable.Trackable):
     if callable(var_list):
       var_list = var_list()
     var_list = nest.flatten(var_list)
-    with backend.name_scope(self._scope_ctx):
+    with backend.name_scope(self._name + "/gradients"):
       grads = tape.gradient(loss_value, var_list, grad_loss)
 
       if hasattr(self, "clipnorm"):
@@ -387,7 +386,8 @@ class OptimizerV2(trackable.Trackable):
         function not implemented).
     """
     params = nest.flatten(params)
-    with backend.get_graph().as_default(), backend.name_scope(self._scope_ctx):
+    with backend.get_graph().as_default(), backend.name_scope(self._name +
+                                                              "/gradients"):
       grads = gradients.gradients(loss, params)
       for grad, param in zip(grads, params):
         if grad is None:
@@ -427,21 +427,20 @@ class OptimizerV2(trackable.Trackable):
     grads_and_vars = _filter_grads(grads_and_vars)
     var_list = [v for (_, v) in grads_and_vars]
 
-    with backend.name_scope(self._scope_ctx):
+    with backend.name_scope(self._name):
       # Create iteration if necessary.
       with ops.init_scope():
         _ = self.iterations
         self._create_hypers()
         self._create_slots(var_list)
 
-      self._prepare(var_list)
-
+      apply_state = self._prepare(var_list)
       return distribute_ctx.get_replica_context().merge_call(
-          self._distributed_apply,
+          functools.partial(self._distributed_apply, apply_state=apply_state),
           args=(grads_and_vars,),
           kwargs={"name": name})
 
-  def _distributed_apply(self, distribution, grads_and_vars, name):
+  def _distributed_apply(self, distribution, grads_and_vars, name, apply_state):
     """`apply_gradients` using a `DistributionStrategy`."""
     reduced_grads = distribution.extended.batch_reduce_to(
         ds_reduce_util.ReduceOp.SUM, grads_and_vars)
@@ -452,13 +451,20 @@ class OptimizerV2(trackable.Trackable):
       """Apply gradient to variable."""
       if isinstance(var, ops.Tensor):
         raise NotImplementedError("Trying to update a Tensor ", var)
+
+      apply_kwargs = {}
       if isinstance(grad, ops.IndexedSlices):
         if var.constraint is not None:
           raise RuntimeError(
               "Cannot use a constraint function on a sparse variable.")
+        if "apply_state" in self._sparse_apply_args:
+          apply_kwargs["apply_state"] = apply_state
         return self._resource_apply_sparse_duplicate_indices(
-            grad.values, var, grad.indices)
-      update_op = self._resource_apply_dense(grad, var)
+            grad.values, var, grad.indices, **apply_kwargs)
+
+      if "apply_state" in self._dense_apply_args:
+        apply_kwargs["apply_state"] = apply_state
+      update_op = self._resource_apply_dense(grad, var, **apply_kwargs)
       if var.constraint is not None:
         with ops.control_dependencies([update_op]):
           return var.assign(var.constraint(var))
@@ -468,9 +474,12 @@ class OptimizerV2(trackable.Trackable):
     update_ops = []
     with backend.name_scope(name or self._name):
       for grad, var in grads_and_vars:
-        scope_name = ("" if ops.executing_eagerly_outside_functions() else
-                      "_" + var.op.name)
-        with backend.name_scope("update" + scope_name):
+        scope_name = ("update" if ops.executing_eagerly_outside_functions() else
+                      "update_" + var.op.name)
+        # Colocate the update with variables to avoid unnecessary communication
+        # delays. See b/136304694.
+        with backend.name_scope(
+            scope_name), distribution.extended.colocate_vars_with(var):
           update_ops.extend(
               distribution.extended.update(
                   var, apply_grad_to_update_var, args=(grad,), group=False))
@@ -590,7 +599,32 @@ class OptimizerV2(trackable.Trackable):
     return slot_dict[slot_name]
 
   def _prepare(self, var_list):
-    pass
+    keys = set()
+    for var in var_list:
+      var_devices = (getattr(var, "devices", None) or  # Distributed
+                     [var.device])                     # Regular
+      var_dtype = var.dtype.base_dtype
+      for var_device in var_devices:
+        keys.add((var_device, var_dtype))
+
+    apply_state = {}
+    for var_device, var_dtype in keys:
+      apply_state[(var_device, var_dtype)] = {}
+      with ops.device(var_device):
+        self._prepare_local(var_device, var_dtype, apply_state)
+
+    return apply_state
+
+  def _prepare_local(self, var_device, var_dtype, apply_state):
+    if "learning_rate" in self._hyper:
+      lr_t = array_ops.identity(self._decayed_lr(var_dtype))
+      apply_state[(var_device, var_dtype)]["lr_t"] = lr_t
+
+  def _fallback_apply_state(self, var_device, var_dtype):
+    """Compatibility for subclasses that don't pass apply_state through."""
+    apply_state = {(var_device, var_dtype): {}}
+    self._prepare_local(var_device, var_dtype, apply_state)
+    return apply_state[(var_device, var_dtype)]
 
   def _create_hypers(self):
     if self._hypers_created:
@@ -811,20 +845,22 @@ class OptimizerV2(trackable.Trackable):
     """Call the function if param is callable."""
     return param() if callable(param) else param
 
-  def _resource_apply_dense(self, grad, handle):
+  def _resource_apply_dense(self, grad, handle, apply_state):
     """Add ops to apply dense gradients to the variable `handle`.
 
     Args:
       grad: a `Tensor` representing the gradient.
       handle: a `Tensor` of dtype `resource` which points to the variable to be
         updated.
+      apply_state: A dict which is used across multiple apply calls.
 
     Returns:
       An `Operation` which updates the value of the variable.
     """
     raise NotImplementedError()
 
-  def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
+  def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices,
+                                               **kwargs):
     """Add ops to apply sparse gradients to `handle`, with repeated indices.
 
     Optimizers which override this method must deal with repeated indices. See
@@ -841,15 +877,17 @@ class OptimizerV2(trackable.Trackable):
         updated.
       indices: a `Tensor` of integral type representing the indices for which
         the gradient is nonzero. Indices may be repeated.
+      **kwargs: May optionally contain `apply_state`
 
     Returns:
       An `Operation` which updates the value of the variable.
     """
     summed_grad, unique_indices = _deduplicate_indexed_slices(
         values=grad, indices=indices)
-    return self._resource_apply_sparse(summed_grad, handle, unique_indices)
+    return self._resource_apply_sparse(summed_grad, handle, unique_indices,
+                                       **kwargs)
 
-  def _resource_apply_sparse(self, grad, handle, indices):
+  def _resource_apply_sparse(self, grad, handle, indices, apply_state):
     """Add ops to apply sparse gradients to the variable `handle`.
 
     Similar to `_apply_sparse`, the `indices` argument to this method has been
@@ -863,6 +901,7 @@ class OptimizerV2(trackable.Trackable):
         updated.
       indices: a `Tensor` of integral type representing the indices for which
         the gradient is nonzero. Indices are unique.
+      apply_state: A dict which is used across multiple apply calls.
 
     Returns:
       An `Operation` which updates the value of the variable.
@@ -878,6 +917,16 @@ class OptimizerV2(trackable.Trackable):
     with ops.control_dependencies(
         [resource_variable_ops.resource_scatter_update(x.handle, i, v)]):
       return x.value()
+
+  @property
+  @tracking.cached_per_instance
+  def _dense_apply_args(self):
+    return tf_inspect.getfullargspec(self._resource_apply_dense).args
+
+  @property
+  @tracking.cached_per_instance
+  def _sparse_apply_args(self):
+    return tf_inspect.getfullargspec(self._resource_apply_sparse).args
 
   # ---------------
   # For implementing the trackable interface
@@ -975,7 +1024,7 @@ def _filter_grads(grads_and_vars):
                      ([v.name for _, v in grads_and_vars],))
   if vars_with_empty_grads:
     logging.warning(
-        ("Gradients does not exist for variables %s when minimizing the loss."),
+        ("Gradients do not exist for variables %s when minimizing the loss."),
         ([v.name for v in vars_with_empty_grads]))
   return filtered
 
@@ -996,7 +1045,7 @@ def _var_key(var):
 
   # pylint: disable=protected-access
   # Get the distributed variable if it exists.
-  if getattr(var, "_distributed_container", None) is not None:
+  if hasattr(var, "_distributed_container"):
     var = var._distributed_container()
   if var._in_graph_mode:
     return var._shared_name
@@ -1010,7 +1059,7 @@ def _get_slot_key_from_var(var, slot_name):
   return name + "/" + slot_name
 
 
-class _RestoredOptimizer(OptimizerV2):
+class RestoredOptimizer(OptimizerV2):
   """A non-functional Optimizer implementation for checkpoint compatibility.
 
   Holds slot variables and hyperparameters when an optimizer is restored from a
@@ -1022,7 +1071,7 @@ class _RestoredOptimizer(OptimizerV2):
   # methods.
 
   def __init__(self):
-    super(_RestoredOptimizer, self).__init__("_RestoredOptimizer")
+    super(RestoredOptimizer, self).__init__("RestoredOptimizer")
     self._hypers_created = True
 
   def get_config(self):
@@ -1036,9 +1085,9 @@ revived_types.register_revived_type(
     "optimizer",
     lambda obj: isinstance(obj, OptimizerV2),
     versions=[revived_types.VersionedTypeRegistration(
-        object_factory=lambda proto: _RestoredOptimizer(),
+        object_factory=lambda proto: RestoredOptimizer(),
         version=1,
         min_producer_version=1,
         min_consumer_version=1,
-        setter=_RestoredOptimizer._set_hyper  # pylint: disable=protected-access
+        setter=RestoredOptimizer._set_hyper  # pylint: disable=protected-access
     )])

@@ -25,11 +25,10 @@ class BigtableSampleKeysDatasetOp : public DatasetOpKernel {
   using DatasetOpKernel::DatasetOpKernel;
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    BigtableTableResource* resource;
+    core::RefCountPtr<BigtableTableResource> resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
-    core::ScopedUnref scoped_unref(resource);
-    *output = new Dataset(ctx, resource);
+    *output = new Dataset(ctx, resource.get());
   }
 
  private:
@@ -65,12 +64,14 @@ class BigtableSampleKeysDatasetOp : public DatasetOpKernel {
 
     BigtableTableResource* table() const { return table_; }
 
+    bool IsStateful() const override { return true; }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented("%s does not support serialization",
-                                   DebugString());
+      return errors::Unimplemented(DebugString(),
+                                   " does not support serialization");
     }
 
    private:

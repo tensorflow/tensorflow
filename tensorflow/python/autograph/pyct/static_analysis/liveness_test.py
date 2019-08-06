@@ -28,7 +28,11 @@ from tensorflow.python.autograph.pyct.static_analysis import liveness
 from tensorflow.python.platform import test
 
 
-class LivenessTest(test.TestCase):
+global_a = 7
+global_b = 17
+
+
+class LivenessAnalyzerTestBase(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
     node, source = parser.parse_entity(test_fn, future_features=())
@@ -58,6 +62,9 @@ class LivenessTest(test.TestCase):
     if not isinstance(expected, tuple):
       expected = (expected,)
     self.assertSetEqual(live_in_strs, set(expected))
+
+
+class LivenessAnalyzerTest(LivenessAnalyzerTestBase):
 
   def test_live_out_try_block(self):
 
@@ -420,6 +427,22 @@ class LivenessTest(test.TestCase):
     fn_body = node.body
 
     self.assertHasLiveIn(fn_body[0], ('y',))
+
+  def test_global_symbol(self):
+
+    def test_fn(c):
+      global global_a
+      global global_b
+      if global_a:
+        global_b = c
+      else:
+        global_b = c
+      return global_b
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+    self.assertHasLiveOut(fn_body[2], ('global_b',))
+    self.assertHasLiveIn(fn_body[2], ('global_a', 'c'))
 
 
 if __name__ == '__main__':

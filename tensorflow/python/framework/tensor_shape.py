@@ -19,11 +19,17 @@ from __future__ import print_function
 
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python import tf2
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 _TENSORSHAPE_V2_OVERRIDE = None
+
+_api_usage_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/v2_tensorshape",
+    "Whether tensor_shape.enable_v2_tensorshape() is called.")
 
 
 @tf_export(v1=["enable_v2_tensorshape"])
@@ -75,6 +81,7 @@ def enable_v2_tensorshape():
   """
   global _TENSORSHAPE_V2_OVERRIDE  # pylint: disable=invalid-name
   _TENSORSHAPE_V2_OVERRIDE = True
+  _api_usage_gauge.get_cell().set(True)
 
 
 @tf_export(v1=["disable_v2_tensorshape"])
@@ -85,6 +92,7 @@ def disable_v2_tensorshape():
   """
   global _TENSORSHAPE_V2_OVERRIDE  # pylint: disable=invalid-name
   _TENSORSHAPE_V2_OVERRIDE = False
+  _api_usage_gauge.get_cell().set(False)
 
 
 @tf_export(
@@ -569,10 +577,7 @@ class Dimension(object):
     Returns:
       A Dimension whose value is `self` modulo `other`.
     """
-    try:
-      other = as_dimension(other)
-    except (TypeError, ValueError):
-      return NotImplemented
+    other = as_dimension(other)
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
@@ -587,10 +592,7 @@ class Dimension(object):
     Returns:
       A Dimension whose value is `other` modulo `self`.
     """
-    try:
-      other = as_dimension(other)
-    except (TypeError, ValueError):
-      return NotImplemented
+    other = as_dimension(other)
     return other % self
 
   def __lt__(self, other):
@@ -931,6 +933,16 @@ class TensorShape(object):
       except ValueError:
         raise ValueError("Shapes %s and %s are not compatible" % (self, other))
 
+  def __add__(self, other):
+    if not isinstance(other, TensorShape):
+      other = TensorShape(other)
+    return self.concatenate(other)
+
+  def __radd__(self, other):
+    if not isinstance(other, TensorShape):
+      other = TensorShape(other)
+    return other.concatenate(self)
+
   def concatenate(self, other):
     """Returns the concatenation of the dimension in `self` and `other`.
 
@@ -1227,11 +1239,13 @@ def unknown_shape(rank=None, **kwargs):
     return TensorShape([Dimension(None)] * rank)
 
 
+@deprecation.deprecated(None, "Use tf.TensorShape([]).")
 def scalar():
   """Returns a shape representing a scalar."""
   return TensorShape([])
 
 
+@deprecation.deprecated(None, "Use tf.TensorShape([length]).")
 def vector(length):
   """Returns a shape representing a vector.
 
@@ -1244,6 +1258,7 @@ def vector(length):
   return TensorShape([length])
 
 
+@deprecation.deprecated(None, "Use tf.TensorShape([rows, cols]).")
 def matrix(rows, cols):
   """Returns a shape representing a matrix.
 

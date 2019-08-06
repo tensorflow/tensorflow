@@ -2131,6 +2131,7 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kL2Normalization:
     case OperatorType::kDequantize:
     case OperatorType::kElu:
+    case OperatorType::kHardSwish:
     case OperatorType::kRelu:
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:
@@ -2424,6 +2425,14 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kCTCBeamSearchDecoder:
       // The sizes of the outputs are only known in runtime based on the input.
       // Ignore shape progapation here and defer that to the interpreter.
+      break;
+    case OperatorType::kMatrixSetDiagV2:
+      // MatrixSetDiagV2 operators are converted to MatrixSetDiag,
+      // after which their shapes are propagated.
+      break;
+    case OperatorType::kMatrixDiagV2:
+      // MatrixDiagV2 operators are converted to MatrixDiag, after which their
+      // shapes are propagated.
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

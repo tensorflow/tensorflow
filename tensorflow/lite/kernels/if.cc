@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
+
+#include <cstring>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/subgraph.h"
@@ -30,10 +32,9 @@ struct OpData {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* op_data = new OpData;
-  const uint8_t* buffer_t = reinterpret_cast<const uint8_t*>(buffer);
-  const flexbuffers::Map& m = flexbuffers::GetRoot(buffer_t, length).AsMap();
-  op_data->then_subgraph_index = m["then_subgraph_index"].AsInt32();
-  op_data->else_subgraph_index = m["else_subgraph_index"].AsInt32();
+  const auto* params = reinterpret_cast<const TfLiteIfParams*>(buffer);
+  op_data->then_subgraph_index = params->then_subgraph_index;
+  op_data->else_subgraph_index = params->else_subgraph_index;
   return op_data;
 }
 

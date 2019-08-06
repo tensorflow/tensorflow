@@ -319,8 +319,9 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     timesteps = input_shape[0] if self.time_major else input_shape[1]
 
     if not self.could_use_cudnn:
-      # CuDNN does not support masking, fall back to use the normal GRU.
       kwargs = {'training': training}
+      self.cell.reset_dropout_mask()
+      self.cell.reset_recurrent_dropout_mask()
 
       def step(cell_inputs, cell_states):
         return self.cell.call(cell_inputs, cell_states, **kwargs)
@@ -366,7 +367,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     self.reset_dropout_mask()
     dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
     if dropout_mask is not None:
-      inputs *= dropout_mask[0]
+      inputs = inputs * dropout_mask[0]
 
     cudnn_gru_kwargs = {
         'inputs': inputs,
@@ -398,28 +399,9 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
       else:
         last_output, outputs, new_h, runtime = standard_gru(**normal_gru_kwargs)
     else:
-      api_name = 'gru_' + str(uuid.uuid4())
-      defun_standard_gru = _generate_defun_backend(
-          api_name, _CPU_DEVICE_NAME, standard_gru)
-      defun_cudnn_gru = _generate_defun_backend(
-          api_name, _GPU_DEVICE_NAME, cudnn_gru)
-      # Call the normal GRU impl and register the CuDNN impl function. The
-      # grappler will kick in during session execution to optimize the graph.
-      last_output, outputs, new_h, runtime = defun_standard_gru(
+      last_output, outputs, new_h, runtime = gru_with_backend_selection(
           **normal_gru_kwargs)
 
-      def register_cudnn_defun():
-        function.register(defun_cudnn_gru, **cudnn_gru_kwargs)
-        # return some dummy value since the tf.cond require some return value.
-        return 0
-      if mask is None:
-        register_cudnn_defun()
-      else:
-        # Only when seq_right_padded=True, CuDNN kernel can support that
-        # properly.
-        control_flow_ops.cond(is_sequence_right_padded(mask, self.time_major),
-                              true_fn=register_cudnn_defun,
-                              false_fn=lambda: 0)
     states = [new_h]
     return last_output, outputs, runtime, states
 
@@ -532,22 +514,29 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
 
   if mask is not None:
     sequence_length = calculate_sequence_by_mask(mask, time_major)
+    if go_backwards:
+      # Three reversals are required. E.g.,
+      # normal input = [1, 2, 3, 0, 0]  # where 0 need to be masked
+      # reversed_input_to_cudnn = [3, 2, 1, 0, 0]
+      # output_from_cudnn = [6, 5, 4, 0, 0]
+      # expected_output = [0, 0, 6, 5 ,4]
+      inputs = array_ops.reverse_sequence_v2(inputs, sequence_length,
+                                             seq_axis=0, batch_axis=1)
+    outputs, h, _, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
+        inputs, input_h=init_h, input_c=0, params=params, is_training=True,
+        rnn_mode='gru', sequence_lengths=sequence_length)
+    if go_backwards:
+      outputs = array_ops.reverse_sequence_v2(outputs, sequence_length,
+                                              seq_axis=0, batch_axis=1)
+      outputs = array_ops.reverse(outputs, axis=[0])
   else:
-    # Fill the array with shape [batch] with value of max timesteps.
-    sequence_length = array_ops.fill([array_ops.shape(inputs)[1]],
-                                     array_ops.shape(inputs)[0])
-  if go_backwards:
-    inputs = array_ops.reverse_sequence_v2(inputs, sequence_length, seq_axis=0,
-                                           batch_axis=1)
+    if go_backwards:
+      # Reverse axis 0 since the input is already convert to time major.
+      inputs = array_ops.reverse(inputs, axis=[0])
+    outputs, h, _, _ = gen_cudnn_rnn_ops.cudnn_rnn(
+        inputs, input_h=init_h, input_c=0, params=params, is_training=True,
+        rnn_mode='gru')
 
-  outputs, h, _, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
-      inputs,
-      input_h=init_h,
-      input_c=0,
-      params=params,
-      is_training=True,
-      rnn_mode='gru',
-      sequence_lengths=sequence_length)
   last_output = outputs[-1]
   if not time_major:
     outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
@@ -563,6 +552,101 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
     last_output = h
 
   return last_output, outputs, h, _runtime(_RUNTIME_GPU)
+
+
+def gru_with_backend_selection(
+    inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
+    go_backwards, activation, recurrent_activation):
+  """Call the GRU with optimized backend kernel selection.
+
+  Under the hood, this function will create two TF function, one with the most
+  generic kernel and can run on all device condition, and the second one with
+  CuDNN specific kernel, which can only run on GPU.
+
+  The first function will be called with normal_lstm_params, while the second
+  function is not called, but only registered in the graph. The Grappler will
+  do the proper graph rewrite and swap the optimized TF function based on the
+  device placement.
+
+  Args:
+    inputs: Input tensor of GRU layer.
+    init_h: Initial state tensor for the cell output.
+    kernel: Weights for cell kernel.
+    recurrent_kernel: Weights for cell recurrent kernel.
+    bias: Weights for cell kernel bias and recurrent bias. Only recurrent bias
+      is used in this case.
+    mask: Boolean tensor for mask out the steps within sequence.
+    time_major: Boolean, whether the inputs are in the format of
+      [time, batch, feature] or [batch, time, feature].
+    go_backwards: Boolean (default False). If True, process the input sequence
+      backwards and return the reversed sequence.
+    activation: Activation function to use for output.
+    recurrent_activation: Activation function to use for hidden recurrent state.
+
+  Returns:
+    List of output tensors, same as standard_gru.
+  """
+  params = {
+      'inputs': inputs,
+      'init_h': init_h,
+      'kernel': kernel,
+      'recurrent_kernel': recurrent_kernel,
+      'bias': bias,
+      'mask': mask,
+      'time_major': time_major,
+      'go_backwards': go_backwards,
+      'activation': activation,
+      'recurrent_activation': recurrent_activation
+  }
+
+  def cudnn_gru_with_fallback(inputs, init_h, kernel, recurrent_kernel,
+                              bias, mask, time_major, go_backwards, activation,
+                              recurrent_activation):
+    """Use CuDNN kernel when mask is none or strictly right padded."""
+    if mask is None:
+      return cudnn_gru(inputs=inputs, init_h=init_h, kernel=kernel,
+                       recurrent_kernel=recurrent_kernel, bias=bias, mask=mask,
+                       time_major=time_major, go_backwards=go_backwards)
+    # Note that mask is a boolean tensor, which doesn't need to do gradient
+    # calculation, when using tf.cond, a default gradient is added for it,
+    # which then cause the backward function to have a signature mismatch.
+    # Force the mask to not generate gradient to allow implementation_selector
+    # to work properly.
+    # TODO(b/80444525): Remove the stop_gradient().
+    mask = array_ops.stop_gradient(mask)
+
+    def input_right_padded():
+      return cudnn_gru(inputs=inputs, init_h=init_h, kernel=kernel,
+                       recurrent_kernel=recurrent_kernel, bias=bias, mask=mask,
+                       time_major=time_major, go_backwards=go_backwards)
+
+    def input_not_right_padded():
+      return standard_gru(inputs=inputs, init_h=init_h, kernel=kernel,
+                          recurrent_kernel=recurrent_kernel, bias=bias,
+                          mask=mask, time_major=time_major,
+                          go_backwards=go_backwards, activation=activation,
+                          recurrent_activation=recurrent_activation)
+
+    return control_flow_ops.cond(
+        is_sequence_right_padded(mask, time_major),
+        true_fn=input_right_padded,
+        false_fn=input_not_right_padded)
+
+  # Each time a `tf.function` is called, we will give it a unique
+  # identifiable API name, so that Grappler won't get confused when it
+  # sees multiple GRU layers added into same graph, and it will be able
+  # to pair up the different implementations across them.
+  api_name = 'gru_' + str(uuid.uuid4())
+  defun_standard_gru = _generate_defun_backend(
+      api_name, _CPU_DEVICE_NAME, standard_gru)
+  defun_cudnn_gru = _generate_defun_backend(
+      api_name, _GPU_DEVICE_NAME, cudnn_gru_with_fallback)
+
+  # Call the normal GRU impl and register the CuDNN impl function. The
+  # grappler will kick in during session execution to optimize the graph.
+  last_output, outputs, new_h, runtime = defun_standard_gru(**params)
+  function.register(defun_cudnn_gru, **params)
+  return last_output, outputs, new_h, runtime
 
 
 @keras_export('keras.layers.LSTMCell', v1=[])
@@ -816,6 +900,8 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     if not self.could_use_cudnn:
       # Fall back to use the normal LSTM.
       kwargs = {'training': training}
+      self.cell.reset_dropout_mask()
+      self.cell.reset_recurrent_dropout_mask()
 
       def step(inputs, states):
         return self.cell.call(inputs, states, **kwargs)
@@ -841,7 +927,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       self.reset_dropout_mask()
       dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
       if dropout_mask is not None:
-        inputs *= dropout_mask[0]
+        inputs = inputs * dropout_mask[0]
       cudnn_lstm_kwargs = {
           'inputs': inputs,
           'init_h': initial_state[0],
@@ -876,33 +962,9 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
           last_output, outputs, new_h, new_c, runtime = standard_lstm(
               **normal_lstm_kwargs)
       else:
-        # Each time a `tf.function` is called, we will give it a unique
-        # identifiable API name, so that Grappler won't get confused when it
-        # sees multiple LSTM layers added into same graph, and it will be able
-        # to pair up the different implementations across them.
-        api_name = 'lstm_' + str(uuid.uuid4())
-        defun_standard_lstm = _generate_defun_backend(
-            api_name, _CPU_DEVICE_NAME, standard_lstm)
-        defun_cudnn_lstm = _generate_defun_backend(
-            api_name, _GPU_DEVICE_NAME, cudnn_lstm)
+        (last_output, outputs, new_h, new_c,
+         runtime) = lstm_with_backend_selection(**normal_lstm_kwargs)
 
-        # Call the normal LSTM impl and register the CuDNN impl function. The
-        # grappler will kick in during session execution to optimize the graph.
-        last_output, outputs, new_h, new_c, runtime = defun_standard_lstm(
-            **normal_lstm_kwargs)
-
-        def register_cudnn_defun():
-          function.register(defun_cudnn_lstm, **cudnn_lstm_kwargs)
-          # return some dummy value since the tf.cond require some return value.
-          return 0
-        if mask is None:
-          register_cudnn_defun()
-        else:
-          # Only when seq_right_padded=True, CuDNN kernel can support that
-          # properly.
-          control_flow_ops.cond(is_sequence_right_padded(mask, self.time_major),
-                                true_fn=register_cudnn_defun,
-                                false_fn=lambda: 0)
       states = [new_h, new_c]
 
     if self.stateful:
@@ -1076,25 +1138,40 @@ def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   # so that mathematically it is same as the canonical LSTM implementation.
   full_bias = array_ops.concat((array_ops.zeros_like(bias), bias), 0)
 
-  if mask is not None:
-    sequence_length = calculate_sequence_by_mask(mask, time_major)
-  else:
-    # Fill the array with shape [batch] with value of max timesteps.
-    sequence_length = array_ops.fill([array_ops.shape(inputs)[1]],
-                                     array_ops.shape(inputs)[0])
-  if go_backwards:
-    inputs = array_ops.reverse_sequence_v2(inputs, sequence_length, seq_axis=0,
-                                           batch_axis=1)
-
   params = _canonical_to_params(
       weights=weights,
       biases=array_ops.split(full_bias, 8),
       shape=constant_op.constant([-1]),
       transpose_weights=True)
 
-  outputs, h, c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
-      inputs, input_h=init_h, input_c=init_c, params=params, is_training=True,
-      rnn_mode='lstm', sequence_lengths=sequence_length)
+  if mask is not None:
+    sequence_length = calculate_sequence_by_mask(mask, time_major)
+    if go_backwards:
+      # Three reversals are required. E.g.,
+      # normal input = [1, 2, 3, 0, 0]  # where 0 need to be masked
+      # reversed_input_to_cudnn = [3, 2, 1, 0, 0]
+      # output_from_cudnn = [6, 5, 4, 0, 0]
+      # expected_output = [0, 0, 6, 5 ,4]
+      inputs = array_ops.reverse_sequence_v2(inputs, sequence_length,
+                                             seq_axis=0, batch_axis=1)
+    outputs, h, c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(
+        inputs, input_h=init_h, input_c=init_c, params=params, is_training=True,
+        rnn_mode='lstm', sequence_lengths=sequence_length)
+    if go_backwards:
+      outputs = array_ops.reverse_sequence_v2(outputs, sequence_length,
+                                              seq_axis=0, batch_axis=1)
+      outputs = array_ops.reverse(outputs, axis=[0])
+  else:
+    # # Fill the array with shape [batch] with value of max timesteps.
+    # sequence_length = array_ops.fill([array_ops.shape(inputs)[1]],
+    #                                  array_ops.shape(inputs)[0])
+    if go_backwards:
+      # Reverse axis 0 since the input is already convert to time major.
+      inputs = array_ops.reverse(inputs, axis=[0])
+    outputs, h, c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
+        inputs, input_h=init_h, input_c=init_c, params=params, is_training=True,
+        rnn_mode='lstm')
+
   last_output = outputs[-1]
   if not time_major:
     outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
@@ -1110,6 +1187,107 @@ def cudnn_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   if mask is not None:
     last_output = h
   return last_output, outputs, h, c, _runtime(_RUNTIME_GPU)
+
+
+def lstm_with_backend_selection(
+    inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask, time_major,
+    go_backwards, activation, recurrent_activation):
+  """Call the LSTM with optimized backend kernel selection.
+
+  Under the hood, this function will create two TF function, one with the most
+  generic kernel and can run on all device condition, and the second one with
+  CuDNN specific kernel, which can only run on GPU.
+
+  The first function will be called with normal_lstm_params, while the second
+  function is not called, but only registered in the graph. The Grappler will
+  do the proper graph rewrite and swap the optimized TF function based on the
+  device placement.
+
+  Args:
+    inputs: Input tensor of LSTM layer.
+    init_h: Initial state tensor for the cell output.
+    init_c: Initial state tensor for the cell hidden state.
+    kernel: Weights for cell kernel.
+    recurrent_kernel: Weights for cell recurrent kernel.
+    bias: Weights for cell kernel bias and recurrent bias. Only recurrent bias
+      is used in this case.
+    mask: Boolean tensor for mask out the steps within sequence.
+    time_major: Boolean, whether the inputs are in the format of
+      [time, batch, feature] or [batch, time, feature].
+    go_backwards: Boolean (default False). If True, process the input sequence
+      backwards and return the reversed sequence.
+    activation: Activation function to use for output.
+    recurrent_activation: Activation function to use for hidden recurrent state.
+
+  Returns:
+    List of output tensors, same as standard_lstm.
+  """
+  params = {
+      'inputs': inputs,
+      'init_h': init_h,
+      'init_c': init_c,
+      'kernel': kernel,
+      'recurrent_kernel': recurrent_kernel,
+      'bias': bias,
+      'mask': mask,
+      'time_major': time_major,
+      'go_backwards': go_backwards,
+      'activation': activation,
+      'recurrent_activation': recurrent_activation
+  }
+
+  def cudnn_lstm_with_fallback(inputs, init_h, init_c, kernel, recurrent_kernel,
+                               bias, mask, time_major, go_backwards, activation,
+                               recurrent_activation):
+    """Use CuDNN kernel when mask is none or strictly right padded."""
+    if mask is None:
+      return cudnn_lstm(inputs=inputs, init_h=init_h, init_c=init_c,
+                        kernel=kernel, recurrent_kernel=recurrent_kernel,
+                        bias=bias, mask=mask, time_major=time_major,
+                        go_backwards=go_backwards)
+    # Note that mask is a boolean tensor, which doesn't need to do gradient
+    # calculation, when using tf.cond, a default gradient is added for it,
+    # which then cause the backward function to have a signature mismatch.
+    # Force the mask to not generate gradient to allow implementation_selector
+    # to work properly.
+    # TODO(b/80444525): Remove the stop_gradient().
+    mask = array_ops.stop_gradient(mask)
+
+    def input_right_padded():
+      return cudnn_lstm(inputs=inputs, init_h=init_h, init_c=init_c,
+                        kernel=kernel, recurrent_kernel=recurrent_kernel,
+                        bias=bias, mask=mask, time_major=time_major,
+                        go_backwards=go_backwards)
+
+    def input_not_right_padded():
+      return standard_lstm(inputs=inputs, init_h=init_h, init_c=init_c,
+                           kernel=kernel, recurrent_kernel=recurrent_kernel,
+                           bias=bias, mask=mask, time_major=time_major,
+                           go_backwards=go_backwards, activation=activation,
+                           recurrent_activation=recurrent_activation)
+
+    return control_flow_ops.cond(
+        is_sequence_right_padded(mask, time_major),
+        true_fn=input_right_padded,
+        false_fn=input_not_right_padded)
+
+  # Each time a `tf.function` is called, we will give it a unique
+  # identifiable API name, so that Grappler won't get confused when it
+  # sees multiple LSTM layers added into same graph, and it will be able
+  # to pair up the different implementations across them.
+  api_name = 'lstm_' + str(uuid.uuid4())
+  defun_standard_lstm = _generate_defun_backend(
+      api_name, _CPU_DEVICE_NAME, standard_lstm)
+  defun_cudnn_lstm = _generate_defun_backend(
+      api_name, _GPU_DEVICE_NAME, cudnn_lstm_with_fallback)
+
+  # Call the normal LSTM impl and register the CuDNN impl function. The
+  # grappler will kick in during session execution to optimize the graph.
+  last_output, outputs, new_h, new_c, runtime = defun_standard_lstm(
+      **params)
+  function.register(defun_cudnn_lstm, **params)
+
+  return last_output, outputs, new_h, new_c, runtime
 
 
 def is_sequence_right_padded(mask, time_major):
@@ -1136,19 +1314,13 @@ def is_sequence_right_padded(mask, time_major):
   Returns:
     boolean scalar tensor, whether the mask is strictly right padded.
   """
-  timestep_index = 0 if time_major else 1
-  max_seq_length = array_ops.shape(mask)[timestep_index]
-  reversed_mask = math_ops.cast(array_ops.reverse(mask, axis=[timestep_index]),
-                                dtypes.int32)
-  # Use the argmax to find the index of leading 1 in the reversed mask, which is
-  # the index of the last True value in the original mask.
-  index = math_ops.argmax(reversed_mask, axis=timestep_index,
-                          output_type=dtypes.int32)
-  count_of_true = math_ops.reduce_sum(reversed_mask, axis=timestep_index)
-  # If the data is strictly right padded, then the
-  # "index = max_seq_length - count_of_true" should hold.
-  return math_ops.reduce_all(
-      math_ops.equal(index, max_seq_length - count_of_true))
+  if time_major:
+    mask = array_ops.transpose(mask)
+  max_seq_length = array_ops.shape(mask)[1]
+  count_of_true = math_ops.reduce_sum(math_ops.cast(mask, dtypes.int32), axis=1)
+  right_padded_mask = array_ops.sequence_mask(
+      count_of_true, maxlen=max_seq_length)
+  return math_ops.reduce_all(math_ops.equal(mask, right_padded_mask))
 
 
 def calculate_sequence_by_mask(mask, time_major):
@@ -1158,10 +1330,10 @@ def calculate_sequence_by_mask(mask, time_major):
   any timestep that should be masked, the corresponding field will be False.
   Consider the following example:
     a = [[True, True, False, False],
-         [True, False, True, False]]
+         [True, True, True, False]]
   It is a (2, 4) tensor, and the corresponding sequence length result should be
-  1D tensor with value [2, 3]. Note that for the second example, we need to find
-  the index of the last True value, which is 2 and sequence length is 3.
+  1D tensor with value [2, 3]. Note that the masking tensor must be right
+  padded that could be checked by, e.g., `is_sequence_right_padded()`.
 
   Args:
     mask: Boolean tensor with shape [batch, timestep] or [timestep, batch] if
@@ -1172,14 +1344,8 @@ def calculate_sequence_by_mask(mask, time_major):
     sequence_length: 1D int32 tensor.
   """
   timestep_index = 0 if time_major else 1
-  max_seq_length = array_ops.shape(mask)[timestep_index]
-  reversed_mask = math_ops.cast(array_ops.reverse(mask, axis=[timestep_index]),
-                                dtypes.int32)
-  # Use the argmax to find the index of leading 1 in the reversed mask, which is
-  # the index of the last True value in the original mask.
-  reversed_index = math_ops.argmax(reversed_mask, axis=timestep_index,
-                                   output_type=dtypes.int32)
-  return max_seq_length - reversed_index
+  return math_ops.reduce_sum(math_ops.cast(mask, dtypes.int32),
+                             axis=timestep_index)
 
 
 def _generate_defun_backend(unique_api_name, preferred_device, func):
@@ -1188,7 +1354,8 @@ def _generate_defun_backend(unique_api_name, preferred_device, func):
       _DEFUN_DEVICE_ATTRIBUTE: preferred_device,
   }
   return function.defun_with_attributes(func=func,
-                                        attributes=function_attributes)
+                                        attributes=function_attributes,
+                                        autograph=False)
 
 
 def _get_context_device_type():

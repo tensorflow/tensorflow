@@ -9,6 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/batch_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -17,7 +18,7 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "batch_dataset_v2";
-constexpr char kOpName[] = "BatchDatasetV2";
+constexpr int kOpVersion = 2;
 
 class BatchDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -26,11 +27,15 @@ class BatchDatasetOpTest : public DatasetOpsTestBase {
       bool parallel_copy, const DataTypeVector& output_types,
       const std::vector<PartialTensorShape>& output_shapes,
       std::unique_ptr<OpKernel>* batch_dataset_op_kernel) {
+    name_utils::OpNameParams params;
+    params.op_version = kOpVersion;
     NodeDef node_def = test::function::NDef(
-        kNodeName, kOpName, {"input_dataset", "batch_size", "drop_remainder"},
-        {{"parallel_copy", parallel_copy},
-         {"output_types", output_types},
-         {"output_shapes", output_shapes}});
+        kNodeName, name_utils::OpName(BatchDatasetOp::kDatasetType, params),
+        {BatchDatasetOp::kInputDataset, BatchDatasetOp::kBatchSize,
+         BatchDatasetOp::kDropRemainder},
+        {{BatchDatasetOp::kParallelCopy, parallel_copy},
+         {BatchDatasetOp::kOutputTypes, output_types},
+         {BatchDatasetOp::kOutputShapes, output_shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, batch_dataset_op_kernel));
     return Status::OK();
   }
@@ -67,43 +72,39 @@ struct TestCase {
 // Test Case 1: test BatchDatasetV2 with `drop_remainder` = false and a batch
 // size that can evenly split the input dataset.
 TestCase TestCase1() {
-  return {
-      /*range_data_param*/ {0, 12, 1},
-      /*batch_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
-      /*parallel_copy*/ true,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}), {0, 1, 2, 3}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}), {4, 5, 6, 7}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}),
-                                               {8, 9, 10, 11})},
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({4})},
-      /*expected_cardinality*/ 3,
-      /*breakpoints*/ {0, 1, 5}};
+  return {/*range_data_param*/ {0, 12, 1},
+          /*batch_size*/
+          CreateTensor<int64>(TensorShape({}), {4}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {false}),
+          /*parallel_copy*/ true,
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape({4}), {0, 1, 2, 3}),
+           CreateTensor<int64>(TensorShape({4}), {4, 5, 6, 7}),
+           CreateTensor<int64>(TensorShape({4}), {8, 9, 10, 11})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({4})},
+          /*expected_cardinality*/ 3,
+          /*breakpoints*/ {0, 1, 5}};
 }
 
 // Test Case 2: test BatchDatasetV2 with `drop_remainder` = true and a batch
 // size that can evenly split the input dataset.
 TestCase TestCase2() {
-  return {
-      /*range_data_param*/ {0, 12, 1},
-      /*batch_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
-      /*parallel_copy*/ false,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}), {0, 1, 2, 3}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}), {4, 5, 6, 7}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}),
-                                               {8, 9, 10, 11})},
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({4})},
-      /*expected_cardinality*/ 3,
-      /*breakpoints*/ {0, 1, 5}};
+  return {/*range_data_param*/ {0, 12, 1},
+          /*batch_size*/
+          CreateTensor<int64>(TensorShape({}), {4}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {true}),
+          /*parallel_copy*/ false,
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape({4}), {0, 1, 2, 3}),
+           CreateTensor<int64>(TensorShape({4}), {4, 5, 6, 7}),
+           CreateTensor<int64>(TensorShape({4}), {8, 9, 10, 11})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({4})},
+          /*expected_cardinality*/ 3,
+          /*breakpoints*/ {0, 1, 5}};
 }
 
 // Test Case 3: test BatchDatasetV2 with `drop_remainder` = false and a batch
@@ -111,15 +112,15 @@ TestCase TestCase2() {
 TestCase TestCase3() {
   return {/*range_data_param*/ {0, 10, 1},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
+          CreateTensor<int64>(TensorShape({}), {3}),
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
+          CreateTensor<bool>(TensorShape({}), {false}),
           /*parallel_copy*/ false,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {6, 7, 8}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({1}), {9})},
+          {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
+           CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
+           CreateTensor<int64>(TensorShape({3}), {6, 7, 8}),
+           CreateTensor<int64>(TensorShape({1}), {9})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({-1})},
           /*expected_cardinality*/ 4,
@@ -129,21 +130,20 @@ TestCase TestCase3() {
 // Test Case 4: test BatchDatasetV2 with `drop_remainder` = true and a batch
 // size that can not evenly split the input dataset.
 TestCase TestCase4() {
-  return {
-      /*range_data_param*/ {0, 10, 1},
-      /*batch_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
-      /*parallel_copy*/ true,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {6, 7, 8})},
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({3})},
-      /*expected_cardinality*/ 3,
-      /*breakpoints*/ {0, 1, 5}};
+  return {/*range_data_param*/ {0, 10, 1},
+          /*batch_size*/
+          CreateTensor<int64>(TensorShape({}), {3}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {true}),
+          /*parallel_copy*/ true,
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
+           CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
+           CreateTensor<int64>(TensorShape({3}), {6, 7, 8})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({3})},
+          /*expected_cardinality*/ 3,
+          /*breakpoints*/ {0, 1, 5}};
 }
 
 // Test Case 5: test BatchDatasetV2 with `drop_remainder` = true and
@@ -151,9 +151,9 @@ TestCase TestCase4() {
 TestCase TestCase5() {
   return {/*range_data_param*/ {0, 10, 1},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
+          CreateTensor<int64>(TensorShape({}), {12}),
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
+          CreateTensor<bool>(TensorShape({}), {true}),
           /*parallel_copy*/ true,
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
@@ -165,19 +165,19 @@ TestCase TestCase5() {
 // Test Case 6: test BatchDatasetV2 with `drop_remainder` = false and
 // `batch_size` > the cardinality of the input dataset.
 TestCase TestCase6() {
-  return {/*range_data_param*/ {0, 10, 1},
-          /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
-          /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
-          /*parallel_copy*/ true,
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape({10}), {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({-1})},
-          /*expected_cardinality*/ 1,
-          /*breakpoints*/ {0, 1, 5}};
+  return {
+      /*range_data_param*/ {0, 10, 1},
+      /*batch_size*/
+      CreateTensor<int64>(TensorShape({}), {12}),
+      /*drop_remainder*/
+      CreateTensor<bool>(TensorShape({}), {false}),
+      /*parallel_copy*/ true,
+      /*expected_outputs*/
+      {CreateTensor<int64>(TensorShape({10}), {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({-1})},
+      /*expected_cardinality*/ 1,
+      /*breakpoints*/ {0, 1, 5}};
 }
 
 // Test Case 7: test BatchDatasetV2 with `drop_remainder` = false and
@@ -185,9 +185,9 @@ TestCase TestCase6() {
 TestCase TestCase7() {
   return {/*range_data_param*/ {0, 0, 1},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
+          CreateTensor<int64>(TensorShape({}), {4}),
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
+          CreateTensor<bool>(TensorShape({}), {false}),
           /*parallel_copy*/ false,
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
@@ -200,9 +200,9 @@ TestCase TestCase7() {
 TestCase InvalidBatchSizeTestCase() {
   return {/*range_data_param*/ {0, 10, 1},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {-1}),
+          CreateTensor<int64>(TensorShape({}), {-1}),
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
+          CreateTensor<bool>(TensorShape({}), {false}),
           /*parallel_copy*/ false,
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
@@ -236,8 +236,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, GetNext) {
 
   Tensor batch_size = test_case.batch_size;
   Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs{&range_dataset_tensor, &batch_size,
-                                            &drop_remainder};
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&range_dataset_tensor),
+                                            TensorValue(&batch_size),
+                                            TensorValue(&drop_remainder)};
   std::unique_ptr<OpKernelContext> batch_dataset_context;
   TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
                                          &batch_dataset_context));
@@ -289,8 +290,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, DatasetNodeName) {
 
   Tensor batch_size = test_case.batch_size;
   Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs{&range_dataset_tensor, &batch_size,
-                                            &drop_remainder};
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&range_dataset_tensor),
+                                            TensorValue(&batch_size),
+                                            TensorValue(&drop_remainder)};
   std::unique_ptr<OpKernelContext> batch_dataset_context;
   TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
                                          &batch_dataset_context));
@@ -323,8 +325,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, DatasetTypeString) {
 
   Tensor batch_size = test_case.batch_size;
   Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs{&range_dataset_tensor, &batch_size,
-                                            &drop_remainder};
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&range_dataset_tensor),
+                                            TensorValue(&batch_size),
+                                            TensorValue(&drop_remainder)};
   std::unique_ptr<OpKernelContext> batch_dataset_context;
   TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
                                          &batch_dataset_context));
@@ -333,7 +336,10 @@ TEST_P(ParameterizedBatchDatasetOpTest, DatasetTypeString) {
                              batch_dataset_context.get(), &batch_dataset));
   core::ScopedUnref scoped_unref_batch_dataset(batch_dataset);
 
-  EXPECT_EQ(batch_dataset->type_string(), kOpName);
+  name_utils::OpNameParams params;
+  params.op_version = kOpVersion;
+  EXPECT_EQ(batch_dataset->type_string(),
+            name_utils::OpName(BatchDatasetOp::kDatasetType, params));
 }
 
 TEST_P(ParameterizedBatchDatasetOpTest, DatasetOutputDtypes) {
@@ -357,8 +363,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, DatasetOutputDtypes) {
 
   Tensor batch_size = test_case.batch_size;
   Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs{&range_dataset_tensor, &batch_size,
-                                            &drop_remainder};
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&range_dataset_tensor),
+                                            TensorValue(&batch_size),
+                                            TensorValue(&drop_remainder)};
   std::unique_ptr<OpKernelContext> batch_dataset_context;
   TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
                                          &batch_dataset_context));
@@ -392,8 +399,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, DatasetOutputShapes) {
 
   Tensor batch_size = test_case.batch_size;
   Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs{&range_dataset_tensor, &batch_size,
-                                            &drop_remainder};
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&range_dataset_tensor),
+                                            TensorValue(&batch_size),
+                                            TensorValue(&drop_remainder)};
   std::unique_ptr<OpKernelContext> batch_dataset_context;
   TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
                                          &batch_dataset_context));
@@ -427,8 +435,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, Cardinality) {
 
   Tensor batch_size = test_case.batch_size;
   Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs{&range_dataset_tensor, &batch_size,
-                                            &drop_remainder};
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&range_dataset_tensor),
+                                            TensorValue(&batch_size),
+                                            TensorValue(&drop_remainder)};
   std::unique_ptr<OpKernelContext> batch_dataset_context;
   TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
                                          &batch_dataset_context));
@@ -461,8 +470,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, DatasetSave) {
 
   Tensor batch_size = test_case.batch_size;
   Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs{&range_dataset_tensor, &batch_size,
-                                            &drop_remainder};
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&range_dataset_tensor),
+                                            TensorValue(&batch_size),
+                                            TensorValue(&drop_remainder)};
   std::unique_ptr<OpKernelContext> batch_dataset_context;
   TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
                                          &batch_dataset_context));
@@ -500,8 +510,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, IteratorOutputDtypes) {
 
   Tensor batch_size = test_case.batch_size;
   Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs{&range_dataset_tensor, &batch_size,
-                                            &drop_remainder};
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&range_dataset_tensor),
+                                            TensorValue(&batch_size),
+                                            TensorValue(&drop_remainder)};
   std::unique_ptr<OpKernelContext> batch_dataset_context;
   TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
                                          &batch_dataset_context));
@@ -542,8 +553,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, IteratorOutputShapes) {
 
   Tensor batch_size = test_case.batch_size;
   Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs{&range_dataset_tensor, &batch_size,
-                                            &drop_remainder};
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&range_dataset_tensor),
+                                            TensorValue(&batch_size),
+                                            TensorValue(&drop_remainder)};
   std::unique_ptr<OpKernelContext> batch_dataset_context;
   TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
                                          &batch_dataset_context));
@@ -584,8 +596,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, IteratorOutputPrefix) {
 
   Tensor batch_size = test_case.batch_size;
   Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs{&range_dataset_tensor, &batch_size,
-                                            &drop_remainder};
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&range_dataset_tensor),
+                                            TensorValue(&batch_size),
+                                            TensorValue(&drop_remainder)};
   std::unique_ptr<OpKernelContext> batch_dataset_context;
   TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
                                          &batch_dataset_context));
@@ -600,8 +613,11 @@ TEST_P(ParameterizedBatchDatasetOpTest, IteratorOutputPrefix) {
   std::unique_ptr<IteratorBase> iterator;
   TF_ASSERT_OK(
       batch_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-
-  EXPECT_EQ(iterator->prefix(), "Iterator::Batch");
+  name_utils::IteratorPrefixParams params;
+  params.op_version = kOpVersion;
+  EXPECT_EQ(iterator->prefix(),
+            name_utils::IteratorPrefix(BatchDatasetOp::kDatasetType, "Iterator",
+                                       params));
 }
 
 TEST_P(ParameterizedBatchDatasetOpTest, Roundtrip) {
@@ -625,8 +641,9 @@ TEST_P(ParameterizedBatchDatasetOpTest, Roundtrip) {
 
   Tensor batch_size = test_case.batch_size;
   Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs{&range_dataset_tensor, &batch_size,
-                                            &drop_remainder};
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&range_dataset_tensor),
+                                            TensorValue(&batch_size),
+                                            TensorValue(&drop_remainder)};
   std::unique_ptr<OpKernelContext> batch_dataset_context;
   TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
                                          &batch_dataset_context));
@@ -702,8 +719,9 @@ TEST_F(BatchDatasetOpTest, InvalidBatchSize) {
 
   Tensor batch_size = test_case.batch_size;
   Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs{&range_dataset_tensor, &batch_size,
-                                            &drop_remainder};
+  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&range_dataset_tensor),
+                                            TensorValue(&batch_size),
+                                            TensorValue(&drop_remainder)};
   std::unique_ptr<OpKernelContext> batch_dataset_context;
   TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
                                          &batch_dataset_context));

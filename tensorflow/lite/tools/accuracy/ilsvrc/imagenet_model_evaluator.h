@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_ACCURACY_ILSVRC_IMAGENET_MODEL_EVALUATOR_H_
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/lite/c/c_api_internal.h"
@@ -98,7 +99,7 @@ class ImagenetModelEvaluator {
     virtual void OnSingleImageEvaluationComplete(
         uint64_t shard_id,
         const tflite::evaluation::TopkAccuracyEvalMetrics& metrics,
-        const string& image) = 0;
+        const std::string& image) = 0;
 
     virtual ~Observer() = default;
   };

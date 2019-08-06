@@ -14,7 +14,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_ADJUST_HSV_GPU_CU_H_
 #define TENSORFLOW_CORE_KERNELS_ADJUST_HSV_GPU_CU_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -141,5 +141,5 @@ __global__ void adjust_hsv_nhwc(const int64 number_elements,
 }  // namespace internal
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #endif  // TENSORFLOW_CORE_KERNELS_ADJUST_HSV_GPU_CU_H_

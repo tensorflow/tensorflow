@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 namespace tensorflow {
@@ -86,7 +87,7 @@ static Status GetVariableInfosFromCtxInputs(
       variable_indices, std::back_inserter(resource_handles),
       [&](int variable_idx) { return &HandleFromInput(ctx, variable_idx); });
 
-  std::vector<std::unique_ptr<Var, core::RefCountDeleter>> variables;
+  std::vector<core::RefCountPtr<Var>> variables;
   TF_RETURN_IF_ERROR(LookupResources(ctx, resource_handles, &variables));
 
   result->clear();

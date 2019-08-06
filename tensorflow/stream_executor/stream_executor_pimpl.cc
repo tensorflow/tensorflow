@@ -137,16 +137,18 @@ static int64 GetMemoryLimitBytes() {
 
 StreamExecutor::StreamExecutor(
     const Platform *platform,
-    std::unique_ptr<internal::StreamExecutorInterface> implementation)
+    std::unique_ptr<internal::StreamExecutorInterface> implementation,
+    int device_ordinal)
     : platform_(platform),
       implementation_(std::move(implementation)),
-      device_ordinal_(-1),
+      device_ordinal_(device_ordinal),
       background_threads_(new port::ThreadPool(
           port::Env::Default(), "stream_executor", kNumBackgroundThreads)),
       live_stream_count_(0),
       tracing_enabled_(false),
       mem_alloc_bytes_(0),
-      memory_limit_bytes_(GetMemoryLimitBytes()) {
+      memory_limit_bytes_(GetMemoryLimitBytes()),
+      allocator_(this) {
   string name = absl::AsciiStrToLower(platform_->Name());
   if (name == "cuda") {
     platform_kind_ = PlatformKind::kCuda;
@@ -180,15 +182,11 @@ StreamExecutor::~StreamExecutor() {
   }
 }
 
-port::Status StreamExecutor::Init(int device_ordinal,
-                                  DeviceOptions device_options) {
-  device_ordinal_ = device_ordinal;
-  return implementation_->Init(device_ordinal, std::move(device_options));
+port::Status StreamExecutor::Init(DeviceOptions device_options) {
+  return implementation_->Init(device_ordinal_, std::move(device_options));
 }
 
-port::Status StreamExecutor::Init() {
-  return Init(0, DeviceOptions::Default());
-}
+port::Status StreamExecutor::Init() { return Init(DeviceOptions::Default()); }
 
 bool StreamExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
                                KernelBase *kernel) {
@@ -338,18 +336,18 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
 StreamExecutor::createRnnDescriptor(
-    int num_layers, int hidden_size, int input_size, int batch_size,
-    dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
-    dnn::RnnMode rnn_mode, dnn::DataType data_type,
-    const dnn::AlgorithmConfig &algorithm_config, float dropout, uint64 seed,
-    ScratchAllocator *state_allocator) {
+    int num_layers, int hidden_size, int input_size, int cell_size,
+    int batch_size, dnn::RnnInputMode input_mode,
+    dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
+    dnn::DataType data_type, const dnn::AlgorithmConfig &algorithm_config,
+    float dropout, uint64 seed, ScratchAllocator *state_allocator) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return port::Status(port::error::UNKNOWN,
                         "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnDescriptor(
-      num_layers, hidden_size, input_size, batch_size, input_mode,
+      num_layers, hidden_size, input_size, cell_size, batch_size, input_mode,
       direction_mode, rnn_mode, data_type, algorithm_config, dropout, seed,
       state_allocator);
 }

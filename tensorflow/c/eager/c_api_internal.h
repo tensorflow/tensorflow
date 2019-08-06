@@ -21,12 +21,12 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -36,7 +36,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -53,33 +55,50 @@ struct TFE_ContextOptions {
   TF_SessionOptions session_options;
   // true if async execution is enabled.
   bool async = false;
-  TFE_ContextDevicePlacementPolicy policy{TFE_DEVICE_PLACEMENT_SILENT};
+  TFE_ContextDevicePlacementPolicy device_placement_policy{
+      TFE_DEVICE_PLACEMENT_SILENT};
+  TFE_ContextMirroringPolicy mirroring_policy{TFE_MIRRORING_NONE};
 };
 
 struct TFE_Context {
   TFE_Context(const tensorflow::SessionOptions& opts,
-              TFE_ContextDevicePlacementPolicy default_policy, bool async,
+              TFE_ContextDevicePlacementPolicy default_device_placement_policy,
+              TFE_ContextMirroringPolicy default_mirroring_policy, bool async,
               const tensorflow::DeviceMgr* device_mgr, bool device_mgr_owned,
               tensorflow::Rendezvous* rendezvous,
               const tensorflow::CustomKernelCreator* custom_kernel_creator)
       : context(new tensorflow::EagerContext(
             opts,
             static_cast<tensorflow::ContextDevicePlacementPolicy>(
-                default_policy),
+                default_device_placement_policy),
+            static_cast<tensorflow::ContextMirroringPolicy>(
+                default_mirroring_policy),
             async, device_mgr, device_mgr_owned, rendezvous,
             custom_kernel_creator)) {}
 
-  ~TFE_Context() { context->Unref(); }
+  ~TFE_Context() {
+    // TODO(iga): Add a separate API method to shutdown TFE_Context so that we
+    // don't send RPCs and block in destructor.
+    context->WaitForAndCloseRemoteContexts();
+    // context->RefCountIsOne() should be true here.
+    // TODO(iga): Remove EagerContext refcounting.
+    context->Unref();
+  }
 
   tensorflow::EagerContext* context;
 };
 
 struct TFE_TensorHandle {
-  TFE_TensorHandle(const tensorflow::Tensor& t, tensorflow::Device* d,
-                   tensorflow::Device* op_device)
-      : handle(new tensorflow::TensorHandle(t, d, op_device, nullptr)) {}
-
-  TFE_TensorHandle(tensorflow::TensorHandle* handle) : handle(handle) {}
+  explicit TFE_TensorHandle(tensorflow::TensorHandle* h) : handle(h) {}
+  static TFE_TensorHandle* CreateLocalHandle(const class tensorflow::Tensor& t,
+                                             TF_Status* s) {
+    tensorflow::TensorHandle* handle;
+    s->status = tensorflow::TensorHandle::CreateLocalHandle(t, &handle);
+    if (!s->status.ok()) {
+      return nullptr;
+    }
+    return new TFE_TensorHandle(handle);
+  }
 
   tensorflow::TensorHandle* handle;
 
@@ -91,7 +110,7 @@ struct TFE_TensorHandle {
 };
 
 struct TFE_TensorDebugInfo {
-  TFE_TensorDebugInfo(const std::vector<tensorflow::int64>& dims)
+  explicit TFE_TensorDebugInfo(const std::vector<tensorflow::int64>& dims)
       : dev_dims(dims) {}
 
   // Fully-padded, minor-to-major.
@@ -118,14 +137,8 @@ struct TFE_Op {
   std::unique_ptr<TFE_OpInferenceContext> inference_ctx;
 };
 
-struct TFE_ProfilerContext {
-  tensorflow::ProfilerContext profiler_context;
-};
-
 struct TFE_Profiler {
-  TFE_Profiler(TFE_ProfilerContext* ctx) {
-    profiler = tensorflow::ProfilerSession::Create(&ctx->profiler_context);
-  }
+  explicit TFE_Profiler() { profiler = tensorflow::ProfilerSession::Create(); }
 
   std::unique_ptr<tensorflow::ProfilerSession> profiler;
 };
@@ -210,7 +223,7 @@ struct TFE_MonitoringBoolGauge2 : TFE_MonitoringGauge<bool, 2> {
 };
 
 struct TFE_MonitoringBuckets {
-  TFE_MonitoringBuckets(
+  explicit TFE_MonitoringBuckets(
       std::function<std::unique_ptr<tensorflow::monitoring::Buckets>(void)>
           fn) {
     create_buckets = fn;
@@ -265,7 +278,7 @@ struct TFE_TraceContext {
   std::vector<std::pair<tensorflow::TensorHandle*, TF_Output>>* input_tensors =
       nullptr;
 
-  TFE_TraceContext(TF_Graph* graph) : graph(graph) {}
+  explicit TFE_TraceContext(TF_Graph* graph) : graph(graph) {}
 
   ~TFE_TraceContext() {
     delete input_tensors;
@@ -273,6 +286,14 @@ struct TFE_TraceContext {
       input.first->Unref();
     }
   }
+};
+
+struct TFE_CancellationManager {
+  tensorflow::CancellationManager cancellation_manager;
+};
+
+struct TFE_Executor {
+  tensorflow::EagerExecutor executor;
 };
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

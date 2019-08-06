@@ -21,8 +21,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
+#include "tensorflow/lite/tools/evaluation/utils.h"
 
 namespace tflite {
 namespace evaluation {
@@ -162,12 +164,12 @@ TEST(TfliteInferenceStage, CustomDelegate) {
   EvaluationStageConfig config = GetTfliteInferenceStageConfig();
   TfliteInferenceStage stage(config);
 
-  TfLiteDelegate* test_delegate = NnApiDelegate();
+  Interpreter::TfLiteDelegatePtr test_delegate = CreateNNAPIDelegate();
 
   // Delegate application should only work after initialization of stage.
-  EXPECT_NE(stage.ApplyCustomDelegate(test_delegate), kTfLiteOk);
+  EXPECT_NE(stage.ApplyCustomDelegate(std::move(test_delegate)), kTfLiteOk);
   EXPECT_EQ(stage.Init(), kTfLiteOk);
-  EXPECT_EQ(stage.ApplyCustomDelegate(test_delegate), kTfLiteOk);
+  EXPECT_EQ(stage.ApplyCustomDelegate(std::move(test_delegate)), kTfLiteOk);
 }
 
 }  // namespace

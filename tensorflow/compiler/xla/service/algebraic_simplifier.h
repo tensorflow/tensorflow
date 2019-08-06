@@ -63,6 +63,15 @@ class AlgebraicSimplifierOptions {
     return enable_dot_strength_reduction_;
   }
 
+  // Enable dot->multiple rewrite for dot as an outer-product
+  void set_enable_dot_to_multiply_rewrite(bool enable_dot_to_multiply_rewrite) {
+    enable_dot_to_multiply_rewrite_ = enable_dot_to_multiply_rewrite;
+  }
+
+  bool enable_dot_to_multiply_rewrite() const {
+    return enable_dot_to_multiply_rewrite_;
+  }
+
   // Enable convolution simplification on platforms where it is profitable.
   void set_enable_conv_simplification(bool enable_conv_simplification) {
     enable_conv_simplification_ = enable_conv_simplification;
@@ -87,6 +96,7 @@ class AlgebraicSimplifierOptions {
   ReshapeIsBitcastCallback reshape_is_bitcast_callback_;
   bool is_layout_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
+  bool enable_dot_to_multiply_rewrite_{true};
   bool enable_conv_simplification_{true};
   bool enable_window_reduce_to_reduce_replacement_{true};
 };

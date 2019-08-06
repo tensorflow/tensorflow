@@ -232,7 +232,8 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
   // The worker will be released in a subsequent call to
   // `sess->worker_cache->ReleaseWorker()` (if the call has not yet been
   // initialized) or `call->ReleaseWorker()` (if it has been initialized).
-  WorkerInterface* rwi = sess->worker_cache->CreateWorker(call->src_worker_);
+  WorkerInterface* rwi =
+      sess->worker_cache->GetOrCreateWorker(call->src_worker_);
   if (s.ok() && rwi == nullptr) {
     s = errors::Internal("No worker known as ", call->src_worker_);
   }
@@ -254,7 +255,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
              recv_args, std::move(done));
 
   // Record "call" in active_ so that it can be aborted cleanly.
-  RegisterCall(call);
+  RegisterCall(call, recv_args);
 
   // RendezvousMgr already aborted, shouldn't send RPC call any more
   if (!call->status().ok()) {

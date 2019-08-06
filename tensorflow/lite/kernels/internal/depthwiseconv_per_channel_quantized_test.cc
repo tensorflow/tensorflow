@@ -280,6 +280,7 @@ void TryTestOneDepthwiseConv3x3Filter() {
   params.depth_multiplier = depth_multiplier;
   params.input_offset = input_offset;
   params.output_offset = output_offset;
+  params.weights_offset = 0;
   params.quantized_activation_min = output_activation_min;
   params.quantized_activation_max = output_activation_max;
 

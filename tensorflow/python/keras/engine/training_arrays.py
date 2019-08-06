@@ -35,6 +35,7 @@ from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -90,9 +91,10 @@ def model_iteration(model,
         declaring one epoch finished and starting the next epoch. Ignored with
         the default value of `None`.
       validation_steps: Number of steps to run validation for (only if doing
-        validation from data tensors). Ignored with the default value of `None`.
+        validation from data tensors). Ignored with the default value of
+        `None`.
       validation_freq: Only relevant if validation data is provided. Integer or
-        `collections.Container` instance (e.g. list, tuple, etc.). If an
+        `collections_abc.Container` instance (e.g. list, tuple, etc.). If an
         integer, specifies how many training epochs to run before a new
         validation run is performed, e.g. `validation_freq=2` runs
         validation every 2 epochs. If a Container, specifies the epochs on
@@ -100,8 +102,8 @@ def model_iteration(model,
         validation at the end of the 1st, 2nd, and 10th epochs.
       mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
       validation_in_fit: if true, then this method is invoked from within
-        training iteration (for validation). In the case where `val_inputs` is a
-        dataset, this flag indicates that its iterator and feed values are
+        training iteration (for validation). In the case where `val_inputs` is
+        a dataset, this flag indicates that its iterator and feed values are
         already created so should properly reuse resources.
       prepared_feed_values_from_dataset: if True, `inputs` is a list of feed
         tensors returned from `_prepare_feed_values` call on the validation
@@ -148,10 +150,6 @@ def model_iteration(model,
         learning_phase=(1 if mode == ModeKeys.TRAIN else 0))
     scope.__enter__()
 
-  model._update_sample_weight_modes(sample_weights=sample_weights)
-
-  # Get step function and loop type.
-  f = _make_execution_function(model, mode)
   use_steps = is_dataset or steps_per_epoch is not None
   do_validation = val_inputs is not None
 
@@ -179,6 +177,17 @@ def model_iteration(model,
   else:
     num_samples_or_steps = steps_per_epoch
 
+  # Update sample_weight_mode of the model if sample_weights is specified by the
+  # user. We need to call this function after we have a handle on the inputs
+  # (both numpy arrays and datasets) in order to determine if the user has
+  # specified sample_weights.
+  _update_sample_weight_mode(model, mode, ins)
+
+  # Get step function and loop type. As part of building the execution
+  # function we recompile the metrics based on the updated
+  # sample_weight_mode value.
+  f = _make_execution_function(model, mode)
+
   # Prepare validation data. Hold references to the iterator and the input list
   # to properly reinitialize and reuse in multiple validation passes.
   val_iterator = None
@@ -200,7 +209,8 @@ def model_iteration(model,
     val_samples_or_steps = validation_steps
   else:
     # Get num samples for printing.
-    val_samples_or_steps = val_inputs and val_inputs[0].shape[0] or None
+    val_samples_or_steps = val_inputs and nest.flatten(
+        val_inputs)[0].shape[0] or None
 
   if mode == ModeKeys.TRAIN and verbose:
     _print_train_info(num_samples_or_steps, val_samples_or_steps, is_dataset)
@@ -232,11 +242,15 @@ def model_iteration(model,
 
   # Select aggregation method.
   if mode == ModeKeys.PREDICT:
-    aggregator = training_utils.OutputsAggregator(use_steps,
-                                                  num_samples_or_steps)
+    aggregator = training_utils.OutputsAggregator(
+        use_steps,
+        num_samples=None if steps_per_epoch else num_samples_or_steps,
+        steps=steps_per_epoch)
   else:
-    aggregator = training_utils.MetricsAggregator(use_steps,
-                                                  num_samples_or_steps)
+    aggregator = training_utils.MetricsAggregator(
+        use_steps,
+        num_samples=None if steps_per_epoch else num_samples_or_steps,
+        steps=steps_per_epoch)
 
   if model._compile_distribution:
     distributed_training_utils._copy_weights_to_distributed_model(model, mode)
@@ -276,7 +290,12 @@ def model_iteration(model,
         # Get outputs.
         try:
           # `ins` can be callable in tf.distribute.Strategy + eager case.
-          actual_inputs = ins() if callable(ins) else ins
+          if not callable(ins) or (
+              model._distribution_strategy and
+              not distributed_training_utils.is_distributing_by_cloning(model)):
+            actual_inputs = ins
+          else:
+            actual_inputs = ins()
           batch_outs = f(actual_inputs)
         except errors.OutOfRangeError:
           if is_dataset:
@@ -295,7 +314,7 @@ def model_iteration(model,
                   % (steps_name, steps_per_epoch * epochs))
             elif step > 0:
               steps_per_epoch = step
-              aggregator.num_samples_or_steps = steps_per_epoch
+              aggregator.steps = steps_per_epoch
               if mode == ModeKeys.TRAIN:
                 progbar.params['steps'] = steps_per_epoch
                 progbar.progbar.target = steps_per_epoch
@@ -316,7 +335,7 @@ def model_iteration(model,
 
         if model._distribution_strategy:
           batch_outs = distributed_training_utils._per_replica_aggregate_batch(
-              batch_outs, model, mode)
+              model._distribution_strategy, batch_outs, model, mode)
 
         # Aggregate results.
         if step == 0:
@@ -339,21 +358,26 @@ def model_iteration(model,
       elif shuffle:
         np.random.shuffle(index_array)
       batches = make_batches(num_samples_or_steps, batch_size)
-
       for batch_index, (batch_start, batch_end) in enumerate(batches):
         batch_ids = index_array[batch_start:batch_end]
-
         # Slice into a batch.
-        try:
-          if ins and isinstance(ins[-1], int):
-            # Do not slice the training phase flag.
-            ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
-          else:
-            ins_batch = slice_arrays(ins, batch_ids)
-        except TypeError:
-          raise TypeError('TypeError while preparing batch. '
-                          'If using HDF5 input data, '
-                          'pass shuffle="batch".')
+        if len(batches) == 1:
+          # If we only have one batch, do not slice. This takes care of
+          # composite tensors in non-Dataset modes; we currently don't support
+          # slicing them.
+          # TODO(b/133517906): Add slicing support.
+          ins_batch = ins
+        else:
+          try:
+            if ins and isinstance(ins[-1], int):
+              # Do not slice the training phase flag.
+              ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
+            else:
+              ins_batch = slice_arrays(ins, batch_ids)
+          except TypeError:
+            raise TypeError('TypeError while preparing batch. '
+                            'If using HDF5 input data, '
+                            'pass shuffle="batch".')
 
         # Sparse to dense conversion.
         if issparse is not None:
@@ -541,6 +565,32 @@ def _make_execution_function(model, mode):
   return model._make_execution_function(mode)
 
 
+def _update_sample_weight_mode(model, mode, inputs):
+  """Updates the sample_weight_mode of a given model."""
+  # Add a quick return to prevent us from calling model._feed_targets that
+  # accesses certain model properties that may not be set in the `PREDICT` mode.
+  if mode == ModeKeys.PREDICT:
+    return
+
+  sample_weights = None
+  # `inputs` is the model's inputs + targets + sample_weights +
+  # learning phase placeholder if specified. To update the sample_weight_mode
+  # we need to determine if the user has passed sample weights as part of the
+  # input.
+  if not callable(inputs):
+    sample_weights = inputs[len(model._feed_inputs) + len(model._feed_targets):]
+    has_learning_phase_pl = (mode == ModeKeys.TRAIN and
+                             not isinstance(K.symbolic_learning_phase(), int))
+    if has_learning_phase_pl:
+      sample_weights = sample_weights[:-1]
+    model._update_sample_weight_modes(sample_weights=sample_weights)
+
+  # Call the DistributionStrategy specific function to update the
+  # sample_weight_mode on the model.
+  if model._distribution_strategy:
+    distributed_training_utils._update_sample_weight_modes(model, mode,
+                                                           sample_weights)
+
 # For backwards compatibility for internal users of these loops.
 fit_loop = functools.partial(model_iteration, mode=ModeKeys.TRAIN)
 test_loop = functools.partial(
@@ -596,7 +646,7 @@ class ArrayLikeTrainingLoop(training_utils.TrainingLoop):
           validation_data, batch_size, validation_steps)
     elif validation_split and 0. < validation_split < 1.:
       (x, y, sample_weights, val_x, val_y,
-       val_sample_weights) = model._split_training_and_validation_data(
+       val_sample_weights) = training_utils.split_training_and_validation_data(
            x, y, sample_weights, validation_split)
     else:
       if validation_steps:

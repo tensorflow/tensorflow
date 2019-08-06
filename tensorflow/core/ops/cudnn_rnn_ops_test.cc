@@ -111,6 +111,8 @@ TEST(CudnnRNNOpsTest, ForwardV3Lstm_ShapeFn) {
   std::vector<int> input_shape = {max_seq_length, batch_size, num_units};
   std::vector<int> input_h_shape = {num_layers * dir_count, batch_size,
                                     num_units};
+  std::vector<int> input_c_shape = {num_layers * dir_count, batch_size,
+                                    num_units};
   std::vector<int> output_shape = {max_seq_length, batch_size,
                                    num_units * dir_count};
   std::vector<int> seq_lengths_shape = {batch_size};
@@ -119,9 +121,9 @@ TEST(CudnnRNNOpsTest, ForwardV3Lstm_ShapeFn) {
   };
   string input_shapes_desc = strings::StrCat(
       shape_to_str(input_shape), ";", shape_to_str(input_h_shape), ";",
-      shape_to_str(input_h_shape), ";", "[?]", ";",
+      shape_to_str(input_c_shape), ";", "[?]", ";",
       shape_to_str(seq_lengths_shape));
-  string output_shapes_desc = "[d0_0,d0_1,d1_2];in1;in1;?;?";
+  string output_shapes_desc = "[d0_0,d0_1,d1_2];in1;in2;?;?";
 
   ShapeInferenceTestOp op("CudnnRNNV3");
   TF_ASSERT_OK(NodeDefBuilder("test", "CudnnRNNV3")

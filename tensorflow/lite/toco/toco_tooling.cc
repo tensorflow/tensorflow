@@ -54,6 +54,8 @@ void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
   transformations->Add(new ConvertExpandDimsToReshape);
+  transformations->Add(new ConvertMatrixDiagV2ToV1);
+  transformations->Add(new ConvertMatrixSetDiagV2ToV1);
   transformations->Add(new ConvertSqueezeToReshape);
   transformations->Add(new ConvertTrivialAddNToAdd);
   transformations->Add(new ConvertTrivialPackToReshape);
@@ -450,6 +452,8 @@ tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
       params.enable_select_tf_ops =
           toco_flags.force_select_tf_ops() || toco_flags.enable_select_tf_ops();
       params.allow_custom_ops = allow_custom_ops;
+      params.allow_dynamic_tensors = toco_flags.allow_dynamic_tensors();
+
       if (toco_flags.post_training_quantize()) {
         if (toco_flags.quantize_to_float16()) {
           params.quantize_weights = tflite::QuantizedBufferType::FLOAT16;

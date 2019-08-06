@@ -56,10 +56,7 @@ namespace toco {
     }
   }
 
-  // Remove the node and its output array.
-  AddMessageF("Removing already-resolved %s", LogName(*merge_op));
-  model->EraseArray(merge_op->outputs[0]);
-  model->operators.erase(merge_it);
+  DeleteOpAndArrays(model, merge_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

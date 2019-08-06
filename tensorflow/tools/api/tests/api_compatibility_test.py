@@ -38,7 +38,6 @@ import tensorflow as tf
 from google.protobuf import message
 from google.protobuf import text_format
 
-from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
@@ -355,7 +354,6 @@ class ApiCompatibilityTest(test.TestCase):
         update_goldens=FLAGS.update_goldens,
         api_version=api_version)
 
-  @test_util.run_v1_only('b/120545219')
   def testAPIBackwardsCompatibility(self):
     api_version = 2 if '_api.v2' in tf.bitwise.__name__ else 1
     golden_file_pattern = os.path.join(
@@ -378,10 +376,12 @@ class ApiCompatibilityTest(test.TestCase):
 
     # Also check that V1 API has contrib
     self.assertTrue(
+        api_version == 2 or
         'tensorflow.python.util.lazy_loader.LazyLoader'
         in str(type(tf.contrib)))
+    # Check that V2 API does not have contrib
+    self.assertTrue(api_version == 1 or not hasattr(tf, 'contrib'))
 
-  @test_util.run_v1_only('b/120545219')
   def testAPIBackwardsCompatibilityV1(self):
     api_version = 1
     golden_file_pattern = os.path.join(

@@ -1,4 +1,17 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
+load(
+    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+
+package(
+    default_visibility = [":internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "internal",
@@ -12,20 +25,6 @@ package_group(
     includes = [
         "//tensorflow/compiler/tf2xla:friends",
     ],
-)
-
-package(
-    default_visibility = [":internal"],
-)
-
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
 )
 
 generate_backend_suites()
@@ -218,6 +217,29 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "complex_div_test",
+    size = "medium",
+    srcs = ["complex_div_test.py"],
+    enabled_backends = [
+        "cpu",
+        "gpu",
+    ],
+    shard_count = 2,
+    tags = [
+        "optonly",  # Times out frequently in fastbuild mode.
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "bucketize_op_test",
     size = "small",
     srcs = ["bucketize_op_test.py"],
@@ -264,7 +286,6 @@ tf_xla_py_test(
     name = "cond_test",
     size = "small",
     srcs = ["cond_test.py"],
-    disabled_backends = ["cpu_ondemand"],  # b/129021699
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -313,6 +334,21 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "matrix_inverse_op_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["matrix_inverse_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
     ],
 )
 
@@ -471,6 +507,9 @@ tf_xla_py_test(
     name = "eager_test",
     size = "medium",
     srcs = ["eager_test.py"],
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -556,6 +595,7 @@ tf_xla_py_test(
     name = "image_ops_test",
     size = "small",
     srcs = ["image_ops_test.py"],
+    shard_count = 10,
     tags = [
         "optonly",  # Times out frequently in fastbuild mode.
     ],
@@ -598,6 +638,19 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "manip_ops_test",
+    size = "small",
+    srcs = ["manip_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:manip_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "matrix_band_part_test",
     size = "medium",
     timeout = "long",
@@ -609,6 +662,19 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "matrix_diag_ops_test",
+    size = "medium",
+    timeout = "long",
+    srcs = ["matrix_diag_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:platform_test",
     ],
 )
 
@@ -733,6 +799,7 @@ tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
+    shard_count = 5,
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -885,8 +952,9 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "stateful_random_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["stateful_random_ops_test.py"],
+    shard_count = 10,
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -900,7 +968,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "stateless_random_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["stateless_random_ops_test.py"],
     tags = ["optonly"],
     deps = [
@@ -969,6 +1037,7 @@ tf_xla_py_test(
     name = "unary_ops_test",
     size = "medium",
     srcs = ["unary_ops_test.py"],
+    tags = ["notap"],  # b/136030724
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1086,9 +1155,9 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "permute_test",
+    name = "data_format_ops_test",
     size = "small",
-    srcs = ["permute_test.py"],
+    srcs = ["data_format_ops_test.py"],
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -1123,6 +1192,7 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -1143,6 +1213,12 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 5,
+    tags = [
+        # TODO(b/134780716): Re-enable this test.
+        "nogpu",
+        "no_cuda_on_cpu_tap",
+    ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -1158,6 +1234,7 @@ cuda_py_test(
         "//tensorflow/python:layers",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cc_library(
@@ -1194,6 +1271,26 @@ tf_cuda_cc_test(
     deps = [":randomized_tests_library"],
 )
 
+tf_cuda_cc_test(
+    name = "unary_ops_composition_test",
+    srcs = ["unary_ops_composition_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/jit",
+        "//tensorflow/compiler/jit:common",
+        "//tensorflow/compiler/jit:xla_kernel_creator",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
 py_library(
     name = "lstm",
     testonly = 1,
@@ -1223,6 +1320,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 # An example of ahead-of-time compilation using tfcompile.  The
@@ -1299,5 +1397,21 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "conv_node_name_test",
+    size = "medium",
+    srcs = ["conv_node_name_test.py"],
+    shard_count = 5,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
     ],
 )

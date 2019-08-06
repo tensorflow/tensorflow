@@ -24,12 +24,14 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
@@ -199,6 +201,15 @@ class Layer(base_layer.Layer):
     self._trainable_weights = []
     self.built = False
 
+    if dtype is None:
+      # Indicates to infer dtype from inputs. When the V2 dtype behavior is
+      # enabled, Keras layers default their dtype to floatx instead, so we pass
+      # an "infer" policy to keep the old V1 behavior.
+      dtype = policy.Policy('infer')
+
+    if 'autocast' not in kwargs:
+      kwargs['autocast'] = False
+
     super(Layer, self).__init__(trainable=trainable, name=name, dtype=dtype,
                                 **kwargs)
 
@@ -358,7 +369,7 @@ class Layer(base_layer.Layer):
       instance is returned.
 
     Raises:
-      RuntimeError: If called with partioned variable regularization and
+      RuntimeError: If called with partitioned variable regularization and
         eager execution is enabled.
       ValueError: When trainable has been set to True with synchronization
         set as `ON_READ`.
@@ -541,34 +552,8 @@ class Layer(base_layer.Layer):
       _add_elements_to_collection(self.updates, ops.GraphKeys.UPDATE_OPS)
     return outputs
 
-  def add_update(self, updates, inputs=None):
-    if callable(updates):
-      updates = updates()
-
-    if context.executing_eagerly():
-      return  # Updates already applied when in eager mode.
-
-    def process_update(x):
-      if isinstance(x, ops.Operation):
-        return x
-      elif hasattr(x, 'op'):
-        return x.op
-      else:
-        return ops.convert_to_tensor(x)
-
-    if not isinstance(updates, list):
-      updates = [updates]
-    updates = [process_update(x) for x in updates]
-    self._updates += updates
-    if inputs is None:
-      for u in updates:
-        u._unconditional_update = True  # pylint: disable=protected-access
-    else:
-      for u in updates:
-        u._unconditional_update = False  # pylint: disable=protected-access
-
   def __deepcopy__(self, memo):
-    no_copy = set(['_graph'])
+    no_copy = set(['_graph', '_thread_local'])
     shallow_copy = set(['_scope', '_always_reuse_variable_scope'])
     cls = self.__class__
     result = cls.__new__(cls)
@@ -603,7 +588,7 @@ def _add_elements_to_collection(elements, collection_list):
   collection_list = nest.flatten(collection_list)
   for name in collection_list:
     collection = ops.get_collection_ref(name)
-    collection_set = set(collection)
+    collection_set = object_identity.ObjectIdentitySet(collection)
     for element in elements:
       if element not in collection_set:
         collection.append(element)

@@ -135,6 +135,12 @@ class FlatBufferModel {
   ErrorReporter* error_reporter() const { return error_reporter_; }
   const Allocation* allocation() const { return allocation_.get(); }
 
+  // Returns the minimum runtime version from the flatbuffer. This runtime
+  // version encodes the minimum required interpreter version to run the
+  // flatbuffer model. If the minimum version can't be determined, an empty
+  // string will be returned.
+  string GetMinimumRuntime() const;
+
   /// Returns true if the model identifier is correct (otherwise false and
   /// reports an error).
   bool CheckModelIdentifier() const;
@@ -210,15 +216,19 @@ class InterpreterBuilder {
       Subgraph* subgraph);
   TfLiteStatus ApplyDelegates(Interpreter* interpreter);
   TfLiteStatus ParseQuantization(const QuantizationParameters* src_quantization,
-                                 TfLiteQuantization* quantization);
+                                 TfLiteQuantization* quantization,
+                                 const std::vector<int>& dims);
 
   const ::tflite::Model* model_;
   const OpResolver& op_resolver_;
   ErrorReporter* error_reporter_;
 
   std::vector<const TfLiteRegistration*> flatbuffer_op_index_to_registration_;
+  std::vector<TfLiteRegistration> unresolved_custom_ops_;
   std::vector<BuiltinOperator> flatbuffer_op_index_to_registration_types_;
   const Allocation* allocation_ = nullptr;
+
+  bool has_flex_op_ = false;
 };
 
 }  // namespace tflite

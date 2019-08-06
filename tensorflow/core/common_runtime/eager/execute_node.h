@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_NODE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_NODE_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
@@ -31,59 +32,79 @@ namespace tensorflow {
 
 class ExecuteNode : public EagerNode {
  public:
-  ExecuteNode(uint64 id, EagerContext* ctx,
-              const tensorflow::gtl::InlinedVector<TensorHandle*, 4>& inputs,
-              KernelAndDevice* kernel, NodeExecStats* maybe_stats,
-              StepStats* maybe_step_stats, GraphCollector* graph_collector,
+  ExecuteNode(EagerContext* ctx,
+              const gtl::InlinedVector<TensorHandle*, 4>& inputs,
+              core::RefCountPtr<KernelAndDevice> kernel,
+              NodeExecStats* maybe_stats, StepStats* maybe_step_stats,
+              GraphCollector* graph_collector,
               const DataTypeVector& output_dtypes,
-              const tensorflow::gtl::InlinedVector<TensorHandle*, 2>& retvals)
-      : EagerNode(id),
+              CancellationManager* cancellation_manager,
+              absl::Span<TensorHandle*> retvals)
+      : EagerNode(),
         ctx_(ctx),
         inputs_(inputs),
-        kernel_(kernel),
+        kernel_(std::move(kernel)),
         maybe_stats_(maybe_stats),
         maybe_step_stats_(maybe_step_stats),
         graph_collector_(graph_collector),
-        retvals_(retvals) {
-    for (auto handle : inputs_) {
+        cancellation_manager_(cancellation_manager) {
+    // Copy the output handles, since the container for them might get
+    // destroyed.
+    for (auto handle : retvals) {
       handle->Ref();
+      retvals_.push_back(handle);
     }
-    for (auto handle : retvals_) {
+
+    // This is required to ensure that the tensor handles stay alive across the
+    // execution.
+    for (auto handle : inputs_) {
       handle->Ref();
     }
   }
 
-  ~ExecuteNode() override {
-    for (auto handle : inputs_) {
-      handle->Unref();
-    }
-    for (auto handle : retvals_) {
-      handle->Unref();
-    }
-  }
-
-  tensorflow::Status Run() override {
+  Status Run() override {
     const Status status = EagerKernelExecute(
         ctx_, inputs_, kernel_, maybe_stats_.get(), maybe_step_stats_,
-        graph_collector_, retvals_.begin(), retvals_.size());
-    if (status.ok()) {
+        graph_collector_, cancellation_manager_, absl::MakeSpan(retvals_));
+    if (!status.ok()) {
+      Abort(status);
       return status;
-    } else {
-      return Status(status.code(),
-                    strings::StrCat("Got error, \"", status.error_message(),
-                                    "\" while executing kernel ",
-                                    kernel_->kernel()->def().DebugString()));
+    }
+
+    // If status is ok, EagerKernelExecute would have called SetTensor on
+    // all the output handles.
+
+    for (auto handle : retvals_) {
+      handle->Unref();
+    }
+
+    for (auto handle : inputs_) {
+      handle->Unref();
+    }
+
+    return status;
+  }
+
+  void Abort(Status status) override {
+    for (auto handle : retvals_) {
+      handle->Poison(status);
+      handle->Unref();
+    }
+
+    for (auto handle : inputs_) {
+      handle->Unref();
     }
   }
 
  private:
-  tensorflow::EagerContext* ctx_;
-  tensorflow::gtl::InlinedVector<TensorHandle*, 4> inputs_;
-  tensorflow::KernelAndDevice* kernel_;
+  EagerContext* ctx_;
+  gtl::InlinedVector<TensorHandle*, 4> inputs_;
+  core::RefCountPtr<KernelAndDevice> kernel_;
   std::unique_ptr<NodeExecStats> maybe_stats_;
   StepStats* maybe_step_stats_;
-  tensorflow::GraphCollector* graph_collector_;
-  tensorflow::gtl::InlinedVector<TensorHandle*, 2> retvals_;
+  GraphCollector* graph_collector_;
+  CancellationManager* const cancellation_manager_;
+  gtl::InlinedVector<TensorHandle*, 2> retvals_;
 };
 
 }  // namespace tensorflow

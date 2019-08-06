@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/strings/escaping.h"
@@ -128,8 +129,6 @@ bool FastAreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs) {
 }
 
 using TensorProtoHasher = std::function<uint64(const TensorProto&)>;
-using TensorProtosEquality =
-    std::function<bool(const TensorProto&, const TensorProto&)>;
 
 uint64 AttrValueHash(const AttrValue& a, const TensorProtoHasher& tensor_hash) {
   if (a.has_tensor()) return tensor_hash(a.tensor());
@@ -149,8 +148,15 @@ uint64 AttrValueHash(const AttrValue& a, const TensorProtoHasher& tensor_hash) {
   return DeterministicProtoHash64(a);
 }
 
+template <typename TensorProtosEquality>
 bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b,
-                        const TensorProtosEquality& tensor_equality) {
+                        TensorProtosEquality tensor_equality) {
+  if (a.type() != b.type()) {
+    return false;
+  } else if (a.type() != DT_INVALID && b.type() != DT_INVALID) {
+    return a.type() == b.type();
+  }
+
   if (a.has_tensor() != b.has_tensor()) {
     return false;
   } else if (a.has_tensor() && b.has_tensor()) {
@@ -483,6 +489,13 @@ void SetAttrValue(const gtl::ArraySlice<StringPiece> value, AttrValue* out) {
   out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     out->mutable_list()->add_s(v.data(), v.size());
+  }
+}
+
+void MoveAttrValue(std::vector<string>&& value, AttrValue* out) {
+  out->mutable_list()->Clear();  // Create list() even if value empty.
+  for (auto& v : value) {
+    out->mutable_list()->add_s(std::move(v));
   }
 }
 

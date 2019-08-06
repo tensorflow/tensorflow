@@ -1,10 +1,3 @@
-package(
-    default_visibility = [
-        "//visibility:public",
-    ],
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load(
     "//tensorflow/lite:build_def.bzl",
     "gen_zip_test",
@@ -19,9 +12,16 @@ load(
     "tf_cc_test",
 )
 
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
 [gen_zip_test(
     name = "zip_test_%s" % test_name,
-    size = "large",
+    size = "medium",
     srcs = ["generated_examples_zip_test.cc"],
     args = args + select({
         "//tensorflow:android": [],
@@ -39,6 +39,8 @@ load(
     shard_count = 20,
     tags = tags + [
         "gen_zip_test",
+        "no_gpu",  # Executing with TF GPU configurations is redundant.
+        "no_oss",
         "tflite_not_portable_intentional",
     ],
     test_name = test_name,
@@ -72,11 +74,21 @@ test_suite(
 )
 
 py_library(
-    name = "generate_examples_lib",
-    srcs = ["generate_examples_lib.py"],
+    name = "toco_convert",
+    srcs = ["toco_convert.py"],
     data = [
         "//tensorflow/lite/toco",
     ],
+    deps = [
+        ":generate_examples_lib",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "generate_examples_lib",
+    srcs = ["generate_examples_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":generate_examples_report",
@@ -91,13 +103,11 @@ py_library(
 py_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
-    data = [
-        "//tensorflow/lite/toco",
-    ],
     python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":generate_examples_lib",
+        ":toco_convert",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -186,7 +196,9 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:custom_ops",
         "//tensorflow/lite/kernels:reference_ops",
+        "//tensorflow/lite/tools/evaluation:utils",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -365,6 +377,7 @@ cc_library(
     deps = [
         ":split",
         ":tflite_diff_util",
+        ":tflite_driver",
     ] + select({
         "//conditions:default": [
             "//tensorflow/core:framework_internal",

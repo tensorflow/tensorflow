@@ -19,6 +19,7 @@ from __future__ import print_function
 import copy
 import json
 import os
+import pickle
 
 import numpy
 import six
@@ -356,15 +357,22 @@ class ListWrapperTest(test.TestCase):
         # Skip methods that aren't overridden from object.
         continue
 
-      if list_method == getattr(data_structures._ListWrapper, name):
+      if list_method == getattr(data_structures.ListWrapper, name):
         not_overridden.append(name)
 
     if not_overridden:
-      self.fail("_ListWrapper does not override %s" % (not_overridden))
+      self.fail("ListWrapper does not override %s" % (not_overridden))
+
+  def testPickle(self):
+    original = data_structures.ListWrapper([1, 2])
+    serialized = pickle.dumps(original)
+    del original
+    deserialized = pickle.loads(serialized)
+    self.assertEqual([1, 2], deserialized)
 
   def testSameStructure(self):
     l = [1]
-    nest.assert_same_structure(l, data_structures._ListWrapper(copy.copy(l)))
+    nest.assert_same_structure(l, data_structures.ListWrapper(copy.copy(l)))
 
   def testFunctionCaching(self):
     @def_function.function
@@ -373,87 +381,87 @@ class ListWrapperTest(test.TestCase):
 
     first_trace = f.get_concrete_function([constant_op.constant(2.)])
     second_trace = f.get_concrete_function(
-        data_structures._ListWrapper([constant_op.constant(3.)]))
+        data_structures.ListWrapper([constant_op.constant(3.)]))
     self.assertIs(first_trace, second_trace)
 
   def testListWrapperBasic(self):
-    # _ListWrapper, unlike List, compares like the built-in list type (since it
+    # ListWrapper, unlike List, compares like the built-in list type (since it
     # is used to automatically replace lists).
     a = tracking.AutoTrackable()
     b = tracking.AutoTrackable()
     self.assertEqual([a, a],
                      [a, a])
-    self.assertEqual(data_structures._ListWrapper([a, a]),
-                     data_structures._ListWrapper([a, a]))
+    self.assertEqual(data_structures.ListWrapper([a, a]),
+                     data_structures.ListWrapper([a, a]))
     self.assertEqual([a, a],
-                     data_structures._ListWrapper([a, a]))
-    self.assertEqual(data_structures._ListWrapper([a, a]),
+                     data_structures.ListWrapper([a, a]))
+    self.assertEqual(data_structures.ListWrapper([a, a]),
                      [a, a])
     self.assertNotEqual([a, a],
                         [b, a])
-    self.assertNotEqual(data_structures._ListWrapper([a, a]),
-                        data_structures._ListWrapper([b, a]))
+    self.assertNotEqual(data_structures.ListWrapper([a, a]),
+                        data_structures.ListWrapper([b, a]))
     self.assertNotEqual([a, a],
-                        data_structures._ListWrapper([b, a]))
+                        data_structures.ListWrapper([b, a]))
     self.assertLess([a], [a, b])
-    self.assertLess(data_structures._ListWrapper([a]),
-                    data_structures._ListWrapper([a, b]))
+    self.assertLess(data_structures.ListWrapper([a]),
+                    data_structures.ListWrapper([a, b]))
     self.assertLessEqual([a], [a, b])
-    self.assertLessEqual(data_structures._ListWrapper([a]),
-                         data_structures._ListWrapper([a, b]))
+    self.assertLessEqual(data_structures.ListWrapper([a]),
+                         data_structures.ListWrapper([a, b]))
     self.assertGreater([a, b], [a])
-    self.assertGreater(data_structures._ListWrapper([a, b]),
-                       data_structures._ListWrapper([a]))
+    self.assertGreater(data_structures.ListWrapper([a, b]),
+                       data_structures.ListWrapper([a]))
     self.assertGreaterEqual([a, b], [a])
-    self.assertGreaterEqual(data_structures._ListWrapper([a, b]),
-                            data_structures._ListWrapper([a]))
-    self.assertEqual([a], data_structures._ListWrapper([a]))
+    self.assertGreaterEqual(data_structures.ListWrapper([a, b]),
+                            data_structures.ListWrapper([a]))
+    self.assertEqual([a], data_structures.ListWrapper([a]))
     self.assertEqual([a], list(data_structures.List([a])))
-    self.assertEqual([a, a], data_structures._ListWrapper([a]) + [a])
-    self.assertEqual([a, a], [a] + data_structures._ListWrapper([a]))
-    self.assertIsInstance(data_structures._ListWrapper([a]), list)
+    self.assertEqual([a, a], data_structures.ListWrapper([a]) + [a])
+    self.assertEqual([a, a], [a] + data_structures.ListWrapper([a]))
+    self.assertIsInstance(data_structures.ListWrapper([a]), list)
 
   def testAcceptsNonTrackableContent(self):
-    l = data_structures._ListWrapper([1, 2, 3])
+    l = data_structures.ListWrapper([1, 2, 3])
     self.assertEqual(l, [1, 2, 3])
 
   def testWrapperChangesList(self):
     l = []
-    l_wrapper = data_structures._ListWrapper(l)
+    l_wrapper = data_structures.ListWrapper(l)
     l_wrapper.append(1)
     self.assertEqual([1], l)
 
   def testListChangesWrapper(self):
     l = []
-    l_wrapper = data_structures._ListWrapper(l)
+    l_wrapper = data_structures.ListWrapper(l)
     l.append(1)
     self.assertEqual([1], l_wrapper)
 
   def testLayerCollectionWithExternalMutation(self):
     l = []
-    l_wrapper = data_structures._ListWrapper(l)
+    l_wrapper = data_structures.ListWrapper(l)
     layer = core.Dense(1)
     l.append(layer)
     self.assertEqual([layer], l_wrapper.layers)
 
   def testNotHashable(self):
     with self.assertRaises(TypeError):
-      hash(data_structures._ListWrapper())
+      hash(data_structures.ListWrapper())
 
   def testDelItem(self):
-    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l = data_structures.ListWrapper([1, 2, 3, 4])
     del l[0]
     self.assertEqual(l, [2, 3, 4])
     self.assertUnableToSave(l, "Unable to save .*__delitem__")
 
   def testDelSlice(self):
-    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l = data_structures.ListWrapper([1, 2, 3, 4])
     del l[2:3]
     self.assertEqual(l, [1, 2, 4])
     self.assertUnableToSave(l, "Unable to save .*__delslice__")
 
   def testSetSlice_canSaveForNonTrackableItems(self):
-    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l = data_structures.ListWrapper([1, 2, 3, 4])
     l[:] = 2, 8, 9, 0
     self.assertEqual(l, [2, 8, 9, 0])
     l._maybe_initialize_trackable()  # pylint: disable=protected-access
@@ -462,30 +470,30 @@ class ListWrapperTest(test.TestCase):
   def testSetSlice_cannotSaveIfTrackableModified(self):
     v1 = resource_variable_ops.ResourceVariable(1.)
     v2 = resource_variable_ops.ResourceVariable(1.)
-    l = data_structures._ListWrapper([1, 2, v1, v2])
+    l = data_structures.ListWrapper([1, 2, v1, v2])
     l[:] = 2, 8, 9, v2
     self.assertEqual(l, [2, 8, 9, v2])
     self.assertUnableToSave(l, "Unable to save .*__setslice__")
 
   def testSetSlice_truncate(self):
-    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l = data_structures.ListWrapper([1, 2, 3, 4])
     l[:] = []
     self.assertEqual(l, [])
 
   def testSetSlice_extend(self):
-    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l = data_structures.ListWrapper([1, 2, 3, 4])
     l[2:] = 1, 2, 3, 4
     self.assertEqual(l, [1, 2, 1, 2, 3, 4])
 
   def testIMulNegative(self):
-    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l = data_structures.ListWrapper([1, 2, 3, 4])
     l *= -1
     self.assertEqual(l, [1, 2, 3, 4] * -1)
     self.assertUnableToSave(l, "Unable to save")
 
   def testIMulPositive(self):
     v = variables.Variable(1.)
-    l = data_structures._ListWrapper([1, 2, 3, 4, v])
+    l = data_structures.ListWrapper([1, 2, 3, 4, v])
     self.assertEqual([("4", v)], l._checkpoint_dependencies)
     root = util.Checkpoint(l=l)
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
@@ -498,7 +506,7 @@ class ListWrapperTest(test.TestCase):
     self.assertAllClose(1., v.numpy())
 
   def testSort(self):
-    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l = data_structures.ListWrapper([1, 2, 3, 4])
     l.sort()
     self.assertEqual(l, [1, 2, 3, 4])
     # Regardless of being a no-op for the input list, we still refuse to save.
@@ -700,7 +708,7 @@ class MappingTests(test.TestCase):
     # methods/properties on the object. So the options are either not to
     # subclass dict (in which case update will call normal iter methods, but the
     # object won't pass isinstance checks) or to subclass dict and keep that
-    # storage updated (no shadowing all its methods like _ListWrapper).
+    # storage updated (no shadowing all its methods like ListWrapper).
     new_dict.update(model.d)
     self.assertEqual({1: 3}, new_dict)
 
@@ -814,16 +822,23 @@ class MappingTests(test.TestCase):
     self.assertIsInstance(result, dict)
     self.assertEqual({1: 2, 3: 4}, result)
 
+  def testPickle(self):
+    original = data_structures._DictWrapper(dict(a=1, b=2))
+    serialized = pickle.dumps(original)
+    del original
+    deserialized = pickle.loads(serialized)
+    self.assertEqual(dict(a=1, b=2), deserialized)
+
   def testListAddOrder(self):
     self.assertEqual([1., 2.],
-                     data_structures._ListWrapper([1.])
-                     + data_structures._ListWrapper([2.]))
+                     data_structures.ListWrapper([1.])
+                     + data_structures.ListWrapper([2.]))
     self.assertEqual([1., 2.],
-                     data_structures._ListWrapper([1.])
+                     data_structures.ListWrapper([1.])
                      + [2.])
     self.assertEqual([1., 2.],
                      [1.]
-                     + data_structures._ListWrapper([2.]))
+                     + data_structures.ListWrapper([2.]))
 
   def testSameStructure(self):
     d = {1: "a"}

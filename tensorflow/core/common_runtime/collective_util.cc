@@ -82,7 +82,7 @@ string SubdivPermDebugString(const CollectiveParams& col_params) {
 SubContext::SubContext(OpKernelContext* ctx, OpKernelContext::Params* params,
                        OpKernel* op, Tensor* output, Tensor* input)
     : sub_params_(*params),
-      sub_inputs_({output, input}),
+      sub_inputs_({TensorValue(output), TensorValue(input)}),
       sub_input_attr_({ctx->input_alloc_attr(0), ctx->input_alloc_attr(0)}),
       sub_input_dc_(
           {ctx->input_device_context(0), ctx->input_device_context(0)}) {

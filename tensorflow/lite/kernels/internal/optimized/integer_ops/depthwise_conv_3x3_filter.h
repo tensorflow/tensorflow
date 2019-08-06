@@ -18,15 +18,13 @@ limitations under the License.
 #include <memory>
 
 #include "profiling/instrumentation.h"
-#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_3x3_filter_common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace optimized_ops {
 namespace depthwise_conv {
-
-#ifdef USE_NEON
 
 #define STR(s) STR_UNEXPANDED(s)
 #define STR_UNEXPANDED(s) #s
@@ -46,7 +44,6 @@ namespace depthwise_conv {
 #define OFFSET_FILTER_ROW_SIZE 32
 #define OFFSET_INPUT_OFFSET 40
 #define OFFSET_OUTPUT_OFFSET 44
-#define OFFSET_FILTER_OFFSET 48
 #define OFFSET_OUTPUT_MULTIPLIER 52
 #define OFFSET_OUTPUT_ACTIVATION_MIN 56
 #define OFFSET_OUTPUT_ACTIVATION_MAX 60
@@ -78,9 +75,6 @@ static_assert(offsetof(DepthwiseConvParams, input_offset) ==
 static_assert(offsetof(DepthwiseConvParams, output_offset) ==
                   OFFSET_OUTPUT_OFFSET,
               "");
-static_assert(offsetof(DepthwiseConvParams, filter_offset) ==
-                  OFFSET_FILTER_OFFSET,
-              "");
 static_assert(offsetof(DepthwiseConvParams, output_multiplier) ==
                   OFFSET_OUTPUT_MULTIPLIER,
               "");
@@ -110,12 +104,6 @@ static_assert(offsetof(DepthwiseConvParams, output_width) ==
 static_assert(offsetof(DepthwiseConvParams, output_height) ==
                   OFFSET_OUTPUT_HEIGHT,
               "");
-#endif  // __aarch64__
-#endif  // ARM NEON
-
-#ifdef USE_NEON
-
-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
 
 template <>
 struct DepthwiseConvWindowPerChannel<DepthwiseConvOutputRounding::kUpward, 8, 1,
@@ -131,6 +119,7 @@ struct DepthwiseConvWindowPerChannel<DepthwiseConvOutputRounding::kUpward, 8, 1,
     const int64_t input_width_increment = 2 * input_depth;
     const int64_t input_height_increment = 2 * input_row_size;
     const int64_t output_height_increment = 2 * params_ptr->output_row_size;
+    TFLITE_DCHECK_EQ(params_ptr->filter_offset, 0);
 
 #define DEPTHWISECONV_LABEL_HEIGHT_2_LOOP "1"
 #define DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LOOP "2"
@@ -208,10 +197,8 @@ struct DepthwiseConvWindowPerChannel<DepthwiseConvOutputRounding::kUpward, 8, 1,
         "dup v29.8h, w2\n"
         "ldr w4, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
         "ldr w0, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
-        "ldr w9, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
         "add x10, %[bias_ptr], #16\n"
         "ldr x1, [%[params_ptr], #" STR(OFFSET_OUTPUT_ROW_SIZE) "]\n"
-        "dup v9.8h, w9\n"
         "dup v25.16b, w4\n"
 
         // Deal with output multiplier & output shift.
@@ -221,22 +208,22 @@ struct DepthwiseConvWindowPerChannel<DepthwiseConvOutputRounding::kUpward, 8, 1,
         // Load filters and add offsets.
         "ld1 {v0.8b}, [%[filter_ptr]], x3\n"
         "ld1 {v1.8b}, [%[filter_ptr]], x3\n"
-        "saddw v0.8h, v9.8h, v0.8b\n"
+        "sshll v0.8h, v0.8b, #0\n"
         "ld1 {v2.8b}, [%[filter_ptr]], x3\n"
-        "saddw v1.8h, v9.8h, v1.8b\n"
+        "sshll v1.8h, v1.8b, #0\n"
         "ld1 {v3.8b}, [%[filter_ptr]], x3\n"
-        "saddw v2.8h, v9.8h, v2.8b\n"
+        "sshll v2.8h, v2.8b, #0\n"
         "ld1 {v4.8b}, [%[filter_ptr]], x3\n"
-        "saddw v3.8h, v9.8h, v3.8b\n"
+        "sshll v3.8h, v3.8b, #0\n"
         "ld1 {v5.8b}, [%[filter_ptr]], x3\n"
-        "saddw v4.8h, v9.8h, v4.8b\n"
+        "sshll v4.8h, v4.8b, #0\n"
         "ld1 {v6.8b}, [%[filter_ptr]], x3\n"
-        "saddw v5.8h, v9.8h, v5.8b\n"
+        "sshll v5.8h, v5.8b, #0\n"
         "ld1 {v7.8b}, [%[filter_ptr]], x3\n"
-        "saddw v6.8h, v9.8h, v6.8b\n"
+        "sshll v6.8h, v6.8b, #0\n"
         "ld1 {v8.8b}, [%[filter_ptr]], x3\n"
-        "saddw v7.8h, v9.8h, v7.8b\n"
-        "saddw v8.8h, v9.8h, v8.8b\n"
+        "sshll v7.8h, v7.8b, #0\n"
+        "sshll v8.8h, v8.8b, #0\n"
 
         "blt " DEPTHWISECONV_LABEL_HEIGHT_2_AFTER_LOOP "f\n"
 
@@ -987,6 +974,7 @@ struct DepthwiseConvWindowPerChannel<DepthwiseConvOutputRounding::kUpward, 8, 2,
     const int64_t input_width_increment = 4 * input_depth;
     const int64_t input_height_increment = 4 * input_row_size;
     const int64_t output_height_increment = 2 * params_ptr->output_row_size;
+    TFLITE_DCHECK_EQ(params_ptr->filter_offset, 0);
 
 #define DEPTHWISECONV_LABEL_HEIGHT_2_LOOP "1"
 #define DEPTHWISECONV_LABEL_HEIGHT_2_WIDTH_2_LOOP "2"
@@ -1064,7 +1052,6 @@ struct DepthwiseConvWindowPerChannel<DepthwiseConvOutputRounding::kUpward, 8, 2,
         "ldr w4, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "ldr x5, [%[params_ptr], #" STR(OFFSET_OUTPUT_DEPTH) "]\n"
         "ldr x19, [%[params_ptr], #" STR(OFFSET_OUTPUT_ROW_SIZE) "]\n"
-        "ldr w20, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
 
         // Deal with output multiplier.
         "ld1 {v30.4s, v31.4s}, [%[output_multiplier_ptr]]\n"
@@ -1072,24 +1059,23 @@ struct DepthwiseConvWindowPerChannel<DepthwiseConvOutputRounding::kUpward, 8, 2,
         // Load filters and add offsets.
         "add x10, %[bias_ptr], #16\n"
         "ld1 {v0.8b}, [%[filter_ptr]], x5\n"
-        "dup v9.8h, w20\n"
         "ld1 {v1.8b}, [%[filter_ptr]], x5\n"
-        "saddw v0.8h, v9.8h, v0.8b\n"
+        "sshll v0.8h, v0.8b, #0\n"
         "ld1 {v2.8b}, [%[filter_ptr]], x5\n"
-        "saddw v1.8h, v9.8h, v1.8b\n"
+        "sshll v1.8h, v1.8b, #0\n"
         "ld1 {v3.8b}, [%[filter_ptr]], x5\n"
-        "saddw v2.8h, v9.8h, v2.8b\n"
+        "sshll v2.8h, v2.8b, #0\n"
         "ld1 {v4.8b}, [%[filter_ptr]], x5\n"
-        "saddw v3.8h, v9.8h, v3.8b\n"
+        "sshll v3.8h, v3.8b, #0\n"
         "ld1 {v5.8b}, [%[filter_ptr]], x5\n"
-        "saddw v4.8h, v9.8h, v4.8b\n"
+        "sshll v4.8h, v4.8b, #0\n"
         "ld1 {v6.8b}, [%[filter_ptr]], x5\n"
-        "saddw v5.8h, v9.8h, v5.8b\n"
+        "sshll v5.8h, v5.8b, #0\n"
         "ld1 {v7.8b}, [%[filter_ptr]], x5\n"
-        "saddw v6.8h, v9.8h, v6.8b\n"
+        "sshll v6.8h, v6.8b, #0\n"
         "ld1 {v8.8b}, [%[filter_ptr]]\n"
-        "saddw v7.8h, v9.8h, v7.8b\n"
-        "saddw v8.8h, v9.8h, v8.8b\n"
+        "sshll v7.8h, v7.8b, #0\n"
+        "sshll v8.8h, v8.8b, #0\n"
 
         "blt " DEPTHWISECONV_LABEL_HEIGHT_2_AFTER_LOOP "f\n"
 
@@ -1945,6 +1931,7 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
                          const int8* filter_ptr, const int32* bias_ptr,
                          int8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
+    TFLITE_DCHECK_EQ(params_ptr->filter_offset, 0);
 #define DEPTHWISECONV_LABEL_DEPTH_8_LOOP "1"
 #define DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "2"
     asm volatile(
@@ -1964,14 +1951,12 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
         "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.16b, w9\n"
-        "ldr w9, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
         "dup v31.16b, w10\n"
-        "dup v25.8h, w9\n"
 
         "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
         "saddw v8.8h, v26.8h, v8.8b\n"
         "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
-        "saddw v0.8h, v25.8h, v0.8b\n"
+        "sshll v0.8h, v0.8b, #0\n"
 
         // Loads output_multiplier & output_shift.
         "ld1 {v6.4s}, [%[output_multiplier_ptr]], #16\n"
@@ -2003,7 +1988,7 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
           "st1 {v16.8b}, [%[output_ptr]], #8\n"
           "saddw v8.8h, v26.8h, v8.8b\n"
           "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
-          "saddw v0.8h, v25.8h, v0.8b\n"
+          "sshll v0.8h, v0.8b, #0\n"
           "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
           "ld1 {v6.4s}, [%[output_multiplier_ptr]], #16\n"
           "ld1 {v10.4s}, [%[output_shift_ptr]], #16\n"
@@ -2041,7 +2026,7 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         // Clobbers.
         "cc", "memory",
         // We use these NEON registers.
-        "v0", "v6", "v7", "v8", "v10", "v11", "v16", "v17", "v18", "v19", "v25",
+        "v0", "v6", "v7", "v8", "v10", "v11", "v16", "v17", "v18", "v19",
         "v26", "v28", "v30", "v31",
         // We use these general-purpose registers.
         "x9", "x10", "x11");
@@ -2058,6 +2043,7 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
                          const int8* filter_ptr, const int32* bias_ptr,
                          int8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
+    TFLITE_DCHECK_EQ(params_ptr->filter_offset, 0);
 #define DEPTHWISECONV_LABEL_DEPTH_8_LOOP "1"
 #define DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "2"
     asm volatile(
@@ -2097,9 +2083,7 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "ldr w6, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
         "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.16b, w6\n"
-        "ldr w6, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
         "dup v31.16b, w7\n"
-        "dup v25.8h, w6\n"
 
         // Loads output_multiplier & output_shift.
         "ld1 {v4.4s}, [%[output_multiplier_ptr]], #16\n"
@@ -2115,10 +2099,10 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "saddw v10.8h, v26.8h, v10.8b\n"
         "saddw v11.8h, v26.8h, v11.8b\n"
 
-        "saddw v0.8h, v25.8h, v0.8b\n"
-        "saddw v1.8h, v25.8h, v1.8b\n"
-        "saddw v2.8h, v25.8h, v2.8b\n"
-        "saddw v3.8h, v25.8h, v3.8b\n"
+        "sshll v0.8h, v0.8b, #0\n"
+        "sshll v1.8h, v1.8b, #0\n"
+        "sshll v2.8h, v2.8b, #0\n"
+        "sshll v3.8h, v3.8b, #0\n"
 
         "blt " DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "f\n"
 
@@ -2160,10 +2144,10 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
           "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
           "saddw v10.8h, v26.8h, v10.8b\n"
           "saddw v11.8h, v26.8h, v11.8b\n"
-          "saddw v0.8h, v25.8h, v0.8b\n"
-          "saddw v1.8h, v25.8h, v1.8b\n"
-          "saddw v2.8h, v25.8h, v2.8b\n"
-          "saddw v3.8h, v25.8h, v3.8b\n"
+          "sshll v0.8h, v0.8b, #0\n"
+          "sshll v1.8h, v1.8b, #0\n"
+          "sshll v2.8h, v2.8b, #0\n"
+          "sshll v3.8h, v3.8b, #0\n"
           "ld1 {v4.4s}, [%[output_multiplier_ptr]], #16\n"
           "ld1 {v6.4s}, [%[output_shift_ptr]], #16\n"
           "ld1 {v5.4s}, [%[output_multiplier_ptr]], #16\n"
@@ -2207,7 +2191,7 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "cc", "memory",
         // We use these NEON registers.
         "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-        "v11", "v16", "v17","v18", "v19", "v25", "v26", "v28", "v30", "v31",
+        "v11", "v16", "v17","v18", "v19", "v26", "v28", "v30", "v31",
         // We use these general-purpose registers.
         "x6", "x7", "x9", "x10", "x11", "x12", "x13", "x14", "x15");
 #undef DEPTHWISECONV_LABEL_DEPTH_8_LOOP
@@ -2223,6 +2207,7 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
                          const int8* filter_ptr, const int32* bias_ptr,
                          int8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
+    TFLITE_DCHECK_EQ(params_ptr->filter_offset, 0);
 #define DEPTHWISECONV_LABEL_DEPTH_8_LOOP "1"
 #define DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "2"
     asm volatile(
@@ -2268,9 +2253,7 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.8b, w12\n"
-        "ldr w12, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
         "dup v31.8b, w13\n"
-        "dup v25.8h, w12\n"
 
         // Loads output_multiplier & output_shift.
         "ld1 {v6.4s}, [%[output_multiplier_ptr]], #16\n"
@@ -2288,12 +2271,12 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "saddw v12.8h, v26.8h, v12.8b\n"
         "saddw v13.8h, v26.8h, v13.8b\n"
 
-        "saddw v0.8h, v25.8h, v0.8b\n"
-        "saddw v1.8h, v25.8h, v1.8b\n"
-        "saddw v2.8h, v25.8h, v2.8b\n"
-        "saddw v3.8h, v25.8h, v3.8b\n"
-        "saddw v4.8h, v25.8h, v4.8b\n"
-        "saddw v5.8h, v25.8h, v5.8b\n"
+        "sshll v0.8h, v0.8b, #0\n"
+        "sshll v1.8h, v1.8b, #0\n"
+        "sshll v2.8h, v2.8b, #0\n"
+        "sshll v3.8h, v3.8b, #0\n"
+        "sshll v4.8h, v4.8b, #0\n"
+        "sshll v5.8h, v5.8b, #0\n"
 
         "blt " DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "f\n"
 
@@ -2351,14 +2334,14 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
           "saddw v12.8h, v26.8h, v12.8b\n"
           "saddw v13.8h, v26.8h, v13.8b\n"
 
-          "saddw v0.8h, v25.8h, v0.8b\n"
-          "saddw v1.8h, v25.8h, v1.8b\n"
-          "saddw v2.8h, v25.8h, v2.8b\n"
+          "sshll v0.8h, v0.8b, #0\n"
+          "sshll v1.8h, v1.8b, #0\n"
+          "sshll v2.8h, v2.8b, #0\n"
           "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
-          "saddw v3.8h, v25.8h, v3.8b\n"
+          "sshll v3.8h, v3.8b, #0\n"
           "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
-          "saddw v4.8h, v25.8h, v4.8b\n"
-          "saddw v5.8h, v25.8h, v5.8b\n"
+          "sshll v4.8h, v4.8b, #0\n"
+          "sshll v5.8h, v5.8b, #0\n"
           "ld1 {v6.4s}, [%[output_multiplier_ptr]], #16\n"
           "ld1 {v14.4s}, [%[output_shift_ptr]], #16\n"
           "ld1 {v7.4s}, [%[output_multiplier_ptr]], #16\n"
@@ -2405,7 +2388,7 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "cc", "memory",
         // We use these NEON registers.
         "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-        "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v25",
+        "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19",
         "v26", "v28", "v30", "v31",
         // We use these general-purpose registers.
         "x7", "x9", "x10", "x11", "x12", "x13", "x14", "x15");
@@ -2421,6 +2404,7 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
                          const int8* filter_ptr, const int32* bias_ptr,
                          int8* output_ptr,
                          const DepthwiseConvParams* params_ptr) {
+    TFLITE_DCHECK_EQ(params_ptr->filter_offset, 0);
 #define DEPTHWISECONV_LABEL_DEPTH_8_LOOP "1"
 #define DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "2"
     asm volatile(
@@ -2468,9 +2452,7 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
         "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MAX) "]\n"
         "dup v30.8b, w12\n"
-        "ldr w12, [%[params_ptr], #" STR(OFFSET_FILTER_OFFSET) "]\n"
         "dup v31.8b, w13\n"
-        "dup v25.8h, w12\n"
 
         // Loads output_multiplier & output_shift.
         "ld1 {v6.4s}, [%[output_multiplier_ptr]], #16\n"
@@ -2488,12 +2470,12 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "saddw v12.8h, v26.8h, v12.8b\n"
         "saddw v13.8h, v26.8h, v13.8b\n"
 
-        "saddw v0.8h, v25.8h, v0.8b\n"
-        "saddw v1.8h, v25.8h, v1.8b\n"
-        "saddw v2.8h, v25.8h, v2.8b\n"
-        "saddw v3.8h, v25.8h, v3.8b\n"
-        "saddw v4.8h, v25.8h, v4.8b\n"
-        "saddw v5.8h, v25.8h, v5.8b\n"
+        "sshll v0.8h, v0.8b, #0\n"
+        "sshll v1.8h, v1.8b, #0\n"
+        "sshll v2.8h, v2.8b, #0\n"
+        "sshll v3.8h, v3.8b, #0\n"
+        "sshll v4.8h, v4.8b, #0\n"
+        "sshll v5.8h, v5.8b, #0\n"
 
         "blt " DEPTHWISECONV_LABEL_DEPTH_8_AFTER_LOOP "f\n"
 
@@ -2553,14 +2535,14 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
           "saddw v12.8h, v26.8h, v12.8b\n"
           "saddw v13.8h, v26.8h, v13.8b\n"
 
-          "saddw v0.8h, v25.8h, v0.8b\n"
-          "saddw v1.8h, v25.8h, v1.8b\n"
-          "saddw v2.8h, v25.8h, v2.8b\n"
+          "sshll v0.8h, v0.8b, #0\n"
+          "sshll v1.8h, v1.8b, #0\n"
+          "sshll v2.8h, v2.8b, #0\n"
           "ld1 {v16.4s}, [%[bias_ptr]], #16\n"
-          "saddw v3.8h, v25.8h, v3.8b\n"
+          "sshll v3.8h, v3.8b, #0\n"
           "ld1 {v17.4s}, [%[bias_ptr]], #16\n"
-          "saddw v4.8h, v25.8h, v4.8b\n"
-          "saddw v5.8h, v25.8h, v5.8b\n"
+          "sshll v4.8h, v4.8b, #0\n"
+          "sshll v5.8h, v5.8b, #0\n"
           "ld1 {v6.4s}, [%[output_multiplier_ptr]], #16\n"
           "ld1 {v14.4s}, [%[output_shift_ptr]], #16\n"
           "ld1 {v7.4s}, [%[output_multiplier_ptr]], #16\n"
@@ -2608,7 +2590,7 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
         "cc", "memory",
         // We use these NEON registers.
         "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10",
-        "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19", "v25",
+        "v11", "v12", "v13", "v14", "v15", "v16", "v17", "v18", "v19",
         "v26", "v28", "v30", "v31",
         // We use these general-purpose registers.
         "x5", "x6", "x7", "x9", "x10", "x11", "x12", "x13", "x14", "x15");
@@ -2623,7 +2605,6 @@ struct DepthwiseConvPartialPerChannel<DepthwiseConvOutputRounding::kUpward,
 #undef OFFSET_OUTPUT_ROW_SIZE
 #undef OFFSET_INPUT_OFFSET
 #undef OFFSET_OUTPUT_OFFSET
-#undef OFFSET_FILTER_OFFSET
 #undef OFFSET_OUTPUT_MULTIPLIER
 #undef OFFSET_OUTPUT_ACTIVATION_MIN
 #undef OFFSET_OUTPUT_ACTIVATION_MAX
@@ -2930,9 +2911,6 @@ inline void DepthwiseConv3x3FilterPerChannel(
   params.filter_offset = filter_offset;
   params.output_activation_min = output_activation_min;
   params.output_activation_max = output_activation_max;
-  // TODO(renjieliu): Remove these once all per-channel cases have been handled.
-  params.output_multiplier = output_multiplier_ptr[0];
-  params.output_right_shift = output_shift_ptr[0];
 
   const int32 filter_height = filter_shape.Dims(1);
   const int32 filter_width = filter_shape.Dims(2);
@@ -3093,8 +3071,6 @@ inline void DepthwiseConv3x3FilterPerChannel(
   }
 }
 #endif  // __aarch64__
-
-#endif
 
 #undef STR
 #undef STR_UNEXPANDED

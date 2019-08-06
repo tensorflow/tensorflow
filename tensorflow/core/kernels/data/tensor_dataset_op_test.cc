@@ -12,27 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/tensor_dataset_op.h"
 
-#include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/function_testlib.h"
-#include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
-#include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/iterator_ops.h"
-#include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
 constexpr char kNodeName[] = "tensor_dataset";
-constexpr char kOpName[] = "TensorDataset";
 
 class TensorDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -43,11 +31,14 @@ class TensorDatasetOpTest : public DatasetOpsTestBase {
     std::vector<string> components;
     components.reserve(dtypes.size());
     for (int i = 0; i < dtypes.size(); i++) {
-      components.emplace_back(strings::StrCat("component_", i));
+      components.emplace_back(
+          strings::StrCat(TensorDatasetOp::kComponents, "_", i));
     }
     node_def_ = test::function::NDef(
-        kNodeName, kOpName, components,
-        {{"Toutput_types", dtypes}, {"output_shapes", shapes}});
+        kNodeName, name_utils::OpName(TensorDatasetOp::kDatasetType),
+        components,
+        {{TensorDatasetOp::kToutput_types, dtypes},
+         {TensorDatasetOp::kOutputShapes, shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def_, tensor_dataset_kernel));
     return Status::OK();
   }
@@ -77,47 +68,44 @@ struct TestCase {
 
 // Test case 1: test a dataset that represents a single tuple of plain tensors.
 TestCase PlainTensorsTestCase() {
-  return {
-      /*components*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
-       DatasetOpsTestBase::CreateTensor<double>(TensorShape({}), {37.0}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({1, 2}),
-                                                {"a", "b"})},
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
-       DatasetOpsTestBase::CreateTensor<double>(TensorShape({}), {37.0}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({1, 2}),
-                                                {"a", "b"})},
-      /*expected_output_dtypes*/
-      {DT_INT64, DT_INT64, DT_DOUBLE, DT_STRING},
-      /*expected_output_shapes*/
-      {PartialTensorShape({}), PartialTensorShape({1, 3}),
-       PartialTensorShape({}), PartialTensorShape({1, 2})},
-      /*expected_cardinality*/ 1,
-      /*breakpoints*/ {0, 1, 2}};
+  return {/*components*/
+          {CreateTensor<int64>(TensorShape({}), {1}),
+           CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
+           CreateTensor<double>(TensorShape({}), {37.0}),
+           CreateTensor<string>(TensorShape({1, 2}), {"a", "b"})},
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape({}), {1}),
+           CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
+           CreateTensor<double>(TensorShape({}), {37.0}),
+           CreateTensor<string>(TensorShape({1, 2}), {"a", "b"})},
+          /*expected_output_dtypes*/
+          {DT_INT64, DT_INT64, DT_DOUBLE, DT_STRING},
+          /*expected_output_shapes*/
+          {PartialTensorShape({}), PartialTensorShape({1, 3}),
+           PartialTensorShape({}), PartialTensorShape({1, 2})},
+          /*expected_cardinality*/ 1,
+          /*breakpoints*/ {0, 1, 2}};
 }
 
 // Test case 2: test a dataset that represents a tuple of nested tensors.
 TestCase NestedTensorsTestCase() {
   return {
       /*components*/
-      {DatasetOpsTestBase::CreateTensor<Variant>(
-           TensorShape({}), {DatasetOpsTestBase::CreateTensor<double>(
-                                TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
-       DatasetOpsTestBase::CreateTensor<Variant>(
-           TensorShape({}), {DatasetOpsTestBase::CreateTensor<string>(
-                                TensorShape({1, 2}), {"a", "b"})}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})},
+      {CreateTensor<Variant>(
+           TensorShape({}),
+           {CreateTensor<double>(TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
+       CreateTensor<Variant>(
+           TensorShape({}),
+           {CreateTensor<string>(TensorShape({1, 2}), {"a", "b"})}),
+       CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})},
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<Variant>(
-           TensorShape({}), {DatasetOpsTestBase::CreateTensor<double>(
-                                TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
-       DatasetOpsTestBase::CreateTensor<Variant>(
-           TensorShape({}), {DatasetOpsTestBase::CreateTensor<string>(
-                                TensorShape({1, 2}), {"a", "b"})}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})},
+      {CreateTensor<Variant>(
+           TensorShape({}),
+           {CreateTensor<double>(TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
+       CreateTensor<Variant>(
+           TensorShape({}),
+           {CreateTensor<string>(TensorShape({1, 2}), {"a", "b"})}),
+       CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})},
       /*expected_output_dtypes*/
       {DT_VARIANT, DT_VARIANT, DT_INT64},
       /*expected_output_shapes*/
@@ -140,7 +128,7 @@ TEST_P(ParametrizedTensorDatasetOpTest, GetNext) {
   std::vector<Tensor> components = test_case.components;
   gtl::InlinedVector<TensorValue, 4> inputs;
   for (auto &component : components) {
-    inputs.push_back(&component);
+    inputs.push_back(TensorValue(&component));
   }
   std::unique_ptr<OpKernel> tensor_dataset_kernel;
   TF_ASSERT_OK(CreateTensorDatasetKernel(test_case.expected_output_dtypes,
@@ -190,7 +178,7 @@ TEST_F(TensorDatasetOpTest, DatasetTypeString) {
   std::vector<Tensor> components = test_case.components;
   gtl::InlinedVector<TensorValue, 4> inputs;
   for (auto &component : components) {
-    inputs.push_back(&component);
+    inputs.push_back(TensorValue(&component));
   }
   std::unique_ptr<OpKernel> tensor_dataset_kernel;
   TF_ASSERT_OK(CreateTensorDatasetKernel(test_case.expected_output_dtypes,
@@ -204,7 +192,8 @@ TEST_F(TensorDatasetOpTest, DatasetTypeString) {
                              tensor_dataset_context.get(), &tensor_dataset));
   core::ScopedUnref scoped_unref(tensor_dataset);
 
-  EXPECT_EQ(tensor_dataset->type_string(), kOpName);
+  EXPECT_EQ(tensor_dataset->type_string(),
+            name_utils::OpName(TensorDatasetOp::kDatasetType));
 }
 
 TEST_F(TensorDatasetOpTest, DatasetNodeName) {
@@ -216,7 +205,7 @@ TEST_F(TensorDatasetOpTest, DatasetNodeName) {
   std::vector<Tensor> components = test_case.components;
   gtl::InlinedVector<TensorValue, 4> inputs;
   for (auto &component : components) {
-    inputs.push_back(&component);
+    inputs.push_back(TensorValue(&component));
   }
   std::unique_ptr<OpKernel> tensor_dataset_kernel;
   TF_ASSERT_OK(CreateTensorDatasetKernel(test_case.expected_output_dtypes,
@@ -242,7 +231,7 @@ TEST_F(TensorDatasetOpTest, DatasetOutputDtypes) {
   std::vector<Tensor> components = test_case.components;
   gtl::InlinedVector<TensorValue, 4> inputs;
   for (auto &component : components) {
-    inputs.push_back(&component);
+    inputs.push_back(TensorValue(&component));
   }
   std::unique_ptr<OpKernel> tensor_dataset_kernel;
   TF_ASSERT_OK(CreateTensorDatasetKernel(test_case.expected_output_dtypes,
@@ -268,7 +257,7 @@ TEST_F(TensorDatasetOpTest, DatasetOutputShapes) {
   std::vector<Tensor> components = test_case.components;
   gtl::InlinedVector<TensorValue, 4> inputs;
   for (auto &component : components) {
-    inputs.push_back(&component);
+    inputs.push_back(TensorValue(&component));
   }
   std::unique_ptr<OpKernel> tensor_dataset_kernel;
   TF_ASSERT_OK(CreateTensorDatasetKernel(test_case.expected_output_dtypes,
@@ -299,7 +288,7 @@ TEST_F(TensorDatasetOpTest, Cardinality) {
   std::vector<Tensor> components = test_case.components;
   gtl::InlinedVector<TensorValue, 4> inputs;
   for (auto &component : components) {
-    inputs.push_back(&component);
+    inputs.push_back(TensorValue(&component));
   }
   std::unique_ptr<OpKernel> tensor_dataset_kernel;
   TF_ASSERT_OK(CreateTensorDatasetKernel(test_case.expected_output_dtypes,
@@ -325,7 +314,7 @@ TEST_P(ParametrizedTensorDatasetOpTest, DatasetSave) {
   std::vector<Tensor> components = test_case.components;
   gtl::InlinedVector<TensorValue, 4> inputs;
   for (auto &component : components) {
-    inputs.push_back(&component);
+    inputs.push_back(TensorValue(&component));
   }
   std::unique_ptr<OpKernel> tensor_dataset_kernel;
   TF_ASSERT_OK(CreateTensorDatasetKernel(test_case.expected_output_dtypes,
@@ -356,7 +345,7 @@ TEST_P(ParametrizedTensorDatasetOpTest, IteratorOutputDtypes) {
   std::vector<Tensor> components = test_case.components;
   gtl::InlinedVector<TensorValue, 4> inputs;
   for (auto &component : components) {
-    inputs.push_back(&component);
+    inputs.push_back(TensorValue(&component));
   }
   std::unique_ptr<OpKernel> tensor_dataset_kernel;
   TF_ASSERT_OK(CreateTensorDatasetKernel(test_case.expected_output_dtypes,
@@ -388,7 +377,7 @@ TEST_P(ParametrizedTensorDatasetOpTest, IteratorOutputShapes) {
   std::vector<Tensor> components = test_case.components;
   gtl::InlinedVector<TensorValue, 4> inputs;
   for (auto &component : components) {
-    inputs.push_back(&component);
+    inputs.push_back(TensorValue(&component));
   }
   std::unique_ptr<OpKernel> tensor_dataset_kernel;
   TF_ASSERT_OK(CreateTensorDatasetKernel(test_case.expected_output_dtypes,
@@ -426,7 +415,7 @@ TEST_F(TensorDatasetOpTest, IteratorOutputPrefix) {
   std::vector<Tensor> components = test_case.components;
   gtl::InlinedVector<TensorValue, 4> inputs;
   for (auto &component : components) {
-    inputs.push_back(&component);
+    inputs.push_back(TensorValue(&component));
   }
   std::unique_ptr<OpKernel> tensor_dataset_kernel;
   TF_ASSERT_OK(CreateTensorDatasetKernel(test_case.expected_output_dtypes,
@@ -447,7 +436,8 @@ TEST_F(TensorDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(tensor_dataset->MakeIterator(iterator_context.get(), "Iterator",
                                             &iterator));
 
-  EXPECT_EQ(iterator->prefix(), "Iterator::FromTensor");
+  EXPECT_EQ(iterator->prefix(),
+            name_utils::IteratorPrefix("FromTensor", "Iterator"));
 }
 
 TEST_P(ParametrizedTensorDatasetOpTest, Roundtrip) {
@@ -459,7 +449,7 @@ TEST_P(ParametrizedTensorDatasetOpTest, Roundtrip) {
   std::vector<Tensor> components = test_case.components;
   gtl::InlinedVector<TensorValue, 4> inputs;
   for (auto &component : components) {
-    inputs.push_back(&component);
+    inputs.push_back(TensorValue(&component));
   }
   std::unique_ptr<OpKernel> tensor_dataset_kernel;
   TF_ASSERT_OK(CreateTensorDatasetKernel(test_case.expected_output_dtypes,

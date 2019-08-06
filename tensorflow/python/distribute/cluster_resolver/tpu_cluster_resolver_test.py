@@ -27,6 +27,7 @@ from tensorflow.python import eager
 from tensorflow.python.client import session
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as resolver
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
@@ -433,7 +434,14 @@ class TPUClusterResolverTest(test.TestCase):
   def testNoCallComputeMetadata(self):
     cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/foo/bar')
     self.assertEqual('/bns/foo/bar', cluster_resolver.master())
-    self.assertEqual(None, cluster_resolver.cluster_spec())
+    if ops.executing_eagerly_outside_functions():
+      self.assertEqual(
+          server_lib.ClusterSpec({
+              'worker': ['/bns/foo/bar']
+          }).as_dict(),
+          cluster_resolver.cluster_spec().as_dict())
+    else:
+      self.assertEqual(None, cluster_resolver.cluster_spec())
 
   def testLocalhostMaster(self):
     cluster_resolver = resolver.TPUClusterResolver(tpu='localhost:12345')

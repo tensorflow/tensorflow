@@ -49,7 +49,7 @@ namespace internal {
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 // Returns `true` iff we can use custom contraction kernels. This is a runtime
 // check, that uses environment variables.
-bool UseCustomContractionKernels();
+EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE bool UseCustomContractionKernels();
 
 // Pack a 2D block of a Tensor expression into contiguous block of memory with
 // col-major storage order. We do not have access to the underlying Tensor
@@ -329,20 +329,10 @@ class TensorContractionBlocking<Eigen::QInt32, Eigen::QInt8, Eigen::QUInt8,
   TensorContractionBlocking(StorageIndex k, StorageIndex m, StorageIndex n,
                             StorageIndex num_threads = 1)
       : kc_(k), mc_(m), nc_(n) {
-    // 1. Compute block sizes using default Eigen heuristics for float.
-    if (sharding_type == ShardByCol) {
-      computeProductBlockingSizes<float, float, 1>(kc_, mc_, nc_, num_threads);
-    } else {
-      computeProductBlockingSizes<float, float, 1>(kc_, nc_, mc_, num_threads);
-    }
-
-    // If dimensions do not pass basic sanity checks return immediately.
-    if (kc_ <= 0 || mc_ <= 0 || nc_ <= 0) return;
-
-    // 2. And refine them to work well with mkldnn gemm.
-    mc_ = (std::min)(m, static_cast<StorageIndex>(mc_ * kScaleM));
-    nc_ = (std::min)(n, static_cast<StorageIndex>(nc_ * kScaleN));
-    kc_ = (std::min)(k, static_cast<StorageIndex>(kc_ * kScaleK));
+    // Each dimension is a multiple of 32 (fits into _m256i).
+    mc_ = (std::min)(m, static_cast<StorageIndex>(192));
+    nc_ = (std::min)(n, static_cast<StorageIndex>(288));
+    kc_ = (std::min)(k, static_cast<StorageIndex>(320));
   }
 
   EIGEN_ALWAYS_INLINE StorageIndex kc() const { return kc_; }

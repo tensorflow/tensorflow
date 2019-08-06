@@ -65,7 +65,6 @@ class CsvDatasetSerializationTest(
     defs = [[0]] * self._num_cols
     self.run_core_tests(
         lambda: self.ds_func(record_defaults=defs, buffer_size=2),
-        lambda: self.ds_func(record_defaults=defs, buffer_size=12),
         self._num_outputs)
 
 

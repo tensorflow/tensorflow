@@ -1,11 +1,13 @@
 # TensorFlow Lite for Objective-C
 
-package(default_visibility = ["//visibility:private"])
-
-licenses(["notice"])  # Apache 2.0
-
+load("//tensorflow/lite:special_rules.bzl", "ios_visibility_whitelist")
 load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 SOURCES = glob([
     "sources/*.h",
@@ -59,6 +61,7 @@ objc_library(
     hdrs = API_HEADERS,
     copts = RELEASE_COPTS,
     tags = TFL_DEFAULT_TAGS,
+    visibility = ios_visibility_whitelist(),
     deps = [
         "//tensorflow/lite/experimental/c:c_api",
     ],
@@ -69,7 +72,9 @@ ios_unit_test(
     name = "Tests",
     size = "medium",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,
+    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS + [
+        "nozapfhahn",  # Fails during execution, see b/134486097.
+    ],
     deps = [
         ":TestsLibrary",
     ],

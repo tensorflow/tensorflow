@@ -1,5 +1,5 @@
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "if_static",
 )
 
@@ -67,8 +67,8 @@ cc_library(
     srcs = ["platform_id.cc"],
     hdrs = ["platform_id.h"],
     deps = ["//tensorflow/core:stream_executor_headers_lib"] + if_static(
-        ["@protobuf_archive//:protobuf"],
-        ["@protobuf_archive//:protobuf_headers"],
+        ["@com_google_protobuf//:protobuf"],
+        ["@com_google_protobuf//:protobuf_headers"],
     ),
 )
 

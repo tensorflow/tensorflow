@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/bigtable/kernels/bigtable_lib.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/core/refcount.h"
 
 namespace tensorflow {
 namespace data {
@@ -28,12 +29,10 @@ class BigtablePrefixKeyDatasetOp : public DatasetOpKernel {
     string prefix;
     OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "prefix", &prefix));
 
-    BigtableTableResource* resource;
+    core::RefCountPtr<BigtableTableResource> resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
-    core::ScopedUnref scoped_unref(resource);
-
-    *output = new Dataset(ctx, resource, std::move(prefix));
+    *output = new Dataset(ctx, resource.get(), std::move(prefix));
   }
 
  private:
@@ -72,12 +71,14 @@ class BigtablePrefixKeyDatasetOp : public DatasetOpKernel {
 
     BigtableTableResource* table() const { return table_; }
 
+    bool IsStateful() const override { return true; }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented("%s does not support serialization",
-                                   DebugString());
+      return errors::Unimplemented(DebugString(),
+                                   " does not support serialization");
     }
 
    private:

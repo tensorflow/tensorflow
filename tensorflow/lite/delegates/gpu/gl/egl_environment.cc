@@ -71,7 +71,8 @@ Status EglEnvironment::Init() {
   // Re-use context and display if it was created on this thread.
   if (eglGetCurrentContext() != EGL_NO_CONTEXT) {
     display_ = eglGetCurrentDisplay();
-    context_ = EglContext(eglGetCurrentContext(), display_, EGL_NO_CONFIG_KHR);
+    context_ =
+        EglContext(eglGetCurrentContext(), display_, EGL_NO_CONFIG_KHR, false);
   } else {
     RETURN_IF_ERROR(InitDisplay(&display_));
 

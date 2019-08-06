@@ -324,7 +324,9 @@ TEST_F(OpKernelTest, SaveTempFalse) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
   params.record_tensor_accesses = false;
-  params.device = new DummyDevice(env, params.record_tensor_accesses);
+  auto device =
+      absl::make_unique<DummyDevice>(env, params.record_tensor_accesses);
+  params.device = device.get();
   Status status;
   std::unique_ptr<OpKernel> op(
       CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
@@ -332,7 +334,7 @@ TEST_F(OpKernelTest, SaveTempFalse) {
                      TF_GRAPH_DEF_VERSION, &status));
   EXPECT_TRUE(status.ok());
   params.op_kernel = op.get();
-  OpKernelContext* ctx = new OpKernelContext(&params);
+  auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   Tensor t;
   TF_EXPECT_OK(ctx->allocate_temp(DT_FLOAT, TensorShape(), &t));
@@ -340,16 +342,15 @@ TEST_F(OpKernelTest, SaveTempFalse) {
   TensorReferenceVector referenced_tensors;
   ctx->retrieve_accessed_tensors(&referenced_tensors);
   EXPECT_EQ(0, referenced_tensors.size());
-
-  delete ctx;
-  delete params.device;
 }
 
 TEST_F(OpKernelTest, SaveTempTrue) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
   params.record_tensor_accesses = true;
-  params.device = new DummyDevice(env, params.record_tensor_accesses);
+  auto device =
+      absl::make_unique<DummyDevice>(env, params.record_tensor_accesses);
+  params.device = device.get();
   Status status;
   std::unique_ptr<OpKernel> op(
       CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
@@ -357,7 +358,7 @@ TEST_F(OpKernelTest, SaveTempTrue) {
                      TF_GRAPH_DEF_VERSION, &status));
   EXPECT_TRUE(status.ok());
   params.op_kernel = op.get();
-  OpKernelContext* ctx = new OpKernelContext(&params);
+  auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   Tensor t;
   TF_EXPECT_OK(ctx->allocate_temp(DT_FLOAT, TensorShape(), &t));
@@ -368,16 +369,15 @@ TEST_F(OpKernelTest, SaveTempTrue) {
   for (auto& ref : referenced_tensors) {
     ref.Unref();
   }
-
-  delete ctx;
-  delete params.device;
 }
 
 TEST_F(OpKernelTest, InputDtype) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
   params.record_tensor_accesses = false;
-  params.device = new DummyDevice(env, params.record_tensor_accesses);
+  auto device =
+      absl::make_unique<DummyDevice>(env, params.record_tensor_accesses);
+  params.device = device.get();
   Status status;
   std::unique_ptr<OpKernel> op(
       CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
@@ -391,7 +391,7 @@ TEST_F(OpKernelTest, InputDtype) {
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b),
                                             TensorValue(&c)};
   params.inputs = &inputs;
-  OpKernelContext* ctx = new OpKernelContext(&params);
+  auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   DataType dtype;
   EXPECT_FALSE(ctx->input_dtype("non_existent_input", &dtype).ok());
@@ -399,8 +399,6 @@ TEST_F(OpKernelTest, InputDtype) {
   EXPECT_EQ(dtype, DT_FLOAT);
   ASSERT_TRUE(ctx->input_dtype("b", &dtype).ok());
   EXPECT_EQ(dtype, DT_INT32);
-  delete ctx;
-  delete params.device;
 }
 
 // A mock device that mimics the behavior of scoped allocator upon calling
@@ -753,8 +751,8 @@ TEST_F(OpKernelBuilderTest, OpOutputList) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
   params.record_tensor_accesses = false;
-  std::unique_ptr<DummyDevice> device(
-      new DummyDevice(env, params.record_tensor_accesses));
+  auto device =
+      absl::make_unique<DummyDevice>(env, params.record_tensor_accesses);
   params.device = device.get();
   Status status;
   std::unique_ptr<OpKernel> op(CreateOpKernel(
@@ -765,7 +763,7 @@ TEST_F(OpKernelBuilderTest, OpOutputList) {
   params.op_kernel = op.get();
   gtl::InlinedVector<TensorValue, 4> inputs{};
   params.inputs = &inputs;
-  std::unique_ptr<OpKernelContext> ctx(new OpKernelContext(&params));
+  auto ctx = absl::make_unique<OpKernelContext>(&params);
 
   EXPECT_EQ(DT_INT32, ctx->expected_output_dtype(0));
   OpOutputList out_list;
@@ -1030,7 +1028,7 @@ void BM_InputRangeHelper(int iters, const NodeDef& node_def,
                          const char* input_name, int expected_start,
                          int expected_stop) {
   Status status;
-  std::unique_ptr<DummyDevice> device(new DummyDevice(Env::Default(), false));
+  auto device = absl::make_unique<DummyDevice>(Env::Default(), false);
 
   std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                               cpu_allocator(), node_def,

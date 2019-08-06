@@ -9,6 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -17,7 +18,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "parallel_map_dataset";
-constexpr char kOpName[] = "ParallelMapDataset";
 
 class ParallelMapDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -29,14 +29,17 @@ class ParallelMapDatasetOpTest : public DatasetOpsTestBase {
       bool use_inter_op_parallelism, bool sloppy, bool preserve_cardinality,
       std::unique_ptr<OpKernel>* parallel_map_kernel) {
     NodeDef node_def = test::function::NDef(
-        kNodeName, kOpName, {"input_dataset", "num_parallel_calls"},
-        {{"f", func},
-         {"Targuments", {}},
-         {"output_types", output_types},
-         {"output_shapes", output_shapes},
-         {"use_inter_op_parallelism", use_inter_op_parallelism},
-         {"sloppy", sloppy},
-         {"preserve_cardinality", preserve_cardinality}});
+        kNodeName, name_utils::OpName(ParallelMapDatasetOp::kDatasetType),
+        {ParallelMapDatasetOp::kInputDataset,
+         ParallelMapDatasetOp::kNumParallelCalls},
+        {{ParallelMapDatasetOp::kFunc, func},
+         {ParallelMapDatasetOp::kTarguments, {}},
+         {ParallelMapDatasetOp::kOutputTypes, output_types},
+         {ParallelMapDatasetOp::kOutputShapes, output_shapes},
+         {ParallelMapDatasetOp::kUseInterOpParallelism,
+          use_inter_op_parallelism},
+         {ParallelMapDatasetOp::kSloppy, sloppy},
+         {ParallelMapDatasetOp::kPreserveCardinality, preserve_cardinality}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, parallel_map_kernel));
     return Status::OK();
   }
@@ -83,17 +86,17 @@ FunctionDefHelper::AttrValueWrapper MapFunc(const string& func_name,
 TestCase TestCase1() {
   return {/*range_data_param*/ {0, 10, 3},
           /*num_parallel_calls*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
+          CreateTensor<int64>(TensorShape({}), {1}),
           /*func*/ MapFunc("XTimesTwo", DT_INT64),
           /*func_lib*/ {test::function::XTimesTwo()},
           /*use_inter_op_parallelism*/ false,
           /*sloppy*/ false,
           /*preserve_cardinality*/ false,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {6}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {18})},
+          {CreateTensor<int64>(TensorShape({}), {0}),
+           CreateTensor<int64>(TensorShape({}), {6}),
+           CreateTensor<int64>(TensorShape({}), {12}),
+           CreateTensor<int64>(TensorShape({}), {18})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 4,
@@ -105,17 +108,17 @@ TestCase TestCase1() {
 TestCase TestCase2() {
   return {/*range_data_param*/ {0, 10, 3},
           /*num_parallel_calls*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
+          CreateTensor<int64>(TensorShape({}), {2}),
           /*func*/ MapFunc("XTimesTwo", DT_INT64),
           /*func_lib*/ {test::function::XTimesTwo()},
           /*use_inter_op_parallelism*/ true,
           /*sloppy*/ true,
           /*preserve_cardinality*/ true,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {6}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {18})},
+          {CreateTensor<int64>(TensorShape({}), {0}),
+           CreateTensor<int64>(TensorShape({}), {6}),
+           CreateTensor<int64>(TensorShape({}), {12}),
+           CreateTensor<int64>(TensorShape({}), {18})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 4,
@@ -128,17 +131,17 @@ TestCase TestCase3() {
   return {
       /*range_data_param*/ {0, 10, 3},
       /*num_parallel_calls*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
+      CreateTensor<int64>(TensorShape({}), {3}),
       /*func*/ MapFunc("XTimesFour", DT_INT64),
       /*func_lib*/ {test::function::XTimesTwo(), test::function::XTimesFour()},
       /*use_inter_op_parallelism*/ true,
       /*sloppy*/ false,
       /*preserve_cardinality*/ false,
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {24}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {36})},
+      {CreateTensor<int64>(TensorShape({}), {0}),
+       CreateTensor<int64>(TensorShape({}), {12}),
+       CreateTensor<int64>(TensorShape({}), {24}),
+       CreateTensor<int64>(TensorShape({}), {36})},
       /*expected_output_dtypes*/ {DT_INT64},
       /*expected_output_shapes*/ {PartialTensorShape({})},
       /*expected_cardinality*/ 4,
@@ -150,41 +153,40 @@ TestCase TestCase3() {
 TestCase TestCase4() {
   return {/*range_data_param*/ {0, 10, 3},
           /*num_parallel_calls*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
+          CreateTensor<int64>(TensorShape({}), {4}),
           /*func*/ MapFunc("XTimesTwo", DT_INT64),
           /*func_lib*/ {test::function::XTimesTwo()},
           /*use_inter_op_parallelism*/ false,
           /*sloppy*/ false,
           /*preserve_cardinality*/ false,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {6}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {18})},
+          {CreateTensor<int64>(TensorShape({}), {0}),
+           CreateTensor<int64>(TensorShape({}), {6}),
+           CreateTensor<int64>(TensorShape({}), {12}),
+           CreateTensor<int64>(TensorShape({}), {18})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 4,
           /*breakpoints*/ {0, 1, 5}};
 }
 
-// test case 5: num_parallel_calls = kAutoTune, use_inter_op_parallelism = true,
+// test case 5: num_parallel_calls = kAutotune, use_inter_op_parallelism = true,
 // sloppy = true, preserve_cardinality = true, MapFunc = XTimesFour
 TestCase TestCase5() {
   return {
       /*range_data_param*/ {0, 10, 3},
       /*num_parallel_calls*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}),
-                                              {model::kAutoTune}),
+      CreateTensor<int64>(TensorShape({}), {model::kAutotune}),
       /*func*/ MapFunc("XTimesFour", DT_INT64),
       /*func_lib*/ {test::function::XTimesTwo(), test::function::XTimesFour()},
       /*use_inter_op_parallelism*/ true,
       /*sloppy*/ true,
       /*preserve_cardinality*/ true,
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {24}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {36})},
+      {CreateTensor<int64>(TensorShape({}), {0}),
+       CreateTensor<int64>(TensorShape({}), {12}),
+       CreateTensor<int64>(TensorShape({}), {24}),
+       CreateTensor<int64>(TensorShape({}), {36})},
       /*expected_output_dtypes*/ {DT_INT64},
       /*expected_output_shapes*/ {PartialTensorShape({})},
       /*expected_cardinality*/ 4,
@@ -197,17 +199,17 @@ TestCase TestCase6() {
   return {
       /*range_data_param*/ {0, 10, 3},
       /*num_parallel_calls*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
+      CreateTensor<int64>(TensorShape({}), {4}),
       /*func*/ MapFunc("XTimesFour", DT_INT64),
       /*func_lib*/ {test::function::XTimesTwo(), test::function::XTimesFour()},
       /*use_inter_op_parallelism*/ true,
       /*sloppy*/ false,
       /*preserve_cardinality*/ false,
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {24}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {36})},
+      {CreateTensor<int64>(TensorShape({}), {0}),
+       CreateTensor<int64>(TensorShape({}), {12}),
+       CreateTensor<int64>(TensorShape({}), {24}),
+       CreateTensor<int64>(TensorShape({}), {36})},
       /*expected_output_dtypes*/ {DT_INT64},
       /*expected_output_shapes*/ {PartialTensorShape({})},
       /*expected_cardinality*/ 4,
@@ -221,17 +223,17 @@ TestCase TestCase7() {
   return {
       /*range_data_param*/ {0, 10, 3},
       /*num_parallel_calls*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
+      CreateTensor<int64>(TensorShape({}), {2}),
       /*func*/ MapFunc("XTimesFour", DT_INT64),
       /*func_lib*/ {test::function::XTimesTwo(), test::function::XTimesFour()},
       /*use_inter_op_parallelism*/ false,
       /*sloppy*/ false,
       /*preserve_cardinality*/ false,
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {24}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {36})},
+      {CreateTensor<int64>(TensorShape({}), {0}),
+       CreateTensor<int64>(TensorShape({}), {12}),
+       CreateTensor<int64>(TensorShape({}), {24}),
+       CreateTensor<int64>(TensorShape({}), {36})},
       /*expected_output_dtypes*/ {DT_INT64},
       /*expected_output_shapes*/ {PartialTensorShape({})},
       /*expected_cardinality*/ 4,
@@ -239,24 +241,23 @@ TestCase TestCase7() {
 }
 
 // TODO(feihugis): make this test case work.
-// test case 8: num_parallel_calls = kAutoTune, use_inter_op_parallelism =
+// test case 8: num_parallel_calls = kAutotune, use_inter_op_parallelism =
 // false, sloppy = true, preserve_cardinality = true, MapFunc = XTimesFour
 TestCase TestCase8() {
   return {
       /*range_data_param*/ {0, 10, 3},
       /*num_parallel_calls*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}),
-                                              {model::kAutoTune}),
+      CreateTensor<int64>(TensorShape({}), {model::kAutotune}),
       /*func*/ MapFunc("XTimesFour", DT_INT64),
       /*func_lib*/ {test::function::XTimesTwo(), test::function::XTimesFour()},
       /*use_inter_op_parallelism*/ false,
       /*sloppy*/ true,
       /*preserve_cardinality*/ true,
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {24}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {36})},
+      {CreateTensor<int64>(TensorShape({}), {0}),
+       CreateTensor<int64>(TensorShape({}), {12}),
+       CreateTensor<int64>(TensorShape({}), {24}),
+       CreateTensor<int64>(TensorShape({}), {36})},
       /*expected_output_dtypes*/ {DT_INT64},
       /*expected_output_shapes*/ {PartialTensorShape({})},
       /*expected_cardinality*/ 4,
@@ -266,7 +267,7 @@ TestCase TestCase8() {
 TestCase InvalidNumParallelCallsTestCase() {
   return {/*range_data_param*/ {0, 10, 3},
           /*num_parallel_calls*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {-4}),
+          CreateTensor<int64>(TensorShape({}), {-4}),
           /*func*/ MapFunc("XTimesTwo", DT_INT64),
           /*func_lib*/ {test::function::XTimesTwo()},
           /*use_inter_op_parallelism*/ true,
@@ -305,7 +306,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, GetNext) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -359,7 +360,7 @@ TEST_F(ParallelMapDatasetOpTest, DatasetNodeName) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -396,7 +397,7 @@ TEST_F(ParallelMapDatasetOpTest, DatasetTypeString) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -408,7 +409,8 @@ TEST_F(ParallelMapDatasetOpTest, DatasetTypeString) {
                              &parallel_map_dataset));
   core::ScopedUnref scoped_unref_map_dataset(parallel_map_dataset);
 
-  EXPECT_EQ(parallel_map_dataset->type_string(), kOpName);
+  EXPECT_EQ(parallel_map_dataset->type_string(),
+            name_utils::OpName(ParallelMapDatasetOp::kDatasetType));
 }
 
 TEST_P(ParameterizedParallelMapDatasetOpTest, DatasetOutputDtypes) {
@@ -433,7 +435,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, DatasetOutputDtypes) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -471,7 +473,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, DatasetOutputShapes) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -509,7 +511,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, Cardinality) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -547,7 +549,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, DatasetSave) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -590,7 +592,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, IteratorOutputDtypes) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -635,7 +637,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, IteratorOutputShapes) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -680,7 +682,7 @@ TEST_F(ParallelMapDatasetOpTest, IteratorOutputPrefix) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -699,7 +701,9 @@ TEST_F(ParallelMapDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(parallel_map_dataset->MakeIterator(iterator_ctx.get(),
                                                   "Iterator", &iterator));
 
-  EXPECT_EQ(iterator->prefix(), "Iterator::ParallelMap");
+  EXPECT_EQ(iterator->prefix(),
+            name_utils::IteratorPrefix(ParallelMapDatasetOp::kDatasetType,
+                                       "Iterator"));
 }
 
 TEST_P(ParameterizedParallelMapDatasetOpTest, Roundtrip) {
@@ -724,7 +728,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, Roundtrip) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(
@@ -794,7 +798,7 @@ TEST_F(ParallelMapDatasetOpTest, InvalidNumParallelCalls) {
       StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
   Tensor num_parallel_calls = test_case.num_parallel_calls;
   gtl::InlinedVector<TensorValue, 4> parallel_map_dataset_inputs(
-      {&range_dataset_tensor, &num_parallel_calls});
+      {TensorValue(&range_dataset_tensor), TensorValue(&num_parallel_calls)});
 
   std::unique_ptr<OpKernelContext> parallel_map_dataset_context;
   TF_ASSERT_OK(CreateParallelMapDatasetContext(

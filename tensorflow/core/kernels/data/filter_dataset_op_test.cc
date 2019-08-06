@@ -50,7 +50,7 @@ class FilterDatasetOpTest : public DatasetOpsTestBase {
     return Status::OK();
   }
 
-  // Creates a new `ParallelInterleaveDataset` op kernel context.
+  // Creates a new `FilterDataset` op kernel context.
   Status CreateFilterDatasetContext(
       OpKernel *const op_kernel,
       gtl::InlinedVector<TensorValue, 4> *const inputs,
@@ -77,8 +77,7 @@ std::vector<Tensor> ConvertToTensorVec(std::vector<T> values) {
   std::vector<Tensor> tensors;
   tensors.reserve(values.size());
   for (auto &value : values) {
-    tensors.emplace_back(
-        DatasetOpsTestBase::CreateTensor<T>(TensorShape({1}), {value}));
+    tensors.emplace_back(CreateTensor<T>(TensorShape({1}), {value}));
   }
   return tensors;
 }
@@ -86,8 +85,7 @@ std::vector<Tensor> ConvertToTensorVec(std::vector<T> values) {
 // Test case 1: norm case.
 TestCase TestCase1() {
   return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{9, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+          {CreateTensor<int64>(TensorShape{9, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
           /*func*/ FunctionDefHelper::FunctionRef("IsZero", {{"T", DT_INT64}}),
           /*func_lib*/ {test::function::IsZero()},
           /*expected_outputs*/
@@ -101,7 +99,7 @@ TestCase TestCase1() {
 // Test case 2: the input dataset has no outputs.
 TestCase TestCase2() {
   return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{0}, {})},
+          {CreateTensor<int64>(TensorShape{0}, {})},
           /*func*/ FunctionDefHelper::FunctionRef("IsZero", {{"T", DT_INT64}}),
           /*func_lib*/ {test::function::IsZero()},
           /*expected_outputs*/
@@ -115,8 +113,7 @@ TestCase TestCase2() {
 // Test case 3: the filter function returns two outputs.
 TestCase InvalidFuncTestCase1() {
   return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+          {CreateTensor<int64>(TensorShape{3, 3}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
           /*func*/
           FunctionDefHelper::FunctionRef(
               "GetUnique", {{"T", DT_INT64}, {"out_idx", DT_INT32}}),
@@ -131,24 +128,23 @@ TestCase InvalidFuncTestCase1() {
 
 // Test case 4: the filter function returns a 1-D bool tensor.
 TestCase InvalidFuncTestCase2() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
-          /*func*/ FunctionDefHelper::FunctionRef("IsZero", {{"T", DT_INT64}}),
-          /*func_lib*/ {test::function::IsZero()},
-          /*expected_outputs*/
-          ConvertToTensorVec<int64>({}),
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({3, 1})},
-          /*expected_cardinality*/ kUnknownCardinality,
-          /*breakpoints*/ {}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{3, 3, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+      /*func*/ FunctionDefHelper::FunctionRef("IsZero", {{"T", DT_INT64}}),
+      /*func_lib*/ {test::function::IsZero()},
+      /*expected_outputs*/
+      ConvertToTensorVec<int64>({}),
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({3, 1})},
+      /*expected_cardinality*/ kUnknownCardinality,
+      /*breakpoints*/ {}};
 }
 
 // Test case 5: the filter function returns a scalar int64 tensor.
 TestCase InvalidFuncTestCase3() {
   return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{9}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+          {CreateTensor<int64>(TensorShape{9}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
           /*func*/ FunctionDefHelper::FunctionRef("NonZero", {{"T", DT_INT64}}),
           /*func_lib*/ {test::function::NonZero()},
           /*expected_outputs*/
@@ -178,7 +174,8 @@ TEST_P(ParameterizedFilterDatasetOpTest, GetNext) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> filter_dataset_context;
   TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
                                           &filter_dataset_context));
@@ -221,7 +218,8 @@ TEST_F(FilterDatasetOpTest, DatasetNodeName) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> filter_dataset_context;
   TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
                                           &filter_dataset_context));
@@ -248,7 +246,8 @@ TEST_F(FilterDatasetOpTest, DatasetTypeString) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> filter_dataset_context;
   TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
                                           &filter_dataset_context));
@@ -276,7 +275,8 @@ TEST_P(ParameterizedFilterDatasetOpTest, DatasetOutputDtypes) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> filter_dataset_context;
   TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
                                           &filter_dataset_context));
@@ -304,7 +304,8 @@ TEST_P(ParameterizedFilterDatasetOpTest, DatasetOutputShapes) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> filter_dataset_context;
   TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
                                           &filter_dataset_context));
@@ -332,7 +333,8 @@ TEST_P(ParameterizedFilterDatasetOpTest, Cardinality) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> filter_dataset_context;
   TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
                                           &filter_dataset_context));
@@ -359,7 +361,8 @@ TEST_P(ParameterizedFilterDatasetOpTest, DatasetSave) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> filter_dataset_context;
   TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
                                           &filter_dataset_context));
@@ -391,7 +394,8 @@ TEST_P(ParameterizedFilterDatasetOpTest, IteratorOutputDtypes) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> filter_dataset_context;
   TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
                                           &filter_dataset_context));
@@ -426,7 +430,8 @@ TEST_P(ParameterizedFilterDatasetOpTest, IteratorOutputShapes) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> filter_dataset_context;
   TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
                                           &filter_dataset_context));
@@ -461,7 +466,8 @@ TEST_F(ParameterizedFilterDatasetOpTest, IteratorOutputPrefix) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> filter_dataset_context;
   TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
                                           &filter_dataset_context));
@@ -496,7 +502,8 @@ TEST_P(ParameterizedFilterDatasetOpTest, Roundtrip) {
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
                                               &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+  gtl::InlinedVector<TensorValue, 4> inputs(
+      {TensorValue(&tensor_slice_dataset_tensor)});
   std::unique_ptr<OpKernelContext> filter_dataset_context;
   TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
                                           &filter_dataset_context));
@@ -565,7 +572,8 @@ TEST_F(ParameterizedFilterDatasetOpTest, InvalidFuncs) {
         test_case.input_tensors;
     TF_ASSERT_OK(CreateTensorSliceDatasetTensor(
         &inputs_for_tensor_slice_dataset, &tensor_slice_dataset_tensor));
-    gtl::InlinedVector<TensorValue, 4> inputs({&tensor_slice_dataset_tensor});
+    gtl::InlinedVector<TensorValue, 4> inputs(
+        {TensorValue(&tensor_slice_dataset_tensor)});
     std::unique_ptr<OpKernelContext> filter_dataset_context;
     TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(),
                                             &inputs, &filter_dataset_context));

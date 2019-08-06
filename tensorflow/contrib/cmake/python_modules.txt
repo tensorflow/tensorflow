@@ -432,7 +432,6 @@ tensorflow/contrib/timeseries/python
 tensorflow/contrib/timeseries/python/timeseries
 tensorflow/contrib/timeseries/python/timeseries/state_space_models
 tensorflow/contrib/tpu
-tensorflow/contrib/tpu/ops
 tensorflow/contrib/tpu/profiler
 tensorflow/contrib/tpu/python
 tensorflow/contrib/tpu/python/ops

@@ -210,7 +210,7 @@ cc_binary(
     deps = [
         ":config",
         ":support",
-        ":table_gen",
+        ":tablegen",
     ],
 )
 
@@ -398,6 +398,26 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+py_binary(
+    name = "lit",
+    srcs = ["utils/lit/lit.py"] + glob(["utils/lit/lit/*.py"]),
+)
+
+cc_binary(
+    name = "count",
+    srcs = ["utils/count/count.c"],
+)
+
+cc_binary(
+    name = "not",
+    srcs = ["utils/not/not.cpp"],
+    copts = llvm_copts,
+    linkopts = llvm_linkopts,
+    deps = [
+        ":support",
+    ],
+)
+
 cc_library(
     name = "aarch64_asm_parser",
     srcs = glob([
@@ -452,6 +472,7 @@ cc_library(
         ":selection_dag",
         ":support",
         ":target",
+        ":transform_utils",
     ],
 )
 
@@ -1341,6 +1362,7 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
+        ":bitstream_reader",
         ":config",
         ":core",
         ":support",
@@ -1370,6 +1392,26 @@ cc_library(
         ":core",
         ":mc",
         ":object",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "bitstream_reader",
+    srcs = glob([
+        "lib/Bitstream/Reader/*.c",
+        "lib/Bitstream/Reader/*.cpp",
+        "lib/Bitstream/Reader/*.inc",
+        "lib/Bitstream/Reader/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Bitstream/Reader/*.h",
+        "include/llvm/Bitstream/Reader/*.def",
+        "include/llvm/Bitstream/Reader/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
         ":support",
     ],
 )
@@ -1533,6 +1575,26 @@ cc_library(
 )
 
 cc_library(
+    name = "debug_info_gsym",
+    srcs = glob([
+        "lib/DebugInfo/GSYM/*.c",
+        "lib/DebugInfo/GSYM/*.cpp",
+        "lib/DebugInfo/GSYM/*.inc",
+        "lib/DebugInfo/GSYM/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/DebugInfo/GSYM/*.h",
+        "include/llvm/DebugInfo/GSYM/*.def",
+        "include/llvm/DebugInfo/GSYM/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "debug_info_msf",
     srcs = glob([
         "lib/DebugInfo/MSF/*.c",
@@ -1685,6 +1747,7 @@ cc_library(
         ":config",
         ":core",
         ":mc",
+        ":selection_dag",
         ":support",
         ":target",
         ":transform_utils",
@@ -2001,6 +2064,7 @@ cc_library(
         ":objc_arc",
         ":object",
         ":passes",
+        ":remarks",
         ":scalar",
         ":support",
         ":target",
@@ -2146,6 +2210,7 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":binary_format",
+        ":bit_reader",
         ":config",
         ":object",
         ":option",
@@ -2987,6 +3052,7 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/RISCV"],
     deps = [
+        ":analysis",
         ":asm_printer",
         ":code_gen",
         ":config",
@@ -3486,7 +3552,7 @@ cc_library(
 )
 
 cc_library(
-    name = "table_gen",
+    name = "tablegen",
     srcs = glob([
         "lib/TableGen/*.c",
         "lib/TableGen/*.cpp",

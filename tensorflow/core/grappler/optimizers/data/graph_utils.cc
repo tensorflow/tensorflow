@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -157,6 +158,46 @@ NodeDef* AddScalarConstNode(StringPiece v, MutableGraphView* graph) {
       graph);
 }
 
+Status GetScalarConstNodeValueHelper(
+    const NodeDef& node, DataType dtype,
+    const std::function<void(const Tensor&)>& get_value) {
+  if (node.op() != kConstOpName)
+    return errors::InvalidArgument("Node ", node.name(),
+                                   " is not a Const node. Op: ", node.op());
+
+  Tensor tensor;
+  TF_RETURN_IF_ERROR(GetNodeAttr(node, "value", &tensor));
+  if (!TensorShapeUtils::IsScalar(tensor.shape())) {
+    return errors::InvalidArgument(
+        "Node ", node.name(),
+        " should be a scalar but has shape: ", tensor.shape());
+  }
+
+  if (tensor.dtype() != dtype) {
+    return errors::InvalidArgument(
+        "Node ", node.name(), " should have type ", DataTypeString(dtype),
+        " but has type: ", DataTypeString(tensor.dtype()));
+  }
+
+  get_value(tensor);
+
+  return Status::OK();
+}
+
+template <>
+Status GetScalarConstNodeValue(const NodeDef& node, int64* value) {
+  return GetScalarConstNodeValueHelper(
+      node, DT_INT64,
+      [value](const Tensor& tensor) { *value = tensor.scalar<int64>()(); });
+}
+
+template <>
+Status GetScalarConstNodeValue(const NodeDef& node, bool* value) {
+  return GetScalarConstNodeValueHelper(
+      node, DT_BOOL,
+      [value](const Tensor& tensor) { *value = tensor.scalar<bool>()(); });
+}
+
 bool Compare(const GraphDef& g1, const GraphDef& g2) {
   if (g1.node_size() != g2.node_size()) {
     return false;
@@ -237,6 +278,18 @@ NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph,
   if (node.input_size() <= i) return nullptr;
   MutableGraphView::InputPort input_port = graph.GetInputPort(node.name(), i);
   return graph.GetRegularFanin(input_port).node;
+}
+
+Status GetDatasetOutputTypesAttr(const NodeDef& node,
+                                 DataTypeVector* output_types) {
+  // We don't name the output_types attr consistently, so should check for both.
+  for (const string& attr_name : {"output_types", "Toutput_types"}) {
+    if (node.attr().contains(attr_name)) {
+      return GetNodeAttr(node, attr_name, output_types);
+    }
+  }
+  return errors::InvalidArgument("Could not find output_types attr for node: ",
+                                 node.name(), " with op: ", node.op());
 }
 
 void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,

@@ -26,7 +26,6 @@ import warnings
 import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -44,7 +43,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
@@ -143,8 +142,13 @@ class Dropout(Layer):
     # which will override `self.noise_shape`, and allows for custom noise
     # shapes with dynamically sized inputs.
     if self.noise_shape is None:
-      return self.noise_shape
-    return nn_ops._get_noise_shape(inputs, self.noise_shape)  # pylint: disable=protected-access
+      return None
+
+    concrete_inputs_shape = array_ops.shape(inputs)
+    noise_shape = []
+    for i, value in enumerate(self.noise_shape):
+      noise_shape.append(concrete_inputs_shape[i] if value is None else value)
+    return ops.convert_to_tensor(noise_shape)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -400,7 +404,7 @@ class Reshape(Layer):
 
   # also supports shape inference using `-1` as dimension
   model.add(Reshape((-1, 2, 2)))
-  # now: model.output_shape == (None, 3, 2, 2)
+  # now: model.output_shape == (None, None, 2, 2)
   ```
   """
 
@@ -576,9 +580,15 @@ class Flatten(Layer):
       permutation.append(1)
       inputs = array_ops.transpose(inputs, perm=permutation)
 
-    outputs = array_ops.reshape(
-        inputs, (tensor_shape.dimension_value(inputs.shape[0]) or
-                 array_ops.shape(inputs)[0], -1))
+    input_shape = inputs.shape
+    if input_shape[1:].is_fully_defined():
+      flattened_dim = tensor_shape.dimension_value(
+          np.prod(input_shape[1:], dtype=int))
+      outputs = array_ops.reshape(inputs, (-1, flattened_dim))
+    else:
+      outputs = array_ops.reshape(
+          inputs, (tensor_shape.dimension_value(inputs.shape[0]) or
+                   array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
       outputs.set_shape(self.compute_output_shape(inputs.shape))
     return outputs
@@ -1029,8 +1039,7 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    inputs = ops.convert_to_tensor(inputs)
-    rank = common_shapes.rank(inputs)
+    rank = len(inputs.shape)
     if rank > 2:
       # Broadcasting is required for the inputs.
       outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
@@ -1040,12 +1049,11 @@ class Dense(Layer):
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:
-      # Cast the inputs to self.dtype, which is the variable dtype. We do not
-      # cast if `should_cast_variables` is True, as in that case the variable
-      # will be automatically casted to inputs.dtype.
-      if not self._mixed_precision_policy.should_cast_variables:
-        inputs = math_ops.cast(inputs, self.dtype)
-      outputs = gen_math_ops.mat_mul(inputs, self.kernel)
+      inputs = math_ops.cast(inputs, self._compute_dtype)
+      if K.is_sparse(inputs):
+        outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, self.kernel)
+      else:
+        outputs = gen_math_ops.mat_mul(inputs, self.kernel)
     if self.use_bias:
       outputs = nn.bias_add(outputs, self.bias)
     if self.activation is not None:

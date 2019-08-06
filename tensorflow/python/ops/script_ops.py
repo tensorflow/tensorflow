@@ -31,6 +31,7 @@ import six
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import executor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
@@ -63,8 +64,6 @@ class EagerFunc(object):
     self._func = func
     self._out_dtypes = Tout
     self._is_grad_func = is_grad_func
-
-    context.ensure_initialized()
 
   def _convert(self, value, dtype):
     """Converts `value` to a tensor of type `dtype`, with error checking.
@@ -103,24 +102,30 @@ class EagerFunc(object):
   def __call__(self, device, token, args):
     """Passes `args` to `self._func`, which is executed eagerly."""
 
-    with context.eager_mode(), backprop.GradientTape() as tape:
-      for tensor in args:
-        tape.watch(tensor)
-      ret = self._func(*args)
-      # Use tf.identity to copy the returned tensors to device if neccesary.
-      with ops.device(device):
-        if isinstance(ret, (tuple, list)):
-          outputs = [
-              array_ops.identity(self._convert(x, dtype=dtype))
-              for (x, dtype) in zip(ret, self._out_dtypes)
-          ]
-        elif ret is None:
-          outputs = None
-        else:
-          outputs = array_ops.identity(
-              self._convert(ret, dtype=self._out_dtypes[0]))
-    tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
-    return outputs
+    func_executor = executor.Executor(context.is_async())
+    with context.executor_scope(func_executor):
+      with context.eager_mode(), backprop.GradientTape() as tape:
+        # Only watch tensors with a floating dtype.
+        for tensor in args:
+          for t in nest.flatten(tensor):
+            if t.dtype.is_floating:
+              tape.watch(t)
+        ret = self._func(*args)
+        # Use tf.identity to copy the returned tensors to device if necessary.
+        with ops.device(device):
+          if isinstance(ret, (tuple, list)):
+            outputs = [
+                array_ops.identity(self._convert(x, dtype=dtype))
+                for (x, dtype) in zip(ret, self._out_dtypes)
+            ]
+          elif ret is None:
+            outputs = None
+          else:
+            outputs = array_ops.identity(
+                self._convert(ret, dtype=self._out_dtypes[0]))
+      tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
+      return outputs
+    func_executor.wait()
 
 
 class FuncRegistry(object):
@@ -136,6 +141,13 @@ class FuncRegistry(object):
     # Only store weakrefs to the functions. The strong reference is stored in
     # the graph.
     self._funcs = weakref.WeakValueDictionary()
+
+  @property
+  def _ctx(self):
+    # N.B. This is needed to support calling py_func with GPU tensors,
+    # which must be transferred to CPU if used in any of the NumPy APIs.
+    context.ensure_initialized()
+    return context.context()._handle  # pylint: disable=protected-access
 
   def insert(self, func):
     """Registers `func` and returns a unique token for this entry."""

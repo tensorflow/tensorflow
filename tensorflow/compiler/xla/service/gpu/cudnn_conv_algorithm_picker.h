@@ -38,9 +38,8 @@ class CudnnConvAlgorithmPicker : public HloModulePass {
   // memory while timing the various convolution algorithms.  If it's null,
   // we'll use the default allocator on the StreamExecutor.
   CudnnConvAlgorithmPicker(se::StreamExecutor* stream_exec,
-                           se::DeviceMemoryAllocator* allocator,
-                           Compiler* compiler)
-      : stream_exec_(stream_exec), allocator_(allocator), compiler_(compiler) {}
+                           se::DeviceMemoryAllocator* allocator)
+      : stream_exec_(stream_exec), allocator_(allocator) {}
 
   absl::string_view name() const override {
     return "cudnn-conv-algorithm-picker";
@@ -58,7 +57,6 @@ class CudnnConvAlgorithmPicker : public HloModulePass {
 
   se::StreamExecutor* stream_exec_;                   // never null
   se::DeviceMemoryAllocator* allocator_;              // may be null
-  Compiler* compiler_;
 };
 
 }  // namespace gpu

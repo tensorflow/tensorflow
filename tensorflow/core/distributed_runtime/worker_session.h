@@ -49,6 +49,8 @@ struct WorkerSession {
     return device_mgr_ ? device_mgr_.get() : borrowed_device_mgr_;
   }
 
+  DeviceMgr* remote_device_mgr() { return remote_device_mgr_.get(); }
+
   // graph_mgr keeps track of the registered graphs of this session.
   //
   // Note: graph_mgr must be deleted before rendezvous_mgr!

@@ -1,14 +1,14 @@
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load(
     "//tensorflow/compiler/xla:xla.bzl",
     "xla_proto_library",
     "xla_py_grpc_library",
+)
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 xla_proto_library(

@@ -27,7 +27,10 @@ namespace tensorflow {
 namespace grappler {
 
 bool IsAdd(const NodeDef& node) {
-  if (node.op() == "AddV2" || node.op() == "Add") {
+  if (node.op() == "AddV2") {
+    return true;
+  }
+  if (node.op() == "Add") {
     DataType type = node.attr().at("T").type();
     return type != DT_STRING;
   }
@@ -150,7 +153,8 @@ bool IsControlFlow(const NodeDef& node) {
          node.op() == "LoopCond" ||
          node.op() == "Merge" ||
          node.op() == "NextIteration" ||
-         node.op() == "Switch";
+         node.op() == "Switch" ||
+         node.op() == "_SwitchN";
   // clang-format on
 }
 
@@ -249,6 +253,10 @@ bool IsFusedBatchNorm(const NodeDef& node) {
          op == "FusedBatchNormV3";
 }
 
+bool IsFusedBatchNormEx(const NodeDef& node) {
+  return node.op() == "_FusedBatchNormEx";
+}
+
 bool IsFusedBatchNormGrad(const NodeDef& node) {
   const auto& op = node.op();
   return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2" ||
@@ -308,6 +316,8 @@ bool IsLogicalAnd(const NodeDef& node) { return node.op() == "LogicalAnd"; }
 bool IsLogicalNot(const NodeDef& node) { return node.op() == "LogicalNot"; }
 
 bool IsLogicalOr(const NodeDef& node) { return node.op() == "LogicalOr"; }
+
+bool IsLoopCond(const NodeDef& node) { return node.op() == "LoopCond"; }
 
 bool IsMatMul(const NodeDef& node) { return node.op() == "MatMul"; }
 
@@ -523,7 +533,7 @@ bool IsSum(const NodeDef& node) { return node.op() == "Sum"; }
 
 bool IsSwitch(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Switch" || op == "RefSwitch";
+  return op == "_SwitchN" || op == "Switch" || op == "RefSwitch";
 }
 
 bool IsSymbolicGradient(const NodeDef& node) {
@@ -577,7 +587,8 @@ bool IsUnpack(const NodeDef& node) { return node.op() == "Unpack"; }
 bool IsVariable(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
-         op == "VarHandleOp" || op == "ReadVariableOp";
+         op == "VarHandleOp" || op == "ReadVariableOp" ||
+         op == "_VarHandlesOp" || op == "_ReadVariablesOp";
 }
 
 bool IsWhile(const NodeDef& node) {
