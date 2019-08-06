@@ -348,6 +348,7 @@ cc_library(
     srcs = [],
     hdrs = [
         "reference/arg_min_max.h",
+        "reference/binary_function.h",
         "reference/comparisons.h",
         "reference/conv.h",
         "reference/depthwiseconv_float.h",
@@ -405,6 +406,7 @@ cc_library(
     srcs = [],
     hdrs = [
         "reference/arg_min_max.h",
+        "reference/binary_function.h",
         "reference/comparisons.h",
         "reference/conv.h",
         "reference/depthwiseconv_float.h",
