@@ -584,25 +584,6 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "redzone_allocator_cuda",
-    srcs = if_cuda_is_configured(["redzone_allocator.cc"]),
-    deps = if_cuda_is_configured([
-        ":ptxas_utils",
-        "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-        "//tensorflow/core:allocator",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
-        "//tensorflow/stream_executor:gpu_asm_opts",
-        "//tensorflow/stream_executor:redzone_allocator",
-        "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:device_memory_allocator",
-        "//tensorflow/stream_executor:stream_executor_headers",
-    ]),
-)
-
 tf_cuda_cc_test(
     name = "redzone_allocator_test",
     srcs = ["redzone_allocator_test.cc"],
@@ -611,7 +592,6 @@ tf_cuda_cc_test(
         ":cuda_activation",
         ":cuda_gpu_executor",
         ":ptxas_utils",
-        ":redzone_allocator",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -619,5 +599,6 @@ tf_cuda_cc_test(
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:kernel",
+        "//tensorflow/stream_executor:redzone_allocator",
     ],
 )
