@@ -109,7 +109,7 @@ element_shape: a shape compatible with that of elements in the list.
 // in general if it used to serve for caching and some other invariant checks,
 // so we removed the side-effect free property in the op definition. This is a
 // hack, and we should fix it if we have a better way to model it.
-def TF_IdentityOp : TF_Op<"Identity", [TF_OperandsSameAsResultsTypeOrRef]> {
+def TF_IdentityOp : TF_Op<"Identity", [SameOperandsAndResultType]> {
   let summary = "Identity op";
 
   let description = [{

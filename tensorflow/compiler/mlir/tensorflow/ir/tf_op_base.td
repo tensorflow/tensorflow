@@ -16,8 +16,7 @@ limitations under the License.
 // This is the base operation definition file for TensorFlow.
 //
 // This file includes the definition for the TensorFlow dialect, base TensorFlow
-// op, and various commonly used TensorFlow traits, types, attributes, and
-// builders.
+// op, and various commonly used TensorFlow types, attributes, and builders.
 
 #ifdef TF_OP_BASE
 #else
@@ -50,16 +49,6 @@ TODO: Make invariants more structured so that we can reference them in ops.
 
   let cppNamespace = "TF";
 }
-
-//===----------------------------------------------------------------------===//
-// TensorFlow traits
-//===----------------------------------------------------------------------===//
-
-// Specify this trait if the op requires all outputs to have the same type and
-// the inputs either have the same type as result or a ref type corresponding to
-// the result type.
-def TF_OperandsSameAsResultsTypeOrRef : NativeOpTrait<
-  "TF::OperandsSameAsResultsTypeOrRef">;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
