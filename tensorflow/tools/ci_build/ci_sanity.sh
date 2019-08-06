@@ -219,7 +219,7 @@ do_pylint() {
 
   echo ""
   if [[ ${N_ERRORS} != 0 ]]; then
-    echo "FAIL: Found ${N_ERRORS} non-whitelited pylint errors:"
+    echo "FAIL: Found ${N_ERRORS} non-whitelisted pylint errors:"
     cat "${NONWL_ERRORS_FILE}"
     return 1
   else
