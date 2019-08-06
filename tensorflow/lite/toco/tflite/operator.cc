@@ -496,6 +496,10 @@ class FullyConnected
     const Array& input_array = op_signature.model->GetArray(input_name);
     const Array& weights_array = op_signature.model->GetArray(weights_name);
     const Array& output_array = op_signature.model->GetArray(output_name);
+    // `keep_num_dims` is supported at verison 5.
+    if (fc_op.keep_num_dims) {
+      return 5;
+    }
     // Int8 fully fixed point kernel is at version 4.
     if (input_array.data_type == ArrayDataType::kInt8 &&
         weights_array.data_type == ArrayDataType::kInt8 &&
