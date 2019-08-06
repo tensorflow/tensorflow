@@ -29,6 +29,38 @@ limitations under the License.
 
 namespace xla {
 
+StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
+    const ServiceExecutableRunOptions* run_options,
+    absl::Span<const ShapedBuffer* const> arguments,
+    HloExecutionProfile* hlo_execution_profile) {
+  StatusOr<ScopedShapedBuffer> result =
+      ExecuteAsyncOnStream(run_options, arguments, hlo_execution_profile);
+  Status blocking_status = run_options->stream()->BlockHostUntilDone();
+  TF_RETURN_IF_ERROR(result.status());
+  TF_RETURN_IF_ERROR(blocking_status);
+  return result;
+}
+
+StatusOr<ExecutionOutput> Executable::ExecuteOnStream(
+    const ServiceExecutableRunOptions* run_options,
+    std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> arguments,
+    HloExecutionProfile* hlo_execution_profile) {
+  StatusOr<ExecutionOutput> result = ExecuteAsyncOnStream(
+      run_options, std::move(arguments), hlo_execution_profile);
+  Status blocking_status = run_options->stream()->BlockHostUntilDone();
+  TF_RETURN_IF_ERROR(result.status());
+  TF_RETURN_IF_ERROR(blocking_status);
+  return result;
+}
+
+StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStream(
+    const ServiceExecutableRunOptions* /*run_options*/,
+    std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> /*arguments*/,
+    HloExecutionProfile* /*hlo_execution_profile*/) {
+  return Unimplemented(
+      "MaybeOwningDeviceMemory version of overload is not implemented ");
+}
+
 StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
     absl::Span<const ServiceExecutableRunOptions> run_options,
     absl::Span<const absl::Span<const ShapedBuffer* const>> arguments) {
@@ -49,8 +81,9 @@ StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
     // We cannot BlockHostUntilDone() on the already-launched executions in case
     // of error, since if the executions communicate, the initially launched
     // executions may never complete if not all executions are running.
-    TF_ASSIGN_OR_RETURN(auto rv,
-                        ExecuteAsyncOnStream(&run_options[i], arguments[i]));
+    TF_ASSIGN_OR_RETURN(
+        auto rv, ExecuteAsyncOnStream(&run_options[i], arguments[i],
+                                      /*hlo_execution_profile=*/nullptr));
     return_values.push_back(std::move(rv));
   }
   for (const auto& options : run_options) {

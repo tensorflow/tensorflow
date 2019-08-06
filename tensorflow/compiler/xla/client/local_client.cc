@@ -213,7 +213,8 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::RunAsync(
 
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer outputs,
-      executable_->ExecuteAsyncOnStream(&options_and_stream.first, arguments));
+      executable_->ExecuteAsyncOnStream(&options_and_stream.first, arguments,
+                                        /*hlo_execution_profile=*/nullptr));
 
   // Transfer the outputs and save the snapshot to disk.
   if (snapshot) {

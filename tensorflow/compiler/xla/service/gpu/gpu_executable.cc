@@ -405,25 +405,16 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
   return std::move(shaped_buffer);
 }
 
-StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
-  // TODO(b/134086343): ExecuteOnStream should not be async according to the
-  // documentation, instead ExecuteAsyncOnStream should be used.
-  return Execute(run_options, arguments, hlo_execution_profile,
-                 /*block_host_until_done=*/
-                 !run_options->allocator()->AllowsAsynchronousDeallocation());
-}
-
-StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
-    const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments) {
   se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   // Force synchronous execution if the allocator requires it.
   bool block_host_until_done =
       !memory_allocator->AllowsAsynchronousDeallocation();
-  return Execute(run_options, arguments, nullptr, block_host_until_done);
+  return Execute(run_options, arguments, hlo_execution_profile,
+                 block_host_until_done);
 }
 
 const InstructionValueSet& GpuExecutable::GetRootValueSet() const {
