@@ -138,8 +138,8 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     void ResetRngs() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       // Reset the generators based on the current iterator seeds.
       parent_generator_ = random::PhiloxRandom(seed_, seed2_);
-      generator_ = random::SimplePhilox(&parent_generator_);
-
+      generator_ =
+          random::SingleSampleAdapter<random::PhiloxRandom>(&parent_generator_);
       generator_.Skip(num_random_samples_);
     }
 
@@ -188,13 +188,17 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     float Random() {
       mutex_lock l(mu_);
       num_random_samples_++;
-      auto out = generator_.RandFloat();
-      return out;
+      uint32 random_uint = generator_();
+
+      // PhiloxRandom returns 32-bit unsigned ints. Convert to float in [0,1)
+      // using the same method that the RandomUniform op uses.
+      return random::Uint32ToFloat(random_uint);
     }
 
     // random util
     random::PhiloxRandom parent_generator_ GUARDED_BY(mu_);
-    random::SimplePhilox generator_ GUARDED_BY(mu_);
+    random::SingleSampleAdapter<random::PhiloxRandom> generator_
+        GUARDED_BY(mu_);
     int64 num_random_samples_ GUARDED_BY(mu_) = 0;
   };
 

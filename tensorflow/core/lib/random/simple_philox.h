@@ -66,9 +66,6 @@ class SimplePhilox {
   // range [0,2^max_log-1] with bias towards smaller numbers.
   uint32 Skewed(int max_log);
 
-  // Skip ahead `num_skips` entries in the stream of random numbers
-  void Skip(uint64 num_skips) { single_.Skip(num_skips); }
-
  private:
   SingleSampleAdapter<PhiloxRandom> single_;
 };
