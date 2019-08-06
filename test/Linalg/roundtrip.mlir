@@ -179,3 +179,22 @@ func @generic(%arg0: !linalg.view<?x?xvector<3x4xi4>>, %arg1: !linalg.view<?x?x?
 // CHECK-LABEL: func @foo
 // CHECK-LABEL: func @generic
 //       CHECK:   linalg.generic {fun = @foo, indexing_maps = [#map2, #map3], library_call = "external_function_name", n_loop_types = [3, 0, 0], n_views = [1, 1]} %{{.*}}, %{{.*}} {foo = 1 : i64}: !linalg.view<?x?xvector<3x4xi4>>, !linalg.view<?x?x?xf32>
+
+#trait2 = {
+  indexing_maps = #accesses,
+  n_views = [1, 1],
+  n_loop_types = [3, 0, 0],
+  library_call = "external_function_name"
+}
+func @generic_region(%arg0: !linalg.view<?x?xvector<3x4xi4>>, %arg1: !linalg.view<?x?x?xf32>) {
+  linalg.generic #trait2 %arg0, %arg1 {
+    ^bb(%a: vector<3x4xi4>, %b: f32) :
+      linalg.yield %b : f32
+  } {foo = 1}: !linalg.view<?x?xvector<3x4xi4>>, !linalg.view<?x?x?xf32>
+  return
+}
+// CHECK-LABEL: func @generic_region
+//       CHECK:   linalg.generic {indexing_maps = [#map2, #map3], library_call = "external_function_name", n_loop_types = [3, 0, 0], n_views = [1, 1]} %{{.*}}, %{{.*}} {
+//       CHECK:    ^{{.*}}(%{{.*}}: vector<3x4xi4>, %{{.*}}: f32):    // no predecessors
+//       CHECK:      linalg.yield %{{.*}} : f32
+//       CHECK:    } {foo = 1 : i64}: !linalg.view<?x?xvector<3x4xi4>>, !linalg.view<?x?x?xf32>

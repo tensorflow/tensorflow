@@ -1,5 +1,9 @@
 // RUN: mlir-opt %s -split-input-file -verify-diagnostics
 
+////////////////////////////////////////////////////////////////////////////////
+///////////////////////////// Function Attribute tests /////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
 // -----
 
 // CHECK-LABEL: at_least_2_operands
@@ -193,4 +197,79 @@ func @singular_maps(%arg0: !linalg.view<?xf32>, %arg1: !linalg.view<?xf32>) {
     n_loop_types = [2, 0, 0]
   } %arg0, %arg1: !linalg.view<?xf32>, !linalg.view<?xf32>
   return
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////////////////// Region tests /////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+// -----
+
+// CHECK-LABEL: empty_region
+func @empty_region(%arg0: !linalg.view<f32>) {
+  // expected-error @+1 {{op expected region with 1 block}}
+  linalg.generic {
+    indexing_maps =  [ () -> (0) ],
+    n_views = [1, 1],
+    n_loop_types = [0, 0, 0]
+  } %arg0, %arg0 {
+    ^bb1:
+    ^bb2:
+  }: !linalg.view<f32>, !linalg.view<f32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: mismatched_num_arguments
+func @mismatched_num_arguments(%arg0: !linalg.view<f32>) {
+  // expected-error @+1 {{op expected number of block arguments to match number of views}}
+  linalg.generic {
+    indexing_maps =  [ () -> (0) ],
+    n_views = [0, 1],
+    n_loop_types = [0, 0, 0]
+  } %arg0 {
+    ^bb:
+  }: !linalg.view<f32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: block_arg_type
+func @block_arg_type(%arg0: !linalg.view<f32>) {
+  // expected-error @+1 {{op expected block argument 0 of the same type as elemental type of output view: '!linalg.view<f32>'}}
+  linalg.generic {
+    indexing_maps =  [ () -> (0) ],
+    n_views = [0, 1],
+    n_loop_types = [0, 0, 0]
+  } %arg0 {
+    ^bb(%i: i1):
+  }: !linalg.view<f32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: fun_result_0_element_type
+func @fun_result_0_element_type(%arg0: !linalg.view<?xf32>) {
+  // expected-error @+8 {{type of return operand 0 ('i1') doesn't match view element type ('f32')}}
+  linalg.generic {
+    indexing_maps =  [ (i) -> (i) ],
+    n_views = [0, 1],
+    n_loop_types = [1, 0, 0]
+  } %arg0 {
+    ^bb(%i: f32):
+      %0 = constant 0: i1
+      linalg.yield %0: i1
+  }: !linalg.view<?xf32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: wrong_yield_parent
+func @fun_result_0_element_type(%arg0: !linalg.view<?xf32>) {
+  // expected-error @+1 {{op expected 'linalg.generic' parent op}}
+  linalg.yield %arg0: !linalg.view<?xf32>
 }

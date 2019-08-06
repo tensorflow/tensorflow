@@ -219,13 +219,13 @@ func @foo(%0: f32, %1: f32, %2: f32) -> (f32, f32) {
   library_call = "external_function_name",
   doc = "B(i,j,k), C(i,k,j) = foo(A(i, j), B(i,j,k), C(i,k,j))"
 }
-func @generic(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?x?x?xf32>, %arg2: !linalg.view<?x?x?xf32>) {
+func @generic_function(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?x?x?xf32>, %arg2: !linalg.view<?x?x?xf32>) {
   linalg.generic #trait %arg0, %arg1, %arg2:
     !linalg.view<?x?xf32>, !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>
   return
 }
 // CHECK-LABEL: @foo
-// CHECK-LABEL: @generic
+// CHECK-LABEL: @generic_function
 //       CHECK: loop.for %[[i:.*]] = {{.*}}
 //       CHECK:   loop.for %[[j:.*]] = {{.*}}
 //       CHECK:     loop.for %[[k:.*]] = {{.*}}
@@ -235,3 +235,31 @@ func @generic(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?x?x?xf32>, %arg
 //       CHECK:       %[[res:.*]]:2 = call @foo(%[[a]], %[[b]], %[[c]]) : (f32, f32, f32) -> (f32, f32)
 //       CHECK:       linalg.store %[[res]]#0, %{{.*}}[%[[i]], %[[j]], %[[k]]] : !linalg.view<?x?x?xf32>
 //       CHECK:       linalg.store %[[res]]#1, %{{.*}}[%[[i]], %[[k]], %[[j]]] : !linalg.view<?x?x?xf32>
+
+#trait2 = {
+  n_views = [1, 2],
+  n_loop_types = [3, 0, 0],
+  indexing_maps = #accesses,
+  library_call = "external_function_name",
+  doc = "B(i,j,k), C(i,k,j) = foo(A(i, j), B(i,j,k), C(i,k,j))"
+}
+func @generic_region(%arg0: !linalg.view<?x?xf32>, %arg1: !linalg.view<?x?x?xf32>, %arg2: !linalg.view<?x?x?xf32>) {
+  linalg.generic #trait2 %arg0, %arg1, %arg2 {
+    ^bb0(%a: f32, %b: f32, %c: f32):
+      %d = mulf %a, %b : f32
+      %e = addf %c, %d : f32
+      linalg.yield %d, %e : f32, f32
+  }: !linalg.view<?x?xf32>, !linalg.view<?x?x?xf32>, !linalg.view<?x?x?xf32>
+  return
+}
+// CHECK-LABEL: @generic_region
+//       CHECK: loop.for %[[i:.*]] = {{.*}}
+//       CHECK:   loop.for %[[j:.*]] = {{.*}}
+//       CHECK:     loop.for %[[k:.*]] = {{.*}}
+//       CHECK:       %[[a:.*]] = linalg.load %{{.*}}[%[[i]], %[[j]]] : !linalg.view<?x?xf32>
+//       CHECK:       %[[b:.*]] = linalg.load %{{.*}}[%[[i]], %[[j]], %[[k]]] : !linalg.view<?x?x?xf32>
+//       CHECK:       %[[c:.*]] = linalg.load %{{.*}}[%[[i]], %[[k]], %[[j]]] : !linalg.view<?x?x?xf32>
+//       CHECK:       %[[d:.*]] = mulf %[[a]], %[[b]] : f32
+//       CHECK:       %[[e:.*]] = addf %[[c]], %[[d]] : f32
+//       CHECK:       linalg.store %[[d]], %{{.*}}[%[[i]], %[[j]], %[[k]]] : !linalg.view<?x?x?xf32>
+//       CHECK:       linalg.store %[[e]], %{{.*}}[%[[i]], %[[k]], %[[j]]] : !linalg.view<?x?x?xf32>
