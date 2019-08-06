@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -346,6 +347,7 @@ Status XlaCompilationCache::CompileImpl(
 
     const uint64 compile_end_us = env->NowMicros();
     const uint64 compile_time_us = compile_end_us - compile_start_us;
+    metrics::UpdateXlaCompilationTime(compile_time_us);
     {
       mutex_lock lock(cluster_compile_stats_mu_);
       auto it = cluster_compile_stats_.find(function.name());
