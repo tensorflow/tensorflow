@@ -312,14 +312,6 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
-# Minimal lib to detect platform
-cc_library(
-    name = "lib_platform",
-    hdrs = [
-        "//tensorflow/core/platform:platform.h",
-    ],
-)
-
 filegroup(
     name = "platform_base_hdrs",
     srcs = [
@@ -342,7 +334,7 @@ cc_library(
     tags = ["avoid_dep"],
     visibility = [":__subpackages__"],
     deps = [
-        ":lib_platform",
+        "//tensorflow/core/platform",
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:logging",
@@ -402,7 +394,7 @@ cc_library(
     copts = tf_copts() + tf_additional_numa_copts(),
     visibility = [":__subpackages__"],
     deps = [
-        ":lib_platform",
+        "//tensorflow/core/platform:platform",
         ":platform_base",
         "@com_google_absl//absl/base",
         "//tensorflow/core/platform/default/build_config:port",
@@ -442,9 +434,9 @@ cc_library(
     copts = tf_copts(),
     visibility = [":__subpackages__"],
     deps = [
-        ":lib_platform",
         ":platform_base",
         ":platform_port",
+        "//tensorflow/core/platform",
         "//tensorflow/core/platform/default/build_config:protobuf",
         "@com_google_protobuf//:protobuf",
     ],
@@ -526,10 +518,10 @@ cc_library(
         ":error_codes_proto_cc",
         ":lib",
         ":lib_internal",
-        ":lib_platform",
         ":platform_base",
         ":platform_port",
         ":platform_protobuf",
+        "//tensorflow/core/platform",
         "//tensorflow/core/platform/default/build_config:env",
         "//tensorflow/core/platform/default/build_config:port",
     ],
@@ -557,8 +549,8 @@ cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":lib",
-        ":lib_platform",
         ":platform_env",
+        "//tensorflow/core/platform",
     ],
 )
 
@@ -644,11 +636,11 @@ cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":lib",
-        ":lib_platform",
         ":platform_base",
         ":platform_env",
         ":platform_port",
         ":platform_protobuf",
+        "//tensorflow/core/platform",
         "//tensorflow/core/platform:abi",
         "//tensorflow/core/platform:stacktrace",
         "//tensorflow/core/platform/default/build_config:other",
@@ -812,7 +804,7 @@ cc_library(
     srcs = ["//tensorflow/core/platform:stacktrace_handler.cc"],
     hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
     deps = [
-        ":lib_platform",
+        "//tensorflow/core/platform",
         "//tensorflow/core/platform:abi",
         "//tensorflow/core/platform:stacktrace",
     ],
@@ -880,8 +872,8 @@ cc_library(
     ],
     copts = tf_copts(),
     deps = [
-        ":lib_platform",
         ":platform_base",
+        "//tensorflow/core/platform",
         "//tensorflow/core/platform/default/build_config:gtest",
     ],
 )
@@ -3744,9 +3736,9 @@ cc_library(
         # that "core_stringpiece" was enough but that recently changed and
         # we now need at least "str_util".
         ":lib",
-        ":lib_platform",
         ":stacktrace_handler",
         ":test_lite",
+        "//tensorflow/core/platform",
         "//tensorflow/core/platform/default/build_config:test_lite_main",
     ],
     alwayslink = 1,
