@@ -1887,7 +1887,10 @@ tf_kernel_library(
 # Unlike gather_functor library, this does not include the CUDA code and deps.
 cc_library(
     name = "gather_functor_hdr",
-    hdrs = ["gather_functor.h"],
+    hdrs = [
+        "gather_functor.h",
+        "gather_functor_batched.h",
+    ],
 )
 
 tf_kernel_library(
@@ -6031,6 +6034,7 @@ filegroup(
         "function_ops.cc",
         "function_ops.h",
         "gather_functor.h",
+        "gather_functor_batched.h",
         "gather_nd_op.cc",
         "gather_nd_op.h",
         "gather_nd_op_cpu_impl.h",
