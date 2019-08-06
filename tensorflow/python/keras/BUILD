@@ -492,6 +492,7 @@ py_library(
         ":generic_utils",
         ":tf_utils",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:cudnn_rnn_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
