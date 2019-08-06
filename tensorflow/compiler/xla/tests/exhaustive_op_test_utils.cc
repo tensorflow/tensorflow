@@ -216,6 +216,18 @@ inline ExhaustiveOpTestBase<BF16, 1>::ErrorSpec DefaultSpecGenerator<BF16, 1>(
 }
 
 template <>
+inline ExhaustiveOpTestBase<F64, 2>::ErrorSpec DefaultSpecGenerator<F64, 2>(
+    double, double) {
+  return ExhaustiveOpTestBase<F64, 2>::ErrorSpec{0.001, 0.001};
+}
+
+template <>
+inline ExhaustiveOpTestBase<F32, 2>::ErrorSpec DefaultSpecGenerator<F32, 2>(
+    float, float) {
+  return ExhaustiveOpTestBase<F32, 2>::ErrorSpec{0.001, 0.001};
+}
+
+template <>
 inline ExhaustiveOpTestBase<F16, 2>::ErrorSpec DefaultSpecGenerator<F16, 2>(
     Eigen::half, Eigen::half) {
   return ExhaustiveOpTestBase<F16, 2>::ErrorSpec{0.001, 0.001};
@@ -242,6 +254,8 @@ template class ExhaustiveOpTestBase<F32, 1>;
 template class ExhaustiveOpTestBase<F16, 1>;
 template class ExhaustiveOpTestBase<BF16, 1>;
 
+template class ExhaustiveOpTestBase<F64, 2>;
+template class ExhaustiveOpTestBase<F32, 2>;
 template class ExhaustiveOpTestBase<F16, 2>;
 template class ExhaustiveOpTestBase<BF16, 2>;
 

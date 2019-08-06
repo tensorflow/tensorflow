@@ -1001,6 +1001,7 @@ class FpValues {
     const FpValues* fp_values_;
   };
 
+  FpValues() : bit_chunks_(), offsets_() {}
   FpValues(absl::Span<const BitChunks> chunks, absl::Span<const int> offsets) {
     CHECK_EQ(chunks.size(), offsets.size() - 1);
     CHECK_EQ(chunks.size(), kTotalBitChunks);
