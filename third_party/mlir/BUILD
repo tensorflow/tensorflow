@@ -1738,6 +1738,7 @@ cc_library(
         "include/mlir/Linalg/Utils/Utils.h",
     ],
     deps = [
+        ":AffineOps",
         ":CFGTransforms",
         ":EDSC",
         ":IR",

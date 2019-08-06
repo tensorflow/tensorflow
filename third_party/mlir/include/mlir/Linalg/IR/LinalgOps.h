@@ -436,11 +436,6 @@ private:
   };
 };
 
-void emitScalarImplementation(llvm::ArrayRef<Value *> parallelIvs,
-                              llvm::ArrayRef<Value *> reductionIvs,
-                              llvm::ArrayRef<Value *> windowIvs,
-                              LinalgOp &linalgOp, OperationFolder &folder);
-
 } // namespace linalg
 } // namespace mlir
 
