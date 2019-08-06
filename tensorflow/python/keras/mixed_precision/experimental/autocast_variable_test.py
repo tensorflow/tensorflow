@@ -23,12 +23,12 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
-
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -66,8 +66,8 @@ def get_autocast_var(var, distribute):
     return autocast_variable.AutoCastVariable(var)
 
 
-def get_var(val, dtype):
-  return variables.VariableV1(val, use_resource=True, dtype=dtype)
+def get_var(val, dtype, name=None):
+  return variables.VariableV1(val, use_resource=True, dtype=dtype, name=name)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -123,33 +123,64 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(x.read_value().dtype, dtypes.float16)
 
   @parameterized.named_parameters(*TESTCASES)
-  def test_operator_overloads(self, distribute):
+  def test_dtype_is_not_string(self, distribute):
     with get_distribute_scope(distribute):
       x = get_var(1., dtypes.float32)
       x = get_autocast_var(x, distribute)
-      self.evaluate(x.initializer)
+      self.assertEqual(x.dtype, dtypes.float32)
+      self.assertIsInstance(x.dtype, dtypes.DType)
+      self.assertEqual(x.true_dtype, dtypes.float32)
+      self.assertIsInstance(x.true_dtype, dtypes.DType)
 
-    v1 = constant_op.constant(2., dtype=dtypes.float32)
-    v2 = constant_op.constant(2., dtype=dtypes.float16)
+      with ops.get_default_graph()._enable_auto_casting_variables('float16'):
+        self.assertEqual(x.dtype, dtypes.float16)
+        self.assertIsInstance(x.dtype, dtypes.DType)
+        self.assertEqual(x.true_dtype, dtypes.float32)
+        self.assertIsInstance(x.true_dtype, dtypes.DType)
 
-    # Because autocast variables do not yet define operator overloads, the
-    # operator is defined by the non-variable tensor
+  @parameterized.named_parameters(*TESTCASES)
+  def test_operator_overloads(self, distribute):
+    with get_distribute_scope(distribute):
+      for read_dtype in (dtypes.float32, dtypes.float16):
+        x = get_var(7., dtypes.float32)
+        x = get_autocast_var(x, distribute)
+        with ops.get_default_graph()._enable_auto_casting_variables(
+            read_dtype):
+          self.evaluate(x.initializer)
+          self.assertAlmostEqual(8, self.evaluate(x + 1))
+          self.assertAlmostEqual(10, self.evaluate(3 + x))
+          self.assertAlmostEqual(14, self.evaluate(x + x))
+          self.assertAlmostEqual(5, self.evaluate(x - 2))
+          self.assertAlmostEqual(6, self.evaluate(13 - x))
+          self.assertAlmostEqual(0, self.evaluate(x - x))
+          self.assertAlmostEqual(14, self.evaluate(x * 2))
+          self.assertAlmostEqual(21, self.evaluate(3 * x))
+          self.assertAlmostEqual(49, self.evaluate(x * x))
+          self.assertAlmostEqual(3.5, self.evaluate(x / 2))
+          self.assertAlmostEqual(1.5, self.evaluate(10.5 / x))
+          self.assertAlmostEqual(3, self.evaluate(x // 2))
+          self.assertAlmostEqual(2, self.evaluate(15 // x))
+          if read_dtype == dtypes.float32:
+            # The "mod" operator does not support float16
+            self.assertAlmostEqual(1, self.evaluate(x % 2))
+            self.assertAlmostEqual(2, self.evaluate(16 % x))
+          self.assertTrue(self.evaluate(x < 12))
+          self.assertTrue(self.evaluate(x <= 12))
+          self.assertFalse(self.evaluate(x > 12))
+          self.assertFalse(self.evaluate(x >= 12))
+          self.assertFalse(self.evaluate(12 < x))
+          self.assertFalse(self.evaluate(12 <= x))
+          self.assertTrue(self.evaluate(12 > x))
+          self.assertTrue(self.evaluate(12 >= x))
+          self.assertAlmostEqual(343, self.evaluate(pow(x, 3)), places=4)
+          self.assertAlmostEqual(128, self.evaluate(pow(2, x)), places=4)
+          self.assertAlmostEqual(-7, self.evaluate(-x))
+          self.assertAlmostEqual(7, self.evaluate(abs(x)))
 
-    # Test variable as the LHS. Currently, this is not supported with
-    # distributed autocast variables
-    if not distribute:
-      self.assertEqual(self.evaluate(x + v1), 3.)
-
-      with ops.get_default_graph()._enable_auto_casting_variables(
-          dtypes.float16):
-        self.assertEqual(self.evaluate(x + v2), 3.)
-
-    # Test variable as the RHS
-    self.assertEqual(self.evaluate(v1 + x), 3.)
-
-    with ops.get_default_graph()._enable_auto_casting_variables(
-        dtypes.float16):
-      self.assertEqual(self.evaluate(v2 + x), 3.)
+          x = get_var([7, 8, 9], dtypes.float32)
+          x = get_autocast_var(x, distribute)
+          self.evaluate(x.initializer)
+          self.assertEqual(self.evaluate(x[1]), 8)
 
   @parameterized.named_parameters(*TESTCASES)
   def test_assign(self, distribute):
@@ -257,6 +288,36 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegexp(ValueError, 'variable must be of type'):
         x = get_var(1., dtypes.float32)
         get_autocast_var(x, distribute)
+
+  def test_repr(self):
+    # We do not test with DistributionStrategy because we do not want to rely on
+    # the exact __repr__ output of a DistributedVariable.
+    x = get_var(1., dtypes.float32, name='x')
+    x = get_autocast_var(x, distribute=False)
+    if context.executing_eagerly():
+      self.assertStartsWith(
+          repr(x),
+          "<AutoCastVariable 'x:0' shape=() dtype=float32 true_dtype=float32, "
+          "numpy="
+      )
+      with ops.get_default_graph()._enable_auto_casting_variables(
+          dtypes.float16):
+        self.assertStartsWith(
+            repr(x),
+            "<AutoCastVariable 'x:0' shape=() dtype=float16 "
+            "true_dtype=float32, numpy="
+        )
+    else:
+      self.assertEqual(
+          repr(x),
+          "<AutoCastVariable 'x:0' shape=() dtype=float32 true_dtype=float32>"
+      )
+      with ops.get_default_graph()._enable_auto_casting_variables(
+          dtypes.float16):
+        self.assertEqual(
+            repr(x),
+            "<AutoCastVariable 'x:0' shape=() dtype=float16 true_dtype=float32>"
+        )
 
 
 if __name__ == '__main__':

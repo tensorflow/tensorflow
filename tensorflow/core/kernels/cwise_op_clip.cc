@@ -181,7 +181,7 @@ REGISTER_CPU_KERNEL(uint8);
 REGISTER_CPU_KERNEL(uint16);
 #undef REGISTER_CPU_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU_KERNEL(type)                                       \
   REGISTER_KERNEL_BUILDER(                                              \

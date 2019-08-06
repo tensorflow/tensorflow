@@ -14,12 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "rocm/include/hiprand/hiprand.h"
-#include "tensorflow/stream_executor/gpu/gpu_rng.h"
-
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/gpu/gpu_helpers.h"
+#include "tensorflow/stream_executor/gpu/gpu_rng.h"
 #include "tensorflow/stream_executor/gpu/gpu_stream.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"

@@ -1,16 +1,16 @@
 # Description:
 # TensorBoard module containing volatile or experimental code.
 
+# For platform specific build config
+load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-# For platform specific build config
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 tf_proto_library(
     name = "protos_all",

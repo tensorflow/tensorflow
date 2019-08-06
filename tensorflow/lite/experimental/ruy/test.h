@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/ruy/platform.h"
 #include "tensorflow/lite/experimental/ruy/pmu.h"
 #include "tensorflow/lite/experimental/ruy/ruy.h"
 #include "tensorflow/lite/experimental/ruy/ruy_advanced.h"
@@ -65,8 +66,12 @@ const char* PathName(Path path) {
   switch (path) {
     RUY_PATHNAME_CASE(kReference)
     RUY_PATHNAME_CASE(kStandardCpp)
+#if RUY_PLATFORM(NEON)
     RUY_PATHNAME_CASE(kNeon)
     RUY_PATHNAME_CASE(kNeonDotprod)
+#elif RUY_PLATFORM(AVX512)
+    RUY_PATHNAME_CASE(kAvx512)
+#endif
     default:
       RUY_CHECK(false);
       return nullptr;
@@ -244,7 +249,7 @@ struct RandomRangeBounds<Scalar, false> {
 inline std::default_random_engine& global_random_engine() {
   static std::default_random_engine engine;
   return engine;
-};
+}
 
 template <typename Scalar>
 struct UniformRandomDistribution {
@@ -364,6 +369,8 @@ struct TestResult {
   float l1_refill_rate;
   float l2_refill_rate;
   float l3_refill_rate;
+  float l1tlb_refill_rate;
+  float l2tlb_refill_rate;
   float mispred_rate;
   float frontend_stall_rate;
   float backend_stall_rate;
@@ -657,7 +664,7 @@ void EvalGemmlowp(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
           LhsScalar, DstScalar, gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
           &GlobalGemmlowpContext(), gemmlowp_lhs, gemmlowp_rhs, &gemmlowp_dst,
           -lhs.zero_point, -rhs.zero_point, output_pipeline);
-    } else
+    } else  // NOLINT[readability/braces]
 #endif
     {
       const auto& output_pipeline =
@@ -677,7 +684,7 @@ void EvalGemmlowp(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
           LhsScalar, DstScalar, gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
           &GlobalGemmlowpContext(), gemmlowp_lhs, gemmlowp_rhs, &gemmlowp_dst,
           -lhs.zero_point, -rhs.zero_point, output_pipeline);
-    } else
+    } else  // NOLINT[readability/braces]
 #endif
     {
       const auto& output_pipeline = std::make_tuple(
@@ -1152,7 +1159,7 @@ bool Agree(const Matrix<Scalar>& matrix1, const Matrix<Scalar>& matrix2,
     tolerated_max_diff = max_abs_val * std::numeric_limits<Scalar>::epsilon() *
                          4 * std::sqrt(static_cast<float>(depth));
     tolerated_mean_diff = tolerated_max_diff / std::sqrt(size);
-  } else if (RUY_OPT_SET & RUY_OPT_NATIVE_ROUNDING) {
+  } else if (RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)) {
     tolerated_max_diff = 1;
     // totally empirical
     tolerated_mean_diff = std::min(1.0, 2.0 * std::pow(size, -0.2));
@@ -1165,7 +1172,9 @@ bool Agree(const Matrix<Scalar>& matrix1, const Matrix<Scalar>& matrix2,
       double diff = elem1 - elem2;
 
       sum_diff += diff;
-      if (std::abs(diff) > tolerated_max_diff) {
+      // Test (std::abs(diff) > tolerated_max_diff), but also true if diff is
+      // NaN.
+      if (!(std::abs(diff) <= tolerated_max_diff)) {
         return false;
       }
     }
@@ -1502,6 +1511,14 @@ inline int GetIntEnvVarOrZero(const char* name) {
   return std::stoi(val);
 }
 
+inline float GetFloatEnvVarOrZero(const char* name) {
+  const char* val = getenv(name);
+  if (!val) {
+    return 0;
+  }
+  return std::stof(val);
+}
+
 inline int GetHexIntEnvVarOrZero(const char* name) {
   const char* val = getenv(name);
   if (!val) {
@@ -1639,7 +1656,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
       }
 // We link against a generic BLAS target that only maps to OpenBLAS on specific
 // architectures.
-#if defined __aarch64__ || defined __arm__
+#if RUY_PLATFORM(ARM_32) || RUY_PLATFORM(ARM_64)
       // OpenBLAS multi-threading is disabled, so avoid mixing single-threaded
       // and multi-threaded benchmark results.
       if (max_num_threads == 1) {
@@ -1816,9 +1833,15 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
                               result->prepacked_rhs.data_size, num_matmul_sets);
     }
   }
-  int kRepeats = 4;
-  const double kBenchmarkMinSecs = 0.5;
-
+  const bool record_pmu = GetBoolEnvVarOrFalse("RUY_BENCHMARK_PMU");
+  int repeats = GetIntEnvVarOrZero("RUY_BENCHMARK_REPEATS");
+  if (!repeats) {
+    repeats = 4;
+  }
+  float benchmark_min_secs = GetFloatEnvVarOrZero("RUY_BENCHMARK_MIN_SECS");
+  if (!benchmark_min_secs) {
+    benchmark_min_secs = 0.5;
+  }
 #ifdef GEMMLOWP_PROFILING
   const char* lhstype = TypeName<LhsScalar>();
   const char* lhssymm = SymmetryName(lhs.matrix);
@@ -1832,18 +1855,26 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
   gemmlowp::StartProfiling();
 #endif
 
-  double latency = std::numeric_limits<double>::infinity();
-  const bool record_pmu = getenv("RUY_BENCHMARK_PMU");
-  for (int repeat = 0; repeat < kRepeats; repeat++) {
+  float latency = std::numeric_limits<float>::infinity();
+  float l1_refill_rate = std::numeric_limits<float>::infinity();
+  float l2_refill_rate = std::numeric_limits<float>::infinity();
+  float l3_refill_rate = std::numeric_limits<float>::infinity();
+  float l1tlb_refill_rate = std::numeric_limits<float>::infinity();
+  float l2tlb_refill_rate = std::numeric_limits<float>::infinity();
+  float mispred_rate = std::numeric_limits<float>::infinity();
+  float frontend_stall_rate = std::numeric_limits<float>::infinity();
+  float backend_stall_rate = std::numeric_limits<float>::infinity();
+
+  for (int repeat = 0; repeat < repeats; repeat++) {
     PmuEvents pmu_events;
-    if (record_pmu && repeat == kRepeats - 1) {
+    if (record_pmu) {
       pmu_events.StartRecording();
     }
-    TimePoint time_start = Clock::now();
+    TimePoint time_start = Now();
     TimePoint t = time_start;
     int iters = 0;
     int iters_at_a_time = 1;
-    while (ToSeconds(t - time_start) < kBenchmarkMinSecs) {
+    while (ToFloatSeconds(t - time_start) < benchmark_min_secs) {
       for (int i = 0; i < iters_at_a_time; i++) {
         if (cold) {
           lhs.matrix.data = cold_lhs.Next();
@@ -1860,25 +1891,48 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
         iters++;
       }
       iters_at_a_time *= 2;
-      t = Clock::now();
+      t = Now();
     }
-    latency = std::min(latency, ToSeconds(t - time_start) / iters);
-    if (record_pmu && repeat == kRepeats - 1) {
+    latency = std::min(
+        latency, static_cast<float>(ToFloatSeconds(t - time_start) / iters));
+    if (record_pmu) {
       pmu_events.StopRecording();
       const float normalization_factor =
-          static_cast<float>(iters) * rows * cols * depth;
-      result->l1_refill_rate =
-          pmu_events.L1RefillCount() / normalization_factor;
-      result->l2_refill_rate =
-          pmu_events.L2RefillCount() / normalization_factor;
-      result->l3_refill_rate =
-          pmu_events.L3RefillCount() / normalization_factor;
-      result->mispred_rate = pmu_events.BranchMispredictionRate();
-      result->frontend_stall_rate = pmu_events.FrontendStallRate();
-      result->backend_stall_rate = pmu_events.BackendStallRate();
+          1.0f / (static_cast<float>(iters) * rows * cols * depth);
+      l1_refill_rate = std::min(
+          l1_refill_rate, pmu_events.L1RefillCount() * normalization_factor);
+      l2_refill_rate = std::min(
+          l2_refill_rate, pmu_events.L2RefillCount() * normalization_factor);
+      l3_refill_rate = std::min(
+          l3_refill_rate, pmu_events.L3RefillCount() * normalization_factor);
+      l1tlb_refill_rate =
+          std::min(l1tlb_refill_rate,
+                   pmu_events.L1TLBRefillCount() * normalization_factor);
+      l2tlb_refill_rate =
+          std::min(l2tlb_refill_rate,
+                   pmu_events.L2TLBRefillCount() * normalization_factor);
+      mispred_rate =
+          std::min(mispred_rate, pmu_events.BranchMispredictionCount() *
+                                     normalization_factor);
+      frontend_stall_rate =
+          std::min(frontend_stall_rate,
+                   pmu_events.FrontendStallCount() * normalization_factor);
+      backend_stall_rate =
+          std::min(backend_stall_rate,
+                   pmu_events.BackendStallCount() * normalization_factor);
     }
   }
   result->latency = latency;
+  if (record_pmu) {
+    result->l1_refill_rate = l1_refill_rate;
+    result->l2_refill_rate = l2_refill_rate;
+    result->l3_refill_rate = l3_refill_rate;
+    result->l1tlb_refill_rate = l1tlb_refill_rate;
+    result->l2tlb_refill_rate = l2tlb_refill_rate;
+    result->mispred_rate = mispred_rate;
+    result->frontend_stall_rate = frontend_stall_rate;
+    result->backend_stall_rate = backend_stall_rate;
+  }
 
 #ifdef GEMMLOWP_PROFILING
   gemmlowp::FinishProfiling();

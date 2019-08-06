@@ -31,15 +31,17 @@ IFS='-' read -ra PLATFORM <<< "${TARGET}"
 OS="${PLATFORM[0]}"
 PY_VERSION="${PLATFORM[1]}"
 COMPILER="${PLATFORM[2]}"
-CUDA_VERSION="${PLATFORM[3]}"
+GPU_VERSION="${PLATFORM[3]}"
 CUDNN_VERSION="${PLATFORM[4]}"
 TENSORRT_VERSION="${PLATFORM[5]}"
 
 # TODO(klimek): Put this into the name.
 
-if [[ -n "${CUDA_VERSION}" ]]; then
+if [[ "${GPU_VERSION}" == "rocm" ]]; then
+  COMPILER="${COMPILER}"
+elif [[ -n "${GPU_VERSION}" ]]; then
   if [[ "${COMPILER}" == gcc* ]]; then
-    COMPILER="${COMPILER}-nvcc-${CUDA_VERSION}"
+    COMPILER="${COMPILER}-nvcc-${GPU_VERSION}"
   fi
   # Currently we create a special toolchain for clang when compiling with
   # cuda enabled. We can get rid of this once the default toolchain bazel
@@ -52,7 +54,7 @@ fi
 echo "OS: ${OS}"
 echo "Python: ${PY_VERSION}"
 echo "Compiler: ${COMPILER}"
-echo "CUDA: ${CUDA_VERSION}"
+echo "CUDA/ROCm: ${GPU_VERSION}"
 echo "CUDNN: ${CUDNN_VERSION}"
 echo "TensorRT: ${TENSORRT_VERSION}"
 
@@ -77,12 +79,18 @@ mkdir "${OS}"
 # Python:
 mv local_config_python "${OS}/${PY_VERSION}"
 
-if [[ -n "${CUDA_VERSION}" ]]; then
+if [[ "${GPU_VERSION}" == "rocm" ]]; then
+  # Compiler:
+  mv local_config_rocm/crosstool "${OS}/${COMPILER}-${GPU_VERSION}"
+
+  # ROCm:
+  mv local_config_rocm "${OS}/${GPU_VERSION}"
+elif [[ -n "${GPU_VERSION}" ]]; then
   # Compiler:
   mv local_config_cuda/crosstool "${OS}/${COMPILER}"
 
   # CUDA:
-  mv local_config_cuda "${OS}/${CUDA_VERSION}-${CUDNN_VERSION}"
+  mv local_config_cuda "${OS}/${GPU_VERSION}-${CUDNN_VERSION}"
 
   # TensorRT:
   mv local_config_tensorrt "${OS}/${TENSORRT_VERSION}"

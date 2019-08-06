@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -50,6 +51,79 @@ def _ArgMinGrad(op, grad):
 
 # TODO(rmlarsen): Implement gradient.
 ops.NotDifferentiable("EuclideanNorm")
+
+
+def SmartBroadcastGradientArgs(x, y, grad):
+  """Optimized version of `broadcast_gradient_args` that caches results.
+
+  This implementation avoids creating `broadcast_gradient_args` ops in the case
+  that the input shapes are fully defined, and provides hints to the calling
+  code that can be used to avoid creating reduction and reshaping ops.
+
+  Args:
+    x: The left input tensor to a broadcasting binary op.
+    y: The right input tensor to a broadcasting binary op.
+    grad: The incoming gradient tensor for a broadcasting binary op.
+
+  Returns:
+    A pair of tuples, containing:
+      * A 3-tuple of broadcast information for x, containing:
+        * The shape of x (as a tuple or Tensor).
+        * The reduction indices for x (as a tuple or Tensor).
+        * A boolean, which if True, indicates that x's shape differs from grad's
+          shape (and so x's gradient must be reduced and/or reshaped).
+      * A 3-tuple of broadcast information for y, containing the respective
+        details for y.
+  """
+  # NOTE: It may be productive to apply these optimizations in the eager case
+  # as well.
+  if context.executing_eagerly() or not (
+      isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor)
+      and isinstance(grad, ops.Tensor)):
+    sx = array_ops.shape(x)
+    sy = array_ops.shape(y)
+    rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+    return (sx, rx, True), (sy, ry, True)
+
+  # pylint: disable=protected-access
+  x_shape_tuple = x._shape_tuple()
+  y_shape_tuple = y._shape_tuple()
+  grad_shape_tuple = grad._shape_tuple()
+  # pylint: enable=protected-access
+
+  if (x_shape_tuple is None or None in x_shape_tuple or
+      y_shape_tuple is None or None in y_shape_tuple):
+    sx = array_ops.shape_internal(x, optimize=False)
+    sy = array_ops.shape_internal(y, optimize=False)
+    rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+    return (sx, rx, True), (sy, ry, True)
+
+  x_needs_reduction = x_shape_tuple != grad_shape_tuple
+  y_needs_reduction = y_shape_tuple != grad_shape_tuple
+
+  # Get the default graph rather than relying on `x.graph`, `y.graph`, or
+  # `grad.graph`, because these may be eager tensors.
+  g = ops.get_default_graph()
+
+  try:
+    rx, ry = g._bcast_grad_args_cache[(x_shape_tuple, y_shape_tuple)]  # pylint: disable=protected-access
+    return (x_shape_tuple, rx, x_needs_reduction), (
+        y_shape_tuple, ry, y_needs_reduction)
+  except KeyError:
+    rx, ry = array_ops.broadcast_gradient_args(x_shape_tuple, y_shape_tuple)
+    # TODO(mrry): If this becomes a bottleneck, add a multi-output version of
+    # `TF_TryEvaluateConstant()`.
+    rx_value = tuple(c_api.TF_TryEvaluateConstant_wrapper(
+        rx.graph._c_graph, rx._as_tf_output()))  # pylint: disable=protected-access
+    assert rx_value is not None
+    ry_value = tuple(c_api.TF_TryEvaluateConstant_wrapper(
+        ry.graph._c_graph, ry._as_tf_output()))  # pylint: disable=protected-access
+    assert ry_value is not None
+    g._bcast_grad_args_cache[(x_shape_tuple, y_shape_tuple)] = (  # pylint: disable=protected-access
+        rx_value, ry_value)
+
+    return (x_shape_tuple, rx_value, x_needs_reduction), (
+        y_shape_tuple, ry_value, y_needs_reduction)
 
 
 _empty_tuple = ()
@@ -85,6 +159,37 @@ def _SumGrad(op, grad):
         else:
           input_shape = array_ops.shape(op.inputs[0])
         return [array_ops.tile(grad, input_shape), None]
+      elif None not in input_0_shape and not context.executing_eagerly():
+        # The shape and reduction indices are statically known, so we use a
+        # graph-level cache to avoid recomputing `reduced_shape()` for each
+        # invocation.
+        graph = ops.get_default_graph()
+
+        # Canonicalize `axes` to be a tuple of indices. The incoming
+        # value may be a scalar or a vector, and may include negative indices.
+        axes = tuple(axes.reshape(-1))
+
+        try:
+          output_shape_kept_dims, tile_scaling = graph._reduced_shape_cache[  # pylint: disable=protected-access
+              (input_0_shape, axes)]
+        except KeyError:
+
+          # Compute and cache `output_shape_kept_dims` and `tile_scaling`.
+          def EvaluateAsTuple(t):
+            value = c_api.TF_TryEvaluateConstant_wrapper(
+                t.graph._c_graph, t._as_tf_output())  # pylint: disable=protected-access
+            assert value is not None
+            return tuple(value)
+
+          output_shape_kept_dims = EvaluateAsTuple(
+              math_ops.reduced_shape(input_0_shape, axes))
+          tile_scaling = EvaluateAsTuple(
+              _safe_shape_div(input_0_shape, output_shape_kept_dims))
+          graph._reduced_shape_cache[(input_0_shape, axes)] = (  # pylint:disable=protected-access
+              output_shape_kept_dims, tile_scaling)
+
+        grad = array_ops.reshape(grad, output_shape_kept_dims)
+        return [array_ops.tile(grad, tile_scaling), None]
 
   input_shape = array_ops.shape(op.inputs[0])
   # TODO(apassos) remove this once device placement for eager ops makes more
@@ -470,7 +575,7 @@ def _SqrtGradGrad(op, grad):
   a = op.inputs[0]
   y = op.outputs[0]  # y = 0.5 * b / conj(a)
   with ops.control_dependencies([grad]):
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       ga = gen_math_ops.xdivy(grad, a)
       return -gen_math_ops.mul_no_nan(y, math_ops.conj(ga)), 0.5 * ga
     else:
@@ -504,7 +609,7 @@ def _ExpGrad(op, grad):
   y = op.outputs[0]  # y = e^x
   with ops.control_dependencies([grad]):
     y = math_ops.conj(y)
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return math_ops.mul_no_nan(y, grad)
     else:
       return grad * y
@@ -517,7 +622,7 @@ def _Expm1Grad(op, grad):
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
     y = math_ops.exp(x)
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return math_ops.mul_no_nan(y, grad)
     else:
       return grad * y
@@ -529,7 +634,7 @@ def _LogGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return gen_math_ops.xdivy(grad, x)
     else:
       return grad * math_ops.reciprocal(x)
@@ -541,7 +646,7 @@ def _Log1pGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return gen_math_ops.xdivy(grad, 1 + x)
     else:
       return grad * math_ops.reciprocal(1 + x)
@@ -623,7 +728,7 @@ def _AcoshGrad(op, grad):
   y = op.outputs[0]
   with ops.control_dependencies([grad]):
     y = math_ops.conj(y)
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return math_ops.xdivy(grad, math_ops.sinh(y))
     else:
       return grad / math_ops.sinh(y)
@@ -676,7 +781,7 @@ def _LgammaGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return math_ops.mul_no_nan(math_ops.digamma(x), grad)
     else:
       return grad * math_ops.digamma(x)
@@ -689,7 +794,7 @@ def _DigammaGrad(op, grad):
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
     partial_x = math_ops.polygamma(array_ops.constant(1, dtype=x.dtype), x)
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return math_ops.mul_no_nan(partial_x, grad)
     else:
       return grad * partial_x
@@ -702,7 +807,7 @@ def _BesselI0eGrad(op, grad):
   y = op.outputs[0]
   with ops.control_dependencies([grad]):
     partial_x = (math_ops.bessel_i1e(x) - math_ops.sign(x) * y)
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return math_ops.mul_no_nan(partial_x, grad)
     else:
       return grad * partial_x
@@ -726,7 +831,7 @@ def _BesselI1eGrad(op, grad):
     dy_dx = math_ops.bessel_i0e(safe_x) - y * (
         math_ops.sign(safe_x) + math_ops.reciprocal(safe_x))
     dy_dx = array_ops.where(x_is_not_tiny, dy_dx, 0.5 + zeros)
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return math_ops.mul_no_nan(dy_dx, grad)
     else:
       return grad * dy_dx
@@ -747,7 +852,7 @@ def _IgammaGrad(op, grad):
     # and Gamma'(a) can grow large.
     partial_x = math_ops.exp(-x + (a - 1) * math_ops.log(x) -
                              math_ops.lgamma(a))
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return (array_ops.reshape(
           math_ops.reduce_sum(math_ops.mul_no_nan(partial_a, grad), ra), sa),
               array_ops.reshape(
@@ -786,7 +891,7 @@ def _BetaincGrad(op, grad):
                            (a - 1) * math_ops.log(x) - log_beta)
 
   # TODO(b/36815900): Mark None return values as NotImplemented
-  if compat.forward_compatible(2019, 6, 14):
+  if compat.forward_compatible(2019, 9, 14):
     return (
         None,  # da
         None,  # db
@@ -815,7 +920,7 @@ def _ZetaGrad(op, grad):
     q = math_ops.conj(q)
     partial_q = -x * math_ops.zeta(x + 1, q)
     # TODO(b/36815900): Mark None return values as NotImplemented
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return (None,
               array_ops.reshape(
                   math_ops.reduce_sum(math_ops.mul_no_nan(partial_q, grad), rq),
@@ -841,7 +946,7 @@ def _PolygammaGrad(op, grad):
     x = math_ops.conj(x)
     partial_x = math_ops.polygamma(n + 1, x)
     # TODO(b/36815900): Mark None return values as NotImplemented
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return (None,
               array_ops.reshape(
                   math_ops.reduce_sum(math_ops.mul_no_nan(partial_x, grad), rx),
@@ -902,7 +1007,7 @@ def _TanGrad(op, grad):
     x = math_ops.conj(x)
     secx = math_ops.reciprocal(math_ops.cos(x))
     secx2 = math_ops.square(secx)
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return math_ops.mul_no_nan(secx2, grad)
     else:
       return secx2 * grad
@@ -917,7 +1022,7 @@ def _AsinGrad(op, grad):
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     den = math_ops.sqrt(math_ops.subtract(one, x2))
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return math_ops.xdivy(grad, den)
     else:
       inv = math_ops.reciprocal(den)
@@ -933,7 +1038,7 @@ def _AcosGrad(op, grad):
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     den = math_ops.sqrt(math_ops.subtract(one, x2))
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       return -math_ops.xdivy(grad, den)
     else:
       inv = math_ops.reciprocal(den)
@@ -958,7 +1063,7 @@ def _Atan2Grad(op, grad):
   y = op.inputs[0]
   x = op.inputs[1]
   with ops.control_dependencies([grad]):
-    if compat.forward_compatible(2019, 6, 14):
+    if compat.forward_compatible(2019, 9, 14):
       grad_inv = math_ops.xdivy(grad, (math_ops.square(x) + math_ops.square(y)))
     else:
       grad_inv = grad / (math_ops.square(x) + math_ops.square(y))
@@ -983,6 +1088,7 @@ def _ShapesFullySpecifiedAndEqual(x, y, grad):
 
 
 @ops.RegisterGradient("Add")
+@ops.RegisterGradient("AddV2")
 def _AddGrad(op, grad):
   """Gradient for Add."""
   y = op.inputs[1]
@@ -999,55 +1105,96 @@ def _AddGrad(op, grad):
   if (isinstance(grad, ops.Tensor) and
       _ShapesFullySpecifiedAndEqual(x, y, grad)):
     return grad, grad
-  sx = array_ops.shape(x)
-  sy = array_ops.shape(y)
-  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+  (sx, rx, must_reduce_x), (sy, ry, must_reduce_y) = (
+      SmartBroadcastGradientArgs(x, y, grad))
   if skip_input_indices is not None and 0 in skip_input_indices:
     gx = None
+  elif not must_reduce_x:
+    gx = grad
   else:
     gx = array_ops.reshape(math_ops.reduce_sum(grad, rx), sx)
   if skip_input_indices is not None and 1 in skip_input_indices:
     gy = None
+  elif not must_reduce_y:
+    gy = grad
   else:
     gy = array_ops.reshape(math_ops.reduce_sum(grad, ry), sy)
   return (gx, gy)
 
 
-
 @ops.RegisterGradient("Sub")
 def _SubGrad(op, grad):
   """Gradient for Sub."""
-  x = op.inputs[0]
   y = op.inputs[1]
+  skip_input_indices = None
+  try:
+    skip_input_indices = op.skip_input_indices
+    if skip_input_indices is not None and 1 in skip_input_indices and _IsScalar(
+        y):
+      return grad, None
+  except AttributeError:
+    # No gradient skipping, so do the full gradient computation
+    pass
+  x = op.inputs[0]
   if (isinstance(grad, ops.Tensor) and
       _ShapesFullySpecifiedAndEqual(x, y, grad)):
     return grad, -grad
-  sx = array_ops.shape(x)
-  sy = array_ops.shape(y)
-  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
-  return (array_ops.reshape(math_ops.reduce_sum(grad, rx), sx),
-          array_ops.reshape(-math_ops.reduce_sum(grad, ry), sy))
+  (sx, rx, must_reduce_x), (sy, ry, must_reduce_y) = (
+      SmartBroadcastGradientArgs(x, y, grad))
+  if skip_input_indices is not None and 0 in skip_input_indices:
+    gx = None
+  elif not must_reduce_x:
+    gx = grad
+  else:
+    gx = array_ops.reshape(math_ops.reduce_sum(grad, rx), sx)
+  if skip_input_indices is not None and 1 in skip_input_indices:
+    gy = None
+  elif not must_reduce_y:
+    gy = -grad
+  else:
+    gy = array_ops.reshape(math_ops.reduce_sum(-grad, ry), sy)
+  return (gx, gy)
 
 
 @ops.RegisterGradient("Mul")
 def _MulGrad(op, grad):
   """The gradient of scalar multiplication."""
-  x = op.inputs[0]
   y = op.inputs[1]
+  skip_input_indices = None
+  try:
+    skip_input_indices = op.skip_input_indices
+    if skip_input_indices is not None and 1 in skip_input_indices and _IsScalar(
+        y):
+      return gen_math_ops.mul(grad, math_ops.conj(y)), None
+  except AttributeError:
+    # No gradient skipping, so do the full gradient computation
+    pass
+  x = op.inputs[0]
   if (isinstance(grad, ops.Tensor) and
       _ShapesFullySpecifiedAndEqual(x, y, grad) and
       grad.dtype in (dtypes.int32, dtypes.float32)):
     return gen_math_ops.mul(grad, y), gen_math_ops.mul(grad, x)
   assert x.dtype.base_dtype == y.dtype.base_dtype, (x.dtype, " vs. ", y.dtype)
-  sx = array_ops.shape(x)
-  sy = array_ops.shape(y)
-  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+
+  (sx, rx, must_reduce_x), (sy, ry, must_reduce_y) = (
+      SmartBroadcastGradientArgs(x, y, grad))
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  return (array_ops.reshape(
-      math_ops.reduce_sum(gen_math_ops.mul(grad, y), rx), sx),
-          array_ops.reshape(
-              math_ops.reduce_sum(gen_math_ops.mul(x, grad), ry), sy))
+  if skip_input_indices is not None and 0 in skip_input_indices:
+    gx = None
+  elif not must_reduce_x:
+    gx = gen_math_ops.mul(grad, y)
+  else:
+    gx = array_ops.reshape(
+        math_ops.reduce_sum(gen_math_ops.mul(grad, y), rx), sx)
+  if skip_input_indices is not None and 1 in skip_input_indices:
+    gy = None
+  elif not must_reduce_y:
+    gy = gen_math_ops.mul(x, grad)
+  else:
+    gy = array_ops.reshape(
+        math_ops.reduce_sum(gen_math_ops.mul(x, grad), ry), sy)
+  return (gx, gy)
 
 
 @ops.RegisterGradient("MulNoNan")
@@ -1078,7 +1225,7 @@ def _DivGrad(op, grad):
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  if compat.forward_compatible(2019, 6, 14):
+  if compat.forward_compatible(2019, 9, 14):
     return (array_ops.reshape(
         math_ops.reduce_sum(math_ops.xdivy(grad, y), rx), sx),
             array_ops.reshape(
@@ -1131,7 +1278,7 @@ def _RealDivGrad(op, grad):
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  if compat.forward_compatible(2019, 6, 14):
+  if compat.forward_compatible(2019, 9, 14):
     return (array_ops.reshape(
         math_ops.reduce_sum(math_ops.xdivy(grad, y), rx), sx),
             array_ops.reshape(
@@ -1158,7 +1305,7 @@ def _DivNoNanGrad(op, grad):
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  if compat.forward_compatible(2019, 6, 14):
+  if compat.forward_compatible(2019, 9, 14):
     return (array_ops.reshape(
         math_ops.reduce_sum(math_ops.div_no_nan(grad, y), rx), sx),
             array_ops.reshape(
@@ -1180,35 +1327,61 @@ def _PowGrad(op, grad):
   """Returns grad * (y*x^(y-1), z*log(x))."""
   x = op.inputs[0]
   y = op.inputs[1]
-  z = op.outputs[0]
-  sx = array_ops.shape(x)
-  sy = array_ops.shape(y)
-  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+  use_mul_no_nan = compat.forward_compatible(2019, 9, 14)
+  skip_input_indices = None
+  try:
+    skip_input_indices = op.skip_input_indices
+    # TODO(mrry): If `y` is a constant, we can combine `tf.sub()` and the
+    # constant `1` into a single constant op.
+    if skip_input_indices is not None and 1 in skip_input_indices and _IsScalar(
+        y):
+      x = math_ops.conj(x)
+      y = math_ops.conj(y)
+      if use_mul_no_nan:
+        return gen_math_ops.mul_no_nan(y * math_ops.pow(x, y - 1), grad), None
+      else:
+        return grad * y * math_ops.pow(x, y - 1), None
+
+  except AttributeError:
+    # No gradient skipping, so do the full gradient computation
+    pass
+
+  (sx, rx, must_reduce_x), (sy, ry, must_reduce_y) = (
+      SmartBroadcastGradientArgs(x, y, grad))
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  z = math_ops.conj(z)
 
-  if compat.forward_compatible(2019, 6, 14):
-    gx = array_ops.reshape(
-        math_ops.reduce_sum(
-            gen_math_ops.mul_no_nan(y * math_ops.pow(x, y - 1), grad), rx), sx)
+  if skip_input_indices is None or 0 not in skip_input_indices:
+    if use_mul_no_nan:
+      gx = gen_math_ops.mul_no_nan(y * math_ops.pow(x, y - 1), grad)
+    else:
+      gx = grad * y * math_ops.pow(x, y - 1)
+    if must_reduce_x:
+      gx = array_ops.reshape(math_ops.reduce_sum(gx, rx), sx)
   else:
-    gx = array_ops.reshape(
-        math_ops.reduce_sum(grad * y * math_ops.pow(x, y - 1), rx), sx)
-  # Avoid false singularity at x = 0
-  if x.dtype.is_complex:
-    # real(x) < 0 is fine for the complex case
-    mask = math_ops.not_equal(x, 0)
+    gx = None
+
+  if skip_input_indices is None or 1 not in skip_input_indices:
+    z = math_ops.conj(op.outputs[0])
+
+    # Avoid false singularity at x = 0
+    if x.dtype.is_complex:
+      # real(x) < 0 is fine for the complex case
+      mask = math_ops.not_equal(x, 0)
+    else:
+      # There's no sensible real value to return if x < 0, so return 0
+      mask = x > 0
+    safe_x = array_ops.where(mask, x, array_ops.ones_like(x))
+    log_x = array_ops.where(mask, math_ops.log(safe_x), array_ops.zeros_like(x))
+    if use_mul_no_nan:
+      gy = gen_math_ops.mul_no_nan(z * log_x, grad)
+    else:
+      gy = grad * z * log_x
+    if must_reduce_y:
+      gy = array_ops.reshape(math_ops.reduce_sum(gy, ry), sy)
   else:
-    # There's no sensible real value to return if x < 0, so return 0
-    mask = x > 0
-  safe_x = array_ops.where(mask, x, array_ops.ones_like(x))
-  log_x = array_ops.where(mask, math_ops.log(safe_x), array_ops.zeros_like(x))
-  if compat.forward_compatible(2019, 6, 14):
-    gy = array_ops.reshape(
-        math_ops.reduce_sum(gen_math_ops.mul_no_nan(z * log_x, grad), ry), sy)
-  else:
-    gy = array_ops.reshape(math_ops.reduce_sum(grad * z * log_x, ry), sy)
+    gy = None
+
   return gx, gy
 
 
@@ -1276,15 +1449,39 @@ def _SquaredDifferenceGrad(op, grad):
   """Returns the gradient for (x-y)^2."""
   x = op.inputs[0]
   y = op.inputs[1]
-  sx = array_ops.shape(x)
-  sy = array_ops.shape(y)
-  rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
+  skip_input_indices = None
+  try:
+    skip_input_indices = op.skip_input_indices
+  except AttributeError:
+    # No gradient skipping, so do the full gradient computation
+    pass
+
   with ops.control_dependencies([grad]):
     # The parens ensure that if grad is IndexedSlices, it'll get multiplied by
     # Tensor (not a number like 2.0) which causes it to convert to Tensor.
     x_grad = math_ops.scalar_mul(2.0, grad) * (x - y)
-  return (array_ops.reshape(math_ops.reduce_sum(x_grad, rx), sx),
-          -array_ops.reshape(math_ops.reduce_sum(x_grad, ry), sy))
+
+  if (isinstance(grad, ops.Tensor) and
+      _ShapesFullySpecifiedAndEqual(x, y, grad)):
+    return x_grad, -x_grad
+
+  (sx, rx, must_reduce_x), (sy, ry, must_reduce_y) = (
+      SmartBroadcastGradientArgs(x, y, grad))
+
+  if skip_input_indices is not None and 0 in skip_input_indices:
+    gx = None
+  elif must_reduce_x:
+    gx = array_ops.reshape(math_ops.reduce_sum(x_grad, rx), sx)
+  else:
+    gx = x_grad
+
+  if skip_input_indices is not None and 1 in skip_input_indices:
+    gy = None
+  elif must_reduce_y:
+    gy = -array_ops.reshape(math_ops.reduce_sum(x_grad, ry), sy)
+  else:
+    gy = -x_grad
+  return (gx, gy)
 
 
 # Logical operations have no gradients.
@@ -1638,6 +1835,40 @@ def _CumprodGrad(op, grad):
   out = math_ops.cumsum(
       prod * grad, axis, exclusive=exclusive, reverse=not reverse)
   return [out / x, None]
+
+
+@ops.RegisterGradient("CumulativeLogsumexp")
+def _CumulativeLogsumexpGrad(op, grad):
+  x = op.inputs[0]
+  axis = op.inputs[1]
+  cumulative_logsumexp = op.outputs[0]
+
+  exclusive = op.get_attr("exclusive")
+  reverse = op.get_attr("reverse")
+
+  # Split the incoming gradient into positive and negative part
+  # in order to take logs. This is required for stable results.
+  log_grad_positive = array_ops.where_v2(
+      math_ops.greater(grad, 0),
+      math_ops.log(grad),
+      grad.dtype.min)
+
+  log_grad_negative = array_ops.where_v2(
+      math_ops.less(grad, 0),
+      math_ops.log(-grad),
+      grad.dtype.min)
+
+  output_pos = math_ops.exp(
+      math_ops.cumulative_logsumexp(
+          log_grad_positive - cumulative_logsumexp,
+          axis=axis, reverse=not reverse, exclusive=exclusive) + x)
+
+  output_neg = math_ops.exp(
+      math_ops.cumulative_logsumexp(
+          log_grad_negative - cumulative_logsumexp,
+          axis=axis, reverse=not reverse, exclusive=exclusive) + x)
+
+  return [output_pos - output_neg, None]
 
 
 @ops.RegisterGradient("NextAfter")

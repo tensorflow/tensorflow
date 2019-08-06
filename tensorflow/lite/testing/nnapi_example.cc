@@ -42,7 +42,9 @@ bool Interpret(const char* examples_filename, bool use_nnapi) {
   }
 
   printf("Use nnapi is set to: %d\n", use_nnapi);
-  tflite::testing::TfLiteDriver test_driver(use_nnapi);
+  tflite::testing::TfLiteDriver test_driver(
+      use_nnapi ? tflite::testing::TfLiteDriver::DelegateType::kNnapi
+                : tflite::testing::TfLiteDriver::DelegateType::kNone);
 
   test_driver.SetModelBaseDir(dirname(examples_filename));
   if (!tflite::testing::ParseAndRunTests(&tflite_stream, &test_driver)) {

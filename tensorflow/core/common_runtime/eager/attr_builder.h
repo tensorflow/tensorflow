@@ -117,7 +117,7 @@ class AttrBuilder {
     return GetNodeAttr(node_def_, attr_name, value);
   }
 
-  tensorflow::Fprint128 CacheKey(const string& device);
+  tensorflow::Fprint128 CacheKey(const StringPiece device);
 
   void FillAttrValueMap(AttrValueMap* m) const { FillAttrValueMap(m, true); }
   const NodeDef& BuildNodeDef();
@@ -126,7 +126,7 @@ class AttrBuilder {
   template <class T>
   using AttrVec = tensorflow::gtl::InlinedVector<std::pair<string, T>, 2>;
 
-  tensorflow::Fprint128 BuildCacheKeyForDevice(const string& device) const;
+  tensorflow::Fprint128 BuildCacheKeyForDevice(const StringPiece device) const;
 
   void MayBeInitializeNodeDef();
   // Fill `m` with the attr-value pairs set via AttrBuilder::Set() so far, as

@@ -37,6 +37,30 @@ namespace tensorflow {
 
 namespace {
 
+// Verify that input resources are grouped in the end.
+Status VerifyResourceArgsGroupedAtEnd(XlaOpKernelContext* ctx,
+                                      const NameAttrList& body_name_attr) {
+  const FunctionBody* body;
+  TF_RETURN_IF_ERROR(ctx->compiler()->FindFunctionBody(body_name_attr, &body));
+  bool has_seen_resource = false;
+  for (int i = 0; i < body->arg_types.size(); i++) {
+    DataType arg_type = body->arg_types[i];
+    if (has_seen_resource) {
+      if (arg_type != DT_RESOURCE) {
+        return errors::InvalidArgument(
+            "Expect input resources are grouped in the end of while body ",
+            body_name_attr.name(), ", but the ", i, "-th argument ",
+            body->arg_nodes[i]->name(), " is not a resource.");
+      }
+    } else {
+      if (arg_type == DT_RESOURCE) {
+        has_seen_resource = true;
+      }
+    }
+  }
+  return Status::OK();
+}
+
 // Builds XlaCompiler argument descriptions `args` from `ctx`.
 Status MakeXlaCompilerArgumentsFromInputs(
     XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>* args,
@@ -269,6 +293,10 @@ XlaWhileOp::XlaWhileOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
 
 void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "WhileOp::Compile";
+
+  // Input resources need to be grouped in the end of the body function
+  // according to the convention of the XLA bridge.
+  OP_REQUIRES_OK(ctx, VerifyResourceArgsGroupedAtEnd(ctx, body_name_attr_));
 
   std::vector<XlaCompiler::Argument> arguments;
   bool has_uninitialized_vars;

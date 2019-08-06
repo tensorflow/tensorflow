@@ -105,7 +105,7 @@ class ExecutionOutput {
 class Executable {
  public:
   explicit Executable(
-      std::unique_ptr<HloModule> hlo_module,
+      std::shared_ptr<HloModule> hlo_module,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
       std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
       : hlo_module_(std::move(hlo_module)),
@@ -171,6 +171,7 @@ class Executable {
   // called explicitly for other (async, for example) variants after the stream
   // has completed.
   virtual Status PopulateExecutionProfile(
+      ExecutionProfile* execution_profile,
       HloExecutionProfile* hlo_execution_profile, se::Stream* stream) {
     return Status::OK();
   }
@@ -179,15 +180,8 @@ class Executable {
   // timer for the execution, sets up HLO profiling if enabled, and fills in the
   // given ExecutionProfile if non-null.
   StatusOr<ScopedShapedBuffer> ExecuteOnStreamWrapper(
-      const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
+      const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
-
-  // Returns the ExecutionProfile from executing on the device. This includes
-  // the number of cycles taken for the computation or the compilation time.
-  ExecutionProfile execution_profile() const {
-    tensorflow::mutex_lock lock(mutex_);
-    return execution_profile_;
-  }
 
   const HloProfilePrinterData& hlo_profile_printer_data() const {
     CHECK(hlo_profiling_enabled());
@@ -207,6 +201,7 @@ class Executable {
   }
 
   HloModule& module() const { return *hlo_module_; }
+  std::shared_ptr<HloModule> shared_module() const { return hlo_module_; }
 
   const bool has_module() const { return hlo_module_ != nullptr; }
 
@@ -218,30 +213,27 @@ class Executable {
     return hlo_module_->config().entry_computation_layout().result_shape();
   }
 
-  // Returns the size of the executable in bytes. Returns -1 by default if the
-  // method is not overridden to support this kind of query.
-  virtual int64 SizeInBytes();
+  // Returns the size of the executable in bytes. Returns -1 if this query is
+  // not supported by the executable.
+  //
+  // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
+  virtual int64 SizeOfGeneratedCodeInBytes();
 
   // Dumping helpers.
-  void set_hlo_snapshot(std::unique_ptr<xla::HloSnapshot> hlo_snapshot) {
-    hlo_snapshot_ = std::move(hlo_snapshot);
+  void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {
+    hlo_proto_ = std::move(hlo_proto);
   }
-  bool dumping_snapshot() const { return hlo_snapshot_ != nullptr; }
-  HloSnapshot* hlo_snapshot() const { return hlo_snapshot_.get(); }
+  bool dumping_snapshot() const { return hlo_proto_ != nullptr; }
+  HloProto const* hlo_proto() const { return hlo_proto_.get(); }
 
  protected:
-  mutable tensorflow::mutex mutex_;
-
-  // Execution profile data on the device.
-  ExecutionProfile execution_profile_ GUARDED_BY(mutex_);
-
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around.
-  const std::unique_ptr<HloModule> hlo_module_;
+  const std::shared_ptr<HloModule> hlo_module_;
 
-  // HloSnapshot this was compiled from. Null if not dumping executions.
-  std::unique_ptr<HloSnapshot> hlo_snapshot_;
+  // The serialized HLO proto. Non-null only if dumping snapshots is enabled.
+  std::unique_ptr<HloProto const> hlo_proto_;
 
   // Execution count, used to generate a unique filename for each dumped
   // execution.

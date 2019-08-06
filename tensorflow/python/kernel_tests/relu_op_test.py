@@ -80,6 +80,8 @@ class ReluTest(test.TestCase):
   def testReluInt8x4GoodShape(self):
     if not test.is_gpu_available(cuda_only=True):
       self.skipTest("No GPU available")
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support int8x4 type")
     inputs = np.array([[-50, 7, 23, 0], [-1, -5, 6, 11]])
     np_relu = self._npRelu(inputs)
     tf_relu = nn_ops.relu(constant_op.constant(inputs, dtypes.qint8))
@@ -90,6 +92,8 @@ class ReluTest(test.TestCase):
   def testReluInt8x4BadShape(self):
     if not test.is_gpu_available(cuda_only=True):
       self.skipTest("No GPU available")
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support int8x4 type")
     inputs = constant_op.constant(
         np.array([[-50, 7, 23], [0, 1, -5], [6, -2, 11]]), dtypes.qint8)
     with self.assertRaisesRegexp(
@@ -437,7 +441,7 @@ class EluTest(test.TestCase):
   def _testElu(self, np_features):
     np_elu = self._npElu(np_features)
     tf_elu = nn_ops.elu(np_features)
-    self.assertAllClose(np_elu, tf_elu)
+    self.assertAllCloseAccordingToType(np_elu, tf_elu)
     self.assertShapeEqual(np_elu, tf_elu)
 
   def testNumbersCPU(self):
@@ -545,7 +549,7 @@ class SeluTest(test.TestCase):
   def _testSelu(self, np_features):
     np_selu = self._npSelu(np_features)
     tf_selu = nn_ops.selu(np_features)
-    self.assertAllClose(np_selu, tf_selu)
+    self.assertAllCloseAccordingToType(np_selu, tf_selu)
     self.assertShapeEqual(np_selu, tf_selu)
 
   def testNumbers(self):

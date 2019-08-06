@@ -41,10 +41,11 @@ namespace op = xla::testing::opcode_matchers;
 class ConditionalSimplifierTest : public HloTestBase {
  public:
   // Makes a computation that contains a conditional with constant predicate.
-  HloComputation* MakeConditional(HloModule* module);
+  HloComputation* MakeConditional(HloModule* module, bool is_constant = true);
 };
 
-HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module) {
+HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module,
+                                                           bool is_constant) {
   HloComputation::Builder builder(TestName());
 
   // true_computation returns param+1.
@@ -83,7 +84,10 @@ HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module) {
   }
 
   auto false_instrn = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+      is_constant
+          ? HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false))
+          : HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(PRED, {}),
+                                            "cond"));
   auto false_param = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(S32, {}), "false_param"));
   auto one = builder.AddInstruction(
@@ -102,6 +106,16 @@ TEST_F(ConditionalSimplifierTest, ConditionalGetsInlined) {
   ASSERT_TRUE(ConditionalSimplifier().Run(m.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Parameter(), op::Constant()));
+}
+
+TEST_F(ConditionalSimplifierTest, BranchGetsInlined) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation* computation = MakeConditional(m.get(), /*is_constant=*/false);
+  ASSERT_TRUE(ConditionalSimplifier().Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      computation->root_instruction(),
+      op::Select(op::Parameter(1), op::Add(op::Constant(), op::Constant()),
+                 op::Add(op::Parameter(0), op::Constant())));
 }
 
 TEST_F(ConditionalSimplifierTest, ConditionalWithControlDependency) {
@@ -188,7 +202,7 @@ ENTRY main {
   ROOT result = (f32[20, 40]) conditional(p,t,t), false_computation=on_false, true_computation=on_true
 }
 )";
-  auto status = ParseHloString(hlo_string);
+  auto status = ParseAndReturnUnverifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
   HloVerifier v(false, false);
   TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
@@ -254,7 +268,7 @@ TEST_F(ConditionalSimplifierTest,
         param.1), true_computation=computation.1,
         false_computation=computation.2
     })";
-  auto status = ParseHloString(hlo_string);
+  auto status = ParseAndReturnUnverifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
   std::unique_ptr<HloModule> module = status.ConsumeValueOrDie();
   HloVerifier v(false, false);
@@ -269,6 +283,49 @@ TEST_F(ConditionalSimplifierTest,
   TF_ASSERT_OK(conditional_1->parent()->RemoveInstruction(conditional_1));
 
   EXPECT_TRUE(ConditionalSimplifier().Run(module.get()).ValueOrDie());
+}
+
+TEST_F(ConditionalSimplifierTest, RemoveDeadRoots) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveDeadRoots
+on_false {
+  t = (f32[20,40], f32[40,40]) parameter(0)
+  lhs = f32[20,40] get-tuple-element(t), index=0
+  rhs = f32[40,40] get-tuple-element(t), index=1
+  dot = f32[20,40] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  after-all = token[] after-all()
+  outfeed = token[] outfeed(dot, after-all)
+  ROOT result = (f32[20,40]) tuple(dot)
+}
+
+on_true {
+  t = (f32[20,40], f32[40,40]) parameter(0)
+  lhs = f32[20,40] get-tuple-element(t), index=0
+  add = f32[20,40] add(lhs, lhs)
+  ROOT result = (f32[20,40]) tuple(add)
+}
+
+ENTRY main {
+  c0_0 = f32[20,40] parameter(0)
+  c0_1 = f32[40,40] parameter(1)
+  p = pred[] parameter(2)
+  t = (f32[20,40], f32[40,40]) tuple(c0_0, c0_1)
+  conditional = (f32[20, 40]) conditional(p,t,t), false_computation=on_false, true_computation=on_true
+  ROOT result = () tuple()
+}
+)";
+  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  TF_ASSERT_OK(status.status());
+  HloVerifier v(false, false);
+  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
+  EXPECT_TRUE(
+      ConditionalSimplifier().Run(status.ValueOrDie().get()).ValueOrDie());
+  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
+  HloInstruction* conditional =
+      FindInstruction(status.ValueOrDie().get(), "conditional");
+  // The conditional root should be replaced with an empty tuple.
+  EXPECT_EQ(ShapeUtil::TupleElementCount(conditional->shape()), 0);
 }
 
 }  // namespace

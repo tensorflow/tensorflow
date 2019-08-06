@@ -40,12 +40,12 @@ class FftScratchAllocator : public se::ScratchAllocator {
   FftScratchAllocator(int device_ordinal,
                       se::DeviceMemoryAllocator* memory_allocator);
 
-  int64 GetMemoryLimitInBytes(se::Stream* stream) override;
+  int64 GetMemoryLimitInBytes() override;
 
   int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
 
   se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
-      se::Stream* stream, int64 byte_size) override;
+      int64 byte_size) override;
 
  private:
   const int device_ordinal_;
@@ -72,9 +72,7 @@ class FftThunk : public Thunk {
   FftThunk& operator=(const FftThunk&) = delete;  // Cannot share fft_plan_
 
   // Does the FFT for the thunk on "stream".
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream, const RunId& run_id,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   const se::fft::Type fft_type_;

@@ -160,12 +160,12 @@ TEST_F(ArithmeticOptimizerTest, OpDeduppingAssertAndCheckNumerics) {
   OptimizeTwice(&optimizer, &item, &output);
   NodeMap node_map(&output);
 
-  EXPECT_EQ(output.node_size(), 5);
+  EXPECT_EQ(output.node_size(), 6);
   const NodeDef* new_div = node_map.GetNode("div");
   ASSERT_NE(new_div, nullptr);
   ASSERT_EQ(new_div->input_size(), 3);
   EXPECT_EQ(new_div->input(0), "check1");
-  EXPECT_EQ(new_div->input(1), "check1");
+  EXPECT_EQ(new_div->input(1), "check2");
   EXPECT_EQ(new_div->input(2), "^assert1");
 
   auto tensors = EvaluateNodes(output, item.fetch, {{"Placeholder", bool_t}});
@@ -2728,6 +2728,7 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
   auto y2 = ops::Const(s.WithOpName("y2"), {2.0f, 2.0f}, {1, 2});
+  auto y3 = ops::Const(s.WithOpName("y3"), {3.0f, 3.0f}, {1, 2});
   auto y1 = ops::Const(s.WithOpName("y1"), {1.0f, 1.0f}, {1, 2});
   auto yPoint5 = ops::Const(s.WithOpName("y.5"), {0.5f, 0.5f}, {1, 2});
   auto y0 = ops::Const(s.WithOpName("y0"), {0.0f, 0.0f}, {1, 2});
@@ -2738,6 +2739,8 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   auto ones = ops::Const(s.WithOpName("ones"), {1.0f, 1.0f, 1.0f}, {1, 3});
   auto zeros = ops::Const(s.WithOpName("zeros"), {0.0f, 0.0f, 0.0f}, {1, 3});
   Output out2 = ops::Pow(s.WithOpName("out2"), x, y2);
+  Output out3 =
+      ops::Pow(s.WithOpName("out3").WithDevice("/device:CPU:0"), x, y3);
   Output out1 = ops::Pow(s.WithOpName("out1"), x, y1);
   Output outPoint5 = ops::Pow(s.WithOpName("out.5"), x, yPoint5);
   Output out0 = ops::Pow(s.WithOpName("out0"), x, y0);
@@ -2748,18 +2751,18 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   Output out_bcast2 = ops::Pow(s.WithOpName("out_bcast2"), z, zeros);
 
   GrapplerItem item;
-  item.fetch = {"out2",  "out1", "out.5",      "out0",      "out_.5",
-                "out_1", "out",  "out_bcast1", "out_bcast2"};
+  item.fetch = {"out2",   "out3",  "out1", "out.5",      "out0",
+                "out_.5", "out_1", "out",  "out_bcast1", "out_bcast2"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
-  ASSERT_EQ(tensors_expected.size(), 9);
+  ASSERT_EQ(tensors_expected.size(), 10);
 
   GraphDef got;
   ArithmeticOptimizer optimizer;
   EnableOnlyConvertPow(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &got);
   auto tensors = EvaluateNodes(got, item.fetch);
-  ASSERT_EQ(tensors.size(), 9);
+  ASSERT_EQ(tensors.size(), 10);
 
   for (int i = 0; i < tensors.size(); ++i) {
     EXPECT_EQ(tensors[i].NumElements(), tensors_expected[i].NumElements());
@@ -2773,6 +2776,12 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   AddNode("ones", "Const", {}, {}, &want);
   AddNode("zeros", "Const", {}, {}, &want);
   AddNode("out2", "Square", {"x"}, {}, &want);
+  AddNode("ArithmeticOptimizer/ConvertPow__inner_out3", "Square", {"x"}, {},
+          &want)
+      ->set_device("/device:CPU:0");
+  AddNode("out3", "Mul", {"x", "ArithmeticOptimizer/ConvertPow__inner_out3"},
+          {}, &want)
+      ->set_device("/device:CPU:0");
   AddNode("out1", "Identity", {"x"}, {}, &want);
   AddNode("out.5", "Sqrt", {"x"}, {}, &want);
   AddNode("out0", "Const", {AsControlDependency("x")}, {}, &want);
@@ -3960,131 +3969,6 @@ TEST_F(ArithmeticOptimizerTest, RemoveStackStridedSliceSameAxis) {
   // stacked[:, 2:, :] == expand_dims(c, 1).
   test::ExpectTensorEqual<float>(tensors[fCSlice2ToOut],
                                  tensors_expected[fExpandedC]);
-}
-
-TEST_F(ArithmeticOptimizerTest, RemoveStackStridedSliceSameAxisWithScalars) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto a_in = ops::Const(s.WithOpName("a_in"), {1.0f}, {});
-  auto b_in = ops::Const(s.WithOpName("b_in"), {-1.0f}, {});
-  auto c_in = ops::Const(s.WithOpName("c_in"), {5.0f}, {});
-  auto a = ops::PlaceholderWithDefault(s.WithOpName("a"), a_in,
-                                       PartialTensorShape({}));
-  auto b = ops::PlaceholderWithDefault(s.WithOpName("b"), b_in,
-                                       PartialTensorShape({}));
-  auto c = ops::PlaceholderWithDefault(s.WithOpName("c"), c_in,
-                                       PartialTensorShape({}));
-  // The results with axis = 0 and axis = -1 should be equivalent, so test both.
-  for (const int axis : {0, -1}) {
-    // stacked = tf.stack((a, b, c), axis=0).
-    // stacked.shape == [3] (a, b, c are stacked along new axis 0)
-    auto stacked =
-        ops::Stack(s.WithOpName("stacked"), {a.output, b.output, c.output},
-                   ops::Stack::Axis(axis));
-    auto expanded_a = ops::ExpandDims(s.WithOpName("expanded_a"), a, {0});
-    auto expanded_b = ops::ExpandDims(s.WithOpName("expanded_b"), b, {0});
-    auto expanded_c = ops::ExpandDims(s.WithOpName("expanded_c"), c, {0});
-    auto begin_a = ops::Const(s.WithOpName("begin_a"), {0}, {1});
-    auto end_a = ops::Const(s.WithOpName("end_a"), {1}, {1});
-    auto begin_b = ops::Const(s.WithOpName("begin_b"), {1}, {1});
-    auto end_b = ops::Const(s.WithOpName("end_b"), {2}, {1});
-    auto begin_c = ops::Const(s.WithOpName("begin_c"), {2}, {1});
-    auto end_c = ops::Const(s.WithOpName("end_c"), {3}, {1});
-    auto strides = ops::Const(s.WithOpName("strides"), {1}, {1});
-
-    // stacked[0]
-    using SS = ops::StridedSlice;
-    auto pa_slice = ops::Identity(
-        s.WithOpName("pa_slice_out"),
-        SS(s.WithOpName("pa_slice"), stacked, begin_a, end_a, strides,
-           SS::BeginMask(0b1)  // 1
-               .EllipsisMask(0)
-               .EndMask(0b1)  // 1
-               .NewAxisMask(0)
-               .ShrinkAxisMask(0b1)));  // 1
-
-    // stacked[1]
-    auto pb_slice = ops::Identity(
-        s.WithOpName("pb_slice_out"),
-        SS(s.WithOpName("pb_slice"), stacked, begin_b, end_b, strides,
-           SS::BeginMask(0b1)  // 1
-               .EllipsisMask(0)
-               .EndMask(0b1)  // 1
-               .NewAxisMask(0)
-               .ShrinkAxisMask(0b1)));  // 1
-
-    // stacked[2]
-    auto pc_slice = ops::Identity(
-        s.WithOpName("pc_slice_out"),
-        SS(s.WithOpName("pc_slice"), stacked, begin_c, end_c, strides,
-           SS::BeginMask(0b1)  // 1
-               .EllipsisMask(0)
-               .EndMask(0b1)  // 1
-               .NewAxisMask(0)
-               .ShrinkAxisMask(0b1)));  // 1
-
-    GrapplerItem item;
-    item.fetch = {"a",
-                  "b",
-                  "c",
-                  "pa_slice_out",
-                  "pb_slice_out",
-                  "pc_slice_out",
-                  "expanded_a",
-                  "expanded_b",
-                  "expanded_c"};
-    enum FetchItem {
-      fA,
-      fB,
-      fC,
-      fASliceOut,
-      fBSliceOut,
-      fCSliceOut,
-      fExpandedA,
-      fExpandedB,
-      fExpandedC,
-    };
-    TF_CHECK_OK(s.ToGraphDef(&item.graph));
-    auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
-
-    // stacked[0] == a.
-    test::ExpectTensorEqual<float>(tensors_expected[fA],
-                                   tensors_expected[fASliceOut]);
-    // stacked[1] == b.
-    test::ExpectTensorEqual<float>(tensors_expected[fB],
-                                   tensors_expected[fBSliceOut]);
-    // stacked[2] == c.
-    test::ExpectTensorEqual<float>(tensors_expected[fC],
-                                   tensors_expected[fCSliceOut]);
-
-    GraphDef output;
-    ArithmeticOptimizer optimizer;
-    EnableOnlyRemoveStackStridedSliceSameAxis(&optimizer);
-    OptimizeAndPrune(&optimizer, &item, &output);
-
-    for (const auto& node : output.node()) {
-      if (node.name() == "pa_slice_out") {
-        EXPECT_EQ(node.input(0), "a");
-      } else if (node.name() == "pb_slice_out") {
-        EXPECT_EQ(node.input(0), "b");
-      } else if (node.name() == "pc_slice_out") {
-        EXPECT_EQ(node.input(0), "c");
-      } else if (str_util::EndsWith(node.name(), "_out")) {
-        EXPECT_EQ(strings::StrCat(node.input(0), "_out"),
-                  strings::StrCat(
-                      "ArithmeticOptimizer/RemoveStackStridedSliceSameAxis_",
-                      node.name()));
-      }
-    }
-
-    auto tensors = EvaluateNodes(output, item.fetch);
-
-    // stacked[0] == a.
-    test::ExpectTensorEqual<float>(tensors_expected[fA], tensors[fASliceOut]);
-    // stacked[1] == b.
-    test::ExpectTensorEqual<float>(tensors_expected[fB], tensors[fBSliceOut]);
-    // stacked[2] == c.
-    test::ExpectTensorEqual<float>(tensors_expected[fC], tensors[fCSliceOut]);
-  }
 }
 
 TEST_F(ArithmeticOptimizerTest, SimplifyAggregationBFloat16) {

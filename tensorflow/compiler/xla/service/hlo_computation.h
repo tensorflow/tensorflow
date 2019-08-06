@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -136,6 +135,12 @@ class HloComputation {
   HloInstruction* AddEntryComputationParameter(
       std::unique_ptr<HloInstruction> instruction);
 
+  // Replaces an old parameter with a new parameter. Adds the new parameter
+  // instruction to the entry computation.
+  Status ReplaceEntryComputationParameter(
+      int64 param_no, HloInstruction* old_instruction,
+      std::unique_ptr<HloInstruction> instruction);
+
   // Remove an instruction from the computation. The instruction must have no
   // users. Instruction is deallocated with this call.
   Status RemoveInstruction(HloInstruction* instruction);
@@ -148,8 +153,11 @@ class HloComputation {
   // Remove an instruction (including side effecting ones) from the computation
   // and also transitively any operand that has no side effect and no users post
   // removing an instruction. The instruction must have no users. Instruction is
-  // deallocated with this call.
-  Status RemoveInstructionAndUnusedOperands(HloInstruction* instruction);
+  // deallocated with this call. If given, the cleanup routine is executed on a
+  // removed instruction before its deallocation.
+  Status RemoveInstructionAndUnusedOperands(
+      HloInstruction* instruction,
+      std::function<void(HloInstruction*)> cleanup = nullptr);
 
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation. In addition it must have
@@ -280,7 +288,7 @@ class HloComputation {
 
   // Computes and returns the ProgramShape of this computation (shape of
   // parameters and result with layout).
-  ProgramShape ComputeProgramShape() const;
+  ProgramShape ComputeProgramShape(bool include_ids = true) const;
 
   // Return whether `*this` and `other` are functionally equivalent.
   bool Equal(const HloComputation& other, bool is_layout_sensitive) const;
@@ -296,9 +304,18 @@ class HloComputation {
       HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> new_instruction);
 
+  // Replaces an old instruction with a newly created instruction, and adds the
+  // new instruction as an entry computation's parameter. Removes old
+  // instruction from computation. Updates uses and root instruction.
+  Status ReplaceWithNewEntryComputationParameter(
+      HloInstruction* old_instruction,
+      std::unique_ptr<HloInstruction> new_instruction);
+
   // Replace old instruction with new instruction.  Updates uses and root
   // instruction. Removes old instruction from computation. Precondition:
   // old_instruction and new_instruction must have the compatible shapes.
+  // If |new_instruction| doesn't have any sharding information it will
+  // recieve the sharding information of |old_instruction|.
   Status ReplaceInstruction(HloInstruction* old_instruction,
                             HloInstruction* new_instruction);
 
@@ -328,11 +345,6 @@ class HloComputation {
   template <typename HloInstructionPtr>
   Status AcceptOrdered(DfsHloVisitorBase<HloInstructionPtr>* visitor,
                        absl::Span<HloInstruction* const> order) const;
-
-  // Same as Accept() above, but the visitor is given as a function.
-  Status Accept(const std::function<Status(HloInstruction*)>& visitor_func);
-  Status Accept(
-      const std::function<Status(const HloInstruction*)>& visitor_func) const;
 
   // Returns a deep copy of this computation including all instructions.
   // If the clone context is specified, it will be populated with the cloned
@@ -410,6 +422,9 @@ class HloComputation {
 
   // Returns if this computation is a fusion computation.
   bool IsFusionComputation() const { return fusion_instruction_ != nullptr; }
+
+  // Returns if this computation is the entry computation of the module.
+  bool IsEntryComputation() const;
 
   // Returns the owning fusion instruction, or nullptr if this is not a fusion
   // computation.

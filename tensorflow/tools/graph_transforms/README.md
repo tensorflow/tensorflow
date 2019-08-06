@@ -111,7 +111,7 @@ unsure, the
 tool can inspect the model and provide guesses about likely input and output nodes,
 as well as other information that's useful for debugging. Here's an example of
 how to use it on the [Inception V3
-graph](http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz):
+graph](https://storage.googleapis.com/download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz):
 
 ```bash
 bazel build tensorflow/tools/graph_transforms:summarize_graph
@@ -124,7 +124,7 @@ This section has small guides for some of the most frequently-used
 transformation pipelines, aimed at users who want to quickly accomplish one of
 these tasks. A lot of them will use the Inception V3 model for their examples,
 which can be downloaded from
-[http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz](http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz).
+[https://storage.googleapis.com/download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz](https://storage.googleapis.com/download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz).
 
 ### Optimizing for Deployment
 

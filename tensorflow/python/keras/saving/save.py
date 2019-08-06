@@ -24,7 +24,8 @@ import six
 
 from tensorflow.python import tf2
 from tensorflow.python.keras.saving import hdf5_format
-from tensorflow.python.keras.saving import saved_model
+from tensorflow.python.keras.saving.saved_model import load as saved_model_load
+from tensorflow.python.keras.saving.saved_model import save as saved_model_save
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.util.tf_export import keras_export
 
@@ -47,7 +48,8 @@ def save_model(model,
                filepath,
                overwrite=True,
                include_optimizer=True,
-               save_format=None):
+               save_format=None,
+               signatures=None):
   """Saves a model as a TensorFlow SavedModel or HDF5 file.
 
   The saved model contains:
@@ -78,6 +80,9 @@ def save_model(model,
       save_format: Either 'tf' or 'h5', indicating whether to save the model
         to Tensorflow SavedModel or HDF5. Defaults to 'tf' in TF 2.X, and 'h5'
         in TF 1.X.
+      signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
+        format only. Please see the `signatures` argument in
+        `tf.saved_model.save` for details.
 
   Raises:
       ImportError: If save format is hdf5, and h5py is not available.
@@ -103,7 +108,8 @@ def save_model(model,
     hdf5_format.save_model_to_hdf5(
         model, filepath, overwrite, include_optimizer)
   else:
-    saved_model.save(model, filepath, overwrite, include_optimizer)
+    saved_model_save.save(model, filepath, overwrite, include_optimizer,
+                          signatures)
 
 
 @keras_export('keras.models.load_model')
@@ -138,7 +144,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
 
   if isinstance(filepath, six.string_types):
     loader_impl.parse_saved_model(filepath)
-    return saved_model.load_from_saved_model_v2(filepath, compile)
+    return saved_model_load.load(filepath, compile)
 
   raise IOError(
       'Unable to load model. Filepath is not an hdf5 file (or h5py is not '

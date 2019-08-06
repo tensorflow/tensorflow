@@ -106,12 +106,18 @@ tensorflow/lite/kernels/op_macros.h \
 tensorflow/lite/kernels/padding.h \
 tensorflow/lite/kernels/internal/common.h \
 tensorflow/lite/kernels/internal/compatibility.h \
+tensorflow/lite/kernels/internal/optimized/neon_check.h \
+tensorflow/lite/kernels/internal/reference/binary_function.h \
 tensorflow/lite/kernels/internal/reference/conv.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h \
 tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h \
+tensorflow/lite/kernels/internal/reference/floor.h \
 tensorflow/lite/kernels/internal/reference/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/pooling.h \
+tensorflow/lite/kernels/internal/reference/prelu.h \
+tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
+tensorflow/lite/kernels/internal/reference/arg_min_max.h \
 tensorflow/lite/kernels/internal/round.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \
 tensorflow/lite/kernels/internal/types.h \
@@ -150,17 +156,13 @@ ARDUINO_PROJECT_FILES := \
 
 ALL_PROJECT_TARGETS :=
 
-KEIL_PROJECT_FILES := \
-  README_KEIL.md \
-  keil_project.uvprojx
-
 include $(MAKEFILE_DIR)/third_party_downloads.inc
 THIRD_PARTY_DOWNLOADS :=
 $(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
 $(eval $(call add_third_party_download,$(FLATBUFFERS_URL),$(FLATBUFFERS_MD5),flatbuffers,))
 
 # These target-specific makefiles should modify or replace options like
-# CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
+# CXXFLAGS or LIBS to work for a specific targeted architecture. All logic
 # based on platforms or architectures should happen within these files, to
 # keep this main makefile focused on the sources and dependencies.
 include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)

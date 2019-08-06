@@ -474,6 +474,7 @@ REGISTER_OP("ReadFile")
 REGISTER_OP("WriteFile")
     .Input("filename: string")
     .Input("contents: string")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));

@@ -1240,24 +1240,24 @@ class VariableScopeTest(test.TestCase):
             [v.name for v in scope.trainable_variables()],
             ["testGetTrainableVariables_foo/testGetTrainableVariables_b:0"])
 
-        # All other sync values sets trainable=True
-        _ = variable_scope.get_variable(
-            "testGetTrainableVariables_e", [],
-            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
-        self.assertEqual([v.name for v in scope.trainable_variables()], [
-            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
-            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0"
-        ])
-
-      with self.assertRaisesRegexp(
-          ValueError, "Synchronization value can be set to "
-          "VariableSynchronization.ON_READ only for non-trainable variables. "
-          "You have specified trainable=True and "
-          "synchronization=VariableSynchronization.ON_READ."):
         _ = variable_scope.get_variable(
             "testGetTrainableVariables_e", [],
             synchronization=variable_scope.VariableSynchronization.ON_READ,
             trainable=True)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+        ])
+
+        # All other sync values sets trainable=True
+        _ = variable_scope.get_variable(
+            "testGetTrainableVariables_f", [],
+            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_f:0",
+        ])
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
@@ -1280,26 +1280,26 @@ class VariableScopeTest(test.TestCase):
             [v.name for v in scope.trainable_variables()],
             ["testGetTrainableVariables_foo/testGetTrainableVariables_b:0"])
 
-        # All other sync values sets trainable=True
-        _ = variable_scope.variable(
-            1.0,
-            name="testGetTrainableVariables_e",
-            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
-        self.assertEqual([v.name for v in scope.trainable_variables()], [
-            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
-            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0"
-        ])
-
-      with self.assertRaisesRegexp(
-          ValueError, "Synchronization value can be set to "
-          "VariableSynchronization.ON_READ only for non-trainable variables. "
-          "You have specified trainable=True and "
-          "synchronization=VariableSynchronization.ON_READ."):
         _ = variable_scope.variable(
             1.0,
             name="testGetTrainableVariables_e",
             synchronization=variable_scope.VariableSynchronization.ON_READ,
             trainable=True)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+        ])
+
+        # All other sync values sets trainable=True
+        _ = variable_scope.variable(
+            1.0,
+            name="testGetTrainableVariables_f",
+            synchronization=variable_scope.VariableSynchronization.ON_WRITE)
+        self.assertEqual([v.name for v in scope.trainable_variables()], [
+            "testGetTrainableVariables_foo/testGetTrainableVariables_b:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_e:0",
+            "testGetTrainableVariables_foo/testGetTrainableVariables_f:0",
+        ])
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one

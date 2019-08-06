@@ -265,6 +265,30 @@ class DefFunctionTest(test.TestCase):
         functools.partial(f, constant_op.constant(1)))
     self.assertAllEqual(func(5), 6)
 
+  def test_complicated_partial_with_defaults(self):
+
+    def identity(*args):
+      return args
+
+    def dynamic_unroll(core_fn,
+                       input_sequence,
+                       initial_state,
+                       sequence_length=None,
+                       parallel_iterations=1,
+                       swap_memory=False):
+      del core_fn
+      self.assertIs(None, sequence_length)
+      self.assertEqual(1, parallel_iterations)
+      self.assertTrue(swap_memory)
+      return input_sequence, initial_state
+
+    input_sequence = random_ops.random_uniform([1, 1, 1])
+    initial_state = random_ops.random_uniform([1, 1])
+
+    func = def_function.function(
+        functools.partial(dynamic_unroll, identity, swap_memory=True))
+    func(input_sequence, initial_state)
+
   def test_unspecified_default_argument(self):
     wrapped = def_function.function(
         lambda x, y=2: x + y,
@@ -367,7 +391,8 @@ class DefFunctionTest(test.TestCase):
         outputs.append(inputs[t])
       return outputs
 
-    with self.assertRaisesRegexp(ValueError, 'inner'):
+    with self.assertRaisesRegexp(errors.InaccessibleTensorError,
+                                 'defined in another function or code block'):
       f(array_ops.zeros(shape=(8, 42, 3)))
 
   def testRuntimeErrorNotSticky(self):
@@ -434,6 +459,7 @@ class DefFunctionTest(test.TestCase):
     # function itself is not involved in a reference cycle.
     self.assertIs(None, weak_fn())
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testErrorMessageWhenGraphTensorIsPassedToEager(self):
 
     @def_function.function
@@ -553,6 +579,7 @@ class DefFunctionTest(test.TestCase):
     v_holder[1].assign(11.)
     self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
 
+  # TODO(b/137148281): reenable
   @test_util.run_gpu_only
   def testDeviceAnnotationRespected(self):
     a = []
@@ -564,13 +591,13 @@ class DefFunctionTest(test.TestCase):
             (2, 2), maxval=1000000, dtype=dtypes.int64)
 
       if not a:
-        with ops.device("CPU:0"):
+        with ops.device('CPU:0'):
           a.append(resource_variable_ops.ResourceVariable(initial_value))
 
       return a[0].read_value()
 
     created_variable_read = create_variable()
-    self.assertRegexpMatches(created_variable_read.device, "CPU")
+    self.assertRegexpMatches(a[0].device, 'CPU')
 
   def testDecorate(self):
     func = def_function.function(lambda: 1)

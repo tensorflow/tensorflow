@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -45,6 +47,18 @@ limitations under the License.
 
 namespace tensorflow {
 
+std::function<void(std::function<void()>)>* KernelAndDevice::get_runner()
+    const {
+  if (runner_) {
+    return runner_;
+  } else {
+    static auto* default_runner =
+        new std::function<void(std::function<void()>)>(
+            [](std::function<void()> f) { f(); });
+    return default_runner;
+  }
+}
+
 KernelAndDeviceFunc::~KernelAndDeviceFunc() {
   if (handle_ != kInvalidHandle) {
     Status status = pflr_->ReleaseHandle(handle_);
@@ -52,16 +66,6 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
       LOG(INFO) << "Ignoring error status when releasing multi-device function "
                    "handle "
                 << status.ToString();
-    }
-  }
-}
-
-KernelAndDeviceOp::~KernelAndDeviceOp() {
-  // Make sure that the device execution has finished before deleting cm_.
-  {
-    mutex_lock lock(num_deferred_ops_mu_);
-    while (num_deferred_ops_ > 0) {
-      no_deferred_ops_cv_.wait(lock);
     }
   }
 }
@@ -165,18 +169,20 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
 Status KernelAndDeviceOp::Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
                               std::vector<Tensor>* outputs,
                               NodeExecStats* stats, StepStats* step_stats,
-                              GraphCollector* graph_collector) {
+                              GraphCollector* graph_collector,
+                              CancellationManager* cancellation_manager) {
   ScopedStepContainer step_container(0, [this](const string& name) {
     device_->resource_manager()->Cleanup(name).IgnoreError();
   });
   return this->Run(&step_container, inputs, outputs, stats, step_stats,
-                   graph_collector);
+                   graph_collector, cancellation_manager);
 }
 
 Status KernelAndDeviceFunc::Run(
     const gtl::InlinedVector<TensorValue, 4>& inputs,
     std::vector<Tensor>* outputs, NodeExecStats* stats, StepStats* step_stats,
-    GraphCollector* graph_collector) {
+    GraphCollector* graph_collector,
+    CancellationManager* cancellation_manager) {
   const std::vector<Device*> devices = pflr_->device_mgr()->ListDevices();
   ScopedStepContainer step_container(0, [&devices](const string& name) {
     for (Device* device : devices) {
@@ -184,7 +190,7 @@ Status KernelAndDeviceFunc::Run(
     }
   });
   return this->Run(&step_container, inputs, outputs, stats, step_stats,
-                   graph_collector);
+                   graph_collector, cancellation_manager);
 }
 
 namespace {
@@ -201,7 +207,7 @@ void UpdateStats(OpKernelContext* context,
 
     absl::optional<AllocatorStats> allocator_stats =
         allocator_pair.first->GetStats();
-    if (stats) {
+    if (allocator_stats) {
       memory->set_allocator_bytes_in_use(allocator_stats->bytes_in_use);
     }
     allocator_pair.second->GetRecordsAndUnRef();
@@ -215,13 +221,23 @@ void UpdateStats(OpKernelContext* context,
   ms->set_persistent_memory_size(context->persistent_memory_allocated());
   step_stats_collector->Finalize();
 }
+
+// In certain contexts (e.g. TPU async executions), the CancellationManager is
+// used to shut down the device in error scenarios (as opposed to using the
+// AsyncCompute's DoneCallback). This is handled through the
+// {inc,dec}_num_deferred_ops_function.
+struct OpExecutionState : public core::RefCounted {
+  // TODO(nareshmodi): consider refcounting the cancellation_manager.
+  CancellationManager cancellation_manager;
+};
 }  // anonymous namespace
 
 Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
                               const gtl::InlinedVector<TensorValue, 4>& inputs,
                               std::vector<Tensor>* outputs,
                               NodeExecStats* stats, StepStats* step_stats,
-                              GraphCollector* graph_collector) {
+                              GraphCollector* graph_collector,
+                              CancellationManager* cancellation_manager) {
   gtl::InlinedVector<AllocatorAttributes, 4> in_attrs(kernel_->num_inputs());
   for (size_t i = 0; i < in_attrs.size(); ++i) {
     in_attrs[i].set_on_host(kernel_->input_memory_types()[i] ==
@@ -253,18 +269,22 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
-  params.cancellation_manager = &cm_;
-  cm_.Reset();
+  OpExecutionState* op_execution_state = nullptr;
+  if (cancellation_manager) {
+    params.cancellation_manager = cancellation_manager;
+  } else {
+    op_execution_state = new OpExecutionState;
+    params.cancellation_manager = &op_execution_state->cancellation_manager;
+  }
   params.log_memory = log_memory_;
-  params.inc_num_deferred_ops_function = [this]() {
-    mutex_lock lock(num_deferred_ops_mu_);
-    num_deferred_ops_++;
+  params.inc_num_deferred_ops_function = [op_execution_state]() {
+    if (op_execution_state != nullptr) {
+      op_execution_state->Ref();
+    }
   };
-  params.dec_num_deferred_ops_function = [this]() {
-    mutex_lock lock(num_deferred_ops_mu_);
-    num_deferred_ops_--;
-    if (num_deferred_ops_ == 0) {
-      no_deferred_ops_cv_.notify_all();
+  params.dec_num_deferred_ops_function = [op_execution_state]() {
+    if (op_execution_state != nullptr) {
+      op_execution_state->Unref();
     }
   };
   std::unique_ptr<StepStatsCollector> step_stats_collector;
@@ -274,7 +294,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     params.stats_collector = step_stats_collector.get();
     params.graph_collector = graph_collector;
   }
-  params.runner = runner_ != nullptr ? runner_ : &default_runner_;
+  params.runner = get_runner();
 
   params.step_container = step_container;
   params.collective_executor =
@@ -293,28 +313,32 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
     done.WaitForNotification();
   } else {
     const string& op_name = kernel_->name();
-    // If tracing if off, the overheads of ScopedAnnotation and TraceMe
-    // are negligible.
-    if (device_->TraceUsingAnnotations()) {
-      // 'ScopedActivity' will trace the OpKernel scheduling time on host.
-      profiler::TraceMe activity(
-          [&] { return strings::StrCat(op_name, ":", kernel_->type_string()); },
-          profiler::TraceMeLevel::kInfo);
-      // 'ScopedAnnotation' will trace the OpKernel execution time on device.
-      tracing::ScopedAnnotation annotation(op_name, kernel_->type_string());
-      device_->Compute(kernel_.get(), &context);
-    } else {
-      profiler::TraceMe activity(
-          [&] { return strings::StrCat(op_name, ":", kernel_->type_string()); },
-          profiler::TraceMeLevel::kInfo);
-      device_->Compute(kernel_.get(), &context);
-    }
+    // 'ScopedActivity' will trace the OpKernel scheduling time on host.
+    profiler::TraceMe activity(
+        [&] {
+          return absl::StrCat(op_name, ":", kernel_->type_string(), "#id=",
+                              step_container ? step_container->step_id() : 0,
+                              ",device=", device_->name(), ",async=false#");
+        },
+        profiler::TraceMeLevel::kInfo);
+    // 'ScopedAnnotation' will trace the OpKernel execution time on device.
+    tracing::ScopedAnnotation annotation(
+        [&]() { return absl::StrCat(op_name, ":", kernel_->type_string()); });
+    device_->Compute(kernel_.get(), &context);
   }
+
+  // Clean up execution op_execution_state if deferred ops aren't running.
+  if (op_execution_state != nullptr) {
+    op_execution_state->Unref();
+  }
+
   if (!context.status().ok()) return context.status();
 
-  outputs->clear();
-  for (int i = 0; i < context.num_outputs(); ++i) {
-    outputs->push_back(Tensor(*context.mutable_output(i)));
+  if (outputs != nullptr) {
+    outputs->clear();
+    for (int i = 0; i < context.num_outputs(); ++i) {
+      outputs->push_back(Tensor(*context.mutable_output(i)));
+    }
   }
   if (stats != nullptr) {
     UpdateStats(&context, step_stats_collector.get(), stats);
@@ -326,7 +350,8 @@ Status KernelAndDeviceFunc::Run(
     ScopedStepContainer* step_container,
     const gtl::InlinedVector<TensorValue, 4>& inputs,
     std::vector<Tensor>* outputs, NodeExecStats* stats, StepStats* step_stats,
-    GraphCollector* graph_collector) {
+    GraphCollector* graph_collector,
+    CancellationManager* cancellation_manager) {
   FunctionLibraryRuntime::Options opts;
 
   // We don't pass rendezvous from eager context because we can get tensor
@@ -336,8 +361,12 @@ Status KernelAndDeviceFunc::Run(
   opts.rendezvous = rendezvous;
   opts.create_rendezvous = false;
 
-  opts.cancellation_manager = &cm_;
-  cm_.Reset();
+  CancellationManager cm;
+  if (cancellation_manager) {
+    opts.cancellation_manager = cancellation_manager;
+  } else {
+    opts.cancellation_manager = &cm;
+  }
   opts.allow_dead_tensors = true;
   opts.step_container = step_container;
   opts.collective_executor =
@@ -348,7 +377,7 @@ Status KernelAndDeviceFunc::Run(
     step_stats_collector.reset(new StepStatsCollector(step_stats));
   }
   opts.stats_collector = step_stats_collector.get();
-  opts.runner = (runner_ == nullptr) ? &default_runner_ : runner_;
+  opts.runner = get_runner();
 
   Notification done;
   Status status;
@@ -358,13 +387,17 @@ Status KernelAndDeviceFunc::Run(
   for (const TensorValue& tensor_value : inputs) {
     input_vector.push_back(*tensor_value.tensor);
   }
-
-  pflr_->Run(opts, handle_, input_vector, outputs,
-             [&status, &done](const Status& s) {
-               status = s;
-               done.Notify();
-             });
-  done.WaitForNotification();
+  {
+    profiler::TraceMe activity(
+        [&] { return absl::StrCat("FunctionRun:", name()); },
+        profiler::TraceMeLevel::kInfo);
+    pflr_->Run(opts, handle_, input_vector, outputs,
+               [&status, &done](const Status& s) {
+                 status = s;
+                 done.Notify();
+               });
+    done.WaitForNotification();
+  }
 
   rendezvous->Unref();
   if (step_stats_collector != nullptr) {

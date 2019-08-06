@@ -1,10 +1,9 @@
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "feature_column_py",
@@ -46,7 +45,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:engine",
         "@six_archive//:six",
     ],
 )
@@ -54,6 +53,8 @@ py_library(
 py_library(
     name = "feature_column_v2",
     srcs = [
+        "dense_features.py",
+        "dense_features_v2.py",
         "feature_column_v2.py",
         "sequence_feature_column.py",
         "serialization.py",
@@ -84,7 +85,9 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:generic_utils",
+        "//tensorflow/python/keras:layers_base",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -112,6 +115,15 @@ tf_py_test(
         "no_pip",
         "no_windows",
     ],
+)
+
+tf_py_test(
+    name = "dense_features_test",
+    srcs = ["dense_features_test.py"],
+    additional_deps = [
+        ":feature_column_test_main_lib",
+    ],
+    tags = ["no_pip"],
 )
 
 py_library(
@@ -155,6 +167,15 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "dense_features_v2_test",
+    srcs = ["dense_features_v2_test.py"],
+    additional_deps = [
+        ":feature_column_v2_test_main_lib",
+    ],
+    tags = ["no_pip"],
+)
+
 py_library(
     name = "feature_column_v2_test_main_lib",
     srcs = ["feature_column_v2_test.py"],
@@ -180,7 +201,6 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
 )
@@ -231,5 +251,16 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/keras:layers",
+    ],
+)
+
+tf_py_test(
+    name = "serialization_test",
+    srcs = ["serialization_test.py"],
+    additional_deps = [
+        ":feature_column_v2",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:util",
     ],
 )

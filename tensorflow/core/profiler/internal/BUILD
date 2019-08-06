@@ -1,13 +1,10 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "if_not_windows", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 cc_library(
     name = "tfprof_stats",
@@ -373,8 +370,8 @@ tf_cuda_library(
     srcs = ["traceme_recorder.cc"],
     hdrs = ["traceme_recorder.h"],
     visibility = [
-        "//learning/brain/runtime:__pkg__",  # xprof_bridge
-        "//perftools/accelerators/xprof/xprofilez:__pkg__",  # alias xprof::TraceMeRecorder
+        "//perftools/accelerators/xprof/xprofilez/cpu:__pkg__",  # host_tracer
+        "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",  # traceme_test
         "//tensorflow/core:__pkg__",  # executor.cc
         "//tensorflow/core/profiler/internal/cpu:__pkg__",  # host_tracer
         "//tensorflow/core/profiler/lib:__pkg__",  # traceme
@@ -382,7 +379,6 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -421,4 +417,33 @@ filegroup(
         "traceme_recorder.h",
     ],
     visibility = ["//visibility:public"],
+)
+
+tf_cc_test(
+    name = "scoped_annotation_test",
+    size = "small",
+    srcs = ["scoped_annotation_test.cc"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:device_tracer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_library(
+    name = "python_traceme",
+    hdrs = ["python_traceme.h"],
+    visibility = ["//tensorflow/python:__pkg__"],
+    deps = [
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/types:optional",
+    ],
 )

@@ -1,5 +1,7 @@
 # Tools and utilities that aid in XLA development and usage.
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+
 package(
     default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],  # Apache 2.0
@@ -14,8 +16,6 @@ filegroup(
     ]),
     visibility = ["//tensorflow/compiler/xla:internal"],
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
 tf_cc_binary(
     name = "hex_floats_to_packed_literal",

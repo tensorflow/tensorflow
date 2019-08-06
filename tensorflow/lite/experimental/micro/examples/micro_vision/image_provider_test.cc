@@ -28,16 +28,15 @@ TF_LITE_MICRO_TEST(TestImageProvider) {
   tflite::MicroErrorReporter micro_error_reporter;
   tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
-  int image_size = 0;
-  uint8_t* image_data = nullptr;
-  TfLiteStatus get_status = GetImage(error_reporter, &image_size, &image_data);
+  uint8_t image_data[kMaxImageSize];
+  TfLiteStatus get_status =
+      GetImage(error_reporter, kNumCols, kNumRows, kNumChannels, image_data);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, get_status);
-  TF_LITE_MICRO_EXPECT_LE(image_size, kMaxImageSize);
   TF_LITE_MICRO_EXPECT_NE(image_data, nullptr);
 
   // Make sure we can read all of the returned memory locations.
   uint32_t total = 0;
-  for (int i = 0; i < image_size; ++i) {
+  for (int i = 0; i < kMaxImageSize; ++i) {
     total += image_data[i];
   }
 }

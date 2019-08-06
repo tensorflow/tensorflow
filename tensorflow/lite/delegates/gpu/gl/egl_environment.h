@@ -53,9 +53,9 @@ class EglEnvironment {
   Status InitPBufferContext();
 
   EGLDisplay display_ = EGL_NO_DISPLAY;
-  EglContext context_;
   EglSurface surface_draw_;
   EglSurface surface_read_;
+  EglContext context_;
   GpuInfo gpu_info_;
 
   // Strange hack that helps on Mali GPUs

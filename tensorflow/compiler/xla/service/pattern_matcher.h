@@ -1248,6 +1248,32 @@ class HloInstructionPatternOpcodeImpl {
 };
 
 // An HloInstructionPattern implementation that matches only if the instruction
+// has a given custom call target.
+class HloInstructionCustomCallTargetImpl {
+ public:
+  explicit HloInstructionCustomCallTargetImpl(
+      absl::string_view custom_call_target)
+      : custom_call_target_(custom_call_target) {}
+
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    if (inst->opcode() != HloOpcode::kCustomCall ||
+        inst->custom_call_target() != custom_call_target_) {
+      EXPLAIN << "HloInstruction is not a custom call with a target '"
+              << custom_call_target_ << "'";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64 indent = 0) const {
+    *os << "custom call with target '" << custom_call_target_ << "'";
+  }
+
+ private:
+  std::string custom_call_target_;
+};
+
+// An HloInstructionPattern implementation that matches only if the instruction
 // has the given number of operands.
 class HloInstructionPatternNumOperandsImpl {
  public:
@@ -1753,30 +1779,19 @@ class HloConstantScalarImpl {
       return true;
     }
 
-    // Check that literal == static_cast<LitearlTy>(val) and
-    // val == static_cast<ValTy>(literal).  This is sufficient to ensure that
-    // the two constant scalars are actually "equal".
-    auto val_literal = LiteralUtil::CreateR0(*val_);
-    auto literal_r0_or = const_inst->literal().Reshape({});
-    auto val_as_literal_ty_or =
-        val_literal.Convert(const_inst->shape().element_type());
-    if (!literal_r0_or.ok() || !val_as_literal_ty_or.ok()) {
-      EXPLAIN << "could not construct relevant Literals (how did this happen?)";
+    auto const_inst_scalar_or = const_inst->literal().Reshape({});
+    if (!const_inst_scalar_or.ok()) {
+      EXPLAIN << "could not convert matched literal to effective scalar";
       return false;
     }
-    auto literal_r0 = std::move(literal_r0_or).ValueOrDie();
-    auto val_as_literal_ty = std::move(val_as_literal_ty_or).ValueOrDie();
-    auto literal_r0_as_val_ty_or =
-        literal_r0.Convert(val_literal.shape().element_type());
-    bool rv = literal_r0_as_val_ty_or.ok() &&  //
-              literal_r0_as_val_ty_or.ValueOrDie() == val_literal &&
-              literal_r0 == val_as_literal_ty;
-    if (!rv) {
+    Literal const_inst_scalar = std::move(const_inst_scalar_or).ValueOrDie();
+    if (!const_inst_scalar.IsEqualAt({}, *val_)) {
       EXPLAIN << "HloInstruction's constant value "
-              << literal_r0.ToStringWithoutShape()
+              << const_inst_scalar.ToStringWithoutShape()
               << " did not match expected value " << *val_;
+      return false;
     }
-    return rv;
+    return true;
   }
 
   absl::optional<ScalarTy> val_;
@@ -1838,6 +1853,13 @@ class HloInstructionPattern {
       -> decltype(this->AppendImpl(HloInstructionPatternOpcodeImpl(opcode,
                                                                    false))) {
     return AppendImpl(HloInstructionPatternOpcodeImpl(opcode, false));
+  }
+
+  // Modifies the pattern to match only the custom call with a given target.
+  auto WithCustomCallTarget(absl::string_view custom_call_target) const
+      -> decltype(this->AppendImpl(
+          HloInstructionCustomCallTargetImpl(custom_call_target))) {
+    return AppendImpl(HloInstructionCustomCallTargetImpl(custom_call_target));
   }
 
   auto WithNumOperands(int64 num_operands) const -> decltype(
@@ -2074,6 +2096,7 @@ XLA_NULLOP_PATTERN(Rng)
 XLA_UNOP_PATTERN(Abs)
 XLA_UNOP_PATTERN(RoundNearestAfz)
 XLA_UNOP_PATTERN(Bitcast)
+XLA_UNOP_PATTERN(BitcastConvert)
 XLA_UNOP_PATTERN(Broadcast)
 XLA_UNOP_PATTERN(Ceil)
 XLA_UNOP_PATTERN(Convert)
@@ -2275,6 +2298,7 @@ XLA_VARIADIC_OP_PATTERN(AfterAll);
 XLA_VARIADIC_OP_PATTERN(Concatenate);
 XLA_VARIADIC_OP_PATTERN(CustomCall);
 XLA_VARIADIC_OP_PATTERN(DynamicSlice)
+XLA_VARIADIC_OP_PATTERN(Fusion);
 XLA_VARIADIC_OP_PATTERN(Map)
 XLA_VARIADIC_OP_PATTERN(Reduce);
 XLA_VARIADIC_OP_PATTERN(Sort);

@@ -17,13 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import os
-import shutil
-import tempfile
-
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+import uuid
+from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import mode_keys
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import tracking
 
@@ -32,6 +34,27 @@ from tensorflow.python.training.tracking import tracking
 CKPT_SAVED_EPOCH = '_ckpt_saved_epoch'
 
 CKPT_SAVED_EPOCH_UNUSED_VALUE = -1
+
+
+def checkpoint_exists(filepath):
+  """Returns whether the checkpoint `filepath` refers to exists."""
+  if filepath.endswith('.h5'):
+    return file_io.file_exists(filepath)
+  tf_saved_model_exists = file_io.file_exists(filepath)
+  tf_weights_only_checkpoint_exists = file_io.file_exists(filepath + '.index')
+  return tf_saved_model_exists or tf_weights_only_checkpoint_exists
+
+
+def remove_checkpoint_if_exists(ckpt_dir, filepath):
+  """Removes the checkpoint if it exists and returns whether it has removed."""
+  if checkpoint_exists(filepath):
+    _remove_dir(ckpt_dir)
+    return True
+  return False
+
+
+def _remove_dir(dir_to_remove):
+  file_io.delete_recursively(dir_to_remove)
 
 
 class MultiWorkerTrainingState(object):
@@ -52,12 +75,16 @@ class MultiWorkerTrainingState(object):
     # For those who should not checkpoint (e.g. non-chief worker in sync
     # training), create a temporary directory to write to (that will be
     # removed later).
-    if not dc_context.get_current_worker_context().should_checkpoint:
-      self._temp_dir, self._temp_filepath = self._get_temp_filepath()
+    if not multi_worker_util.should_save_checkpoint():
+      self._temp_dir, self._temp_filepath = self._get_temp_filepath(
+          original_filepath)
 
     # The epoch at which the checkpoint is saved. Used for fault-tolerance.
+    # GPU device only has int64 dtype registered VarHandleOp.
     self._ckpt_saved_epoch = variables.Variable(
-        initial_value=CKPT_SAVED_EPOCH_UNUSED_VALUE, name='ckpt_saved_epoch')
+        initial_value=constant_op.constant(
+            CKPT_SAVED_EPOCH_UNUSED_VALUE, dtype=dtypes.int64),
+        name='ckpt_saved_epoch')
 
     # Variable initialization.
     K.set_value(self._ckpt_saved_epoch, CKPT_SAVED_EPOCH_UNUSED_VALUE)
@@ -87,7 +114,7 @@ class MultiWorkerTrainingState(object):
     # call. This is because the SyncOnReadVariable needs to be synced across
     # all the workers in order to be read, and all workers need to initiate
     # that.
-    if dc_context.get_current_worker_context().should_checkpoint:
+    if multi_worker_util.should_save_checkpoint():
       save_filepath = self._backup_filepath
     else:
       save_filepath = self._temp_filepath
@@ -95,11 +122,11 @@ class MultiWorkerTrainingState(object):
     # Save the weights plus CKPT_SAVED_EPOCH variable.
     self._model.save_weights(save_filepath, overwrite=True)
 
-    if not dc_context.get_current_worker_context().should_checkpoint:
+    if not multi_worker_util.should_save_checkpoint():
       # Remove the file in multi-worker training where this worker should
       # not checkpoint. It is a dummy file previously saved for sync distributed
       # training.
-      self._remove_dir(self._temp_dir)
+      _remove_dir(self._temp_dir)
 
   def restore(self):
     """Restore the training state from the backed up checkpoint file.
@@ -109,11 +136,11 @@ class MultiWorkerTrainingState(object):
       state doesn't need to be restored, or error occurred so it can't.
     """
     self._assert_in_multi_worker_mode()
-    if not dc_context.get_current_worker_context().experimental_should_init:
+    if not multi_worker_util.should_load_checkpoint():
       # For multi-worker training, it should not restore a model in certain
       # worker setting (e.g. non-chief worker in ParameterServerStrategy).
       return False
-    if os.path.exists(self._backup_dir):
+    if file_io.file_exists(self._backup_dir):
       try:
         # Load the weights plus CKPT_SAVED_EPOCH variable.
         self._model.load_weights(self._backup_filepath)
@@ -132,10 +159,10 @@ class MultiWorkerTrainingState(object):
     """
     self._assert_in_multi_worker_mode()
     tracking.AutoTrackable.__delattr__(self._model, CKPT_SAVED_EPOCH)
-    if dc_context.get_current_worker_context().should_checkpoint:
-      self._remove_dir(self._backup_dir)
+    if multi_worker_util.should_save_checkpoint():
+      _remove_dir(self._backup_dir)
     else:
-      assert not os.path.exists(self._temp_dir)
+      assert not file_io.file_exists(self._temp_dir)
 
   def maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
@@ -166,19 +193,34 @@ class MultiWorkerTrainingState(object):
       return epoch + 1
     return initial_epoch
 
+  @contextlib.contextmanager
+  def untrack_vars(self):
+    """Provides a scope within which training state variables are untracked.
+
+    Regular checkpoint file saved by `ModelCheckpoint` callback that the user
+    requests should not contain training state variables such as
+    `CKPT_SAVED_EPOCH`, or the epoch the checkpoint is most recently saved at.
+
+    Yields:
+      None.
+    """
+    tracking.AutoTrackable.__delattr__(self._model, CKPT_SAVED_EPOCH)
+    yield
+    tracking.AutoTrackable.__setattr__(self._model, CKPT_SAVED_EPOCH,
+                                       self._ckpt_saved_epoch)
+
   def _get_backup_filepath(self, original_filepath):
     backup_dir = os.path.join(os.path.dirname(original_filepath), 'backup')
     return backup_dir, os.path.join(backup_dir, 'training_state')
 
-  def _get_temp_filepath(self):
-    temp_dir = tempfile.mkdtemp()
-    return temp_dir, os.path.join(temp_dir, 'temp_training_state')
-
-  def _remove_dir(self, dir_to_remove):
-    shutil.rmtree(dir_to_remove)
+  def _get_temp_filepath(self, original_filepath):
+    temp_dir = os.path.join(
+        os.path.dirname(original_filepath), 'temp_training_states',
+        str(uuid.uuid4()))
+    return temp_dir, os.path.join(temp_dir, 'training_state')
 
   def _assert_in_multi_worker_mode(self):
-    if not K.in_multi_worker_mode():
+    if not multi_worker_util.in_multi_worker_mode():
       raise ValueError('MultiWorkerTrainingState is only supposed to be used '
                        'in multi-worker training. This indicates some error '
                        'that needs to be fixed. Please submit a bug issue to '

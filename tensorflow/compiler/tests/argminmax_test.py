@@ -51,7 +51,7 @@ class ArgMinMaxTest(xla_test.XLATestCase):
   def testArgMinMax(self):
     # Complex numbers do not support argmin/argmax.
     minmax_types = self.all_types & {np.int32, np.int64}
-    for dtype in minmax_types:
+    for dtype in self.int_types | self.float_types:
       # output_type is a numpy data type that is used to specify the desired
       # output type of the op as well as to convert the Python number to the
       # array scalar of the type.

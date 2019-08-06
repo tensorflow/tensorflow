@@ -32,6 +32,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import gen_sparse_ops
@@ -253,9 +254,9 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
       labels * -log(sigmoid(logits)) +
           (1 - labels) * -log(1 - sigmoid(logits))
 
-  A value `pos_weights > 1` decreases the false negative count, hence increasing
+  A value `pos_weight > 1` decreases the false negative count, hence increasing
   the recall.
-  Conversely setting `pos_weights < 1` decreases the false positive count and
+  Conversely setting `pos_weight < 1` decreases the false positive count and
   increases the precision.
   This can be seen from the fact that `pos_weight` is introduced as a
   multiplicative coefficient for the positive labels term
@@ -329,30 +330,40 @@ def weighted_cross_entropy_with_logits(labels=None,
   This is like `sigmoid_cross_entropy_with_logits()` except that `pos_weight`,
   allows one to trade off recall and precision by up- or down-weighting the
   cost of a positive error relative to a negative error.
+
   The usual cross-entropy cost is defined as:
+
       labels * -log(sigmoid(logits)) +
           (1 - labels) * -log(1 - sigmoid(logits))
-  A value `pos_weights > 1` decreases the false negative count, hence increasing
+
+  A value `pos_weight > 1` decreases the false negative count, hence increasing
   the recall.
-  Conversely setting `pos_weights < 1` decreases the false positive count and
+  Conversely setting `pos_weight < 1` decreases the false positive count and
   increases the precision.
   This can be seen from the fact that `pos_weight` is introduced as a
   multiplicative coefficient for the positive labels term
   in the loss expression:
+
       labels * -log(sigmoid(logits)) * pos_weight +
           (1 - labels) * -log(1 - sigmoid(logits))
+
   For brevity, let `x = logits`, `z = labels`, `q = pos_weight`.
   The loss is:
+
         qz * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
       = qz * -log(1 / (1 + exp(-x))) + (1 - z) * -log(exp(-x) / (1 + exp(-x)))
       = qz * log(1 + exp(-x)) + (1 - z) * (-log(exp(-x)) + log(1 + exp(-x)))
       = qz * log(1 + exp(-x)) + (1 - z) * (x + log(1 + exp(-x))
       = (1 - z) * x + (qz +  1 - z) * log(1 + exp(-x))
       = (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
+
   Setting `l = (1 + (q - 1) * z)`, to ensure stability and avoid overflow,
   the implementation uses
+
       (1 - z) * x + l * (log(1 + exp(-abs(x))) + max(-x, 0))
+
   `logits` and `labels` must have the same type and shape.
+
   Args:
     labels: A `Tensor` of the same type and shape as `logits`.
     logits: A `Tensor` of type `float32` or `float64`.
@@ -363,6 +374,7 @@ def weighted_cross_entropy_with_logits(labels=None,
   Returns:
     A `Tensor` of the same shape as `logits` with the componentwise
     weighted logistic losses.
+
   Raises:
     ValueError: If `logits` and `labels` do not have the same shape.
   """
@@ -531,6 +543,59 @@ def swish(features):
   return features * math_ops.sigmoid(features)
 
 
+# pylint: disable=redefined-builtin
+@tf_export("linalg.normalize")
+def normalize(tensor, ord="euclidean", axis=None, name=None):
+  """Normalizes `tensor` along dimension `axis` using specified norm.
+
+  This uses `tf.linalg.norm` to compute the norm along `axis`.
+
+  This function can compute several different vector norms (the 1-norm, the
+  Euclidean or 2-norm, the inf-norm, and in general the p-norm for p > 0) and
+  matrix norms (Frobenius, 1-norm, 2-norm and inf-norm).
+
+  Args:
+    tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
+    ord: Order of the norm. Supported values are `'fro'`, `'euclidean'`, `1`,
+      `2`, `np.inf` and any positive real number yielding the corresponding
+      p-norm. Default is `'euclidean'` which is equivalent to Frobenius norm if
+      `tensor` is a matrix and equivalent to 2-norm for vectors.
+      Some restrictions apply: a) The Frobenius norm `'fro'` is not defined for
+        vectors, b) If axis is a 2-tuple (matrix norm), only `'euclidean'`,
+        '`fro'`, `1`, `2`, `np.inf` are supported. See the description of `axis`
+        on how to compute norms for a batch of vectors or matrices stored in a
+        tensor.
+    axis: If `axis` is `None` (the default), the input is considered a vector
+      and a single vector norm is computed over the entire set of values in the
+      tensor, i.e. `norm(tensor, ord=ord)` is equivalent to
+      `norm(reshape(tensor, [-1]), ord=ord)`. If `axis` is a Python integer, the
+      input is considered a batch of vectors, and `axis` determines the axis in
+      `tensor` over which to compute vector norms. If `axis` is a 2-tuple of
+      Python integers it is considered a batch of matrices and `axis` determines
+      the axes in `tensor` over which to compute a matrix norm.
+      Negative indices are supported. Example: If you are passing a tensor that
+        can be either a matrix or a batch of matrices at runtime, pass
+        `axis=[-2,-1]` instead of `axis=None` to make sure that matrix norms are
+        computed.
+    name: The name of the op.
+
+  Returns:
+    normalized: A normalized `Tensor` with the same shape as `tensor`.
+    norm: The computed norms with the same shape and dtype `tensor` but the
+      final axis is 1 instead. Same as running
+      `tf.cast(tf.linalg.norm(tensor, ord, axis keepdims=True), tensor.dtype)`.
+
+  Raises:
+    ValueError: If `ord` or `axis` is invalid.
+  """
+  with ops.name_scope(name, "normalize", [tensor]) as name:
+    tensor = ops.convert_to_tensor(tensor)
+    norm = linalg_ops.norm(tensor, ord, axis, keepdims=True)
+    norm = math_ops.cast(norm, tensor.dtype)
+    normalized = tensor / norm
+    return normalized, norm
+
+
 @tf_export(v1=["math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize"])
 @deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
@@ -650,6 +715,22 @@ def zero_fraction(value, name=None):
     return array_ops.identity(zero_fraction_float32, "fraction")
 
 
+# copybara:strip_begin
+# TODO(b/138808492): Remove code inside copybara
+# to make TPU code and CPU code consistent.
+def _enclosing_tpu_context():
+  # pylint: disable=protected-access
+  context = ops.get_default_graph()._get_control_flow_context()
+  # pylint: enable=protected-access
+  while context is not None and not isinstance(
+      context, control_flow_ops.XLAControlFlowContext):
+    context = context.outer_context
+  return context
+
+
+# copybara:strip_end
+
+
 # pylint: disable=redefined-builtin
 @tf_export(v1=["nn.depthwise_conv2d"])
 def depthwise_conv2d(input,
@@ -708,6 +789,25 @@ def depthwise_conv2d(input,
     filter = ops.convert_to_tensor(filter, name="filter_in")
     if rate is None:
       rate = [1, 1]
+
+    # copybara:strip_begin
+    # TODO(b/138808492): Remove code inside copybara
+    # to make TPU code and CPU code consistent.
+    # Use depthwise_conv2d_native if executing on TPU.
+    if _enclosing_tpu_context() is not None:
+      if data_format == "NCHW":
+        dilations = [1, 1, rate[0], rate[1]]
+      else:
+        dilations = [1, rate[0], rate[1], 1]
+      return nn_ops.depthwise_conv2d_native(
+          input=input,
+          filter=filter,
+          strides=strides,
+          padding=padding,
+          data_format=data_format,
+          dilations=dilations,
+          name=name)
+    # copybara:strip_end
 
     def op(input_converted, _, padding):
       return nn_ops.depthwise_conv2d_native(

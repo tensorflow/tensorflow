@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,8 +18,6 @@ package(
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "core_layers",

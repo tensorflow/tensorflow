@@ -23,6 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class CSVDatasetOp : public DatasetOpKernel {
@@ -854,10 +855,11 @@ class CSVDatasetOp : public DatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };  // class CSVDatasetOp
 
-// Register the kernel implementation for CSVDataset.
+REGISTER_KERNEL_BUILDER(Name("CSVDataset").Device(DEVICE_CPU), CSVDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalCSVDataset").Device(DEVICE_CPU),
                         CSVDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

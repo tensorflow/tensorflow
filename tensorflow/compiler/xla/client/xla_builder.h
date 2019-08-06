@@ -343,9 +343,11 @@ class XlaBuilder {
             const PaddingConfig& padding_config);
 
   XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> dimensions,
-                absl::Span<const int64> new_sizes);
+                absl::Span<const int64> new_sizes,
+                int64 inferred_dimension = -1);
 
-  XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> new_sizes);
+  XlaOp Reshape(const XlaOp& operand, absl::Span<const int64> new_sizes,
+                int64 inferred_dimension = -1);
 
   XlaOp Collapse(const XlaOp& operand, absl::Span<const int64> dimensions);
 
@@ -623,7 +625,8 @@ class XlaBuilder {
 
   // Internal helper method for creating a Reshape op with the already inferred
   // shape.
-  StatusOr<XlaOp> Reshape(const Shape& shape, const XlaOp& operand);
+  StatusOr<XlaOp> Reshape(const Shape& shape, XlaOp operand,
+                          int64 inferred_dimension = -1);
 
   // Returns the (inferred) result for the program shape using the given root.
   StatusOr<ProgramShape> GetProgramShape(int64 root_id) const;
@@ -730,6 +733,10 @@ class XlaBuilder {
                        absl::Span<const int64> new_sizes);
 
   friend XlaOp Reshape(XlaOp operand, absl::Span<const int64> new_sizes);
+
+  friend XlaOp ReshapeWithInferredDimension(const XlaOp& operand,
+                                            absl::Span<const int64> new_sizes,
+                                            int64 inferred_dimension);
 
   friend XlaOp Collapse(XlaOp operand, absl::Span<const int64> dimensions);
 
@@ -1157,6 +1164,14 @@ XlaOp Reshape(XlaOp operand, absl::Span<const int64> dimensions,
 // sizes. Conceptually, this is a limited form of "shape casting".
 XlaOp Reshape(XlaOp operand, absl::Span<const int64> new_sizes);
 
+// `inferred_dimension` represents the output dimension that's inferred by
+// upper-level framework by dividing the input element count by the known
+// output element count. While an inferred_dimension can be static, if there
+// is a dynamic dimension in the output, it must be the inferred dimension.
+XlaOp ReshapeWithInferredDimension(const XlaOp& operand,
+                                   absl::Span<const int64> new_sizes,
+                                   int64 inferred_dimension);
+
 // Wrapper for Reshape.
 // Enqueues an operation to collapse the provided dimensions; e.g. an
 // operand with dimensions {x=256, y=2, z=2, p=32} can be collapsed to
@@ -1381,8 +1396,7 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
 // triangle. The data returned in the other output triangle is arbitrary and
 // implementation-defined.
 //
-// The value returned if `a` is not Hermitian positive definite is
-// implementation-defined.
+// If `a` is not Hermitian positive definite, returns an array full of NaNs.
 XlaOp Cholesky(XlaOp a, bool lower);
 
 // Enqueues an infeed instruction onto the computation, which writes data of

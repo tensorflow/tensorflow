@@ -41,6 +41,11 @@ void TFL_InterpreterOptionsAddCustomOp(TFL_InterpreterOptions* options,
   options->op_resolver.AddCustom(name, registration, min_version, max_version);
 }
 
+void TFL_InterpreterOptionsAddDelegate(TFL_InterpreterOptions* options,
+                                       TFL_Delegate* delegate) {
+  options->delegates.push_back(delegate);
+}
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

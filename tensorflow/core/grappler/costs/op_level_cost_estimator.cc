@@ -60,6 +60,13 @@ constexpr char kStopGradient[] = "StopGradient";
 constexpr char kPreventGradient[] = "PreventGradient";
 constexpr char kGather[] = "Gather";
 constexpr char kGatherV2[] = "GatherV2";
+constexpr char kScatterAdd[] = "ScatterAdd";
+constexpr char kScatterDiv[] = "ScatterDiv";
+constexpr char kScatterMax[] = "ScatterMax";
+constexpr char kScatterMin[] = "ScatterMin";
+constexpr char kScatterMul[] = "ScatterMul";
+constexpr char kScatterSub[] = "ScatterSub";
+constexpr char kScatterUpdate[] = "ScatterUpdate";
 constexpr char kSlice[] = "Slice";
 constexpr char kMaxPool[] = "MaxPool";
 constexpr char kMaxPoolGrad[] = "MaxPoolGrad";
@@ -81,7 +88,9 @@ constexpr char kVariable[] = "Variable";
 constexpr char kVariableV2[] = "VariableV2";
 constexpr char kAutoReloadVariable[] = "AutoReloadVariable";
 constexpr char kVarHandleOp[] = "VarHandleOp";
+constexpr char kVarHandlesOp[] = "_VarHandlesOp";
 constexpr char kReadVariableOp[] = "ReadVariableOp";
+constexpr char kReadVariablesOp[] = "_ReadVariablesOp";
 
 static const Costs::Duration kMinComputeTime(1);
 
@@ -245,71 +254,126 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
     };
   };
 
-  device_cost_impl_ = {
-      {kConv2d, wrap(&OpLevelCostEstimator::PredictConv2D)},
-      {kConv2dBackpropFilter,
-       wrap(&OpLevelCostEstimator::PredictConv2DBackpropFilter)},
-      {kConv2dBackpropInput,
-       wrap(&OpLevelCostEstimator::PredictConv2DBackpropInput)},
-      {kFusedConv2dBiasActivation,
-       wrap(&OpLevelCostEstimator::PredictFusedConv2DBiasActivation)},
-      // reuse Conv2D for DepthwiseConv2dNative because the calculation is the
-      // same although the actual meaning of the parameters are different. See
-      // comments in PredictConv2D and related functions
-      {kDepthwiseConv2dNative, wrap(&OpLevelCostEstimator::PredictConv2D)},
-      {kDepthwiseConv2dNativeBackpropFilter,
-       wrap(&OpLevelCostEstimator::PredictConv2DBackpropFilter)},
-      {kDepthwiseConv2dNativeBackpropInput,
-       wrap(&OpLevelCostEstimator::PredictConv2DBackpropInput)},
-      {kMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
-      {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
-      {kSparseTensorDenseMatMul,
-       wrap(&OpLevelCostEstimator::PredictSparseTensorDenseMatMul)},
-      {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
-      {kQuantizedMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
-      {kQuantizedMatMulV2, wrap(&OpLevelCostEstimator::PredictMatMul)},
-      {kXlaEinsum, wrap(&OpLevelCostEstimator::PredictEinsum)},
+  device_cost_impl_.emplace(kConv2d,
+                            wrap(&OpLevelCostEstimator::PredictConv2D));
+  device_cost_impl_.emplace(
+      kConv2dBackpropFilter,
+      wrap(&OpLevelCostEstimator::PredictConv2DBackpropFilter));
+  device_cost_impl_.emplace(
+      kConv2dBackpropInput,
+      wrap(&OpLevelCostEstimator::PredictConv2DBackpropInput));
+  device_cost_impl_.emplace(
+      kFusedConv2dBiasActivation,
+      wrap(&OpLevelCostEstimator::PredictFusedConv2DBiasActivation));
+  // reuse Conv2D for DepthwiseConv2dNative because the calculation is the
+  // same although the actual meaning of the parameters are different. See
+  // comments in PredictConv2D and related functions
+  device_cost_impl_.emplace(kDepthwiseConv2dNative,
+                            wrap(&OpLevelCostEstimator::PredictConv2D));
+  device_cost_impl_.emplace(
+      kDepthwiseConv2dNativeBackpropFilter,
+      wrap(&OpLevelCostEstimator::PredictConv2DBackpropFilter));
+  device_cost_impl_.emplace(
+      kDepthwiseConv2dNativeBackpropInput,
+      wrap(&OpLevelCostEstimator::PredictConv2DBackpropInput));
+  device_cost_impl_.emplace(kMatMul,
+                            wrap(&OpLevelCostEstimator::PredictMatMul));
+  device_cost_impl_.emplace(kSparseMatMul,
+                            wrap(&OpLevelCostEstimator::PredictMatMul));
+  device_cost_impl_.emplace(
+      kSparseTensorDenseMatMul,
+      wrap(&OpLevelCostEstimator::PredictSparseTensorDenseMatMul));
+  device_cost_impl_.emplace(kBatchMatMul,
+                            wrap(&OpLevelCostEstimator::PredictBatchMatMul));
+  device_cost_impl_.emplace(kQuantizedMatMul,
+                            wrap(&OpLevelCostEstimator::PredictMatMul));
+  device_cost_impl_.emplace(kQuantizedMatMulV2,
+                            wrap(&OpLevelCostEstimator::PredictMatMul));
+  device_cost_impl_.emplace(kXlaEinsum,
+                            wrap(&OpLevelCostEstimator::PredictEinsum));
 
-      {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kGuaranteeConst, wrap(&OpLevelCostEstimator::PredictNoOp)},
+  device_cost_impl_.emplace(kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp));
+  device_cost_impl_.emplace(kGuaranteeConst,
+                            wrap(&OpLevelCostEstimator::PredictNoOp));
 
-      {kGather, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
-      {kGatherV2, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
-      {kSlice, wrap(&OpLevelCostEstimator::PredictGatherOrSlice)},
+  device_cost_impl_.emplace(kGather,
+                            wrap(&OpLevelCostEstimator::PredictGatherOrSlice));
+  device_cost_impl_.emplace(kGatherV2,
+                            wrap(&OpLevelCostEstimator::PredictGatherOrSlice));
+  device_cost_impl_.emplace(kScatterAdd,
+                            wrap(&OpLevelCostEstimator::PredictScatter));
+  device_cost_impl_.emplace(kScatterDiv,
+                            wrap(&OpLevelCostEstimator::PredictScatter));
+  device_cost_impl_.emplace(kScatterMax,
+                            wrap(&OpLevelCostEstimator::PredictScatter));
+  device_cost_impl_.emplace(kScatterMin,
+                            wrap(&OpLevelCostEstimator::PredictScatter));
+  device_cost_impl_.emplace(kScatterMul,
+                            wrap(&OpLevelCostEstimator::PredictScatter));
+  device_cost_impl_.emplace(kScatterSub,
+                            wrap(&OpLevelCostEstimator::PredictScatter));
+  device_cost_impl_.emplace(kScatterUpdate,
+                            wrap(&OpLevelCostEstimator::PredictScatter));
 
-      {kPlaceholder, wrap(&OpLevelCostEstimator::PredictIdentity)},
-      {kIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
-      {kIdentityN, wrap(&OpLevelCostEstimator::PredictIdentity)},
-      {kRefIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
-      {kStopGradient, wrap(&OpLevelCostEstimator::PredictIdentity)},
-      {kPreventGradient, wrap(&OpLevelCostEstimator::PredictIdentity)},
-      {kReshape, wrap(&OpLevelCostEstimator::PredictIdentity)},
-      {kSqueeze, wrap(&OpLevelCostEstimator::PredictIdentity)},
-      {kRecv, wrap(&OpLevelCostEstimator::PredictIdentity)},
-      {kSend, wrap(&OpLevelCostEstimator::PredictIdentity)},
-      {kSwitch, wrap(&OpLevelCostEstimator::PredictIdentity)},
-      {kMerge, wrap(&OpLevelCostEstimator::PredictIdentity)},
-      {kEnter, wrap(&OpLevelCostEstimator::PredictIdentity)},
-      {kExit, wrap(&OpLevelCostEstimator::PredictIdentity)},
-      {kNextIteration, wrap(&OpLevelCostEstimator::PredictIdentity)},
+  device_cost_impl_.emplace(kSlice,
+                            wrap(&OpLevelCostEstimator::PredictGatherOrSlice));
 
-      {kRank, wrap(&OpLevelCostEstimator::PredictMetadata)},
-      {kShape, wrap(&OpLevelCostEstimator::PredictMetadata)},
-      {kShapeN, wrap(&OpLevelCostEstimator::PredictMetadata)},
-      {kSize, wrap(&OpLevelCostEstimator::PredictMetadata)},
-      {kMaxPool, wrap(&OpLevelCostEstimator::PredictMaxPool)},
-      {kMaxPoolGrad, wrap(&OpLevelCostEstimator::PredictMaxPoolGrad)},
-      {kAvgPool, wrap(&OpLevelCostEstimator::PredictAvgPool)},
-      {kAvgPoolGrad, wrap(&OpLevelCostEstimator::PredictAvgPoolGrad)},
-      {kFusedBatchNorm, wrap(&OpLevelCostEstimator::PredictFusedBatchNorm)},
-      {kFusedBatchNormGrad,
-       wrap(&OpLevelCostEstimator::PredictFusedBatchNormGrad)},
-  };
+  device_cost_impl_.emplace(kPlaceholder,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kIdentity,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kIdentityN,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kRefIdentity,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kStopGradient,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kPreventGradient,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kReshape,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kSqueeze,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kRecv,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kSend,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kSwitch,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kMerge,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kEnter,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kExit,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+  device_cost_impl_.emplace(kNextIteration,
+                            wrap(&OpLevelCostEstimator::PredictIdentity));
+
+  device_cost_impl_.emplace(kRank,
+                            wrap(&OpLevelCostEstimator::PredictMetadata));
+  device_cost_impl_.emplace(kShape,
+                            wrap(&OpLevelCostEstimator::PredictMetadata));
+  device_cost_impl_.emplace(kShapeN,
+                            wrap(&OpLevelCostEstimator::PredictMetadata));
+  device_cost_impl_.emplace(kSize,
+                            wrap(&OpLevelCostEstimator::PredictMetadata));
+  device_cost_impl_.emplace(kMaxPool,
+                            wrap(&OpLevelCostEstimator::PredictMaxPool));
+  device_cost_impl_.emplace(kMaxPoolGrad,
+                            wrap(&OpLevelCostEstimator::PredictMaxPoolGrad));
+  device_cost_impl_.emplace(kAvgPool,
+                            wrap(&OpLevelCostEstimator::PredictAvgPool));
+  device_cost_impl_.emplace(kAvgPoolGrad,
+                            wrap(&OpLevelCostEstimator::PredictAvgPoolGrad));
+  device_cost_impl_.emplace(kFusedBatchNorm,
+                            wrap(&OpLevelCostEstimator::PredictFusedBatchNorm));
+  device_cost_impl_.emplace(
+      kFusedBatchNormGrad,
+      wrap(&OpLevelCostEstimator::PredictFusedBatchNormGrad));
 
   persistent_ops_ = {
-      kConst,       kVariable,       kVariableV2, kAutoReloadVariable,
-      kVarHandleOp, kReadVariableOp,
-  };
+      kConst,       kVariable,       kVariableV2,   kAutoReloadVariable,
+      kVarHandleOp, kReadVariableOp, kVarHandlesOp, kReadVariablesOp};
 
 #define EIGEN_COST(X) Eigen::internal::functor_traits<Eigen::internal::X>::Cost
 
@@ -318,76 +382,80 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       EIGEN_COST(scalar_product_op<float>) + EIGEN_COST(scalar_max_op<float>) +
       EIGEN_COST(scalar_min_op<float>) + EIGEN_COST(scalar_round_op<float>);
 
-  elementwise_ops_ = {
-      // Unary ops alphabetically sorted
-      {"Acos", EIGEN_COST(scalar_acos_op<float>)},
-      {"Asin", EIGEN_COST(scalar_asin_op<float>)},
-      {"Atan", EIGEN_COST(scalar_atan_op<float>)},
-      {"Atan2", EIGEN_COST(scalar_quotient_op<float>) +
-                    EIGEN_COST(scalar_atan_op<float>)},
-      // For now, we use Eigen cost model for float to int16 cast as an example
-      // case; Eigen cost model is zero when src and dst types are identical,
-      // and it uses AddCost (1) when different. We may implement a separate
-      // cost functions for cast ops, using the actual input and output types.
-      {"Cast", Eigen::internal::functor_traits<
-                   Eigen::internal::scalar_cast_op<float, int16>>::Cost},
-      {"Ceil", EIGEN_COST(scalar_ceil_op<float>)},
-      {"Cos", EIGEN_COST(scalar_cos_op<float>)},
-      {"Dequantize", EIGEN_COST(scalar_product_op<float>)},
-      {"Erf", 1},
-      {"Erfc", 1},
-      {"Exp", EIGEN_COST(scalar_exp_op<float>)},
-      {"Expm1", EIGEN_COST(scalar_expm1_op<float>)},
-      {"Floor", EIGEN_COST(scalar_floor_op<float>)},
-      {"Inv", EIGEN_COST(scalar_inverse_op<float>)},
-      {"InvGrad", 1},
-      {"Lgamma", 1},
-      {"Log", EIGEN_COST(scalar_log_op<float>)},
-      {"Log1p", EIGEN_COST(scalar_log1p_op<float>)},
-      {"Neg", EIGEN_COST(scalar_opposite_op<float>)},
-      {"QuantizeV2", quantize_v2_cost},
-      {"Reciprocal", EIGEN_COST(scalar_inverse_op<float>)},
-      {"Rint", 1},
-      {"Round", EIGEN_COST(scalar_round_op<float>)},
-      {"Rsqrt", EIGEN_COST(scalar_rsqrt_op<float>)},
-      {"Sqrt", EIGEN_COST(scalar_sqrt_op<float>)},
-      {"Square", EIGEN_COST(scalar_square_op<float>)},
-      {"Tanh", EIGEN_COST(scalar_tanh_op<float>)},
-      {"Relu", EIGEN_COST(scalar_max_op<float>)},
-      {"Sigmoid", EIGEN_COST(scalar_logistic_op<float>)},
-      {"QuantizedSigmoid", EIGEN_COST(scalar_logistic_op<float>)},
-      {"Sign", EIGEN_COST(scalar_sign_op<float>)},
-      {"Sin", EIGEN_COST(scalar_sin_op<float>)},
-      {"Tan", EIGEN_COST(scalar_tan_op<float>)},
-      // Binary ops alphabetically sorted
-      {"Add", EIGEN_COST(scalar_sum_op<float>)},
-      {"ApproximateEqual", 1},
-      {"BiasAdd", EIGEN_COST(scalar_sum_op<float>)},
-      {"QuantizedBiasAdd", EIGEN_COST(scalar_sum_op<float>)},
-      {"Div", EIGEN_COST(scalar_quotient_op<float>)},
-      {"Equal", 1},
-      {"FloorDiv", EIGEN_COST(scalar_quotient_op<float>)},
-      {"FloorMod", EIGEN_COST(scalar_mod_op<float>)},
-      {"Greater", 1},
-      {"GreaterEqual", 1},
-      {"Less", 1},
-      {"LessEqual", 1},
-      {"LogicalAnd", EIGEN_COST(scalar_boolean_and_op)},
-      {"LogicalNot", 1},
-      {"LogicalOr", EIGEN_COST(scalar_boolean_or_op)},
-      {"Maximum", EIGEN_COST(scalar_max_op<float>)},
-      {"Minimum", EIGEN_COST(scalar_min_op<float>)},
-      {"Mod", EIGEN_COST(scalar_mod_op<float>)},
-      {"Mul", EIGEN_COST(scalar_product_op<float>)},
-      {"NotEqual", 1},
-      {"QuantizedAdd", EIGEN_COST(scalar_sum_op<float>)},
-      {"QuantizedMul", EIGEN_COST(scalar_product_op<float>)},
-      {"RealDiv", EIGEN_COST(scalar_quotient_op<float>)},
-      {"ReluGrad", EIGEN_COST(scalar_max_op<float>)},
-      {"SquareDifference", 1},
-      {"Sub", EIGEN_COST(scalar_difference_op<float>)},
-      {"TruncateDiv", EIGEN_COST(scalar_quotient_op<float>)},
-      {"TruncateMod", EIGEN_COST(scalar_mod_op<float>)}};
+  // Unary ops alphabetically sorted
+  elementwise_ops_.emplace("Acos", EIGEN_COST(scalar_acos_op<float>));
+  elementwise_ops_.emplace("Asin", EIGEN_COST(scalar_asin_op<float>));
+  elementwise_ops_.emplace("Atan", EIGEN_COST(scalar_atan_op<float>));
+  elementwise_ops_.emplace("Atan2", EIGEN_COST(scalar_quotient_op<float>) +
+                                        EIGEN_COST(scalar_atan_op<float>));
+  // For now, we use Eigen cost model for float to int16 cast as an example
+  // case; Eigen cost model is zero when src and dst types are identical,
+  // and it uses AddCost (1) when different. We may implement a separate
+  // cost functions for cast ops, using the actual input and output types.
+  elementwise_ops_.emplace(
+      "Cast", Eigen::internal::functor_traits<
+                  Eigen::internal::scalar_cast_op<float, int16>>::Cost);
+  elementwise_ops_.emplace("Ceil", EIGEN_COST(scalar_ceil_op<float>));
+  elementwise_ops_.emplace("Cos", EIGEN_COST(scalar_cos_op<float>));
+  elementwise_ops_.emplace("Dequantize", EIGEN_COST(scalar_product_op<float>));
+  elementwise_ops_.emplace("Erf", 1);
+  elementwise_ops_.emplace("Erfc", 1);
+  elementwise_ops_.emplace("Exp", EIGEN_COST(scalar_exp_op<float>));
+  elementwise_ops_.emplace("Expm1", EIGEN_COST(scalar_expm1_op<float>));
+  elementwise_ops_.emplace("Floor", EIGEN_COST(scalar_floor_op<float>));
+  elementwise_ops_.emplace("Inv", EIGEN_COST(scalar_inverse_op<float>));
+  elementwise_ops_.emplace("InvGrad", 1);
+  elementwise_ops_.emplace("Lgamma", 1);
+  elementwise_ops_.emplace("Log", EIGEN_COST(scalar_log_op<float>));
+  elementwise_ops_.emplace("Log1p", EIGEN_COST(scalar_log1p_op<float>));
+  elementwise_ops_.emplace("Neg", EIGEN_COST(scalar_opposite_op<float>));
+  elementwise_ops_.emplace("QuantizeV2", quantize_v2_cost);
+  elementwise_ops_.emplace("Reciprocal", EIGEN_COST(scalar_inverse_op<float>));
+  elementwise_ops_.emplace("Rint", 1);
+  elementwise_ops_.emplace("Round", EIGEN_COST(scalar_round_op<float>));
+  elementwise_ops_.emplace("Rsqrt", EIGEN_COST(scalar_rsqrt_op<float>));
+  elementwise_ops_.emplace("Sqrt", EIGEN_COST(scalar_sqrt_op<float>));
+  elementwise_ops_.emplace("Square", EIGEN_COST(scalar_square_op<float>));
+  elementwise_ops_.emplace("Tanh", EIGEN_COST(scalar_tanh_op<float>));
+  elementwise_ops_.emplace("Relu", EIGEN_COST(scalar_max_op<float>));
+  elementwise_ops_.emplace("Sigmoid", EIGEN_COST(scalar_logistic_op<float>));
+  elementwise_ops_.emplace("QuantizedSigmoid",
+                           EIGEN_COST(scalar_logistic_op<float>));
+  elementwise_ops_.emplace("Sign", EIGEN_COST(scalar_sign_op<float>));
+  elementwise_ops_.emplace("Sin", EIGEN_COST(scalar_sin_op<float>));
+  elementwise_ops_.emplace("Tan", EIGEN_COST(scalar_tan_op<float>));
+  // Binary ops alphabetically sorted
+  elementwise_ops_.emplace("Add", EIGEN_COST(scalar_sum_op<float>));
+  elementwise_ops_.emplace("ApproximateEqual", 1);
+  elementwise_ops_.emplace("BiasAdd", EIGEN_COST(scalar_sum_op<float>));
+  elementwise_ops_.emplace("QuantizedBiasAdd",
+                           EIGEN_COST(scalar_sum_op<float>));
+  elementwise_ops_.emplace("Div", EIGEN_COST(scalar_quotient_op<float>));
+  elementwise_ops_.emplace("Equal", 1);
+  elementwise_ops_.emplace("FloorDiv", EIGEN_COST(scalar_quotient_op<float>));
+  elementwise_ops_.emplace("FloorMod", EIGEN_COST(scalar_mod_op<float>));
+  elementwise_ops_.emplace("Greater", 1);
+  elementwise_ops_.emplace("GreaterEqual", 1);
+  elementwise_ops_.emplace("Less", 1);
+  elementwise_ops_.emplace("LessEqual", 1);
+  elementwise_ops_.emplace("LogicalAnd", EIGEN_COST(scalar_boolean_and_op));
+  elementwise_ops_.emplace("LogicalNot", 1);
+  elementwise_ops_.emplace("LogicalOr", EIGEN_COST(scalar_boolean_or_op));
+  elementwise_ops_.emplace("Maximum", EIGEN_COST(scalar_max_op<float>));
+  elementwise_ops_.emplace("Minimum", EIGEN_COST(scalar_min_op<float>));
+  elementwise_ops_.emplace("Mod", EIGEN_COST(scalar_mod_op<float>));
+  elementwise_ops_.emplace("Mul", EIGEN_COST(scalar_product_op<float>));
+  elementwise_ops_.emplace("NotEqual", 1);
+  elementwise_ops_.emplace("QuantizedAdd", EIGEN_COST(scalar_sum_op<float>));
+  elementwise_ops_.emplace("QuantizedMul",
+                           EIGEN_COST(scalar_product_op<float>));
+  elementwise_ops_.emplace("RealDiv", EIGEN_COST(scalar_quotient_op<float>));
+  elementwise_ops_.emplace("ReluGrad", EIGEN_COST(scalar_max_op<float>));
+  elementwise_ops_.emplace("SquareDifference", 1);
+  elementwise_ops_.emplace("Sub", EIGEN_COST(scalar_difference_op<float>));
+  elementwise_ops_.emplace("TruncateDiv",
+                           EIGEN_COST(scalar_quotient_op<float>));
+  elementwise_ops_.emplace("TruncateMod", EIGEN_COST(scalar_mod_op<float>));
 
 #undef EIGEN_COST
 
@@ -1407,7 +1475,7 @@ Costs OpLevelCostEstimator::PredictEinsum(const OpContext& op_context) const {
   batch_matmul_op_context.op_info = batch_matmul_op_info;
   Costs costs = PredictCosts(batch_matmul_op_context);
   costs.inaccurate = costs.inaccurate || found_unknown_shapes;
-
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
 
@@ -1547,6 +1615,53 @@ Costs OpLevelCostEstimator::PredictGatherOrSlice(
   costs.inaccurate = unknown_shapes;
   costs.num_ops_with_unknown_shapes = unknown_shapes;
   costs.max_memory = output_size;
+
+  return costs;
+}
+
+Costs OpLevelCostEstimator::PredictScatter(const OpContext& op_context) const {
+  // Scatter ops sparsely access a reference input and output tensor.
+  const auto& op_info = op_context.op_info;
+  bool found_unknown_shapes = false;
+
+  // input[0]: ref tensor that will be sparsely accessed
+  // input[1]: indices - A tensor of indices into the first dimension of ref.
+  // input[2]: updates where updates.shape = indices.shape + ref.shape[1:]
+  // See
+  // https://www.tensorflow.org/api_docs/python/tf/scatter_add and
+  // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/ops/state_ops.cc#L146
+
+  const int64 num_indices =
+      CalculateTensorElementCount(op_info.inputs(1), &found_unknown_shapes);
+
+  int64 num_elems_in_ref_per_index = 1;
+  auto ref_tensor_shape = MaybeGetMinimumShape(
+      op_info.inputs(0).shape(), op_info.inputs(0).shape().dim_size(),
+      &found_unknown_shapes);
+  for (int i = 1; i < ref_tensor_shape.dim().size(); ++i) {
+    num_elems_in_ref_per_index *= ref_tensor_shape.dim(i).size();
+  }
+  const int64 op_count = num_indices * num_elems_in_ref_per_index;
+
+  // Sparsely access ref so input size depends on the number of operations
+  int64 ref_input_size =
+      op_count * DataTypeSize(BaseType(op_info.inputs(0).dtype()));
+  int64 indices_input_size =
+      CalculateTensorSize(op_info.inputs(1), &found_unknown_shapes);
+  int64 updates_input_size =
+      CalculateTensorSize(op_info.inputs(2), &found_unknown_shapes);
+
+  double total_input_size =
+      ref_input_size + indices_input_size + updates_input_size;
+
+  // Sparsely access ref so output size depends on the number of operations
+  double total_output_size =
+      op_count * DataTypeSize(BaseType(op_info.outputs(0).dtype()));
+
+  auto costs = PredictOpCountBasedCost(op_count, total_input_size,
+                                       total_output_size, op_info);
+  costs.inaccurate = found_unknown_shapes;
+  costs.num_ops_with_unknown_shapes = found_unknown_shapes;
 
   return costs;
 }

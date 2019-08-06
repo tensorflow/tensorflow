@@ -338,7 +338,7 @@ tf_module {
   }
   member_method {
     name: "placeholder"
-    argspec: "args=[\'shape\', \'ndim\', \'dtype\', \'sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'None\'], "
+    argspec: "args=[\'shape\', \'ndim\', \'dtype\', \'sparse\', \'name\', \'ragged\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'None\', \'False\'], "
   }
   member_method {
     name: "pool2d"

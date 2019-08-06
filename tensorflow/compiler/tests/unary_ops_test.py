@@ -108,29 +108,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
           expected=np.array([[-1, 1]], dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
-          array_ops.matrix_diag, np.array([[1, 2], [3, 4]], dtype=dtype),
-          np.array([[[1, 0], [0, 2]], [[3, 0], [0, 4]]], dtype=dtype))
-      self._assertOpOutputMatchesExpected(
-          array_ops.matrix_diag, np.array([1, 2, 3, 4], dtype=dtype),
-          np.array(
-              [[1, 0, 0, 0], [0, 2, 0, 0], [0, 0, 3, 0], [0, 0, 0, 4]],
-              dtype=dtype))
-      self._assertOpOutputMatchesExpected(
-          array_ops.matrix_diag,
-          np.array(
-              [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]], dtype=dtype),
-          np.array(
-              [[[[1, 0, 0], [0, 2, 0], [0, 0, 3]], [[4, 0, 0], [0, 5, 0], [
-                  0, 0, 6
-              ]]], [[[7, 0, 0], [0, 8, 0], [0, 0, 9]], [[10, 0, 0], [0, 11, 0],
-                                                        [0, 0, 12]]]],
-              dtype=dtype))
-      self._assertOpOutputMatchesExpected(
-          array_ops.matrix_diag_part,
-          np.arange(3 * 2 * 4).reshape([3, 2, 4]).astype(dtype),
-          np.array([[0, 5], [8, 13], [16, 21]], dtype=dtype))
-
-      self._assertOpOutputMatchesExpected(
           array_ops.prevent_gradient,
           np.array([[-1, 1]], dtype=dtype),
           expected=np.array([[-1, 1]], dtype=dtype))

@@ -26,7 +26,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/ruy/context.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
-#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -170,7 +170,8 @@ inline void DispatchDepthwiseConv(
       // This is compiled-in even if dot-product instructions are unavailable.
       // However, tests should skip dot-product testing in that case and not
       // call this code.
-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
+    defined(__clang__)
       DotProduct3x3KernelType kernel_type =
           optimized_ops::depthwise_conv::CategorizeDotProductKernel(
               input_shape, filter_shape, params);
@@ -291,7 +292,7 @@ inline void DispatchDepthwiseConv(
       << " input_offset = " << params.input_offset;
 
   CpuBackendContext backend_context;
-  backend_context.set_max_num_threads(test_param.num_threads);
+  backend_context.SetMaxNumThreads(test_param.num_threads);
   optimized_ops::DepthwiseConv<uint8, int32>(
       params, input_shape, input_data, filter_shape, filter_data, bias_shape,
       bias_data, output_shape, output_data, &backend_context);
@@ -683,7 +684,8 @@ void TestOneDepthwiseConv3x3Filter(
 }
 
 void TestOneNeonDot3x3(const TestParam& test_param) {
-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
+    defined(__clang__)
   CpuBackendContext backend_context;
   ruy::Context* ruy_context = backend_context.ruy_context();
   const auto ruy_paths = ruy_context != nullptr
@@ -854,7 +856,8 @@ INSTANTIATE_TEST_SUITE_P(
     TestParam::TestNameSuffix);
 #endif
 
-#if defined(__aarch64__) && !defined(GOOGLE_L4T)
+#if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
+    defined(__clang__)
 INSTANTIATE_TEST_SUITE_P(
     NeonAsm, DepthwiseConvTest,
     testing::Combine(

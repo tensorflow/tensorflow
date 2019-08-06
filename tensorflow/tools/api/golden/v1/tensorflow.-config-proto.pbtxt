@@ -179,6 +179,19 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }
+      field {
+        name: "session_metadata"
+        number: 11
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.SessionMetadata"
+      }
+      field {
+        name: "optimize_for_static_graph"
+        number: 12
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
       reserved_range {
         start: 2
         end: 3

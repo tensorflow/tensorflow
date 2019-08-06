@@ -1,0 +1,26 @@
+op {
+  name: "DynamicPartition"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "partitions"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "outputs"
+    type_attr: "T"
+    number_attr: "num_partitions"
+  }
+  attr {
+    name: "num_partitions"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}

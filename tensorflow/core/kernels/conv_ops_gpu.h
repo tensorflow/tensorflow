@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <tuple>
 #include <unordered_map>
@@ -50,11 +50,9 @@ class DnnScratchAllocator : public se::ScratchAllocator {
   virtual ~DnnScratchAllocator() {}
   DnnScratchAllocator(int64 memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
-  int64 GetMemoryLimitInBytes(se::Stream* stream) override {
-    return memory_limit_;
-  }
+  int64 GetMemoryLimitInBytes() override { return memory_limit_; }
   se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
-      se::Stream* stream, int64 byte_size) override {
+      int64 byte_size) override {
     Tensor temporary_memory;
     if (byte_size < 0) {
       return se::port::Status{se::port::error::INVALID_ARGUMENT,
@@ -214,6 +212,6 @@ typedef Eigen::GpuDevice GPUDevice;
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_

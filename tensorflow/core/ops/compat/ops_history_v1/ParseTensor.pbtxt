@@ -1,0 +1,15 @@
+op {
+  name: "ParseTensor"
+  input_arg {
+    name: "serialized"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+  }
+}

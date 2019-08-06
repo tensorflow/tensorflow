@@ -68,11 +68,10 @@ int CountTrueOutputs(const Model& model, const Operator& op);
 
 int CountOpsWithInput(const Model& model, const string& array_name);
 bool DeleteArrayIfUnused(const string& array_name, Model* model);
-bool DeleteArrayIfUsedOnce(const string& array_name, Model* model);
 
 // Deletes the op and any of its input and output arrays if they are unused
 // after the op has been deleted.
-void DeleteOpAndArraysIfUnused(Model* model, const Operator* op);
+void DeleteOpAndArrays(Model* model, const Operator* op);
 
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithOutput(
     const Model& model, const string& array_name);
@@ -360,6 +359,11 @@ void UndoWeightsShuffling(Model* model);
 
 // Copies minmax, quantization_params, and narrow_range.
 void CopyMinMaxAndQuantizationRelatedFields(const Array& src, Array* dst);
+
+// Delete Array if it's discardable and not referenced as input or output array
+// by any other op than the specified op.
+bool DeleteArrayIfUnusedOutsideOfOp(const string& array_name,
+                                    const Operator* op, Model* model);
 
 }  // namespace toco
 

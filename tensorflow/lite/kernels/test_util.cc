@@ -29,6 +29,18 @@ namespace {
 // be set via a command-line flag.
 static bool force_use_nnapi = false;
 
+TfLiteDelegate* TestNnApiDelegate() {
+  static TfLiteDelegate* delegate = [] {
+    StatefulNnApiDelegate::Options options;
+    // In Android Q, the NNAPI delegate avoids delegation if the only device
+    // is the reference CPU. However, for testing purposes, we still want
+    // delegation coverage, so force use of this reference path.
+    options.accelerator_name = "nnapi-reference";
+    return new StatefulNnApiDelegate(options);
+  }();
+  return delegate;
+}
+
 }  // namespace
 
 std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
@@ -103,7 +115,9 @@ void SingleOpModel::SetCustomOp(
 }
 
 void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                                     bool allow_fp32_relax_to_fp16) {
+                                     int num_threads,
+                                     bool allow_fp32_relax_to_fp16,
+                                     bool apply_delegate) {
   auto opcodes = builder_.CreateVector(opcodes_);
   auto operators = builder_.CreateVector(operators_);
   auto tensors = builder_.CreateVector(tensors_);
@@ -129,7 +143,8 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
     }
     resolver_ = std::unique_ptr<OpResolver>(resolver);
   }
-  CHECK(InterpreterBuilder(model, *resolver_)(&interpreter_) == kTfLiteOk);
+  CHECK(InterpreterBuilder(model, *resolver_)(&interpreter_, num_threads) ==
+        kTfLiteOk);
 
   CHECK(interpreter_ != nullptr);
 
@@ -147,9 +162,16 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
       << "Cannot allocate tensors";
   interpreter_->ResetVariableTensors();
 
+  // In some rare cases a test may need to postpone modifying the graph with
+  // a delegate, e.g. if tensors are not fully specified. In such cases the
+  // test has to explicitly call ApplyDelegate() when necessary.
+  if (apply_delegate) ApplyDelegate();
+}
+
+void SingleOpModel::ApplyDelegate() {
   if (force_use_nnapi) {
     // TODO(b/124505407): Check the result and fail accordingly.
-    interpreter_->ModifyGraphWithDelegate(NnApiDelegate());
+    interpreter_->ModifyGraphWithDelegate(TestNnApiDelegate());
   }
 
   // Modify delegate with function.
@@ -158,12 +180,38 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   }
 }
 
-void SingleOpModel::Invoke() { CHECK(interpreter_->Invoke() == kTfLiteOk); }
+void SingleOpModel::Invoke() { ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk); }
+
+TfLiteStatus SingleOpModel::InvokeUnchecked() { return interpreter_->Invoke(); }
+
+void SingleOpModel::BuildInterpreter(
+    std::vector<std::vector<int>> input_shapes) {
+  BuildInterpreter(input_shapes, /*num_threads=*/-1,
+                   /*allow_fp32_relax_to_fp16=*/false,
+                   /*apply_delegate=*/true);
+}
+
+void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                                     bool allow_fp32_relax_to_fp16,
+                                     bool apply_delegate) {
+  BuildInterpreter(input_shapes, /*num_threads=*/-1, allow_fp32_relax_to_fp16,
+                   apply_delegate);
+}
+
+void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                                     int num_threads) {
+  BuildInterpreter(input_shapes, num_threads,
+                   /*allow_fp32_relax_to_fp16=*/false,
+                   /*apply_delegate=*/true);
+}
 
 // static
 void SingleOpModel::SetForceUseNnapi(bool use_nnapi) {
   force_use_nnapi = use_nnapi;
 }
+
+// static
+bool SingleOpModel::GetForceUseNnapi() { return force_use_nnapi; }
 
 int32_t SingleOpModel::GetTensorSize(int index) const {
   TfLiteTensor* t = interpreter_->tensor(index);
@@ -176,7 +224,7 @@ int32_t SingleOpModel::GetTensorSize(int index) const {
 }
 
 template <>
-std::vector<string> SingleOpModel::ExtractVector(int index) {
+std::vector<string> SingleOpModel::ExtractVector(int index) const {
   TfLiteTensor* tensor_ptr = interpreter_->tensor(index);
   CHECK(tensor_ptr != nullptr);
   const int num_strings = GetStringCount(tensor_ptr);

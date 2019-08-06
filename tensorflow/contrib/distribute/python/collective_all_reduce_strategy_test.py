@@ -32,11 +32,9 @@ from tensorflow.python.distribute import cross_device_ops as cross_device_ops_li
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_test_base
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import values
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -54,7 +52,6 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import training_util
-from tensorflow.python.training.server_lib import ClusterSpec
 
 
 class MockCollectiveAllReduceStrategy(distribute_lib.StrategyV1):
@@ -71,38 +68,22 @@ class MockCollectiveAllReduceStrategy(distribute_lib.StrategyV1):
 def create_test_objects(cluster_spec=None,
                         task_type=None,
                         task_id=None,
-                        num_gpus=None,
-                        use_core_strategy=False):
+                        num_gpus=None):
   sess_config = config_pb2.ConfigProto()
   if num_gpus is None:
     num_gpus = context.num_gpus()
-  if use_core_strategy:
-    if cluster_spec and task_type and task_id is not None:
-      cluster_resolver = SimpleClusterResolver(
-          cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
-          task_type=task_type,
-          task_id=task_id,
-          num_accelerators={'GPU': num_gpus})
-      target = 'grpc://' + cluster_spec[task_type][task_id]
-    else:
-      cluster_resolver = SimpleClusterResolver(
-          ClusterSpec({}), num_accelerators={'GPU': num_gpus})
-      target = ''
 
-    strategy = MockCollectiveAllReduceStrategy(cluster_resolver)
-    sess_config = strategy.update_config_proto(sess_config)
+  strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+      num_gpus_per_worker=num_gpus)
+  if task_type and task_id is not None:
+    strategy.configure(
+        session_config=sess_config,
+        cluster_spec=cluster_spec,
+        task_type=task_type,
+        task_id=task_id)
+    target = 'grpc://' + cluster_spec[task_type][task_id]
   else:
-    strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
-        num_gpus_per_worker=num_gpus)
-    if task_type and task_id is not None:
-      strategy.configure(
-          session_config=sess_config,
-          cluster_spec=cluster_spec,
-          task_type=task_type,
-          task_id=task_id)
-      target = 'grpc://' + cluster_spec[task_type][task_id]
-    else:
-      target = ''
+    target = ''
 
   return strategy, target, sess_config
 
@@ -115,40 +96,31 @@ class CollectiveAllReduceStrategyTestBase(
   def setUp(self):
     # We use a different key_base for each test so that collective keys won't be
     # reused.
-    # TODO(yuefengz, tucker): enable it to reuse collective keys in different
+    # TODO(yuefengz, ayushd): enable it to reuse collective keys in different
     # tests.
     CollectiveAllReduceStrategyTestBase.collective_key_base += 100000
     super(CollectiveAllReduceStrategyTestBase, self).setUp()
 
-  def _get_test_object(self,
-                       task_type,
-                       task_id,
-                       num_gpus=0,
-                       use_core_strategy=False):
+  def _get_test_object(self, task_type, task_id, num_gpus=0):
     strategy, target, session_config = create_test_objects(
         cluster_spec=self._cluster_spec,
         task_type=task_type,
         task_id=task_id,
-        num_gpus=num_gpus,
-        use_core_strategy=use_core_strategy)
+        num_gpus=num_gpus)
 
     collective_keys = cross_device_utils.CollectiveKeys(
-        group_key_start=10 * num_gpus +
+        group_key_start=10 +
         CollectiveAllReduceStrategyTestBase.collective_key_base,
-        instance_key_start=num_gpus * 100 +
+        op_instance_key_start=100 +
         CollectiveAllReduceStrategyTestBase.collective_key_base,
-        instance_key_with_id_start=num_gpus * 10000 +
+        variable_instance_key_start=10000 +
         CollectiveAllReduceStrategyTestBase.collective_key_base)
     strategy.extended._collective_keys = collective_keys
     strategy.extended._cross_device_ops._collective_keys = (collective_keys)
 
     return strategy, target, session_config
 
-  def _test_minimize_loss_graph(self,
-                                task_type,
-                                task_id,
-                                num_gpus,
-                                use_core_strategy=False):
+  def _test_minimize_loss_graph(self, task_type, task_id, num_gpus):
     d, master_target, config = self._get_test_object(task_type, task_id,
                                                      num_gpus)
     with ops.Graph().as_default(), \
@@ -214,13 +186,8 @@ class CollectiveAllReduceStrategyTestBase(
       error_after = abs(after - 1)
       # Error should go down
       self.assertLess(error_after, error_before)
-      return error_after < error_before
 
-  def _test_complex_model(self,
-                          task_type,
-                          task_id,
-                          num_gpus,
-                          use_core_strategy=False):
+  def _test_complex_model(self, task_type, task_id, num_gpus):
     d, master_target, config = self._get_test_object(task_type, task_id,
                                                      num_gpus)
 
@@ -270,13 +237,8 @@ class CollectiveAllReduceStrategyTestBase(
 
       sess.run(variables.global_variables_initializer())
       sess.run(train_op)
-      return True
 
-  def _test_variable_initialization(self,
-                                    task_type,
-                                    task_id,
-                                    num_gpus,
-                                    use_core_strategy=False):
+  def _test_variable_initialization(self, task_type, task_id, num_gpus):
     distribution, master_target, config = self._get_test_object(
         task_type, task_id, num_gpus)
     with ops.Graph().as_default(), \
@@ -303,7 +265,6 @@ class CollectiveAllReduceStrategyTestBase(
           np.allclose(x_value, reduced_x_value, atol=1e-5),
           msg=('x_value = %r, reduced_x_value = %r' % (x_value,
                                                        reduced_x_value)))
-    return np.allclose(x_value, reduced_x_value, atol=1e-5)
 
   def _test_input_fn_iterator(self,
                               task_type,
@@ -312,8 +273,7 @@ class CollectiveAllReduceStrategyTestBase(
                               input_fn,
                               expected_values,
                               test_reinitialize=True,
-                              ignore_order=False,
-                              use_core_strategy=False):
+                              ignore_order=False):
     distribution, master_target, config = self._get_test_object(
         task_type, task_id, num_gpus)
     devices = distribution.extended.worker_devices
@@ -363,62 +323,41 @@ class DistributedCollectiveAllReduceStrategyTest(
     cls._cluster_spec = multi_worker_test_base.create_in_process_cluster(
         num_workers=3, num_ps=0)
 
-  @combinations.generate(
-      combinations.combine(mode=['graph'], use_core_strategy=[True, False]))
-  def test_num_replicas_in_sync(self, use_core_strategy):
+  @combinations.generate(combinations.combine(mode=['graph']))
+  def test_num_replicas_in_sync(self):
     distribution, _, _ = create_test_objects(
         cluster_spec=self._cluster_spec,
         task_type='worker',
         task_id=0,
-        num_gpus=2,
-        use_core_strategy=use_core_strategy)
+        num_gpus=2)
     num_workers = len(self._cluster_spec.get('chief', []) +
                       self._cluster_spec.get('worker', []))
     self.assertEqual(2 * num_workers,
                      distribution.num_replicas_in_sync)
 
   @combinations.generate(
-      combinations.combine(
-          mode=['graph'],
-          num_gpus=[0, 1, 2],
-          required_gpus=1,
-          use_core_strategy=[True, False]))
-  def testMinimizeLossGraph(self, num_gpus, use_core_strategy):
-    self._run_between_graph_clients(
-        self._test_minimize_loss_graph,
-        self._cluster_spec,
-        num_gpus,
-        use_core_strategy=use_core_strategy)
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2], required_gpus=1))
+  def testMinimizeLossGraph(self, num_gpus):
+    self._run_between_graph_clients(self._test_minimize_loss_graph,
+                                    self._cluster_spec, num_gpus)
 
   @combinations.generate(
-      combinations.combine(
-          mode=['graph'],
-          num_gpus=[0, 1, 2],
-          required_gpus=1,
-          use_core_strategy=[True, False]))
-  def testVariableInitialization(self, num_gpus, use_core_strategy):
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2], required_gpus=1))
+  def testVariableInitialization(self, num_gpus):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
     self._run_between_graph_clients(
         self._test_variable_initialization,
         self._cluster_spec,
-        num_gpus=num_gpus,
-        use_core_strategy=use_core_strategy)
+        num_gpus=num_gpus)
 
   @combinations.generate(
-      combinations.combine(
-          mode=['graph'],
-          num_gpus=[0, 1, 2],
-          required_gpus=1,
-          use_core_strategy=[True, False]))
-  def testComplexModel(self, num_gpus, use_core_strategy):
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2], required_gpus=1))
+  def testComplexModel(self, num_gpus):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
     self._run_between_graph_clients(
-        self._test_complex_model,
-        self._cluster_spec,
-        num_gpus=num_gpus,
-        use_core_strategy=use_core_strategy)
+        self._test_complex_model, self._cluster_spec, num_gpus=num_gpus)
 
   # TODO(yuefengz): Update how we use num_gpus and required_gpus
   @combinations.generate(
@@ -426,9 +365,8 @@ class DistributedCollectiveAllReduceStrategyTest(
           mode=['graph'],
           num_gpus=[0, 1, 2],
           required_gpus=1,
-          use_dataset=[True, False],
-          use_core_strategy=[True, False]))
-  def testMakeInputFnIterator(self, num_gpus, use_dataset, use_core_strategy):
+          use_dataset=[True, False]))
+  def testMakeInputFnIterator(self, num_gpus, use_dataset):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
     if use_dataset:
@@ -455,17 +393,12 @@ class DistributedCollectiveAllReduceStrategyTest(
         input_fn,
         expected_values,
         test_reinitialize=use_dataset,
-        ignore_order=not use_dataset,
-        use_core_strategy=use_core_strategy)
+        ignore_order=not use_dataset)
 
-  @combinations.generate(
-      combinations.combine(mode=['graph'], use_core_strategy=[True, False]))
-  def testUpdateConfigProto(self, use_core_strategy):
+  @combinations.generate(combinations.combine(mode=['graph']))
+  def testUpdateConfigProto(self):
     strategy, _, _ = self._get_test_object(
-        task_type='worker',
-        task_id=1,
-        num_gpus=2,
-        use_core_strategy=use_core_strategy)
+        task_type='worker', task_id=1, num_gpus=2)
 
     config_proto = config_pb2.ConfigProto(device_filters=['to_be_overridden'])
     rewrite_options = config_proto.graph_options.rewrite_options
@@ -486,29 +419,6 @@ class DistributedCollectiveAllReduceStrategyTest(
                      new_rewrite_options.scoped_allocator_optimization)
     self.assertEqual(['CollectiveReduce'],
                      new_rewrite_options.scoped_allocator_opts.enable_op)
-
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def testEnableCollectiveOps(self):
-    mock_called = [False]
-
-    # pylint: disable=dangerous-default-value
-    def mock_enable_collective_ops(server_def, mock_called=mock_called):
-      self.assertEqual('worker', server_def.job_name)
-      self.assertEqual(1, server_def.task_index)
-      self.assertEqual('grpc', server_def.protocol)
-      mock_called[0] = True
-
-    def mock_configure_collective_ops(*args, **kwargs):
-      del args, kwargs
-
-    with test.mock.patch.object(context.context(), 'enable_collective_ops',
-                                mock_enable_collective_ops), \
-         test.mock.patch.object(context.context(), 'configure_collective_ops',
-                                mock_configure_collective_ops):
-      strategy, _, _ = self._get_test_object(
-          task_type='worker', task_id=1, num_gpus=2, use_core_strategy=True)
-    self.assertTrue(strategy.extended._std_server_started)
-    self.assertTrue(mock_called[0])
 
 
 class DistributedCollectiveAllReduceStrategyTestWithChief(
@@ -553,41 +463,28 @@ class LocalCollectiveAllReduceStrategy(
 
   @combinations.generate(
       combinations.combine(
-          mode=['graph', 'eager'],
-          num_gpus=[2, 4],
-          required_gpus=2,
-          use_core_strategy=[True, False]))
-  def testMinimizeLoss(self, num_gpus, use_core_strategy):
+          mode=['graph', 'eager'], num_gpus=[2, 4], required_gpus=2))
+  def testMinimizeLoss(self, num_gpus):
     # Collective ops doesn't support strategy with one device.
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
     if context.executing_eagerly():
-      strategy, _, _ = self._get_test_object(
-          None, None, num_gpus, use_core_strategy=use_core_strategy)
+      strategy, _, _ = self._get_test_object(None, None, num_gpus)
       self._test_minimize_loss_eager(strategy)
     else:
-      self._test_minimize_loss_graph(
-          None, None, num_gpus, use_core_strategy=use_core_strategy)
+      self._test_minimize_loss_graph(None, None, num_gpus)
 
   @combinations.generate(
-      combinations.combine(
-          mode=['graph'],
-          num_gpus=[2, 4],
-          required_gpus=2,
-          use_core_strategy=[True, False]))
-  def testComplexModel(self, num_gpus, use_core_strategy):
+      combinations.combine(mode=['graph'], num_gpus=[2, 4], required_gpus=2))
+  def testComplexModel(self, num_gpus):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
-    self._test_complex_model(
-        None, None, num_gpus, use_core_strategy=use_core_strategy)
+    self._test_complex_model(None, None, num_gpus)
 
   @combinations.generate(
       combinations.combine(
-          mode=['graph', 'eager'],
-          required_gpus=2,
-          use_dataset=[True, False],
-          use_core_strategy=[True, False]))
-  def testMakeInputFnIterator(self, use_dataset, use_core_strategy):
+          mode=['graph', 'eager'], required_gpus=2, use_dataset=[True, False]))
+  def testMakeInputFnIterator(self, use_dataset):
     num_gpus = 2
     if use_dataset:
       fn = lambda: dataset_ops.Dataset.range(5 * num_gpus)
@@ -610,71 +507,56 @@ class LocalCollectiveAllReduceStrategy(
         input_fn,
         expected_values,
         test_reinitialize=use_dataset,
-        ignore_order=not use_dataset,
-        use_core_strategy=use_core_strategy)
+        ignore_order=not use_dataset)
 
-  @combinations.generate(
-      combinations.combine(mode=['graph'], use_core_strategy=[True, False]))
-  def testAllReduceSum(self, use_core_strategy):
+  @combinations.generate(combinations.combine(mode=['graph']))
+  def testAllReduceSum(self):
     if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
-    distribution, target, config = self._get_test_object(
-        None, None, num_gpus=2, use_core_strategy=use_core_strategy)
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
     with self.cached_session(config=config, target=target):
       self._test_all_reduce_sum(distribution)
 
-  @combinations.generate(
-      combinations.combine(mode=['graph'], use_core_strategy=[True, False]))
-  def testAllReduceSumGradients(self, use_core_strategy):
+  @combinations.generate(combinations.combine(mode=['graph']))
+  def testAllReduceSumGradients(self):
     if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
-    distribution, target, config = self._get_test_object(
-        None, None, num_gpus=2, use_core_strategy=use_core_strategy)
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
     with self.cached_session(config=config, target=target):
       self._test_all_reduce_sum_gradients(distribution)
 
-  @combinations.generate(
-      combinations.combine(mode=['graph'], use_core_strategy=[True, False]))
-  def testAllReduceSumGradientTape(self, use_core_strategy):
+  @combinations.generate(combinations.combine(mode=['graph']))
+  def testAllReduceSumGradientTape(self):
     if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
-    distribution, target, config = self._get_test_object(
-        None, None, num_gpus=2, use_core_strategy=use_core_strategy)
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
     with self.cached_session(config=config, target=target):
       self._test_all_reduce_sum_gradient_tape(distribution)
 
-  @combinations.generate(
-      combinations.combine(mode=['graph'], use_core_strategy=[True, False]))
-  def testAllReduceMean(self, use_core_strategy):
+  @combinations.generate(combinations.combine(mode=['graph']))
+  def testAllReduceMean(self):
     if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
-    distribution, target, config = self._get_test_object(
-        None, None, num_gpus=2, use_core_strategy=use_core_strategy)
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
     with self.cached_session(config=config, target=target):
       self._test_all_reduce_mean(distribution)
 
-  @combinations.generate(
-      combinations.combine(mode=['graph'], use_core_strategy=[True, False]))
-  def testAllReduceMeanGradients(self, use_core_strategy):
+  @combinations.generate(combinations.combine(mode=['graph']))
+  def testAllReduceMeanGradients(self):
     if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
-    distribution, target, config = self._get_test_object(
-        None, None, num_gpus=2, use_core_strategy=use_core_strategy)
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
     with self.cached_session(config=config, target=target):
       self._test_all_reduce_mean_gradients(distribution)
 
-  @combinations.generate(
-      combinations.combine(mode=['graph'], use_core_strategy=[True, False]))
-  def testAllReduceMeanGradientTape(self, use_core_strategy):
+  @combinations.generate(combinations.combine(mode=['graph']))
+  def testAllReduceMeanGradientTape(self):
     if context.num_gpus() < 2: self.skipTest('Not enough GPUs')
-    distribution, target, config = self._get_test_object(
-        None, None, num_gpus=2, use_core_strategy=use_core_strategy)
+    distribution, target, config = self._get_test_object(None, None, num_gpus=2)
     with self.cached_session(config=config, target=target):
       self._test_all_reduce_mean_gradient_tape(distribution)
 
-  @combinations.generate(
-      combinations.combine(mode=['graph'], use_core_strategy=[True, False]))
-  def testNumpyIterator(self, use_core_strategy):
+  @combinations.generate(combinations.combine(mode=['graph']))
+  def testNumpyIterator(self):
     num_gpus = 2
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
-    strategy, _, _ = self._get_test_object(
-        None, None, num_gpus=num_gpus, use_core_strategy=use_core_strategy)
+    strategy, _, _ = self._get_test_object(None, None, num_gpus=num_gpus)
     self._test_numpy_iterator(strategy)
 
 

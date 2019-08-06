@@ -23,22 +23,15 @@ namespace data {
 
 class FlatMapDatasetOp : public UnaryDatasetOpKernel {
  public:
-  static constexpr const char kDatasetType[] = "FlatMap";
-  static constexpr const char kInputDataset[] = "input_dataset";
-  static constexpr const char kOtherArguments[] = "other_arguments";
-  static constexpr const char kF[] = "f";
-  static constexpr const char kTarguments[] = "Targuments";
-  static constexpr const char kOutputTypes[] = "output_types";
-  static constexpr const char kOutputShapes[] = "output_shapes";
+  static constexpr const char* const kDatasetType = "FlatMap";
+  static constexpr const char* const kInputDataset = "input_dataset";
+  static constexpr const char* const kOtherArguments = "other_arguments";
+  static constexpr const char* const kFunc = "f";
+  static constexpr const char* const kTarguments = "Targuments";
+  static constexpr const char* const kOutputTypes = "output_types";
+  static constexpr const char* const kOutputShapes = "output_shapes";
 
-  explicit FlatMapDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx),
-        graph_def_version_(ctx->graph_def_version()) {
-    OP_REQUIRES_OK(
-        ctx, FunctionMetadata::Create(ctx, kF, /*params=*/{}, &func_metadata_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
-  }
+  explicit FlatMapDatasetOp(OpKernelConstruction* ctx);
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,

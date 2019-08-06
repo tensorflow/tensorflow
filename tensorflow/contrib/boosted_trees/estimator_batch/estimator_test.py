@@ -20,8 +20,10 @@ from __future__ import print_function
 import tempfile
 import numpy as np
 
+from google.protobuf import text_format
 from tensorflow.contrib.boosted_trees.estimator_batch import estimator
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
+from tensorflow.contrib.boosted_trees.proto import tree_config_pb2
 from tensorflow.contrib.layers.python.layers import feature_column as contrib_feature_column
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.python.estimator.canned import head as head_lib
@@ -136,6 +138,15 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
   def setUp(self):
     self._export_dir_base = tempfile.mkdtemp() + "export/"
     gfile.MkDir(self._export_dir_base)
+
+  def _assert_checkpoint_and_return_model(self, model_dir, global_step):
+    reader = checkpoint_utils.load_checkpoint(model_dir)
+    self.assertEqual(global_step, reader.get_tensor(ops.GraphKeys.GLOBAL_STEP))
+    serialized = reader.get_tensor("ensemble_model:0_config")
+    ensemble_proto = tree_config_pb2.DecisionTreeEnsembleConfig()
+    ensemble_proto.ParseFromString(serialized)
+
+    return ensemble_proto
 
   def _assert_checkpoint(self, model_dir, global_step):
     reader = checkpoint_utils.load_checkpoint(model_dir)
@@ -404,8 +415,8 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
     learner_config.constraints.min_node_weight = 1 / _QUANTILE_REGRESSION_SIZE
     learner_config.regularization.l2 = 1.0 / _QUANTILE_REGRESSION_SIZE
     learner_config.regularization.l1 = 1.0 / _QUANTILE_REGRESSION_SIZE
-    learner_config.regularization.tree_complexity = (
-        1.0 / _QUANTILE_REGRESSION_SIZE)
+    learner_config.regularization.tree_complexity = (1.0 /
+                                                     _QUANTILE_REGRESSION_SIZE)
 
     train_input_fn, test_input_fn, y = _quantile_regression_input_fns()
 
@@ -437,8 +448,8 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
     learner_config.constraints.min_node_weight = 1 / _QUANTILE_REGRESSION_SIZE
     learner_config.regularization.l2 = 1.0 / _QUANTILE_REGRESSION_SIZE
     learner_config.regularization.l1 = 1.0 / _QUANTILE_REGRESSION_SIZE
-    learner_config.regularization.tree_complexity = (
-        1.0 / _QUANTILE_REGRESSION_SIZE)
+    learner_config.regularization.tree_complexity = (1.0 /
+                                                     _QUANTILE_REGRESSION_SIZE)
 
     train_input_fn, test_input_fn, y = _quantile_regression_input_fns(
         two_dimension=True)
@@ -470,6 +481,335 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
     self.assertTrue(frac_below_upper_1 <= 0.98)
     self.assertTrue(frac_both_below_upper >= 0.91)
     self.assertTrue(frac_both_below_upper <= 0.99)
+
+  def testForcedInitialSplits(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 2
+    learner_config.constraints.max_tree_depth = 3
+
+    initial_subtree = """
+            nodes {
+              dense_float_binary_split {
+                feature_column: 0
+                threshold: -0.5
+                left_id: 1
+                right_id: 2
+              }
+              node_metadata {
+                gain: 0
+              }
+            }
+            nodes {
+              dense_float_binary_split {
+                feature_column: 1
+                threshold: 0.52
+                left_id: 3
+                right_id: 4
+              }
+              node_metadata {
+                gain: 0
+              }
+            }
+            nodes {
+              dense_float_binary_split {
+                feature_column: 1
+                threshold: 0.554
+                left_id: 5
+                right_id: 6
+              }
+              node_metadata {
+                gain: 0
+              }
+            }
+            nodes {
+              leaf {
+                vector {
+                  value: 0.0
+                }
+              }
+            }
+            nodes {
+              leaf {
+                vector {
+                  value: 0.0
+                }
+              }
+            }
+            nodes {
+              leaf {
+                vector {
+                  value: 0.0
+                }
+              }
+            }
+            nodes {
+              leaf {
+                vector {
+                  value: 0.0
+                }
+              }
+            }
+    """
+    tree_proto = tree_config_pb2.DecisionTreeConfig()
+    text_format.Merge(initial_subtree, tree_proto)
+
+    # Set initial subtree info.
+    learner_config.each_tree_start.CopyFrom(tree_proto)
+    learner_config.each_tree_start_num_layers = 2
+
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    classifier = estimator.GradientBoostedDecisionTreeClassifier(
+        learner_config=learner_config,
+        num_trees=2,
+        examples_per_layer=6,
+        model_dir=model_dir,
+        config=config,
+        center_bias=False,
+        feature_columns=[contrib_feature_column.real_valued_column("x")],
+        output_leaf_index=False)
+
+    classifier.fit(input_fn=_train_input_fn, steps=100)
+    # When no override of global steps, 5 steps were used.
+    ensemble = self._assert_checkpoint_and_return_model(
+        classifier.model_dir, global_step=6)
+
+    # TODO(nponomareva): find a better way to test this.
+    expected_ensemble = """
+      trees {
+        nodes {
+          dense_float_binary_split {
+            threshold: -0.5
+            left_id: 1
+            right_id: 2
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            feature_column: 1
+            threshold: 0.52
+            left_id: 3
+            right_id: 4
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            feature_column: 1
+            threshold: 0.554
+            left_id: 5
+            right_id: 6
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            threshold: 1.0
+            left_id: 7
+            right_id: 8
+          }
+          node_metadata {
+            gain: 0.888888895512
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: -2.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 2.00000023842
+            }
+          }
+        }
+      }
+      trees {
+        nodes {
+          dense_float_binary_split {
+            threshold: -0.5
+            left_id: 1
+            right_id: 2
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            feature_column: 1
+            threshold: 0.52
+            left_id: 3
+            right_id: 4
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            feature_column: 1
+            threshold: 0.554
+            left_id: 5
+            right_id: 6
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            threshold: 1.0
+            left_id: 7
+            right_id: 8
+          }
+          node_metadata {
+            gain: 0.727760672569
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: -1.81873059273
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 1.81873047352
+            }
+          }
+        }
+      }
+      trees {
+        nodes {
+          dense_float_binary_split {
+            threshold: -0.5
+            left_id: 1
+            right_id: 2
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            feature_column: 1
+            threshold: 0.52
+            left_id: 3
+            right_id: 4
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            feature_column: 1
+            threshold: 0.554
+            left_id: 5
+            right_id: 6
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+      }
+      tree_weights: 0.10000000149
+      tree_weights: 0.10000000149
+      tree_weights: 0.10000000149
+      tree_metadata {
+        num_tree_weight_updates: 1
+        num_layers_grown: 3
+        is_finalized: true
+      }
+      tree_metadata {
+        num_tree_weight_updates: 1
+        num_layers_grown: 3
+        is_finalized: true
+      }
+      tree_metadata {
+        num_tree_weight_updates: 1
+        num_layers_grown: 2
+      }
+      growing_metadata {
+        num_layers_attempted: 3
+      }
+    """
+    self.assertProtoEquals(expected_ensemble, ensemble)
 
 
 class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):
@@ -674,8 +1014,8 @@ class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):
     learner_config.constraints.min_node_weight = 1 / _QUANTILE_REGRESSION_SIZE
     learner_config.regularization.l2 = 1.0 / _QUANTILE_REGRESSION_SIZE
     learner_config.regularization.l1 = 1.0 / _QUANTILE_REGRESSION_SIZE
-    learner_config.regularization.tree_complexity = (
-        1.0 / _QUANTILE_REGRESSION_SIZE)
+    learner_config.regularization.tree_complexity = (1.0 /
+                                                     _QUANTILE_REGRESSION_SIZE)
 
     train_input_fn, test_input_fn, y = _quantile_regression_input_fns()
     y = y.reshape(_QUANTILE_REGRESSION_SIZE, 1)

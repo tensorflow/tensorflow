@@ -19,10 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class DirectedInterleaveDatasetOp : public DatasetOpKernel {
  public:
@@ -107,6 +105,15 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override {
       return strings::StrCat("DirectedInterleaveDatasetOp::Dataset");
+    }
+
+    bool IsStateful() const override {
+      for (const auto& input : data_inputs_) {
+        if (input->IsStateful()) {
+          return true;
+        }
+      }
+      return selector_input_->IsStateful();
     }
 
    protected:
@@ -196,8 +203,8 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
             }
           }
 
-          LOG(WARNING) << "DirectedInterleave selected an exhausted input: "
-                       << selected_input;
+          VLOG(2) << "DirectedInterleave selected an exhausted input: "
+                  << selected_input;
         }
       }
 
@@ -277,10 +284,13 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("DirectedInterleaveDataset").Device(DEVICE_CPU),
+                        DirectedInterleaveDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalDirectedInterleaveDataset").Device(DEVICE_CPU),
     DirectedInterleaveDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

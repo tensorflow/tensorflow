@@ -1,3 +1,10 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+load(
+    "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_proto_library_py",
+)
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
@@ -5,6 +12,7 @@ package(
 
 package_group(
     name = "friends",
+    includes = ["//tensorflow:internal"],
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/contrib/tpu/...",
@@ -17,13 +25,6 @@ package_group(
     packages = [
         "//tensorflow/compiler/xla/...",
     ],
-)
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library_py",
 )
 
 # Filegroup used to collect source files for dependency checking.
@@ -54,6 +55,28 @@ xla_proto_library(
     deps = [
         ":xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
+    ],
+)
+
+cc_library(
+    name = "bit_cast",
+    hdrs = ["bit_cast.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base",
+    ],
+)
+
+tf_cc_test(
+    name = "bit_cast_test",
+    srcs = ["bit_cast_test.cc"],
+    deps = [
+        ":bit_cast",
+        ":test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -165,6 +188,10 @@ cc_library(
     hdrs = [
         "statusor.h",
     ],
+    linkopts = select({
+        "//tensorflow:freebsd": ["-lexecinfo"],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":status",
@@ -194,6 +221,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -848,11 +876,14 @@ cc_library(
     deps =
         [
             ":parse_flags_from_env",
-            ":status",
             ":xla_proto",
             "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "@com_google_absl//absl/container:flat_hash_map",
+            "@com_google_absl//absl/container:node_hash_map",
             "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/strings:str_format",
         ],
 )
 

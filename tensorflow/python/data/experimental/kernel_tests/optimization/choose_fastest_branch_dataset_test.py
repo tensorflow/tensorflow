@@ -48,7 +48,7 @@ class ChooseFastestBranchDatasetTest(test_base.DatasetTestBase,
     self.assertDatasetProduces(
         choose_fastest,
         expected_output=[0, 1, 2, 3, 4],
-        expected_shapes=dataset.output_shapes)
+        expected_shapes=dataset_ops.get_legacy_output_shapes(dataset))
 
   def testCaptureSimple(self):
     dataset = dataset_ops.Dataset.range(10)

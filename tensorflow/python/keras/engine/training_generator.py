@@ -80,7 +80,7 @@ def model_iteration(model,
       validation_steps: Total number of steps (batches of samples) before
         declaring validation finished.
       validation_freq: Only relevant if validation data is provided. Integer or
-        `collections.Container` instance (e.g. list, tuple, etc.). If an
+        `collections.abc.Container` instance (e.g. list, tuple, etc.). If an
         integer, specifies how many training epochs to run before a new
         validation run is performed, e.g. `validation_freq=2` runs
         validation every 2 epochs. If a Container, specifies the epochs on
@@ -182,14 +182,15 @@ def model_iteration(model,
   progbar.params['verbose'] = verbose
 
   if mode == ModeKeys.PREDICT:
-    aggregator = training_utils.OutputsAggregator(True, steps_per_epoch)
+    aggregator = training_utils.OutputsAggregator(True, steps=steps_per_epoch)
   else:
-    aggregator = training_utils.MetricsAggregator(True, steps_per_epoch)
+    aggregator = training_utils.MetricsAggregator(True, steps=steps_per_epoch)
 
   should_set_learning_phase = context.executing_eagerly() and model.run_eagerly
   if should_set_learning_phase:
-    old_learning_phase = backend.learning_phase()
-    backend.set_eager_learning_phase(1 if mode == ModeKeys.TRAIN else 0)
+    learning_phase_scope = backend.eager_learning_phase_scope(
+        1 if mode == ModeKeys.TRAIN else 0)
+    learning_phase_scope.__enter__()
 
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
@@ -217,7 +218,7 @@ def model_iteration(model,
 
     step = 0
     while step < target_steps:
-      batch_data = _get_next_batch(generator, mode)
+      batch_data = _get_next_batch(generator)
       if batch_data is None:
         if is_dataset:
           # The dataset passed by the user ran out of batches.
@@ -235,7 +236,7 @@ def model_iteration(model,
                 % (steps_name, steps_per_epoch * epochs))
           elif step > 0:
             steps_per_epoch = step
-            aggregator.num_samples_or_steps = steps_per_epoch
+            aggregator.steps = steps_per_epoch
             if mode == ModeKeys.TRAIN:
               progbar.params['steps'] = steps_per_epoch
               progbar.progbar.target = steps_per_epoch
@@ -341,7 +342,7 @@ def model_iteration(model,
     enqueuer.stop()
 
   if should_set_learning_phase:
-    backend.set_eager_learning_phase(old_learning_phase)
+    learning_phase_scope.__exit__(None, None, None)
 
   if mode == ModeKeys.TRAIN:
     return model.history
@@ -356,25 +357,21 @@ predict_generator = functools.partial(
     model_iteration, mode=ModeKeys.PREDICT, shuffle=False)
 
 
-def _get_next_batch(generator, mode):
+def _get_next_batch(generator):
   """Retrieves the next batch of input data."""
   try:
     generator_output = next(generator)
   except (StopIteration, errors.OutOfRangeError):
     return None
-  if not isinstance(generator_output, tuple):
-    if mode == ModeKeys.PREDICT:
-      # Always wrap in a tuple.
-      return (generator_output,)
-    else:
-      raise ValueError('Output of generator should be '
-                       'a tuple `(x, y, sample_weight)` '
-                       'or `(x, y)`. Found: ' + str(generator_output))
 
-  if len(generator_output) < 1 or len(generator_output) > 3:
-    raise ValueError('Output of generator should be '
-                     'a tuple `(x, y, sample_weight)` '
-                     'or `(x, y)` or (x,). Found: ' + str(generator_output))
+  if not isinstance(generator_output, tuple):
+    # Always wrap in a tuple.
+    generator_output = (generator_output,)
+  if len(generator_output) not in [1, 2, 3]:
+    raise ValueError(
+        'Output of generator should be a tuple of 1 or 2 or 3 '
+        'elements: (input,) or (input, target) or '
+        '(input, target, sample_weights). Received {}'.format(generator_output))
   return generator_output
 
 
@@ -479,7 +476,9 @@ def convert_to_generator_like(data,
   # Create generator from NumPy or EagerTensor Input.
   num_samples = int(nest.flatten(data)[0].shape[0])
   if batch_size is None:
-    raise ValueError('You must specify `batch_size`')
+    raise ValueError(
+        'When passing input data as arrays, do not specify '
+        '`steps_per_epoch`/`steps` argument. Please use `batch_size` instead.')
   steps_per_epoch = int(math.ceil(num_samples / batch_size))
 
   def _gen(data):
@@ -769,7 +768,7 @@ class GeneratorLikeTrainingLoop(training_utils.TrainingLoop):
                                                        validation_steps)
     elif validation_split and 0. < validation_split < 1.:
       (x, y, sample_weights, val_x, val_y,
-       val_sample_weights) = model._split_training_and_validation_data(
+       val_sample_weights) = training_utils.split_training_and_validation_data(
            x, y, sample_weights, validation_split)
       validation_data = (val_x, val_y, val_sample_weights)
     else:

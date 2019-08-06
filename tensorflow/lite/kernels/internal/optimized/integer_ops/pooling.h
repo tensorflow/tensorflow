@@ -29,7 +29,7 @@ limitations under the License.
 
 #include "fixedpoint/fixedpoint.h"
 #include "profiling/instrumentation.h"
-#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"

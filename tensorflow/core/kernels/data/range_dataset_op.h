@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_RANGE_DATASET_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_RANGE_DATASET_OP_H_
 
@@ -23,14 +22,14 @@ namespace data {
 
 class RangeDatasetOp : public DatasetOpKernel {
  public:
-  static constexpr const char kDatasetType[] = "Range";
-  static constexpr const char kStart[] = "start";
-  static constexpr const char kStop[] = "stop";
-  static constexpr const char kStep[] = "step";
-  static constexpr const char kOutputTypes[] = "output_types";
-  static constexpr const char kOutputShapes[] = "output_shapes";
+  static constexpr const char* const kDatasetType = "Range";
+  static constexpr const char* const kStart = "start";
+  static constexpr const char* const kStop = "stop";
+  static constexpr const char* const kStep = "step";
+  static constexpr const char* const kOutputTypes = "output_types";
+  static constexpr const char* const kOutputShapes = "output_shapes";
 
-  explicit RangeDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
+  explicit RangeDatasetOp(OpKernelConstruction* ctx);
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;

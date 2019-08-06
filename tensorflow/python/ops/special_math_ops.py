@@ -521,7 +521,7 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
 
 def _transpose_if_necessary(tensor, perm):
   """Like transpose(), but avoids creating a new tensor if possible."""
-  if perm != range(len(perm)):
+  if perm != list(range(len(perm))):
     return array_ops.transpose(tensor, perm=perm)
   else:
     return tensor
@@ -533,7 +533,8 @@ def _reshape_if_necessary(tensor, new_shape):
   new_shape = tuple(-1 if x is None else x for x in new_shape)
   cur_shape = tuple(x.value for x in tensor.get_shape().dims)
   if (len(new_shape) == len(cur_shape) and
-      all(d0 == d1 or d1 == -1 for d0, d1 in zip(cur_shape, new_shape))):
+      all(not isinstance(d1, ops.Tensor) and (d0 == d1 or d1 == -1)
+          for d0, d1 in zip(cur_shape, new_shape))):
     return tensor
   else:
     return array_ops.reshape(tensor, new_shape)

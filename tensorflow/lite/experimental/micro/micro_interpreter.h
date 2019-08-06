@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/experimental/micro/micro_allocator.h"
 #include "tensorflow/lite/experimental/micro/simple_tensor_allocator.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -25,8 +26,8 @@ namespace tflite {
 
 class MicroInterpreter {
  public:
-  // The lifetime of the model, op resolver, allocator, and error reporter must
-  // be at least as long as that of the interpreter object, since the
+  // The lifetime of the model, op resolver, tensor arena, and error reporter
+  // must be at least as long as that of the interpreter object, since the
   // interpreter may need to access them at any time. This means that you should
   // usually create them with the same scope as each other, for example having
   // them all allocated on the stack as local variables through a top-level
@@ -34,8 +35,24 @@ class MicroInterpreter {
   // The interpreter doesn't do any deallocation of any of the pointed-to
   // objects, ownership remains with the caller.
   MicroInterpreter(const Model* model, const OpResolver& op_resolver,
-                   SimpleTensorAllocator* tensor_allocator,
+                   uint8_t* tensor_arena, size_t tensor_arena_size,
                    ErrorReporter* error_reporter);
+
+  // Specify a particular tensor as pre-allocated.  This means that this tensor
+  // will internally point to the supplied buffer, and no new memory will be
+  // provided.  The buffer must live at least as long as the allocator, since
+  // the buffer will be used every time an op is invoked which uses the
+  // specified tensor.  Most commonly this is useful when a platform-provided
+  // DMA buffer is used as an input, and it is desirable to avoid unnecessarily
+  // allocating a new buffer and copying from the DMA buffer. The user must
+  // ensure the buffer is valid throughout each interpreter run, and is not
+  // prematurely overwritten.
+  TfLiteStatus RegisterPreallocatedInput(uint8_t* buffer, size_t input_index);
+
+  // Run through the model and allocate all necessary input, output and
+  // intermediate tensors except for those already provided via calls to
+  // registerPreallocatedInput.
+  TfLiteStatus AllocateTensors();
 
   TfLiteStatus Invoke();
 
@@ -53,18 +70,17 @@ class MicroInterpreter {
   ErrorReporter* error_reporter() { return error_reporter_; }
 
  private:
-  TfLiteStatus AllocateInputAndActTensors();
-  TfLiteStatus AllocateTemporaryTensors();
 
   const Model* model_;
   const OpResolver& op_resolver_;
-  SimpleTensorAllocator* tensor_allocator_;
   ErrorReporter* error_reporter_;
+  TfLiteContext context_;
+  MicroAllocator allocator_;
+  bool tensors_allocated_;
 
   TfLiteStatus initialization_status_;
   const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors_;
   const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;
-  TfLiteContext context_;
 
   const SubGraph* subgraph_;
 };

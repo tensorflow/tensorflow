@@ -24,6 +24,21 @@ import linecache
 import sys
 import threading
 
+import six
+
+# Generally such lookups should be done using `threading.local()`. See
+# https://blogs.gnome.org/jamesh/2008/06/11/tls-python/ for a detailed
+# explanation of why. However the transform stacks are expected to be empty
+# when a thread is joined, so reusing the key does not introduce a correctness
+# issue. Moreover, get_ident is faster than storing and retrieving a unique
+# key in a thread local store.
+if six.PY3:
+  _get_thread_key = threading.get_ident
+else:
+  import thread  # pylint: disable=g-import-not-at-top
+  _get_thread_key = thread.get_ident
+
+
 # Names for indices into TF traceback tuples.
 TB_FILENAME = 0
 TB_LINENO = 1
@@ -31,48 +46,62 @@ TB_FUNCNAME = 2
 TB_CODEDICT = 3  # Dictionary of Python interpreter state.
 
 
-stacks = threading.local()
+_source_mapper_stacks = collections.defaultdict(list)
+_source_filter_stacks = collections.defaultdict(list)
 
 
-def _source_mappers():
-  if not hasattr(stacks, 'source_mapper'):
-    stacks.source_mapper = []
-  return stacks.source_mapper
+class StackTraceTransform(object):
+  """Base class for stack trace transformation functions."""
 
-
-def _source_filters():
-  if not hasattr(stacks, 'source_filter'):
-    stacks.source_filter = []
-  return stacks.source_filter
-
-
-class StackTraceMapper(object):
-  """Allows remapping traceback information to different source code."""
+  _stack_dict = None  # Subclasses should override
+  _thread_key = None
 
   def __enter__(self):
-    _source_mappers().append(self)
+    self.reset()
+
+    # Any given instance is assumed to be used by a single thread, which reduces
+    # expensive thread local lookups.
+    if self._thread_key is None:
+      self._thread_key = _get_thread_key()
+    else:
+      assert self._thread_key == _get_thread_key(), 'Shared across threads?'
+
+    stack = self._stack_dict[self._thread_key]
+    if stack:
+      self.parent = stack[-1]
+    else:
+      self.parent = None
+    stack.append(self)
     return self
 
   def __exit__(self, unused_type, unused_value, unused_traceback):
-    assert _source_mappers()[-1] is self, 'Concurrent access?'
-    _source_mappers().pop()
+    top = self._stack_dict[self._thread_key].pop()
+    assert top is self, 'Concurrent access?'
 
-  def map(self, filename, lineno, name):
+  def reset(self):
+    pass
+
+
+class StackTraceMapper(StackTraceTransform):
+  """Allows remapping traceback information to different source code."""
+  _stack_dict = _source_mapper_stacks
+
+  def reset(self):
+    self._effective_source_map = None
+
+  def get_effective_source_map(self):
+    """Returns a map (filename, lineno) -> (filename, lineno, function_name)."""
     raise NotImplementedError('subclasses need to override this')
 
 
-class StackTraceFilter(object):
+class StackTraceFilter(StackTraceTransform):
   """Allows filtering traceback information by removing superfluous frames."""
+  _stack_dict = _source_filter_stacks
 
-  def __enter__(self):
-    _source_filters().append(self)
-    return self
+  def reset(self):
+    self._filtered_filenames = None
 
-  def __exit__(self, unused_type, unused_value, unused_traceback):
-    assert _source_filters()[-1] is self, 'Concurrent access?'
-    _source_filters().pop()
-
-  def filter(self, filename, lineno, name):
+  def get_filtered_filenames(self):
     raise NotImplementedError('subclasses need to override this')
 
 
@@ -97,9 +126,16 @@ class CurrentModuleFilter(StackTraceFilter):
       del f
       del outer_f
 
-  def should_remove(self, filename, lineno, name):
-    del lineno, name
-    return filename == self._filename
+  def get_filtered_filenames(self):
+    if self._filtered_filenames is None:
+      self._filtered_filenames = frozenset((self._filename,))
+      if self.parent is not None:
+        self._filtered_filenames |= self.parent.get_filtered_filenames()
+    return self._filtered_filenames
+
+
+EMPTY_FROZEN_MAP = {}
+EMPTY_FROZEN_SET = frozenset()
 
 
 def extract_stack(limit=None):
@@ -127,6 +163,21 @@ def extract_stack(limit=None):
     f = sys.exc_info()[2].tb_frame.f_back
   ret = []
   length = 0
+
+  thread_key = _get_thread_key()
+  source_mappers = _source_mapper_stacks[thread_key]
+  # TODO(mdan): Use sentinels instead.
+  if source_mappers:
+    source_map = source_mappers[-1].get_effective_source_map()
+  else:
+    source_map = EMPTY_FROZEN_MAP
+
+  source_filters = _source_filter_stacks[thread_key]
+  if source_filters:
+    filtered_filenames = source_filters[-1].get_filtered_filenames()
+  else:
+    filtered_filenames = EMPTY_FROZEN_SET
+
   while f is not None and (limit is None or length < limit):
     lineno = f.f_lineno
     co = f.f_code
@@ -135,21 +186,16 @@ def extract_stack(limit=None):
     frame_globals = f.f_globals
     func_start_lineno = co.co_firstlineno
 
-    for mapper in _source_mappers():
-      # TODO(mdan): Show some indication that the frame was translated.
-      filename, lineno, name = mapper.map(filename, lineno, name)
+    # TODO(mdan): Show some indication that the frame was translated.
+    filename, lineno, name = source_map.get(
+        (filename, lineno), (filename, lineno, name))
 
-    keep = True
-    if ret:  # Never filter the innermost frame.
-      keep = not any(
-          f.should_remove(filename, lineno, name) for f in _source_filters())
-    if keep:
+    # Note: we never filter the innermost frame.
+    if not (ret and filename in filtered_filenames):
       ret.append((filename, lineno, name, frame_globals, func_start_lineno))
       length += 1
 
     f = f.f_back
-
-  # TODO(mdan): Also add a truncation mechanism.
 
   ret.reverse()
   return ret
@@ -199,21 +245,22 @@ def convert_stack(stack, include_func_start_lineno=False):
       included as the 5th entry in return tuples.
 
   Returns:
-    A list of n 4-tuples or 5-tuples
+    A tuple of n 4-tuples or 5-tuples
     (filename, lineno, name, code, [optional: func_start_lineno]), where the
     code tuple element is calculated from the corresponding elements of the
     input tuple.
   """
-  ret = []
-  for (filename, lineno, name, frame_globals, func_start_lineno) in stack:
-    linecache.checkcache(filename)
-    line = linecache.getline(filename, lineno, frame_globals)
-    if line:
-      line = line.strip()
-    else:
-      line = None
-    if include_func_start_lineno:
-      ret.append((filename, lineno, name, line, func_start_lineno))
-    else:
-      ret.append((filename, lineno, name, line))
-  return ret
+  def _tuple_generator():  # pylint: disable=missing-docstring
+    for (filename, lineno, name, frame_globals, func_start_lineno) in stack:
+      linecache.checkcache(filename)
+      line = linecache.getline(filename, lineno, frame_globals)
+      if line:
+        line = line.strip()
+      else:
+        line = None
+      if include_func_start_lineno:
+        yield (filename, lineno, name, line, func_start_lineno)
+      else:
+        yield (filename, lineno, name, line)
+
+  return tuple(_tuple_generator())

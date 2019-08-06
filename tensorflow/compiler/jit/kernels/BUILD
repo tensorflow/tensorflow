@@ -28,6 +28,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:state_ops_op_lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:tf_allocator_adapter",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",

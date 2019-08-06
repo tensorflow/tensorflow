@@ -20,6 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
@@ -67,6 +68,8 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override {
       return "NonSerializableDatasetOp::Dataset";
     }
+
+    bool IsStateful() const override { return input_->IsStateful(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -123,10 +126,13 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("NonSerializableDataset").Device(DEVICE_CPU),
+                        NonSerializableDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalNonSerializableDataset").Device(DEVICE_CPU),
     NonSerializableDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

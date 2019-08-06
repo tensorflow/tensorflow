@@ -1,10 +1,10 @@
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteObjC'
-  s.version          = '0.2.0'
+  s.version          = '1.14.0'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => '37c101d' }
+  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :tag => "v#{s.version}" }
   s.summary          = 'TensorFlow Lite for Objective-C'
   s.description      = <<-DESC
 
@@ -24,7 +24,6 @@ Pod::Spec.new do |s|
   s.public_header_files = objc_dir + 'apis/*.h'
   s.source_files = [
     objc_dir + '{apis,sources}/*.{h,m,mm}',
-    tfl_dir + 'c/c_api_internal.h',
     tfl_dir + 'experimental/c/c_api.h',
     tfl_dir + 'experimental/c/c_api_types.h',
   ]

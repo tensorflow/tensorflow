@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 // OP_REQUIRES_OK_RETURN is the same as OP_REQUIRES_OK except that
@@ -365,7 +366,12 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
-  auto run_result = executable->Run(launch_context.arguments(), run_options);
+  xla::StatusOr<xla::ScopedShapedBuffer> run_result;
+  if (!stream || platform_info_.platform_id() == se::host::kHostPlatformId) {
+    run_result = executable->Run(launch_context.arguments(), run_options);
+  } else {
+    run_result = executable->RunAsync(launch_context.arguments(), run_options);
+  }
   OP_REQUIRES(ctx, run_result.ok(), run_result.status());
 
   auto elapsed = env->NowMicros() - start_time;
@@ -525,9 +531,19 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   // We're missing the must-be-constant inputs, tell `PopulateInputs`
   // about this.  We don't actually need these inputs because they've
   // already been baked into the compiled kernel.
-  launch_context.PopulateInputs(
-      ctx, closure.compilation_result(), closure.resource_var_snapshots(),
-      /*missing_ctx_input_prefix=*/closure.num_constant_args());
+  {
+    tensorflow::profiler::TraceMe hlo_module_activity(
+        [&] {
+          return absl::StrCat(
+              "Populate Inputs (",
+              closure.compilation_result()->xla_input_shapes.size(), ")");
+        },
+        tensorflow::profiler::TraceMeLevel::kInfo);
+
+    launch_context.PopulateInputs(
+        ctx, closure.compilation_result(), closure.resource_var_snapshots(),
+        /*missing_ctx_input_prefix=*/closure.num_constant_args());
+  }
 
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
@@ -539,12 +555,24 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
-  auto run_result =
-      closure.executable()->Run(launch_context.arguments(), run_options);
+  xla::StatusOr<xla::ScopedShapedBuffer> run_result;
+  if (!stream || platform_info_.platform_id() == se::host::kHostPlatformId) {
+    run_result =
+        closure.executable()->Run(launch_context.arguments(), run_options);
+  } else {
+    run_result =
+        closure.executable()->RunAsync(launch_context.arguments(), run_options);
+  }
   OP_REQUIRES(ctx, run_result.ok(), run_result.status());
 
   auto elapsed = env->NowMicros() - start_time;
   VLOG(2) << "Elapsed time in computation: " << elapsed << "us";
+
+  tensorflow::profiler::TraceMe hlo_module_activity(
+      [&] {
+        return absl::StrCat("Populate Outputs (", ctx->num_outputs(), ")");
+      },
+      tensorflow::profiler::TraceMeLevel::kInfo);
 
   OP_REQUIRES_OK(
       ctx,

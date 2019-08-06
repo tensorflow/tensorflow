@@ -211,6 +211,8 @@ renames = {
         'tf.math.conj',
     'tf.container':
         'tf.compat.v1.container',
+    'tf.control_flow_v2_enabled':
+        'tf.compat.v1.control_flow_v2_enabled',
     'tf.convert_to_tensor_or_indexed_slices':
         'tf.compat.v1.convert_to_tensor_or_indexed_slices',
     'tf.convert_to_tensor_or_sparse_tensor':
@@ -359,6 +361,10 @@ renames = {
         'tf.compat.v1.estimator.tpu.TPUEstimator',
     'tf.estimator.tpu.TPUEstimatorSpec':
         'tf.compat.v1.estimator.tpu.TPUEstimatorSpec',
+    'tf.estimator.tpu.experimental.EmbeddingSpec':
+        'tf.compat.v1.estimator.tpu.experimental.EmbeddingSpec',
+    'tf.experimental.output_all_intermediates':
+        'tf.compat.v1.experimental.output_all_intermediates',
     'tf.expm1':
         'tf.math.expm1',
     'tf.fake_quant_with_min_max_args':
@@ -1319,6 +1325,16 @@ renames = {
         'tf.compat.v1.tpu.core',
     'tf.tpu.cross_replica_sum':
         'tf.compat.v1.tpu.cross_replica_sum',
+    'tf.tpu.experimental.AdagradParameters':
+        'tf.compat.v1.tpu.experimental.AdagradParameters',
+    'tf.tpu.experimental.AdamParameters':
+        'tf.compat.v1.tpu.experimental.AdamParameters',
+    'tf.tpu.experimental.StochasticGradientDescentParameters':
+        'tf.compat.v1.tpu.experimental.StochasticGradientDescentParameters',
+    'tf.tpu.experimental.embedding_column':
+        'tf.compat.v1.tpu.experimental.embedding_column',
+    'tf.tpu.experimental.shared_embedding_columns':
+        'tf.compat.v1.tpu.experimental.shared_embedding_columns',
     'tf.tpu.initialize_system':
         'tf.compat.v1.tpu.initialize_system',
     'tf.tpu.outside_compilation':
@@ -1445,10 +1461,6 @@ renames = {
         'tf.compat.v1.train.do_quantize_training_on_graphdef',
     'tf.train.experimental.MixedPrecisionLossScaleOptimizer':
         'tf.compat.v1.train.experimental.MixedPrecisionLossScaleOptimizer',
-    'tf.train.experimental.disable_mixed_precision_graph_rewrite':
-        'tf.compat.v1.train.experimental.disable_mixed_precision_graph_rewrite',
-    'tf.train.experimental.enable_mixed_precision_graph_rewrite':
-        'tf.compat.v1.train.experimental.enable_mixed_precision_graph_rewrite',
     'tf.train.exponential_decay':
         'tf.compat.v1.train.exponential_decay',
     'tf.train.export_meta_graph':

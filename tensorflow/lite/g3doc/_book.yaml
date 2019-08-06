@@ -24,6 +24,8 @@ upper_tabs:
         path: /lite/guide/android
       - title: "iOS quickstart"
         path: /lite/guide/ios
+      - title: "Python quickstart"
+        path: /lite/guide/python
       - title: "FAQ"
         path: /lite/guide/faq
       - title: "Roadmap"
@@ -40,6 +42,8 @@ upper_tabs:
         path: /lite/convert/cmdline_reference
       - title: "Convert quantized models"
         path: /lite/convert/quantization
+      - title: "Convert RNN models"
+        path: /lite/convert/rnn
 
       - heading: "Convert a TensorFlow 2.0 model"
       - title: "TensorFlow Lite converter and 2.0"
@@ -72,11 +76,12 @@ upper_tabs:
         path: /lite/performance/model_optimization
       - title: "Post-training quantization"
         path: /lite/performance/post_training_quantization
-      - title: "Post-training quantization example"
-        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb
-      - title: "Post-training integer quantization example"
-        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_integer_quant.ipynb
-        status: external
+      - title: "Post-training weight quantization"
+        path: /lite/performance/post_training_quant
+      - title: "Post-training integer quantization"
+        path: /lite/performance/post_training_integer_quant
+      - title: "Post-training float16 quantization"
+        path: /lite/performance/post_training_float16_quant
       - title: "Delegates"
         path: /lite/performance/delegates
       - title: "GPU delegate"

@@ -124,11 +124,7 @@ __global__ void split_v_kernel(const T* input_ptr,
   int num_outputs = output_ptr_data.size;
 
   // verbose declaration needed due to template
-#if GOOGLE_CUDA
-  extern __shared__ __align__(sizeof(T)) unsigned char smem[];
-#elif TENSORFLOW_USE_ROCM
-  HIP_DYNAMIC_SHARED(unsigned char, smem);
-#endif
+  GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(T), unsigned char, smem);
   IntType* smem_col_scan = reinterpret_cast<IntType*>(smem);
 
   if (useSmem) {

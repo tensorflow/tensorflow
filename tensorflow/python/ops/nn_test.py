@@ -24,12 +24,9 @@ from absl.testing import parameterized
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.distribute import mirrored_strategy
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -44,147 +41,6 @@ from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops.nn_impl import _compute_sampled_logits
 from tensorflow.python.platform import test as test_lib
-
-
-class LossUtilitiesTest(test_lib.TestCase):
-
-  def testComputeAverageLossGlobalBatchSize(self):
-    per_example_loss = [1, 2, 3, 4, 5]
-    loss = nn_impl.compute_average_loss(per_example_loss, global_batch_size=10)
-    self.assertEqual(self.evaluate(loss), 1.5)
-
-  def testComputeAverageLossDefaultGlobalBatchSize(self):
-    if not test_lib.is_gpu_available(cuda_only=True):
-      self.skipTest("No GPU available")
-
-    # Without strategy - num replicas = 1
-    per_example_loss = constant_op.constant([2.5, 6.2, 5.])
-    loss = nn_impl.compute_average_loss(per_example_loss)
-    self.assertAllClose(self.evaluate(loss), (2.5 + 6.2 + 5.) / 3)
-
-    # With strategy - num replicas = 2
-    strategy = mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"])
-    with strategy.scope():
-      per_replica_losses = strategy.experimental_run_v2(
-          nn_impl.compute_average_loss, args=(per_example_loss,))
-      loss = strategy.reduce("SUM", per_replica_losses, axis=None)
-      self.assertAllClose(self.evaluate(loss), (2.5 + 6.2 + 5.) / 3)
-
-  def testComputeAverageLossSampleWeights(self):
-    if not test_lib.is_gpu_available(cuda_only=True):
-      self.skipTest("No GPU available")
-
-    strategy = mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"])
-
-    with strategy.scope():
-      # Scalar sample weight
-      per_replica_losses = strategy.experimental_run_v2(
-          nn_impl.compute_average_loss,
-          args=([2., 4., 6.],),
-          kwargs={"sample_weight": 2})
-      loss = strategy.reduce("SUM", per_replica_losses, axis=None)
-      self.assertAllClose(self.evaluate(loss), (2. + 4. + 6.) * 2. / 3)
-
-      # Per example sample weight
-      per_replica_losses = strategy.experimental_run_v2(
-          nn_impl.compute_average_loss,
-          args=([2., 4., 6.],),
-          kwargs={"sample_weight": [0.3, 0.5, 0.2]})
-      loss = strategy.reduce("SUM", per_replica_losses, axis=None)
-      self.assertAllClose(
-          self.evaluate(loss), (2. * 0.3 + 4. * 0.5 + 6. * 0.2) / 3)
-
-      # Time-step sample weight
-      per_replica_losses = strategy.experimental_run_v2(
-          nn_impl.compute_average_loss,
-          args=([[2., 0.5], [4., 1.]],),
-          kwargs={"sample_weight": [[0.3, 0.7], [0.2, 0.8]]})
-      loss = strategy.reduce("SUM", per_replica_losses, axis=None)
-      self.assertAllClose(
-          self.evaluate(loss), (2. * 0.3 + 0.5 * 0.7 + 4. * 0.2 + 1. * 0.8) / 2)
-
-  def testComputeAverageLossInvalidSampleWeights(self):
-    with self.assertRaisesRegex(ValueError,
-                                "weights can not be broadcast to values"):
-      nn_impl.compute_average_loss([2.5, 6.2, 5.],
-                                   sample_weight=[0.2, 0.8],
-                                   global_batch_size=10)
-
-  def testComputeAverageLossDtype(self):
-    if not test_lib.is_gpu_available(cuda_only=True):
-      self.skipTest("No GPU available")
-
-    strategy = mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"])
-
-    with strategy.scope():
-      per_example_loss = constant_op.constant([2., 4., 6.],
-                                              dtype=dtypes.float64)
-      per_replica_losses = strategy.experimental_run_v2(
-          nn_impl.compute_average_loss,
-          args=(per_example_loss,),
-          kwargs={"sample_weight": 2})
-      loss = strategy.reduce("SUM", per_replica_losses, axis=None)
-      self.assertEqual(loss.dtype, dtypes.float64)
-
-  def testComputeAverageLossInvalidRank(self):
-    per_example_loss = constant_op.constant(2)
-
-    # Static rank
-    with self.assertRaisesRegex(
-        ValueError, "Invalid value passed for `per_example_loss`. "
-        "Expected a tensor with at least rank 1,"):
-      nn_impl.compute_average_loss(per_example_loss)
-
-    with context.graph_mode():
-      # Dynamic rank
-      per_example_loss = array_ops.placeholder(dtype=dtypes.float32)
-      loss = nn_impl.compute_average_loss(per_example_loss)
-
-      with self.cached_session() as sess:
-        with self.assertRaisesRegex(
-            errors.InvalidArgumentError,
-            "Invalid value passed for `per_example_loss`. "
-            "Expected a tensor with at least rank 1."):
-          sess.run(loss, {per_example_loss: 2})
-
-  def testComputeAverageLossInCrossReplicaContext(self):
-    if not test_lib.is_gpu_available(cuda_only=True):
-      self.skipTest("No GPU available")
-
-    strategy = mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"])
-    with strategy.scope():
-      with self.assertRaisesRegex(
-          RuntimeError,
-          "You are calling `compute_average_loss` in cross replica context"):
-        nn_impl.compute_average_loss([2, 3])
-
-  def testScaleRegularizationLoss(self):
-    if not test_lib.is_gpu_available(cuda_only=True):
-      self.skipTest("No GPU available")
-
-    # Without strategy - num replicas = 1
-    reg_losses = constant_op.constant([2.5, 6.2, 5.])
-    loss = nn_impl.scale_regularization_loss(reg_losses)
-    self.assertAllClose(self.evaluate(loss), (2.5 + 6.2 + 5.))
-
-    # With strategy - num replicas = 2
-    strategy = mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"])
-    with strategy.scope():
-      per_replica_losses = strategy.experimental_run_v2(
-          nn_impl.scale_regularization_loss, args=(reg_losses,))
-      loss = strategy.reduce("SUM", per_replica_losses, axis=None)
-      self.assertAllClose(self.evaluate(loss), (2.5 + 6.2 + 5.))
-
-  def testScaleRegularizationLossInCrossReplicaContext(self):
-    if not test_lib.is_gpu_available(cuda_only=True):
-      self.skipTest("No GPU available")
-
-    strategy = mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"])
-    with strategy.scope():
-      with self.assertRaisesRegex(
-          RuntimeError, "You are calling `scale_regularization_loss` in "
-          "cross replica context"):
-        nn_impl.scale_regularization_loss([2, 3])
 
 
 class ZeroFractionTest(test_lib.TestCase):
@@ -457,7 +313,7 @@ class DropoutTest(test_lib.TestCase):
     num_iter = 10
     for keep_prob in [0.1, 0.5, 0.8]:
       t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      dropout = nn_ops.dropout(t, keep_prob)
+      dropout = nn_ops.dropout(t, rate=(1 - keep_prob))
       final_count = 0
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
       for _ in xrange(0, num_iter):
@@ -484,7 +340,7 @@ class DropoutTest(test_lib.TestCase):
     num_iter = 10
     for keep_prob in [0.1, 0.5, 0.8]:
       t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      dropout = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, 1])
+      dropout = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
       final_count = 0
       for _ in xrange(0, num_iter):
@@ -508,7 +364,7 @@ class DropoutTest(test_lib.TestCase):
     num_iter = 10
     for keep_prob in [0.1, 0.5, 0.8]:
       t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      dropout = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, 1])
+      dropout = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
       for _ in xrange(0, num_iter):
         value = self.evaluate(dropout)
@@ -553,7 +409,9 @@ class DropoutTest(test_lib.TestCase):
     keep_prob = 0.5
     x = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
     dropout_x = nn_ops.dropout(
-        x, keep_prob, noise_shape=array_ops.placeholder(dtypes.int32))
+        x,
+        rate=(1 - keep_prob),
+        noise_shape=array_ops.placeholder(dtypes.int32))
     self.assertEqual(x.get_shape(), dropout_x.get_shape())
 
   def testPartialShapedDropout(self):
@@ -563,7 +421,7 @@ class DropoutTest(test_lib.TestCase):
     for keep_prob in [0.1, 0.5, 0.8]:
       t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
       # Set noise_shape=[None, 1] which means [x_dim, 1].
-      dropout = nn_ops.dropout(t, keep_prob, noise_shape=[None, 1])
+      dropout = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[None, 1])
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
       final_count = 0
       for _ in xrange(0, num_iter):
@@ -622,22 +480,23 @@ class DropoutTest(test_lib.TestCase):
     keep_prob = 0.5
     t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, y_dim + 10])
+      _ = nn_ops.dropout(
+          t, rate=(1 - keep_prob), noise_shape=[x_dim, y_dim + 10])
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, y_dim, 5])
+      _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, y_dim, 5])
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim + 3])
+      _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim + 3])
     with self.assertRaises(ValueError):
-      _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim])
+      _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim])
     # test that broadcasting proceeds
-    _ = nn_ops.dropout(t, keep_prob, noise_shape=[y_dim])
-    _ = nn_ops.dropout(t, keep_prob, noise_shape=[1, y_dim])
-    _ = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, 1])
-    _ = nn_ops.dropout(t, keep_prob, noise_shape=[1, 1])
+    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[y_dim])
+    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[1, y_dim])
+    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
+    _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[1, 1])
 
   def testNoDropoutFast(self):
     x = array_ops.zeros((5,))
-    y = nn_ops.dropout(x, keep_prob=1)
+    y = nn_ops.dropout(x, rate=0)
     self.assertTrue(x is y)
 
     y = nn_ops.dropout_v2(x, rate=0)
@@ -1405,7 +1264,10 @@ class AvgPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test1DNumpy(self):
-    x = np.ones([3, 6, 5])
+    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
+    # np.ones defaults to using float64 when dtype is not explicitly specified
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = np.ones([3, 6, 5], dtype=dtype)
     ksize = 2
     strides = 2
 
@@ -1413,6 +1275,17 @@ class AvgPoolTest(test_lib.TestCase):
     y2 = nn_ops.avg_pool1d(x, ksize, strides, "SAME")
 
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DNumpyWithGolden(self):
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = np.array([[[3], [6], [5]],
+                  [[1], [0], [1]]], dtype=dtype)
+    ksize = 2
+    strides = 1
+    y = nn_ops.avg_pool1d(x, ksize, strides, "SAME")
+    expected_y = np.array([[[4.5], [5.5], [5.0]],
+                           [[0.5], [0.5], [1.0]]], dtype=dtype)
+    self.assertAllEqual(self.evaluate(y), expected_y)
 
   def test2DTensor(self):
     x = array_ops.ones([3, 6, 6, 5])
@@ -1425,7 +1298,10 @@ class AvgPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test2DNumpy(self):
-    x = np.ones([3, 6, 6, 5])
+    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
+    # np.ones defaults to using float64 when dtype is not explicitly specified
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = np.ones([3, 6, 6, 5], dtype=dtype)
     ksize = 2
     strides = 2
 
@@ -1435,6 +1311,8 @@ class AvgPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DTensor(self):
+    if test_lib.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     x = array_ops.ones([3, 7, 6, 6, 5])
     ksize = 2
     strides = 2
@@ -1445,6 +1323,8 @@ class AvgPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DNumpy(self):
+    if test_lib.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
     ksize = 2
     strides = 2
@@ -1469,7 +1349,10 @@ class MaxPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test1DNumpy(self):
-    x = np.ones([3, 6, 5])
+    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
+    # np.ones defaults to using float64 when dtype is not explicitly specified
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = np.ones([3, 6, 5], dtype=dtype)
     ksize = 2
     strides = 2
 
@@ -1477,6 +1360,17 @@ class MaxPoolTest(test_lib.TestCase):
     y2 = nn_ops.max_pool1d(x, ksize, strides, "SAME")
 
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DNumpyWithGolden(self):
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = np.array([[[3], [6], [5]],
+                  [[1], [0], [1]]], dtype=dtype)
+    ksize = 2
+    strides = 1
+    y = nn_ops.max_pool1d(x, ksize, strides, "SAME")
+    expected_y = np.array([[[6], [6], [5]],
+                           [[1], [1], [1]]], dtype=dtype)
+    self.assertAllEqual(self.evaluate(y), expected_y)
 
   def test2DTensor(self):
     x = array_ops.ones([3, 6, 6, 5])
@@ -1489,7 +1383,10 @@ class MaxPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test2DNumpy(self):
-    x = np.ones([3, 6, 6, 5])
+    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
+    # np.ones defaults to using float64 when dtype is not explicitly specified
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
+    x = np.ones([3, 6, 6, 5], dtype=dtype)
     ksize = 2
     strides = 2
 
@@ -1499,6 +1396,8 @@ class MaxPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DTensor(self):
+    if test_lib.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     x = array_ops.ones([3, 7, 6, 6, 5])
     ksize = 2
     strides = 2
@@ -1509,6 +1408,8 @@ class MaxPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test3DNumpy(self):
+    if test_lib.is_built_with_rocm():
+      self.skipTest("Pooling with 3D tensors is not supported in ROCm")
     x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
     ksize = 2
     strides = 2
@@ -1535,8 +1436,11 @@ class MaxPoolTest(test_lib.TestCase):
 class ConvolutionTest(test_lib.TestCase):
 
   def testUnknownSize(self):
+    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
+    # np.ones defaults to using float64 when dtype is not explicitly specified
+    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
     x = tensor_spec.TensorSpec(None, dtypes.float32, name="x")
-    k = np.ones([3, 6, 6, 5])
+    k = np.ones([3, 6, 6, 5], dtype=dtype)
 
     @def_function.function
     def F(value):

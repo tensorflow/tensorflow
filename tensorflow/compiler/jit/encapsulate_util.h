@@ -60,6 +60,28 @@ extern const char kOutsideCompilationSrcOutputAttrName[];
 // (node names).
 extern const char kXlaControlDependenciesWithinXlaClusterAttrName[];
 
+// Attribute indicating that this node is an outside compilation node which is
+// lifted out of If/While/function node. Attribute value will always be boolean
+// value "true".
+extern const char kXlaIsLiftedArgAttrName[];
+
+// Attribute indicating that this node is a Placeholder node for an _Arg node
+// lifted out of If/While/function node. Attribute value will be a string, which
+// is the outside compilation cluster name sending the lifted arg node to host.
+extern const char kXlaLiftedArgOutsideCompilationAttrName[];
+
+// Attribute indicating that this is an IdentityN node receiving inputs for a
+// outside compilation Placeholder node (the original outside compilation node
+// is moved out of TPU comutation, and we left a Placeholder node there).
+// Attribute value will be a string, which is the outside compilation cluster
+// name for the outside compilation Placeholder node.
+extern const char kXlaOutsideCompilationInputsAttrName[];
+
+// Attribute indicating that this is a Placeholder node for an _Arg node used in
+// outside compilation. We should not move this node out of XLA computation.
+// Attribute value will always be boolean value "true".
+extern const char kXlaIsPlaceholderForArg[];
+
 // Information for XLA computation.
 struct XlaClusterInfo {
   // Add an explicitly-defined default constructor for this class.

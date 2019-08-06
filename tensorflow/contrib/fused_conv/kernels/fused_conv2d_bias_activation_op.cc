@@ -530,7 +530,10 @@ tensorflow::ComputeCapability GetComputeCapability(
 }
 
 void LogFusedConvForwardAutotuneResults(
-    se::dnn::DataType element_type, const se::dnn::BatchDescriptor& input_desc,
+    se::dnn::DataType element_type, se::DeviceMemoryBase input_buffer,
+    se::DeviceMemoryBase filter_buffer, se::DeviceMemoryBase output_buffer,
+    se::DeviceMemoryBase bias_buffer, se::DeviceMemoryBase side_input_buffer,
+    const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
@@ -547,6 +550,12 @@ void LogFusedConvForwardAutotuneResults(
     instr.set_conv_scale(conv_scale);
     instr.set_side_value_scale(side_value_scale);
     instr.set_activation(activation_mode);
+    instr.set_input_address(reinterpret_cast<uint64>(input_buffer.opaque()));
+    instr.set_filter_address(reinterpret_cast<uint64>(filter_buffer.opaque()));
+    instr.set_output_address(reinterpret_cast<uint64>(output_buffer.opaque()));
+    instr.set_bias_address(reinterpret_cast<uint64>(bias_buffer.opaque()));
+    instr.set_side_input_address(
+        reinterpret_cast<uint64>(side_input_buffer.opaque()));
     log.mutable_instr()->PackFrom(std::move(instr));
   }
   *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
@@ -555,7 +564,7 @@ void LogFusedConvForwardAutotuneResults(
   for (const auto& result : results) {
     *log.add_results() = result;
   }
-  Logger::Singleton()->LogProto(log);
+  Logger::GetSingleton()->LogProto(log);
 }
 
 Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
@@ -715,7 +724,6 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
                           &extra_left_padding, &extra_right_padding);
     if (extra_top_padding != 0 || extra_bottom_padding != 0 ||
         extra_left_padding != 0 || extra_right_padding != 0) {
-      Tensor transformed_input;
       const int new_conv_input_rows =
           conv_input_rows + extra_top_padding + extra_bottom_padding;
       const int new_conv_input_cols =
@@ -947,7 +955,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       }
     }
     internal::LogFusedConvForwardAutotuneResults(
-        se::dnn::ToDataType<typename RawType<T>::type>::value, conv_input_desc,
+        se::dnn::ToDataType<typename RawType<T>::type>::value, conv_input_ptr,
+        filter_ptr, output_ptr, bias_ptr, side_input_ptr, conv_input_desc,
         filter_desc, output_desc, conv_desc, conv_input_scale, side_input_scale,
         dnn_activation_mode, stream->parent(), results);
     OP_REQUIRES_OK(

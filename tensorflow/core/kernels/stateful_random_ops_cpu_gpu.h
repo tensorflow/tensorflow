@@ -82,7 +82,7 @@ struct RngSkip_Philox;
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 using GPUDevice = Eigen::GpuDevice;
 
@@ -100,7 +100,7 @@ struct RngSkip_Philox<GPUDevice> {
   void operator()(const GPUDevice& device, int64 delta, Tensor* state_tensor);
 };
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow
 

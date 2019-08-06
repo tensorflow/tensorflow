@@ -27,6 +27,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
@@ -100,7 +101,7 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
     for i in range(10):
       ds = dataset_ops.Dataset.from_tensors(make_sparse_fn(i+1))
       result = ds.reduce(make_sparse_fn(0), reduce_fn)
-      self.assertSparseValuesEqual(make_sparse_fn(i + 1), self.evaluate(result))
+      self.assertValuesEqual(make_sparse_fn(i + 1), self.evaluate(result))
 
   def testNested(self):
 
@@ -124,7 +125,7 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
       result = ds.reduce(map_fn(0), reduce_fn)
       result = self.evaluate(result)
       self.assertEqual(((i + 1) * i) // 2, result["dense"])
-      self.assertSparseValuesEqual(make_sparse_fn(i), result["sparse"])
+      self.assertValuesEqual(make_sparse_fn(i), result["sparse"])
 
   def testDatasetSideEffect(self):
     counter_var = variables.Variable(0)
@@ -218,6 +219,11 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
       time.sleep(0.2)
       sess.close()
       thread.join()
+
+  def testInvalidFunction(self):
+    ds = dataset_ops.Dataset.range(5)
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(ds.reduce(0, lambda _, __: ()))
 
 
 if __name__ == "__main__":

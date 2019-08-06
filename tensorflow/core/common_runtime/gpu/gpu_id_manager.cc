@@ -59,7 +59,9 @@ class TfToPlatformGpuIdMap {
 
   bool Find(TfGpuId tf_gpu_id, PlatformGpuId* platform_gpu_id) const
       LOCKS_EXCLUDED(mu_) {
-    mutex_lock lock(mu_);
+    // TODO(mrry): Consider replacing this with an atomic `is_initialized` bit,
+    // to avoid writing to a shared cache line in the tf_shared_lock.
+    tf_shared_lock lock(mu_);
     auto result = id_map_.find(tf_gpu_id.value());
     if (result == id_map_.end()) return false;
     *platform_gpu_id = result->second;

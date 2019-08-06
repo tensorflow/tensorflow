@@ -44,15 +44,26 @@ inline TfLiteTensor* GetTemporary(TfLiteContext* context, TfLiteNode* node,
                                   int index) {
   return &context->tensors[node->temporaries->data[index]];
 }
+inline const TfLiteTensor* GetIntermediates(TfLiteContext* context,
+                                            TfLiteNode* node, int index) {
+  return &context->tensors[node->intermediates->data[index]];
+}
 inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
 inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
+inline int NumIntermediates(const TfLiteNode* node) {
+  return node->intermediates->size;
+}
 
-inline int64_t NumElements(const TfLiteTensor* t) {
+inline int64_t NumElements(const TfLiteIntArray* dims) {
   int64_t count = 1;
-  for (int i = 0; i < NumDimensions(t); ++i) {
-    count *= SizeOfDimension(t, i);
+  for (int i = 0; i < dims->size; ++i) {
+    count *= dims->data[i];
   }
   return count;
+}
+
+inline int64_t NumElements(const TfLiteTensor* t) {
+  return NumElements(t->dims);
 }
 
 inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,

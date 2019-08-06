@@ -2,12 +2,12 @@
 # Java Native Interface (JNI) library intended for implementing the
 # TensorFlow Lite Java API using the TensorFlow Lite CC library.
 
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 cc_library(
     name = "native_framework_only",
@@ -66,6 +66,7 @@ cc_library(
 
 exports_files(
     [
+        "exported_symbols.lds",
         "version_script.lds",
     ],
 )

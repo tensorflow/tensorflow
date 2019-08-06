@@ -113,8 +113,8 @@ def contrastive_loss(labels, embeddings_anchor, embeddings_positive,
   # Add contrastive loss for the siamese network.
   #   label here is {0,1} for neg, pos.
   return math_ops.reduce_mean(
-      math_ops.cast(labels, dtypes.float32) * math_ops.square(distances) +
-      (1. - math_ops.cast(labels, dtypes.float32)) *
+      math_ops.cast(labels, distances.dtype) * math_ops.square(distances) +
+      (1. - math_ops.cast(labels, distances.dtype)) *
       math_ops.square(math_ops.maximum(margin - distances, 0.)),
       name='contrastive_loss')
 
