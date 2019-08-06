@@ -80,17 +80,110 @@ limitations under the License.
 // column sums for quantization (and never row sums, since the LHS is
 // transposed).
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_PACK_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_RUY_PACK_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_PACK_COMMON_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_RUY_PACK_COMMON_H_
 
+#include <cstdint>
+#include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/common.h"
+#include "tensorflow/lite/experimental/ruy/internal_matrix.h"
+#include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
+#include "tensorflow/lite/experimental/ruy/tune.h"
+
+namespace ruy {
+
+template <Path ThePath, typename Scalar>
+struct PackedTypeImpl {
+  using Type = Scalar;
+};
 
 #if RUY_PLATFORM(NEON)
-#include "tensorflow/lite/experimental/ruy/pack_arm.h"
+template <>
+struct PackedTypeImpl<Path::kNeon, std::uint8_t> {
+  using Type = std::int8_t;
+};
+template <>
+struct PackedTypeImpl<Path::kNeonDotprod, std::uint8_t> {
+  using Type = std::int8_t;
+};
 #elif RUY_PLATFORM(AVX512)
-#include "tensorflow/lite/experimental/ruy/pack_x86.h"
-#else
-#include "tensorflow/lite/experimental/ruy/pack_common.h"
+template <>
+struct PackedTypeImpl<Path::kAvx512, std::uint8_t> {
+  using Type = std::int8_t;
+};
 #endif
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_PACK_H_
+template <Path ThePath, typename Scalar>
+using PackedType = typename PackedTypeImpl<ThePath, Scalar>::Type;
+
+template <typename PackedScalar, typename Scalar>
+PackedScalar Pack(Scalar x) {
+  return x - SymmetricZeroPoint<Scalar>() + SymmetricZeroPoint<PackedScalar>();
+}
+
+template <Path ThePath, typename FixedKernelLayout, typename Scalar,
+          typename PackedScalar, typename SumsType>
+struct PackImpl {};
+
+#define RUY_INHERIT_PACK(PARENT, CHILD)                                       \
+  template <typename FixedKernelLayout, typename Scalar,                      \
+            typename PackedScalar, typename SumsType>                         \
+  struct PackImpl<CHILD, FixedKernelLayout, Scalar, PackedScalar, SumsType>   \
+      : PackImpl<PARENT, FixedKernelLayout, Scalar, PackedScalar, SumsType> { \
+  };
+
+template <typename FixedKernelLayout, typename Scalar, typename PackedScalar,
+          typename SumsType>
+struct PackImpl<Path::kStandardCpp, FixedKernelLayout, Scalar, PackedScalar,
+                SumsType> {
+  static void Run(Tuning, const Matrix<Scalar>& src_matrix,
+                  PackedMatrix<PackedScalar>* packed_matrix, int start_col,
+                  int end_col) {
+    gemmlowp::ScopedProfilingLabel label("Pack (generic)");
+    RUY_DCHECK_EQ((end_col - start_col) % FixedKernelLayout::kCols, 0);
+    SumsType* sums = packed_matrix->sums;
+    for (int col = start_col; col < end_col; col++) {
+      SumsType accum = 0;
+      for (int row = 0; row < packed_matrix->layout.rows; row++) {
+        PackedScalar packed_val;
+        if (col < src_matrix.layout.cols && row < src_matrix.layout.rows) {
+          packed_val = Pack<PackedScalar>(Element(src_matrix, row, col));
+        } else {
+          packed_val = packed_matrix->zero_point;
+        }
+        accum += packed_val;
+        *ElementPtr(packed_matrix, row, col) = packed_val;
+      }
+      if (sums) {
+        sums[col] = accum;
+      }
+    }
+  }
+};
+
+#if RUY_PLATFORM(NEON)
+RUY_INHERIT_PACK(Path::kStandardCpp, Path::kNeon)
+#if RUY_PLATFORM(NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+RUY_INHERIT_PACK(Path::kNeon, Path::kNeonDotprod)
+#endif
+#elif RUY_PLATFORM(AVX512)
+RUY_INHERIT_PACK(Path::kStandardCpp, Path::kAvx512)
+#endif
+
+// Main entry point for packing.
+template <Path ThePath, typename FixedKernelLayout, typename Scalar,
+          typename PackedScalar>
+void RunPack(Tuning tuning, const DMatrix& src_matrix, PMatrix* packed_matrix,
+             int start_col, int end_col) {
+  using SumsType = typename PackedMatrix<PackedScalar>::SumsType;
+  Matrix<Scalar> src = ToMatrix<Scalar>(src_matrix);
+  PackedMatrix<PackedScalar> packed =
+      ToPackedMatrix<PackedScalar>(*packed_matrix);
+  PackImpl<ThePath, FixedKernelLayout, Scalar, PackedScalar, SumsType>::Run(
+      tuning, src, &packed, start_col, end_col);
+}
+
+}  // namespace ruy
+
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_RUY_PACK_COMMON_H_

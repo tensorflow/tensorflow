@@ -268,6 +268,9 @@ cc_library(
     ],
     hdrs = [
         "kernel.h",
+        "kernel_arm.h",
+        "kernel_common.h",
+        "kernel_x86.h",
     ],
     deps = [
         ":check_macros",
@@ -293,6 +296,9 @@ cc_library(
     ],
     hdrs = [
         "pack.h",
+        "pack_arm.h",
+        "pack_common.h",
+        "pack_x86.h",
     ],
     deps = [
         ":common",
