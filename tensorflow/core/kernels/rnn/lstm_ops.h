@@ -103,19 +103,19 @@ struct LSTMBlockCell {
 
   int cell_size() const { return cell_size_; }
 
-  inline Eigen::array<Eigen::DenseIndex, 2> icfo_i_offsets() const {
+  inline Eigen::array<Eigen::DenseIndex, 2> gates_i_offsets() const {
     return {0, 0};
   }
 
-  inline Eigen::array<Eigen::DenseIndex, 2> icfo_c_offsets() const {
+  inline Eigen::array<Eigen::DenseIndex, 2> gates_c_offsets() const {
     return {0, cell_size_};
   }
 
-  inline Eigen::array<Eigen::DenseIndex, 2> icfo_f_offsets() const {
+  inline Eigen::array<Eigen::DenseIndex, 2> gates_f_offsets() const {
     return {0, cell_size_ * 2};
   }
 
-  inline Eigen::array<Eigen::DenseIndex, 2> icfo_o_offsets() const {
+  inline Eigen::array<Eigen::DenseIndex, 2> gates_o_offsets() const {
     return {0, cell_size_ * 3};
   }
 
@@ -166,7 +166,7 @@ struct LSTMBlockCellFprop : public LSTMBlockCell {
                   typename TTypes<T>::Matrix i, typename TTypes<T>::Matrix cs,
                   typename TTypes<T>::Matrix f, typename TTypes<T>::Matrix o,
                   typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,
-                  typename TTypes<T>::Matrix icfo,
+                  typename TTypes<T>::Matrix gates,
                   typename TTypes<T>::Matrix h);
 };
 
@@ -192,9 +192,9 @@ struct LSTMBlockCellBprop : public LSTMBlockCell {
       typename TTypes<T>::ConstMatrix h_grad, typename TTypes<T>::Matrix do_,
       typename TTypes<T>::Matrix dcs, typename TTypes<T>::Matrix dci,
       typename TTypes<T>::Matrix df, typename TTypes<T>::Matrix di,
-      typename TTypes<T>::Matrix dicfo, typename TTypes<T>::Matrix cs_prev_grad,
-      typename TTypes<T>::Vec wci_grad, typename TTypes<T>::Vec wcf_grad,
-      typename TTypes<T>::Vec wco_grad);
+      typename TTypes<T>::Matrix dgates,
+      typename TTypes<T>::Matrix cs_prev_grad, typename TTypes<T>::Vec wci_grad,
+      typename TTypes<T>::Vec wcf_grad, typename TTypes<T>::Vec wco_grad);
 };
 
 template <typename Device, typename T, bool USE_CUBLAS>
@@ -218,7 +218,8 @@ struct BlockLSTMBprop : public LSTMBlockCell {
       typename TTypes<T>::ConstMatrix h_grad, typename TTypes<T>::Matrix do_,
       typename TTypes<T>::Matrix dcs, typename TTypes<T>::Matrix dci,
       typename TTypes<T>::Matrix df, typename TTypes<T>::Matrix di,
-      typename TTypes<T>::Matrix dicfo, typename TTypes<T>::Matrix cs_prev_grad,
+      typename TTypes<T>::Matrix dgates,
+      typename TTypes<T>::Matrix cs_prev_grad,
       typename TTypes<T>::Matrix h_prev_grad,
       typename TTypes<T>::Matrix xh_grad, typename TTypes<T>::Matrix x_grad,
       typename TTypes<T>::Matrix w_grad, typename TTypes<T>::Vec wci_grad,
@@ -246,10 +247,10 @@ struct BlockLSTMBprop : public LSTMBlockCell {
     // di[t] = sigm'(i[t]) dcs[t] ci[t]
     di.device(d) = i * (i.constant(T(1)) - i) * dcs * ci;
 
-    dicfo.slice(icfo_i_offsets(), cell_extents()).device(d) = di;
-    dicfo.slice(icfo_c_offsets(), cell_extents()).device(d) = dci;
-    dicfo.slice(icfo_f_offsets(), cell_extents()).device(d) = df;
-    dicfo.slice(icfo_o_offsets(), cell_extents()).device(d) = do_;
+    dgates.slice(gates_i_offsets(), cell_extents()).device(d) = di;
+    dgates.slice(gates_c_offsets(), cell_extents()).device(d) = dci;
+    dgates.slice(gates_f_offsets(), cell_extents()).device(d) = df;
+    dgates.slice(gates_o_offsets(), cell_extents()).device(d) = do_;
 
     cs_prev_grad.device(d) = dcs * f;
     if (use_peephole) {
@@ -260,10 +261,10 @@ struct BlockLSTMBprop : public LSTMBlockCell {
     }
 
     // xh_grad.
-    typename TTypes<T>::ConstMatrix const_dicfo(dicfo.data(),
-                                                dicfo.dimensions());
+    typename TTypes<T>::ConstMatrix const_dgates(dgates.data(),
+                                                 dgates.dimensions());
     TensorBlasGemm<Device, T, USE_CUBLAS>::compute(
-        ctx, d, false, true, 1.f, const_dicfo, w, 0.f, xh_grad);
+        ctx, d, false, true, 1.f, const_dgates, w, 0.f, xh_grad);
 
     // xh.
     xh.slice(xh_x_offsets(), xh_x_extents()).device(d) = x;
@@ -276,10 +277,10 @@ struct BlockLSTMBprop : public LSTMBlockCell {
 
     // w_grad.
     TensorBlasGemm<Device, T, USE_CUBLAS>::compute(
-        ctx, d, true, false, 1.f, const_xh, const_dicfo, 1.f, w_grad);
+        ctx, d, true, false, 1.f, const_xh, const_dgates, 1.f, w_grad);
 
     // b_grad.
-    b_grad.device(d) += dicfo.sum(Eigen::array<int, 1>({0}));
+    b_grad.device(d) += dgates.sum(Eigen::array<int, 1>({0}));
 
     if (use_peephole) {
       wci_grad.device(d) += (di * cs_prev).sum(Eigen::array<int, 1>({0}));
