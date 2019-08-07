@@ -363,20 +363,20 @@ def TransformSavedModel(input_dir, output_dir, transforms,
                                        func.outputs[0].op.name)
   func_def = _find_function_by_name(func_graph_def, core_func_name)
   graphdef_before, name_map = function_def_to_graph.function_def_to_graph_def(
-      func_def)  # Deobfuscate node input strings
-  input_names = [a.name for a in func_def.signature.input_arg]
-  output_names = [name_map[func_def.ret[a.name]]
-                  for a in func_def.signature.output_arg]
+      func_def)
+  input_tensor_names = [name_map[a.name] for a in func_def.signature.input_arg]
+  output_tensor_names = [name_map[func_def.ret[a.name]]
+                         for a in func_def.signature.output_arg]
 
   # Invoke the Python front end to the Graph Transform Tool.
   graphdef_after = TransformGraph(graphdef_before,
-                                  inputs=[t.name for t in signature.inputs],
-                                  outputs=[t.name for t in signature.outputs],
+                                  inputs=input_tensor_names,
+                                  outputs=output_tensor_names,
                                   transforms=transforms)
 
   # Turn the resulting graph back into a function so we can save in V2 format.
   func_after = _copy_and_replace_graph(func, graphdef_after,
-                                       [n + ":0" for n in input_names],
-                                       output_names)
+                                       input_tensor_names,
+                                       output_tensor_names)
   save.save(tracking.AutoTrackable(), output_dir,
             signatures={signature_name: func_after})
