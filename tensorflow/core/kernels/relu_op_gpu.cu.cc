@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -31,6 +31,7 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
+#if GOOGLE_CUDA
 // This kernel computes ReluGrad by processing one half2, two fp16, at a time.
 // It effectively does: backdrops = (feature > 0) ? gradient : 0
 // It also tries to use native half2 primitives as much as possible.
@@ -141,7 +142,7 @@ struct Relu<Device, qint8> {
         reinterpret_cast<int32*>(output.data())));
   }
 };
-
+#endif
 }  // namespace functor
 
 // Definition of the GPU implementations declared in relu_op.cc.

@@ -74,7 +74,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_RELU_KERNELS);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ELU_KERNELS);
 #undef REGISTER_ELU_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                    \
