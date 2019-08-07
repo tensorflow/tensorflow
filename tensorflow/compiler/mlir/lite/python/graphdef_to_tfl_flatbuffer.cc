@@ -129,6 +129,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   bool emit_select_tf_ops = toco_flags.enable_select_tf_ops();
   bool emit_custom_ops = toco_flags.allow_custom_ops();
   specs.prune_unused_nodes = true;
+  specs.convert_legacy_fed_inputs = true;
   WarningUnusedFlags(model_flags, toco_flags);
 
   bool emit_quant_adaptor_ops = false;

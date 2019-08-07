@@ -56,6 +56,11 @@ struct NodeSpecs {
   // setting prune_unused_nodes to true, would prune unreachable nodes if
   // output_arrays is specified.
   bool prune_unused_nodes = false;
+  // If true, inputs of type LegacyFedInput are replaced with Placeholder ops.
+  // LegacyFedInput ops have two outputs unlike Placeholder which has only one
+  // output, so if both outputs of the LegacyFedInput ops are used then returns
+  // an error.
+  bool convert_legacy_fed_inputs = false;
 };
 
 struct ExporterConfigs {

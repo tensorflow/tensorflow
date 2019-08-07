@@ -46,7 +46,7 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view inference_type, absl::string_view min_values,
     absl::string_view max_values, bool prune_unused_nodes,
-    mlir::MLIRContext* context) {
+    bool convert_legacy_fed_inputs, mlir::MLIRContext* context) {
   GraphDef graphdef;
   TF_RETURN_IF_ERROR(tensorflow::LoadProtoFromFile(input_filename, &graphdef));
 
@@ -57,6 +57,7 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
 
   NodeSpecs specs;
   specs.prune_unused_nodes = prune_unused_nodes;
+  specs.convert_legacy_fed_inputs = convert_legacy_fed_inputs;
   TF_RETURN_IF_ERROR(ParseInputArrayInfo(
       input_arrays, input_dtypes, input_shapes, inference_type, min_values,
       max_values, &specs.inputs));
@@ -71,11 +72,11 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view inference_type, absl::string_view min_values,
     absl::string_view max_values, bool prune_unused_nodes,
-    mlir::MLIRContext* context) {
+    bool convert_legacy_fed_inputs, mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
       input_filename, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, inference_type, min_values, max_values, prune_unused_nodes,
-      context);
+      convert_legacy_fed_inputs, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;
@@ -90,11 +91,11 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     absl::string_view input_shapes, absl::string_view output_arrays,
     absl::string_view inference_type, absl::string_view min_values,
     absl::string_view max_values, bool prune_unused_nodes,
-    mlir::MLIRContext* context) {
+    bool convert_legacy_fed_inputs, mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
       input_filename, debug_info_file, input_arrays, input_dtypes, input_shapes,
       output_arrays, inference_type, min_values, max_values, prune_unused_nodes,
-      context);
+      convert_legacy_fed_inputs, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;
