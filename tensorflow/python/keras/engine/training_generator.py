@@ -318,7 +318,7 @@ def model_iteration(model,
           use_multiprocessing=use_multiprocessing,
           max_queue_size=max_queue_size,
           callbacks=callbacks,
-          verbose=0,
+          verbose=verbose,
           mode=ModeKeys.TEST,
           steps_name='validation_steps')
 
