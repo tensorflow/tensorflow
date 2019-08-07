@@ -114,10 +114,10 @@ llvm::Optional<tf_executor::IslandOp> GetResultCandidateToMergeWith(
   }
 
   // Check island data results.
-  Block& graph_block = llvm::cast<tf_executor::GraphOp>(graph_op).GetBody();
+  Block& graph_body = llvm::cast<tf_executor::GraphOp>(graph_op).GetBody();
   for (Value* result : island->outputs()) {
     for (Operation* user : result->getUsers()) {
-      Operation* def = graph_block.findAncestorInstInBlock(*user);
+      Operation* def = graph_body.findAncestorInstInBlock(*user);
       DCHECK_NE(def, nullptr);
       if (!candidate || def->isBeforeInBlock(candidate)) candidate = def;
     }
@@ -152,34 +152,32 @@ llvm::SmallVector<Output, 8> GetNewIslandResultsAndForwardOutputs(
     mlir::MLIRContext* context, tf_executor::IslandOp* parent,
     tf_executor::IslandOp* child, llvm::SmallVector<Type, 8>* result_types) {
   llvm::SmallVector<Output, 8> results;
-  Block& child_body = child->GetBody();
-  int result_index = 0;
 
   Operation& last_op = parent->GetBody().back();
   auto yield_op = cast<tf_executor::YieldOp>(last_op);
-  for (Value* output : parent->outputs()) {
+  Block& child_body = child->GetBody();
+  for (auto& ret_and_idx : llvm::enumerate(parent->outputs())) {
     bool output_captured = false;
-    Value* yield_input = yield_op.getOperand(result_index);
-    for (auto& use : llvm::make_early_inc_range(output->getUses())) {
+    Value* yield_input = yield_op.getOperand(ret_and_idx.index());
+    for (auto& use :
+         llvm::make_early_inc_range(ret_and_idx.value()->getUses())) {
       if (child_body.findAncestorInstInBlock(*use.getOwner())) {
         // Forward output from inner op.
         use.set(yield_input);
       } else if (!output_captured) {
-        results.push_back(Output(IslandType::kParentIsland, result_index));
-        result_types->push_back(output->getType());
+        results.push_back(
+            Output(IslandType::kParentIsland, ret_and_idx.index()));
+        result_types->push_back(ret_and_idx.value()->getType());
         output_captured = true;
       }
     }
-    result_index++;
   }
 
-  result_index = 0;
-  for (Value* output : child->outputs()) {
-    if (!output->use_empty()) {
-      results.push_back(Output(IslandType::kChildIsland, result_index));
-      result_types->push_back(output->getType());
+  for (auto& ret_and_idx : llvm::enumerate(child->outputs())) {
+    if (!ret_and_idx.value()->use_empty()) {
+      results.push_back(Output(IslandType::kChildIsland, ret_and_idx.index()));
+      result_types->push_back(ret_and_idx.value()->getType());
     }
-    result_index++;
   }
 
   // IslandOps always have a control output.
