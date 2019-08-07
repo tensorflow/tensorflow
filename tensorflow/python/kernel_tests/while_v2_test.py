@@ -48,6 +48,18 @@ from tensorflow.python.ops.while_v2 import while_loop as while_loop_v2
 from tensorflow.python.platform import test
 
 
+def random_gamma(shape):  # pylint: disable=invalid-name
+  return random_ops.random_gamma(shape, 1.0)
+
+
+def random_poisson_v2(shape):  # pylint: disable=invalid-name
+  return random_ops.random_poisson_v2(shape, 1.0)
+
+
+def fill(shape):  # pylint: disable=invalid-name
+  return array_ops.fill(shape, 1.0)
+
+
 class WhileV2Test(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
@@ -844,14 +856,23 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       # Computing the gradient again shouldn't rewrite while_op again.
       self.assertLen(while_op.outputs, 4)
 
+  @parameterized.named_parameters(
+      ("RandomUniform", random_ops.random_uniform),
+      ("RandomNormal", random_ops.random_normal),
+      ("ParameterizedTruncatedNormal",
+       random_ops.parameterized_truncated_normal),
+      ("TruncatedNormal", random_ops.truncated_normal),
+      ("RandomGamma", random_gamma),
+      ("RandomPoissonV2", random_poisson_v2),
+  )
   @test_util.run_deprecated_v1
-  def testRandomUniformShape(self):
+  def testRandomOpsShape(self, random_fn):
     shape = constant_op.constant([3])
 
     def Body(i, u):
       shape_extended = array_ops.concat([[5], shape], axis=0)
-      u = random_ops.random_uniform(shape_extended)
-      self.assertAllEqual(u.shape.as_list(), [5, 3])
+      u = random_fn(shape_extended)
+      assert u.shape.as_list() == [5, 3], str(u.shape.as_list())
       return i + 1, u
 
     _, _ = while_loop_v2(
@@ -869,7 +890,31 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     def Body(i, u):
       shape_extended = array_ops.concat([[5], shape], axis=0)
       u = array_ops.reshape(u, [-1])
+      assert u.shape.as_list() == [60], str(u.shape.as_list())
       u = array_ops.reshape(u, shape_extended)
+      assert u.shape.as_list() == [5, 3, 4], str(u.shape.as_list())
+      return i + 1, u
+
+    _, _ = while_loop_v2(
+        cond=lambda i, _: i < 3,
+        body=Body,
+        loop_vars=[
+            0,
+            array_ops.zeros([5, 3, 4], dtype=dtypes.float32),
+        ])
+
+  @parameterized.named_parameters(
+      ("Zeros", array_ops.zeros),
+      ("Ones", array_ops.ones),
+      ("Fill", fill),
+  )
+  @test_util.run_deprecated_v1
+  def testFillOpsShape(self, fill_fn):
+    shape = constant_op.constant([3, 4])
+
+    def Body(i, u):
+      shape_extended = array_ops.concat([[5], shape], axis=0)
+      u = fill_fn(shape_extended)
       assert u.shape.as_list() == [5, 3, 4], str(u.shape.as_list())
       return i + 1, u
 

@@ -73,6 +73,7 @@ def random_normal(shape,
         shape_tensor, dtype, seed=seed1, seed2=seed2)
     mul = rnd * stddev_tensor
     value = math_ops.add(mul, mean_tensor, name=name)
+    tensor_util.maybe_set_static_shape(value, shape)
     return value
 
 
@@ -129,6 +130,7 @@ def parameterized_truncated_normal(shape,
         maxvals_tensor,
         seed=seed1,
         seed2=seed2)
+    tensor_util.maybe_set_static_shape(rnd, shape)
     return rnd
 
 
@@ -172,6 +174,7 @@ def truncated_normal(shape,
         shape_tensor, dtype, seed=seed1, seed2=seed2)
     mul = rnd * stddev_tensor
     value = math_ops.add(mul, mean_tensor, name=name)
+    tensor_util.maybe_set_static_shape(value, shape)
     return value
 
 
@@ -474,10 +477,12 @@ def random_gamma(shape,
         beta if beta is not None else 1, name="beta", dtype=dtype)
     alpha_broadcast = alpha + array_ops.zeros_like(beta)
     seed1, seed2 = random_seed.get_seed(seed)
-    return math_ops.maximum(
+    result = math_ops.maximum(
         np.finfo(dtype.as_numpy_dtype).tiny,
         gen_random_ops.random_gamma(
             shape, alpha_broadcast, seed=seed1, seed2=seed2) / beta)
+    tensor_util.maybe_set_static_shape(result, shape)
+    return result
 
 
 @tf_export(v1=["random.poisson", "random_poisson"])
@@ -559,5 +564,7 @@ def random_poisson_v2(shape, lam, dtype=dtypes.float32, seed=None, name=None):
   with ops.name_scope(name, "random_poisson", [lam, shape]):
     shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)
     seed1, seed2 = random_seed.get_seed(seed)
-    return gen_random_ops.random_poisson_v2(
+    result = gen_random_ops.random_poisson_v2(
         shape, lam, dtype=dtype, seed=seed1, seed2=seed2)
+    tensor_util.maybe_set_static_shape(result, shape)
+    return result
