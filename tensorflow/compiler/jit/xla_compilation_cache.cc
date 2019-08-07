@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -302,6 +303,9 @@ Status XlaCompilationCache::CompileImpl(
       }
 
       if (is_megamorphic) {
+        BroadcastOptimizationRemark(XlaOptimizationRemark::MEGAMORPHIC_FUNCTION,
+                                    function.name())
+            .IgnoreError();
         VLOG(3) << "Not compiling cluster " << function.name()
                 << " because it is megamorphic.";
         return false;

@@ -281,6 +281,7 @@ cc_library(
     hdrs = ["xla_compilation_cache.h"],
     deps = [
         ":xla_activity_listener",
+        ":xla_activity_proto_cc",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
@@ -800,6 +801,8 @@ cc_library(
         ":flags",
         ":resource_operation_safety_analysis",
         ":union_find",
+        ":xla_activity_listener",
+        ":xla_activity_proto_cc",
         ":xla_cluster_util",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
@@ -901,6 +904,7 @@ cc_library(
     srcs = ["xla_activity_logging_listener.cc"],
     deps = [
         ":xla_activity_listener",
+        ":xla_activity_proto_cc",
         "//tensorflow/core:logger",
         "@com_google_absl//absl/memory",
     ],

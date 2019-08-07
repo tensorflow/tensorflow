@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -472,6 +473,10 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     if (status.code() == error::UNIMPLEMENTED) {
       LOG(WARNING) << "Compilation failed:" << status.ToString()
                    << ".  Falling back to TF function call.";
+
+      BroadcastOptimizationRemark(
+          XlaOptimizationRemark::UNIMPLEMENTED_OPERATION, status.ToString())
+          .IgnoreError();
       executable = nullptr;
       mutex_lock guard(cannot_compile_cluster_mu_);
       cannot_compile_cluster_ = true;

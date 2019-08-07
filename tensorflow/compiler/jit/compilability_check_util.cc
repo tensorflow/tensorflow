@@ -37,6 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 #include "tensorflow/compiler/jit/union_find.h"
+#include "tensorflow/compiler/jit/xla_activity.pb.h"
+#include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
@@ -394,6 +396,9 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
   if (!op_filter_.allow_inaccurate_ops && OpIsInaccurate(node)) {
     absl::string_view uncompilable_reason =
         "operation with numerical accuracy issues";
+    BroadcastOptimizationRemark(XlaOptimizationRemark::INACCURATE_OPERATION,
+                                node.DebugString())
+        .IgnoreError();
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
                               uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
@@ -402,6 +407,9 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
 
   if (!op_filter_.allow_slow_ops && OpIsSlow(node)) {
     absl::string_view uncompilable_reason = "slow operation";
+    BroadcastOptimizationRemark(XlaOptimizationRemark::SLOW_OPERATION,
+                                node.DebugString())
+        .IgnoreError();
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
                               uncompilable_nodes);
     LogNotCompilable(node, uncompilable_reason);
