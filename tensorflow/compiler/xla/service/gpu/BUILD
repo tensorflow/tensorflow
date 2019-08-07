@@ -382,6 +382,8 @@ tf_cuda_library(
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rccl",
+        "//tensorflow/stream_executor/rocm:rocm_activation",
+        "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
     ]),
 )
 
