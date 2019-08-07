@@ -343,5 +343,60 @@ TEST_F(MemorySpaceAssignmentTest, While) {
   EXPECT_THAT(body_data_mul, op::ShapeWithLayout(shape_in_alternate_mem));
 }
 
+TEST_F(MemorySpaceAssignmentTest, Tuple) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape inner_tuple_shape = ShapeUtil::MakeTupleShape({shape});
+  Shape tuple_shape =
+      ShapeUtil::MakeTupleShape({shape, shape, inner_tuple_shape});
+  HloInstruction* p = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p"));
+  HloInstruction* p0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, p, 0));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* p1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, p, 1));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+  HloInstruction* p2 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(inner_tuple_shape, p, 2));
+  HloInstruction* p2_0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, p2, 0));
+  HloInstruction* mul = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, add, p2_0));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      computation, {p, p0, negate0, negate1, negate2, negate3, negate4, negate5,
+                    negate6, p1, add, p2, p2_0, mul});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  EXPECT_THAT(
+      mul,
+      op::Multiply(op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
+                                                       kDefaultMemorySpace,
+                                                       op::GetTupleElement())),
+                   op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                                 op::GetTupleElement(op::GetTupleElement()))));
+}
+
 }  // namespace
 }  // namespace xla

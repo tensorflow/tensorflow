@@ -65,6 +65,16 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       continue;
     }
 
+    // If the buffer is a tuple, don't use this algorithm for now. The buffers
+    // that are pointed to by the tuple will still use this algorithm.
+    // TODO(berkin): Because tuples are cheap to place in the alternate memory
+    // (they are just pointers) we don't need to use prefetch/evict logic.
+    if (buffer.values()[0]->shape().IsTuple()) {
+      VLOG(4) << "Keeping buffer " << buffer.ToString()
+              << " in default mem because it is a tuple.";
+      continue;
+    }
+
     auto colocated_intervals = GetSortedColocatedIntervals(interval);
     bool keep_in_default_memory = false;
     for (const BufferInterval* colocated_interval : colocated_intervals) {
@@ -428,6 +438,21 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopy(
   schedule_before_[copy_done_schedule_before].push_back(copy_done);
 }
 
+void MemorySpaceAssignment::EnsureInstructionAndOperandsInserted(
+    HloInstruction* new_instruction, HloInstructionSequence* new_sequence,
+    absl::flat_hash_set<HloInstruction*>* inserted_instructions) const {
+  if (inserted_instructions->contains(new_instruction)) {
+    return;
+  }
+  for (HloInstruction* operand : new_instruction->operands()) {
+    EnsureInstructionAndOperandsInserted(operand, new_sequence,
+                                         inserted_instructions);
+  }
+  VLOG(4) << "inserting: " << new_instruction->ToString();
+  new_sequence->push_back(new_instruction);
+  inserted_instructions->insert(new_instruction);
+}
+
 Status MemorySpaceAssignment::FixSchedule() {
   CHECK(module_->has_schedule());
   HloSchedule& schedule = module_->schedule();
@@ -437,21 +462,27 @@ Status MemorySpaceAssignment::FixSchedule() {
     const HloInstructionSequence& sequence = schedule.sequence(computation);
     HloInstructionSequence new_sequence;
 
+    absl::flat_hash_set<HloInstruction*> inserted_instructions;
+
     for (HloInstruction* instruction : sequence.instructions()) {
       auto insts_before_iter = schedule_before_.find(instruction);
       if (insts_before_iter != schedule_before_.end()) {
         for (HloInstruction* new_instruction : insts_before_iter->second) {
-          new_sequence.push_back(new_instruction);
-          VLOG(4) << "before: " << new_instruction->ToString();
+          EnsureInstructionAndOperandsInserted(new_instruction, &new_sequence,
+                                               &inserted_instructions);
         }
       }
-      new_sequence.push_back(instruction);
-      VLOG(4) << instruction->ToString();
+      // Insert only if not previously inserted.
+      if (!inserted_instructions.contains(instruction)) {
+        new_sequence.push_back(instruction);
+        inserted_instructions.insert(instruction);
+        VLOG(4) << instruction->ToString();
+      }
       auto insts_after_iter = schedule_after_.find(instruction);
       if (insts_after_iter != schedule_after_.end()) {
         for (HloInstruction* new_instruction : insts_after_iter->second) {
-          new_sequence.push_back(new_instruction);
-          VLOG(4) << "after: " << new_instruction->ToString();
+          EnsureInstructionAndOperandsInserted(new_instruction, &new_sequence,
+                                               &inserted_instructions);
         }
       }
     }
