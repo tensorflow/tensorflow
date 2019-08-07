@@ -36,7 +36,12 @@ die() {
 
 num_cpus() {
   # Get the number of CPUs
-  N_CPUS=$(grep -c ^processor /proc/cpuinfo)
+  if [[ -f /proc/cpuinfo ]]; then
+    N_CPUS=$(grep -c ^processor /proc/cpuinfo)
+  else
+    # Fallback method
+    N_CPUS=`getconf _NPROCESSORS_ONLN`
+  fi
   if [[ -z ${N_CPUS} ]]; then
     die "ERROR: Unable to determine the number of CPUs"
   fi
@@ -294,7 +299,7 @@ do_buildifier(){
 
   rm -rf ${BUILDIFIER_OUTPUT_FILE}
 
-  buildifier -showlog -v -mode=check \
+  buildifier -v -mode=check \
     ${BUILD_FILES} 2>&1 | tee ${BUILDIFIER_OUTPUT_FILE}
   BUILDIFIER_END_TIME=$(date +'%s')
 
@@ -305,7 +310,7 @@ do_buildifier(){
   if [[ -s ${BUILDIFIER_OUTPUT_FILE} ]]; then
     echo "FAIL: buildifier found errors and/or warnings in above BUILD files."
     echo "buildifier suggested the following changes:"
-    buildifier -showlog -v -mode=diff ${BUILD_FILES}
+    buildifier -v -mode=diff -diff_command=diff ${BUILD_FILES}
     echo "Please fix manually or run buildifier <file> to auto-fix."
     return 1
   else
