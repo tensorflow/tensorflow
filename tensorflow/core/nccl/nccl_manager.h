@@ -115,11 +115,13 @@ class NcclManager {
   // operation key, number of participants, and communicator key.
   struct Context {
     Context(const string& collective_key, int num_local_devices,
-            int num_global_devices, const string& communicator_key)
+            int num_global_devices, const string& communicator_key,
+            int source_rank)
         : collective_key(collective_key),
           num_local_devices(num_local_devices),
           num_global_devices(num_global_devices),
-          communicator_key(communicator_key) {}
+          communicator_key(communicator_key),
+          source_rank(source_rank) {}
 
     // Unique key for this collective instance
     const string& collective_key;
@@ -137,6 +139,9 @@ class NcclManager {
     // `communicator_key` is not required for single-node collectives and can be
     // empty.
     const string& communicator_key;
+
+    // Rank of broadcast source.
+    int source_rank;
   };
 
   // Adds one participant to an all-reduce.
