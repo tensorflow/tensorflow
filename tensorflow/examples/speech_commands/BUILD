@@ -62,6 +62,7 @@ tf_py_test(
     ],
     tags = [
         "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -98,6 +99,7 @@ tf_py_test(
     ],
     tags = [
         "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -144,6 +146,7 @@ tf_py_test(
     ],
     tags = [
         "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -187,6 +190,7 @@ tf_py_test(
     ],
     tags = [
         "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -230,6 +234,7 @@ tf_py_test(
     ],
     tags = [
         "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -284,6 +289,7 @@ tf_py_test(
     ],
     tags = [
         "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 

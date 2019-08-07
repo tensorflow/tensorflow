@@ -50,16 +50,12 @@ def GetBuild(dir_base):
   return items
 
 
-def BuildPyTestDependencies():
+def BuildPyTestDependencies(api_version):
   python_targets = GetBuild("tensorflow/python")
-  contrib_targets = GetBuild("tensorflow/contrib")
-  tensorboard_targets = GetBuild("tensorflow/contrib/tensorboard")
   tensorflow_targets = GetBuild("tensorflow")
   # Build list of test targets,
-  # python + contrib - tensorboard - attr(manual|pno_pip)
+  # python - tensorboard - attr(manual|pno_pip)
   targets = " + ".join(python_targets)
-  for t in contrib_targets:
-    targets += " + " + t
   for t in tensorboard_targets:
     targets += " - " + t
   targets += ' - attr(tags, "manual|no_pip", %s)' % " + ".join(
@@ -137,7 +133,6 @@ def main():
       3. Configure has been run.
 
   """
-
   # pip_package_dependencies_list is the list of included files in pip packages
   pip_package_dependencies = subprocess.check_output(
       ["bazel", "cquery", PIP_PACKAGE_QUERY_EXPRESSION])
@@ -152,7 +147,7 @@ def main():
   # tf_py_test_dependencies is the list of dependencies for all python
   # tests in tensorflow
   tf_py_test_dependencies = subprocess.check_output(
-      ["bazel", "cquery", PY_TEST_QUERY_EXPRESSION])
+      ["bazel", "cquery", py_test_query_expression])
   if isinstance(tf_py_test_dependencies, bytes):
     tf_py_test_dependencies = tf_py_test_dependencies.decode("utf-8")
   tf_py_test_dependencies_list = tf_py_test_dependencies.strip().split("\n")
@@ -192,7 +187,7 @@ def main():
       print("\nMissing dependency: %s " % missing_dependency)
       print("Affected Tests:")
       rdep_query = ("rdeps(kind(py_test, %s), %s)" %
-                    (" + ".join(PYTHON_TARGETS), missing_dependency))
+                    (" + ".join(python_targets), missing_dependency))
       affected_tests = subprocess.check_output(["bazel", "cquery", rdep_query])
       affected_tests_list = affected_tests.split("\n")[:-2]
       print("\n".join(affected_tests_list))

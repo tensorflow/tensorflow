@@ -1443,6 +1443,7 @@ tf_py_test(
     tags = [
         "no_pip",
         "no_windows",
+        "v1only",
     ],
 )
 
