@@ -347,6 +347,7 @@ cc_library(
     name = "reference_base",
     srcs = [],
     hdrs = [
+        "reference/add.h",
         "reference/arg_min_max.h",
         "reference/binary_function.h",
         "reference/comparisons.h",
@@ -371,6 +372,7 @@ cc_library(
         "reference/maximum_minimum.h",
         "reference/pooling.h",
         "reference/prelu.h",
+        "reference/process_broadcast_shapes.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
@@ -407,6 +409,7 @@ cc_library(
     name = "legacy_reference_base",
     srcs = [],
     hdrs = [
+        "reference/add.h",
         "reference/arg_min_max.h",
         "reference/binary_function.h",
         "reference/comparisons.h",
@@ -419,6 +422,7 @@ cc_library(
         "reference/maximum_minimum.h",
         "reference/pooling.h",
         "reference/prelu.h",
+        "reference/process_broadcast_shapes.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
