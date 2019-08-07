@@ -29,11 +29,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
 
-// TODO(b/138449463): also guard by RUY_OPT_ENABLED(RUY_OPT_INTRINSICS).
-#if RUY_PLATFORM(AVX512)
-#include <immintrin.h>
-#endif
-
 #if (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32))
 #include <arm_neon.h>
 #endif
