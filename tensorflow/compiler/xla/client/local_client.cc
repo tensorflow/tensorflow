@@ -180,8 +180,8 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
   if (executable_->dumping_snapshot()) {
     return ExecuteAndDump(&options_and_stream.first, arguments);
   }
-  return executable_->ExecuteOnStreamWrapper(
-      &options_and_stream.first, run_options.execution_profile(), arguments);
+  return executable_->ExecuteOnStreamWrapper(&options_and_stream.first,
+                                             arguments);
 }
 
 StatusOr<ScopedShapedBuffer> LocalExecutable::RunAsync(

@@ -40,7 +40,8 @@ class GrpcEagerClient : public EagerClient {
       override {                                                          \
     new RPCState<protobuf::Message>(                                      \
         &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request, \
-        response, std::move(done), nullptr, nullptr);                     \
+        response, std::move(done), nullptr, nullptr, /*max_retries=*/10,  \
+        /*fail_fast=*/true);                                              \
   }
 
   CLIENT_METHOD(CreateContext);

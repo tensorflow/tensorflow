@@ -72,35 +72,62 @@ class SPV_OpCode<string name, int val> {
 
 // Begin opcode section. Generated from SPIR-V spec; DO NOT MODIFY!
 
-def SPV_OC_OpNop               : I32EnumAttrCase<"OpNop", 0>;
-def SPV_OC_OpName              : I32EnumAttrCase<"OpName", 5>;
-def SPV_OC_OpMemoryModel       : I32EnumAttrCase<"OpMemoryModel", 14>;
-def SPV_OC_OpEntryPoint        : I32EnumAttrCase<"OpEntryPoint", 15>;
-def SPV_OC_OpExecutionMode     : I32EnumAttrCase<"OpExecutionMode", 16>;
-def SPV_OC_OpTypeVoid          : I32EnumAttrCase<"OpTypeVoid", 19>;
-def SPV_OC_OpTypeBool          : I32EnumAttrCase<"OpTypeBool", 20>;
-def SPV_OC_OpTypeInt           : I32EnumAttrCase<"OpTypeInt", 21>;
-def SPV_OC_OpTypeFloat         : I32EnumAttrCase<"OpTypeFloat", 22>;
-def SPV_OC_OpTypeVector        : I32EnumAttrCase<"OpTypeVector", 23>;
-def SPV_OC_OpTypeArray         : I32EnumAttrCase<"OpTypeArray", 28>;
-def SPV_OC_OpTypePointer       : I32EnumAttrCase<"OpTypePointer", 32>;
-def SPV_OC_OpTypeFunction      : I32EnumAttrCase<"OpTypeFunction", 33>;
-def SPV_OC_OpConstantTrue      : I32EnumAttrCase<"OpConstantTrue", 41>;
-def SPV_OC_OpConstantFalse     : I32EnumAttrCase<"OpConstantFalse", 42>;
-def SPV_OC_OpConstant          : I32EnumAttrCase<"OpConstant", 43>;
-def SPV_OC_OpConstantComposite : I32EnumAttrCase<"OpConstantComposite", 44>;
-def SPV_OC_OpConstantNull      : I32EnumAttrCase<"OpConstantNull", 46>;
-def SPV_OC_OpFunction          : I32EnumAttrCase<"OpFunction", 54>;
-def SPV_OC_OpFunctionParameter : I32EnumAttrCase<"OpFunctionParameter", 55>;
-def SPV_OC_OpFunctionEnd       : I32EnumAttrCase<"OpFunctionEnd", 56>;
-def SPV_OC_OpVariable          : I32EnumAttrCase<"OpVariable", 59>;
-def SPV_OC_OpLoad              : I32EnumAttrCase<"OpLoad", 61>;
-def SPV_OC_OpStore             : I32EnumAttrCase<"OpStore", 62>;
-def SPV_OC_OpAccessChain       : I32EnumAttrCase<"OpAccessChain", 65>;
-def SPV_OC_OpDecorate          : I32EnumAttrCase<"OpDecorate", 71>;
-def SPV_OC_OpCompositeExtract  : I32EnumAttrCase<"OpCompositeExtract", 81>;
-def SPV_OC_OpFMul              : I32EnumAttrCase<"OpFMul", 133>;
-def SPV_OC_OpReturn            : I32EnumAttrCase<"OpReturn", 253>;
+def SPV_OC_OpNop                   : I32EnumAttrCase<"OpNop", 0>;
+def SPV_OC_OpName                  : I32EnumAttrCase<"OpName", 5>;
+def SPV_OC_OpMemoryModel           : I32EnumAttrCase<"OpMemoryModel", 14>;
+def SPV_OC_OpEntryPoint            : I32EnumAttrCase<"OpEntryPoint", 15>;
+def SPV_OC_OpExecutionMode         : I32EnumAttrCase<"OpExecutionMode", 16>;
+def SPV_OC_OpTypeVoid              : I32EnumAttrCase<"OpTypeVoid", 19>;
+def SPV_OC_OpTypeBool              : I32EnumAttrCase<"OpTypeBool", 20>;
+def SPV_OC_OpTypeInt               : I32EnumAttrCase<"OpTypeInt", 21>;
+def SPV_OC_OpTypeFloat             : I32EnumAttrCase<"OpTypeFloat", 22>;
+def SPV_OC_OpTypeVector            : I32EnumAttrCase<"OpTypeVector", 23>;
+def SPV_OC_OpTypeArray             : I32EnumAttrCase<"OpTypeArray", 28>;
+def SPV_OC_OpTypePointer           : I32EnumAttrCase<"OpTypePointer", 32>;
+def SPV_OC_OpTypeFunction          : I32EnumAttrCase<"OpTypeFunction", 33>;
+def SPV_OC_OpConstantTrue          : I32EnumAttrCase<"OpConstantTrue", 41>;
+def SPV_OC_OpConstantFalse         : I32EnumAttrCase<"OpConstantFalse", 42>;
+def SPV_OC_OpConstant              : I32EnumAttrCase<"OpConstant", 43>;
+def SPV_OC_OpConstantComposite     : I32EnumAttrCase<"OpConstantComposite", 44>;
+def SPV_OC_OpConstantNull          : I32EnumAttrCase<"OpConstantNull", 46>;
+def SPV_OC_OpSpecConstantTrue      : I32EnumAttrCase<"OpSpecConstantTrue", 48>;
+def SPV_OC_OpSpecConstantFalse     : I32EnumAttrCase<"OpSpecConstantFalse", 49>;
+def SPV_OC_OpSpecConstant          : I32EnumAttrCase<"OpSpecConstant", 50>;
+def SPV_OC_OpSpecConstantComposite : I32EnumAttrCase<"OpSpecConstantComposite", 51>;
+def SPV_OC_OpFunction              : I32EnumAttrCase<"OpFunction", 54>;
+def SPV_OC_OpFunctionParameter     : I32EnumAttrCase<"OpFunctionParameter", 55>;
+def SPV_OC_OpFunctionEnd           : I32EnumAttrCase<"OpFunctionEnd", 56>;
+def SPV_OC_OpVariable              : I32EnumAttrCase<"OpVariable", 59>;
+def SPV_OC_OpLoad                  : I32EnumAttrCase<"OpLoad", 61>;
+def SPV_OC_OpStore                 : I32EnumAttrCase<"OpStore", 62>;
+def SPV_OC_OpAccessChain           : I32EnumAttrCase<"OpAccessChain", 65>;
+def SPV_OC_OpDecorate              : I32EnumAttrCase<"OpDecorate", 71>;
+def SPV_OC_OpCompositeExtract      : I32EnumAttrCase<"OpCompositeExtract", 81>;
+def SPV_OC_OpIAdd                  : I32EnumAttrCase<"OpIAdd", 128>;
+def SPV_OC_OpFAdd                  : I32EnumAttrCase<"OpFAdd", 129>;
+def SPV_OC_OpISub                  : I32EnumAttrCase<"OpISub", 130>;
+def SPV_OC_OpFSub                  : I32EnumAttrCase<"OpFSub", 131>;
+def SPV_OC_OpIMul                  : I32EnumAttrCase<"OpIMul", 132>;
+def SPV_OC_OpFMul                  : I32EnumAttrCase<"OpFMul", 133>;
+def SPV_OC_OpUDiv                  : I32EnumAttrCase<"OpUDiv", 134>;
+def SPV_OC_OpSDiv                  : I32EnumAttrCase<"OpSDiv", 135>;
+def SPV_OC_OpFDiv                  : I32EnumAttrCase<"OpFDiv", 136>;
+def SPV_OC_OpUMod                  : I32EnumAttrCase<"OpUMod", 137>;
+def SPV_OC_OpSRem                  : I32EnumAttrCase<"OpSRem", 138>;
+def SPV_OC_OpSMod                  : I32EnumAttrCase<"OpSMod", 139>;
+def SPV_OC_OpFRem                  : I32EnumAttrCase<"OpFRem", 140>;
+def SPV_OC_OpFMod                  : I32EnumAttrCase<"OpFMod", 141>;
+def SPV_OC_OpIEqual                : I32EnumAttrCase<"OpIEqual", 170>;
+def SPV_OC_OpINotEqual             : I32EnumAttrCase<"OpINotEqual", 171>;
+def SPV_OC_OpUGreaterThan          : I32EnumAttrCase<"OpUGreaterThan", 172>;
+def SPV_OC_OpSGreaterThan          : I32EnumAttrCase<"OpSGreaterThan", 173>;
+def SPV_OC_OpUGreaterThanEqual     : I32EnumAttrCase<"OpUGreaterThanEqual", 174>;
+def SPV_OC_OpSGreaterThanEqual     : I32EnumAttrCase<"OpSGreaterThanEqual", 175>;
+def SPV_OC_OpULessThan             : I32EnumAttrCase<"OpULessThan", 176>;
+def SPV_OC_OpSLessThan             : I32EnumAttrCase<"OpSLessThan", 177>;
+def SPV_OC_OpULessThanEqual        : I32EnumAttrCase<"OpULessThanEqual", 178>;
+def SPV_OC_OpSLessThanEqual        : I32EnumAttrCase<"OpSLessThanEqual", 179>;
+def SPV_OC_OpReturn                : I32EnumAttrCase<"OpReturn", 253>;
 
 def SPV_OpcodeAttr :
     I32EnumAttr<"Opcode", "valid SPIR-V instructions", [
@@ -109,10 +136,17 @@ def SPV_OpcodeAttr :
       SPV_OC_OpTypeFloat, SPV_OC_OpTypeVector, SPV_OC_OpTypeArray,
       SPV_OC_OpTypePointer, SPV_OC_OpTypeFunction, SPV_OC_OpConstantTrue,
       SPV_OC_OpConstantFalse, SPV_OC_OpConstant, SPV_OC_OpConstantComposite,
-      SPV_OC_OpConstantNull, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
-      SPV_OC_OpFunctionEnd, SPV_OC_OpVariable, SPV_OC_OpLoad, SPV_OC_OpStore,
-      SPV_OC_OpAccessChain, SPV_OC_OpDecorate, SPV_OC_OpCompositeExtract,
-      SPV_OC_OpFMul, SPV_OC_OpReturn
+      SPV_OC_OpConstantNull, SPV_OC_OpSpecConstantTrue, SPV_OC_OpSpecConstantFalse,
+      SPV_OC_OpSpecConstant, SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction,
+      SPV_OC_OpFunctionParameter, SPV_OC_OpFunctionEnd, SPV_OC_OpVariable,
+      SPV_OC_OpLoad, SPV_OC_OpStore, SPV_OC_OpAccessChain, SPV_OC_OpDecorate,
+      SPV_OC_OpCompositeExtract, SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub,
+      SPV_OC_OpFSub, SPV_OC_OpIMul, SPV_OC_OpFMul, SPV_OC_OpUDiv, SPV_OC_OpSDiv,
+      SPV_OC_OpFDiv, SPV_OC_OpUMod, SPV_OC_OpSRem, SPV_OC_OpSMod, SPV_OC_OpFRem,
+      SPV_OC_OpFMod, SPV_OC_OpIEqual, SPV_OC_OpINotEqual, SPV_OC_OpUGreaterThan,
+      SPV_OC_OpSGreaterThan, SPV_OC_OpUGreaterThanEqual, SPV_OC_OpSGreaterThanEqual,
+      SPV_OC_OpULessThan, SPV_OC_OpSLessThan, SPV_OC_OpULessThanEqual,
+      SPV_OC_OpSLessThanEqual, SPV_OC_OpReturn
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
@@ -184,6 +218,97 @@ def SPV_AddressingModelAttr :
     ]> {
   let returnType = "::mlir::spirv::AddressingModel";
   let convertFromStorage = "static_cast<::mlir::spirv::AddressingModel>($_self.getInt())";
+  let cppNamespace = "::mlir::spirv";
+}
+
+def SPV_D_RelaxedPrecision            : I32EnumAttrCase<"RelaxedPrecision", 0>;
+def SPV_D_SpecId                      : I32EnumAttrCase<"SpecId", 1>;
+def SPV_D_Block                       : I32EnumAttrCase<"Block", 2>;
+def SPV_D_BufferBlock                 : I32EnumAttrCase<"BufferBlock", 3>;
+def SPV_D_RowMajor                    : I32EnumAttrCase<"RowMajor", 4>;
+def SPV_D_ColMajor                    : I32EnumAttrCase<"ColMajor", 5>;
+def SPV_D_ArrayStride                 : I32EnumAttrCase<"ArrayStride", 6>;
+def SPV_D_MatrixStride                : I32EnumAttrCase<"MatrixStride", 7>;
+def SPV_D_GLSLShared                  : I32EnumAttrCase<"GLSLShared", 8>;
+def SPV_D_GLSLPacked                  : I32EnumAttrCase<"GLSLPacked", 9>;
+def SPV_D_CPacked                     : I32EnumAttrCase<"CPacked", 10>;
+def SPV_D_BuiltIn                     : I32EnumAttrCase<"BuiltIn", 11>;
+def SPV_D_NoPerspective               : I32EnumAttrCase<"NoPerspective", 13>;
+def SPV_D_Flat                        : I32EnumAttrCase<"Flat", 14>;
+def SPV_D_Patch                       : I32EnumAttrCase<"Patch", 15>;
+def SPV_D_Centroid                    : I32EnumAttrCase<"Centroid", 16>;
+def SPV_D_Sample                      : I32EnumAttrCase<"Sample", 17>;
+def SPV_D_Invariant                   : I32EnumAttrCase<"Invariant", 18>;
+def SPV_D_Restrict                    : I32EnumAttrCase<"Restrict", 19>;
+def SPV_D_Aliased                     : I32EnumAttrCase<"Aliased", 20>;
+def SPV_D_Volatile                    : I32EnumAttrCase<"Volatile", 21>;
+def SPV_D_Constant                    : I32EnumAttrCase<"Constant", 22>;
+def SPV_D_Coherent                    : I32EnumAttrCase<"Coherent", 23>;
+def SPV_D_NonWritable                 : I32EnumAttrCase<"NonWritable", 24>;
+def SPV_D_NonReadable                 : I32EnumAttrCase<"NonReadable", 25>;
+def SPV_D_Uniform                     : I32EnumAttrCase<"Uniform", 26>;
+def SPV_D_UniformId                   : I32EnumAttrCase<"UniformId", 27>;
+def SPV_D_SaturatedConversion         : I32EnumAttrCase<"SaturatedConversion", 28>;
+def SPV_D_Stream                      : I32EnumAttrCase<"Stream", 29>;
+def SPV_D_Location                    : I32EnumAttrCase<"Location", 30>;
+def SPV_D_Component                   : I32EnumAttrCase<"Component", 31>;
+def SPV_D_Index                       : I32EnumAttrCase<"Index", 32>;
+def SPV_D_Binding                     : I32EnumAttrCase<"Binding", 33>;
+def SPV_D_DescriptorSet               : I32EnumAttrCase<"DescriptorSet", 34>;
+def SPV_D_Offset                      : I32EnumAttrCase<"Offset", 35>;
+def SPV_D_XfbBuffer                   : I32EnumAttrCase<"XfbBuffer", 36>;
+def SPV_D_XfbStride                   : I32EnumAttrCase<"XfbStride", 37>;
+def SPV_D_FuncParamAttr               : I32EnumAttrCase<"FuncParamAttr", 38>;
+def SPV_D_FPRoundingMode              : I32EnumAttrCase<"FPRoundingMode", 39>;
+def SPV_D_FPFastMathMode              : I32EnumAttrCase<"FPFastMathMode", 40>;
+def SPV_D_LinkageAttributes           : I32EnumAttrCase<"LinkageAttributes", 41>;
+def SPV_D_NoContraction               : I32EnumAttrCase<"NoContraction", 42>;
+def SPV_D_InputAttachmentIndex        : I32EnumAttrCase<"InputAttachmentIndex", 43>;
+def SPV_D_Alignment                   : I32EnumAttrCase<"Alignment", 44>;
+def SPV_D_MaxByteOffset               : I32EnumAttrCase<"MaxByteOffset", 45>;
+def SPV_D_AlignmentId                 : I32EnumAttrCase<"AlignmentId", 46>;
+def SPV_D_MaxByteOffsetId             : I32EnumAttrCase<"MaxByteOffsetId", 47>;
+def SPV_D_NoSignedWrap                : I32EnumAttrCase<"NoSignedWrap", 4469>;
+def SPV_D_NoUnsignedWrap              : I32EnumAttrCase<"NoUnsignedWrap", 4470>;
+def SPV_D_ExplicitInterpAMD           : I32EnumAttrCase<"ExplicitInterpAMD", 4999>;
+def SPV_D_OverrideCoverageNV          : I32EnumAttrCase<"OverrideCoverageNV", 5248>;
+def SPV_D_PassthroughNV               : I32EnumAttrCase<"PassthroughNV", 5250>;
+def SPV_D_ViewportRelativeNV          : I32EnumAttrCase<"ViewportRelativeNV", 5252>;
+def SPV_D_SecondaryViewportRelativeNV : I32EnumAttrCase<"SecondaryViewportRelativeNV", 5256>;
+def SPV_D_PerPrimitiveNV              : I32EnumAttrCase<"PerPrimitiveNV", 5271>;
+def SPV_D_PerViewNV                   : I32EnumAttrCase<"PerViewNV", 5272>;
+def SPV_D_PerTaskNV                   : I32EnumAttrCase<"PerTaskNV", 5273>;
+def SPV_D_PerVertexNV                 : I32EnumAttrCase<"PerVertexNV", 5285>;
+def SPV_D_NonUniformEXT               : I32EnumAttrCase<"NonUniformEXT", 5300>;
+def SPV_D_RestrictPointerEXT          : I32EnumAttrCase<"RestrictPointerEXT", 5355>;
+def SPV_D_AliasedPointerEXT           : I32EnumAttrCase<"AliasedPointerEXT", 5356>;
+def SPV_D_CounterBuffer               : I32EnumAttrCase<"CounterBuffer", 5634>;
+def SPV_D_UserSemantic                : I32EnumAttrCase<"UserSemantic", 5635>;
+def SPV_D_UserTypeGOOGLE              : I32EnumAttrCase<"UserTypeGOOGLE", 5636>;
+
+def SPV_DecorationAttr :
+    I32EnumAttr<"Decoration", "valid SPIR-V Decoration", [
+      SPV_D_RelaxedPrecision, SPV_D_SpecId, SPV_D_Block, SPV_D_BufferBlock,
+      SPV_D_RowMajor, SPV_D_ColMajor, SPV_D_ArrayStride, SPV_D_MatrixStride,
+      SPV_D_GLSLShared, SPV_D_GLSLPacked, SPV_D_CPacked, SPV_D_BuiltIn,
+      SPV_D_NoPerspective, SPV_D_Flat, SPV_D_Patch, SPV_D_Centroid, SPV_D_Sample,
+      SPV_D_Invariant, SPV_D_Restrict, SPV_D_Aliased, SPV_D_Volatile, SPV_D_Constant,
+      SPV_D_Coherent, SPV_D_NonWritable, SPV_D_NonReadable, SPV_D_Uniform,
+      SPV_D_UniformId, SPV_D_SaturatedConversion, SPV_D_Stream, SPV_D_Location,
+      SPV_D_Component, SPV_D_Index, SPV_D_Binding, SPV_D_DescriptorSet, SPV_D_Offset,
+      SPV_D_XfbBuffer, SPV_D_XfbStride, SPV_D_FuncParamAttr, SPV_D_FPRoundingMode,
+      SPV_D_FPFastMathMode, SPV_D_LinkageAttributes, SPV_D_NoContraction,
+      SPV_D_InputAttachmentIndex, SPV_D_Alignment, SPV_D_MaxByteOffset,
+      SPV_D_AlignmentId, SPV_D_MaxByteOffsetId, SPV_D_NoSignedWrap,
+      SPV_D_NoUnsignedWrap, SPV_D_ExplicitInterpAMD, SPV_D_OverrideCoverageNV,
+      SPV_D_PassthroughNV, SPV_D_ViewportRelativeNV,
+      SPV_D_SecondaryViewportRelativeNV, SPV_D_PerPrimitiveNV, SPV_D_PerViewNV,
+      SPV_D_PerTaskNV, SPV_D_PerVertexNV, SPV_D_NonUniformEXT,
+      SPV_D_RestrictPointerEXT, SPV_D_AliasedPointerEXT, SPV_D_CounterBuffer,
+      SPV_D_UserSemantic, SPV_D_UserTypeGOOGLE
+    ]> {
+  let returnType = "::mlir::spirv::Decoration";
+  let convertFromStorage = "static_cast<::mlir::spirv::Decoration>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -576,5 +701,41 @@ class SPV_Op<string mnemonic, list<OpTrait> traits = []> :
   //    (de)serializing this op and its dispatch should be handled manually.
   bit autogenSerialization = 1;
 }
+
+class SPV_BinaryOp<string mnemonic, Type resultType, Type operandsType,
+                   list<OpTrait> traits = []> :
+      SPV_Op<mnemonic, traits> {
+  let arguments = (ins
+    SPV_ScalarOrVectorOf<operandsType>:$operand1,
+    SPV_ScalarOrVectorOf<operandsType>:$operand2
+  );
+  let results = (outs
+    SPV_ScalarOrVectorOf<resultType>:$result
+  );
+  let parser = [{ return impl::parseBinaryOp(parser, result); }];
+  let printer = [{ return impl::printBinaryOp(getOperation(), p); }];
+  // No additional verification needed in addition to the ODS-generated ones.
+  let verifier = [{ return success(); }];
+}
+
+class SPV_ArithmeticOp<string mnemonic, Type type,
+                       list<OpTrait> traits = []> :
+      // Operands type same as result type.
+      SPV_BinaryOp<mnemonic, type, type,
+                   !listconcat(traits,
+                               [NoSideEffect, SameOperandsAndResultType])> {
+}
+
+class SPV_LogicalOp<string mnemonic, Type operandsType,
+                    list<OpTrait> traits = []> :
+      // Result type is SPV_Bool.
+      SPV_BinaryOp<mnemonic, SPV_Bool, operandsType,
+                   !listconcat(traits,
+                               [NoSideEffect, SameTypeOperands,
+                                SameOperandsAndResultShape])> {
+  let parser = [{ return ::parseBinaryLogicalOp(parser, result); }];
+  let printer = [{ return ::printBinaryLogicalOp(getOperation(), p); }];
+}
+
 
 #endif // SPIRV_BASE

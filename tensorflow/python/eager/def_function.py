@@ -435,7 +435,7 @@ class Function(object):
       return results
 
     # This is the first call of __call__, so we have to initialize.
-    initializer_map = {}
+    initializer_map = object_identity.ObjectIdentityDictionary()
     self._initialize(args, kwds, add_initializers_to=initializer_map)
     if self._created_variables:
       try:
@@ -574,7 +574,7 @@ class Function(object):
           "has been used")
     # Here we trace the function, collect the initializers, and attempt to
     # extract them and run them eagerly. Fail only if we cannot do so.
-    initializer_map = {}
+    initializer_map = object_identity.ObjectIdentityDictionary()
     self._initialize(args, kwargs, add_initializers_to=initializer_map)
 
     # Note: using defun here avoids an infinite recursion.
@@ -603,13 +603,7 @@ class Function(object):
       concrete_functions.extend(
           self._stateless_fn._function_cache.all_values())
     # pylint: enable=protected-access
-    deduplicated_concrete_functions = []
     seen_signatures = []
-    # We are using a list so that:
-    #  - the returned collection is deterministic, and
-    #  - we can use a custom equality operator (is_same_structure).
-    # This is run only at serialization time on likely very small inputs so we
-    # are not concerned about O(n^2) runtime.
     for concrete_function in concrete_functions:
       signature = concrete_function.structured_input_signature
       flattened = nest.flatten(signature)
@@ -621,9 +615,14 @@ class Function(object):
       equal_to_signature = functools.partial(
           function_lib.is_same_structure, signature, check_values=True)
       if not any(equal_to_signature(s) for s in seen_signatures):
-        deduplicated_concrete_functions.append(concrete_function)
         seen_signatures.append(signature)
-    return deduplicated_concrete_functions
+
+    # Re-create concrete functions for these signatures. Re-creating ensures
+    # that if the cache key has changed, the function will be traced again.
+    concrete_functions = []
+    for args, kwargs in seen_signatures:
+      concrete_functions.append(self.get_concrete_function(*args, **kwargs))
+    return concrete_functions
 
   def get_concrete_function(self, *args, **kwargs):
     """Returns a `ConcreteFunction` specialized to inputs and execution context.
@@ -702,7 +701,7 @@ class Function(object):
       ValueError: if this object has not yet been called on concrete values.
     """
     if self._stateful_fn is None:
-      initializer_map = {}
+      initializer_map = object_identity.ObjectIdentityDictionary()
       self._initialize(args, kwargs, add_initializers_to=initializer_map)
       self._initialize_uninitialized_variables(initializer_map)
 

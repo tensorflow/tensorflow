@@ -25,4 +25,4 @@ curl -L -O "https://downloads.arduino.cc/arduino-cli/arduino-cli-latest-linux64.
 tar xjf arduino-cli-latest-linux64.tar.bz2
 
 /tmp/arduino-cli core update-index
-/tmp/arduino-cli core install arduino:sam
+/tmp/arduino-cli core install arduino:mbed

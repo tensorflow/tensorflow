@@ -109,14 +109,14 @@ Status MiopenConvAlgorithmPicker::AllocateInitializeBuffers(
   for (const auto* operand : instr.operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator->AllocateBytes(
-                            stream, ShapeUtil::ByteSizeOf(operand->shape())));
+                            ShapeUtil::ByteSizeOf(operand->shape())));
     initialize_buffer(buffer);
     operand_buffers->push_back(buffer);
   }
   TF_ASSIGN_OR_RETURN(
       *result_buffer,
       input_output_allocator->AllocateBytes(
-          stream, ShapeUtil::ByteSizeOf(instr.shape().tuple_shapes(0))));
+          ShapeUtil::ByteSizeOf(instr.shape().tuple_shapes(0))));
   initialize_buffer(*result_buffer);
 
   return Status::OK();

@@ -28,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_v2
@@ -261,7 +262,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
 _thread_local_data = threading.local()
 _thread_local_data.model_type = None
 _thread_local_data.run_eagerly = None
-_thread_local_data.run_distributed = None
+_thread_local_data.experimental_run_tf_function = None
 
 
 @tf_contextlib.contextmanager
@@ -318,7 +319,7 @@ def should_run_eagerly():
 
 
 @tf_contextlib.contextmanager
-def run_distributed_scope(value):
+def experimental_run_tf_function_scope(value):
   """Provides a scope within which we compile models to run with distribution.
 
   The boolean gets restored to its original value upon exiting the scope.
@@ -330,23 +331,25 @@ def run_distributed_scope(value):
   Yields:
     The provided value.
   """
-  previous_value = _thread_local_data.run_distributed
+  previous_value = _thread_local_data.experimental_run_tf_function
   try:
-    _thread_local_data.run_distributed = value
+    _thread_local_data.experimental_run_tf_function = value
     yield value
   finally:
     # Restore model type to initial value.
-    _thread_local_data.run_distributed = previous_value
+    _thread_local_data.experimental_run_tf_function = previous_value
 
 
-def should_run_distributed():
+def should_run_tf_function():
   """Returns whether the models we are testing should be run distributed."""
-  if _thread_local_data.run_distributed is None:
-    raise ValueError('Cannot call `should_run_distributed()` outside of a '
-                     '`run_distributed_scope()` or `run_all_keras_modes` '
-                     'decorator.')
+  if _thread_local_data.experimental_run_tf_function is None:
+    raise ValueError(
+        'Cannot call `should_run_tf_function()` outside of a '
+        '`experimental_run_tf_function_scope()` or `run_all_keras_modes` '
+        'decorator.')
 
-  return _thread_local_data.run_distributed and context.executing_eagerly()
+  return (_thread_local_data.experimental_run_tf_function and
+          context.executing_eagerly())
 
 
 def get_model_type():
@@ -766,3 +769,26 @@ def get_expected_metric_variable_names(var_names, name_suffix=''):
     return [n + ':0' for n in var_names]
   # In V1 graph mode variable names are made unique using a suffix.
   return [n + name_suffix + ':0' for n in var_names]
+
+
+def enable_v2_dtype_behavior(fn):
+  """Decorator for enabling the layer V2 dtype behavior on a test."""
+  return _set_v2_dtype_behavior(fn, True)
+
+
+def disable_v2_dtype_behavior(fn):
+  """Decorator for disabling the layer V2 dtype behavior on a test."""
+  return _set_v2_dtype_behavior(fn, False)
+
+
+def _set_v2_dtype_behavior(fn, enabled):
+  """Returns version of 'fn' that runs with v2 dtype behavior on or off."""
+  def wrapper(*args, **kwargs):
+    v2_dtype_behavior = base_layer_utils.V2_DTYPE_BEHAVIOR
+    base_layer_utils.V2_DTYPE_BEHAVIOR = enabled
+    try:
+      return fn(*args, **kwargs)
+    finally:
+      base_layer_utils.V2_DTYPE_BEHAVIOR = v2_dtype_behavior
+
+  return wrapper

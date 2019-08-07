@@ -30,7 +30,8 @@
 include "mlir/SPIRV/SPIRVBase.td"
 #endif // SPIRV_BASE
 
-def SPV_ModuleOp : SPV_Op<"module", []> {
+def SPV_ModuleOp : SPV_Op<"module",
+                          [SingleBlockImplicitTerminator<"ModuleEndOp">]> {
   let summary = "The top-level op that defines a SPIR-V module";
 
   let description = [{
@@ -76,18 +77,24 @@ def SPV_ModuleOp : SPV_Op<"module", []> {
   }];
 
   let arguments = (ins
+    SPV_AddressingModelAttr:$addressing_model,
+    SPV_MemoryModelAttr:$memory_model,
     OptionalAttr<StrArrayAttr>:$capabilities,
     OptionalAttr<StrArrayAttr>:$extensions,
-    OptionalAttr<StrArrayAttr>:$extended_instruction_sets,
-    SPV_AddressingModelAttr:$addressing_model,
-    SPV_MemoryModelAttr:$memory_model
+    OptionalAttr<StrArrayAttr>:$extended_instruction_sets
   );
 
   let results = (outs);
 
   let regions = (region SizedRegion<1>:$body);
 
-  let builders = [OpBuilder<"Builder *, OperationState *state">];
+  let builders = [OpBuilder<"Builder *, OperationState *state">,
+                  OpBuilder<[{Builder *, OperationState *state,
+                              IntegerAttr addressing_model,
+                              IntegerAttr memory_model,
+                              /*optional*/ArrayAttr capabilities = nullptr,
+                              /*optional*/ArrayAttr extensions = nullptr,
+                              /*optional*/ArrayAttr extended_instruction_sets = nullptr}]>];
 
   // We need to ensure the block inside the region is properly terminated;
   // the auto-generated builders do not guarantee that.
@@ -146,23 +153,24 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
     ### Custom assembly form
 
     ``` {.ebnf}
-    spv-constant-op ::= ssa-id `=` `spv.constant` attribute-value
+    spv-constant-op ::= ssa-id `=` `spv.constant` (`spec`)? attribute-value
                         (`:` spirv-type)?
     ```
 
     For example:
 
     ```
-    %0 = spv.constant true
-    %1 = spv.constant dense<vector<2xf32>, [2, 3]>
-    %2 = spv.constant [dense<vector<2xf32>, 3.0>] : !spv.array<1xvector<2xf32>>
+    %0 = spv.constant spec true
+    %1 = spv.constant dense<[2, 3]> : vector<2xf32>
+    %2 = spv.constant [dense<3.0> : vector<2xf32>] : !spv.array<1xvector<2xf32>>
     ```
 
     TODO(antiagainst): support constant structs
   }];
 
   let arguments = (ins
-    AnyAttr:$value
+    AnyAttr:$value,
+    UnitAttr:$is_spec_const
   );
 
   let results = (outs

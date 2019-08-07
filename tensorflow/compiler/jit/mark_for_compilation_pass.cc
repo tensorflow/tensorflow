@@ -677,7 +677,7 @@ bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
   }
 
   DataType dtype;
-  if (!GetNodeAttr(n->def(), "dtype", &dtype).ok() ||
+  if (!GetNodeAttrSimple(n->def(), "dtype", &dtype) ||
       !DataTypeIsInteger(dtype)) {
     return false;
   }
@@ -695,7 +695,7 @@ bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
   }
 
   const TensorProto* proto = nullptr;
-  if (!GetNodeAttr(const_input->def(), "value", &proto).ok()) {
+  if (!GetNodeAttrSimple(const_input->def(), "value", &proto)) {
     return false;
   }
 
@@ -935,8 +935,8 @@ absl::optional<string> MarkForCompilationPassImpl::GetXlaScope(Node* node) {
     return absl::nullopt;
   }
 
-  string scope;
-  if (GetNodeAttr(node->attrs(), kXlaScopeAttr, &scope).ok()) {
+  const string& scope = GetNodeAttrString(node->attrs(), kXlaScopeAttr);
+  if (!scope.empty()) {
     return scope;
   }
 
@@ -970,8 +970,7 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
     int effective_cluster_size =
         (node->IsIdentity() || node->IsConstant()) ? 0 : 1;
 
-    bool has_functional_control_flow =
-        node->type_string() == "While" || node->IsIfNode();
+    bool has_functional_control_flow = node->IsWhileNode() || node->IsIfNode();
 
     absl::optional<DeadnessPredicate> deadness_predicate;
     if (deadness_analysis_) {
@@ -1000,7 +999,7 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
     bool is_xla_compile_attr_true = false;
 
     bool xla_compile_attr;
-    if (GetNodeAttr(node->attrs(), kXlaCompileAttr, &xla_compile_attr).ok()) {
+    if (GetNodeAttrSimple(node->attrs(), kXlaCompileAttr, &xla_compile_attr)) {
       is_xla_compile_attr_true |= xla_compile_attr;
     }
 

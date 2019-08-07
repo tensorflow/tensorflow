@@ -97,24 +97,22 @@ struct TestCase {
 
 // Test case 1: cache data in file.
 TestCase TestCase1() {
-  return {
-      /*input_tensors*/ {DatasetOpsTestBase::CreateTensor<int64>(
-          TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
-      /*file_name*/ absl::StrCat(testing::TmpDir(), "/cache_data"),
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 1}, {0, 1, 2}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 1}, {3, 4, 5}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 1}, {6, 7, 8})},
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({3, 1})},
-      /*expected_cardinality*/ 3,
-      /*breakpoints*/ {0, 2, 4, 11}};
+  return {/*input_tensors*/ {CreateTensor<int64>(TensorShape{3, 3, 1},
+                                                 {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+          /*file_name*/ absl::StrCat(testing::TmpDir(), "/cache_data"),
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape{3, 1}, {0, 1, 2}),
+           CreateTensor<int64>(TensorShape{3, 1}, {3, 4, 5}),
+           CreateTensor<int64>(TensorShape{3, 1}, {6, 7, 8})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({3, 1})},
+          /*expected_cardinality*/ 3,
+          /*breakpoints*/ {0, 2, 4, 11}};
 }
 
 // Test case 2: cache empty data in file.
 TestCase TestCase2() {
-  return {/*input_tensors*/ {
-              DatasetOpsTestBase::CreateTensor<int64>(TensorShape{0}, {})},
+  return {/*input_tensors*/ {CreateTensor<int64>(TensorShape{0}, {})},
           /*file_name*/ absl::StrCat(testing::TmpDir(), "/empty_cache_data"),
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
@@ -125,24 +123,22 @@ TestCase TestCase2() {
 
 // Test case 3: cache data in memory.
 TestCase TestCase3() {
-  return {
-      /*input_tensors*/ {DatasetOpsTestBase::CreateTensor<int64>(
-          TensorShape{3, 3, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8})},
-      /*file_name*/ "",
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 1}, {0, 1, 2}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 1}, {3, 4, 5}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 1}, {6, 7, 8})},
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({3, 1})},
-      /*expected_cardinality*/ 3,
-      /*breakpoints*/ {0, 2, 4, 11}};
+  return {/*input_tensors*/ {CreateTensor<int64>(TensorShape{3, 3, 1},
+                                                 {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+          /*file_name*/ "",
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape{3, 1}, {0, 1, 2}),
+           CreateTensor<int64>(TensorShape{3, 1}, {3, 4, 5}),
+           CreateTensor<int64>(TensorShape{3, 1}, {6, 7, 8})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({3, 1})},
+          /*expected_cardinality*/ 3,
+          /*breakpoints*/ {0, 2, 4, 11}};
 }
 
 // Test case 4: cache empty data in memory.
 TestCase TestCase4() {
-  return {/*input_tensors*/ {
-              DatasetOpsTestBase::CreateTensor<int64>(TensorShape{0}, {})},
+  return {/*input_tensors*/ {CreateTensor<int64>(TensorShape{0}, {})},
           /*file_name*/ "",
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},

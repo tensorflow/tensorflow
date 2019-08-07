@@ -3,9 +3,9 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
     "tf_cc_test",
     "tf_cuda_library",
-    "tf_cc_binary",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
@@ -295,6 +295,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/distributed_runtime:collective_param_resolver_distributed",
         "//tensorflow/core/distributed_runtime:device_resolver_distributed",
         "//tensorflow/core/distributed_runtime:graph_mgr",

@@ -676,6 +676,11 @@ py_test(
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
+    tags = [
+        "no_cuda",
+        "no_rocm",
+        "no_rocm_v2",
+    ],
 )
 
 py_test(
@@ -795,6 +800,21 @@ py_library(
         "//tensorflow/python:client",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:errors",
+        "//tensorflow/python:variables",
+    ],
+)
+
+cuda_py_test(
+    name = "debug_grappler_test",
+    size = "small",
+    srcs = ["lib/debug_grappler_test.py"],
+    additional_deps = [
+        ":debug_data",
+        ":debug_utils",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
 )
@@ -1109,6 +1129,11 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    tags = [
+        "no_cuda",
+        "no_rocm",
+        "no_rocm_v2",
+    ],
 )
 
 py_test(
@@ -1137,6 +1162,11 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
+    ],
+    tags = [
+        "no_cuda",
+        "no_rocm",
+        "no_rocm_v2",
     ],
 )
 

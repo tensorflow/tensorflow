@@ -24,7 +24,10 @@ namespace XLA {
 /// Lowers from TF dialect to XLA dialect.
 FunctionPassBase *createLegalizeTFPass();
 
-// Lowers from XLA dialect to Standard dialect.
+/// Lowers XLA control flow ops to the Standard dialect.
+FunctionPassBase *createLegalizeControlFlowPass();
+
+/// Lowers from XLA dialect to Standard dialect.
 FunctionPassBase *createLegalizeToStdPass();
 
 }  // end namespace XLA

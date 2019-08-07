@@ -37,6 +37,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_v2
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import simple_save
 from tensorflow.python.saved_model.load import load
@@ -350,7 +351,7 @@ class VariablesToConstantsTest(test.TestCase):
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
   @test_util.run_v2_only
-  def testLoop(self):
+  def testWhile(self):
     """Test a While loop."""
     input_data = {"x": constant_op.constant([1., 2., 3., 4.], shape=[2, 2])}
 
@@ -367,6 +368,24 @@ class VariablesToConstantsTest(test.TestCase):
     ])
     def model(x):
       return control_flow_ops.while_loop(condition, body, [x])
+
+    root, output_func = self._freezeModel(model)
+    self._testConvertedFunction(root, root.f, output_func, input_data)
+
+  @test_util.run_v2_only
+  def testStatelessWhile(self):
+    """Test a StatelessWhile loop."""
+    input_data = {"x": constant_op.constant(2.)}
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
+    ])
+    def model(x):
+      return while_v2.while_loop(
+          lambda v: v < 4.,
+          lambda v: v * v, [x],
+          return_same_structure=False,
+          name="while_1")  # x**2
 
     root, output_func = self._freezeModel(model)
     self._testConvertedFunction(root, root.f, output_func, input_data)

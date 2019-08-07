@@ -23,6 +23,7 @@ extern "C" {
 #endif  // __cplusplus
 
 typedef TfLiteBuiltinOperator TFL_BuiltinOperator;
+typedef TfLiteDelegate TFL_Delegate;
 
 // Resets all variable tensors to zero.
 TFL_CAPI_EXPORT extern TFL_Status TFL_InterpreterResetVariableTensors(
@@ -42,11 +43,21 @@ TFL_CAPI_EXPORT void TFL_InterpreterOptionsAddBuiltinOp(
 //
 // NOTE: The interpreter will make a copy of `registration` internally, so the
 // caller should ensure that its contents (function pointers, etc...) remain
-// valid for the duration of the interpreter's lifetime. A common practice is
-// making the provided TFL_Registration instance static.
+// valid for the duration of any created interpreter's lifetime. A common
+// practice is making the provided TFL_Registration instance static.
 TFL_CAPI_EXPORT void TFL_InterpreterOptionsAddCustomOp(
     TFL_InterpreterOptions* options, const char* name,
     const TFL_Registration* registration, int min_version, int max_version);
+
+// Adds a delegate to be applied during `TFL_Interpreter` creation.
+//
+// If delegate application fails, interpreter creation will also fail with an
+// associated error logged.
+//
+// NOTE: The caller retains ownership of the delegate and should ensure that it
+// remains valid for the duration of any created interpreter's lifetime.
+TFL_CAPI_EXPORT extern void TFL_InterpreterOptionsAddDelegate(
+    TFL_InterpreterOptions* options, TFL_Delegate* delegate);
 
 #ifdef __cplusplus
 }  // extern "C"

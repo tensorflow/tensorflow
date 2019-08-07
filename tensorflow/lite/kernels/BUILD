@@ -1460,6 +1460,7 @@ cc_test(
     name = "transpose_conv_test",
     size = "small",
     srcs = ["transpose_conv_test.cc"],
+    tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",

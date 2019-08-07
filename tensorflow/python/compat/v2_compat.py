@@ -44,8 +44,7 @@ def enable_v2_behavior():
   tensor_shape.enable_v2_tensorshape()  # Also switched by tf2
   variable_scope.enable_resource_variables()
   # Enables TensorArrayV2 and control flow V2.
-  # TODO(b/134181885): Re-enable this.
-  # control_flow_v2_toggles.enable_control_flow_v2()
+  control_flow_v2_toggles.enable_control_flow_v2()
 
 
 @tf_export(v1=["disable_v2_behavior"])

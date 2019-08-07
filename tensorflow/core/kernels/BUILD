@@ -207,6 +207,10 @@ tf_kernel_library(
     srcs = if_nccl([
         "collective_nccl.h",
         "collective_nccl.cc",
+        "collective_nccl_broadcaster.h",
+        "collective_nccl_broadcaster.cc",
+        "collective_nccl_gatherer.h",
+        "collective_nccl_gatherer.cc",
         "collective_nccl_reducer.h",
         "collective_nccl_reducer.cc",
     ]),
@@ -225,9 +229,9 @@ tf_kernel_library(
 )
 
 tf_cuda_cc_test(
-    name = "collective_nccl_reducer_test",
+    name = "collective_nccl_test",
     size = "small",
-    srcs = ["collective_nccl_reducer_test.cc"],
+    srcs = ["collective_nccl_test.cc"],
     tags = tf_cuda_tests_tags() + ["no_cuda_on_cpu_tap"],
     deps = [
         "//tensorflow/core:all_kernels",
@@ -4383,10 +4387,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "lrn_op",
     prefix = "lrn_op",
-    deps = NN_DEPS
-          + if_rocm([
-           "conv_ops_gpu_hdrs",
-          ]),
+    deps = NN_DEPS + if_rocm([":conv_ops_gpu_hdrs"]),
 )
 
 tf_kernel_library(

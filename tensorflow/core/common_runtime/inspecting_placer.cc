@@ -108,15 +108,13 @@ class ColocationGraphToIOColocationGroups {
   int next_group_id_;
 };
 
-InspectingPlacer::InspectingPlacer(const Graph* graph,
-                                   const FunctionStack& stack,
+InspectingPlacer::InspectingPlacer(const FunctionStack& stack,
                                    const FunctionLibraryDefinition* flib_def,
                                    const DeviceSet* device_set,
                                    const Device* default_device,
                                    bool allow_soft_placement,
                                    bool log_device_placement)
-    : graph_(*graph),
-      stack_(stack),
+    : stack_(stack),
       flib_def_(*flib_def),
       device_set_(*device_set),
       default_device_(default_device),

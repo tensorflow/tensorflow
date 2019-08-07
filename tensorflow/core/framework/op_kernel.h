@@ -1282,8 +1282,9 @@ class OpKernelContext {
     return params_->dec_num_deferred_ops_function;
   }
 
- private:
   Allocator* get_allocator(AllocatorAttributes attr);
+
+ private:
   bool record_memory_consumption_ = false;
 
   // Internal method to add a tensor's buffer to the list of buffers

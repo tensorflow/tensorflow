@@ -116,7 +116,7 @@ struct ReluGrad<Device, Eigen::half> {
         d.stream(), gradient.data(), feature.data(), backprop.data(), count));
   }
 };
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 #if GOOGLE_CUDA
 __global__ void Relu_int8x4_kernel(int vect_count, const int32* input,
@@ -148,7 +148,7 @@ struct Relu<Device, qint8> {
         reinterpret_cast<int32*>(output.data())));
   }
 };
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 }  // namespace functor
 
@@ -168,7 +168,7 @@ struct Relu<Device, qint8> {
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
 #if GOOGLE_CUDA
 template struct functor::Relu<GPUDevice, qint8>;
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 }  // end namespace tensorflow
 

@@ -98,6 +98,21 @@ py_library(
 )
 
 distribute_py_test(
+    name = "keras_premade_models_test",
+    srcs = ["keras_premade_models_test.py"],
+    full_precision = True,
+    main = "keras_premade_models_test.py",
+    shard_count = 4,
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        ":distribute_strategy_test_lib",
+        ":keras_correctness_test_lib",
+    ],
+)
+
+distribute_py_test(
     name = "distribute_strategy_test",
     srcs = ["distribute_strategy_test.py"],
     full_precision = True,

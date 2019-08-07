@@ -74,11 +74,21 @@ test_suite(
 )
 
 py_library(
-    name = "generate_examples_lib",
-    srcs = ["generate_examples_lib.py"],
+    name = "toco_convert",
+    srcs = ["toco_convert.py"],
     data = [
         "//tensorflow/lite/toco",
     ],
+    deps = [
+        ":generate_examples_lib",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "generate_examples_lib",
+    srcs = ["generate_examples_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":generate_examples_report",
@@ -93,13 +103,11 @@ py_library(
 py_binary(
     name = "generate_examples",
     srcs = ["generate_examples.py"],
-    data = [
-        "//tensorflow/lite/toco",
-    ],
     python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":generate_examples_lib",
+        ":toco_convert",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
         "@six_archive//:six",

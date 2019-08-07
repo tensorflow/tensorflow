@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/python/eager/pywrap_tensor_conversion.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
@@ -265,9 +266,10 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(PyObject* value, DataType dtype) {
   return new TFE_TensorHandle(handle);
 }
 
-TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
-                                       tensorflow::DataType dtype,
-                                       const char* device_name) {
+TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
+                                               PyObject* value,
+                                               tensorflow::DataType dtype,
+                                               const char* device_name) {
   tensorflow::Safe_PyObjectPtr value_decrefer;
   if (PyArray_IsScalar(value, Generic)) {
     // Convert numpy scalars to numpy arrays.
@@ -385,6 +387,26 @@ TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
   return handle.release();
 }
 
+TFE_TensorHandle* ConvertToEagerTensor(TFE_Context* ctx, PyObject* value,
+                                       DataType dtype,
+                                       const char* device_name) {
+  // Reduce the overhead of allocation/transfer-to-device for scalars by
+  // caching the corresponding handles. Note that currently only Python
+  // scalars are cached.
+  // TODO(slebedev): also cache singleton NumPy arrays and scalars?
+  if (PyArray_IsPythonNumber(value)) {
+    auto* cache = TFE_TensorHandleCache::Get();
+    TFE_TensorHandle* handle = cache->Lookup(value, dtype, device_name);
+    if (handle != nullptr) return handle;
+    handle = ConvertToEagerTensorUncached(ctx, value, dtype, device_name);
+    if (handle == nullptr) return nullptr;
+    cache->Insert(value, dtype, device_name, handle);
+    return handle;
+  } else {
+    return ConvertToEagerTensorUncached(ctx, value, dtype, device_name);
+  }
+}
+
 }  // namespace tensorflow
 
 extern "C" {
@@ -484,39 +506,16 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   PyObject* value;
   const char* device_name = nullptr;
   tensorflow::DataType dtype = tensorflow::DataType::DT_INVALID;
-  PyObject* other_value = nullptr;
-  const char* kwlist[] = {"value", "device", "dtype", "other_value", nullptr};
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO&|O&O",
-                                   const_cast<char**>(kwlist), &value,
-                                   ConvertDeviceName, &device_name,
-                                   ConvertDataType, &dtype, &other_value)) {
+  const char* kwlist[] = {"value", "device", "dtype", nullptr};
+  if (!PyArg_ParseTupleAndKeywords(
+          args, kwds, "OO&|O&", const_cast<char**>(kwlist), &value,
+          ConvertDeviceName, &device_name, ConvertDataType, &dtype)) {
     return -1;
   }
 
   PyObject* py_context = GetPyEagerContext();
   if (py_context == nullptr) return -1;
   self->context = py_context;
-
-  if (other_value != nullptr) {
-    if (!EagerTensor_CheckExact(other_value)) {
-      PyErr_SetString(PyExc_TypeError,
-                      tensorflow::strings::StrCat(
-                          "Expecting an EagerTensor for other_value, got ",
-                          Py_TYPE(other_value)->tp_name)
-                          .c_str());
-
-      return -1;
-    }
-    EagerTensor* other = reinterpret_cast<EagerTensor*>(other_value);
-    self->handle =
-        TFE_TensorHandleCopySharingTensor(other->handle, self->status);
-
-    if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
-      return -1;
-    }
-
-    return 0;
-  }
 
   auto* handle = tensorflow::ConvertToEagerTensor(GetContextHandle(py_context),
                                                   value, dtype, device_name);
@@ -673,6 +672,7 @@ static PyObject* EagerTensor_copy_to_device(EagerTensor* self, PyObject* args,
     TF_SetStatus(self->status, TF_OK, "");
     return nullptr;
   }
+
   return EagerTensorFromHandle(handle);
 }
 

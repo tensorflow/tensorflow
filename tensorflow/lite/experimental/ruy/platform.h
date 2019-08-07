@@ -49,6 +49,17 @@ limitations under the License.
 #define RUY_DONOTUSEDIRECTLY_NEON_64 \
   (RUY_DONOTUSEDIRECTLY_NEON && RUY_DONOTUSEDIRECTLY_ARM_64)
 
+// These CPU capabilities will all be true when Skylake is enabled during
+// compilation.
+//
+// TODO(b/138433137) Select AVX-512 at runtime rather than via compile options.
+#if defined(__AVX512F__) && defined(__AVX512DQ__) && defined(__AVX512CD__) && \
+    defined(__AVX512BW__) && defined(__AVX512VL__)
+#define RUY_DONOTUSEDIRECTLY_AVX512 1
+#else
+#define RUY_DONOTUSEDIRECTLY_AVX512 0
+#endif
+
 // Detect APPLE
 #ifdef __APPLE__
 #define RUY_DONOTUSEDIRECTLY_APPLE 1

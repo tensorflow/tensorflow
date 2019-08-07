@@ -188,7 +188,6 @@ cc_library(
 cc_library(
     name = "tensorflow_lite_quantization_utils",
     srcs = [
-        "utils/generated_op_quant_spec_getters.inc",
         "utils/quantization_driver.cc",
         "utils/quantization_utils.cc",
     ],
@@ -265,6 +264,7 @@ cc_library(
         "transforms/post_quantize.cc",
         "transforms/prepare_quantize.cc",
         "transforms/quantize.cc",
+        "utils/generated_op_quant_spec_getters.inc",
     ],
     hdrs = [
         "transforms/passes.h",

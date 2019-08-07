@@ -41,6 +41,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+constexpr char kDelimiter[] = "@@";
+
 void AddFakeSinks(FunctionDef* function_def) {
   int counter = 0;
   for (const auto& output : function_def->signature().output_arg()) {
@@ -135,134 +137,6 @@ Status ApplyRewrites(OpKernelContext* ctx,
 
   return Status::OK();
 }
-
-}  // anonymous namespace
-
-Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
-                  SerializationContext&& serialization_ctx,
-                  GraphDef* graph_def) {
-  GraphDefBuilder b;
-  DatasetBase::DatasetGraphDefBuilder db(&b);
-  Node* output_node = nullptr;
-  TF_RETURN_IF_ERROR(
-      db.AddInputDataset(&serialization_ctx, dataset, &output_node));
-  // Insert a purely symbolic _Retval node to indicate to consumers which Tensor
-  // represents this Dataset.
-  ops::UnaryOp("_Retval", output_node,
-               b.opts()
-                   .WithName("dataset")
-                   .WithAttr("T", DT_VARIANT)
-                   .WithAttr("index", 0));
-  TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));
-  return Status::OK();
-}
-
-Status ConnectCancellationManagers(CancellationManager* parent,
-                                   CancellationManager* child,
-                                   std::function<void()>* deregister_fn) {
-  if (parent) {
-    CancellationToken token = parent->get_cancellation_token();
-    if (!parent->RegisterCallback(token, [child]() { child->StartCancel(); })) {
-      return errors::Cancelled("Operation was cancelled");
-    }
-    *deregister_fn = [parent, token]() { parent->DeregisterCallback(token); };
-  } else {
-    VLOG(1) << "Parent cancellation manager is not set. Cancellation will "
-               "not be propagated to the child cancellation manager.";
-    *deregister_fn = []() {};
-  }
-  return Status::OK();
-}
-
-Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
-                      std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library,
-                      DatasetBase** rewritten_input) {
-  SerializationContext::Params params;
-  std::vector<std::pair<string, Tensor>> input_list;
-  params.input_list = &input_list;
-  params.optimization_only = true;
-  SerializationContext serialization_ctx(params);
-  GraphDef graph_def;
-  TF_RETURN_IF_ERROR(
-      AsGraphDef(ctx, input, std::move(serialization_ctx), &graph_def));
-
-  string output_node;
-  for (const auto& node : graph_def.node()) {
-    if (node.op() == "_Retval") {
-      output_node = node.input(0);
-    }
-  }
-
-  VLOG(3) << "Before graph rewrites: " << graph_def.DebugString();
-  TF_RETURN_IF_ERROR(ApplyRewrites(ctx, config_factory,
-                                   optimize_function_library, &graph_def,
-                                   &output_node));
-  VLOG(3) << "After graph rewrites: " << graph_def.DebugString();
-
-  // Instantiate the optimized input pipeline by running the optimized graph
-  // using the optimized function library.
-  FunctionLibraryRuntime* flr = nullptr;
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr = nullptr;
-  std::unique_ptr<FunctionLibraryDefinition> lib_def = nullptr;
-  TF_RETURN_IF_ERROR(
-      ctx->function_library()->Clone(&lib_def, &pflr, &flr, true));
-
-  // Some functions may have been modified without having their names
-  // changed (for example, nested dataset graphs from FlatMap or
-  // Interleave).
-  TF_RETURN_IF_ERROR(AddToFunctionLibrary(lib_def.get(), graph_def.library()));
-
-  Graph graph(OpRegistry::Global());
-  TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
-  std::vector<Tensor> outputs;
-  GraphRunner graph_runner(flr->device());
-
-  TF_RETURN_IF_ERROR(
-      graph_runner.Run(&graph, flr, input_list, {output_node}, &outputs));
-  TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], rewritten_input));
-  (*rewritten_input)->Ref();
-  return Status::OK();
-}
-
-Status VerifyTypesMatch(const DataTypeVector& expected,
-                        const DataTypeVector& received) {
-  if (expected.size() != received.size()) {
-    return errors::InvalidArgument(
-        "Number of components does not match: expected ", expected.size(),
-        " types but got ", received.size(), ".");
-  }
-  for (size_t i = 0; i < expected.size(); ++i) {
-    if (expected[i] != received[i]) {
-      return errors::InvalidArgument("Data type mismatch at component ", i,
-                                     ": expected ", DataTypeString(expected[i]),
-                                     " but got ", DataTypeString(received[i]),
-                                     ".");
-    }
-  }
-  return Status::OK();
-}
-
-Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
-                              const std::vector<PartialTensorShape>& received) {
-  if (expected.size() != received.size()) {
-    return errors::InvalidArgument(
-        "Number of components does not match: expected ", expected.size(),
-        " shapes but got ", received.size(), ".");
-  }
-  for (size_t i = 0; i < expected.size(); ++i) {
-    if (!expected[i].IsCompatibleWith(received[i])) {
-      return errors::InvalidArgument("Incompatible shapes at component ", i,
-                                     ": expected ", expected[i].DebugString(),
-                                     " but got ", received[i].DebugString(),
-                                     ".");
-    }
-  }
-
-  return Status::OK();
-}
-
-namespace {
 
 uint64 DefaultDependencyLoopNodeHash() {
   static const uint64 hash = Hash64("DependencyLoopNode");
@@ -496,7 +370,131 @@ uint64 HashSubgraphFunctionImpl(
   return final_hash;
 }
 
-}  // namespace
+}  // anonymous namespace
+
+Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
+                  SerializationContext&& serialization_ctx,
+                  GraphDef* graph_def) {
+  GraphDefBuilder b;
+  DatasetBase::DatasetGraphDefBuilder db(&b);
+  Node* output_node = nullptr;
+  TF_RETURN_IF_ERROR(
+      db.AddInputDataset(&serialization_ctx, dataset, &output_node));
+  // Insert a purely symbolic _Retval node to indicate to consumers which Tensor
+  // represents this Dataset.
+  ops::UnaryOp("_Retval", output_node,
+               b.opts()
+                   .WithName("dataset")
+                   .WithAttr("T", DT_VARIANT)
+                   .WithAttr("index", 0));
+  TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));
+  return Status::OK();
+}
+
+Status ConnectCancellationManagers(CancellationManager* parent,
+                                   CancellationManager* child,
+                                   std::function<void()>* deregister_fn) {
+  if (parent) {
+    CancellationToken token = parent->get_cancellation_token();
+    if (!parent->RegisterCallback(token, [child]() { child->StartCancel(); })) {
+      return errors::Cancelled("Operation was cancelled");
+    }
+    *deregister_fn = [parent, token]() { parent->DeregisterCallback(token); };
+  } else {
+    VLOG(1) << "Parent cancellation manager is not set. Cancellation will "
+               "not be propagated to the child cancellation manager.";
+    *deregister_fn = []() {};
+  }
+  return Status::OK();
+}
+
+Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
+                      std::function<RewriterConfig(void)> config_factory,
+                      bool optimize_function_library,
+                      DatasetBase** rewritten_input) {
+  SerializationContext::Params params;
+  std::vector<std::pair<string, Tensor>> input_list;
+  params.input_list = &input_list;
+  params.optimization_only = true;
+  SerializationContext serialization_ctx(params);
+  GraphDef graph_def;
+  TF_RETURN_IF_ERROR(
+      AsGraphDef(ctx, input, std::move(serialization_ctx), &graph_def));
+
+  string output_node;
+  for (const auto& node : graph_def.node()) {
+    if (node.op() == "_Retval") {
+      output_node = node.input(0);
+    }
+  }
+
+  VLOG(3) << "Before graph rewrites: " << graph_def.DebugString();
+  TF_RETURN_IF_ERROR(ApplyRewrites(ctx, config_factory,
+                                   optimize_function_library, &graph_def,
+                                   &output_node));
+  VLOG(3) << "After graph rewrites: " << graph_def.DebugString();
+
+  // Instantiate the optimized input pipeline by running the optimized graph
+  // using the optimized function library.
+  FunctionLibraryRuntime* flr = nullptr;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr = nullptr;
+  std::unique_ptr<FunctionLibraryDefinition> lib_def = nullptr;
+  TF_RETURN_IF_ERROR(
+      ctx->function_library()->Clone(&lib_def, &pflr, &flr, true));
+
+  // Some functions may have been modified without having their names
+  // changed (for example, nested dataset graphs from FlatMap or
+  // Interleave).
+  TF_RETURN_IF_ERROR(AddToFunctionLibrary(lib_def.get(), graph_def.library()));
+
+  Graph graph(OpRegistry::Global());
+  TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
+  std::vector<Tensor> outputs;
+  GraphRunner graph_runner(flr->device());
+
+  TF_RETURN_IF_ERROR(
+      graph_runner.Run(&graph, flr, input_list, {output_node}, &outputs));
+  TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], rewritten_input));
+  (*rewritten_input)->Ref();
+  return Status::OK();
+}
+
+Status VerifyTypesMatch(const DataTypeVector& expected,
+                        const DataTypeVector& received) {
+  if (expected.size() != received.size()) {
+    return errors::InvalidArgument(
+        "Number of components does not match: expected ", expected.size(),
+        " types but got ", received.size(), ".");
+  }
+  for (size_t i = 0; i < expected.size(); ++i) {
+    if (expected[i] != received[i]) {
+      return errors::InvalidArgument("Data type mismatch at component ", i,
+                                     ": expected ", DataTypeString(expected[i]),
+                                     " but got ", DataTypeString(received[i]),
+                                     ".");
+    }
+  }
+  return Status::OK();
+}
+
+Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
+                              const std::vector<PartialTensorShape>& received) {
+  if (expected.size() != received.size()) {
+    return errors::InvalidArgument(
+        "Number of components does not match: expected ", expected.size(),
+        " shapes but got ", received.size(), ".");
+  }
+  for (size_t i = 0; i < expected.size(); ++i) {
+    if (!expected[i].IsCompatibleWith(received[i])) {
+      return errors::InvalidArgument("Incompatible shapes at component ", i,
+                                     ": expected ", expected[i].DebugString(),
+                                     " but got ", received[i].DebugString(),
+                                     ".");
+    }
+  }
+
+  return Status::OK();
+}
 
 uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
                             const FunctionDef* f) {
@@ -511,11 +509,6 @@ uint64 HashSubgraph(const GraphDef& g, const NodeDef* node) {
   return HashSubgraphImpl(grappler::GraphView(&g), node, &visited, &cache);
 }
 
-namespace {
-
-constexpr char kDelimiter[] = "@@";
-
-}  // namespace
 
 VariantTensorDataReader::VariantTensorDataReader(
     const tensorflow::VariantTensorData* data)

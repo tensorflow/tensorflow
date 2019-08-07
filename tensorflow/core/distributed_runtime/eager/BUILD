@@ -130,6 +130,20 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "remote_mgr_test",
+    size = "small",
+    srcs = ["remote_mgr_test.cc"],
+    deps = [
+        ":remote_mgr",
+        "//tensorflow/core:eager_service_proto_cc",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
+    ],
+)
+
 cc_library(
     name = "remote_tensor_handle_data",
     srcs = ["remote_tensor_handle_data.cc"],

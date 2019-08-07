@@ -138,6 +138,8 @@ class TFL_Int8UniformQuantizedType<int zero_pt, int smantissa, int sexp>
 // operand's tensor types.
 def TFL_QUI8 : TFL_QuantizedType<"Uniform", [8], 0>;
 def TFL_QI8 : TFL_QuantizedType<"Uniform", [8], 1>;
+def TFL_QUI16 : TFL_QuantizedType<"Uniform", [16], 0>;
+def TFL_QI16 : TFL_QuantizedType<"Uniform", [16], 1>;
 def TFL_QUI32 : TFL_QuantizedType<"Uniform", [32], 0>;
 def TFL_QI32 : TFL_QuantizedType<"Uniform", [32], 1>;
 
@@ -411,6 +413,33 @@ def TFL_AddNOp : TFL_Op<"add_n", [Commutative, NoSideEffect]> {
   );
 }
 
+def TFL_ReduceAnyOp : TFL_Op<"reduce_any", [NoSideEffect]> {
+  let summary = [{
+Computes the "logical or" of elements across dimensions of a tensor.
+  }];
+
+  let description = [{
+Reduces `input` along the dimensions given in `axis`. Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`axis`. If `keep_dims` is true, the reduced dimensions are
+retained with length 1.
+  }];
+
+  let arguments = (ins
+    I1Tensor:$input,
+    I32Tensor:$reduction_indices,
+
+    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
+  );
+
+  let results = (outs
+    I1Tensor:$output
+  );
+
+  let hasOptions = 1;
+  let customOption = "ReducerOptions";
+}
+
 def TFL_AveragePool2DOp:
     TFL_Op<"average_pool_2d", [NoSideEffect, TFL_SameOperandsAndResultsScale]> {
   let summary = "Average_pool_2d operator";
@@ -586,8 +615,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let summary = "Fully connected op";
 
   let arguments = (ins
-    TensorOf<[F32, TFL_QI8, TFL_QUI8]>:$input,
-    TensorOf<[F32, TFL_QI8, TFL_QUI8]>:$filter,
+    TensorOf<[F32, TFL_QI8, TFL_QUI8, TFL_QI16, TFL_QUI16]>:$input,
+    TensorOf<[F32, TFL_QI8, TFL_QUI8, TFL_QI16, TFL_QUI16]>:$filter,
     TFL_TensorOfOrNone<[F32, TFL_QI32, TFL_QUI32]>:$bias,
 
     TFL_AFAttr:$fused_activation_function,
@@ -597,7 +626,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 
   // Depending on the weights format, this op can have one or two outputs.
   let results = (outs
-    Variadic<TensorOf<[F32, TFL_QI8, TFL_QUI8]>>:$output
+    Variadic<TensorOf<[F32, TFL_QI8, TFL_QUI8, TFL_QI16, TFL_QUI16]>>:$output
   );
 
   let hasOptions = 1;
@@ -643,14 +672,13 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [NoSideEffect]> {
     Gather slices from `params` into a Tensor with shape specified by `indices`.
   }];
 
-  // TODO: missing Uint8.
   let arguments = (ins
-    TensorOf<[F32, I8, I64, I32]>:$params,
+    TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$params,
     TFL_I32OrI64Tensor:$indices
   );
 
   let results = (outs
-    TensorOf<[F32, I8, I64, I32]>:$output
+    TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$output
   );
 }
 
@@ -1274,6 +1302,22 @@ def TFL_OneHotOp : TFL_Op<"one_hot", [NoSideEffect]> {
   let hasOptions = 1;
 }
 
+def TFL_RoundOp: TFL_Op<"round", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Round operator";
+
+  let description = [{
+Rounds the values of a tensor to the nearest integer, element-wise.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[F32]>:$y
+  );
+}
+
 def TFL_SliceOp : TFL_Op<"slice", [
     NoSideEffect, TFL_SameOperandsAndResultsScale]> {
   let summary = "Return a slice from 'input'.";
@@ -1307,7 +1351,7 @@ def TFL_SumOp: TFL_Op<"sum", [NoSideEffect]> {
 
   let arguments = (ins
     AnyTensor:$input,
-    TFL_I32OrI64Tensor:$axes,
+    I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
@@ -1326,7 +1370,7 @@ def TFL_ReduceMinOp: TFL_Op<"reduce_min", [NoSideEffect]> {
 
   let arguments = (ins
     AnyTensor:$input,
-    TFL_I32OrI64Tensor:$axes,
+    I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
@@ -1345,7 +1389,7 @@ def TFL_ReduceMaxOp: TFL_Op<"reduce_max", [NoSideEffect]> {
 
   let arguments = (ins
     AnyTensor:$input,
-    TFL_I32OrI64Tensor:$axes,
+    I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
@@ -1364,7 +1408,7 @@ def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [NoSideEffect]> {
 
   let arguments = (ins
     TensorOf<[F32, I8, I32, I64]>:$input,
-    TFL_I32OrI64Tensor:$axes,
+    I32Tensor:$axes,
     BoolAttr:$keep_dims
   );
 
@@ -1659,9 +1703,8 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
 `seq_dim` reversed.
   }];
 
-  // Missing Uint8.
   let arguments = (ins
-    TensorOf<[F32, I16, I32, I64]>:$input,
+    TensorOf<[F32, I16, I32, I64, TFL_Uint8]>:$input,
     TFL_I32OrI64Tensor:$seq_lengths,
 
     I32Attr:$seq_dim,
@@ -1669,7 +1712,7 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
   );
 
   let results = (outs
-    TensorOf<[F32, I16, I32, I64]>:$output
+    TensorOf<[F32, I16, I32, I64, TFL_Uint8]>:$output
   );
 
   let hasOptions = 1;
@@ -1781,9 +1824,8 @@ def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
 
   let arguments = (ins
     TFL_BoolTensor:$condition,
-    // TODO: Missing uint8.
-    TensorOf<[F32, I1, I8, I16, I32, I64]>:$x,
-    TensorOf<[F32, I1, I8, I16, I32, I64]>:$y);
+    TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$x,
+    TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$y);
   let results = (outs AnyTensor:$output);
 
   // TODO(jpienaar): autogenerate this.
@@ -1845,9 +1887,9 @@ def TFL_SqrtOp: TFL_Op<"sqrt", [NoSideEffect, SameOperandsAndResultType]> {
     Computes element-wise Square root of input
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  let arguments = (ins TFL_FpTensor:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TFL_FpTensor:$y);
 
   let hasFolder = 1;
 }
@@ -1859,9 +1901,9 @@ def TFL_SquareOp: TFL_Op<"square", [NoSideEffect, SameOperandsAndResultType]> {
     Computes element-wise Square of input
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  let arguments = (ins TFL_FpTensor:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TFL_FpTensor:$y);
 
   let hasOptions = 0b1;
 
@@ -1929,10 +1971,9 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     Computes element-wise Hyperbolic tangent of input
   }];
 
-  // TODO(haoliang): missing Uint8.
-  let arguments = (ins TensorOf<[F32, I16, I8]>:$x);
+  let arguments = (ins TensorOf<[F32, I16, I8, TFL_Uint8]>:$x);
 
-  let results = (outs TensorOf<[F32, I16, I8]>:$y);
+  let results = (outs TensorOf<[F32, I16, I8, TFL_Uint8]>:$y);
 }
 
 def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
@@ -1971,8 +2012,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
   }];
 
   let arguments = (ins
-    // TODO: Missing uint8
-    TensorOf<[F32, I8, I32, I64]>:$input,
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8]>:$input,
     I32Tensor:$k);
 
   let results = (outs
@@ -1990,10 +2030,12 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
 // dimensions.
 def TFL_TransposeOp : TFL_Op<"transpose",
   [NoSideEffect,
+   TFL_OperandHasRank<1,1>,
    // TODO(jpienaar): these are only true dynamically, change so that it works
    // with unknowns.
-   // TFL_OperandHasRank<1,1>,
    // TFL_OperandRankEquals1DimOfOperand<0, 1>,
+   PredOpTrait<"input and output must have same element type",
+   TCresVTEtIsSameAsOp<0, 0>>,
    TFL_SameOperandsAndResultsScale]> {
   let summary = "Transpose operator";
 
@@ -2003,12 +2045,14 @@ def TFL_TransposeOp : TFL_Op<"transpose",
 
   let arguments = (
     ins AnyTensor:$x,
-    AnyTensor:$perm
+    TensorOf<[I32]>:$perm
   );
 
   let results = (outs
     AnyTensor:$y
   );
+
+  let hasFolder = 1;
 }
 
 def TFL_UnpackOp : TFL_Op<"unpack", [NoSideEffect]> {
@@ -2195,6 +2239,27 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
 
   let results = (outs
     TensorOf<[F32, TFL_QI8, TFL_QUI8]>:$output
+  );
+
+  let hasOptions = 1;
+}
+
+def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor",
+                                [NoSideEffect]> {
+  let summary = "ResizeNearestNeighbor Op";
+
+  let description = [{
+    Resize `images` to `size` using nearest neighbor interpolation.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, I8, TFL_Uint8]>:$input,
+    TensorOf<[I32]>:$size,
+    BoolAttr:$align_corners
+  );
+
+  let results = (outs
+    TensorOf<[F32, I8, TFL_Uint8]>:$output
   );
 
   let hasOptions = 1;

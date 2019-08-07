@@ -960,10 +960,7 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["stateful_random_ops_test.py"],
     shard_count = 10,
-    tags = [
-        "notap",  # TODO(b/138578268): times out on 2019-07-29.
-        "optonly",
-    ],
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",
@@ -1401,5 +1398,21 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "conv_node_name_test",
+    size = "medium",
+    srcs = ["conv_node_name_test.py"],
+    shard_count = 5,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
     ],
 )

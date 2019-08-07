@@ -69,78 +69,78 @@ struct TestCase {
 
 // Test case 1: take fewer than input size.
 TestCase TakeLessTestCase() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
-          /*count*/ 4,
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ 4,
-          /*breakpoints*/ {0, 2, 5}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*count*/ 4,
+      /*expected_outputs*/
+      {CreateTensor<int64>(TensorShape{1}, {0}),
+       CreateTensor<int64>(TensorShape{1}, {1}),
+       CreateTensor<int64>(TensorShape{1}, {2}),
+       CreateTensor<int64>(TensorShape{1}, {3})},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ 4,
+      /*breakpoints*/ {0, 2, 5}};
 }
 
 // Test case 2: take more than input size.
 TestCase TakeMoreTestCase() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
-          /*count*/ 25,
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {4}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {5}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {6}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {7}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {8}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {9})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ 10,
-          /*breakpoints*/ {0, 2, 5, 11}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*count*/ 25,
+      /*expected_outputs*/
+      {CreateTensor<int64>(TensorShape{1}, {0}),
+       CreateTensor<int64>(TensorShape{1}, {1}),
+       CreateTensor<int64>(TensorShape{1}, {2}),
+       CreateTensor<int64>(TensorShape{1}, {3}),
+       CreateTensor<int64>(TensorShape{1}, {4}),
+       CreateTensor<int64>(TensorShape{1}, {5}),
+       CreateTensor<int64>(TensorShape{1}, {6}),
+       CreateTensor<int64>(TensorShape{1}, {7}),
+       CreateTensor<int64>(TensorShape{1}, {8}),
+       CreateTensor<int64>(TensorShape{1}, {9})},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ 10,
+      /*breakpoints*/ {0, 2, 5, 11}};
 }
 
 // Test case 3: take all of input.
 TestCase TakeAllTestCase() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
-          /*count*/ -1,
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {4}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {5}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {6}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {7}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {8}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {9})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ -1,
-          /*breakpoints*/ {0, 2, 5, 11}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*count*/ -1,
+      /*expected_outputs*/
+      {CreateTensor<int64>(TensorShape{1}, {0}),
+       CreateTensor<int64>(TensorShape{1}, {1}),
+       CreateTensor<int64>(TensorShape{1}, {2}),
+       CreateTensor<int64>(TensorShape{1}, {3}),
+       CreateTensor<int64>(TensorShape{1}, {4}),
+       CreateTensor<int64>(TensorShape{1}, {5}),
+       CreateTensor<int64>(TensorShape{1}, {6}),
+       CreateTensor<int64>(TensorShape{1}, {7}),
+       CreateTensor<int64>(TensorShape{1}, {8}),
+       CreateTensor<int64>(TensorShape{1}, {9})},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ -1,
+      /*breakpoints*/ {0, 2, 5, 11}};
 }
 
 // Test case 4: take nothing.
 TestCase TakeNothingTestCase() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
-          /*count*/ 0,
-          /*expected_outputs*/ {},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ 0,
-          /*breakpoints*/ {0, 2, 5, 11}};
+  return {
+      /*input_tensors*/
+      {CreateTensor<int64>(TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*count*/ 0,
+      /*expected_outputs*/ {},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({1})},
+      /*expected_cardinality*/ 0,
+      /*breakpoints*/ {0, 2, 5, 11}};
 }
 
 class ParameterizedTakeDatasetOpTest

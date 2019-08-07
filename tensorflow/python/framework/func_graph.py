@@ -22,16 +22,20 @@ import collections as py_collections
 import itertools
 import weakref
 
+import numpy as np
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.framework.auto_control_deps import AutomaticControlDependencies
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
@@ -41,6 +45,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import compat
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -60,6 +65,9 @@ WHITELIST_COLLECTIONS = [
     variable_scope._VARSTORE_KEY,  # pylint: disable=protected-access
     variable_scope._VARSCOPESTORE_KEY  # pylint: disable=protected-access
 ]
+
+
+_EAGER_CONST_THRESHOLD = 128
 
 
 class UnknownArgument(object):
@@ -107,6 +115,7 @@ def convert_structure_to_signature(structure, arg_names=None):
         type(None),
         dtypes.DType,
         tensor_spec.TensorSpec,
+        type_spec.TypeSpec,
     )):
       return arg
     return UnknownArgument()
@@ -188,7 +197,7 @@ class FuncGraph(ops.Graph):
     self.structured_input_signature = None
     self.structured_outputs = None
     self._weak_variables = []
-    self._watched_variables = weakref.WeakSet()
+    self._watched_variables = object_identity.ObjectIdentityWeakSet()
     self.outer_graph = ops.get_default_graph()
     self._captures = py_collections.OrderedDict()
     # If not None, records the names of output args of this function. Used to
@@ -566,6 +575,13 @@ class FuncGraph(ops.Graph):
     if isinstance(tensor, ops.EagerTensor):
       if name is None:
         name = str(ops.uid())
+
+      # Small EagerTensors are captured with Const ops
+      if (tensor.dtype in dtypes.TF_VALUE_DTYPES and
+          np.prod(tensor.shape) <= _EAGER_CONST_THRESHOLD):
+        return self.capture_eager_tensor(tensor, name)
+
+      # Large EagerTensors and resources are captured with Placeholder ops
       return self._capture_helper(tensor, name)
     if tensor.graph is not self:
       if name is None:
@@ -640,6 +656,22 @@ class FuncGraph(ops.Graph):
     tape.record_operation("captured_value", [placeholder], [variable],
                           lambda x: [x])
 
+  def capture_eager_tensor(self, tensor, name):
+    capture = self._captures.get(ops.tensor_id(tensor))
+    if capture is None:
+      # We clear all control dependencies and place the Const op on the same
+      # device as the source tensor. The device placement may be relaxed at
+      # a later date.
+      with ops.control_dependencies(None), self.device(tensor.device):
+        graph_const = constant_op.constant(tensor.numpy(), dtype=tensor.dtype,
+                                           shape=tensor.shape, name=name)
+      self.add_capture(tensor, graph_const)
+    else:
+      graph_const = capture[1]
+    tape.record_operation("captured_value", [graph_const], [tensor],
+                          lambda x: [x])
+    return graph_const
+
   @property
   def external_captures(self):
     """External tensors captured by this function."""
@@ -662,9 +694,9 @@ class FuncGraph(ops.Graph):
 
   @property
   def variable_captures(self):
-    """Map of variable handles to variables that as in the list of captures."""
+    """Map of tensor ids of variable handles to variables which are captured."""
     return {
-        self._captures[ops.tensor_id(v.handle)][1]: v
+        ops.tensor_id(self._captures[ops.tensor_id(v.handle)][1]): v
         for v in self.variables
         if ops.tensor_id(v.handle) in self._captures
     }
@@ -835,11 +867,11 @@ def func_graph_from_py_func(name,
                 autograph.ConversionOptions(
                     recursive=True,
                     optional_features=autograph_options,
-                    force_conversion=True,
+                    user_requested=True,
                 ), args, kwargs)
           except Exception as e:  # pylint:disable=broad-except
             if hasattr(e, "ag_error_metadata"):
-              raise e.ag_error_metadata.to_exception(type(e))
+              raise e.ag_error_metadata.to_exception(e)
             else:
               raise
 
@@ -864,7 +896,7 @@ def func_graph_from_py_func(name,
     # Variables in `func_args`, `func_kwargs` should be explicit inputs
     # to the function, not captured inputs.
     graph_variables = list(func_graph._watched_variables)  # pylint: disable=protected-access
-    arg_variables = set()
+    arg_variables = object_identity.ObjectIdentitySet()
     inputs = []
     for arg in (nest.flatten(func_args, expand_composites=True) +
                 nest.flatten(func_kwargs, expand_composites=True)):

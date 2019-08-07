@@ -29,6 +29,7 @@ from tensorflow.python.framework import func_graph as func_graph_lib
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
@@ -60,9 +61,11 @@ def _call_concrete_function(function, inputs):
     The structured function output.
   """
   expected_structure = function.graph.structured_input_signature
-  flatten_inputs = nest.flatten_up_to(expected_structure, inputs)
+  flatten_inputs = nest.flatten_up_to(
+      expected_structure, inputs, expand_composites=True)
+  flatten_expected = nest.flatten(expected_structure, expand_composites=True)
   tensor_inputs = []
-  for arg, expected in zip(flatten_inputs, nest.flatten(expected_structure)):
+  for arg, expected in zip(flatten_inputs, flatten_expected):
     if isinstance(expected, tensor_spec.TensorSpec):
       tensor_inputs.append(
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
@@ -111,6 +114,8 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
         return False
       if not expected.shape.is_compatible_with(arg.shape):
         return False
+    elif isinstance(expected, type_spec.TypeSpec):
+      return expected.is_compatible_with(arg)
     else:
       if arg != expected:
         return False

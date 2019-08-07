@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -32,22 +33,29 @@ class FunctionWrappersTest(test.TestCase):
       self.skipTest('Tensor names are disabled in eager')
 
     with function_wrappers.FunctionScope(
-        True, 'test_name', False):
+        'test_name', None,
+        converter.ConversionOptions(
+            optional_features=converter.Feature.NAME_SCOPES)):
       t = constant_op.constant(1)
     self.assertIn('test_name', t.name)
 
   def test_auto_cotrol_deps(self):
     v = variables.Variable(1)
-    with function_wrappers.FunctionScope(False, None, True) as scope:
+    with function_wrappers.FunctionScope(
+        '_', None,
+        converter.ConversionOptions(
+            optional_features=converter.Feature.AUTO_CONTROL_DEPS)) as scope:
       v.assign(2)
       op = scope.mark_return_value(constant_op.constant(1))
     self.evaluate(op)
     self.assertEqual(self.evaluate(v.read_value()), 2)
 
   def test_all_disabled(self):
-    with function_wrappers.FunctionScope(False, None, False):
+    with function_wrappers.FunctionScope(None, None,
+                                         converter.STANDARD_OPTIONS):
       t = constant_op.constant(1)
     self.assertEqual(self.evaluate(t), 1)
+
 
 if __name__ == '__main__':
   test.main()

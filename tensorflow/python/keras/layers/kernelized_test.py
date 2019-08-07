@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as keras_backend
 from tensorflow.python.keras import initializers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.layers import kernelized as kernel_layers
 from tensorflow.python.keras.utils import kernelized_utils
 from tensorflow.python.ops import array_ops
@@ -213,13 +214,15 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     if isinstance(initializer, init_ops.Initializer):
       expected_initializer = initializers.serialize(initializer)
 
+    expected_dtype = (
+        'float32' if base_layer_utils.v2_dtype_behavior_enabled() else None)
     expected_config = {
         'output_dim': output_dim,
         'kernel_initializer': expected_initializer,
         'scale': scale,
         'name': 'random_fourier_features',
         'trainable': trainable,
-        'dtype': None,
+        'dtype': expected_dtype,
     }
     self.assertLen(expected_config, len(rff_layer.get_config()))
     self.assertSameElements(

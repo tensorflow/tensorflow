@@ -27,7 +27,7 @@
 namespace mlir {
 namespace spirv {
 
-FunctionPassBase *createStdOpsToSPIRVConversionPass();
+ModulePassBase *createConvertStandardToSPIRVPass();
 
 } // namespace spirv
 } // namespace mlir

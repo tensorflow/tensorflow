@@ -48,3 +48,6 @@ ORC_JIT_MEMORY_MAPPER_TARGETS = []
 # We link the GPU plugin into the XLA Python extension if CUDA is enabled.
 def xla_python_default_plugins():
     return if_cuda_is_configured(["//tensorflow/compiler/xla/service:gpu_plugin"])
+
+def xla_py_test_deps():
+    return []
