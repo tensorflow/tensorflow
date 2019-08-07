@@ -50,7 +50,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-
 namespace {
 
 // When the depth is large and beta_ is 0.5 or 1.0, Single-threaded
@@ -660,8 +659,6 @@ class LRNGradOp : public OpKernel {
 
     OP_REQUIRES(context, in_grads.dims() == 4 && in_image.dims() == 4,
                 errors::InvalidArgument("inputs must be 4-dimensional"));
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     const int64 batch = in_grads.dim_size(0);
     const int64 rows = in_grads.dim_size(1);
     const int64 cols = in_grads.dim_size(2);
@@ -675,7 +672,6 @@ class LRNGradOp : public OpKernel {
         errors::InvalidArgument(
             "input_grads, input_image, and out_image should have the same "
             "shape"));
-#endif
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
