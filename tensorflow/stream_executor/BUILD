@@ -722,7 +722,6 @@ cc_library(
     srcs = [] + if_rocm_is_configured([
         "//tensorflow/stream_executor/rocm:redzone_allocator.cc",
     ]) + if_cuda_is_configured([
-        "//tensorflow/stream_executor/cuda:ptxas_utils",
         "//tensorflow/stream_executor/cuda:redzone_allocator.cc",
     ]),
     hdrs = ["redzone_allocator.h"],
@@ -737,7 +736,9 @@ cc_library(
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:stream_executor_headers",
-    ],
+    ] + if_cuda_is_configured([
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
+    ]),
 )
 
 tf_cc_test(

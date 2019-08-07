@@ -39,11 +39,12 @@ static T RoundUpToNearest(T value, T divisor) {
 
 using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 
-RedzoneAllocator::RedzoneAllocator(int device_ordinal,
+RedzoneAllocator::RedzoneAllocator(Stream* stream,
                                    DeviceMemoryAllocator* memory_allocator,
                                    GpuAsmOpts gpu_compilation_opts,
                                    uint64 redzone_size, uint8 redzone_pattern)
-    : device_ordinal_(device_ordinal),
+    : device_ordinal_(stream->parent()->device_ordinal()),
+      stream_(stream),
       redzone_size_(RoundUpToNearest(
           redzone_size,
           static_cast<uint64>(tensorflow::Allocator::kAllocatorAlignment))),
@@ -52,13 +53,12 @@ RedzoneAllocator::RedzoneAllocator(int device_ordinal,
       gpu_compilation_opts_(gpu_compilation_opts) {}
 
 port::StatusOr<DeviceMemory<uint8>> RedzoneAllocator::AllocateBytes(
-    Stream* stream, int64 byte_size) {
+    int64 byte_size) {
   return port::Status{port::error::UNIMPLEMENTED,
                       "Redzone allocator is not implemented in ROCm"};
 }
 
-port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
-    Stream* stream) const {
+port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   return port::Status{port::error::UNIMPLEMENTED,
                       "Redzone allocator is not implemented in ROCm"};
 }

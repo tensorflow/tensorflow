@@ -39,7 +39,7 @@ namespace stream_executor {
 class RedzoneAllocator : public ScratchAllocator {
  public:
   RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,
-                   cuda::PtxCompilationOptions ptx_compilation_opts,
+                   GpuAsmOpts gpu_compilation_opts_,
                    uint64 redzone_size = 1 << 23,  // 8MiB per side, 16MiB total
                    uint8 redzone_pattern = -1);
 

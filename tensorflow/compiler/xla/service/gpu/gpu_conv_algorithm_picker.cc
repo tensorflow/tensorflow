@@ -145,7 +145,7 @@ StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
   using RedzoneCheckStatus = se::RedzoneAllocator::RedzoneCheckStatus;
 
   TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
-                      allocator.CheckRedzones(stream));
+                      allocator.CheckRedzones());
 
   if (redzone_check.ok()) {
     return true;
@@ -286,18 +286,18 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   // Allocate space for the input, filter, and output of the convolution.
   se::RedzoneAllocator input_output_allocator(
-      device_ordinal, allocator, GpuAsmOptsFromConfig(hlo_module_config));
+      stream, allocator, GpuAsmOptsFromConfig(hlo_module_config));
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr.operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator.AllocateBytes(
-                            stream, ShapeUtil::ByteSizeOf(operand->shape())));
+                            ShapeUtil::ByteSizeOf(operand->shape())));
     initialize_buffer(buffer);
     operand_buffers.push_back(buffer);
   }
   TF_ASSIGN_OR_RETURN(auto result_buffer,
                       input_output_allocator.AllocateBytes(
-                          stream, ShapeUtil::ByteSizeOf(result_shape)));
+                          ShapeUtil::ByteSizeOf(result_shape)));
   initialize_buffer(result_buffer);
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
@@ -326,7 +326,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
         2);
 
     se::RedzoneAllocator scratch_allocator(
-        device_ordinal, allocator, GpuAsmOptsFromConfig(hlo_module_config));
+        stream, allocator, GpuAsmOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr.ToString();
@@ -409,7 +409,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       comparator.emplace(result_shape, hlo_module_config);
       TF_ASSIGN_OR_RETURN(
           reference_result_buffer,
-          input_output_allocator.AllocateBytes(stream, result_buffer.size()));
+          input_output_allocator.AllocateBytes(result_buffer.size()));
       stream->ThenMemcpy(&reference_result_buffer, result_buffer,
                          result_buffer.size());
       first_algorithm = alg;
@@ -518,7 +518,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
   for (const auto* operand : instr.operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator.AllocateBytes(
-                            stream, ShapeUtil::ByteSizeOf(operand->shape())));
+                            ShapeUtil::ByteSizeOf(operand->shape())));
     initialize_buffer(buffer);
     operand_buffers.push_back(buffer);
   }
@@ -526,7 +526,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
   TF_ASSIGN_OR_RETURN(
       auto result_buffer,
       input_output_allocator.AllocateBytes(
-          stream, ShapeUtil::ByteSizeOf(instr.shape().tuple_shapes(0))));
+          ShapeUtil::ByteSizeOf(instr.shape().tuple_shapes(0))));
   initialize_buffer(result_buffer);
 
   ScratchAllocator scratch_allocator(device_ordinal, allocator);
