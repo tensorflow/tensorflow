@@ -593,16 +593,6 @@ Status DatasetOpsTestBase::CheckDatasetCardinality(const DatasetBase& dataset,
   return Status::OK();
 }
 
-Status DatasetOpsTestBase::CheckDatasetSave(const DatasetBase& dataset) {
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_RETURN_IF_ERROR(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_EXPECT_OK(dataset.Save(serialization_context.get(), &writer));
-  TF_RETURN_IF_ERROR(writer.Flush());
-  return Status::OK();
-}
-
 Status DatasetOpsTestBase::CheckDatasetIsStateful(const DatasetBase& dataset,
                                                   bool expected_stateful) {
   EXPECT_EQ(dataset.IsStateful(), expected_stateful);

@@ -785,53 +785,6 @@ TEST_P(ParameterizedPaddedBatchDatasetOpTest, Cardinality) {
             test_case.expected_cardinality);
 }
 
-TEST_P(ParameterizedPaddedBatchDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  std::unique_ptr<OpKernel> padded_batch_dataset_kernel;
-  TF_ASSERT_OK(CreatePaddedBatchDatasetKernel(
-      test_case.parallel_copy, test_case.n, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &padded_batch_dataset_kernel));
-
-  Tensor concatenate_dataset_tensor(DT_VARIANT, TensorShape({}));
-  TF_ASSERT_OK(CreateConcatenateDatasetTensor(
-      test_case.input_tensors, test_case.concatenate_output_dtypes,
-      test_case.concatenate_output_shapes, &concatenate_dataset_tensor));
-  Tensor batch_size = test_case.batch_size;
-  std::vector<Tensor> padded_shapes = test_case.padded_shapes;
-  std::vector<Tensor> padding_values = test_case.padding_values;
-  Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
-  for (auto &padded_shape : padded_shapes) {
-    inputs.emplace_back(&padded_shape);
-  }
-  for (auto &padding_value : padding_values) {
-    inputs.emplace_back(&padding_value);
-  }
-  inputs.emplace_back(&drop_remainder);
-
-  std::unique_ptr<OpKernelContext> padded_batch_dataset_context;
-  TF_ASSERT_OK(
-      CreatePaddedBatchDatasetContext(padded_batch_dataset_kernel.get(),
-                                      &inputs, &padded_batch_dataset_context));
-  DatasetBase *padded_batch_dataset;
-  TF_ASSERT_OK(CreateDataset(padded_batch_dataset_kernel.get(),
-                             padded_batch_dataset_context.get(),
-                             &padded_batch_dataset));
-  core::ScopedUnref scoped_unref(padded_batch_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(padded_batch_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_P(ParameterizedPaddedBatchDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   const TestCase &test_case = GetParam();

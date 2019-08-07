@@ -81,6 +81,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       return "MatchingFilesDatasetOp::Dataset";
     }
 
+    Status CheckExternalState() const override { return Status::OK(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

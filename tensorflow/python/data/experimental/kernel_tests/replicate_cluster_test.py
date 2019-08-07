@@ -33,6 +33,7 @@ from tensorflow.python.platform import test
 class ReplicateClusterTest(test_base.DatasetTestBase):
 
   def setUp(self):
+    super(ReplicateClusterTest, self).setUp()
     # Start the local server.
     worker_config = config_pb2.ConfigProto()
     worker_config.device_count["CPU"] = 2
@@ -99,7 +100,7 @@ class ReplicateClusterTest(test_base.DatasetTestBase):
       it1 = dataset_ops.make_initializable_iterator(dataset1)
     # We don't support stateful ops in functions as of now.
     with session.Session(self._target) as sess:
-      with self.assertRaises(errors.InvalidArgumentError):
+      with self.assertRaises(errors.FailedPreconditionError):
         sess.run(it1.initializer)
 
 

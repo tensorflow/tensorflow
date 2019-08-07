@@ -356,41 +356,6 @@ TEST_P(ParameterizedSkipDatasetOpTest, Cardinality) {
   EXPECT_EQ(skip_dataset->Cardinality(), test_case.expected_cardinality);
 }
 
-TEST_F(SkipDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  const TestCase &test_case = SkipLessTestCase();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_skip_dataset(
-      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&count)});
-
-  std::unique_ptr<OpKernel> skip_dataset_kernel;
-  TF_ASSERT_OK(CreateSkipDatasetKernel(test_case.expected_output_dtypes,
-                                       test_case.expected_output_shapes,
-                                       &skip_dataset_kernel));
-  std::unique_ptr<OpKernelContext> skip_dataset_context;
-  TF_ASSERT_OK(CreateSkipDatasetContext(skip_dataset_kernel.get(),
-                                        &inputs_for_skip_dataset,
-                                        &skip_dataset_context));
-  DatasetBase *skip_dataset;
-  TF_ASSERT_OK(CreateDataset(skip_dataset_kernel.get(),
-                             skip_dataset_context.get(), &skip_dataset));
-  core::ScopedUnref scoped_unref(skip_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(skip_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_P(ParameterizedSkipDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));

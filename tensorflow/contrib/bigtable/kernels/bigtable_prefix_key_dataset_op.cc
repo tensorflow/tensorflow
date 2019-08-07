@@ -71,7 +71,10 @@ class BigtablePrefixKeyDatasetOp : public DatasetOpKernel {
 
     BigtableTableResource* table() const { return table_; }
 
-    bool IsStateful() const override { return true; }
+    Status CheckExternalState() const override {
+      return errors::FailedPrecondition(DebugString(),
+                                        " depends on external state.");
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,

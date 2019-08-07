@@ -64,7 +64,10 @@ class BigtableSampleKeysDatasetOp : public DatasetOpKernel {
 
     BigtableTableResource* table() const { return table_; }
 
-    bool IsStateful() const override { return true; }
+    Status CheckExternalState() const override {
+      return errors::FailedPrecondition(DebugString(),
+                                        " depends on external state.");
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -107,6 +110,17 @@ class BigtableSampleKeysDatasetOp : public DatasetOpKernel {
           *end_of_sequence = true;
         }
         return Status::OK();
+      }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        return errors::Unimplemented("SaveInternal is currently not supported");
+      }
+
+      Status RestoreInternal(IteratorContext* ctx,
+                             IteratorStateReader* reader) override {
+        return errors::Unimplemented(
+            "RestoreInternal is currently not supported");
       }
 
      private:

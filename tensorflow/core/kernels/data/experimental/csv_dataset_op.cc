@@ -170,6 +170,8 @@ class CSVDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override { return "CSVDatasetOp::Dataset"; }
 
+    Status CheckExternalState() const override { return Status::OK(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

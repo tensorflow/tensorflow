@@ -398,43 +398,6 @@ TEST_P(ParameterizedPrefetchDatasetOpTest, Cardinality) {
   EXPECT_EQ(prefetch_dataset->Cardinality(), test_case.expected_cardinality);
 }
 
-TEST_F(PrefetchDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  const TestCase &test_case = PositiveBufferSizeTestCase();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor buffer_size =
-      CreateTensor<int64>(TensorShape{}, {test_case.buffer_size});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_prefetch_dataset(
-      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&buffer_size)});
-
-  std::unique_ptr<OpKernel> prefetch_dataset_kernel;
-  TF_ASSERT_OK(CreatePrefetchDatasetKernel(test_case.expected_output_dtypes,
-                                           test_case.expected_output_shapes,
-                                           &prefetch_dataset_kernel));
-  std::unique_ptr<OpKernelContext> prefetch_dataset_context;
-  TF_ASSERT_OK(CreatePrefetchDatasetContext(prefetch_dataset_kernel.get(),
-                                            &inputs_for_prefetch_dataset,
-                                            &prefetch_dataset_context));
-  DatasetBase *prefetch_dataset;
-  TF_ASSERT_OK(CreateDataset(prefetch_dataset_kernel.get(),
-                             prefetch_dataset_context.get(),
-                             &prefetch_dataset));
-  core::ScopedUnref scoped_unref(prefetch_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(prefetch_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_F(PrefetchDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));

@@ -72,7 +72,9 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
       return strings::StrCat("UniqueDatasetOp::Dataset");
     }
 
-    bool IsStateful() const override { return input_->IsStateful(); }
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,

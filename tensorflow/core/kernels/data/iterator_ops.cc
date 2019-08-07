@@ -126,8 +126,8 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
                                                    params.cancellation_manager,
                                                    &deregister_fn));
     auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
-    return captured_state->iterator->Restore(IteratorContext(std::move(params)),
-                                             reader);
+    IteratorContext iter_ctx(std::move(params));
+    return captured_state->iterator->Restore(&iter_ctx, reader);
   }
   return errors::FailedPrecondition(
       "Restore() failed because the iterator has not been initialized. Ensure "

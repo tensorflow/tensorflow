@@ -70,6 +70,8 @@ class LMDBDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override { return "LMDBDatasetOp::Dataset"; }
 
+    Status CheckExternalState() const override { return Status::OK(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
