@@ -48,7 +48,7 @@ void DeepCopy(const Tensor& input, Tensor* output) {
              input_data.size());
     }
   } else if (input.dtype() == DT_STRING) {
-    output->unaligned_flat<string>() = input.unaligned_flat<string>();
+    output->unaligned_flat<tstring>() = input.unaligned_flat<tstring>();
   } else {
     CHECK_EQ(DT_VARIANT, input.dtype());
     output->unaligned_flat<Variant>() = input.unaligned_flat<Variant>();
@@ -103,7 +103,7 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
 
     int64 offset = 0;
     for (const Tensor& tensor : tensors) {
-      auto from_strings = tensor.flat<string>();
+      auto from_strings = tensor.flat<tstring>();
       CHECK_LE(offset + tensor.NumElements(), result->NumElements());
       for (int i = 0; i < tensor.NumElements(); ++i) {
         to_strings[offset + i] = from_strings(i);
@@ -155,7 +155,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
     if (tensor.dtype() != DT_STRING) {
       return errors::Internal("Unexpected data type");
     }
-    auto from_strings = tensor.flat<string>();
+    auto from_strings = tensor.flat<tstring>();
 
     int64 offset = 0;
     for (int64 size : sizes) {

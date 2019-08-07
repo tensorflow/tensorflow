@@ -93,7 +93,7 @@ class CSVDatasetOp : public DatasetOpKernel {
     std::vector<string> filenames;
     filenames.reserve(filenames_tensor->NumElements());
     for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
-      filenames.push_back(filenames_tensor->flat<string>()(i));
+      filenames.push_back(filenames_tensor->flat<tstring>()(i));
     }
 
     io::ZlibCompressionOptions zlib_compression_options =
@@ -719,10 +719,10 @@ class CSVDatasetOp : public DatasetOpKernel {
           }
           case DT_STRING: {
             if (field.empty() || field == dataset()->na_value_) {
-              component.scalar<string>()() =
-                  dataset()->record_defaults_[output_idx].flat<string>()(0);
+              component.scalar<tstring>()() =
+                  dataset()->record_defaults_[output_idx].flat<tstring>()(0);
             } else {
-              component.scalar<string>()() = string(field);
+              component.scalar<tstring>()() = string(field);
             }
             break;
           }

@@ -1055,9 +1055,9 @@ class SessionMetadataReaderOp : public OpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output("y", TensorShape({}), &out_tensor));
     if (ctx->session_metadata() != nullptr) {
-      out_tensor->scalar<string>()() = ctx->session_metadata()->DebugString();
+      out_tensor->scalar<tstring>()() = ctx->session_metadata()->DebugString();
     } else {
-      out_tensor->scalar<string>()() = "";
+      out_tensor->scalar<tstring>()() = "";
     }
   }
 };
@@ -1079,7 +1079,7 @@ TEST(DirectSessionTest, SessionMetadataAbsent) {
   run_opts.set_inter_op_thread_pool(-1);
   auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
 
-  EXPECT_EQ("", outputs[0].scalar<string>()());
+  EXPECT_EQ("", outputs[0].scalar<tstring>()());
 }
 
 TEST(DirectSessionTest, SessionMetadataPresent) {
@@ -1104,7 +1104,7 @@ TEST(DirectSessionTest, SessionMetadataPresent) {
 
   SessionMetadata read_metadata;
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
-      outputs[0].scalar<string>()(), &read_metadata));
+      outputs[0].scalar<tstring>()(), &read_metadata));
   EXPECT_EQ("name", read_metadata.name());
   EXPECT_EQ(1, read_metadata.version());
 }
@@ -1468,7 +1468,7 @@ TEST(DirectSessionTest, RunHandleTest) {
 
   const ResourceHandle& resource_handle = outputs[0].scalar<ResourceHandle>()();
   Tensor string_handle(DT_STRING, {});
-  string_handle.flat<string>().setConstant(resource_handle.name());
+  string_handle.flat<tstring>().setConstant(resource_handle.name());
 
   // Second run call: Use a handle.
   std::vector<Tensor> outputs1;
@@ -1521,7 +1521,7 @@ TEST(DirectSessionTest, RunHandleTest_Callable) {
 
   const ResourceHandle& resource_handle = outputs[0].scalar<ResourceHandle>()();
   Tensor string_handle(DT_STRING, {});
-  string_handle.flat<string>().setConstant(resource_handle.name());
+  string_handle.flat<tstring>().setConstant(resource_handle.name());
 
   // Second run call: Use a handle.
   std::vector<Tensor> outputs1;

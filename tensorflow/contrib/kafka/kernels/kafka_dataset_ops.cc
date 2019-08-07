@@ -33,7 +33,7 @@ class KafkaDatasetOp : public DatasetOpKernel {
     std::vector<string> topics;
     topics.reserve(topics_tensor->NumElements());
     for (int i = 0; i < topics_tensor->NumElements(); ++i) {
-      topics.push_back(topics_tensor->flat<string>()(i));
+      topics.push_back(topics_tensor->flat<tstring>()(i));
     }
 
     std::string servers = "";
@@ -128,7 +128,7 @@ class KafkaDatasetOp : public DatasetOpKernel {
               if (message->err() == RdKafka::ERR_NO_ERROR) {
                 // Produce the line as output.
                 Tensor line_tensor(cpu_allocator(), DT_STRING, {});
-                line_tensor.scalar<string>()() =
+                line_tensor.scalar<tstring>()() =
                     std::string(static_cast<const char*>(message->payload()),
                                 message->len());
                 out_tensors->emplace_back(std::move(line_tensor));

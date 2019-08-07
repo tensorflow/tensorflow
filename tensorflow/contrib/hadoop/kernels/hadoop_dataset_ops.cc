@@ -198,7 +198,7 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
     std::vector<string> filenames;
     filenames.reserve(filenames_tensor->NumElements());
     for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
-      filenames.push_back(filenames_tensor->flat<string>()(i));
+      filenames.push_back(filenames_tensor->flat<tstring>()(i));
     }
 
     *output = new Dataset(ctx, filenames, output_types_);
@@ -264,11 +264,11 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
               TF_RETURN_IF_ERROR(status);
 
               Tensor key_tensor(ctx->allocator({}), DT_STRING, {});
-              key_tensor.scalar<string>()() = key;
+              key_tensor.scalar<tstring>()() = key;
               out_tensors->emplace_back(std::move(key_tensor));
 
               Tensor value_tensor(ctx->allocator({}), DT_STRING, {});
-              value_tensor.scalar<string>()() = value;
+              value_tensor.scalar<tstring>()() = value;
               out_tensors->emplace_back(std::move(value_tensor));
 
               *end_of_sequence = false;

@@ -39,7 +39,7 @@ class ParseTensorOp : public OpKernel {
                     "Expected `serialized` to be a scalar, got shape: ",
                     serialized.shape().DebugString()));
 
-    auto serialized_t = serialized.scalar<string>();
+    auto serialized_t = serialized.scalar<tstring>();
 
     TensorProto proto;
     OP_REQUIRES(ctx, ParseProtoUnlimited(&proto, serialized_t()),

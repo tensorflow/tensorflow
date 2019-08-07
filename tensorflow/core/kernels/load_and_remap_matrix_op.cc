@@ -123,12 +123,12 @@ class LoadAndRemapMatrixOp : public OpKernel {
     // Processes the checkpoint source and the provided Tensor name.
     const Tensor* ckpt_path_t;
     OP_REQUIRES_OK(context, context->input("ckpt_path", &ckpt_path_t));
-    const string ckpt_path = *(ckpt_path_t->scalar<string>().data());
+    const string ckpt_path = *(ckpt_path_t->scalar<tstring>().data());
     const Tensor* old_tensor_name_t;
     OP_REQUIRES_OK(context,
                    context->input("old_tensor_name", &old_tensor_name_t));
     const string old_tensor_name =
-        *(old_tensor_name_t->scalar<string>().data());
+        *(old_tensor_name_t->scalar<tstring>().data());
 
     LOG(INFO) << "Processing checkpoint : " << ckpt_path;
     BundleReader reader(context->env(), ckpt_path);

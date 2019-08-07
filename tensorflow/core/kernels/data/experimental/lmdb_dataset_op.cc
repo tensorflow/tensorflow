@@ -38,7 +38,7 @@ class LMDBDatasetOp : public DatasetOpKernel {
     std::vector<string> filenames;
     filenames.reserve(filenames_tensor->NumElements());
     for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
-      filenames.push_back(filenames_tensor->flat<string>()(i));
+      filenames.push_back(filenames_tensor->flat<tstring>()(i));
     }
 
     *output = new Dataset(ctx, filenames);
@@ -95,13 +95,13 @@ class LMDBDatasetOp : public DatasetOpKernel {
             out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                       TensorShape({}));
             Tensor& key_tensor = out_tensors->back();
-            key_tensor.scalar<string>()() = string(
+            key_tensor.scalar<tstring>()() = string(
                 static_cast<const char*>(mdb_key_.mv_data), mdb_key_.mv_size);
 
             out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                       TensorShape({}));
             Tensor& value_tensor = out_tensors->back();
-            value_tensor.scalar<string>()() =
+            value_tensor.scalar<tstring>()() =
                 string(static_cast<const char*>(mdb_value_.mv_data),
                        mdb_value_.mv_size);
 

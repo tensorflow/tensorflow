@@ -177,11 +177,11 @@ class BigtableSampleKeyPairsDatasetOp : public DatasetOpKernel {
         *end_of_sequence = false;
         out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                   TensorShape({}));
-        out_tensors->back().scalar<string>()() = keys_[index_];
+        out_tensors->back().scalar<tstring>()() = keys_[index_];
 
         out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                   TensorShape({}));
-        out_tensors->back().scalar<string>()() = keys_[index_ + 1];
+        out_tensors->back().scalar<tstring>()() = keys_[index_ + 1];
         ++index_;
 
         return Status::OK();

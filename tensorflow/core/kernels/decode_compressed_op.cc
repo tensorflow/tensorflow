@@ -84,13 +84,13 @@ class DecodeCompressedOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor* bytes_tensor;
     OP_REQUIRES_OK(context, context->input("bytes", &bytes_tensor));
-    const auto& bytes_flat = bytes_tensor->flat<string>();
+    const auto& bytes_flat = bytes_tensor->flat<tstring>();
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output("output", bytes_tensor->shape(),
                                             &output_tensor));
-    auto output_flat = output_tensor->flat<string>();
+    auto output_flat = output_tensor->flat<tstring>();
     if (compression_type_.empty()) {
       for (int64 i = 0; i < bytes_flat.size(); i++) {
         output_flat(i) = bytes_flat(i);

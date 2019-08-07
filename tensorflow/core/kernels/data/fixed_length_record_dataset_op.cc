@@ -141,7 +141,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
 
             // Produce the record as output.
             Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
-            record_tensor.scalar<string>()() = record;
+            record_tensor.scalar<tstring>()() = record;
             out_tensors->emplace_back(std::move(record_tensor));
             *end_of_sequence = false;
             return Status::OK();
@@ -264,7 +264,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
 
               // Produce the record as output.
               Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
-              record_tensor.scalar<string>()() = std::move(record);
+              record_tensor.scalar<tstring>()() = std::move(record);
               out_tensors->emplace_back(std::move(record_tensor));
               *end_of_sequence = false;
               return Status::OK();
@@ -282,7 +282,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
                   lookahead_cache_.substr(dataset()->record_bytes_);
               // Produce the record as output.
               Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
-              record_tensor.scalar<string>()() = std::move(record);
+              record_tensor.scalar<tstring>()() = std::move(record);
               out_tensors->emplace_back(std::move(record_tensor));
               *end_of_sequence = false;
               return Status::OK();
@@ -459,7 +459,7 @@ void FixedLengthRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
   std::vector<string> filenames;
   filenames.reserve(filenames_tensor->NumElements());
   for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
-    filenames.push_back(filenames_tensor->flat<string>()(i));
+    filenames.push_back(filenames_tensor->flat<tstring>()(i));
   }
 
   int64 header_bytes = -1;

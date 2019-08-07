@@ -101,7 +101,7 @@ void CreateTensorsFromInputInfo(
         if (!input.initialization_values.empty()) {
           LOG(FATAL) << "Initialization values are not supported for strings";
         }
-        auto type_tensor = input_tensor.flat<string>();
+        auto type_tensor = input_tensor.flat<tstring>();
         type_tensor = type_tensor.constant("");
         break;
       }

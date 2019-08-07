@@ -480,7 +480,7 @@ TEST_F(TensorReshapeTest, ReshapeError) {
 
   Tensor string_tensor{DT_STRING, {10}};
   // Note that the error message compare # of elements, not # of bytes.
-  EXPECT_DEATH((string_tensor.bit_casted_shaped<string, 1>({9})), "9 vs. 10");
+  EXPECT_DEATH((string_tensor.bit_casted_shaped<tstring, 1>({9})), "9 vs. 10");
 }
 
 TEST_F(TensorReshapeTest, Flat) {
@@ -795,27 +795,27 @@ TEST(Tensor_Scalar, Basics) {
   {
     Tensor t(DT_STRING, TensorShape({}));
     EXPECT_EQ(1, t.NumElements());
-    auto Tt = t.scalar<string>();
+    auto Tt = t.scalar<tstring>();
     EXPECT_EQ(1, Tt.size());
     EXPECT_EQ(0, Tt.rank());
-    t.scalar<string>()() = "foo";
+    t.scalar<tstring>()() = "foo";
     EXPECT_EQ("foo", Tt());
   }
   {
     Tensor t(DT_STRING, TensorShape({1}));
     EXPECT_EQ(1, t.NumElements());
-    auto Tt = t.vec<string>();
+    auto Tt = t.vec<tstring>();
     EXPECT_EQ(1, Tt.size());
-    t.flat<string>()(0) = "foo";
+    t.flat<tstring>()(0) = "foo";
     EXPECT_EQ("foo", Tt(0));
   }
   {
     Tensor t(DT_STRING, TensorShape({1, 1, 1}));
     EXPECT_EQ(1, t.NumElements());
-    auto Tt = t.scalar<string>();
+    auto Tt = t.scalar<tstring>();
     EXPECT_EQ(1, Tt.size());
     EXPECT_EQ(0, Tt.rank());
-    t.flat<string>()(0) = "bar";
+    t.flat<tstring>()(0) = "bar";
     EXPECT_EQ("bar", Tt());
   }
   {
@@ -860,7 +860,7 @@ TEST(Tensor_HostScalar, Basics) {
     Tensor t("fooooooooooooooooooooooooooooooooooooo");
     EXPECT_EQ(DT_STRING, t.dtype());
     EXPECT_EQ(1, t.NumElements());
-    auto Tt = t.scalar<string>();
+    auto Tt = t.scalar<tstring>();
     EXPECT_EQ(1, Tt.size());
     EXPECT_EQ(0, Tt.rank());
     EXPECT_EQ("fooooooooooooooooooooooooooooooooooooo", Tt());
@@ -980,7 +980,7 @@ TEST(Tensor_String, SimpleWithHelper) {
   Tensor t2(DT_STRING, {2, 3});
   for (int i = 0; i < 2; ++i) {
     for (int j = 0; j < 3; ++j) {
-      t2.matrix<string>()(i, j) = strings::StrCat(i * 3 + j);
+      t2.matrix<tstring>()(i, j) = strings::StrCat(i * 3 + j);
     }
   }
 
@@ -1163,7 +1163,7 @@ TEST(Tensor, FailureToAllocate) {
   // String
   {
     Tensor t(DT_STRING, TensorShape({1}));
-    t.vec<string>()(0) = "foo";
+    t.vec<tstring>()(0) = "foo";
     TensorProto proto;
     t.AsProtoField(&proto);
 

@@ -1002,7 +1002,7 @@ void IteratorToStringHandleOp::Compute(OpKernelContext* ctx) {
   Tensor* string_handle_t;
   OP_REQUIRES_OK(ctx,
                  ctx->allocate_output(0, TensorShape({}), &string_handle_t));
-  string_handle_t->scalar<string>()() =
+  string_handle_t->scalar<tstring>()() =
       resource_handle_t.scalar<ResourceHandle>()().SerializeAsString();
 }
 
@@ -1026,7 +1026,7 @@ void IteratorFromStringHandleOp::Compute(OpKernelContext* ctx) {
 
   ResourceHandle resource_handle;
   OP_REQUIRES(
-      ctx, resource_handle.ParseFromString(string_handle_t.scalar<string>()()),
+      ctx, resource_handle.ParseFromString(string_handle_t.scalar<tstring>()()),
       errors::InvalidArgument(
           "Could not parse string_handle as a valid ResourceHandle"));
 
