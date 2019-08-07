@@ -374,6 +374,7 @@ cc_library(
         "reference/reference_ops.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
+        "reference/svdf.h",
     ],
     deps = [
         ":common",
@@ -382,6 +383,7 @@ cc_library(
         ":round",
         ":strided_slice_logic",
         ":tensor",
+        ":tensor_utils",
         ":types",
         "@gemmlowp//:fixedpoint",
         "@gemmlowp//:profiler",
