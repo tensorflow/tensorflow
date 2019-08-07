@@ -18,7 +18,7 @@
 * Added `key` and `skip` methods to `random.experimental.Generator`.
 * Update `RaggedTensors` to support int32 `row_splits`.
 * Add `TensorSpec` support for `CompositeTensors`.
-* Add environment variable TF_CUDNN_DETERMINISTIC. Setting to "true" or "1" forces the selection of deterministic cuDNN convolution and max-pooling algorithms. When this is enabled, the algorithm selection procedure itself is also deterministic. This change was already present in release 1.14.0, but this note was missing from the 1.14.0 release notes tagged v1.14.0.
+* Add environment variable `TF_CUDNN_DETERMINISTIC`. Setting to "true" or "1" forces the selection of deterministic cuDNN convolution and max-pooling algorithms. When this is enabled, the algorithm selection procedure itself is also deterministic. This change was already present in version 1.14.0, but this note was missing from the version 1.14.0 release notes tagged `v1.14.0`.
 * The `precision_mode` argument to `TrtGraphConverter` is now case insensitive.
 * Auto Mixed-Precision graph optimizer simplifies converting models to float16 for acceleration on Volta and Turing Tensor Cores. This feature can be enabled by wrapping an optimizer class with `tf.train.experimental.enable_mixed_precision_graph_rewrite()`.
 * Fix potential security vulnerability where decoding variant tensors from proto could result in heap out of bounds memory access.
@@ -123,7 +123,7 @@
   * Post-training quantization tool supports quantizing weights shared by multiple operations. The models made with versions of this tool will use INT8 types for weights and will only be executable interpreters from this version onwards.
   * Malformed gif images could result in an access out of bounds in the color palette of the frame. This has been fixed now
   * image.resize now considers proper pixel centers and has new kernels (incl. anti-aliasing).
-  * Add environment variable TF_CUDNN_DETERMINISTIC. Setting to "true" or "1" forces the selection of deterministic cuDNN convolution and max-pooling algorithms. When this is enabled, the algorithm selection procedure itself is also deterministic.
+  * Add environment variable `TF_CUDNN_DETERMINISTIC`. Setting to "true" or "1" forces the selection of deterministic cuDNN convolution and max-pooling algorithms. When this is enabled, the algorithm selection procedure itself is also deterministic.
 * Performance
   * Turn on MKL-DNN contraction kernels by default. MKL-DNN dynamically dispatches the best kernel implementation based on CPU vector architecture. To disable them, build with --define=tensorflow_mkldnn_contraction_kernel=0.
   * Support for multi-host ncclAllReduce in Distribution Strategy.
