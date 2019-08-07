@@ -956,7 +956,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 
     se::TfAllocatorAdapter tf_allocator_adapter(
         stream->parent()->platform(), ctx->device()->GetAllocator({}));
-
     se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
                                             se::cuda::PtxCompilationOptions());
     se::DeviceMemory<T> output_tensor(

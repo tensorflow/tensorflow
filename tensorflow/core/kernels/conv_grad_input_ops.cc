@@ -53,6 +53,11 @@ limitations under the License.
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#endif  // GOOGLE_CUDA
 
 namespace {
 
@@ -1063,9 +1068,15 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   auto filter_ptr =
       AsDeviceMemory(transformed_filter.template flat<T>().data(),
                      transformed_filter.template flat<T>().size());
+  se::TfAllocatorAdapter tf_allocator_adapter(stream->parent()->platform(),
+                                              ctx->device()->GetAllocator({}));
+  se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                          se::cuda::PtxCompilationOptions());
   auto in_backprop_ptr =
       AsDeviceMemory(pre_transformed_in_backprop.template flat<T>().data(),
                      pre_transformed_in_backprop.template flat<T>().size());
+  se::DeviceMemory<T> in_backprop_ptr_rz(
+      WrapRedzoneBestEffort(&rz_allocator, in_backprop_ptr));
 
   static int64 ConvolveBackwardDataScratchSize = GetDnnWorkspaceLimit(
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
@@ -1106,12 +1117,19 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       // accuracy.
       DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                             ctx);
+      se::cuda::RedzoneAllocator rz_scratch_allocator(
+          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+          /*memory_limit=*/ConvolveBackwardDataScratchSize);
+      se::ScratchAllocator* allocator_used =
+          !RedzoneCheckDisabled()
+              ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
+              : static_cast<se::ScratchAllocator*>(&scratch_allocator);
       ProfileResult profile_result;
       bool cudnn_launch_status =
           stream
               ->ThenConvolveBackwardDataWithAlgorithm(
                   filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                  conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
+                  conv_desc, input_desc, &in_backprop_ptr_rz, allocator_used,
                   AlgorithmConfig(profile_algorithm), &profile_result)
               .ok();
       if (cudnn_launch_status && profile_result.is_valid()) {
@@ -1120,9 +1138,15 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
         result.mutable_conv()->set_tensor_ops_enabled(
             profile_algorithm.tensor_ops_enabled());
-        result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+        result.set_scratch_bytes(
+            !RedzoneCheckDisabled()
+                ? rz_scratch_allocator.TotalAllocatedBytesExcludingRedzones()
+                : scratch_allocator.TotalByteSize());
         *result.mutable_run_time() = proto_utils::ToDurationProto(
             absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+
+        CheckRedzones(rz_scratch_allocator, &result);
+        CheckRedzones(rz_allocator, &result);
       }
     }
     LogConvAutotuneResults(
