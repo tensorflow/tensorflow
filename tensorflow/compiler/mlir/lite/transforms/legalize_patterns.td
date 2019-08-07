@@ -287,6 +287,9 @@ def : Pat<(TF_ResizeNearestNeighborOp $images, $size, $align_corners, ConstBoolA
 
 def : Pat<(TF_MirrorPadOp $arg0, $arg1, $cst), (TFL_MirrorPadOp $arg0, $arg1, $cst)>;
 
+def : Pat<(TF_SparseToDenseOp $sparse_indices, $output_shape, $sparse_values, $default_value, $validate_indices),
+          (TFL_SparseToDenseOp $sparse_indices, $output_shape, $sparse_values, $default_value)>;
+
 def : Pat<
   (TF_StridedSliceOp $input, $begin, $end, $strides, $begin_mask, $end_mask, $ellipsis_mask, $new_axis_mask, $shrink_axis_mask),
   (TFL_StridedSliceOp $input, $begin, $end, $strides,
