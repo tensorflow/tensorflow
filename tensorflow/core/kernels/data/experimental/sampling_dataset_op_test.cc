@@ -20,6 +20,10 @@ namespace {
 
 constexpr char kNodeName[] = "sampling_dataset";
 constexpr char kIteratorPrefix[] = "Iterator";
+constexpr int64 kRandomSeed = 42;
+constexpr int64 kRandomSeed2 = 7;
+constexpr int64 kStart = 0;
+constexpr int64 kStep = 1;
 
 class SamplingDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -58,38 +62,37 @@ class SamplingDatasetOpTest : public DatasetOpsTestBase {
 // defined in dataset_test_base.h
 class LocalRangeDatasetParams : public DatasetParams {
  public:
-  LocalRangeDatasetParams(int64 start, int64 stop, int64 step,
+  LocalRangeDatasetParams(int64 start, int64 num_elements, int64 step,
                           DataTypeVector output_dtypes,
                           std::vector<PartialTensorShape> output_shapes,
                           string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         start(CreateTensor<int64>(TensorShape({}), {start})),
-        stop(CreateTensor<int64>(TensorShape({}), {stop})),
+        num_elements(CreateTensor<int64>(TensorShape({}), {num_elements})),
         step(CreateTensor<int64>(TensorShape({}), {step})) {}
 
   Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    *inputs = {TensorValue(&start), TensorValue(&stop), TensorValue(&step)};
+    *inputs = {TensorValue(&start), TensorValue(&num_elements),
+               TensorValue(&step)};
     return Status::OK();
   }
 
   Tensor start;
-  Tensor stop;
+  Tensor num_elements;
   Tensor step;
 };
 
 class SamplingDatasetParams : public DatasetParams {
  public:
-  SamplingDatasetParams(float rate, int64 seed, int64 seed2, int64 start,
-                        int64 stop, int64 step, DataTypeVector output_dtypes,
+  SamplingDatasetParams(float rate, int64 num_elements,
+                        DataTypeVector output_dtypes,
                         std::vector<PartialTensorShape> output_shapes,
                         string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         rate(CreateTensor<float>(TensorShape({}), {rate})),
-        seed(CreateTensor<int64>(TensorShape({}), {seed})),
-        seed2(CreateTensor<int64>(TensorShape({}), {seed2})),
-        range_dataset_params(start, stop, step, {DT_INT64},
+        range_dataset_params(kStart, num_elements, kStep, {DT_INT64},
                              {PartialTensorShape({})}, "") {}
 
   Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
@@ -99,14 +102,12 @@ class SamplingDatasetParams : public DatasetParams {
           "The input dataset is not populated as the dataset tensor yet.");
     }
     *inputs = {TensorValue(&input_dataset), TensorValue(&rate),
-               TensorValue(&seed), TensorValue(&seed2)};
+               TensorValue(&seed_tensor_), TensorValue(&seed2_tensor_)};
     return Status::OK();
   }
 
   // Static parameters of the kernel
   Tensor rate;
-  Tensor seed;
-  Tensor seed2;
 
   // Parameters of the sequence of numbers that will serve as the dynamic input
   // of the kernel.
@@ -116,15 +117,16 @@ class SamplingDatasetParams : public DatasetParams {
   // case itself because the MakeRangeDataset() method requires an instance of
   // DatasetOpsTestBase.
   Tensor input_dataset;
+
+ private:
+  // Boxed versions of kRandomSeed and kRandomSeed2.
+  Tensor seed_tensor_ = CreateTensor<int64>(TensorShape({}), {kRandomSeed});
+  Tensor seed2_tensor_ = CreateTensor<int64>(TensorShape({}), {kRandomSeed2});
 };
 
 SamplingDatasetParams OneHundredPercentSampleDataset() {
   return {/*rate*/ 1.0,
-          /*seed*/ 42,
-          /*seed2*/ 7,
-          /*start*/ 0,
-          /*stop*/ 3,
-          /*step*/ 1,
+          /*num_elements*/ 3,
           /*output_dtypes*/ {DT_INT64},
           /*output_shapes*/ {PartialTensorShape({})},
           /*node_name=*/kNodeName};
@@ -132,11 +134,7 @@ SamplingDatasetParams OneHundredPercentSampleDataset() {
 
 SamplingDatasetParams TenPercentSampleDataset() {
   return {/*rate*/ 0.1,
-          /*seed*/ 42,
-          /*seed2*/ 7,
-          /*start*/ 0,
-          /*stop*/ 20,
-          /*step*/ 1,
+          /*num_elements*/ 20,
           /*output_dtypes*/ {DT_INT64},
           /*output_shapes*/ {PartialTensorShape({})},
           /*node_name=*/kNodeName};
@@ -144,11 +142,7 @@ SamplingDatasetParams TenPercentSampleDataset() {
 
 SamplingDatasetParams ZeroPercentSampleDataset() {
   return {/*rate*/ 0.0,
-          /*seed*/ 42,
-          /*seed2*/ 7,
-          /*start*/ 0,
-          /*stop*/ 20,
-          /*step*/ 1,
+          /*num_elements*/ 20,
           /*output_dtypes*/ {DT_INT64},
           /*output_shapes*/ {PartialTensorShape({})},
           /*node_name=*/kNodeName};
@@ -195,7 +189,7 @@ TEST_P(ParameterizedGetNextSamplingDatasetOpTest, GetNext) {
   // Step 2: Create the dataset that will provide input data for the kernel
   TF_ASSERT_OK(MakeRangeDataset(
       test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
+      test_case.dataset_params.range_dataset_params.num_elements,
       test_case.dataset_params.range_dataset_params.step,
       test_case.dataset_params.range_dataset_params.output_dtypes,
       test_case.dataset_params.range_dataset_params.output_shapes,
@@ -273,7 +267,7 @@ TEST_F(SamplingDatasetOpTest, DatasetNodeName) {
 
   TF_ASSERT_OK(MakeRangeDataset(
       test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
+      test_case.dataset_params.range_dataset_params.num_elements,
       test_case.dataset_params.range_dataset_params.step,
       test_case.dataset_params.range_dataset_params.output_dtypes,
       test_case.dataset_params.range_dataset_params.output_shapes,
@@ -319,7 +313,7 @@ TEST_F(SamplingDatasetOpTest, DatasetTypeString) {
 
   TF_ASSERT_OK(MakeRangeDataset(
       test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
+      test_case.dataset_params.range_dataset_params.num_elements,
       test_case.dataset_params.range_dataset_params.step,
       test_case.dataset_params.range_dataset_params.output_dtypes,
       test_case.dataset_params.range_dataset_params.output_shapes,
@@ -365,7 +359,7 @@ TEST_F(SamplingDatasetOpTest, DatasetOutputDtypes) {
 
   TF_ASSERT_OK(MakeRangeDataset(
       test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
+      test_case.dataset_params.range_dataset_params.num_elements,
       test_case.dataset_params.range_dataset_params.step,
       test_case.dataset_params.range_dataset_params.output_dtypes,
       test_case.dataset_params.range_dataset_params.output_shapes,
@@ -411,7 +405,7 @@ TEST_F(SamplingDatasetOpTest, DatasetOutputShapes) {
 
   TF_ASSERT_OK(MakeRangeDataset(
       test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
+      test_case.dataset_params.range_dataset_params.num_elements,
       test_case.dataset_params.range_dataset_params.step,
       test_case.dataset_params.range_dataset_params.output_dtypes,
       test_case.dataset_params.range_dataset_params.output_shapes,
@@ -471,7 +465,7 @@ TEST_P(ParameterizedCardinalitySamplingDatasetOpTest, Cardinality) {
 
   TF_ASSERT_OK(MakeRangeDataset(
       test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
+      test_case.dataset_params.range_dataset_params.num_elements,
       test_case.dataset_params.range_dataset_params.step,
       test_case.dataset_params.range_dataset_params.output_dtypes,
       test_case.dataset_params.range_dataset_params.output_shapes,
@@ -521,7 +515,7 @@ TEST_F(SamplingDatasetOpTest, DatasetSave) {
 
   TF_ASSERT_OK(MakeRangeDataset(
       test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
+      test_case.dataset_params.range_dataset_params.num_elements,
       test_case.dataset_params.range_dataset_params.step,
       test_case.dataset_params.range_dataset_params.output_dtypes,
       test_case.dataset_params.range_dataset_params.output_shapes,
@@ -565,7 +559,7 @@ TEST_F(SamplingDatasetOpTest, IsStateful) {
 
   TF_ASSERT_OK(MakeRangeDataset(
       test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
+      test_case.dataset_params.range_dataset_params.num_elements,
       test_case.dataset_params.range_dataset_params.step,
       test_case.dataset_params.range_dataset_params.output_dtypes,
       test_case.dataset_params.range_dataset_params.output_shapes,
@@ -611,7 +605,7 @@ TEST_F(SamplingDatasetOpTest, IteratorOutputDtypes) {
 
   TF_ASSERT_OK(MakeRangeDataset(
       test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
+      test_case.dataset_params.range_dataset_params.num_elements,
       test_case.dataset_params.range_dataset_params.step,
       test_case.dataset_params.range_dataset_params.output_dtypes,
       test_case.dataset_params.range_dataset_params.output_shapes,
@@ -664,7 +658,7 @@ TEST_F(SamplingDatasetOpTest, IteratorOutputShapes) {
 
   TF_ASSERT_OK(MakeRangeDataset(
       test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
+      test_case.dataset_params.range_dataset_params.num_elements,
       test_case.dataset_params.range_dataset_params.step,
       test_case.dataset_params.range_dataset_params.output_dtypes,
       test_case.dataset_params.range_dataset_params.output_shapes,
@@ -719,7 +713,7 @@ TEST_F(SamplingDatasetOpTest, IteratorOutputPrefix) {
 
   TF_ASSERT_OK(MakeRangeDataset(
       test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
+      test_case.dataset_params.range_dataset_params.num_elements,
       test_case.dataset_params.range_dataset_params.step,
       test_case.dataset_params.range_dataset_params.output_dtypes,
       test_case.dataset_params.range_dataset_params.output_shapes,
@@ -795,7 +789,7 @@ TEST_P(ParameterizedIteratorSaveAndRestoreSamplingDatasetOpTest, Roundtrip) {
 
   TF_ASSERT_OK(MakeRangeDataset(
       test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
+      test_case.dataset_params.range_dataset_params.num_elements,
       test_case.dataset_params.range_dataset_params.step,
       test_case.dataset_params.range_dataset_params.output_dtypes,
       test_case.dataset_params.range_dataset_params.output_shapes,
