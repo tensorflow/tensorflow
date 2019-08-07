@@ -91,8 +91,7 @@ void PatternRewriter::replaceOp(Operation *op, ArrayRef<Value *> newValues,
 
   assert(op->getNumResults() == newValues.size() &&
          "incorrect # of replacement values");
-  for (unsigned i = 0, e = newValues.size(); i != e; ++i)
-    op->getResult(i)->replaceAllUsesWith(newValues[i]);
+  op->replaceAllUsesWith(newValues);
 
   notifyOperationRemoved(op);
   op->erase();

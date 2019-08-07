@@ -529,9 +529,10 @@ struct MultiResultTraitBase : public TraitBase<ConcreteType, TraitType> {
   /// Return the result at index 'i'.
   Value *getResult(unsigned i) { return this->getOperation()->getResult(i); }
 
-  /// Set the result at index 'i' to 'value'.
-  void setResult(unsigned i, Value *value) {
-    this->getOperation()->setResult(i, value);
+  /// Replace all uses of results of this operation with the provided 'values'.
+  /// 'values' may correspond to an existing operation, or a range of 'Value'.
+  template <typename ValuesT> void replaceAllUsesWith(ValuesT &&values) {
+    this->getOperation()->replaceAllUsesWith(std::forward<ValuesT>(values));
   }
 
   /// Return the type of the `i`-th result.
@@ -570,6 +571,11 @@ public:
   /// there are zero uses of 'this'.
   void replaceAllUsesWith(Value *newValue) {
     getResult()->replaceAllUsesWith(newValue);
+  }
+
+  /// Replace all uses of 'this' value with the result of 'op'.
+  void replaceAllUsesWith(Operation *op) {
+    this->getOperation()->replaceAllUsesWith(op);
   }
 
   static LogicalResult verifyTrait(Operation *op) {
