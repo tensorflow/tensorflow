@@ -3369,6 +3369,7 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
 
 
 @tf_export("one_hot")
+@dispatch.add_dispatch_support
 def one_hot(indices,
             depth,
             on_value=None,
@@ -3412,6 +3413,11 @@ def one_hot(indices,
     depth x batch x features if axis == 0
   ```
 
+  If `indices` is a RaggedTensor, the 'axis' argument must be positive and refer
+  to a non-ragged axis. The output will be equivalent to applying 'one_hot' on
+  the values of the RaggedTensor, and creating a new RaggedTensor from the
+  result.
+
   If `dtype` is not provided, it will attempt to assume the data type of
   `on_value` or `off_value`, if one or both are passed in. If none of
   `on_value`, `off_value`, or `dtype` are provided, `dtype` will default to the
@@ -3449,6 +3455,13 @@ def one_hot(indices,
   #   [0.0, 0.0, 1.0]],  # one_hot(2)
   #  [[0.0, 1.0, 0.0],   # one_hot(1)
   #   [0.0, 0.0, 0.0]]]  # one_hot(-1)
+
+  indices = tf.ragged.constant([[0, 1], [2]])
+  depth = 3
+  tf.one_hot(indices, depth)  # output: [2 x None x 3]
+  # [[[1., 0., 0.],
+  #   [0., 1., 0.]],
+  #  [[0., 0., 1.]]]
   ```
 
   Args:
