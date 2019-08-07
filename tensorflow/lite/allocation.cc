@@ -34,6 +34,7 @@ namespace tflite {
 FileCopyAllocation::FileCopyAllocation(const char* filename,
                                        ErrorReporter* error_reporter)
     : Allocation(error_reporter, Allocation::Type::kFileCopy) {
+  // Obtain the file size using fstat, or report an error if that fails.
   std::unique_ptr<FILE, decltype(&fclose)> file(fopen(filename, "rb"), fclose);
   if (!file) {
     error_reporter_->Report("Could not open '%s'.", filename);
