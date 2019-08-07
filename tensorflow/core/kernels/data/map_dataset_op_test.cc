@@ -23,37 +23,6 @@ namespace {
 constexpr char kNodeName[] = "map_dataset";
 constexpr char kIteratorPrefix[] = "Iterator";
 
-class MapDatasetOpTest : public DatasetOpsTestBase {
- protected:
-  // Creates a new MapDataset op kernel.
-  Status CreateMapDatasetOpKernel(
-      const FunctionDefHelper::AttrValueWrapper& func,
-      const DataTypeVector& output_types,
-      const std::vector<PartialTensorShape>& output_shapes,
-      std::unique_ptr<OpKernel>* map_kernel) {
-    NodeDef map_dataset_node_def = test::function::NDef(
-        kNodeName, name_utils::OpName(MapDatasetOp::kDatasetType),
-        {MapDatasetOp::kInputDataset},
-        {{MapDatasetOp::kFunc, func},
-         {MapDatasetOp::kTarguments, {}},
-         {MapDatasetOp::kOutputShapes, output_shapes},
-         {MapDatasetOp::kOutputTypes, output_types},
-         {MapDatasetOp::kUseInterOpParallelism, true},
-         {MapDatasetOp::kPreserveCardinality, false}});
-    TF_RETURN_IF_ERROR(CreateOpKernel(map_dataset_node_def, map_kernel));
-    return Status::OK();
-  }
-
-  // Creates a new MapDataset op kernel context.
-  Status CreateMapDatasetContext(
-      OpKernel* const map_kernel, gtl::InlinedVector<TensorValue, 4>* inputs,
-      std::unique_ptr<OpKernelContext>* map_context) {
-    TF_RETURN_IF_ERROR(CheckOpKernelInput(*map_kernel, *inputs));
-    TF_RETURN_IF_ERROR(CreateOpKernelContext(map_kernel, inputs, map_context));
-    return Status::OK();
-  }
-};
-
 class MapDatasetParams : public DatasetParams {
  public:
   MapDatasetParams(int64 start, int64 stop, int64 step,
@@ -98,7 +67,55 @@ class MapDatasetParams : public DatasetParams {
   bool preserve_cardinality;
 };
 
-MapDatasetParams MapDataset1() {
+class MapDatasetOpTest : public DatasetOpsTestBaseV2<MapDatasetParams> {
+ public:
+  Status Initialize(MapDatasetParams* map_dataset_params) override {
+    TF_RETURN_IF_ERROR(InitThreadPool(thread_num_));
+    TF_RETURN_IF_ERROR(
+        InitFunctionLibraryRuntime(map_dataset_params->func_lib, cpu_num_));
+
+    TF_RETURN_IF_ERROR(
+        CreateMapDatasetOpKernel(*map_dataset_params, &dataset_kernel_));
+    TF_RETURN_IF_ERROR(
+        MakeRangeDataset(map_dataset_params->range_dataset_params,
+                         &map_dataset_params->input_dataset));
+    gtl::InlinedVector<TensorValue, 4> inputs;
+    TF_RETURN_IF_ERROR(map_dataset_params->MakeInputs(&inputs));
+    TF_RETURN_IF_ERROR(
+        CreateDatasetContext(dataset_kernel_.get(), &inputs, &dataset_ctx_));
+    DatasetBase* map_dataset;
+    TF_RETURN_IF_ERROR(
+        CreateDataset(dataset_kernel_.get(), dataset_ctx_.get(), &map_dataset));
+    dataset_.reset(map_dataset);
+    TF_RETURN_IF_ERROR(
+        CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
+    TF_RETURN_IF_ERROR(dataset_->MakeIterator(iterator_ctx_.get(),
+                                              kIteratorPrefix, &iterator_));
+    return Status::OK();
+  }
+
+ protected:
+  // Creates a new MapDataset op kernel.
+  Status CreateMapDatasetOpKernel(const MapDatasetParams& map_dataset_params,
+                                  std::unique_ptr<OpKernel>* map_kernel) {
+    NodeDef map_dataset_node_def = test::function::NDef(
+        map_dataset_params.node_name,
+        name_utils::OpName(MapDatasetOp::kDatasetType),
+        {MapDatasetOp::kInputDataset},
+        {{MapDatasetOp::kFunc, map_dataset_params.func},
+         {MapDatasetOp::kTarguments, map_dataset_params.type_arguments},
+         {MapDatasetOp::kOutputShapes, map_dataset_params.output_shapes},
+         {MapDatasetOp::kOutputTypes, map_dataset_params.output_dtypes},
+         {MapDatasetOp::kUseInterOpParallelism,
+          map_dataset_params.use_inter_op_parallelism},
+         {MapDatasetOp::kPreserveCardinality,
+          map_dataset_params.preserve_cardinality}});
+    TF_RETURN_IF_ERROR(CreateOpKernel(map_dataset_node_def, map_kernel));
+    return Status::OK();
+  }
+};
+
+MapDatasetParams MapDatasetParams1() {
   return {/*start=*/0,
           /*stop=*/10,
           /*step=*/3,
@@ -111,10 +128,10 @@ MapDatasetParams MapDataset1() {
           /*output_shapes=*/{PartialTensorShape({})},
           /*use_inter_op_parallelism=*/true,
           /*preserve_cardinality=*/true,
-          /*node_name=*/"map_dataset"};
+          /*node_name=*/kNodeName};
 }
 
-MapDatasetParams MapDataset2() {
+MapDatasetParams MapDatasetParams2() {
   return {/*start=*/10,
           /*stop=*/0,
           /*step=*/-3,
@@ -127,12 +144,12 @@ MapDatasetParams MapDataset2() {
           /*output_shapes=*/{PartialTensorShape({})},
           /*use_inter_op_parallelism=*/true,
           /*preserve_cardinality=*/false,
-          /*node_name=*/"map_dataset"};
+          /*node_name=*/kNodeName};
 }
 
 // In this test case, the function `XTimesFour()` will call `XTimesTwo()`, so
 // both of them are added to the function library.
-MapDatasetParams MapDataset3() {
+MapDatasetParams MapDatasetParams3() {
   return {
       /*start=*/0,
       /*stop=*/10,
@@ -146,7 +163,7 @@ MapDatasetParams MapDataset3() {
       /*output_shapes=*/{PartialTensorShape({})},
       /*use_inter_op_parallelism=*/false,
       /*preserve_cardinality=*/true,
-      /*node_name=*/"map_dataset"};
+      /*node_name=*/kNodeName};
 }
 
 class ParameterizedGetNextTest
@@ -154,235 +171,53 @@ class ParameterizedGetNextTest
       public ::testing::WithParamInterface<GetNextTestCase<MapDatasetParams>> {
 };
 
-GetNextTestCase<MapDatasetParams> GetNextTestCase1() {
-  return {/*dataset_params=*/MapDataset1(),
-          /*expected_outputs=*/
-          CreateTensors<int64>(TensorShape({}), {{0}, {6}, {12}, {18}})};
-}
-
-GetNextTestCase<MapDatasetParams> GetNextTestCase2() {
-  return {/*dataset_params=*/MapDataset2(),
-          /*expected_outputs=*/
-          CreateTensors<int64>(TensorShape({}), {{20}, {14}, {8}, {2}})};
-}
-
-GetNextTestCase<MapDatasetParams> GetNextTestCase3() {
-  return {/*dataset_params=*/MapDataset3(),
-          /*expected_outputs=*/
-          CreateTensors<int64>(TensorShape({}), {{0}, {12}, {24}, {36}})};
+std::vector<GetNextTestCase<MapDatasetParams>> GetNextTestCases() {
+  return {{/*dataset_params=*/MapDatasetParams1(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({}), {{0}, {6}, {12}, {18}})},
+          {/*dataset_params=*/MapDatasetParams2(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({}), {{20}, {14}, {8}, {2}})},
+          {/*dataset_params=*/MapDatasetParams3(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({}), {{0}, {12}, {24}, {36}})}};
 }
 
 TEST_P(ParameterizedGetNextTest, GetNext) {
   auto test_case = GetParam();
-
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
+  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
   TF_ASSERT_OK(
-      InitFunctionLibraryRuntime(test_case.dataset_params.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(CreateMapDatasetOpKernel(
-      test_case.dataset_params.func, test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &map_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> map_dataset_context;
-  TF_ASSERT_OK(CreateMapDatasetContext(map_dataset_kernel.get(), &inputs,
-                                       &map_dataset_context));
-  DatasetBase* map_dataset;
-  TF_ASSERT_OK(CreateDataset(map_dataset_kernel.get(),
-                             map_dataset_context.get(), &map_dataset));
-  core::ScopedUnref scoped_unref(map_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(
-      CreateIteratorContext(map_dataset_context.get(), &iterator_context));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(map_dataset->MakeIterator(iterator_context.get(),
-                                         kIteratorPrefix, &iterator));
-
-  TF_ASSERT_OK(CheckIteratorGetNext(iterator.get(), iterator_context.get(),
-                                    test_case.expected_outputs,
-                                    /*compare_order=*/true));
+      CheckIteratorGetNext(test_case.expected_outputs, /*compare_order=*/true));
 }
 
 INSTANTIATE_TEST_SUITE_P(
     MapDatasetOpTest, ParameterizedGetNextTest,
-    ::testing::ValuesIn(std::vector<GetNextTestCase<MapDatasetParams>>(
-        {GetNextTestCase1(), GetNextTestCase2(), GetNextTestCase3()})));
-
-DatasetNodeNameTestCase<MapDatasetParams> DatasetNodeNameTestCase1() {
-  return {/*dataset_params=*/MapDataset1(),
-          /*expected_node_name=*/kNodeName};
-}
+    ::testing::ValuesIn(
+        std::vector<GetNextTestCase<MapDatasetParams>>(GetNextTestCases())));
 
 TEST_F(MapDatasetOpTest, DatasetNodeName) {
-  auto test_case = DatasetNodeNameTestCase1();
-
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(
-      InitFunctionLibraryRuntime(test_case.dataset_params.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(CreateMapDatasetOpKernel(
-      test_case.dataset_params.func, test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &map_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> map_dataset_context;
-  TF_ASSERT_OK(CreateMapDatasetContext(map_dataset_kernel.get(), &inputs,
-                                       &map_dataset_context));
-  DatasetBase* map_dataset;
-  TF_ASSERT_OK(CreateDataset(map_dataset_kernel.get(),
-                             map_dataset_context.get(), &map_dataset));
-  core::ScopedUnref scoped_unref(map_dataset);
-
-  TF_ASSERT_OK(CheckDatasetNodeName(*map_dataset, kNodeName));
-}
-
-DatasetTypeStringTestCase<MapDatasetParams> DatasetTypeStringTestCase1() {
-  return {/*dataset_params=*/MapDataset1(),
-          /*expected_dataset_type_string=*/
-          name_utils::OpName(MapDatasetOp::kDatasetType)};
+  auto dataset_params = MapDatasetParams1();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name));
 }
 
 TEST_F(MapDatasetOpTest, DatasetTypeString) {
-  auto test_case = DatasetTypeStringTestCase1();
-
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
+  auto dataset_params = MapDatasetParams1();
+  TF_ASSERT_OK(Initialize(&dataset_params));
   TF_ASSERT_OK(
-      InitFunctionLibraryRuntime(test_case.dataset_params.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(CreateMapDatasetOpKernel(
-      test_case.dataset_params.func, test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &map_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> map_dataset_context;
-  TF_ASSERT_OK(CreateMapDatasetContext(map_dataset_kernel.get(), &inputs,
-                                       &map_dataset_context));
-  DatasetBase* map_dataset;
-  TF_ASSERT_OK(CreateDataset(map_dataset_kernel.get(),
-                             map_dataset_context.get(), &map_dataset));
-  core::ScopedUnref scoped_unref(map_dataset);
-
-  TF_ASSERT_OK(CheckDatasetTypeString(*map_dataset,
-                                      test_case.expected_dataset_type_string));
-}
-
-DatasetOutputDtypesTestCase<MapDatasetParams> DatasetOutputDtypesTestCase1() {
-  return {/*dataset_params=*/MapDataset1(),
-          /*expected_output_dtypes=*/{DT_INT64}};
+      CheckDatasetTypeString(name_utils::OpName(MapDatasetOp::kDatasetType)));
 }
 
 TEST_F(MapDatasetOpTest, DatasetOutputDtypes) {
-  auto test_case = DatasetOutputDtypesTestCase1();
-
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(
-      InitFunctionLibraryRuntime(test_case.dataset_params.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(CreateMapDatasetOpKernel(
-      test_case.dataset_params.func, test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &map_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> map_dataset_context;
-  TF_ASSERT_OK(CreateMapDatasetContext(map_dataset_kernel.get(), &inputs,
-                                       &map_dataset_context));
-  DatasetBase* map_dataset;
-  TF_ASSERT_OK(CreateDataset(map_dataset_kernel.get(),
-                             map_dataset_context.get(), &map_dataset));
-  core::ScopedUnref scoped_unref(map_dataset);
-
-  TF_ASSERT_OK(
-      CheckDatasetOutputDtypes(*map_dataset, test_case.expected_output_dtypes));
-}
-
-DatasetOutputShapesTestCase<MapDatasetParams> DatasetOutputShapesTestCase1() {
-  return {/*dataset_params=*/MapDataset1(),
-          /*expected_output_shapes=*/{PartialTensorShape({})}};
+  auto dataset_params = MapDatasetParams1();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
 }
 
 TEST_F(MapDatasetOpTest, DatasetOutputShapes) {
-  auto test_case = DatasetOutputShapesTestCase1();
-
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(
-      InitFunctionLibraryRuntime(test_case.dataset_params.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(CreateMapDatasetOpKernel(
-      test_case.dataset_params.func, test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &map_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> map_dataset_context;
-  TF_ASSERT_OK(CreateMapDatasetContext(map_dataset_kernel.get(), &inputs,
-                                       &map_dataset_context));
-  DatasetBase* map_dataset;
-  TF_ASSERT_OK(CreateDataset(map_dataset_kernel.get(),
-                             map_dataset_context.get(), &map_dataset));
-  core::ScopedUnref scoped_unref(map_dataset);
-
-  TF_ASSERT_OK(
-      CheckDatasetOutputShapes(*map_dataset, test_case.expected_output_shapes));
+  auto dataset_params = MapDatasetParams1();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckDatasetOutputShapes({PartialTensorShape({})}));
 }
 
 class ParameterizedCardinalityTest
@@ -390,264 +225,40 @@ class ParameterizedCardinalityTest
       public ::testing::WithParamInterface<
           CardinalityTestCase<MapDatasetParams>> {};
 
-CardinalityTestCase<MapDatasetParams> CardinalityTestCase1() {
-  return {/*dataset_params=*/MapDataset1(),
-          /*expected_cardinality=*/4};
-}
-
-CardinalityTestCase<MapDatasetParams> CardinalityTestCase2() {
-  return {/*dataset_params=*/MapDataset2(),
-          /*expected_cardinality=*/4};
-}
-
-CardinalityTestCase<MapDatasetParams> CardinalityTestCase3() {
-  return {/*dataset_params=*/MapDataset3(),
-          /*expected_cardinality=*/4};
+std::vector<CardinalityTestCase<MapDatasetParams>> CardinalityTestCases() {
+  return {{/*dataset_params=*/MapDatasetParams1(), /*expected_cardinality=*/4},
+          {/*dataset_params=*/MapDatasetParams2(), /*expected_cardinality=*/4},
+          {/*dataset_params=*/MapDatasetParams3(), /*expected_cardinality=*/4}};
 }
 
 TEST_P(ParameterizedCardinalityTest, Cardinality) {
   auto test_case = GetParam();
-
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(
-      InitFunctionLibraryRuntime(test_case.dataset_params.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(CreateMapDatasetOpKernel(
-      test_case.dataset_params.func, test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &map_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> map_dataset_context;
-  TF_ASSERT_OK(CreateMapDatasetContext(map_dataset_kernel.get(), &inputs,
-                                       &map_dataset_context));
-  DatasetBase* map_dataset;
-  TF_ASSERT_OK(CreateDataset(map_dataset_kernel.get(),
-                             map_dataset_context.get(), &map_dataset));
-  core::ScopedUnref scoped_unref(map_dataset);
-
-  TF_ASSERT_OK(
-      CheckDatasetCardinality(*map_dataset, test_case.expected_cardinality));
+  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
+  TF_ASSERT_OK(CheckDatasetCardinality(test_case.expected_cardinality));
 }
 
 INSTANTIATE_TEST_SUITE_P(
     MapDatasetOpTest, ParameterizedCardinalityTest,
     ::testing::ValuesIn(std::vector<CardinalityTestCase<MapDatasetParams>>(
-        {CardinalityTestCase1(), CardinalityTestCase2(),
-         CardinalityTestCase3()})));
-
-class ParameterizedDatasetSaveTest
-    : public MapDatasetOpTest,
-      public ::testing::WithParamInterface<
-          DatasetSaveTestCase<MapDatasetParams>> {};
-
-DatasetSaveTestCase<MapDatasetParams> DatasetSaveTestCase1() {
-  return {/*dataset_params=*/MapDataset1()};
-}
-
-DatasetSaveTestCase<MapDatasetParams> DatasetSaveTestCase2() {
-  return {/*dataset_params=*/MapDataset2()};
-}
-
-DatasetSaveTestCase<MapDatasetParams> DatasetSaveTestCase3() {
-  return {/*dataset_params=*/MapDataset3()};
-}
-
-TEST_P(ParameterizedDatasetSaveTest, DatasetSave) {
-  auto test_case = GetParam();
-
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(
-      InitFunctionLibraryRuntime(test_case.dataset_params.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(CreateMapDatasetOpKernel(
-      test_case.dataset_params.func, test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &map_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> map_dataset_context;
-  TF_ASSERT_OK(CreateMapDatasetContext(map_dataset_kernel.get(), &inputs,
-                                       &map_dataset_context));
-  DatasetBase* map_dataset;
-  TF_ASSERT_OK(CreateDataset(map_dataset_kernel.get(),
-                             map_dataset_context.get(), &map_dataset));
-  core::ScopedUnref scoped_unref(map_dataset);
-
-  TF_ASSERT_OK(CheckDatasetSave(*map_dataset));
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    MapDatasetOpTest, ParameterizedDatasetSaveTest,
-    ::testing::ValuesIn(std::vector<DatasetSaveTestCase<MapDatasetParams>>(
-        {DatasetSaveTestCase1(), DatasetSaveTestCase2(),
-         DatasetSaveTestCase3()})));
-
-IteratorOutputDtypesTestCase<MapDatasetParams> IteratorOutputDtypesTestCase1() {
-  return {/*dataset_params=*/MapDataset1(),
-          /*expected_output_dtypes=*/{DT_INT64}};
-}
+        CardinalityTestCases())));
 
 TEST_F(MapDatasetOpTest, IteratorOutputDtypes) {
-  auto test_case = IteratorOutputDtypesTestCase1();
-
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(
-      InitFunctionLibraryRuntime(test_case.dataset_params.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(CreateMapDatasetOpKernel(
-      test_case.dataset_params.func, test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &map_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> map_dataset_context;
-  TF_ASSERT_OK(CreateMapDatasetContext(map_dataset_kernel.get(), &inputs,
-                                       &map_dataset_context));
-  DatasetBase* map_dataset;
-  TF_ASSERT_OK(CreateDataset(map_dataset_kernel.get(),
-                             map_dataset_context.get(), &map_dataset));
-  core::ScopedUnref scoped_unref(map_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(
-      CreateIteratorContext(map_dataset_context.get(), &iterator_context));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(map_dataset->MakeIterator(iterator_context.get(),
-                                         kIteratorPrefix, &iterator));
-
-  TF_ASSERT_OK(
-      CheckIteratorOutputDtypes(*iterator, test_case.expected_output_dtypes));
-}
-
-IteratorOutputShapesTestCase<MapDatasetParams> IteratorOutputShapesTestCase1() {
-  return {/*dataset_params=*/MapDataset1(),
-          /*expected_output_shapes=*/{PartialTensorShape({})}};
+  auto dataset_params = MapDatasetParams1();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT64}));
 }
 
 TEST_F(MapDatasetOpTest, IteratorOutputShapes) {
-  auto test_case = IteratorOutputShapesTestCase1();
-
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(
-      InitFunctionLibraryRuntime(test_case.dataset_params.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(CreateMapDatasetOpKernel(
-      test_case.dataset_params.func, test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &map_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> map_dataset_context;
-  TF_ASSERT_OK(CreateMapDatasetContext(map_dataset_kernel.get(), &inputs,
-                                       &map_dataset_context));
-  DatasetBase* map_dataset;
-  TF_ASSERT_OK(CreateDataset(map_dataset_kernel.get(),
-                             map_dataset_context.get(), &map_dataset));
-  core::ScopedUnref scoped_unref(map_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(
-      CreateIteratorContext(map_dataset_context.get(), &iterator_context));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(map_dataset->MakeIterator(iterator_context.get(),
-                                         kIteratorPrefix, &iterator));
-
-  TF_ASSERT_OK(
-      CheckIteratorOutputShapes(*iterator, test_case.expected_output_shapes));
-}
-
-IteratorPrefixTestCase<MapDatasetParams> IteratorPrefixTestCase1() {
-  return {/*dataset_params=*/MapDataset1(),
-          /*expected_iterator_prefix=*/name_utils::IteratorPrefix(
-              MapDatasetOp::kDatasetType, kIteratorPrefix)};
+  auto dataset_params = MapDatasetParams1();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckIteratorOutputShapes({PartialTensorShape({})}));
 }
 
 TEST_F(MapDatasetOpTest, IteratorPrefix) {
-  auto test_case = IteratorPrefixTestCase1();
-
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(
-      InitFunctionLibraryRuntime(test_case.dataset_params.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(CreateMapDatasetOpKernel(
-      test_case.dataset_params.func, test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &map_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> map_dataset_context;
-  TF_ASSERT_OK(CreateMapDatasetContext(map_dataset_kernel.get(), &inputs,
-                                       &map_dataset_context));
-  DatasetBase* map_dataset;
-  TF_ASSERT_OK(CreateDataset(map_dataset_kernel.get(),
-                             map_dataset_context.get(), &map_dataset));
-  core::ScopedUnref scoped_unref(map_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(
-      CreateIteratorContext(map_dataset_context.get(), &iterator_context));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(map_dataset->MakeIterator(iterator_context.get(),
-                                         kIteratorPrefix, &iterator));
-
-  TF_ASSERT_OK(
-      CheckIteratorPrefix(*iterator, test_case.expected_iterator_prefix));
+  auto dataset_params = MapDatasetParams1();
+  TF_ASSERT_OK(Initialize(&dataset_params));
+  TF_ASSERT_OK(CheckIteratorPrefix(
+      name_utils::IteratorPrefix(MapDatasetOp::kDatasetType, kIteratorPrefix)));
 }
 
 class ParameterizedIteratorSaveAndRestoreTest
@@ -655,81 +266,34 @@ class ParameterizedIteratorSaveAndRestoreTest
       public ::testing::WithParamInterface<
           IteratorSaveAndRestoreTestCase<MapDatasetParams>> {};
 
-IteratorSaveAndRestoreTestCase<MapDatasetParams>
-IteratorSaveAndRestoreTestCase1() {
-  return {/*dataset_params=*/MapDataset1(),
-          /*breakpoints*/ {0, 1, 5},
-          /*expected_outputs=*/
-          CreateTensors<int64>(TensorShape({}), {{0}, {6}, {12}, {18}})};
-}
-
-IteratorSaveAndRestoreTestCase<MapDatasetParams>
-IteratorSaveAndRestoreTestCase2() {
-  return {/*dataset_params=*/MapDataset2(),
-          /*breakpoints*/ {0, 1, 5},
-          /*expected_outputs=*/
-          CreateTensors<int64>(TensorShape({}), {{20}, {14}, {8}, {2}})};
-}
-
-IteratorSaveAndRestoreTestCase<MapDatasetParams>
-IteratorSaveAndRestoreTestCase3() {
-  return {/*dataset_params=*/MapDataset3(),
-          /*breakpoints*/ {0, 1, 5},
-          /*expected_outputs=*/
-          CreateTensors<int64>(TensorShape({}), {{0}, {12}, {24}, {36}})};
+std::vector<IteratorSaveAndRestoreTestCase<MapDatasetParams>>
+IteratorSaveAndRestoreTestCases() {
+  return {{/*dataset_params=*/MapDatasetParams1(),
+           /*breakpoints*/ {0, 1, 5},
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({}), {{0}, {6}, {12}, {18}})},
+          {/*dataset_params=*/MapDatasetParams2(),
+           /*breakpoints*/ {0, 1, 5},
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({}), {{20}, {14}, {8}, {2}})},
+          {/*dataset_params=*/MapDatasetParams3(),
+           /*breakpoints*/ {0, 1, 5},
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({}), {{0}, {12}, {24}, {36}})}};
 }
 
 TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
   auto test_case = GetParam();
-
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(
-      InitFunctionLibraryRuntime(test_case.dataset_params.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(CreateMapDatasetOpKernel(
-      test_case.dataset_params.func, test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &map_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> map_dataset_context;
-  TF_ASSERT_OK(CreateMapDatasetContext(map_dataset_kernel.get(), &inputs,
-                                       &map_dataset_context));
-  DatasetBase* map_dataset;
-  TF_ASSERT_OK(CreateDataset(map_dataset_kernel.get(),
-                             map_dataset_context.get(), &map_dataset));
-  core::ScopedUnref scoped_unref(map_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(
-      CreateIteratorContext(map_dataset_context.get(), &iterator_context));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(map_dataset->MakeIterator(iterator_context.get(),
-                                         kIteratorPrefix, &iterator));
-
+  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
   TF_ASSERT_OK(CheckIteratorSaveAndRestore(
-      *map_dataset, iterator_context.get(), kIteratorPrefix,
-      test_case.expected_outputs, test_case.breakpoints));
+      kIteratorPrefix, test_case.expected_outputs, test_case.breakpoints));
 }
 
 INSTANTIATE_TEST_SUITE_P(
     MapDatasetOpTest, ParameterizedIteratorSaveAndRestoreTest,
     ::testing::ValuesIn(
         std::vector<IteratorSaveAndRestoreTestCase<MapDatasetParams>>(
-            {IteratorSaveAndRestoreTestCase1(),
-             IteratorSaveAndRestoreTestCase2(),
-             IteratorSaveAndRestoreTestCase3()})));
+            IteratorSaveAndRestoreTestCases())));
 
 }  // namespace
 }  // namespace data

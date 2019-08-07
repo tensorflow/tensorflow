@@ -103,8 +103,6 @@ std::vector<Tensor> CreateTensors(
 
 class DatasetParams {
  public:
-  DatasetParams() = default;
-
   DatasetParams(DataTypeVector output_dtypes,
                 std::vector<PartialTensorShape> output_shapes, string node_name)
       : output_dtypes(std::move(output_dtypes)),
@@ -122,8 +120,6 @@ class DatasetParams {
 
 class RangeDatasetParams : public DatasetParams {
  public:
-  RangeDatasetParams() = default;
-
   RangeDatasetParams(int64 start, int64 stop, int64 step,
                      DataTypeVector output_dtypes,
                      std::vector<PartialTensorShape> output_shapes,
@@ -227,10 +223,6 @@ class DatasetOpsTestBase : public ::testing::Test {
     allocator_ = device_->GetAllocator(AllocatorAttributes());
   }
 
-  // TODO(feihugis): change this function to the pure virtual functions once
-  // the implementations are added to all the existing tests.
-  virtual Status Initialize(DatasetParams* params) { return Status::OK(); }
-
   ~DatasetOpsTestBase() {}
 
   // The method validates whether the two tensors have the same shape, dtype,
@@ -247,6 +239,12 @@ class DatasetOpsTestBase : public ::testing::Test {
   // Creates a new op kernel based on the node definition.
   Status CreateOpKernel(const NodeDef& node_def,
                         std::unique_ptr<OpKernel>* op_kernel);
+
+  // Creates a new op kernel context.
+  Status CreateDatasetContext(
+      OpKernel* const dateset_kernel,
+      gtl::InlinedVector<TensorValue, 4>* const inputs,
+      std::unique_ptr<OpKernelContext>* dataset_context);
 
   // Creates a new dataset.
   Status CreateDataset(OpKernel* kernel, OpKernelContext* context,
@@ -335,84 +333,38 @@ class DatasetOpsTestBase : public ::testing::Test {
   Status GetDatasetFromContext(OpKernelContext* context, int output_index,
                                DatasetBase** const dataset);
 
+  // Checks `IteratorBase::GetNext()`.
+  Status CheckIteratorGetNext(const std::vector<Tensor>& expected_outputs,
+                              bool compare_order);
+
   // Checks `DatasetBase::node_name()`.
-  Status CheckDatasetNodeName(const DatasetBase& dataset,
-                              const string& expected_dataset_node_name);
+  Status CheckDatasetNodeName(const string& expected_dataset_node_name);
 
   // Checks `DatasetBase::type_string()`.
-  Status CheckDatasetTypeString(const DatasetBase& dataset,
-                                const string& expected_dataset_type_string);
+  Status CheckDatasetTypeString(const string& expected_type_str);
 
   // Checks `DatasetBase::output_dtypes()`.
-  Status CheckDatasetOutputDtypes(const DatasetBase& dataset,
-                                  const DataTypeVector& expected_output_dtypes);
+  Status CheckDatasetOutputDtypes(const DataTypeVector& expected_output_dtypes);
 
   // Checks `DatasetBase::output_shapes()`.
   Status CheckDatasetOutputShapes(
-      const DatasetBase& dataset,
       const std::vector<PartialTensorShape>& expected_output_shapes);
 
   // Checks `DatasetBase::Cardinality()`.
-  Status CheckDatasetCardinality(const DatasetBase& dataset,
-                                 int64 expected_cardinality);
-
-  // Checks `DatasetBase::IsStateful()`.
-  Status CheckDatasetIsStateful(const DatasetBase& dataset,
-                                bool expected_stateful);
+  Status CheckDatasetCardinality(int expected_cardinality);
 
   // Checks `IteratorBase::output_dtypes()`.
   Status CheckIteratorOutputDtypes(
-      const IteratorBase& iterator,
       const DataTypeVector& expected_output_dtypes);
 
   // Checks `IteratorBase::output_shapes()`.
   Status CheckIteratorOutputShapes(
-      const IteratorBase& iterator,
       const std::vector<PartialTensorShape>& expected_output_shapes);
 
   // Checks `IteratorBase::prefix()`.
-  Status CheckIteratorPrefix(const IteratorBase& iterator,
-                             const string& expected_iterator_prefix);
-
-  // Checks `IteratorBase::GetNext()`.
-  Status CheckIteratorGetNext(IteratorBase* iterator,
-                              IteratorContext* iterator_context,
-                              const std::vector<Tensor>& expected_outputs,
-                              bool compare_order);
-
-  // Checks `IteratorBase::Save()` and `IteratorBase::Restore()`.
-  Status CheckIteratorSaveAndRestore(
-      const DatasetBase& dataset, IteratorContext* iterator_context,
-      const string& iterator_prefix,
-      const std::vector<Tensor>& expected_outputs,
-      const std::vector<int>& breakpoints);
-
-  Status CheckIteratorGetNext(const std::vector<Tensor>& expected_outputs,
-                              bool compare_order);
-
-  Status CheckDatasetNodeName(const string& expected_dataset_node_name);
-
-  Status CheckDatasetTypeString(const string& expected_type_str);
-
-  Status CheckDatasetOutputDtypes(const DataTypeVector& expected_output_dtypes);
-
-  Status CheckDatasetOutputShapes(
-      const std::vector<PartialTensorShape>& expected_output_shapes);
-
-  Status CheckDatasetCardinality(int expected_cardinality);
-
-  Status CheckDatasetSave();
-
-  Status CheckDatasetIsStateful(bool expected_stateful);
-
-  Status CheckIteratorOutputDtypes(
-      const DataTypeVector& expected_output_dtypes);
-
-  Status CheckIteratorOutputShapes(
-      const std::vector<PartialTensorShape>& expected_output_shapes);
-
   Status CheckIteratorPrefix(const string& expected_iterator_prefix);
 
+  // Checks `IteratorBase::GetNext()`.
   Status CheckIteratorSaveAndRestore(
       const string& iterator_prefix,
       const std::vector<Tensor>& expected_outputs,
@@ -508,6 +460,13 @@ class DatasetOpsTestBase : public ::testing::Test {
   std::unique_ptr<DatasetBase> dataset_;
   std::unique_ptr<IteratorContext> iterator_ctx_;
   std::unique_ptr<IteratorBase> iterator_;
+};
+
+template <typename T>
+class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
+ public:
+  // Initializes the required members for running the unit tests.
+  virtual Status Initialize(T* dataset_params) = 0;
 };
 
 }  // namespace data

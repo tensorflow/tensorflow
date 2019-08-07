@@ -21,48 +21,16 @@ constexpr char kNodeName[] = "batch_dataset_v2";
 constexpr int kOpVersion = 2;
 constexpr char kIteratorPrefix[] = "Iterator";
 
-class BatchDatasetOpTest : public DatasetOpsTestBase {
- protected:
-  // Creates a new `BatchDataset` op kernel.
-  Status CreateBatchDatasetOpKernel(
-      bool parallel_copy, const DataTypeVector& output_types,
-      const std::vector<PartialTensorShape>& output_shapes,
-      std::unique_ptr<OpKernel>* batch_dataset_op_kernel) {
-    name_utils::OpNameParams params;
-    params.op_version = kOpVersion;
-    NodeDef node_def = test::function::NDef(
-        kNodeName, name_utils::OpName(BatchDatasetOp::kDatasetType, params),
-        {BatchDatasetOp::kInputDataset, BatchDatasetOp::kBatchSize,
-         BatchDatasetOp::kDropRemainder},
-        {{BatchDatasetOp::kParallelCopy, parallel_copy},
-         {BatchDatasetOp::kOutputTypes, output_types},
-         {BatchDatasetOp::kOutputShapes, output_shapes}});
-    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, batch_dataset_op_kernel));
-    return Status::OK();
-  }
-
-  // Create a new `BatchDataset` op kernel context
-  Status CreateBatchDatasetContext(
-      OpKernel* const op_kernel,
-      gtl::InlinedVector<TensorValue, 4>* const inputs,
-      std::unique_ptr<OpKernelContext>* context) {
-    TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
-    TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
-    return Status::OK();
-  }
-};
-
 class BatchDatasetParams : public DatasetParams {
  public:
-  BatchDatasetParams(int64 start, int64 stop, int64 step, int64 batch_size,
+  BatchDatasetParams(int64 num_input_elements, int64 batch_size,
                      bool drop_remainder, bool parallel_copy,
                      DataTypeVector output_dtypes,
                      std::vector<PartialTensorShape> output_shapes,
                      string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
-        range_dataset_params(start, stop, step, {DT_INT64},
-                             {PartialTensorShape({})}, ""),
+        num_input_elements(num_input_elements),
         batch_size(CreateTensor<int64>(TensorShape({}), {batch_size})),
         drop_remainder(CreateTensor<bool>(TensorShape({}), {drop_remainder})),
         parallel_copy(parallel_copy) {}
@@ -70,7 +38,7 @@ class BatchDatasetParams : public DatasetParams {
   Status MakeInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
     if (input_dataset.NumElements() == 0 ||
         input_dataset.dtype() != DT_VARIANT) {
-      return tensorflow::errors::Internal(
+      return errors::Internal(
           "The input dataset is not populated as the dataset tensor yet.");
     }
     *inputs = {TensorValue(&input_dataset), TensorValue(&batch_size),
@@ -78,349 +46,229 @@ class BatchDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  RangeDatasetParams range_dataset_params;  // Used to create the input dataset.
+  int64 num_input_elements;
   Tensor input_dataset;
   Tensor batch_size;
   Tensor drop_remainder;
   bool parallel_copy;
 };
 
+class BatchDatasetOpTest : public DatasetOpsTestBaseV2<BatchDatasetParams> {
+ public:
+  Status Initialize(BatchDatasetParams* batch_dataset_params) override {
+    TF_RETURN_IF_ERROR(InitThreadPool(thread_num_));
+    TF_RETURN_IF_ERROR(InitFunctionLibraryRuntime({}, cpu_num_));
+
+    // Populate the `input_dataset` in `batch_dataset_params_`.
+    RangeDatasetParams input_dataset_params(
+        0, batch_dataset_params->num_input_elements, 1, {DT_INT64},
+        {PartialTensorShape({})}, "range_dataset");
+    TF_RETURN_IF_ERROR(MakeRangeDataset(input_dataset_params,
+                                        &batch_dataset_params->input_dataset));
+    // Create the dataset kernel.
+    TF_RETURN_IF_ERROR(
+        CreateBatchDatasetOpKernel(*batch_dataset_params, &dataset_kernel_));
+    // Create the inputs for the dataset op.
+    gtl::InlinedVector<TensorValue, 4> inputs;
+    TF_RETURN_IF_ERROR(batch_dataset_params->MakeInputs(&inputs));
+    // Creat the dataset context.
+    TF_RETURN_IF_ERROR(
+        CreateDatasetContext(dataset_kernel_.get(), &inputs, &dataset_ctx_));
+    // Create the dataset.
+    DatasetBase* batch_dataset;
+    TF_RETURN_IF_ERROR(CreateDataset(dataset_kernel_.get(), dataset_ctx_.get(),
+                                     &batch_dataset));
+    dataset_.reset(batch_dataset);
+
+    // Create the iterator context.
+    TF_RETURN_IF_ERROR(
+        CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
+    // Create the iterator.
+    TF_RETURN_IF_ERROR(dataset_->MakeIterator(iterator_ctx_.get(),
+                                              kIteratorPrefix, &iterator_));
+    return Status::OK();
+  }
+
+ protected:
+  // Creates a new `BatchDataset` op kernel.
+  Status CreateBatchDatasetOpKernel(
+      const BatchDatasetParams& dataset_params,
+      std::unique_ptr<OpKernel>* batch_dataset_op_kernel) {
+    name_utils::OpNameParams params;
+    params.op_version = kOpVersion;
+    NodeDef node_def = test::function::NDef(
+        dataset_params.node_name,
+        name_utils::OpName(BatchDatasetOp::kDatasetType, params),
+        {BatchDatasetOp::kInputDataset, BatchDatasetOp::kBatchSize,
+         BatchDatasetOp::kDropRemainder},
+        {{BatchDatasetOp::kParallelCopy, dataset_params.parallel_copy},
+         {BatchDatasetOp::kOutputTypes, dataset_params.output_dtypes},
+         {BatchDatasetOp::kOutputShapes, dataset_params.output_shapes}});
+    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, batch_dataset_op_kernel));
+    return Status::OK();
+  }
+};
+
 // Test Case 1: test BatchDatasetV2 with `drop_remainder` = false and a batch
 // size that can evenly split the input dataset.
-BatchDatasetParams BatchDataset1() {
-  return {/*start=*/0,
-          /*stop=*/12,
-          /*step=*/1,
+BatchDatasetParams BatchDatasetParams1() {
+  return {/*num_input_elements=*/12,
           /*batch_size=*/4,
           /*drop_remainder=*/false,
           /*parallel_copy=*/true,
           /*output_dtypes=*/{DT_INT64},
           /*output_shapes=*/{PartialTensorShape({4})},
-          /*node_name=*/"batch_dataset"};
+          /*node_name=*/kNodeName};
 }
 
 // Test Case 2: test BatchDatasetV2 with `drop_remainder` = true and a batch
 // size that can evenly split the input dataset.
-BatchDatasetParams BatchDataset2() {
-  return {/*start=*/0,
-          /*stop=*/12,
-          /*step=*/1,
+BatchDatasetParams BatchDatasetParams2() {
+  return {/*num_input_elements=*/12,
           /*batch_size=*/4,
           /*drop_remainder=*/true,
           /*parallel_copy=*/false,
           /*output_dtypes=*/{DT_INT64},
           /*output_shapes=*/{PartialTensorShape({4})},
-          /*node_name=*/"batch_dataset"};
+          /*node_name=*/kNodeName};
 }
 
 // Test Case 3: test BatchDatasetV2 with `drop_remainder` = false and a batch
 // size that can not evenly split the input dataset.
-BatchDatasetParams BatchDataset3() {
-  return {/*start=*/0,
-          /*stop=*/10,
-          /*step=*/1,
+BatchDatasetParams BatchDatasetParams3() {
+  return {/*num_input_elements=*/10,
           /*batch_size=*/3,
           /*drop_remainder=*/false,
           /*parallel_copy=*/false,
           /*output_dtypes=*/{DT_INT64},
           /*output_shapes=*/{PartialTensorShape({-1})},
-          /*node_name=*/"batch_dataset"};
+          /*node_name=*/kNodeName};
 }
 
 // Test Case 4: test BatchDatasetV2 with `drop_remainder` = true and a batch
 // size that can not evenly split the input dataset.
-BatchDatasetParams BatchDataset4() {
-  return {/*start=*/0,
-          /*stop=*/10,
-          /*step=*/1,
+BatchDatasetParams BatchDatasetParams4() {
+  return {/*num_input_elements=*/10,
           /*batch_size=*/3,
           /*drop_remainder=*/true,
           /*parallel_copy=*/true,
           /*output_dtypes=*/{DT_INT64},
           /*output_shapes=*/{PartialTensorShape({3})},
-          /*node_name=*/"batch_dataset"};
+          /*node_name=*/kNodeName};
 }
 
 // Test Case 5: test BatchDatasetV2 with `drop_remainder` = true and
 // `batch_size` > the cardinality of the input dataset.
-BatchDatasetParams BatchDataset5() {
-  return {/*start=*/0,
-          /*stop=*/10,
-          /*step=*/1,
+BatchDatasetParams BatchDatasetParams5() {
+  return {/*num_input_elements=*/10,
           /*batch_size=*/12,
           /*drop_remainder=*/true,
           /*parallel_copy=*/true,
           /*output_dtypes=*/{DT_INT64},
           /*output_shapes=*/{PartialTensorShape({12})},
-          /*node_name=*/"batch_dataset"};
+          /*node_name=*/kNodeName};
 }
 
 // Test Case 6: test BatchDatasetV2 with `drop_remainder` = false and
 // `batch_size` > the cardinality of the input dataset.
-BatchDatasetParams BatchDataset6() {
-  return {/*start=*/0,
-          /*stop=*/10,
-          /*step=*/1,
+BatchDatasetParams BatchDatasetParams6() {
+  return {/*num_input_elements=*/10,
           /*batch_size=*/12,
           /*drop_remainder=*/false,
           /*parallel_copy=*/true,
           /*output_dtypes=*/{DT_INT64},
           /*output_shapes=*/{PartialTensorShape({-1})},
-          /*node_name=*/"batch_dataset"};
+          /*node_name=*/kNodeName};
 }
 
 // Test Case 7: test BatchDatasetV2 with `drop_remainder` = false and
 // the output of the input dataset is empty.
-BatchDatasetParams BatchDataset7() {
-  return {/*start=*/0,
-          /*stop=*/0,
-          /*step=*/1,
+BatchDatasetParams BatchDatasetParams7() {
+  return {/*num_input_elements=*/0,
           /*batch_size=*/4,
           /*drop_remainder=*/false,
           /*parallel_copy=*/false,
           /*output_dtypes=*/{DT_INT64},
           /*output_shapes=*/{PartialTensorShape({4})},
-          /*node_name=*/"batch_dataset"};
+          /*node_name=*/kNodeName};
 }
 
 // Test Case 8: test BatchDatasetV2 with an invalid batch size
-BatchDatasetParams InvalidBatchSizeBatchDataset() {
-  return {/*start=*/0,
-          /*stop=*/10,
-          /*step=*/1,
+BatchDatasetParams InvalidBatchSizeBatchDatasetParams() {
+  return {/*num_input_elements=*/10,
           /*batch_size=*/-1,
           /*drop_remainder=*/false,
           /*parallel_copy=*/false,
           /*output_dtypes=*/{DT_INT64},
           /*output_shapes=*/{PartialTensorShape({3})},
-          /*node_name=*/"batch_dataset"};
+          /*node_name=*/kNodeName};
 }
 
 class ParameterizedGetNextTest : public BatchDatasetOpTest,
                                  public ::testing::WithParamInterface<
                                      GetNextTestCase<BatchDatasetParams>> {};
 
-GetNextTestCase<BatchDatasetParams> GetNextTestCase1() {
-  return {/*dataset_params=*/BatchDataset1(),
-          /*expected_outputs=*/
-          CreateTensors<int64>(TensorShape({4}),
-                               {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})};
-}
+std::vector<GetNextTestCase<BatchDatasetParams>> GetNextTestCases() {
+  return {{/*dataset_params=*/BatchDatasetParams1(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({4}),
+                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+          {/*dataset_params=*/BatchDatasetParams2(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({4}),
+                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+          {/*dataset_params=*/BatchDatasetParams3(),
+           /*expected_outputs=*/
+           {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
+            CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
+            CreateTensor<int64>(TensorShape({3}), {6, 7, 8}),
+            CreateTensor<int64>(TensorShape({1}), {9})}},
+          {/*dataset_params=*/BatchDatasetParams4(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({3}),
+                                {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}})},
+          {/*dataset_params=*/BatchDatasetParams5(),
+           /*expected_outputs=*/{}},
+          {/*dataset_params=*/BatchDatasetParams6(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({10}),
+                                {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}})},
 
-GetNextTestCase<BatchDatasetParams> GetNextTestCase2() {
-  return {/*dataset_params=*/BatchDataset2(),
-          /*expected_outputs=*/
-          CreateTensors<int64>(TensorShape({4}),
-                               {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})};
-}
-
-GetNextTestCase<BatchDatasetParams> GetNextTestCase3() {
-  return {/*dataset_params=*/BatchDataset3(),
-          /*expected_outputs=*/
-          {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-           CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-           CreateTensor<int64>(TensorShape({3}), {6, 7, 8}),
-           CreateTensor<int64>(TensorShape({1}), {9})}};
-}
-
-GetNextTestCase<BatchDatasetParams> GetNextTestCase4() {
-  return {/*dataset_params=*/BatchDataset4(),
-          /*expected_outputs=*/
-          CreateTensors<int64>(TensorShape({3}),
-                               {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}})};
-}
-
-GetNextTestCase<BatchDatasetParams> GetNextTestCase5() {
-  return {/*dataset_params=*/BatchDataset5(),
-          /*expected_outputs=*/{}};
-}
-
-GetNextTestCase<BatchDatasetParams> GetNextTestCase6() {
-  return {/*dataset_params=*/BatchDataset6(),
-          /*expected_outputs=*/
-          CreateTensors<int64>(TensorShape({10}),
-                               {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}})};
-}
-
-GetNextTestCase<BatchDatasetParams> GetNextTestCase7() {
-  return {/*dataset_params=*/BatchDataset7(),
-          /*expected_outputs=*/{}};
+          {/*dataset_params=*/BatchDatasetParams7(),
+           /*expected_outputs=*/{}}};
 }
 
 TEST_P(ParameterizedGetNextTest, GetNext) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
   auto test_case = GetParam();
-
-  std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
-      test_case.dataset_params.parallel_copy,
-      test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &batch_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> batch_dataset_context;
-  TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
-                                         &batch_dataset_context));
-  DatasetBase* batch_dataset;
-  TF_ASSERT_OK(CreateDataset(batch_dataset_kernel.get(),
-                             batch_dataset_context.get(), &batch_dataset));
-  core::ScopedUnref scoped_unref(batch_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
+  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
   TF_ASSERT_OK(
-      CreateIteratorContext(batch_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(batch_dataset->MakeIterator(iterator_ctx.get(), kIteratorPrefix,
-                                           &iterator));
-
-  TF_ASSERT_OK(CheckIteratorGetNext(iterator.get(), iterator_ctx.get(),
-                                    test_case.expected_outputs,
-                                    /*compare_order=*/true));
+      CheckIteratorGetNext(test_case.expected_outputs, /*compare_order=*/true));
 }
 
 INSTANTIATE_TEST_SUITE_P(
     BatchDatasetOpTest, ParameterizedGetNextTest,
-    ::testing::ValuesIn(std::vector<GetNextTestCase<BatchDatasetParams>>(
-        {GetNextTestCase1(), GetNextTestCase2(), GetNextTestCase3(),
-         GetNextTestCase4(), GetNextTestCase5(), GetNextTestCase6(),
-         GetNextTestCase7()})));
-
-DatasetNodeNameTestCase<BatchDatasetParams> DatasetNodeNameTestCase1() {
-  return {/*dataset_params=*/BatchDataset1(),
-          /*expected_node_name=*/kNodeName};
-}
+    ::testing::ValuesIn(
+        std::vector<GetNextTestCase<BatchDatasetParams>>(GetNextTestCases())));
 
 TEST_F(BatchDatasetOpTest, DatasetNodeName) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  auto test_case = DatasetNodeNameTestCase1();
-
-  std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
-      test_case.dataset_params.parallel_copy,
-      test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &batch_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> batch_dataset_context;
-  TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
-                                         &batch_dataset_context));
-  DatasetBase* batch_dataset;
-  TF_ASSERT_OK(CreateDataset(batch_dataset_kernel.get(),
-                             batch_dataset_context.get(), &batch_dataset));
-  core::ScopedUnref scoped_unref(batch_dataset);
-
-  TF_ASSERT_OK(CheckDatasetNodeName(*batch_dataset, kNodeName));
-}
-
-DatasetTypeStringTestCase<BatchDatasetParams> DatasetTypeStringTestCase1() {
-  name_utils::OpNameParams params;
-  params.op_version = kOpVersion;
-  return {/*dataset_params=*/BatchDataset1(),
-          /*expected_dataset_type_string=*/
-          name_utils::OpName(BatchDatasetOp::kDatasetType, params)};
+  auto batch_dataset_params = BatchDatasetParams1();
+  TF_ASSERT_OK(Initialize(&batch_dataset_params));
+  TF_ASSERT_OK(CheckDatasetNodeName(batch_dataset_params.node_name));
 }
 
 TEST_F(BatchDatasetOpTest, DatasetTypeString) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  auto test_case = DatasetTypeStringTestCase1();
-
-  std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
-      test_case.dataset_params.parallel_copy,
-      test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &batch_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> batch_dataset_context;
-  TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
-                                         &batch_dataset_context));
-  DatasetBase* batch_dataset;
-  TF_ASSERT_OK(CreateDataset(batch_dataset_kernel.get(),
-                             batch_dataset_context.get(), &batch_dataset));
-  core::ScopedUnref scoped_unref(batch_dataset);
-
-  TF_ASSERT_OK(CheckDatasetTypeString(*batch_dataset,
-                                      test_case.expected_dataset_type_string));
-}
-
-DatasetOutputDtypesTestCase<BatchDatasetParams> DatasetOutputDtypesTestCase1() {
-  return {/*dataset_params=*/BatchDataset1(),
-          /*expected_output_dtypes=*/{DT_INT64}};
+  auto batch_dataset_params = BatchDatasetParams1();
+  TF_ASSERT_OK(Initialize(&batch_dataset_params));
+  name_utils::OpNameParams params;
+  params.op_version = kOpVersion;
+  TF_ASSERT_OK(CheckDatasetTypeString(
+      name_utils::OpName(BatchDatasetOp::kDatasetType, params)));
 }
 
 TEST_F(BatchDatasetOpTest, DatasetOutputDtypes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  auto test_case = DatasetOutputDtypesTestCase1();
-
-  std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
-      test_case.dataset_params.parallel_copy,
-      test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &batch_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> batch_dataset_context;
-  TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
-                                         &batch_dataset_context));
-  DatasetBase* batch_dataset;
-  TF_ASSERT_OK(CreateDataset(batch_dataset_kernel.get(),
-                             batch_dataset_context.get(), &batch_dataset));
-  core::ScopedUnref scoped_unref(batch_dataset);
-
-  TF_ASSERT_OK(CheckDatasetOutputDtypes(*batch_dataset,
-                                        test_case.expected_output_dtypes));
+  auto batch_dataset_params = BatchDatasetParams1();
+  TF_ASSERT_OK(Initialize(&batch_dataset_params));
+  TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
 }
 
 class ParameterizedDatasetOutputShapesTest
@@ -428,296 +276,67 @@ class ParameterizedDatasetOutputShapesTest
       public ::testing::WithParamInterface<
           DatasetOutputShapesTestCase<BatchDatasetParams>> {};
 
-DatasetOutputShapesTestCase<BatchDatasetParams> DatasetOutputShapesTestCase1() {
-  return {/*dataset_params=*/BatchDataset1(),
-          /*expected_output_shapes=*/{PartialTensorShape({4})}};
-}
-
-DatasetOutputShapesTestCase<BatchDatasetParams> DatasetOutputShapesTestCase2() {
-  return {/*dataset_params=*/BatchDataset2(),
-          /*expected_output_shapes=*/{PartialTensorShape({4})}};
-}
-
-DatasetOutputShapesTestCase<BatchDatasetParams> DatasetOutputShapesTestCase3() {
-  return {/*dataset_params=*/BatchDataset3(),
-          /*expected_output_shapes=*/{PartialTensorShape({-1})}};
-}
-
-DatasetOutputShapesTestCase<BatchDatasetParams> DatasetOutputShapesTestCase4() {
-  return {/*dataset_params=*/BatchDataset4(),
-          /*expected_output_shapes=*/{PartialTensorShape({3})}};
-}
-
-DatasetOutputShapesTestCase<BatchDatasetParams> DatasetOutputShapesTestCase5() {
-  return {/*dataset_params=*/BatchDataset5(),
-          /*expected_output_shapes=*/{PartialTensorShape({12})}};
-}
-
-DatasetOutputShapesTestCase<BatchDatasetParams> DatasetOutputShapesTestCase6() {
-  return {/*dataset_params=*/BatchDataset6(),
-          /*expected_output_shapes=*/{PartialTensorShape({-1})}};
-}
-
-DatasetOutputShapesTestCase<BatchDatasetParams> DatasetOutputShapesTestCase7() {
-  return {/*dataset_params=*/BatchDataset7(),
-          /*expected_output_shapes=*/{PartialTensorShape({4})}};
+std::vector<DatasetOutputShapesTestCase<BatchDatasetParams>>
+DatasetOutputShapesTestCases() {
+  return {{/*dataset_params=*/BatchDatasetParams1(),
+           /*expected_output_shapes=*/{PartialTensorShape({4})}},
+          {/*dataset_params=*/BatchDatasetParams2(),
+           /*expected_output_shapes=*/{PartialTensorShape({4})}},
+          {/*dataset_params=*/BatchDatasetParams3(),
+           /*expected_output_shapes=*/{PartialTensorShape({-1})}},
+          {/*dataset_params=*/BatchDatasetParams4(),
+           /*expected_output_shapes=*/{PartialTensorShape({3})}},
+          {/*dataset_params=*/BatchDatasetParams5(),
+           /*expected_output_shapes=*/{PartialTensorShape({12})}},
+          {/*dataset_params=*/BatchDatasetParams6(),
+           /*expected_output_shapes=*/{PartialTensorShape({-1})}},
+          {/*dataset_params=*/BatchDatasetParams7(),
+           /*expected_output_shapes=*/{PartialTensorShape({4})}}};
 }
 
 TEST_P(ParameterizedDatasetOutputShapesTest, DatasetOutputShapes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
   auto test_case = GetParam();
-
-  std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
-      test_case.dataset_params.parallel_copy,
-      test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &batch_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> batch_dataset_context;
-  TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
-                                         &batch_dataset_context));
-  DatasetBase* batch_dataset;
-  TF_ASSERT_OK(CreateDataset(batch_dataset_kernel.get(),
-                             batch_dataset_context.get(), &batch_dataset));
-  core::ScopedUnref scoped_unref(batch_dataset);
-
-  TF_ASSERT_OK(CheckDatasetOutputShapes(*batch_dataset,
-                                        test_case.expected_output_shapes));
+  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
+  TF_ASSERT_OK(CheckDatasetOutputShapes(test_case.expected_output_shapes));
 }
 
 INSTANTIATE_TEST_SUITE_P(
     BatchDatasetOpTest, ParameterizedDatasetOutputShapesTest,
     ::testing::ValuesIn(
         std::vector<DatasetOutputShapesTestCase<BatchDatasetParams>>(
-            {DatasetOutputShapesTestCase1(), DatasetOutputShapesTestCase2(),
-             DatasetOutputShapesTestCase3(), DatasetOutputShapesTestCase4(),
-             DatasetOutputShapesTestCase5(), DatasetOutputShapesTestCase6(),
-             DatasetOutputShapesTestCase7()})));
+            DatasetOutputShapesTestCases())));
 
 class ParameterizedCardinalityTest
     : public BatchDatasetOpTest,
       public ::testing::WithParamInterface<
           CardinalityTestCase<BatchDatasetParams>> {};
 
-CardinalityTestCase<BatchDatasetParams> CardinalityTestCase1() {
-  return {/*dataset_params=*/BatchDataset1(),
-          /*expected_cardinality=*/3};
-}
-
-CardinalityTestCase<BatchDatasetParams> CardinalityTestCase2() {
-  return {/*dataset_params=*/BatchDataset2(),
-          /*expected_cardinality=*/3};
-}
-
-CardinalityTestCase<BatchDatasetParams> CardinalityTestCase3() {
-  return {/*dataset_params=*/BatchDataset3(),
-          /*expected_cardinality=*/4};
-}
-
-CardinalityTestCase<BatchDatasetParams> CardinalityTestCase4() {
-  return {/*dataset_params=*/BatchDataset4(),
-          /*expected_cardinality=*/3};
-}
-
-CardinalityTestCase<BatchDatasetParams> CardinalityTestCase5() {
-  return {/*dataset_params=*/BatchDataset5(),
-          /*expected_cardinality=*/0};
-}
-
-CardinalityTestCase<BatchDatasetParams> CardinalityTestCase6() {
-  return {/*dataset_params=*/BatchDataset6(),
-          /*expected_cardinality=*/1};
-}
-
-CardinalityTestCase<BatchDatasetParams> CardinalityTestCase7() {
-  return {/*dataset_params=*/BatchDataset7(),
-          /*expected_cardinality=*/0};
+std::vector<CardinalityTestCase<BatchDatasetParams>> CardinalityTestCases() {
+  return {
+      {/*dataset_params=*/BatchDatasetParams1(), /*expected_cardinality=*/3},
+      {/*dataset_params=*/BatchDatasetParams2(), /*expected_cardinality=*/3},
+      {/*dataset_params=*/BatchDatasetParams3(), /*expected_cardinality=*/4},
+      {/*dataset_params=*/BatchDatasetParams4(), /*expected_cardinality=*/3},
+      {/*dataset_params=*/BatchDatasetParams5(), /*expected_cardinality=*/0},
+      {/*dataset_params=*/BatchDatasetParams6(), /*expected_cardinality=*/1},
+      {/*dataset_params=*/BatchDatasetParams7(), /*expected_cardinality=*/0}};
 }
 
 TEST_P(ParameterizedCardinalityTest, Cardinality) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
   auto test_case = GetParam();
-
-  std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
-      test_case.dataset_params.parallel_copy,
-      test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &batch_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> batch_dataset_context;
-  TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
-                                         &batch_dataset_context));
-  DatasetBase* batch_dataset;
-  TF_ASSERT_OK(CreateDataset(batch_dataset_kernel.get(),
-                             batch_dataset_context.get(), &batch_dataset));
-  core::ScopedUnref scoped_unref(batch_dataset);
-
-  TF_ASSERT_OK(
-      CheckDatasetCardinality(*batch_dataset, test_case.expected_cardinality));
+  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
+  TF_ASSERT_OK(CheckDatasetCardinality(test_case.expected_cardinality));
 }
 
 INSTANTIATE_TEST_SUITE_P(
     BatchDatasetOpTest, ParameterizedCardinalityTest,
     ::testing::ValuesIn(std::vector<CardinalityTestCase<BatchDatasetParams>>(
-        {CardinalityTestCase1(), CardinalityTestCase2(), CardinalityTestCase3(),
-         CardinalityTestCase4(), CardinalityTestCase5(), CardinalityTestCase6(),
-         CardinalityTestCase7()})));
-
-DatasetSaveTestCase<BatchDatasetParams> DatasetSaveTestCase1() {
-  return {/*dataset_params=*/BatchDataset1()};
-}
-
-TEST_F(BatchDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  auto test_case = DatasetSaveTestCase1();
-
-  std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
-      test_case.dataset_params.parallel_copy,
-      test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &batch_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> batch_dataset_context;
-  TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
-                                         &batch_dataset_context));
-  DatasetBase* batch_dataset;
-  TF_ASSERT_OK(CreateDataset(batch_dataset_kernel.get(),
-                             batch_dataset_context.get(), &batch_dataset));
-  core::ScopedUnref scoped_unref(batch_dataset);
-
-  TF_ASSERT_OK(CheckDatasetSave(*batch_dataset));
-}
-
-IsStatefulTestCase<BatchDatasetParams> IsStatefulTestCase1() {
-  return {/*dataset_params=*/BatchDataset1(),
-          /*expected_stateful=*/false};
-}
-
-TEST_F(BatchDatasetOpTest, IsStateful) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  auto test_case = IsStatefulTestCase1();
-
-  std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
-      test_case.dataset_params.parallel_copy,
-      test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &batch_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> batch_dataset_context;
-  TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
-                                         &batch_dataset_context));
-  DatasetBase* batch_dataset;
-  TF_ASSERT_OK(CreateDataset(batch_dataset_kernel.get(),
-                             batch_dataset_context.get(), &batch_dataset));
-  core::ScopedUnref scoped_unref(batch_dataset);
-
-  TF_ASSERT_OK(
-      CheckDatasetIsStateful(*batch_dataset, test_case.expected_stateful));
-}
-
-IteratorOutputDtypesTestCase<BatchDatasetParams>
-IteratorOutputDtypesTestCase1() {
-  return {/*dataset_params=*/BatchDataset1(),
-          /*expected_output_dtypes=*/{DT_INT64}};
-}
+        CardinalityTestCases())));
 
 TEST_F(BatchDatasetOpTest, IteratorOutputDtypes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  auto test_case = IteratorOutputDtypesTestCase1();
-
-  std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
-      test_case.dataset_params.parallel_copy,
-      test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &batch_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> batch_dataset_context;
-  TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
-                                         &batch_dataset_context));
-  DatasetBase* batch_dataset;
-  TF_ASSERT_OK(CreateDataset(batch_dataset_kernel.get(),
-                             batch_dataset_context.get(), &batch_dataset));
-  core::ScopedUnref scoped_unref(batch_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(
-      CreateIteratorContext(batch_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(batch_dataset->MakeIterator(iterator_ctx.get(), kIteratorPrefix,
-                                           &iterator));
-
-  TF_ASSERT_OK(
-      CheckIteratorOutputDtypes(*iterator, test_case.expected_output_dtypes));
+  auto batch_dataset_params = BatchDatasetParams1();
+  TF_ASSERT_OK(Initialize(&batch_dataset_params));
+  TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT64}));
 }
 
 class ParameterizedIteratorOutputShapesTest
@@ -725,149 +344,43 @@ class ParameterizedIteratorOutputShapesTest
       public ::testing::WithParamInterface<
           IteratorOutputShapesTestCase<BatchDatasetParams>> {};
 
-IteratorOutputShapesTestCase<BatchDatasetParams>
-IteratorOutputShapesTestCase1() {
-  return {/*dataset_params=*/BatchDataset1(),
-          /*expected_output_shapes=*/{PartialTensorShape({4})}};
-}
-
-IteratorOutputShapesTestCase<BatchDatasetParams>
-IteratorOutputShapesTestCase2() {
-  return {/*dataset_params=*/BatchDataset2(),
-          /*expected_output_shapes=*/{PartialTensorShape({4})}};
-}
-
-IteratorOutputShapesTestCase<BatchDatasetParams>
-IteratorOutputShapesTestCase3() {
-  return {/*dataset_params=*/BatchDataset3(),
-          /*expected_output_shapes=*/{PartialTensorShape({-1})}};
-}
-
-IteratorOutputShapesTestCase<BatchDatasetParams>
-IteratorOutputShapesTestCase4() {
-  return {/*dataset_params=*/BatchDataset4(),
-          /*expected_output_shapes=*/{PartialTensorShape({3})}};
-}
-
-IteratorOutputShapesTestCase<BatchDatasetParams>
-IteratorOutputShapesTestCase5() {
-  return {/*dataset_params=*/BatchDataset5(),
-          /*expected_output_shapes=*/{PartialTensorShape({12})}};
-}
-
-IteratorOutputShapesTestCase<BatchDatasetParams>
-IteratorOutputShapesTestCase6() {
-  return {/*dataset_params=*/BatchDataset6(),
-          /*expected_output_shapes=*/{PartialTensorShape({-1})}};
-}
-
-IteratorOutputShapesTestCase<BatchDatasetParams>
-IteratorOutputShapesTestCase7() {
-  return {/*dataset_params=*/BatchDataset7(),
-          /*expected_output_shapes=*/{PartialTensorShape({4})}};
+std::vector<IteratorOutputShapesTestCase<BatchDatasetParams>>
+IteratorOutputShapesTestCases() {
+  return {{/*dataset_params=*/BatchDatasetParams1(),
+           /*expected_output_shapes=*/{PartialTensorShape({4})}},
+          {/*dataset_params=*/BatchDatasetParams2(),
+           /*expected_output_shapes=*/{PartialTensorShape({4})}},
+          {/*dataset_params=*/BatchDatasetParams3(),
+           /*expected_output_shapes=*/{PartialTensorShape({-1})}},
+          {/*dataset_params=*/BatchDatasetParams4(),
+           /*expected_output_shapes=*/{PartialTensorShape({3})}},
+          {/*dataset_params=*/BatchDatasetParams5(),
+           /*expected_output_shapes=*/{PartialTensorShape({12})}},
+          {/*dataset_params=*/BatchDatasetParams6(),
+           /*expected_output_shapes=*/{PartialTensorShape({-1})}},
+          {/*dataset_params=*/BatchDatasetParams7(),
+           /*expected_output_shapes=*/{PartialTensorShape({4})}}};
 }
 
 TEST_P(ParameterizedIteratorOutputShapesTest, IteratorOutputShapes) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
   auto test_case = GetParam();
-
-  std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
-      test_case.dataset_params.parallel_copy,
-      test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &batch_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> batch_dataset_context;
-  TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
-                                         &batch_dataset_context));
-  DatasetBase* batch_dataset;
-  TF_ASSERT_OK(CreateDataset(batch_dataset_kernel.get(),
-                             batch_dataset_context.get(), &batch_dataset));
-  core::ScopedUnref scoped_unref(batch_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(
-      CreateIteratorContext(batch_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(batch_dataset->MakeIterator(iterator_ctx.get(), kIteratorPrefix,
-                                           &iterator));
-
-  TF_ASSERT_OK(
-      CheckIteratorOutputShapes(*iterator, test_case.expected_output_shapes));
+  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
+  TF_ASSERT_OK(CheckIteratorOutputShapes(test_case.expected_output_shapes));
 }
 
 INSTANTIATE_TEST_SUITE_P(
     BatchDatasetOpTest, ParameterizedIteratorOutputShapesTest,
     ::testing::ValuesIn(
         std::vector<IteratorOutputShapesTestCase<BatchDatasetParams>>(
-            {IteratorOutputShapesTestCase1(), IteratorOutputShapesTestCase2(),
-             IteratorOutputShapesTestCase3(), IteratorOutputShapesTestCase4(),
-             IteratorOutputShapesTestCase5(), IteratorOutputShapesTestCase6(),
-             IteratorOutputShapesTestCase7()})));
-
-IteratorPrefixTestCase<BatchDatasetParams> IteratorOutputPrefixTestCase1() {
-  name_utils::IteratorPrefixParams params;
-  params.op_version = kOpVersion;
-  return {/*dataset_params=*/BatchDataset1(),
-          /*expected_iterator_prefix=*/name_utils::IteratorPrefix(
-              BatchDatasetOp::kDatasetType, kIteratorPrefix, params)};
-}
+            IteratorOutputShapesTestCases())));
 
 TEST_F(BatchDatasetOpTest, IteratorOutputPrefix) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  auto test_case = IteratorOutputPrefixTestCase1();
-
-  std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
-      test_case.dataset_params.parallel_copy,
-      test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &batch_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> batch_dataset_context;
-  TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
-                                         &batch_dataset_context));
-  DatasetBase* batch_dataset;
-  TF_ASSERT_OK(CreateDataset(batch_dataset_kernel.get(),
-                             batch_dataset_context.get(), &batch_dataset));
-  core::ScopedUnref scoped_unref(batch_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(
-      CreateIteratorContext(batch_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(batch_dataset->MakeIterator(iterator_ctx.get(), kIteratorPrefix,
-                                           &iterator));
-
-  TF_ASSERT_OK(
-      CheckIteratorPrefix(*iterator, test_case.expected_iterator_prefix));
+  auto batch_dataset_params = BatchDatasetParams1();
+  TF_ASSERT_OK(Initialize(&batch_dataset_params));
+  name_utils::IteratorPrefixParams params;
+  params.op_version = kOpVersion;
+  TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
+      BatchDatasetOp::kDatasetType, kIteratorPrefix, params)));
 }
 
 class ParameterizedIteratorSaveAndRestoreTest
@@ -875,157 +388,60 @@ class ParameterizedIteratorSaveAndRestoreTest
       public ::testing::WithParamInterface<
           IteratorSaveAndRestoreTestCase<BatchDatasetParams>> {};
 
-IteratorSaveAndRestoreTestCase<BatchDatasetParams>
-IteratorSaveAndRestoreTestCase1() {
-  return {/*dataset_params=*/BatchDataset1(),
-          /*breakpoints=*/{0, 1, 5},
-          /*expected_outputs=*/
-          CreateTensors<int64>(TensorShape({4}),
-                               {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})};
-}
-
-IteratorSaveAndRestoreTestCase<BatchDatasetParams>
-IteratorSaveAndRestoreTestCase2() {
-  return {/*dataset_params=*/BatchDataset2(),
-          /*breakpoints=*/{0, 1, 5},
-          /*expected_outputs=*/
-          CreateTensors<int64>(TensorShape({4}),
-                               {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})};
-}
-
-IteratorSaveAndRestoreTestCase<BatchDatasetParams>
-IteratorSaveAndRestoreTestCase3() {
-  return {/*dataset_params=*/BatchDataset3(),
-          /*breakpoints=*/{0, 1, 5},
-          /*expected_outputs=*/
-          {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-           CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-           CreateTensor<int64>(TensorShape({3}), {6, 7, 8}),
-           CreateTensor<int64>(TensorShape({1}), {9})}};
-}
-
-IteratorSaveAndRestoreTestCase<BatchDatasetParams>
-IteratorSaveAndRestoreTestCase4() {
-  return {/*dataset_params=*/BatchDataset4(),
-          /*breakpoints=*/{0, 1, 5},
-          /*expected_outputs=*/
-          {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-           CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-           CreateTensor<int64>(TensorShape({3}), {6, 7, 8})}};
-}
-
-IteratorSaveAndRestoreTestCase<BatchDatasetParams>
-IteratorSaveAndRestoreTestCase5() {
-  return {/*dataset_params=*/BatchDataset5(),
-          /*breakpoints=*/{0, 1, 5},
-          /*expected_outputs=*/{}};
-}
-
-IteratorSaveAndRestoreTestCase<BatchDatasetParams>
-IteratorSaveAndRestoreTestCase6() {
-  return {
-      /*dataset_params=*/BatchDataset6(),
-      /*breakpoints=*/{0, 1, 5},
-      /*expected_outputs=*/
-      {CreateTensor<int64>(TensorShape({10}), {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})}};
-}
-
-IteratorSaveAndRestoreTestCase<BatchDatasetParams>
-IteratorSaveAndRestoreTestCase7() {
-  return {/*dataset_params=*/BatchDataset7(),
-          /*breakpoints=*/{0, 1, 5},
-          /*expected_outputs=*/{}};
+std::vector<IteratorSaveAndRestoreTestCase<BatchDatasetParams>>
+IteratorSaveAndRestoreTestCases() {
+  return {{/*dataset_params=*/BatchDatasetParams1(),
+           /*breakpoints=*/{0, 1, 5},
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({4}),
+                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+          {/*dataset_params=*/BatchDatasetParams2(),
+           /*breakpoints=*/{0, 1, 5},
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({4}),
+                                {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}})},
+          {/*dataset_params=*/BatchDatasetParams3(),
+           /*breakpoints=*/{0, 1, 5},
+           /*expected_outputs=*/
+           {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
+            CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
+            CreateTensor<int64>(TensorShape({3}), {6, 7, 8}),
+            CreateTensor<int64>(TensorShape({1}), {9})}},
+          {/*dataset_params=*/BatchDatasetParams4(),
+           /*breakpoints=*/{0, 1, 5},
+           /*expected_outputs=*/
+           {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
+            CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
+            CreateTensor<int64>(TensorShape({3}), {6, 7, 8})}},
+          {/*dataset_params=*/BatchDatasetParams5(),
+           /*breakpoints=*/{0, 1, 5},
+           /*expected_outputs=*/{}},
+          {/*dataset_params=*/BatchDatasetParams6(),
+           /*breakpoints=*/{0, 1, 5},
+           /*expected_outputs=*/
+           {CreateTensor<int64>(TensorShape({10}),
+                                {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})}},
+          {/*dataset_params=*/BatchDatasetParams7(),
+           /*breakpoints=*/{0, 1, 5},
+           /*expected_outputs=*/{}}};
 }
 
 TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
   auto test_case = GetParam();
-
-  std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
-      test_case.dataset_params.parallel_copy,
-      test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &batch_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> batch_dataset_context;
-  TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
-                                         &batch_dataset_context));
-  DatasetBase* batch_dataset;
-  TF_ASSERT_OK(CreateDataset(batch_dataset_kernel.get(),
-                             batch_dataset_context.get(), &batch_dataset));
-  core::ScopedUnref scoped_unref(batch_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(
-      CreateIteratorContext(batch_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(batch_dataset->MakeIterator(iterator_ctx.get(), kIteratorPrefix,
-                                           &iterator));
-
+  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
   TF_ASSERT_OK(CheckIteratorSaveAndRestore(
-      *batch_dataset, iterator_ctx.get(), kIteratorPrefix,
-      test_case.expected_outputs, test_case.breakpoints));
+      kIteratorPrefix, test_case.expected_outputs, test_case.breakpoints));
 }
 
 INSTANTIATE_TEST_SUITE_P(
     BatchDatasetOpTest, ParameterizedIteratorSaveAndRestoreTest,
-    ::testing::ValuesIn(std::vector<
-                        IteratorSaveAndRestoreTestCase<BatchDatasetParams>>(
-        {IteratorSaveAndRestoreTestCase1(), IteratorSaveAndRestoreTestCase2(),
-         IteratorSaveAndRestoreTestCase3(), IteratorSaveAndRestoreTestCase4(),
-         IteratorSaveAndRestoreTestCase5(), IteratorSaveAndRestoreTestCase6(),
-         IteratorSaveAndRestoreTestCase7()})));
-
-GetNextTestCase<BatchDatasetParams> InvalidBatchSizeTestCase() {
-  return {/*dataset_params=*/InvalidBatchSizeBatchDataset(),
-          /*expected_outputs=*/{}};
-}
+    ::testing::ValuesIn(
+        std::vector<IteratorSaveAndRestoreTestCase<BatchDatasetParams>>(
+            IteratorSaveAndRestoreTestCases())));
 
 TEST_F(BatchDatasetOpTest, InvalidBatchSize) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  auto test_case = InvalidBatchSizeTestCase();
-
-  std::unique_ptr<OpKernel> batch_dataset_kernel;
-  TF_ASSERT_OK(CreateBatchDatasetOpKernel(
-      test_case.dataset_params.parallel_copy,
-      test_case.dataset_params.output_dtypes,
-      test_case.dataset_params.output_shapes, &batch_dataset_kernel));
-
-  TF_ASSERT_OK(MakeRangeDataset(
-      test_case.dataset_params.range_dataset_params.start,
-      test_case.dataset_params.range_dataset_params.stop,
-      test_case.dataset_params.range_dataset_params.step,
-      test_case.dataset_params.range_dataset_params.output_dtypes,
-      test_case.dataset_params.range_dataset_params.output_shapes,
-      &test_case.dataset_params.input_dataset));
-
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  TF_ASSERT_OK(test_case.dataset_params.MakeInputs(&inputs));
-
-  std::unique_ptr<OpKernelContext> batch_dataset_context;
-  TF_ASSERT_OK(CreateBatchDatasetContext(batch_dataset_kernel.get(), &inputs,
-                                         &batch_dataset_context));
-  DatasetBase* batch_dataset;
-  EXPECT_EQ(CreateDataset(batch_dataset_kernel.get(),
-                          batch_dataset_context.get(), &batch_dataset)
-                .code(),
+  auto batch_dataset_params = InvalidBatchSizeBatchDatasetParams();
+  EXPECT_EQ(Initialize(&batch_dataset_params).code(),
             tensorflow::error::INVALID_ARGUMENT);
 }
 
