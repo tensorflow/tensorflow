@@ -25569,6 +25569,13 @@ op {
       i: 0
     }
   }
+  attr {
+    name: "legacy_autotune"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
 }
 op {
   name: "Prelinearize"
