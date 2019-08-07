@@ -157,7 +157,7 @@ Status RemoteCopyNode::StartSend() {
     EnqueueResponse* response = new EnqueueResponse;
     // If StartRecv fails very quickly, `this` can be destroyed before the
     // callback below is executed. So, we can't capture `this`.
-    eager_client->EnqueueAsync(
+    eager_client->StreamingEnqueueAsync(
         &request, response, [response, captured_state](const Status& s) {
           captured_state->SetSendStatus(s);
           if (!s.ok()) {
@@ -210,23 +210,26 @@ Status RemoteCopyNode::RunRemoteRecv(EagerOperation* op) {
   EnqueueResponse* response = new EnqueueResponse;
   const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
   Device* recv_device = recv_device_;
-  Notification n;
-  eager_client->EnqueueAsync(
+  eager_client->StreamingEnqueueAsync(
       &request, response,
-      [captured_state, response, recv_device, &n, &status](const Status& s) {
-        status.Update(s);
-        if (status.ok()) {
-          status = captured_state->dst()->SetRemoteShape(
+      [captured_state, response, recv_device](const Status& s) {
+        if (s.ok()) {
+          Status status = captured_state->dst()->SetRemoteShape(
               response->queue_response(0).shape(0), recv_device);
+          if (!status.ok()) {
+            LOG(ERROR) << "Ignoring an error encountered when setting remote "
+                          "shape of tensor received by remote Recv op: "
+                       << status.ToString()
+                       << "\nThis should never happen. "
+                          "Please file an issue with the TensorFlow Team.";
+          }
         } else {
-          captured_state->dst()->Poison(status);
+          captured_state->dst()->Poison(s);
         }
         delete response;
-        n.Notify();
       });
-  n.WaitForNotification();
 
-  return status;
+  return Status::OK();
 }
 
 Status RemoteCopyNode::StartRecv() {

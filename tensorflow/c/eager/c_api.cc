@@ -204,7 +204,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 
   LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 
-  tensorflow::uint64 context_id = tensorflow::random::New64();
+  tensorflow::uint64 context_id = tensorflow::EagerContext::NewContextId();
   // Make master eager context accessible by local eager service, which might
   // receive send tensor requests from remote workers.
   LOG_AND_RETURN_IF_ERROR(grpc_server->AddMasterEagerContextToEagerService(
@@ -244,6 +244,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
           &remote_eager_workers));
 
   // Initialize remote eager workers.
+  // TODO(b/138847548) Create remote eager contexts in async mode by default.
   LOG_AND_RETURN_IF_ERROR(
       CreateRemoteContexts(remote_workers, context_id, keep_alive_secs,
                            server_def, remote_eager_workers.get(),

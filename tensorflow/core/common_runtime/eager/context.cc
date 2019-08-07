@@ -105,6 +105,10 @@ EagerContext::EagerContext(
     this->thread_pool_->Schedule(std::move(closure));
   };
 
+#if !defined(IS_MOBILE_PLATFORM)
+  context_id_ = kInvalidContextId;
+#endif  // IS_MOBILE_PLATFORM
+
   std::unique_ptr<DeviceResolverInterface> drl(
       new DeviceResolverLocal(local_device_mgr()));
   std::unique_ptr<ParamResolverInterface> cprl(new CollectiveParamResolverLocal(
@@ -211,6 +215,9 @@ void EagerContext::CloseRemoteContexts() {
   // Close all remote contexts.
   eager::CloseContextRequest request;
   request.set_context_id(context_id_);
+  // Setting context_id to a new value can avoid us issuing DestroyTensorHandle
+  // request to closed remote workers.
+  context_id_ = kInvalidContextId;
   std::vector<eager::CloseContextResponse> responses(remote_contexts_.size());
   BlockingCounter counter(static_cast<int>(remote_contexts_.size()));
 
@@ -664,6 +671,11 @@ Status EagerContext::InitializeRemoteMaster(
     DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
+  if (context_id == kInvalidContextId) {
+    return errors::InvalidArgument(
+        "Failed to initialize remote for master context due to invalid ",
+        "context id");
+  }
   mutex_lock l(remote_state_mu_);
   is_master_ = true;
 
@@ -782,6 +794,11 @@ Status EagerContext::InitializeRemoteWorker(
     std::function<Rendezvous*(const int64)> rendezvous_creator,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
+  if (context_id == kInvalidContextId) {
+    return errors::InvalidArgument(
+        "Failed to initialize remote for worker context due to invalid ",
+        "context id");
+  }
   mutex_lock l(remote_state_mu_);
 
   if (remote_device_manager_ != nullptr || server_ != nullptr ||
