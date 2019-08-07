@@ -72,43 +72,39 @@ struct TestCase {
 // Test Case 1: test BatchDatasetV2 with `drop_remainder` = false and a batch
 // size that can evenly split the input dataset.
 TestCase TestCase1() {
-  return {
-      /*range_data_param*/ {0, 12, 1},
-      /*batch_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
-      /*parallel_copy*/ true,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}), {0, 1, 2, 3}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}), {4, 5, 6, 7}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}),
-                                               {8, 9, 10, 11})},
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({4})},
-      /*expected_cardinality*/ 3,
-      /*breakpoints*/ {0, 1, 5}};
+  return {/*range_data_param*/ {0, 12, 1},
+          /*batch_size*/
+          CreateTensor<int64>(TensorShape({}), {4}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {false}),
+          /*parallel_copy*/ true,
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape({4}), {0, 1, 2, 3}),
+           CreateTensor<int64>(TensorShape({4}), {4, 5, 6, 7}),
+           CreateTensor<int64>(TensorShape({4}), {8, 9, 10, 11})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({4})},
+          /*expected_cardinality*/ 3,
+          /*breakpoints*/ {0, 1, 5}};
 }
 
 // Test Case 2: test BatchDatasetV2 with `drop_remainder` = true and a batch
 // size that can evenly split the input dataset.
 TestCase TestCase2() {
-  return {
-      /*range_data_param*/ {0, 12, 1},
-      /*batch_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
-      /*parallel_copy*/ false,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}), {0, 1, 2, 3}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}), {4, 5, 6, 7}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({4}),
-                                               {8, 9, 10, 11})},
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({4})},
-      /*expected_cardinality*/ 3,
-      /*breakpoints*/ {0, 1, 5}};
+  return {/*range_data_param*/ {0, 12, 1},
+          /*batch_size*/
+          CreateTensor<int64>(TensorShape({}), {4}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {true}),
+          /*parallel_copy*/ false,
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape({4}), {0, 1, 2, 3}),
+           CreateTensor<int64>(TensorShape({4}), {4, 5, 6, 7}),
+           CreateTensor<int64>(TensorShape({4}), {8, 9, 10, 11})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({4})},
+          /*expected_cardinality*/ 3,
+          /*breakpoints*/ {0, 1, 5}};
 }
 
 // Test Case 3: test BatchDatasetV2 with `drop_remainder` = false and a batch
@@ -116,15 +112,15 @@ TestCase TestCase2() {
 TestCase TestCase3() {
   return {/*range_data_param*/ {0, 10, 1},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
+          CreateTensor<int64>(TensorShape({}), {3}),
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
+          CreateTensor<bool>(TensorShape({}), {false}),
           /*parallel_copy*/ false,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {6, 7, 8}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({1}), {9})},
+          {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
+           CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
+           CreateTensor<int64>(TensorShape({3}), {6, 7, 8}),
+           CreateTensor<int64>(TensorShape({1}), {9})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({-1})},
           /*expected_cardinality*/ 4,
@@ -134,21 +130,20 @@ TestCase TestCase3() {
 // Test Case 4: test BatchDatasetV2 with `drop_remainder` = true and a batch
 // size that can not evenly split the input dataset.
 TestCase TestCase4() {
-  return {
-      /*range_data_param*/ {0, 10, 1},
-      /*batch_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
-      /*parallel_copy*/ true,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({3}), {6, 7, 8})},
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({3})},
-      /*expected_cardinality*/ 3,
-      /*breakpoints*/ {0, 1, 5}};
+  return {/*range_data_param*/ {0, 10, 1},
+          /*batch_size*/
+          CreateTensor<int64>(TensorShape({}), {3}),
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape({}), {true}),
+          /*parallel_copy*/ true,
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape({3}), {0, 1, 2}),
+           CreateTensor<int64>(TensorShape({3}), {3, 4, 5}),
+           CreateTensor<int64>(TensorShape({3}), {6, 7, 8})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({3})},
+          /*expected_cardinality*/ 3,
+          /*breakpoints*/ {0, 1, 5}};
 }
 
 // Test Case 5: test BatchDatasetV2 with `drop_remainder` = true and
@@ -156,9 +151,9 @@ TestCase TestCase4() {
 TestCase TestCase5() {
   return {/*range_data_param*/ {0, 10, 1},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
+          CreateTensor<int64>(TensorShape({}), {12}),
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {true}),
+          CreateTensor<bool>(TensorShape({}), {true}),
           /*parallel_copy*/ true,
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
@@ -170,19 +165,19 @@ TestCase TestCase5() {
 // Test Case 6: test BatchDatasetV2 with `drop_remainder` = false and
 // `batch_size` > the cardinality of the input dataset.
 TestCase TestCase6() {
-  return {/*range_data_param*/ {0, 10, 1},
-          /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
-          /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
-          /*parallel_copy*/ true,
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape({10}), {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({-1})},
-          /*expected_cardinality*/ 1,
-          /*breakpoints*/ {0, 1, 5}};
+  return {
+      /*range_data_param*/ {0, 10, 1},
+      /*batch_size*/
+      CreateTensor<int64>(TensorShape({}), {12}),
+      /*drop_remainder*/
+      CreateTensor<bool>(TensorShape({}), {false}),
+      /*parallel_copy*/ true,
+      /*expected_outputs*/
+      {CreateTensor<int64>(TensorShape({10}), {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({-1})},
+      /*expected_cardinality*/ 1,
+      /*breakpoints*/ {0, 1, 5}};
 }
 
 // Test Case 7: test BatchDatasetV2 with `drop_remainder` = false and
@@ -190,9 +185,9 @@ TestCase TestCase6() {
 TestCase TestCase7() {
   return {/*range_data_param*/ {0, 0, 1},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
+          CreateTensor<int64>(TensorShape({}), {4}),
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
+          CreateTensor<bool>(TensorShape({}), {false}),
           /*parallel_copy*/ false,
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
@@ -205,9 +200,9 @@ TestCase TestCase7() {
 TestCase InvalidBatchSizeTestCase() {
   return {/*range_data_param*/ {0, 10, 1},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {-1}),
+          CreateTensor<int64>(TensorShape({}), {-1}),
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape({}), {false}),
+          CreateTensor<bool>(TensorShape({}), {false}),
           /*parallel_copy*/ false,
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},

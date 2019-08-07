@@ -167,6 +167,7 @@ limitations under the License.
 %rename("%s") TFE_CancellationManagerStartCancel;
 %rename("%s") TFE_DeleteCancellationManager;
 %rename("%s") TF_ImportGraphDefOptionsSetValidateColocationConstraints;
+%rename("%s") TFE_ClearScalarCache;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
@@ -193,6 +194,16 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status) {
 }
 %}
 static PyObject* TF_ListPhysicalDevices(TF_Status* status);
+
+%{
+#include "tensorflow/python/eager/pywrap_tensor_conversion.h"
+
+static PyObject* TFE_ClearScalarCache() {
+  tensorflow::TFE_TensorHandleCache::Get()->Clear();
+  Py_RETURN_NONE;
+}
+%}
+static PyObject* TFE_ClearScalarCache();
 
 %typemap(in) (const void* proto) {
   char* c_string;

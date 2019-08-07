@@ -337,6 +337,10 @@ def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
   }];
 
   let verifier = [{ return ::verify(*this); }];
+  let printer = [{ printLLVMFuncOp(p, *this); }];
+  let parser = [{
+    return impl::parseFunctionLikeOp(parser, result, buildLLVMFunctionType);
+  }];
 }
 
 def LLVM_UndefOp : LLVM_OneResultOp<"undef", [NoSideEffect]>,

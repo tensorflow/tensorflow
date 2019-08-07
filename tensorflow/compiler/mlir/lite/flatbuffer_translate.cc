@@ -206,10 +206,12 @@ static bool IsInput(Operation* op) {
          op->getName().getStringRef() == "tf.Placeholder.input";
 }
 
-static bool IsConstOrInput(Operation* op) {
-  return (isa<mlir::ConstantOp>(op) || isa<mlir::TF::ConstOp>(op) ||
-          isa<tfl::ConstOp>(op) || isa<tfl::QConstOp>(op) || IsInput(op));
+static bool IsConst(Operation* op) {
+  return isa<mlir::ConstantOp>(op) || isa<mlir::TF::ConstOp>(op) ||
+         isa<tfl::ConstOp>(op) || isa<tfl::QConstOp>(op);
 }
+
+static bool IsConstOrInput(Operation* op) { return IsConst(op) || IsInput(op); }
 
 template <typename T>
 static bool HasValidTFLiteType(Value* value, T& error_handler) {
@@ -228,7 +230,7 @@ static bool HasValidTFLiteType(Value* value, T& error_handler) {
     return false;
   }
   if (auto* inst = value->getDefiningOp()) {
-    if (IsConstOrInput(inst) && !type.hasStaticShape()) {
+    if (IsInput(inst) && !type.hasStaticShape()) {
       return error_handler.emitError("should have static shape, got ")
                  << type.getShape(),
              false;
@@ -535,8 +537,18 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
   // However, we output all known shapes for better round-tripping
   std::vector<int32_t> shape;
   if (auto* inst = value->getDefiningOp()) {
-    if (type.hasStaticShape()) {
-      auto shape_ref = type.getShape();
+    if (type.hasStaticShape() || IsConst(inst)) {
+      // Const op can have a result of dynamic shaped type (e.g. due to constant
+      // folding), but we can still derive the shape of a constant tensor
+      // for its attribute type.
+      llvm::ArrayRef<int64_t> shape_ref;
+      if (type.hasStaticShape()) {
+        shape_ref = type.getShape();
+      } else {
+        mlir::Attribute tensor_attr = inst->getAttr("value");
+        shape_ref = tensor_attr.getType().cast<TensorType>().getShape();
+      }
+
       auto is_out_of_range = [](int64_t dim) {
         return dim > std::numeric_limits<int32_t>::max();
       };

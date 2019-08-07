@@ -373,6 +373,7 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
   // permutation map (asserted in the inverse calculation).
   auto viewSizesToLoopsMap =
       inversePermutation(concatAffineMaps(loopToOperandRangesMaps(op)));
+  assert(viewSizesToLoopsMap && "expected invertible map");
   auto loopRanges =
       makeTiledLoopRanges(scope.getBuilder(), scope.getLocation(),
                           viewSizesToLoopsMap, viewSizes, tileSizes, folder);
@@ -380,7 +381,7 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
   // 3. Create the tiled loops.
   LinalgOp res = op;
   SmallVector<IndexHandle, 4> ivs(loopRanges.size());
-  auto pivs = IndexHandle::makeIndexHandlePointers(ivs);
+  auto pivs = makeIndexHandlePointers(ivs);
   LoopNestRangeBuilder(pivs, loopRanges)([&] {
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();

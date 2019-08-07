@@ -335,7 +335,6 @@ void ExecutorIslandCoarsening::runOnFunction() {
       }
     } while (updated);
   });
-  // TODO(lyandy): Add canonicalization for dedupping control inputs.
 }
 
 }  // namespace

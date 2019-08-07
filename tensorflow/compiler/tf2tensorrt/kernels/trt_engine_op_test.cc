@@ -126,8 +126,8 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
 
   // Get the engine cache.
   TRTEngineCacheResource* cache_resource = nullptr;
-  TF_ASSERT_OK(device_->resource_manager()->Lookup("TF-TRT-Engine-Cache",
-                                                   "myop", &cache_resource));
+  TF_ASSERT_OK(
+      device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
   // It should contain only one engine.

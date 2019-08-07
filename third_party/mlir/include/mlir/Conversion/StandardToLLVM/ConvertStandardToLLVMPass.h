@@ -38,7 +38,7 @@ class RewritePattern;
 class Type;
 
 // Owning list of rewriting patterns.
-using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
+class OwningRewritePatternList;
 
 /// Type for a callback constructing the owning list of patterns for the
 /// conversion to the LLVMIR dialect.  The callback is expected to append

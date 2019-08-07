@@ -521,6 +521,13 @@ static void AllocateFlags() {
           bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nchw),
           flag_values->xla_gpu_force_conv_nchw(),
           "For cuDNN convolutions, always NCHW layouts."),
+      tensorflow::Flag(
+          "xla_gpu_cudnn_conv_blacklist_path",
+          string_setter_for(
+              &DebugOptions::set_xla_gpu_cudnn_conv_blacklist_path),
+          flag_values->xla_gpu_cudnn_conv_blacklist_path(),
+          "A CudnnConvolutionList text proto file as a blacklist of "
+          "convolutions to avoid to use."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

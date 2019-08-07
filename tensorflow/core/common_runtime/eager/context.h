@@ -107,6 +107,16 @@ class RunMetadataListener {
 
 class EagerContext : public core::RefCounted {
  public:
+  static const uint64 kInvalidContextId = 0;
+
+  static uint64 NewContextId() {
+    uint64 context_id = random::New64();
+    while (context_id == kInvalidContextId) {
+      context_id = random::New64();
+    }
+    return context_id;
+  }
+
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_device_placement_policy,
                ContextMirroringPolicy default_mirroring_policy, bool async,

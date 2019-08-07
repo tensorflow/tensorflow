@@ -539,7 +539,6 @@ using namespace mlir;
 using functional::makePtrDynCaster;
 using functional::map;
 using llvm::dbgs;
-using llvm::DenseSet;
 using llvm::SetVector;
 
 static llvm::cl::OptionCategory clOptionsCategory("vectorize options");

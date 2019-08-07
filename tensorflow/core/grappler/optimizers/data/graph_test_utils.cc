@@ -25,6 +25,22 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_tests_utils {
 
+NodeDef MakeCacheV2Node(StringPiece name, StringPiece input_node_name,
+                        StringPiece filename_node_name,
+                        StringPiece cache_node_name) {
+  return test::function::NDef(
+      name, "CacheDatasetV2",
+      {
+          string(input_node_name),
+          string(filename_node_name),
+          string(cache_node_name),
+      },
+      {
+          {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+          {"output_types", gtl::ArraySlice<DataType>{}},
+      });
+}
+
 NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
                        StringPiece function_name) {
   return test::function::NDef(

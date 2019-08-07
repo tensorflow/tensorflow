@@ -1223,6 +1223,33 @@ def cast_single_tensor(x, dtype=None):
   return x
 
 
+def cast_if_floating_dtype_and_mismatch(targets, outputs):
+  """Returns target data tensors using correct datatype.
+
+  Checks that each target and output pair are the same datatype. If not, casts
+  the target to the output's datatype.
+
+  Args:
+    targets: tensor or list of targets.
+    outputs: tensor or list of outputs.
+
+  Returns:
+    Targets in appropriate datatype.
+  """
+  if tensor_util.is_tensor(targets):
+    # There is one target, so output[0] should be the only output.
+    return cast_single_tensor(targets, dtype=outputs[0].dtype)
+  new_targets = []
+  for target, out in zip(targets, outputs):
+    if isinstance(target, np.ndarray):
+      target = ops.convert_to_tensor(target)
+    if target.dtype != out.dtype:
+      new_targets.append(cast_single_tensor(target, dtype=out.dtype))
+    else:
+      new_targets.append(target)
+  return new_targets
+
+
 def cast_if_floating_dtype(x):
   """Casts the given data tensors to the default floating point type.
 

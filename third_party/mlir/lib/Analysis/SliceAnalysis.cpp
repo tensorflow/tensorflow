@@ -26,6 +26,7 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/Functional.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 
@@ -35,7 +36,6 @@
 
 using namespace mlir;
 
-using llvm::DenseSet;
 using llvm::SetVector;
 
 static void getForwardSliceImpl(Operation *op,

@@ -703,7 +703,7 @@ static ParseResult parseConstantOp(OpAsmParser *parser,
 }
 
 //===----------------------------------------------------------------------===//
-// Builder and verifier for LLVM::LLVMFuncOp.
+// Builder, printer and verifier for LLVM::LLVMFuncOp.
 //===----------------------------------------------------------------------===//
 
 void LLVMFuncOp::build(Builder *builder, OperationState *result, StringRef name,
@@ -724,6 +724,62 @@ void LLVMFuncOp::build(Builder *builder, OperationState *result, StringRef name,
   for (unsigned i = 0; i < numInputs; ++i)
     if (auto argDict = argAttrs[i].getDictionary())
       result->addAttribute(getArgAttrName(i, argAttrName), argDict);
+}
+
+// Build an LLVM function type from the given lists of input and output types.
+// Returns a null type if any of the types provided are non-LLVM types, or if
+// there is more than one output type.
+static Type buildLLVMFunctionType(Builder &b, ArrayRef<Type> inputs,
+                                  ArrayRef<Type> outputs,
+                                  std::string &errorMessage) {
+  if (outputs.size() > 1) {
+    errorMessage = "expected zero or one function result";
+    return {};
+  }
+
+  // Convert inputs to LLVM types, exit early on error.
+  SmallVector<LLVMType, 4> llvmInputs;
+  for (auto t : inputs) {
+    auto llvmTy = t.dyn_cast<LLVMType>();
+    if (!llvmTy) {
+      errorMessage = "expected LLVM type for function arguments";
+      return {};
+    }
+    llvmInputs.push_back(llvmTy);
+  }
+
+  // Get the dialect from the input type, if any exist.  Look it up in the
+  // context otherwise.
+  LLVMDialect *dialect =
+      llvmInputs.empty() ? b.getContext()->getRegisteredDialect<LLVMDialect>()
+                         : &llvmInputs.front().getDialect();
+
+  // No output is denoted as "void" in LLVM type system.
+  LLVMType llvmOutput = outputs.empty() ? LLVMType::getVoidTy(dialect)
+                                        : outputs.front().dyn_cast<LLVMType>();
+  if (!llvmOutput) {
+    errorMessage = "expected LLVM type for function results";
+    return {};
+  }
+  return LLVMType::getFunctionTy(llvmOutput, llvmInputs,
+                                 /*isVarArg=*/false);
+}
+
+// Print the LLVMFuncOp.  Collects argument and result types and passes them
+// to the trait printer.  Drops "void" result since it cannot be parsed back.
+static void printLLVMFuncOp(OpAsmPrinter *p, LLVMFuncOp op) {
+  LLVMType fnType = op.getType();
+  SmallVector<Type, 8> argTypes;
+  SmallVector<Type, 1> resTypes;
+  argTypes.reserve(fnType.getFunctionNumParams());
+  for (unsigned i = 0, e = fnType.getFunctionNumParams(); i < e; ++i)
+    argTypes.push_back(fnType.getFunctionParamType(i));
+
+  LLVMType returnType = fnType.getFunctionResultType();
+  if (!returnType.getUnderlyingType()->isVoidTy())
+    resTypes.push_back(returnType);
+
+  impl::printFunctionLikeOp(p, op, argTypes, resTypes);
 }
 
 // Hook for OpTrait::FunctionLike, called after verifying that the 'type'
@@ -912,6 +968,19 @@ llvm::Type *LLVMType::getUnderlyingType() const {
 /// Array type utilities.
 LLVMType LLVMType::getArrayElementType() {
   return get(getContext(), getUnderlyingType()->getArrayElementType());
+}
+
+/// Function type utilities.
+LLVMType LLVMType::getFunctionParamType(unsigned argIdx) {
+  return get(getContext(), getUnderlyingType()->getFunctionParamType(argIdx));
+}
+unsigned LLVMType::getFunctionNumParams() {
+  return getUnderlyingType()->getFunctionNumParams();
+}
+LLVMType LLVMType::getFunctionResultType() {
+  return get(
+      getContext(),
+      llvm::cast<llvm::FunctionType>(getUnderlyingType())->getReturnType());
 }
 
 /// Pointer type utilities.

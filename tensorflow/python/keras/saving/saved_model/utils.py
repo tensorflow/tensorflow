@@ -169,3 +169,12 @@ def get_training_arg(index, args, kwargs):
     return args[index]
   else:
     return kwargs.get('training', None)
+
+
+def remove_training_arg(index, args, kwargs):
+  if index is None:
+    pass
+  elif index >= 0 and len(args) > index:
+    args.pop(index)
+  else:
+    kwargs.pop('training', None)

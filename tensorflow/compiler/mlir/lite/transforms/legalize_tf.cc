@@ -205,9 +205,9 @@ void LegalizeTF::runOnFunction() {
 
   // Add the generated patterns to the list.
   populateWithGenerated(ctx, &patterns);
-  RewriteListBuilder<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
-                     ConvertTFPackOp, ConvertTFSplitOp, ConvertTFSplitVOp,
-                     ConvertTFUnpackOp>::build(patterns, ctx);
+  patterns.insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
+                  ConvertTFPackOp, ConvertTFSplitOp, ConvertTFSplitVOp,
+                  ConvertTFUnpackOp>(ctx);
   applyPatternsGreedily(func, std::move(patterns));
 }
 

@@ -157,12 +157,14 @@ class PolicyTest(test.TestCase):
       pass
 
     # These policies are not allowed with V1 dtype behavior
-    with self.assertRaisesRegexp(ValueError,
-                                 'the V2 layer dtype behavior must be enabled'):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'global policy can only be set to a non-infer policy in TensorFlow 2'):
       with mp_policy.policy_scope(mp_policy.Policy('float32')):
         pass
-    with self.assertRaisesRegexp(ValueError,
-                                 'the V2 layer dtype behavior must be enabled'):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'global policy can only be set to a non-infer policy in TensorFlow 2'):
       with mp_policy.policy_scope(
           mp_policy.Policy('float16_with_float32_vars')):
         pass

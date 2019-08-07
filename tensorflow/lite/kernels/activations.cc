@@ -55,6 +55,11 @@ struct OpData {
   uint8_t* table_zero = nullptr;
 };
 
+struct SoftmaxOpData {
+  struct SoftmaxParams params = {};
+  float table[256];
+};
+
 struct LogSoftmaxOpData : public OpData {
   int32_t reverse_scaling_divisor = 0;
   int32_t reverse_scaling_right_shift = 0;
@@ -129,6 +134,14 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Instead, we allocate a new object to carry information from Prepare() to
   // Eval().
   return new OpData;
+}
+
+void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length) {
+  return new SoftmaxOpData;
+}
+
+void SoftmaxFree(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<SoftmaxOpData*>(buffer);
 }
 
 void* LogSoftmaxInit(TfLiteContext* context, const char* buffer,
@@ -363,7 +376,7 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteSoftmaxParams*>(node->builtin_data);
-  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  SoftmaxOpData* data = reinterpret_cast<SoftmaxOpData*>(node->user_data);
 
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -375,16 +388,11 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, num_dims >= 1 && num_dims <= 4);
 
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
-    if (CheckOutputQuantParams(context, input, output) == kTfLiteError) {
-      return kTfLiteError;
-    }
-
-    static const int kScaledDiffIntegerBits = 5;
-    tflite::PreprocessSoftmaxScaling(
-        params->beta, input->params.scale, kScaledDiffIntegerBits,
-        &data->input_multiplier, &data->input_left_shift);
-    data->diff_min = -1.0 * tflite::CalculateInputRadius(
-                                kScaledDiffIntegerBits, data->input_left_shift);
+    data->params.table = data->table;
+    optimized_ops::PopulateSoftmaxLookupTable(
+        &data->params, input->params.scale, params->beta);
+    data->params.zero_point = output->params.zero_point;
+    data->params.scale = output->params.scale;
   }
 
   return context->ResizeTensor(context, output,
@@ -749,61 +757,25 @@ TfLiteStatus SoftmaxFloat(TfLiteContext* context, const TfLiteTensor* input,
   }
 }
 
-TfLiteStatus SoftmaxQuantizedUint8(TfLiteContext* context,
-                                   const TfLiteTensor* input,
-                                   TfLiteTensor* output,
-                                   TfLiteSoftmaxParams* params, OpData* data) {
-  switch (NumDimensions(input)) {
-    case 1:
-    case 2:
-    case 3:
-    case 4:
-      SoftmaxParams op_params;
-      op_params.input_multiplier = data->input_multiplier;
-      op_params.input_left_shift = data->input_left_shift;
-      op_params.diff_min = data->diff_min;
-      optimized_ops::Softmax(
-          op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-          GetTensorShape(output), GetTensorData<uint8_t>(output));
-      return kTfLiteOk;
-    default:
-      context->ReportError(
-          context,
-          "Only 1D, 2D, 3D and 4D tensors supported currently, got %dD.",
-          NumDimensions(input));
-      return kTfLiteError;
-  }
-}
-
-TfLiteStatus SoftmaxQuantizedInt8(TfLiteContext* context,
-                                  const TfLiteTensor* input,
-                                  TfLiteTensor* output,
-                                  TfLiteSoftmaxParams* params, OpData* data) {
-  switch (NumDimensions(input)) {
-    case 1:
-    case 2:
-    case 3:
-    case 4:
-      SoftmaxParams op_params;
-      op_params.input_multiplier = data->input_multiplier;
-      op_params.input_left_shift = data->input_left_shift;
-      op_params.diff_min = data->diff_min;
-      optimized_integer_ops::Softmax(
-          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(output), GetTensorData<int8_t>(output));
-      return kTfLiteOk;
-    default:
-      context->ReportError(
-          context,
-          "Only 1D, 2D, 3D and 4D tensors supported currently, got %dD.",
-          NumDimensions(input));
-      return kTfLiteError;
+template <typename T>
+TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
+                              TfLiteTensor* output, SoftmaxOpData* data) {
+  if (NumDimensions(input) >= 1 && NumDimensions(input) <= 4) {
+    optimized_ops::Softmax(data->params, GetTensorShape(input),
+                           GetTensorData<T>(input), GetTensorShape(output),
+                           GetTensorData<T>(output));
+    return kTfLiteOk;
+  } else {
+    context->ReportError(
+        context, "Only 1D, 2D, 3D and 4D tensors supported currently, got %dD.",
+        NumDimensions(input));
+    return kTfLiteError;
   }
 }
 
 TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteSoftmaxParams*>(node->builtin_data);
-  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  SoftmaxOpData* data = reinterpret_cast<SoftmaxOpData*>(node->user_data);
 
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
@@ -815,10 +787,10 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return SoftmaxFloat(context, input, output, params);
     }
     case kTfLiteUInt8: {
-      return SoftmaxQuantizedUint8(context, input, output, params, data);
+      return SoftmaxQuantized<uint8_t>(context, input, output, data);
     }
     case kTfLiteInt8: {
-      return SoftmaxQuantizedInt8(context, input, output, params, data);
+      return SoftmaxQuantized<int8_t>(context, input, output, data);
     }
 
     default:
@@ -1055,9 +1027,9 @@ TfLiteRegistration* Register_LOGISTIC() {
 }
 
 TfLiteRegistration* Register_SOFTMAX() {
-  static TfLiteRegistration r = {activations::Init, activations::Free,
-                                 activations::SoftmaxPrepare,
-                                 activations::SoftmaxEval};
+  static TfLiteRegistration r = {
+      activations::SoftmaxInit, activations::SoftmaxFree,
+      activations::SoftmaxPrepare, activations::SoftmaxEval};
   return &r;
 }
 

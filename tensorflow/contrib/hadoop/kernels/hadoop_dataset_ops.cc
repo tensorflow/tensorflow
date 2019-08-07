@@ -233,6 +233,8 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
       return "SequenceFileDatasetOp::Dataset";
     }
 
+    bool IsStateful() const override { return false; }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

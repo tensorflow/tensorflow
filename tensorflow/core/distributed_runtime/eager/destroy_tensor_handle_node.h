@@ -34,18 +34,17 @@ class DestroyTensorHandleNode : public tensorflow::EagerNode {
         eager_client_(eager_client) {}
 
   Status Run() override {
-    EnqueueResponse response;
-    Status status;
-    // TODO(b/136025146): Remove wait for notification
-    Notification n;
-    eager_client_->EnqueueAsync(request_.get(), &response,
-                                [&n, &status](const tensorflow::Status& s) {
-                                  status.Update(s);
-                                  n.Notify();
-                                });
-    n.WaitForNotification();
-
-    return status;
+    EnqueueResponse* response = new EnqueueResponse;
+    eager_client_->StreamingEnqueueAsync(
+        request_.get(), response, [response](const tensorflow::Status& s) {
+          if (!s.ok()) {
+            LOG(WARNING) << "Ignoring an error encountered when deleting "
+                            "remote tensors handles: "
+                         << s.ToString();
+          }
+          delete response;
+        });
+    return Status::OK();
   }
 
   void Abort(Status status) override {}

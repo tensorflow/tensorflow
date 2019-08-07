@@ -55,15 +55,16 @@ inline ArrayRef<NamedAttribute> getArgAttrs(Operation *op, unsigned index) {
 
 /// Callback type for `parseFunctionLikeOp`, the callback should produce the
 /// type that will be associated with a function-like operation from lists of
-/// function arguments and results.
-using FuncTypeBuilder =
-    llvm::function_ref<Type(Builder &, ArrayRef<Type>, ArrayRef<Type>)>;
+/// function arguments and results; in case of error, it may populate the last
+/// argument with a message.
+using FuncTypeBuilder = llvm::function_ref<Type(Builder &, ArrayRef<Type>,
+                                                ArrayRef<Type>, std::string &)>;
 
 /// Parser implementation for function-like operations.  Uses
 /// `funcTypeBuilder` to construct the custom function type given lists of
 /// input and output types.  If the builder returns a null type, `result` will
-/// not contain the `type` attribute.  The caller can then either add the type
-/// or use op's verifier to report errors.
+/// not contain the `type` attribute.  The caller can then add a type, report
+/// the error or delegate the reporting to the op's verifier.
 ParseResult parseFunctionLikeOp(OpAsmParser *parser, OperationState *result,
                                 FuncTypeBuilder funcTypeBuilder);
 

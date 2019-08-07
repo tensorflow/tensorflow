@@ -16,9 +16,13 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/pack.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
 
+#if RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_INTRINSICS)
+#include <immintrin.h>
+#endif
+
 namespace ruy {
 
-#if RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#if RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_INTRINSICS)
 
 // The first int8_t template parameter is arbitrary: this routine is common to
 // all 8-bit source matrix types.
@@ -526,6 +530,6 @@ void PackFloatAvx512(const float* src_ptr, const float* zerobuf, int src_stride,
   }
 }
 
-#endif  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+#endif  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_INTRINSICS)
 
 }  // namespace ruy

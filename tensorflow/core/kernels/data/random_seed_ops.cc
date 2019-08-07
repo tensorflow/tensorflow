@@ -33,9 +33,7 @@ const char kSeed2[] = "seed2";
 
 }  // namespace
 
-string RandomSeedGenerator::DebugString() const {
-  return "RandomSeedGenerator";
-}
+string RandomSeedGenerator::DebugString() const { return kRandomSeedGenerator; }
 
 void RandomSeedGenerator::GenerateRandomSeeds(int64* seed1, int64* seed2) {
   mutex_lock l(mu_);

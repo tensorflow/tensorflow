@@ -123,6 +123,9 @@ class Policy(object):
 
   Similarly to "infer", there is a deprecated "infer_with_float32_vars" policy
   that infers the compute dtype, but not the variable dtype.
+
+  In TensorFlow 1, only the "infer" and "infer_with_float32_vars" policies are
+  available.
   """
   # TODO(reedwm): Replace link in above docstring with a version that is more
   # TensorFlow-specific, and that also mentions bfloat16.
@@ -310,8 +313,9 @@ def global_policy():
 
   The global policy is the default policy used for layers, if no policy is
   passed to the layer constructor. If no policy has been set with
-  `keras.mixed_precision.experimental.set_policy`, this will return the "infer"
-  policy.
+  `keras.mixed_precision.experimental.set_policy`, this will return a policy
+  constructed from `tf.keras.backend.floatx()` in TensorFlow 2, or an "infer"
+  policy in TensorFlow 1.
 
   See `keras.mixed_precision.experimental.Policy` for more information.
 
@@ -355,7 +359,8 @@ def set_policy(policy):
 
   The global policy is the default policy used for layers, if no policy is
   passed to the layer constructor. If no global policy is set, layers will
-  instead default to the "infer" policy.
+  instead default to a Policy constructed from `tf.keras.backend.floatx()` in
+  TensorFlow 2. In TensorFlow 1, layers default to an "infer" policy.
 
   See `keras.mixed_precision.experimental.Policy` for more information.
 
@@ -369,9 +374,8 @@ def set_policy(policy):
   if (policy and not base_layer_utils.v2_dtype_behavior_enabled() and
       policy.compute_dtype):
     raise ValueError(
-        'When a global Policy is set to a non-infer policy, the V2 layer dtype '
-        'behavior must be enabled. V2 layer dtype behavior will soon be turned '
-        'on by default, so please wait.')
+        'The global policy can only be set to a non-infer policy in TensorFlow '
+        '2')
   _global_policy = policy
   mixed_precision_global_state.using_default_mixed_precision_policy = (
       _global_policy is None)

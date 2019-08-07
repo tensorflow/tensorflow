@@ -365,8 +365,7 @@ struct SimplifyDeadAlloc : public OpRewritePattern<AllocOp> {
 
 void AllocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  RewriteListBuilder<SimplifyAllocConst, SimplifyDeadAlloc>::build(results,
-                                                                   context);
+  results.insert<SimplifyAllocConst, SimplifyDeadAlloc>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -544,8 +543,7 @@ static LogicalResult verify(CallIndirectOp op) {
 
 void CallIndirectOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  results.push_back(
-      llvm::make_unique<SimplifyIndirectCallWithKnownCallee>(context));
+  results.insert<SimplifyIndirectCallWithKnownCallee>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1015,7 +1013,7 @@ static void print(OpAsmPrinter *p, CondBranchOp op) {
 
 void CondBranchOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  results.push_back(llvm::make_unique<SimplifyConstCondBranchPred>(context));
+  results.insert<SimplifyConstCondBranchPred>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1231,9 +1229,8 @@ static LogicalResult verify(DeallocOp op) {
 void DeallocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   /// dealloc(memrefcast) -> dealloc
-  results.push_back(
-      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
-  results.push_back(llvm::make_unique<SimplifyDeadDealloc>(context));
+  results.insert<MemRefCastFolder>(getOperationName(), context);
+  results.insert<SimplifyDeadDealloc>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1497,8 +1494,7 @@ LogicalResult DmaStartOp::verify() {
 void DmaStartOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                              MLIRContext *context) {
   /// dma_start(memrefcast) -> dma_start
-  results.push_back(
-      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
+  results.insert<MemRefCastFolder>(getOperationName(), context);
 }
 
 // ---------------------------------------------------------------------------
@@ -1561,8 +1557,7 @@ ParseResult DmaWaitOp::parse(OpAsmParser *parser, OperationState *result) {
 void DmaWaitOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   /// dma_wait(memrefcast) -> dma_wait
-  results.push_back(
-      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
+  results.insert<MemRefCastFolder>(getOperationName(), context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1695,8 +1690,7 @@ static LogicalResult verify(LoadOp op) {
 void LoadOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
   /// load(memrefcast) -> load
-  results.push_back(
-      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
+  results.insert<MemRefCastFolder>(getOperationName(), context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2007,8 +2001,7 @@ static LogicalResult verify(StoreOp op) {
 void StoreOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   /// store(memrefcast) -> store
-  results.push_back(
-      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
+  results.insert<MemRefCastFolder>(getOperationName(), context);
 }
 
 //===----------------------------------------------------------------------===//

@@ -32,7 +32,7 @@ class RebatchDatasetSerializationTest(
       return distribute._RebatchDataset(
           dataset_ops.Dataset.range(num_elements).batch(
               4 * batch_size, drop_remainder=True),
-          num_workers=4)
+          num_replicas=4)
 
     self.run_core_tests(lambda: build_dataset(200, 10), 20)
 

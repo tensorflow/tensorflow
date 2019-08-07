@@ -81,6 +81,8 @@ def : Pat<(TF_MatMulOp $a, $b, ConstBoolAttrTrue, $bt),
              /*delta=*/(ConstantOp TFi32<-1>)), (ConstantOp TFi32<1>))), $b,
            ConstBoolAttrFalse, $bt)>;
 
+def : Pat<(TF_StopGradientOp $arg), (TF_IdentityOp $arg)>;
+
 //===----------------------------------------------------------------------===//
 // Op removal patterns.
 //===----------------------------------------------------------------------===//
@@ -104,3 +106,22 @@ def : Pat<(TF_ReshapeOp
               $shape),
           (TF_FakeQuantWithMinMaxVarsOp (TF_ReshapeOp $input, $shape),
               $min, $max, $num_bits, $narrow_range)>;
+
+// Casts result type of $1 to a quantized type by using the quantization
+// parameters from the type in $0.
+def UpdateShape : NativeCodeCall<
+  "CastQuantizedTypeAttrFromExpressedType($_builder, $0, $1->getResult(0)->getType())">;
+
+// When the op is passing-through, the output types of the quantized ops need
+// to be updated as well. Since the quantize op manages its own type by the
+// "qtype" attribute, we should update the type shape in this attribute.
+def : Pat<(TF_TransposeOp:$op
+              (TFL_DequantizeOp (TFL_QuantizeOp $input, $qtype)), $perm),
+          (TFL_DequantizeOp (TFL_QuantizeOp (TF_TransposeOp $input, $perm),
+                                            (UpdateShape $qtype, $op)))>;
+
+def : Pat<(TF_ReshapeOp:$op
+              (TFL_DequantizeOp (TFL_QuantizeOp $input, $qtype)), $shape),
+          (TFL_DequantizeOp
+              (TFL_QuantizeOp (TF_ReshapeOp $input, $shape),
+              (UpdateShape $qtype, $op)))>;

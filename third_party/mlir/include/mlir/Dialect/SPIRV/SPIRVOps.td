@@ -478,6 +478,68 @@ def SPV_IAddOp : SPV_ArithmeticOp<"IAdd", SPV_Integer, [Commutative]> {
 
 // -----
 
+def SPV_IEqualOp : SPV_LogicalOp<"IEqual", SPV_Integer, [Commutative]> {
+  let summary = "Integer comparison for equality.";
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    integer type.  They must have the same component width, and they must
+    have the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                 `vector<` integer-literal `x` integer-type `>`
+    iequal-op ::= ssa-id `=` `spv.IEqual` ssa-use, ssa-use
+                             `:` integer-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %4 = spv.IEqual %0, %1 : i32
+    %5 = spv.IEqual %2, %3 : vector<4xi32>
+
+    ```
+  }];
+}
+
+// -----
+
+def SPV_INotEqualOp : SPV_LogicalOp<"INotEqual", SPV_Integer, [Commutative]> {
+  let summary = "Integer comparison for inequality.";
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    integer type.  They must have the same component width, and they must
+    have the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                 `vector<` integer-literal `x` integer-type `>`
+    inot-equal-op ::= ssa-id `=` `spv.INotEqual` ssa-use, ssa-use
+                                 `:` integer-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %4 = spv.INotEqual %0, %1 : i32
+    %5 = spv.INotEqual %2, %3 : vector<4xi32>
+
+    ```
+  }];
+}
+
+// -----
+
 def SPV_IMulOp : SPV_ArithmeticOp<"IMul", SPV_Integer, [Commutative]> {
   let summary = "Integer multiplication of Operand 1 and Operand 2.";
 
@@ -656,6 +718,140 @@ def SPV_SDivOp : SPV_ArithmeticOp<"SDiv", SPV_Integer> {
 
 // -----
 
+def SPV_SGreaterThanOp : SPV_LogicalOp<"SGreaterThan", SPV_Integer, []> {
+  let summary = [{
+    Signed-integer comparison if Operand 1 is greater than  Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    integer type.  They must have the same component width, and they must
+    have the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                 `vector<` integer-literal `x` integer-type `>`
+    sgreater-than-op ::= ssa-id `=` `spv.SGreaterThan` ssa-use, ssa-use
+                                    `:` integer-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %4 = spv.SGreaterThan %0, %1 : i32
+    %5 = spv.SGreaterThan %2, %3 : vector<4xi32>
+
+    ```
+  }];
+}
+
+// -----
+
+def SPV_SGreaterThanEqualOp : SPV_LogicalOp<"SGreaterThanEqual", SPV_Integer, []> {
+  let summary = [{
+    Signed-integer comparison if Operand 1 is greater than or equal to
+    Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    integer type.  They must have the same component width, and they must
+    have the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                 `vector<` integer-literal `x` integer-type `>`
+    sgreater-than-equal-op ::= ssa-id `=` `spv.SGreaterThanEqual` ssa-use, ssa-use
+                                          `:` integer-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %4 = spv.SGreaterThanEqual %0, %1 : i32
+    %5 = spv.SGreaterThanEqual %2, %3 : vector<4xi32>
+
+    ```
+  }];
+}
+
+// -----
+
+def SPV_SLessThanOp : SPV_LogicalOp<"SLessThan", SPV_Integer, []> {
+  let summary = [{
+    Signed-integer comparison if Operand 1 is less than Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    integer type.  They must have the same component width, and they must
+    have the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                 `vector<` integer-literal `x` integer-type `>`
+    sless-than-op ::= ssa-id `=` `spv.SLessThan` ssa-use, ssa-use
+                                 `:` integer-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %4 = spv.SLessThan %0, %1 : i32
+    %5 = spv.SLessThan %2, %3 : vector<4xi32>
+
+    ```
+  }];
+}
+
+// -----
+
+def SPV_SLessThanEqualOp : SPV_LogicalOp<"SLessThanEqual", SPV_Integer, []> {
+  let summary = [{
+    Signed-integer comparison if Operand 1 is less than or equal to Operand
+    2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    integer type.  They must have the same component width, and they must
+    have the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                 `vector<` integer-literal `x` integer-type `>`
+    sless-than-equal-op ::= ssa-id `=` `spv.SLessThanEqual` ssa-use, ssa-use
+                                       `:` integer-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %4 = spv.SLessThanEqual %0, %1 : i32
+    %5 = spv.SLessThanEqual %2, %3 : vector<4xi32>
+
+    ```
+  }];
+}
+
+// -----
+
 def SPV_SModOp : SPV_ArithmeticOp<"SMod", SPV_Integer> {
   let summary = [{
     Signed remainder operation for the remainder whose sign matches the sign
@@ -797,6 +993,141 @@ def SPV_UDivOp : SPV_ArithmeticOp<"UDiv", SPV_Integer> {
     ```
     %4 = spv.UDiv %0, %1 : i32
     %5 = spv.UDiv %2, %3 : vector<4xi32>
+
+    ```
+  }];
+}
+
+// -----
+
+def SPV_UGreaterThanOp : SPV_LogicalOp<"UGreaterThan", SPV_Integer, []> {
+  let summary = [{
+    Unsigned-integer comparison if Operand 1 is greater than  Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    integer type.  They must have the same component width, and they must
+    have the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                 `vector<` integer-literal `x` integer-type `>`
+    ugreater-than-op ::= ssa-id `=` `spv.UGreaterThan` ssa-use, ssa-use
+                                    `:` integer-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %4 = spv.UGreaterhan %0, %1 : i32
+    %5 = spv.UGreaterThan %2, %3 : vector<4xi32>
+
+    ```
+  }];
+}
+
+// -----
+
+def SPV_UGreaterThanEqualOp
+    : SPV_LogicalOp<"UGreaterThanEqual", SPV_Integer, []> {
+  let summary = [{
+    Unsigned-integer comparison if Operand 1 is greater than or equal to
+    Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    integer type.  They must have the same component width, and they must
+    have the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                 `vector<` integer-literal `x` integer-type `>`
+    ugreater-than-equal-op ::= ssa-id `=` `spv.UGreaterThanEqual` ssa-use, ssa-use
+                                          `:` integer-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %4 = spv.UGreaterThanEqual %0, %1 : i32
+    %5 = spv.UGreaterThanEqual %2, %3 : vector<4xi32>
+
+    ```
+  }];
+}
+
+// -----
+
+def SPV_ULessThanOp : SPV_LogicalOp<"ULessThan", SPV_Integer, []> {
+  let summary = [{
+    Unsigned-integer comparison if Operand 1 is less than Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    integer type.  They must have the same component width, and they must
+    have the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                 `vector<` integer-literal `x` integer-type `>`
+    uless-than-op ::= ssa-id `=` `spv.ULessThan` ssa-use, ssa-use
+                                 `:` integer-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %4 = spv.ULessThan %0, %1 : i32
+    %5 = spv.ULessThan %2, %3 : vector<4xi32>
+
+    ```
+  }];
+}
+
+// -----
+
+def SPV_ULessThanEqualOp : SPV_LogicalOp<"ULessThanEqual", SPV_Integer, []> {
+  let summary = [{
+    Unsigned-integer comparison if Operand 1 is less than or equal to
+    Operand 2.
+  }];
+
+  let description = [{
+    Result Type must be a scalar or vector of Boolean type.
+
+     The type of Operand 1 and Operand 2  must be a scalar or vector of
+    integer type.  They must have the same component width, and they must
+    have the same number of components as Result Type.
+
+     Results are computed per component.
+
+    ### Custom assembly form
+    ``` {.ebnf}
+    integer-scalar-vector-type ::= integer-type |
+                                 `vector<` integer-literal `x` integer-type `>`
+    uless-than-equal-op ::= ssa-id `=` `spv.ULessThanEqual` ssa-use, ssa-use
+                                       `:` integer-scalar-vector-type
+    ```
+    For example:
+
+    ```
+    %4 = spv.ULessThanEqual %0, %1 : i32
+    %5 = spv.ULessThanEqual %2, %3 : vector<4xi32>
 
     ```
   }];

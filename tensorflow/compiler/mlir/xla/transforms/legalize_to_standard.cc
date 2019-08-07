@@ -36,7 +36,7 @@ namespace {
 
 struct CompareIConvert : public RewritePattern {
   explicit CompareIConvert(MLIRContext *context)
-      : RewritePattern("xla.compare", 1, context) {}
+      : RewritePattern("xla_hlo.compare", 1, context) {}
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
@@ -75,7 +75,7 @@ struct CompareIConvert : public RewritePattern {
 
 struct CompareFConvert : public RewritePattern {
   explicit CompareFConvert(MLIRContext *context)
-      : RewritePattern("xla.compare", 1, context) {}
+      : RewritePattern("xla_hlo.compare", 1, context) {}
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
@@ -133,10 +133,8 @@ void LegalizeToStandard::runOnFunction() {
   auto func = getFunction();
 
   mlir::XLA::populateWithGenerated(func.getContext(), &patterns);
-  patterns.push_back(
-      llvm::make_unique<mlir::XLA::CompareFConvert>(&getContext()));
-  patterns.push_back(
-      llvm::make_unique<mlir::XLA::CompareIConvert>(&getContext()));
+  patterns.insert<mlir::XLA::CompareFConvert, mlir::XLA::CompareIConvert>(
+      &getContext());
   applyPatternsGreedily(func, std::move(patterns));
 }
 

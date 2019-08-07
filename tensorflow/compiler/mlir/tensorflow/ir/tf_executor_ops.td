@@ -55,6 +55,9 @@ def TfeControlType : Type<CPred<"$_self.isa<ControlType>()">, "control">;
 // Token type.
 def TfeTokenType : Type<CPred<"$_self.isa<TokenType>()">, "token">;
 
+// TODO(hinsu): Define and use TensorType instead of AnyType for data operands
+// and results. For example, MergeOp output type.
+
 //===----------------------------------------------------------------------===//
 // TensorFlow Executor Type Constraint
 //===----------------------------------------------------------------------===//
@@ -118,6 +121,8 @@ def TfExecutor_GraphOp : TfExecutor_Op<"graph",
   );
 
   let regions = (region SizedRegion<1>:$body);
+
+  let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
@@ -340,7 +345,7 @@ def TfExecutor_MergeOp : TfExecutor_Op<"Merge",
   );
 
   let results = (outs
-    AnyType:$output,
+    AnyTensor:$output,
     TensorOf<[I32]>:$valueIndex,
     TfeControlType:$control
   );

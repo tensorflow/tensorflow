@@ -296,8 +296,8 @@ AffineMap mlir::inversePermutation(AffineMap map) {
   for (auto expr : exprs)
     if (expr)
       seenExprs.push_back(expr);
-  assert(seenExprs.size() == map.getNumInputs() &&
-         "map does not include a full rank permutation");
+  if (seenExprs.size() != map.getNumInputs())
+    return AffineMap();
   return AffineMap::get(map.getNumResults(), 0, seenExprs);
 }
 

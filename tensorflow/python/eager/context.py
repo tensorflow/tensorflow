@@ -68,6 +68,10 @@ MIRRORING_ALL = pywrap_tensorflow.TFE_MIRRORING_ALL
 _tf2_gauge = monitoring.BoolGauge("/tensorflow/api/tf2_enable",
                                   "Whether tf2.enable() is called.")
 
+_python_eager_context_create_counter = monitoring.Counter(
+    "/tensorflow/api/python/eager_context_create_counter",
+    "Counter for number of eager contexts created in Python.")
+
 _tf2_gauge.get_cell().set(tf2.enabled())
 
 
@@ -156,7 +160,6 @@ class _TensorCaches(threading.local):
 
   def __init__(self):
     super(_TensorCaches, self).__init__()
-    self.scalar_cache = {}
     self._ones_rank_cache = None
     self._zeros_cache = None
 
@@ -415,6 +418,8 @@ class Context(object):
     self._log_device_placement = None
     self._optimizer_experimental_options = {}
 
+    _python_eager_context_create_counter.get_cell().increase_by(1)
+
   # pylint: enable=redefined-outer-name
 
   def _set_global_seed(self, seed):
@@ -502,9 +507,9 @@ class Context(object):
       self._initialize_logical_devices()
 
   def _clear_caches(self):
-    self.scalar_cache().clear()
     self.ones_rank_cache().flush()
     self.zeros_cache().flush()
+    pywrap_tensorflow.TFE_ClearScalarCache()
 
   def set_server_def(self, server_def, keep_alive_secs=600):
     """Allow setting a server_def on the context.
@@ -534,11 +539,10 @@ class Context(object):
       server_def_str = server_def.SerializeToString()
       pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle,
                                                 keep_alive_secs, server_def_str)
-
-      # Clear all the caches in case there are remote tensors in them.
-      self._clear_caches()
-
       self._initialize_logical_devices()
+
+    # Clear all the caches in case there are remote tensors in them.
+    self._clear_caches()
 
   def enable_collective_ops(self, server_def):
     """Enable distributed collective ops with an appropriate server_def.
@@ -650,10 +654,6 @@ class Context(object):
   def executing_eagerly(self):
     """Returns True if current thread has eager executing enabled."""
     return self._thread_local_data.is_eager
-
-  def scalar_cache(self):
-    """Per-device cache for scalars."""
-    return _tensor_caches_map[self._id].scalar_cache
 
   def ones_rank_cache(self):
     """Per-device cache for scalars."""

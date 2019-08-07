@@ -40,7 +40,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -336,11 +335,6 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
           if self._num_workers > 1:
             if self._is_chief:
-              # Unwrap `initial_value` if it is a `CheckpointInitialValue`.
-              # TODO(b/138130844): Revert the following check once
-              # `CheckpointInitialValue` class is removed.
-              if isinstance(initial_value, trackable.CheckpointInitialValue):
-                initial_value = initial_value.wrapped_value
               bcast_send = collective_ops.broadcast_send(
                   initial_value, initial_value.shape, initial_value.dtype,
                   group_size, group_key, collective_instance_key)

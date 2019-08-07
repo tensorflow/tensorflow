@@ -892,7 +892,7 @@ class _SingleWorkerDatasetIterator(object):
     Returns:
       A list of any initializer ops that should be run.
     """
-    if context.executing_eagerly():
+    if ops.executing_eagerly_outside_functions():
       self._iterator._eager_reset()  # pylint: disable=protected-access
       return []
     else:

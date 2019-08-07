@@ -141,6 +141,7 @@ py_test(
     srcs = ["lite_mlir_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
         "no_windows",
     ],
     deps = [

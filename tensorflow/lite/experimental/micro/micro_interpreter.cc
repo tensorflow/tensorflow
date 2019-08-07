@@ -136,8 +136,10 @@ TfLiteStatus MicroInterpreter::Invoke() {
 
     if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
       error_reporter_->Report(
-          "Found builtin operator %s with custom options.\n",
+          "Unsupported behavior: found builtin operator %s with custom "
+          "options.\n",
           EnumNameBuiltinOperator(op_type));
+      return kTfLiteError;
     }
     StackDataAllocator stack_data_allocator;
     const char* custom_data = nullptr;

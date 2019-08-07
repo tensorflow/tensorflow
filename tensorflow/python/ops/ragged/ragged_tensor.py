@@ -789,9 +789,12 @@ class RaggedTensor(composite_tensor.CompositeTensor):
                                           name=name)
     else:
       values = ops.convert_to_tensor(values, name="values")
-      partition = ops.convert_to_tensor(
-          partition, preferred_dtype=dtypes.int64,
-          name=name)
+      if isinstance(partition, np.ndarray) and partition.dtype == np.int32:
+        partition = ops.convert_to_tensor(partition, name=name)
+      else:
+        partition = ops.convert_to_tensor(
+            partition, preferred_dtype=dtypes.int64,
+            name=name)
       if partition.dtype not in (dtypes.int32, dtypes.int64):
         raise ValueError("%s must have dtype int32 or int64" % name)
 

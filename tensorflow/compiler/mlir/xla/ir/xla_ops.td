@@ -25,7 +25,7 @@ include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
 def XLA_Dialect : Dialect {
-  let name = "xla";
+  let name = "xla_hlo";
   let cppNamespace = "XLA";
 }
 
@@ -433,8 +433,10 @@ def XLA_CompareOp: XLA_Op<"compare",
 // XLA Slice definitions.
 //===----------------------------------------------------------------------===//
 
-def XLA_SliceOp: XLA_UnaryElementwiseOp<"slice",
-      [NoSideEffect, SameOperandsAndResultElementType]> {
+def XLA_SliceOp: XLA_UnaryElementwiseOp<
+      "slice",
+      [NoSideEffect, SameOperandsAndResultElementType,
+       AllTypesMatch<["start_indices", "limit_indices"]>]> {
   let arguments = (
     ins XLA_Tensor:$operand,
     ElementsAttr:$start_indices,
@@ -841,9 +843,9 @@ def XLA_GatherOp: XLA_Op<"gather", [NoSideEffect]> {
       ins XLA_Tensor:$operand,
           XLA_IntTensor:$start_indices,
           I64Attr: $index_vector_dim,
-          ElementsAttr: $offsets_dim,
+          ElementsAttr: $offset_dims,
           ElementsAttr: $slice_sizes,
-          ElementsAttr: $collapsed_slice_sizes,
+          ElementsAttr: $collapsed_slice_dims,
           ElementsAttr: $start_index_map
   );
 

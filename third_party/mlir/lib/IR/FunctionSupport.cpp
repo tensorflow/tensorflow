@@ -110,11 +110,17 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser *parser, OperationState *result,
   result->attributes.back().second = builder.getStringAttr(nameAttr.getValue());
 
   // Parse the function signature.
+  auto signatureLocation = parser->getCurrentLocation();
   if (parseFunctionSignature(parser, entryArgs, argTypes, argAttrs, results))
     return failure();
 
-  if (auto type = funcTypeBuilder(builder, argTypes, results))
+  std::string errorMessage;
+  if (auto type = funcTypeBuilder(builder, argTypes, results, errorMessage))
     result->addAttribute(getTypeAttrName(), builder.getTypeAttr(type));
+  else
+    return parser->emitError(signatureLocation)
+           << "failed to construct function type"
+           << (errorMessage.empty() ? "" : ": ") << errorMessage;
 
   // If function attributes are present, parse them.
   if (succeeded(parser->parseOptionalKeyword("attributes")))

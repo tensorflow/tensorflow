@@ -68,47 +68,44 @@ struct TestCase {
 
 // Test case 1: test a dataset that represents a single tuple of plain tensors.
 TestCase PlainTensorsTestCase() {
-  return {
-      /*components*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
-       DatasetOpsTestBase::CreateTensor<double>(TensorShape({}), {37.0}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({1, 2}),
-                                                {"a", "b"})},
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
-       DatasetOpsTestBase::CreateTensor<double>(TensorShape({}), {37.0}),
-       DatasetOpsTestBase::CreateTensor<string>(TensorShape({1, 2}),
-                                                {"a", "b"})},
-      /*expected_output_dtypes*/
-      {DT_INT64, DT_INT64, DT_DOUBLE, DT_STRING},
-      /*expected_output_shapes*/
-      {PartialTensorShape({}), PartialTensorShape({1, 3}),
-       PartialTensorShape({}), PartialTensorShape({1, 2})},
-      /*expected_cardinality*/ 1,
-      /*breakpoints*/ {0, 1, 2}};
+  return {/*components*/
+          {CreateTensor<int64>(TensorShape({}), {1}),
+           CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
+           CreateTensor<double>(TensorShape({}), {37.0}),
+           CreateTensor<string>(TensorShape({1, 2}), {"a", "b"})},
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape({}), {1}),
+           CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3}),
+           CreateTensor<double>(TensorShape({}), {37.0}),
+           CreateTensor<string>(TensorShape({1, 2}), {"a", "b"})},
+          /*expected_output_dtypes*/
+          {DT_INT64, DT_INT64, DT_DOUBLE, DT_STRING},
+          /*expected_output_shapes*/
+          {PartialTensorShape({}), PartialTensorShape({1, 3}),
+           PartialTensorShape({}), PartialTensorShape({1, 2})},
+          /*expected_cardinality*/ 1,
+          /*breakpoints*/ {0, 1, 2}};
 }
 
 // Test case 2: test a dataset that represents a tuple of nested tensors.
 TestCase NestedTensorsTestCase() {
   return {
       /*components*/
-      {DatasetOpsTestBase::CreateTensor<Variant>(
-           TensorShape({}), {DatasetOpsTestBase::CreateTensor<double>(
-                                TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
-       DatasetOpsTestBase::CreateTensor<Variant>(
-           TensorShape({}), {DatasetOpsTestBase::CreateTensor<string>(
-                                TensorShape({1, 2}), {"a", "b"})}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})},
+      {CreateTensor<Variant>(
+           TensorShape({}),
+           {CreateTensor<double>(TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
+       CreateTensor<Variant>(
+           TensorShape({}),
+           {CreateTensor<string>(TensorShape({1, 2}), {"a", "b"})}),
+       CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})},
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<Variant>(
-           TensorShape({}), {DatasetOpsTestBase::CreateTensor<double>(
-                                TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
-       DatasetOpsTestBase::CreateTensor<Variant>(
-           TensorShape({}), {DatasetOpsTestBase::CreateTensor<string>(
-                                TensorShape({1, 2}), {"a", "b"})}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})},
+      {CreateTensor<Variant>(
+           TensorShape({}),
+           {CreateTensor<double>(TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}),
+       CreateTensor<Variant>(
+           TensorShape({}),
+           {CreateTensor<string>(TensorShape({1, 2}), {"a", "b"})}),
+       CreateTensor<int64>(TensorShape({1, 3}), {1, 2, 3})},
       /*expected_output_dtypes*/
       {DT_VARIANT, DT_VARIANT, DT_INT64},
       /*expected_output_shapes*/

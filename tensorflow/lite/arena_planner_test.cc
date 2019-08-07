@@ -211,6 +211,18 @@ TEST_F(ArenaPlannerTest, EmptyGraph) {
   Execute(0, 10);
 }
 
+TEST_F(ArenaPlannerTest, DeallocationOfInputTensor) {
+  // This is a negative TC, which will try to make sure that no allocation for
+  // input tensors is done, when making call with negative node_index, since
+  // previous check was doing comparison of node_index which was int and
+  // unsigned int, implicit conversion was passing this case, as the negative
+  // number was converted to unsigned it making it invalid.The new check
+  // takes care of this problem and removes the warning as well.
+  TestGraph graph({-1}, {}, {1});
+  SetGraph(&graph);
+  Execute(0, 10);
+}
+
 TEST_F(ArenaPlannerTest, GraphWithNoOps) {
   TestGraph graph({0, 10}, {}, {5, 11});
   SetGraph(&graph);
