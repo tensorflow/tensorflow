@@ -32,6 +32,17 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "remove_successive_transpose_test",
+    srcs = ["remove_successive_transpose_test.cc"],
+    deps = [
+        "//tensorflow/lite/toco:graph_transformations",
+        "//tensorflow/lite/toco:model",
+        "//tensorflow/lite/toco:tooling_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
     name = "resolve_constant_concatenation_test",
     srcs = ["resolve_constant_concatenation_test.cc"],
     deps = [
