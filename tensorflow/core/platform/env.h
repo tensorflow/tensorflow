@@ -32,6 +32,11 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
+// Delete the definition of CopyFile as the linker gets confused.
+#ifdef PLATFORM_WINDOWS
+#undef CopyFile
+#endif
+
 namespace tensorflow {
 
 class Thread;

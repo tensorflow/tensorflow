@@ -41,7 +41,7 @@ def test_combinations_for_stateful_embedding_model():
       mode='graph',
       use_numpy=False,
       use_validation_data=False,
-      run_distributed=[True, False]))
+      experimental_run_tf_function=[True, False]))
 
 
 class DistributionStrategyStatefulLstmModelCorrectnessTest(
@@ -52,7 +52,7 @@ class DistributionStrategyStatefulLstmModelCorrectnessTest(
                 max_words=10,
                 initial_weights=None,
                 distribution=None,
-                run_distributed=None,
+                experimental_run_tf_function=None,
                 input_shapes=None):
     del input_shapes
     batch_size = keras_correctness_test_base._GLOBAL_BATCH_SIZE
@@ -86,20 +86,22 @@ class DistributionStrategyStatefulLstmModelCorrectnessTest(
   # doesn't work and enable for DistributionStrategy more generally.
   @combinations.generate(test_combinations_for_stateful_embedding_model())
   def disabled_test_stateful_lstm_model_correctness(
-      self, distribution, use_numpy, use_validation_data, run_distributed):
+      self, distribution, use_numpy, use_validation_data,
+      experimental_run_tf_function):
     self.run_correctness_test(
         distribution,
         use_numpy,
         use_validation_data,
         is_stateful_model=True,
-        run_distributed=run_distributed)
+        experimental_run_tf_function=experimental_run_tf_function)
 
   @combinations.generate(
       combinations.times(
           keras_correctness_test_base.test_combinations_with_tpu_strategies(),
-          combinations.combine(run_distributed=[True, False])))
+          combinations.combine(experimental_run_tf_function=[True, False])))
   def test_incorrectly_use_multiple_cores_for_stateful_lstm_model(
-      self, distribution, use_numpy, use_validation_data, run_distributed):
+      self, distribution, use_numpy, use_validation_data,
+      experimental_run_tf_function):
     with self.assertRaisesRegexp(
         ValueError,
         'Single core must be used for computation on stateful models. Consider '
@@ -109,7 +111,7 @@ class DistributionStrategyStatefulLstmModelCorrectnessTest(
           use_numpy,
           use_validation_data,
           is_stateful_model=True,
-          run_distributed=run_distributed)
+          experimental_run_tf_function=experimental_run_tf_function)
 
 
 if __name__ == '__main__':

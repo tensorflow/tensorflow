@@ -77,7 +77,7 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
       first, second = result.test_fn(constant_op.constant(1))
       self.assertIn('test_fn/', first.op.name)
       self.assertNotIn('inner_fn', first.op.name)
-      self.assertIn('test_fn/inner_fn/', second.op.name)
+      self.assertIn('test_fn/inner_fn/', second.op.inputs[0].name)
 
   @test_util.run_deprecated_v1
   def test_method(self):
@@ -98,9 +98,9 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
 
     with self.compiled(node, {}, (ops.name_scope,)) as result:
       first, second = result.TestClass().test_fn(constant_op.constant(1))
-      self.assertIn('TestClass/test_fn/', first.op.name)
+      self.assertIn('test_fn/', first.op.name)
       self.assertNotIn('inner_fn', first.op.name)
-      self.assertIn('TestClass/test_fn/inner_fn/', second.op.name)
+      self.assertIn('test_fn/inner_fn/', second.op.inputs[0].name)
 
 
 if __name__ == '__main__':

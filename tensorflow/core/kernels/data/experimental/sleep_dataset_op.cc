@@ -18,10 +18,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class SleepDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -68,6 +66,8 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override { return "SleepDatasetOp::Dataset"; }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    bool IsStateful() const override { return input_->IsStateful(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -152,5 +152,6 @@ REGISTER_KERNEL_BUILDER(Name("ExperimentalSleepDataset")
                         SleepDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

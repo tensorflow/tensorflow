@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
-load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
+load("//tensorflow/core/platform:default/distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -75,6 +75,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
@@ -220,6 +221,7 @@ py_test(
     srcs = ["distribute_coordinator_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["no_oss_py2"],  # b/138443278
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
@@ -882,6 +884,7 @@ distribute_py_test(
         ":single_loss_example",
         "//tensorflow/contrib/tpu:tpu_lib",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variable_scope",
@@ -1109,6 +1112,7 @@ distribute_py_test(
     size = "medium",
     srcs = ["saved_model_save_load_test.py"],
     main = "saved_model_save_load_test.py",
+    shard_count = 5,
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/saved_model",
@@ -1136,7 +1140,7 @@ distribute_py_test(
     size = "medium",
     srcs = ["keras_save_load_test.py"],
     main = "keras_save_load_test.py",
-    shard_count = 3,
+    shard_count = 5,
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",
@@ -1148,6 +1152,7 @@ distribute_py_test(
     size = "medium",
     srcs = ["saved_model_mixed_api_test.py"],
     main = "saved_model_mixed_api_test.py",
+    shard_count = 5,
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras:saving",

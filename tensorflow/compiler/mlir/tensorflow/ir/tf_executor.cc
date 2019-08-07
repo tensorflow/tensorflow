@@ -34,9 +34,28 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace tf_executor {
+namespace {
+
+// If the given tensor has elements of type variant, then returns a new type
+// after dropping subtypes info. Otherwise, returns the original type as is.
+Type DropVariantSubTypes(Type ty) {
+  ShapedType shaped_ty = ty.cast<ShapedType>();
+  Type element_ty = shaped_ty.getElementType();
+  if (!element_ty.isa<TF::VariantType>()) return ty;
+
+  Type variant_ty = TF::VariantType::get(ty.getContext());
+  if (shaped_ty.hasRank()) {
+    return RankedTensorType::get(shaped_ty.getShape(), variant_ty);
+  }
+
+  return UnrankedTensorType::get(variant_ty);
+}
+
+}  // namespace
 
 //===----------------------------------------------------------------------===//
 // TF Executor Dialect
@@ -77,21 +96,6 @@ void TensorFlowExecutorDialect::printType(Type type, raw_ostream &os) const {
 
 namespace {
 
-// Inserts `tf_executor.Terminator` at the end of the region's only block if it
-// does not have a terminator already. If the region is empty, insert a new
-// block first.
-template <typename Terminator>
-void EnsureExecutorTerminator(Region *region, Builder *builder, Location loc) {
-  if (region->empty()) region->push_back(new Block);
-
-  Block &block = region->back();
-  if (!block.empty() && block.back().isKnownTerminator()) return;
-
-  OperationState terminator_state(loc, Terminator::getOperationName());
-  Terminator::build(builder, &terminator_state, {});
-  block.push_back(Operation::create(terminator_state));
-}
-
 // Verifies that every control operands are at the end of the list.
 // Used by the constraint `ControlOperandsAfterAllData` in ODS.
 LogicalResult VerifyControlOperandsAfterAllData(Operation *op) {
@@ -123,6 +127,9 @@ LogicalResult Verify(GraphOp graph) {
   for (Operation &op : graph.GetBody()) {
     if (op.getDialect() != executorDialect)
       return op.emitOpError() << "unallowed inside a tf_executor.graph region";
+    if (isa<GraphOp>(op))
+      return op.emitOpError()
+             << "unallowed directly inside another tf_executor.graph";
   }
 
   Operation &fetch = graph.GetBody().back();
@@ -174,8 +181,7 @@ ParseResult ParseGraphOp(OpAsmParser *parser, OperationState *result) {
 
   // Ensure that the region is well formed: it contains at least a block with
   // a FetchOp terminator.
-  EnsureExecutorTerminator<FetchOp>(&body, &parser->getBuilder(),
-                                    result->location);
+  GraphOp::ensureTerminator(body, parser->getBuilder(), result->location);
 
   // Get the results type from the terminator type inside the graph.
   Operation &fetch = body.back().back();
@@ -281,8 +287,7 @@ ParseResult ParseIslandOp(OpAsmParser *parser, OperationState *result) {
   if (parser->parseOperandList(op_infos, OpAsmParser::Delimiter::OptionalParen))
     return failure();
   if (!op_infos.empty()) {
-    SmallVector<Type, 2> types;
-    types.push_back(control_type);
+    SmallVector<Type, 2> types(op_infos.size(), control_type);
     parser->resolveOperands(op_infos, types, loc, result->operands);
   }
 
@@ -301,8 +306,7 @@ ParseResult ParseIslandOp(OpAsmParser *parser, OperationState *result) {
 
   if (parser->parseRegion(body, llvm::None, llvm::None)) return failure();
 
-  EnsureExecutorTerminator<YieldOp>(&body, &parser->getBuilder(),
-                                    result->location);
+  IslandOp::ensureTerminator(body, parser->getBuilder(), result->location);
 
   // Get the results type for the island from the terminator operands.
   Operation &yield = body.back().back();
@@ -498,8 +502,17 @@ LogicalResult Verify(MergeOp merge) {
   Type broadcasted_type = merge.output()->getType();
   for (Type operand_type : merge.getOperandTypes()) {
     if (operand_type.isa<ControlType>()) break;
+
+    // TODO(hinsu): Update ControlOperandsAfterAllData trait to verify this
+    // constraint.
+    if (!operand_type.isa<TensorType>())
+      return merge.emitOpError("expects data operands to have tensor type");
+
+    // Variant types may have opaque subtypes information that need not match
+    // between the two types so drop them before computing the broadcasted type.
     Type new_broadcasted_type =
-        OpTrait::util::getBroadcastedType(broadcasted_type, operand_type);
+        OpTrait::util::getBroadcastedType(DropVariantSubTypes(broadcasted_type),
+                                          DropVariantSubTypes(operand_type));
     if (!new_broadcasted_type)
       return merge.emitOpError()
              << "expects all operands to be broadcastable"
@@ -508,10 +521,8 @@ LogicalResult Verify(MergeOp merge) {
     // This is because for example starting with a result of tensor<4xf32>, if
     // the first operand is unranked, the broadcasted type will be unranked.
     // Then any tensor operand will be broadcastable to this unranked type.
-    if ((broadcasted_type.isa<TensorType>() &&
-         !broadcasted_type.cast<TensorType>().hasRank()) ||
-        (new_broadcasted_type.isa<TensorType>() &&
-         new_broadcasted_type.cast<TensorType>().hasRank()))
+    if (!broadcasted_type.cast<TensorType>().hasRank() ||
+        new_broadcasted_type.cast<TensorType>().hasRank())
       broadcasted_type = new_broadcasted_type;
   }
 
@@ -519,11 +530,33 @@ LogicalResult Verify(MergeOp merge) {
 }
 
 void Print(MergeOp merge, OpAsmPrinter *p) {
+  // Use short form only when there are exactly two data operands and their
+  // type matches the output type. Otherwise, use the generic printer.
+  bool use_short_form = true;
+  int num_data_operands = 0;
+
+  Type output_type = merge.output()->getType();
+  for (Type operand_type : merge.getOperandTypes()) {
+    if (operand_type.isa<ControlType>()) break;
+    num_data_operands++;
+
+    if (operand_type != output_type) {
+      use_short_form = false;
+      break;
+    }
+  }
+
   *p << merge.getOperationName() << ' ';
   p->printOperands(merge.getOperands());
 
   // Print the type signature of the operation.
-  *p << " : " << merge.getType(0);
+  *p << " : ";
+  if (!use_short_form || num_data_operands != 2) {
+    p->printFunctionalType(merge.getOperation());
+  } else {
+    *p << output_type;
+  }
+
   p->printOptionalAttrDict(merge.getAttrs());
 }
 
@@ -537,17 +570,26 @@ ParseResult ParseMergeOp(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc())
            << " expects only a single data type";
 
-  // Expect the type once, but use it for both operands.
-  types.push_back(types.front());
-  // Extra operands are expected to be control inputs.
-  Type control_type = ControlType::get(parser->getBuilder().getContext());
-  types.append(op_infos.size() - 2, control_type);
+  // Support parsing either a functional type (in which case all the types are
+  // fully qualified) or a short form with a single type (in which case the data
+  // inputs and the output are all using this type).
+  if (FunctionType type = types.front().dyn_cast<FunctionType>()) {
+    result->types.assign(type.getResults().begin(), type.getResults().end());
+    types.assign(type.getInputs().begin(), type.getInputs().end());
+  } else {
+    // In case of the short form, use the parsed type for both the operands and
+    // the remaining operands are expected to be control inputs.
+    types.push_back(types.front());
+    Type control_type = ControlType::get(parser->getBuilder().getContext());
+    types.append(op_infos.size() - 2, control_type);
+
+    RankedTensorType i32_tensor =
+        RankedTensorType::get({}, parser->getBuilder().getIntegerType(32));
+    result->types = {types.front(), i32_tensor, control_type};
+  }
 
   if (parser->resolveOperands(op_infos, types, loc, result->operands))
     return failure();
-  RankedTensorType i32_tensor =
-      RankedTensorType::get({}, parser->getBuilder().getIntegerType(32));
-  result->types = {types.front(), i32_tensor, control_type};
 
   return parser->parseOptionalAttributeDict(result->attributes);
 }
@@ -831,6 +873,85 @@ ParseResult ParseLoopCondOp(OpAsmParser *parser, OperationState *result) {
 }
 
 }  // namespace
+
+//===----------------------------------------------------------------------===//
+// Canonicalization patterns
+//===----------------------------------------------------------------------===//
+
+// TODO(lyandy): Add canonicalization for dedupping control inputs.
+
+//===----------------------------------------------------------------------===//
+// tf_executor.graph
+//===----------------------------------------------------------------------===//
+
+// TODO(lyandy): Add canonicalization for empty graphs.
+
+namespace {
+// This pattern matches GraphOps with only one island, pulls out all inner ops
+// of the island to the block containing the GraphOp, and then removes the
+// GraphOp.
+struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
+  using OpRewritePattern<GraphOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(GraphOp op,
+                                     PatternRewriter &rewriter) const override {
+    if (!HasSingleIslandInGraph(&op)) return matchFailure();
+    auto fetch_op = llvm::cast<FetchOp>(op.GetBody().back());
+    auto island_op = llvm::cast<IslandOp>(op.GetBody().front());
+    auto yield_op = llvm::cast<YieldOp>(island_op.GetBody().back());
+
+    // Mapping from island outputs to inner ops outputs.
+    llvm::SmallDenseMap<Value *, Value *, 8> island_rets_to_ops;
+    for (auto ops_and_ret_vals :
+         llvm::zip(island_op.outputs(), yield_op.fetches())) {
+      island_rets_to_ops.insert(
+          {std::get<0>(ops_and_ret_vals), std::get<1>(ops_and_ret_vals)});
+    }
+
+    // Map graph outputs to inner ops outputs.
+    llvm::SmallVector<Value *, 8> new_rets;
+    for (auto *fetch : fetch_op.fetches()) {
+      if (auto *op = island_rets_to_ops.lookup(fetch))
+        new_rets.push_back(op);
+      else
+        new_rets.push_back(fetch);
+    }
+
+    // Move inner ops from island to block containing graph.
+    auto &island_body = island_op.GetBody().getOperations();
+    Operation *operation = op.getOperation();
+    operation->getBlock()->getOperations().splice(
+        operation->getIterator(), island_body, island_body.begin(),
+        std::prev(island_body.end()));
+    rewriter.replaceOp(op, new_rets);
+
+    return matchSuccess();
+  }
+
+ private:
+  // Finds in a block if the op of type `InnerOpT` is the first operation
+  // and optionally followed by a terminator.
+  template <typename InnerOpT>
+  bool HasSingleOpInBlock(Block *block) const {
+    if (block->empty()) return false;
+    if (!llvm::isa<InnerOpT>(block->front())) return false;
+    // Either InnerOpT is the only instruction in the block, or there is a
+    // possible terminator.
+    return std::next(block->begin()) == block->end() ||
+           std::next(block->begin(), 2) == block->end();
+  }
+
+  // Checks if graph only has one island.
+  bool HasSingleIslandInGraph(GraphOp *graph_op) const {
+    return HasSingleOpInBlock<IslandOp>(&graph_op->GetBody());
+  }
+};
+}  // anonymous namespace
+
+void GraphOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<HoistInnerOpsSingleIslandGraph>(context);
+}
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions

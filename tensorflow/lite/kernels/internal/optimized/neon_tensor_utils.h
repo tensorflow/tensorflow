@@ -152,10 +152,6 @@ void SymmetricQuantizeFloats(const float* values, const int size,
                    min_value, max_value, scaling_factor);
 }
 
-void VectorShiftLeft(float* vector, int v_size, float shift_value) {
-  NEON_OR_PORTABLE(VectorShiftLeft, vector, v_size, shift_value);
-}
-
 void ReductionSumVector(const float* input_vector, float* output_vector,
                         int output_size, int reduction_size) {
   NEON_OR_PORTABLE(ReductionSumVector, input_vector, output_vector, output_size,

@@ -236,7 +236,7 @@ class InverseGamma(distribution.Distribution):
           self.batch_shape_tensor(),
           np.array(np.nan, dtype=self.dtype.as_numpy_dtype()),
           name="nan")
-      return array_ops.where(self.concentration > 1., mean, nan)
+      return array_ops.where_v2(self.concentration > 1., mean, nan)
     else:
       return control_flow_ops.with_dependencies([
           check_ops.assert_less(
@@ -257,7 +257,7 @@ class InverseGamma(distribution.Distribution):
           self.batch_shape_tensor(),
           np.array(np.nan, dtype=self.dtype.as_numpy_dtype()),
           name="nan")
-      return array_ops.where(self.concentration > 2., var, nan)
+      return array_ops.where_v2(self.concentration > 2., var, nan)
     else:
       return control_flow_ops.with_dependencies([
           check_ops.assert_less(

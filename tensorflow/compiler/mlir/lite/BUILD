@@ -162,6 +162,7 @@ cc_library(
         "utils/attribute_utils.cc",
     ],
     hdrs = [
+        "ir/quantization_traits.h",
         "ir/tfl_ops.h",
         "ir/tfl_traits.h",
         "transforms/passes.h",
@@ -188,7 +189,6 @@ cc_library(
 cc_library(
     name = "tensorflow_lite_quantization_utils",
     srcs = [
-        "utils/generated_op_quant_spec_getters.inc",
         "utils/quantization_driver.cc",
         "utils/quantization_utils.cc",
     ],
@@ -253,6 +253,7 @@ cc_library(
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
+        "@local_config_mlir//:StandardOps",
         "@local_config_mlir//:Support",
     ],
     alwayslink = 1,
@@ -265,6 +266,7 @@ cc_library(
         "transforms/post_quantize.cc",
         "transforms/prepare_quantize.cc",
         "transforms/quantize.cc",
+        "utils/generated_op_quant_spec_getters.inc",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -294,6 +296,13 @@ tf_native_cc_binary(
         "@llvm//:support",
         "@llvm//:tablegen",
         "@local_config_mlir//:TableGen",
+    ],
+)
+
+filegroup(
+    name = "generated_op_quant_spec_getters",
+    srcs = [
+        "utils/generated_op_quant_spec_getters.inc",
     ],
 )
 

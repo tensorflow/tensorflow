@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
@@ -437,6 +438,15 @@ def _ragged_squeeze_v1(input, axis=None, name=None, squeeze_dims=None):  # pylin
                                                 squeeze_dims)
   return ragged_squeeze_op.squeeze(input, axis, name)
 
+
+def _ragged_dynamic_partition(data, partitions, num_partitions, name=None):
+  """RaggedTensor Dispatch override for tf.dynamic_partition."""
+  if not isinstance(num_partitions, int) or num_partitions < 0:
+    raise TypeError('num_partitions must be a non-negative integer')
+  result = ragged_array_ops.stack_dynamic_partitions(data, partitions,
+                                                     num_partitions, name)
+  return [result[i] for i in range(num_partitions)]
+
 # (original_op, ragged_op, ragged_args)
 _RAGGED_DISPATCH_OPS = [
     (array_ops.batch_gather, ragged_batch_gather_ops.batch_gather,
@@ -457,6 +467,8 @@ _RAGGED_DISPATCH_OPS = [
     (array_ops.stack, ragged_concat_ops.stack, ['[values]']),
     (array_ops.tile, ragged_array_ops.tile, ['input']),
     (array_ops.where, ragged_where_op.where, ['condition', 'x', 'y']),
+    (data_flow_ops.dynamic_partition, _ragged_dynamic_partition,
+     ['data', 'partitions']),
     (math_ops.unsorted_segment_sum, ragged_math_ops.segment_sum,
      ['data', 'segment_ids']),
     (math_ops.unsorted_segment_prod, ragged_math_ops.segment_prod,

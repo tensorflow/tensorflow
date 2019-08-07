@@ -341,7 +341,7 @@ To flash a part with JFlash Lite, do the following:
     to down load the Tensorflow source code and the support libraries \(but do
     not run the make command shown there.\)
 2.  Download the Eta Compute SDK, version 0.0.17. Contact info@etacompute.com
-3.  You will need the the Arm compiler arm-none-eabi-gcc, version 7.3.1
+3.  You will need the Arm compiler arm-none-eabi-gcc, version 7.3.1
     20180622, release ARM/embedded-7-branch revision 261907, 7-2018-q2-update.
     This compiler is downloaded through make.
 4.  Edit the file

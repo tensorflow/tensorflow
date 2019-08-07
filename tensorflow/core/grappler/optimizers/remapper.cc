@@ -456,7 +456,8 @@ bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx, int node_index,
 
   // Squeeze must not squeeze output channel dimension.
   std::vector<int32> dims;
-  if (!GetNodeAttr(*squeeze_node_def, "squeeze_dims", &dims).ok()) return false;
+  if (!GetNodeAttrSimple(*squeeze_node_def, "squeeze_dims", &dims))
+    return false;
   for (auto dim : dims) {
     if (dim == 3) return false;
   }
@@ -531,7 +532,7 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
   // We successfully found a Conv2D+FusedBatchNorm pattern.
   matched->contraction = conv2d_node_view->node_index();
   matched->fused_batch_norm = node_index;
-  if (!GetNodeAttr(*node_def, "epsilon", &matched->epsilon).ok()) return false;
+  if (!GetNodeAttrSimple(*node_def, "epsilon", &matched->epsilon)) return false;
 
   return true;
 }
@@ -684,7 +685,7 @@ bool FindFusedBatchNorm(const RemapperContext& ctx, int node_index,
 
   // Check that the node is in inference mode.
   bool is_training = true;
-  if (!GetNodeAttr(*node_def, kIsTraining, &is_training).ok()) return false;
+  if (!GetNodeAttrSimple(*node_def, kIsTraining, &is_training)) return false;
   if (is_training) return false;
 
   const auto& props = ctx.graph_properties.GetInputProperties(node_def->name());
@@ -1477,7 +1478,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     if (GetDataTypeFromAttr(*node_def, "T") != DT_FLOAT) return false;
 
     bool is_training = true;
-    if (!GetNodeAttr(*node_def, kIsTraining, &is_training).ok()) return false;
+    if (!GetNodeAttrSimple(*node_def, kIsTraining, &is_training)) return false;
     if (is_training) return false;
 
     return true;

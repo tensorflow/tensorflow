@@ -24,7 +24,6 @@ from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
@@ -35,7 +34,7 @@ from tensorflow.python.platform import test
 
 class TrainingTest(keras_parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_dynamic_model_has_trainable_weights(self):
     if not context.executing_eagerly():
       # Only test Eager modes, as Graph mode is not relevant for dynamic models.
@@ -52,7 +51,10 @@ class TrainingTest(keras_parameterized.TestCase):
         return self.dense(inputs)
 
     model = DynamicModel()
-    model.compile('rmsprop', 'mae')
+    model.compile(
+        'rmsprop', 'mae',
+        run_eagerly=True,
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     hist = model.fit(np.zeros((1, 1)), np.zeros((1, 1)))
     self.assertEqual(hist.history['loss'][-1], 1)
     self.assertEqual(len(model.trainable_weights), 2)
@@ -88,7 +90,7 @@ class TrainingTest(keras_parameterized.TestCase):
         metrics=metrics,
         loss_weights=loss_weights,
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function(),
         sample_weight_mode=None)
 
     input_a = array_ops.zeros(shape=(10, 3))
@@ -159,7 +161,7 @@ class TrainingTest(keras_parameterized.TestCase):
         loss,
         metrics=metrics,
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     inputs = array_ops.zeros(shape=(10, 3))
     targets = array_ops.zeros(shape=(10, 4))
@@ -244,7 +246,7 @@ class CorrectnessTest(keras_parameterized.TestCase):
         loss='sparse_categorical_crossentropy',
         optimizer=rmsprop.RMSprop(learning_rate=0.001),
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     x = np.ones((100, 4))
     np.random.seed(123)
     y = np.random.randint(0, 1, size=(100, 1))
@@ -265,7 +267,7 @@ class CorrectnessTest(keras_parameterized.TestCase):
         loss='sparse_categorical_crossentropy',
         optimizer=rmsprop.RMSprop(learning_rate=0.001),
         run_eagerly=testing_utils.should_run_eagerly(),
-        run_distributed=testing_utils.should_run_distributed())
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     x = np.ones((100, 4), dtype=np.float32)
     np.random.seed(123)
     y = np.random.randint(0, 1, size=(100, 1))

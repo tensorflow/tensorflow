@@ -29,6 +29,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
@@ -728,11 +729,27 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
               'axis': [0]
           },
           expected=ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]])),
+      dict(
+          op=data_flow_ops.dynamic_partition,
+          kwargs={
+              'data': ragged_factory_ops.constant_value([[1], [2, 3, 4], [5]]),
+              'partitions': [2, 1, 1],
+              'num_partitions': 3},
+          expected=[ragged_factory_ops.constant_value([], ragged_rank=1),
+                    ragged_factory_ops.constant_value([[2, 3, 4], [5]]),
+                    ragged_factory_ops.constant_value([[1]])],
+          result_is_list=True),
   ])
-  def testRaggedDispatch(self, op, expected, args=(), kwargs=None):
+  def testRaggedDispatch(self, op, expected, args=(), result_is_list=False,
+                         kwargs=None):
     if kwargs is None: kwargs = {}
     result = op(*args, **kwargs)
-    self.assertAllEqual(result, expected)
+    if result_is_list:
+      self.assertLen(result, len(expected))
+      for (r, e) in zip(result, expected):
+        self.assertAllEqual(r, e)
+    else:
+      self.assertAllEqual(result, expected)
 
   def test_ragged_op_list(self):
     # Ops that should be listed as supported in both v1 and v2.
@@ -768,7 +785,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
         'strings.substr', 'strings.to_hash_bucket_fast',
         'strings.to_hash_bucket_strong', 'strings.to_hash_bucket',
         'strings.to_number', 'strings.unicode_script', 'tile', 'truncatediv',
-        'truncatemod', 'zeros_like'
+        'truncatemod', 'zeros_like', 'dynamic_partition'
     ]
 
     # Ops that should be listed as supported in v1 only.

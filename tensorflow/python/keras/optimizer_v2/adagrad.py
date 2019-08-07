@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend_config
@@ -27,7 +28,9 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -151,6 +154,15 @@ class Adagrad(optimizer_v2.OptimizerV2):
                     or self._fallback_apply_state(var_device, var_dtype))
 
     acc = self.get_slot(var, 'accumulator')
+    if compat.forward_compatible(2019, 8, 20):
+      return training_ops.resource_apply_adagrad_v2(
+          var.handle,
+          acc.handle,
+          coefficients['lr_t'],
+          coefficients['epsilon'],
+          grad,
+          use_locking=self._use_locking)
+
     acc_t = state_ops.assign_add(
         acc, math_ops.square(grad), use_locking=self._use_locking)
     var_update = state_ops.assign_sub(
@@ -164,10 +176,22 @@ class Adagrad(optimizer_v2.OptimizerV2):
                     or self._fallback_apply_state(var_device, var_dtype))
 
     acc = self.get_slot(var, 'accumulator')
-    acc_t = self._resource_scatter_add(acc, indices, math_ops.square(grad))
-    acc_t_slice = array_ops.gather(acc_t, indices, axis=coefficients['zero'])
-    var_update = self._resource_scatter_add(
-        var, indices, coefficients['neg_lr_t'] * grad /
+    if compat.forward_compatible(2019, 8, 20):
+      return training_ops.resource_sparse_apply_adagrad_v2(
+          var.handle,
+          acc.handle,
+          coefficients['lr_t'],
+          coefficients['epsilon'],
+          grad,
+          indices,
+          use_locking=self._use_locking)
+    with ops.control_dependencies([
+        resource_variable_ops.resource_scatter_add(acc.handle, indices,
+                                                   math_ops.square(grad))
+    ]):
+      acc_t_slice = acc.sparse_read(indices)
+    var_update = resource_variable_ops.resource_scatter_add(
+        var.handle, indices, coefficients['neg_lr_t'] * grad /
         (math_ops.sqrt(acc_t_slice) + coefficients['epsilon']))
     return var_update
 

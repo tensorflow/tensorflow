@@ -99,6 +99,8 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     return cardinality;
   }
 
+  bool IsStateful() const override { return input_->IsStateful(); }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

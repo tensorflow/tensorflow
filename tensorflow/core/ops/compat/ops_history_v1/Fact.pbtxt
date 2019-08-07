@@ -1,0 +1,7 @@
+op {
+  name: "Fact"
+  output_arg {
+    name: "fact"
+    type: DT_STRING
+  }
+}

@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
@@ -81,28 +80,16 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
     self._element_spec = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
 
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = (
-          gen_experimental_dataset_ops.parse_example_dataset(
-              self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-              self._num_parallel_calls,
-              self._dense_defaults,
-              self._sparse_keys,
-              self._dense_keys,
-              self._sparse_types,
-              self._dense_shapes,
-              **self._flat_structure))
-    else:
-      variant_tensor = (
-          gen_experimental_dataset_ops.experimental_parse_example_dataset(
-              self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-              self._num_parallel_calls,
-              self._dense_defaults,
-              self._sparse_keys,
-              self._dense_keys,
-              self._sparse_types,
-              self._dense_shapes,
-              **self._flat_structure))
+    variant_tensor = (
+        gen_experimental_dataset_ops.parse_example_dataset(
+            self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+            self._num_parallel_calls,
+            self._dense_defaults,
+            self._sparse_keys,
+            self._dense_keys,
+            self._sparse_types,
+            self._dense_shapes,
+            **self._flat_structure))
     super(_ParseExampleDataset, self).__init__(input_dataset, variant_tensor)
 
   @property

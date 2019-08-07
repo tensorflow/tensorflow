@@ -18,8 +18,6 @@ limitations under the License.
 
 #import <Metal/Metal.h>
 
-#include <functional>
-
 #include "tensorflow/lite/c/c_api_internal.h"
 
 // Creates a new delegate instance that need to be destroyed with
@@ -60,13 +58,5 @@ void DeleteGpuDelegate(TfLiteDelegate* delegate);
 // *** Must be called *before* `Interpreter::ModifyGraphWithDelegate`. ***
 bool BindMetalBufferToTensor(TfLiteDelegate* delegate, int tensor_index,
                              id<MTLBuffer> metal_buffer);
-
-// Binds user-defined MTLComputeCommandEncoder. The delegate puts all GPU tasks
-// into this encoder instead of the internal encoder.
-// The callback is a user-defined function to take control over encoder and
-// command buffer. Can be nullptr.
-bool TFLSetCommandEncoder(
-    TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder,
-    std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder);
 
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_H_

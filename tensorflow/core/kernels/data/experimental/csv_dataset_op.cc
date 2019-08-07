@@ -23,6 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class CSVDatasetOp : public DatasetOpKernel {
@@ -859,5 +860,6 @@ REGISTER_KERNEL_BUILDER(Name("ExperimentalCSVDataset").Device(DEVICE_CPU),
                         CSVDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

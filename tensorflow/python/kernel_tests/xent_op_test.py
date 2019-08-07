@@ -242,6 +242,7 @@ class XentTest(test.TestCase):
           op.op_def.name for op in sess.graph.get_operations() if op.op_def
       ]
       self.assertNotIn("BatchMatMul", op_names)
+      self.assertNotIn("BatchMatMulV2", op_names)
 
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)

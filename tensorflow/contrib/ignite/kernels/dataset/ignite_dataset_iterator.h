@@ -74,7 +74,7 @@ class IgniteDatasetIterator : public DatasetIterator<IgniteDataset> {
 
   mutex mutex_;
 
-  std::unique_ptr<uint8_t> page_;
+  std::unique_ptr<uint8_t[]> page_;
   uint8_t* ptr_;
 };
 

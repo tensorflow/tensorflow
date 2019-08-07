@@ -4,7 +4,7 @@
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_proto_library_py",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -287,6 +287,64 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "hlo_live_range",
+    srcs = [
+        "hlo_live_range.cc",
+    ],
+    hdrs = [
+        "hlo_live_range.h",
+    ],
+    deps = [
+        ":hlo",
+        ":hlo_alias_analysis",
+        ":hlo_buffer",
+        ":hlo_dataflow_analysis",
+        ":hlo_ordering",
+        ":logical_buffer",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_live_range_test",
+    srcs = ["hlo_live_range_test.cc"],
+    deps = [
+        ":call_graph",
+        ":hlo",
+        ":hlo_alias_analysis",
+        ":hlo_live_range",
+        ":hlo_memory_scheduler",
+        ":hlo_ordering",
+        ":hlo_parser",
+        ":hlo_value",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -1113,8 +1171,10 @@ cc_library(
         ":hlo_alias_analysis",
         ":hlo_buffer",
         ":hlo_dataflow_analysis",
+        ":hlo_live_range",
         ":hlo_proto",
         ":logical_buffer",
+        ":memory_space_assignment",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -1215,6 +1275,7 @@ cc_library(
         ":hlo_alias_analysis",
         ":hlo_buffer",
         ":hlo_dataflow_analysis",
+        ":hlo_live_range",
         ":hlo_ordering",
         ":hlo_proto",
         ":tuple_points_to_analysis",
@@ -1681,6 +1742,7 @@ cc_library(
         ":hlo",
         ":hlo_casting_utils",
         ":hlo_creation_utils",
+        ":hlo_evaluator",
         ":hlo_pass",
         ":hlo_query",
         ":pattern_matcher",
@@ -1694,6 +1756,7 @@ cc_library(
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -4245,5 +4308,20 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:prng",
+    ],
+)
+
+cc_library(
+    name = "slow_operation_alarm",
+    srcs = ["slow_operation_alarm.cc"],
+    hdrs = ["slow_operation_alarm.h"],
+    deps = [
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )

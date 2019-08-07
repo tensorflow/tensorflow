@@ -7,7 +7,7 @@ ARG ARCH
 ARG CUDA
 ARG CUDNN=7.4.1.5-1
 
-# Needed for string substitution 
+# Needed for string substitution
 SHELL ["/bin/bash", "-c"]
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -36,3 +36,9 @@ RUN [ ${ARCH} = ppc64le ] || (apt-get update && \
 
 # For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+
+# Link the libcuda stub to the location where tensorflow is searching for it and reconfigure
+# dynamic linker run-time bindings
+RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1 \
+    && echo "/usr/local/cuda/lib64/stubs" > /etc/ld.so.conf.d/z-cuda-stubs.conf \
+    && ldconfig

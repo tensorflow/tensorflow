@@ -135,7 +135,7 @@ class _GraphTensorArray(object):
     # of the first write. If `infer_shape` is true, all writes checks for
     # shape equality.
     self._element_shape = [tensor_shape.as_shape(element_shape)]
-    self._infer_shape = element_shape is not None or infer_shape
+    self._infer_shape = infer_shape
     with ops.name_scope(name, "TensorArray", [handle, size, flow]) as scope:
       if handle is not None:
         self._handle = handle
@@ -179,7 +179,7 @@ class _GraphTensorArray(object):
   def element_shape(self):
     return self._element_shape[0]
 
-  def _merge_element_shape(self, shape):
+  def _check_element_shape(self, shape):
     """Changes the element shape of the array given a shape to merge with.
 
     Args:
@@ -190,10 +190,10 @@ class _GraphTensorArray(object):
           element shape of the `TensorArray`.
     """
     if not shape.is_compatible_with(self.element_shape):
-      raise ValueError(
-          "Inconsistent shapes: saw %s but expected %s "
-          "(and infer_shape=True)" % (shape, self.element_shape))
-    self._element_shape[0] = self.element_shape.merge_with(shape)
+      raise ValueError("Inconsistent shapes: saw %s but expected %s " %
+                       (shape, self.element_shape))
+    if self._infer_shape:
+      self._element_shape[0] = self.element_shape.merge_with(shape)
 
   @contextlib.contextmanager
   def _maybe_colocate_with(self, value):
@@ -266,8 +266,7 @@ class _GraphTensorArray(object):
       value = ops.convert_to_tensor(
           value, preferred_dtype=self._dtype, name="value")
       _check_dtypes(value, self._dtype)
-      if self._infer_shape:
-        self._merge_element_shape(value.shape)
+      self._check_element_shape(value.shape)
       with self._maybe_colocate_with(value):
         flow_out = gen_data_flow_ops.tensor_array_write_v3(
             handle=self._handle,
@@ -329,8 +328,8 @@ class _GraphTensorArray(object):
       value = ops.convert_to_tensor(
           value, preferred_dtype=self._dtype, name="value")
       _check_dtypes(value, self._dtype)
-      if self._infer_shape and not context.executing_eagerly():
-        self._merge_element_shape(value.shape[1:])
+      if not context.executing_eagerly():
+        self._check_element_shape(value.shape[1:])
       with self._maybe_colocate_with(value):
         flow_out = gen_data_flow_ops.tensor_array_scatter_v3(
             handle=self._handle,
@@ -348,11 +347,11 @@ class _GraphTensorArray(object):
       value = ops.convert_to_tensor(value, dtype=self._dtype, name="value")
       with self._maybe_colocate_with(value):
         lengths_64 = math_ops.cast(lengths, dtypes.int64)
-        if self._infer_shape and not context.executing_eagerly():
+        if not context.executing_eagerly():
           clengths = tensor_util.constant_value(lengths_64)
-          if value.shape.dims is not None:
-            if clengths is not None and clengths.max() == clengths.min():
-              self._merge_element_shape(
+          if value.shape.dims is not None and clengths is not None:
+            if clengths.shape and clengths.max() == clengths.min():
+              self._check_element_shape(
                   tensor_shape.TensorShape([clengths[0]]).concatenate(
                       value.shape[1:]))
         flow_out = gen_data_flow_ops.tensor_array_split_v3(
@@ -447,7 +446,7 @@ class _GraphTensorArrayV2(object):
     # of the first write. If `infer_shape` is true, all writes checks for
     # shape equality.
     self._element_shape = [tensor_shape.as_shape(element_shape)]
-    self._infer_shape = element_shape is not None or infer_shape
+    self._infer_shape = infer_shape
     with ops.name_scope(name, "TensorArrayV2", [size, flow]) as scope:
       if flow is None:
         self._flow = list_ops.tensor_list_reserve(
@@ -480,7 +479,7 @@ class _GraphTensorArrayV2(object):
     # complain.
     return None
 
-  def _merge_element_shape(self, shape):
+  def _check_element_shape(self, shape):
     """Changes the element shape of the array given a shape to merge with.
 
     Args:
@@ -491,10 +490,10 @@ class _GraphTensorArrayV2(object):
           element shape of the `TensorArray`.
     """
     if not shape.is_compatible_with(self.element_shape):
-      raise ValueError(
-          "Inconsistent shapes: saw %s but expected %s "
-          "(and infer_shape=True)" % (shape, self.element_shape))
-    self._element_shape[0] = self.element_shape.merge_with(shape)
+      raise ValueError("Inconsistent shapes: saw %s but expected %s " %
+                       (shape, self.element_shape))
+    if self._infer_shape:
+      self._element_shape[0] = self.element_shape.merge_with(shape)
 
   def identity(self):
     """See TensorArray."""
@@ -524,8 +523,7 @@ class _GraphTensorArrayV2(object):
       value = ops.convert_to_tensor(
           value, preferred_dtype=self._dtype, name="value")
       _check_dtypes(value, self._dtype)
-      if self._infer_shape:
-        self._merge_element_shape(value.shape)
+      self._check_element_shape(value.shape)
       flow_out = list_ops.tensor_list_set_item(
           input_handle=self._flow,
           index=index,
@@ -575,8 +573,7 @@ class _GraphTensorArrayV2(object):
       value = ops.convert_to_tensor(
           value, preferred_dtype=self._dtype, name="value")
       _check_dtypes(value, self._dtype)
-      if self._infer_shape and not context.executing_eagerly():
-        self._merge_element_shape(value.shape[1:])
+      self._check_element_shape(value.shape[1:])
       flow_out = list_ops.tensor_list_from_tensor(
           tensor=value, element_shape=value.shape[1:])
       return build_ta_with_new_flow(self, flow_out)
@@ -590,8 +587,7 @@ class _GraphTensorArrayV2(object):
       value = ops.convert_to_tensor(
           value, preferred_dtype=self._dtype, name="value")
       _check_dtypes(value, self._dtype)
-      if self._infer_shape and not context.executing_eagerly():
-        self._merge_element_shape(value.shape[1:])
+      self._check_element_shape(value.shape[1:])
       flow_out = list_ops.tensor_list_scatter(
           tensor=value, indices=indices, element_shape=self.element_shape,
           input_handle=self._flow)
@@ -606,11 +602,11 @@ class _GraphTensorArrayV2(object):
           value, preferred_dtype=self._dtype, name="value")
       _check_dtypes(value, self._dtype)
       lengths_64 = math_ops.cast(lengths, dtypes.int64)
-      if self._infer_shape and not context.executing_eagerly():
+      if not context.executing_eagerly():
         clengths = tensor_util.constant_value(lengths_64)
-        if value.shape.dims is not None:
-          if clengths is not None and clengths.max() == clengths.min():
-            self._merge_element_shape(
+        if value.shape.dims is not None and clengths is not None:
+          if clengths.shape and clengths.max() == clengths.min():
+            self._check_element_shape(
                 tensor_shape.TensorShape([clengths[0]]).concatenate(
                     value.shape[1:]))
       flow_out = list_ops.tensor_list_split(
@@ -688,7 +684,7 @@ class _EagerTensorArray(object):
     # we assign a dummy value to _flow in case other code assumes it to be
     # a Tensor
     self._flow = constant_op.constant(0, dtype=dtypes.int32)
-    self._infer_shape = element_shape is not None or infer_shape
+    self._infer_shape = infer_shape
     self._element_shape = tensor_shape.as_shape(element_shape)
     self._colocate_with_first_write_call = colocate_with_first_write_call
 
@@ -804,12 +800,12 @@ class _EagerTensorArray(object):
           "TensorArray dtype is %s but Op is trying to write dtype %s" %
           (self._dtype.name, value.dtype.name))
 
+    if not self._element_shape.is_compatible_with(value.shape):
+      raise ValueError("Incompatible shape for value (%s), expected (%s)" %
+                       (value.shape, self._element_shape))
+
     if self._infer_shape:
-      if not self._element_shape.is_compatible_with(value.shape):
-        raise ValueError("Incompatible shape for value (%s), expected (%s)" %
-                         (value.shape, self._element_shape))
-      else:
-        self._element_shape = self._element_shape.merge_with(value.shape)
+      self._element_shape = self._element_shape.merge_with(value.shape)
 
     self._tensor_array[index] = value
 

@@ -44,7 +44,7 @@ class GetCalibrationDataOp : public OpKernel {
     // Get the resource.
     TRTEngineCacheResource* resource = nullptr;
     OP_REQUIRES_OK(context, context->resource_manager()->Lookup(
-                                std::string(kCacheContainerName), resource_name,
+                                std::string(kTfTrtContainerName), resource_name,
                                 &resource));
     core::ScopedUnref sc(resource);
 

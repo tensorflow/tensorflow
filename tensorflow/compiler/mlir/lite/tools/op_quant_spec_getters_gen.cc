@@ -38,7 +38,7 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
   llvm::Regex acc_uniform_trait_regex{"AccumulatorUniformScale<([0-9]*),"};
   llvm::Regex fixed_uniform_trait_regex{
       "FixedResultUniformScale<([0-9]+).*(true|false)>"};
-  emitSourceFileHeader("TensorFlow Lite Ops Quant Spec Getters", os);
+  emitSourceFileHeader("Generated Ops Quant Spec Getters", os);
 
   // Retrieve all the definitions derived from TFL_Op and sort by record name.
   std::vector<Record *> defs = records.getAllDerivedDefinitions("Op");

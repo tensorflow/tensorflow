@@ -29,6 +29,10 @@ bool IsNumericSupportedType(const TfLiteType type) {
   return type == kTfLiteFloat32;
 }
 
+bool IsLogicalSupportedType(const TfLiteType type) {
+  return type == kTfLiteBool;
+}
+
 typedef bool (*IsSupportedType)(TfLiteType);
 template <IsSupportedType>
 TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -65,8 +69,17 @@ inline TfLiteStatus EvalNumeric(TfLiteContext* context, TfLiteNode* node,
   return EvalImpl<float>(context, node, float_func, kTfLiteFloat32);
 }
 
+inline TfLiteStatus EvalLogical(TfLiteContext* context, TfLiteNode* node,
+                                bool bool_func(bool)) {
+  return EvalImpl<bool>(context, node, bool_func, kTfLiteBool);
+}
+
 TfLiteStatus AbsEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalNumeric(context, node, std::abs);
+}
+
+TfLiteStatus LogicalNotEval(TfLiteContext* context, TfLiteNode* node) {
+  return EvalLogical(context, node, [](bool v) { return !v; });
 }
 
 }  // namespace
@@ -79,6 +92,15 @@ TfLiteRegistration* Register_ABS() {
       elementwise::AbsEval};
   return &r;
 }
+
+TfLiteRegistration* Register_LOGICAL_NOT() {
+  static TfLiteRegistration r = {
+      /*init=*/nullptr, /*free=*/nullptr,
+      elementwise::GenericPrepare<elementwise::IsLogicalSupportedType>,
+      elementwise::LogicalNotEval};
+  return &r;
+}
+
 }  // namespace micro
 }  // namespace ops
 }  // namespace tflite

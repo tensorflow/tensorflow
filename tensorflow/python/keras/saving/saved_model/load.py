@@ -105,6 +105,15 @@ class KerasObjectLoader(tf_load.Loader):
   def _finalize(self):
     # pylint: disable=protected-access
     for node in self._nodes:
+      if isinstance(node, RevivedLayer):
+        if not isinstance(node, RevivedSequential):
+          if hasattr(node.keras_api, 'call_and_return_conditional_losses'):
+            node.call = utils.use_wrapped_call(
+                node, node.keras_api.call_and_return_conditional_losses,
+                return_method=True)
+            node._init_call_fn_args()
+
+    for node in self._nodes:
       if isinstance(node, RevivedModel):
         call_fn = node.keras_api.call_and_return_conditional_losses
         if call_fn.input_signature is None:
@@ -224,19 +233,13 @@ class RevivedLayer(object):
 
   @property
   def keras_api(self):
-    return self._serialized_attributes[constants.KERAS_ATTR]
+    return self._serialized_attributes.get(constants.KERAS_ATTR, None)
 
   def get_config(self):
     if hasattr(self, '_config'):
       return self._config
     else:
       raise NotImplementedError
-
-  def call(self, inputs, *args, **kwargs):
-    """Calls the revived layer and add conditional losses."""
-    call_fn = utils.use_wrapped_call(
-        self, self.keras_api.call_and_return_conditional_losses)
-    return call_fn(inputs, *args, **kwargs)
 
 
 def recursively_deserialize_keras_object(config, module_objects=None):
@@ -281,7 +284,6 @@ class RevivedNetwork(RevivedLayer):
   @classmethod
   def _init_from_metadata(cls, metadata):
     """Create revived network from metadata stored in the SavedModel proto."""
-    # TODO(kathywu): Refactor logic here so that RevivedNetwork uses the
     revived_obj = cls(name=metadata['name'])
 
     with trackable.no_automatic_dependency_tracking_scope(revived_obj):
@@ -329,6 +331,3 @@ class RevivedSequential(RevivedModel):
     """Create revived Sequential model from SavedModel metadata."""
     revived_obj = super(RevivedSequential, cls)._init_from_metadata(metadata)
     return revived_obj
-
-  def call(self, *args, **kwargs):
-    return models_lib.Sequential.call(self, *args, **kwargs)

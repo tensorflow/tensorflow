@@ -97,8 +97,16 @@ tf_module {
     argspec: "args=[\'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "AnonymousMemoryCache"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "AnonymousMultiDeviceIterator"
     argspec: "args=[\'devices\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "AnonymousRandomSeedGenerator"
+    argspec: "args=[\'seed\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Any"
@@ -119,6 +127,10 @@ tf_module {
   member_method {
     name: "ApplyAdagradDA"
     argspec: "args=[\'var\', \'gradient_accumulator\', \'gradient_squared_accumulator\', \'grad\', \'lr\', \'l1\', \'l2\', \'global_step\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "ApplyAdagradV2"
+    argspec: "args=[\'var\', \'accum\', \'lr\', \'epsilon\', \'grad\', \'use_locking\', \'update_slots\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'None\'], "
   }
   member_method {
     name: "ApplyAdam"
@@ -601,6 +613,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'filename\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "CacheDatasetV2"
+    argspec: "args=[\'input_dataset\', \'filename\', \'cache\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Case"
     argspec: "args=[\'branch_index\', \'input\', \'Tout\', \'branches\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
   }
@@ -703,6 +719,10 @@ tf_module {
   member_method {
     name: "ConfigureDistributedTPU"
     argspec: "args=[\'embedding_config\', \'tpu_embedding_config\', \'is_global_init\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "ConfigureTPUEmbedding"
+    argspec: "args=[\'config\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Conj"
@@ -949,8 +969,16 @@ tf_module {
     argspec: "args=[\'handle\', \'deleter\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "DeleteMemoryCache"
+    argspec: "args=[\'handle\', \'deleter\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "DeleteMultiDeviceIterator"
     argspec: "args=[\'multi_device_iterator\', \'iterators\', \'deleter\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "DeleteRandomSeedGenerator"
+    argspec: "args=[\'handle\', \'deleter\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "DeleteSessionTensor"
@@ -1258,7 +1286,7 @@ tf_module {
   }
   member_method {
     name: "ExperimentalRebatchDataset"
-    argspec: "args=[\'input_dataset\', \'num_workers\', \'output_types\', \'output_shapes\', \'use_fallback\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'num_replicas\', \'output_types\', \'output_shapes\', \'use_fallback\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "ExperimentalScanDataset"
@@ -2982,7 +3010,7 @@ tf_module {
   }
   member_method {
     name: "RebatchDataset"
-    argspec: "args=[\'input_dataset\', \'num_workers\', \'output_types\', \'output_shapes\', \'use_fallback\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'num_replicas\', \'output_types\', \'output_shapes\', \'use_fallback\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "Reciprocal"
@@ -3149,6 +3177,10 @@ tf_module {
     argspec: "args=[\'var\', \'gradient_accumulator\', \'gradient_squared_accumulator\', \'grad\', \'lr\', \'l1\', \'l2\', \'global_step\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "ResourceApplyAdagradV2"
+    argspec: "args=[\'var\', \'accum\', \'lr\', \'epsilon\', \'grad\', \'use_locking\', \'update_slots\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'None\'], "
+  }
+  member_method {
     name: "ResourceApplyAdam"
     argspec: "args=[\'var\', \'m\', \'v\', \'beta1_power\', \'beta2_power\', \'lr\', \'beta1\', \'beta2\', \'epsilon\', \'grad\', \'use_locking\', \'use_nesterov\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
@@ -3267,6 +3299,10 @@ tf_module {
   member_method {
     name: "ResourceSparseApplyAdagradDA"
     argspec: "args=[\'var\', \'gradient_accumulator\', \'gradient_squared_accumulator\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'global_step\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "ResourceSparseApplyAdagradV2"
+    argspec: "args=[\'var\', \'accum\', \'lr\', \'epsilon\', \'grad\', \'indices\', \'use_locking\', \'update_slots\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'None\'], "
   }
   member_method {
     name: "ResourceSparseApplyCenteredRMSProp"
@@ -3629,6 +3665,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed\', \'seed2\', \'output_types\', \'output_shapes\', \'reshuffle_each_iteration\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
+    name: "ShuffleDatasetV2"
+    argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed_generator\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "ShutdownDistributedTPU"
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -3743,6 +3783,10 @@ tf_module {
   member_method {
     name: "SparseApplyAdagradDA"
     argspec: "args=[\'var\', \'gradient_accumulator\', \'gradient_squared_accumulator\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'global_step\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "SparseApplyAdagradV2"
+    argspec: "args=[\'var\', \'accum\', \'lr\', \'epsilon\', \'grad\', \'indices\', \'use_locking\', \'update_slots\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'None\'], "
   }
   member_method {
     name: "SparseApplyCenteredRMSProp"
@@ -4050,7 +4094,7 @@ tf_module {
   }
   member_method {
     name: "StatelessWhile"
-    argspec: "args=[\'input\', \'cond\', \'body\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'cond\', \'body\', \'output_shapes\', \'parallel_iterations\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'10\', \'None\'], "
   }
   member_method {
     name: "StaticRegexFullMatch"
@@ -4107,6 +4151,10 @@ tf_module {
   member_method {
     name: "StringLower"
     argspec: "args=[\'input\', \'encoding\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+  }
+  member_method {
+    name: "StringNGrams"
+    argspec: "args=[\'data\', \'data_splits\', \'separator\', \'ngram_widths\', \'left_pad\', \'right_pad\', \'pad_width\', \'preserve_short_sequences\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "StringSplit"

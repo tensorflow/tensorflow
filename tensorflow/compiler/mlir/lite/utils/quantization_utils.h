@@ -19,6 +19,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_QUANTIZATION_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_QUANTIZATION_UTILS_H_
 
+#include <unordered_map>
+
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
@@ -27,6 +29,40 @@ limitations under the License.
 
 namespace mlir {
 namespace TFL {
+
+using QuantParams = quant::QuantizedType;
+using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
+using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
+using AccumulatorScaleFunc =
+    std::function<QuantParams(const std::vector<QuantParams>&)>;
+
+// Quantization spec of an op, driving the quantization algorithm.
+struct OpQuantSpec {
+  // Whether the op has quantizable result. This flag is set to false if the op
+  // has "TFL::NoQuantizableResult" trait.
+  bool is_quantizable = true;
+
+  // Whether it requires same inputs and result scale. This flag is set to true
+  // if the op has "TFL::SameOperandsAndResultScale" trait.
+  bool requires_same_scale = false;
+
+  // Maps the operand index of a bias input to its quantization specifications,
+  // including the non-bias operand indexes and the method retrieving
+  // quantization parameters from list of parameters of the non-bias operands.
+  // This map is empty if the op doesn't havea bias operand.
+  std::unordered_map<int, std::pair<std::vector<int>, AccumulatorScaleFunc>>
+      biases_params;
+
+  // Quantization parameters for value restricted outputs. This is the
+  // "hard-coded" parameters and should be used unconditionally for the
+  // quantized op. This vector is empty if the op doesn't have value resctricted
+  // outputs.
+  llvm::DenseMap<SignedInteger, QuantParamsForResults> restricted_output_params;
+};
+
+// A function signature for getting the particular OpQuantSpec for the provided
+// op.
+typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
 
 // A generic rewrite pattern which matches any N-in-1-out operations with
 // quantization parameters propagated to all the operands and results values.
@@ -49,11 +85,11 @@ struct GenericFullQuantizationPattern : public RewritePattern {
       return matchFailure();
     }
     auto quantize_op = cast<Q>(op);
-    auto quantized_op = quantize_op.input()->getDefiningOp();
+    Operation* quantized_op = quantize_op.input()->getDefiningOp();
     // If it is a block argument, requantize op, or has more than one result, we
     // shouldn't rewrite this op.
     if (!quantized_op || llvm::isa<Q>(quantized_op) ||
-        llvm::isa<DQ>(quantized_op) || quantized_op->getNumResults() != 1) {
+        llvm::isa<DQ>(quantized_op)) {
       return matchFailure();
     }
 
@@ -61,13 +97,16 @@ struct GenericFullQuantizationPattern : public RewritePattern {
     // inputs.
     SmallVector<Value*, 4> inputs;
     inputs.reserve(quantized_op->getNumOperands());
-    for (int i = 0, e = quantized_op->getNumOperands(); i != e; ++i) {
-      auto* operand = quantized_op->getOperand(i);
-      auto operand_ele_type =
-          operand->getType().template cast<TensorType>().getElementType();
+    for (auto operand : quantized_op->getOperands()) {
+      auto tensor_type = operand->getType().dyn_cast<TensorType>();
+      if (!tensor_type) {
+        // There are none type values.
+        return matchFailure();
+      }
+      auto operand_ele_type = tensor_type.getElementType();
       if (auto op_inst = dyn_cast_or_null<DQ>(operand->getDefiningOp())) {
         inputs.push_back(op_inst.input());
-      } else if (operand_ele_type.template isa<IntegerType>()) {
+      } else if (operand_ele_type.isa<IntegerType>()) {
         // If the operand is an integer tensor, then it doesn't require the
         // DQ op in the pattern.
         inputs.push_back(operand);
@@ -75,13 +114,39 @@ struct GenericFullQuantizationPattern : public RewritePattern {
         return matchFailure();
       }
     }
+
+    // Collect all the quantized outputs and replace them by the results of the
+    // new quantized op.
+    llvm::SmallDenseMap<Value*, int> outputs_replaced;
+    SmallVector<Type, 4> output_types;
+    output_types.reserve(quantized_op->getNumResults());
+    for (auto result : llvm::enumerate(quantized_op->getResults())) {
+      if (!result.value()->hasOneUse()) return matchFailure();
+      auto result_ele_type =
+          result.value()->getType().cast<TensorType>().getElementType();
+      if (auto user = dyn_cast_or_null<Q>(*result.value()->user_begin())) {
+        outputs_replaced.insert({user.output(), result.index()});
+        output_types.push_back(user.getType());
+      } else if (result_ele_type.template isa<IntegerType>()) {
+        // If the result is an integer tensor, then it doesn't require the
+        // D op in the pattern.
+        outputs_replaced.insert({result.value(), result.index()});
+        output_types.push_back(result_ele_type);
+      } else {
+        return matchFailure();
+      }
+    }
+
     // Use OpBuilder so we can use op name to create the new op.
     OpBuilder builder(quantized_op);
-    OperationState new_state(
-        quantized_op->getLoc(), quantized_op->getName().getStringRef(), inputs,
-        op->getResult(0)->getType(), quantized_op->getAttrs());
+    OperationState new_state(quantized_op->getLoc(),
+                             quantized_op->getName().getStringRef(), inputs,
+                             output_types, quantized_op->getAttrs());
     Operation* new_op = builder.createOperation(new_state);
-    rewriter.replaceOp(op, {new_op->getResult(0)});
+    for (auto output : outputs_replaced) {
+      output.getFirst()->replaceAllUsesWith(
+          new_op->getResult(output.getSecond()));
+    }
     return matchSuccess();
   }
 };
@@ -100,6 +165,16 @@ TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, FloatAttr min,
 TypeAttr GetQuantizedTypeAttr(Builder builder, Type input_type, Attribute min,
                               Attribute max, IntegerAttr num_bits,
                               BoolAttr narrow_range);
+
+// Casts the `target` type to a quantized type by using the quantization
+// parameters from the type in the `source` type attribute.
+// Examples:
+//   f32 -> !quant.uniform<i8:f32, 1.0>
+//   tensor<4xf32> -> tensor<4x!quant.uniform<i8:f32, 1.0>>
+// The result is wrapped by a type attribute. Returns nullptr if the cast isn't
+// valid.
+TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
+                                                TypeAttr source, Type target);
 
 // Quantizes the elements in the attribute `real_value` by the quantization
 // parameters in `tensor_type`. Returns empty Attribute if the
@@ -125,7 +200,8 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 // quantization parameters are stored as adjacent quantize and dequantize ops
 // and the propagation results are materialized by inserting pairs of quantize
 // and dequantize ops to this function.
-void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed);
+void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
+                                        OpQuantSpecGetter op_quant_spec_getter);
 
 }  // end namespace TFL
 }  // end namespace mlir

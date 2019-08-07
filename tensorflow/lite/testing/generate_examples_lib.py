@@ -37,7 +37,6 @@ import os
 import random
 import re
 import string
-import tempfile
 import traceback
 import zipfile
 import numpy as np
@@ -70,8 +69,6 @@ KNOWN_BUGS = {
     # TOCO doesn't support scalars as input.
     # Concat doesn't work with a single input tensor
     r"concat.*num_tensors=1": "67378344",
-    # Transposition in MatMul is not fully supported.
-    "fully_connected.*transpose_a=True": "67586970",
     # Softmax graphs are too complex.
     r"softmax.*dim=0": "67749831",
     # BatchToSpaceND only supports 4D tensors.
@@ -79,7 +76,7 @@ KNOWN_BUGS = {
     # Div will use floordiv.
     r"div.*int32": "72051395",
     # Strided slice cannot handle new_axis_mask.
-    r"strided_slice.*new_axis_num=1|2": "137470173",
+    r"strided_slice.*spec=\[None": "137470173",
 }
 
 
@@ -106,9 +103,7 @@ class Options(object):
     self.make_edgetpu_tests = False
     # The function to convert a TensorFLow model to TFLite model.
     # See the document for `toco_convert` function for its required signature.
-    # TODO(ycling): Decouple `toco_convert` function from this module, and
-    # remove the `toco` attribute in this class.
-    self.tflite_convert_function = toco_convert
+    self.tflite_convert_function = None
     # A map from regular expression to bug number. Any test failure with label
     # matching the expression will be considered due to the corresponding bug.
     self.known_bugs = KNOWN_BUGS
@@ -158,47 +153,6 @@ class ExtraTocoOptions(object):
     self.inference_output_type = None
 
 
-def toco_options(data_types,
-                 input_arrays,
-                 output_arrays,
-                 shapes,
-                 extra_toco_options=ExtraTocoOptions()):
-  """Create TOCO options to process a model.
-
-  Args:
-    data_types: input and inference types used by TOCO.
-    input_arrays: names of the input tensors
-    output_arrays: name of the output tensors
-    shapes: shapes of the input tensors
-    extra_toco_options: additional toco options
-  Returns:
-    the options in a string.
-  """
-  shape_str = ":".join([",".join(str(y) for y in x) for x in shapes if x])
-  inference_type = "FLOAT"
-  # TODO(ahentz): if we get multi-input quantization to work we need this
-  # to change
-  if data_types[0] == "QUANTIZED_UINT8":
-    inference_type = "QUANTIZED_UINT8"
-  s = (" --input_data_types=%s" % ",".join(data_types) +
-       " --inference_type=%s" % inference_type +
-       " --input_format=TENSORFLOW_GRAPHDEF" + " --output_format=TFLITE" +
-       " --input_arrays=%s" % ",".join(input_arrays) +
-       " --output_arrays=%s" % ",".join(output_arrays))
-  if shape_str:
-    s += (" --input_shapes=%s" % shape_str)
-  if extra_toco_options.drop_control_dependency:
-    s += " --drop_control_dependency"
-  if extra_toco_options.allow_custom_ops:
-    s += " --allow_custom_ops"
-  if extra_toco_options.rnn_states:
-    s += (" --rnn_states='" + extra_toco_options.rnn_states + "'")
-  if extra_toco_options.split_tflite_lstm_inputs is not None:
-    if extra_toco_options.split_tflite_lstm_inputs:
-      s += " --split_tflite_lstm_inputs=true"
-    else:
-      s += " --split_tflite_lstm_inputs=false"
-  return s
 
 
 def format_result(t):
@@ -268,7 +222,7 @@ def write_test_cases(fp, model_name, examples):
     fp.write("}\n")
 
 
-_TF_TYPE_INFO = {
+TF_TYPE_INFO = {
     tf.float32: (np.float32, "FLOAT"),
     tf.float16: (np.float16, "FLOAT"),
     tf.int32: (np.int32, "INT32"),
@@ -283,8 +237,8 @@ _TF_TYPE_INFO = {
 def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
   """Build tensor data spreading the range [min_value, max_value)."""
 
-  if dtype in _TF_TYPE_INFO:
-    dtype = _TF_TYPE_INFO[dtype][0]
+  if dtype in TF_TYPE_INFO:
+    dtype = TF_TYPE_INFO[dtype][0]
 
   if dtype in (tf.float32, tf.float16):
     value = (max_value-min_value)*np.random.random_sample(shape)+min_value
@@ -303,8 +257,8 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
 def create_scalar_data(dtype, min_value=-100, max_value=100):
   """Build scalar tensor data range from min_value to max_value exclusively."""
 
-  if dtype in _TF_TYPE_INFO:
-    dtype = _TF_TYPE_INFO[dtype][0]
+  if dtype in TF_TYPE_INFO:
+    dtype = TF_TYPE_INFO[dtype][0]
 
   if dtype in (tf.float32, tf.float16):
     value = (max_value - min_value) * np.random.random() + min_value
@@ -359,100 +313,6 @@ def make_control_dep_tests(options):
       build_inputs,
       extra_toco_options,
       expected_tf_failures=3)
-
-
-def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
-  """Convert a model's graph def into a tflite model.
-
-  NOTE: this currently shells out to the toco binary, but we would like
-  convert to Python API tooling in the future.
-
-  Args:
-    options: An Options instance.
-    graph_def: A GraphDef object.
-    input_tensors: List of input tensor tuples `(name, shape, type)`.
-    output_tensors: List of output tensors (names).
-    **kwargs: Extra options to be passed.
-
-  Returns:
-    output tflite model, log_txt from conversion
-    or None, log_txt if it did not convert properly.
-  """
-  # Convert ophint ops if presented.
-  graph_def = tf.lite.experimental.convert_op_hints_to_stubs(
-      graph_def=graph_def)
-  graph_def_str = graph_def.SerializeToString()
-
-  extra_toco_options = kwargs.get("extra_toco_options", ExtraTocoOptions())
-  test_params = kwargs.get("test_params", {})
-  input_arrays = [x[0] for x in input_tensors]
-  data_types = [_TF_TYPE_INFO[x[2]][1] for x in input_tensors]
-
-  if test_params.get("fully_quantize", False):
-    with tempfile.NamedTemporaryFile() as graphdef_file:
-      graphdef_file.write(graph_def_str)
-      graphdef_file.flush()
-
-      input_shapes = get_input_shapes_map(input_tensors)
-      converter = tf.lite.TocoConverter.from_frozen_graph(
-          graphdef_file.name, input_arrays, output_tensors, input_shapes)
-
-      def representative_dataset(input_tensors):
-        calibration_inputs = []
-        for _, shape, _ in input_tensors:
-          if shape:
-            dims = [dim.value for dim in shape.dims]
-            calibration_inputs.append(
-                np.random.uniform(-1, 1, tuple(dims)).astype(np.float32))
-        return calibration_inputs
-
-      def representative_dataset_gen():
-        for _ in range(100):
-          yield representative_dataset(input_tensors)
-
-      converter.target_spec.supported_ops = [
-          tf.lite.OpsSet.TFLITE_BUILTINS_INT8
-      ]
-      converter.representative_dataset = representative_dataset_gen
-      if extra_toco_options.inference_input_type:
-        converter.inference_input_type = (
-            extra_toco_options.inference_input_type)
-      if extra_toco_options.inference_output_type:
-        converter.inference_output_type = (
-            extra_toco_options.inference_output_type)
-
-      try:
-        tflite_model = converter.convert()
-        return tflite_model, ""
-      except Exception as e:
-        log = "{0}\n{1}".format(str(e), traceback.format_exc())
-        return None, log
-
-  else:
-    opts = toco_options(
-        data_types=data_types,
-        input_arrays=input_arrays,
-        shapes=[x[1] for x in input_tensors],
-        output_arrays=output_tensors,
-        extra_toco_options=extra_toco_options)
-
-    with tempfile.NamedTemporaryFile() as graphdef_file, \
-         tempfile.NamedTemporaryFile() as output_file, \
-         tempfile.NamedTemporaryFile("w+") as stdout_file:
-      graphdef_file.write(graph_def_str)
-      graphdef_file.flush()
-
-      # TODO(aselle): Switch this to subprocess at some point.
-      if options.run_with_flex:
-        opts += " --enable_select_tf_ops --force_select_tf_ops"
-      cmd = ("%s --input_file=%s --output_file=%s %s > %s 2>&1" %
-             (bin_path, graphdef_file.name, output_file.name, opts,
-              stdout_file.name))
-      exit_code = os.system(cmd)
-      log = (
-          cmd + "exited with code %d" % exit_code + "\n------------------\n" +
-          stdout_file.read())
-      return (None if exit_code != 0 else output_file.read()), log
 
 
 def get_input_shapes_map(input_tensors):
@@ -1103,7 +963,7 @@ def make_constant_tests(options):
 
   def build_inputs(parameters, sess, inputs, outputs):
     dummy_input = np.zeros(
-        parameters["input_shape"], dtype=_TF_TYPE_INFO[parameters["dtype"]][0])
+        parameters["input_shape"], dtype=TF_TYPE_INFO[parameters["dtype"]][0])
     return [dummy_input], sess.run(outputs, feed_dict={inputs[0]: dummy_input})
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
@@ -2316,6 +2176,12 @@ def make_fully_connected_tests(options):
       "transpose_a": [False],
       "transpose_b": [True],
       "constant_filter": [True, False],
+  }, {
+      "shape1": [[5, 3]],
+      "shape2": [[5, 3]],
+      "transpose_a": [True],
+      "transpose_b": [False],
+      "constant_filter": [True, False],
   }]
 
   def build_graph(parameters):
@@ -3169,7 +3035,7 @@ def _make_strided_slice_tests(options, test_parameters,
     """Build inputs for stride_slice test."""
     input_values = create_tensor_data(parameters["dtype"],
                                       parameters["input_shape"])
-    index_type = _TF_TYPE_INFO[parameters["index_type"]][0]
+    index_type = TF_TYPE_INFO[parameters["index_type"]][0]
     values = [input_values]
     if not parameters["constant_indices"]:
       begin_values = np.array(parameters["begin"]).astype(index_type)
@@ -3297,12 +3163,37 @@ def make_strided_slice_np_style_tests(options):
   test_parameters = [
       {
           "dtype": [tf.float32],
-          "new_axis_num": [0, 1, 2],
-          "shape": [[12, 7], [33]],
-          "stride": [1, 2, 3],
-          "use_begin_end_mask": [True, False],
-          # share between begin and end to avoid creating too many combinations.
-          "begin_end_offset": [0, 1, 3]
+          "shape": [[12, 7], [33, 1]],
+          "spec": [[slice(3, 7, 2), slice(None)],
+                   [tf.newaxis,
+                    slice(3, 7, 1), tf.newaxis,
+                    slice(None)], [slice(1, 5, 1), slice(None)]],
+      },
+      # 1-D case
+      {
+          "dtype": [tf.float32],
+          "shape": [[44]],
+          "spec": [[slice(3, 7, 2)], [tf.newaxis, slice(None)]],
+      },
+      # Shrink mask.
+      {
+          "dtype": [tf.float32],
+          "shape": [[21, 15, 7]],
+          "spec": [[slice(3, 7, 2), slice(None), 2]],
+      },
+      # Ellipsis.
+      {
+          "dtype": [tf.float32],
+          "shape": [[21, 15, 7]],
+          "spec": [[slice(3, 7, 2), Ellipsis]],
+      },
+      # All combinations.
+      {
+          "dtype": [tf.float32],
+          "shape": [[21, 15, 7]],
+          "spec": [[tf.newaxis,
+                    slice(3, 7, 2),
+                    slice(None), Ellipsis]],
       },
   ]
 
@@ -3315,38 +3206,12 @@ def make_strided_slice_np_style_tests(options):
     Returns:
       strided_slice spec, e.g., [2:3, :] or [tf.newaxis, :, tf.newaxis].
     """
-    shape = parameters["shape"]
-    new_axis_num = parameters["new_axis_num"]
-    insert_new_axis_array = [False] * len(shape)
-    for _ in range(new_axis_num):
-      insert_loc = np.random.randint(0, len(insert_new_axis_array) + 1)
-      insert_new_axis_array.insert(insert_loc, True)
-    slice_spec = []
-    index = 0
-    for insert_new_axis in insert_new_axis_array:
-      if insert_new_axis:
-        slice_spec.append(tf.newaxis)
-      else:
-        # Random pop up begin/end/strides or just use ":"
-        if parameters["use_begin_end_mask"]:
-          # use slice(None), means use all values, equivalent of ":".
-          slice_spec.append(slice(None))
-        else:
-          # Begin.
-          begin = parameters["begin_end_offset"]
-          # End.
-          end = shape[index] - parameters["begin_end_offset"]
-          # Strides.
-          stride = parameters["stride"]
-          slice_spec.append(slice(begin, end, stride))
-        index += 1
-    return slice_spec
 
   def build_graph(parameters):
     """Build a simple graph with np style strided_slice."""
     input_value = tf.placeholder(
         dtype=parameters["dtype"], shape=parameters["shape"])
-    out = input_value.__getitem__(build_strided_slice_spec(parameters))
+    out = input_value.__getitem__(parameters["spec"])
     return [input_value], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -4123,7 +3988,7 @@ def make_slice_tests(options):
     """Build inputs for slice test."""
     input_values = create_tensor_data(parameters["dtype"],
                                       parameters["input_shape"])
-    index_type = _TF_TYPE_INFO[parameters["index_type"]][0]
+    index_type = TF_TYPE_INFO[parameters["index_type"]][0]
 
     begin_values = np.array(parameters["begin"]).astype(index_type)
     size_values = np.array(parameters["size"]).astype(index_type)
@@ -4800,7 +4665,7 @@ def make_placeholder_with_default_tests(options):
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    numpy_type = _TF_TYPE_INFO[parameters["dtype"]][0]
+    numpy_type = TF_TYPE_INFO[parameters["dtype"]][0]
     input_value = np.array([[1, 0], [2, 1]], numpy_type)
     return [input_value], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value])))
@@ -5262,13 +5127,8 @@ def make_rfft2d_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs,
                     extra_toco_options)
 
-# Toco binary path provided by the generate rule.
-bin_path = None
-
 
 def generate_examples(options):
-  global bin_path
-
   def mkdir_if_not_exist(x):
     if not os.path.isdir(x):
       os.mkdir(x)
@@ -5279,7 +5139,6 @@ def generate_examples(options):
   mkdir_if_not_exist(opstest_path)
 
   out = options.zip_to_output
-  bin_path = options.toco
   # Some zip filenames contain a postfix identifying the conversion mode. The
   # list of valid conversion modes is defined in
   # generated_test_conversion_modes() in build_def.bzl.

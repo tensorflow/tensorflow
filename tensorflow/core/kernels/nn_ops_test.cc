@@ -108,6 +108,7 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
                          CONV_OP op, int num_threads, int stride,
                          Padding padding, bool use_gpu, DataType data_type,
                          const string& label) {
+  testing::StopTiming();
   if (!IsGoogleCudaEnabled() && use_gpu) {
     testing::SetLabel(
         strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
@@ -221,6 +222,7 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
 
   string device = use_gpu ? "gpu" : "cpu";
   testing::UseRealTime();
+  testing::StartTiming();
   test::Benchmark(device, g, &options).Run(iters);
   testing::ItemsProcessed(num_ops * iters);
 }
@@ -502,6 +504,7 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
                                   int filter_cols, DEPTHWISE_CONV_OP op,
                                   int num_threads, int stride, Padding padding,
                                   bool use_gpu, const string& label) {
+  testing::StopTiming();
   if (!IsGoogleCudaEnabled() && use_gpu) {
     testing::SetLabel(
         strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
@@ -601,6 +604,7 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
 
   string device = use_gpu ? "gpu" : "cpu";
   testing::UseRealTime();
+  testing::StartTiming();
   test::Benchmark(device, g, &options).Run(iters);
   testing::ItemsProcessed(num_ops * iters);
 }

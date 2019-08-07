@@ -38,6 +38,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 constexpr char kDatasetName[] = "MapAndBatch";
@@ -45,8 +46,6 @@ constexpr char kDatasetName[] = "MapAndBatch";
 // Maximum number of batch results to buffer.
 constexpr int64 kMaxBatchResults = 16;
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit MapAndBatchDatasetOp(OpKernelConstruction* ctx)
@@ -144,6 +143,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
       return n / batch_size_ +
              (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
+    }
+
+    bool IsStateful() const override {
+      return captured_func_->IsStateful() || input_->IsStateful();
     }
 
    protected:
@@ -774,5 +777,6 @@ REGISTER_INPUT_COLOCATION_EXEMPTION("MapAndBatchDataset");
 REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalMapAndBatchDataset");
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

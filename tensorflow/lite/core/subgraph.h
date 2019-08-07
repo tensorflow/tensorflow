@@ -16,12 +16,14 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_SUBGRAPH_H_
 
 #include <cstdlib>
+#include <map>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/experimental/resource_variable/resource_variable.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
 
@@ -36,7 +38,8 @@ class Subgraph {
 
   Subgraph(ErrorReporter* error_reporter,
            TfLiteExternalContext** external_contexts,
-           std::vector<std::unique_ptr<Subgraph>>* subgraphs);
+           std::vector<std::unique_ptr<Subgraph>>* subgraphs,
+           ResourceVariableMap* resource_variables);
 
   Subgraph(const Subgraph&) = delete;
 
@@ -159,6 +162,10 @@ class Subgraph {
 
   // Read only access to list of variable tensors.
   const std::vector<int>& variables() const { return variables_; }
+
+  // WARNING: Experimental interface, subject to change.
+  // TODO(ycling): Move this function to an external context interface.
+  ResourceVariableMap& resource_variables() { return *resource_variables_; }
 
   size_t tensors_size() const { return tensors_.size(); }
 
@@ -581,6 +588,10 @@ class Subgraph {
   // Reference to data used by the cancellation function in
   // `check_cancelled_func_`.
   void* cancellation_data_ = nullptr;
+
+  // A map of resource variables. Owned by interpreter and shared by multiple
+  // subgraphs.
+  ResourceVariableMap* resource_variables_ = nullptr;
 };
 
 }  // namespace tflite

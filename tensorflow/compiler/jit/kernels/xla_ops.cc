@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -366,7 +367,12 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
-  auto run_result = executable->Run(launch_context.arguments(), run_options);
+  xla::StatusOr<xla::ScopedShapedBuffer> run_result;
+  if (!stream || platform_info_.platform_id() == se::host::kHostPlatformId) {
+    run_result = executable->Run(launch_context.arguments(), run_options);
+  } else {
+    run_result = executable->RunAsync(launch_context.arguments(), run_options);
+  }
   OP_REQUIRES(ctx, run_result.ok(), run_result.status());
 
   auto elapsed = env->NowMicros() - start_time;
@@ -467,6 +473,10 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     if (status.code() == error::UNIMPLEMENTED) {
       LOG(WARNING) << "Compilation failed:" << status.ToString()
                    << ".  Falling back to TF function call.";
+
+      BroadcastOptimizationRemark(
+          XlaOptimizationRemark::UNIMPLEMENTED_OPERATION, status.ToString())
+          .IgnoreError();
       executable = nullptr;
       mutex_lock guard(cannot_compile_cluster_mu_);
       cannot_compile_cluster_ = true;
@@ -550,8 +560,14 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
-  auto run_result =
-      closure.executable()->Run(launch_context.arguments(), run_options);
+  xla::StatusOr<xla::ScopedShapedBuffer> run_result;
+  if (!stream || platform_info_.platform_id() == se::host::kHostPlatformId) {
+    run_result =
+        closure.executable()->Run(launch_context.arguments(), run_options);
+  } else {
+    run_result =
+        closure.executable()->RunAsync(launch_context.arguments(), run_options);
+  }
   OP_REQUIRES(ctx, run_result.ok(), run_result.status());
 
   auto elapsed = env->NowMicros() - start_time;

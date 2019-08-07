@@ -31,7 +31,11 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
+
 #if GOOGLE_CUDA
+// TODO(rocm): disabling this code on the ROCm platform since the references
+// to `half2` are leading to compile errors.
+
 // This kernel computes ReluGrad by processing one half2, two fp16, at a time.
 // It effectively does: backdrops = (feature > 0) ? gradient : 0
 // It also tries to use native half2 primitives as much as possible.
@@ -112,10 +116,12 @@ struct ReluGrad<Device, Eigen::half> {
         d.stream(), gradient.data(), feature.data(), backprop.data(), count));
   }
 };
+#endif
 
+#if GOOGLE_CUDA
 __global__ void Relu_int8x4_kernel(int vect_count, const int32* input,
                                    int32* output) {
-  CUDA_1D_KERNEL_LOOP(index, vect_count) {
+  GPU_1D_KERNEL_LOOP(index, vect_count) {
     output[index] = __vmaxs4(input[index], 0);
   }
 }
@@ -142,7 +148,7 @@ struct Relu<Device, qint8> {
         reinterpret_cast<int32*>(output.data())));
   }
 };
-#endif
+#endif  // GOOGLE_CUDA
 }  // namespace functor
 
 // Definition of the GPU implementations declared in relu_op.cc.
@@ -159,9 +165,10 @@ struct Relu<Device, qint8> {
   template struct functor::SeluGrad<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
-
+#if GOOGLE_CUDA
 template struct functor::Relu<GPUDevice, qint8>;
+#endif  // GOOGLE_CUDA
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

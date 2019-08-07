@@ -31,6 +31,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute as execute_lib
+from tensorflow.python.eager import executor
 from tensorflow.python.eager import test
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -127,7 +128,7 @@ class TFETest(test_util.TensorFlowTestCase):
       self._test_hashable(variable_a, variable_b, True)
       ops.enable_tensor_equality()
       _v2_check(variable_a, variable_b)
-      self._test_hashable(variable_a, variable_b, True)
+      self._test_hashable(variable_a, variable_b, False)
 
       # We only test numpy behaviour in v2 mode since we'd like to match that.
       numpy_a = np.array(1.0)
@@ -178,7 +179,7 @@ class TFETest(test_util.TensorFlowTestCase):
       self._test_hashable(variable_a, variable_b, True)
       ops.enable_tensor_equality()
       _v2_check(variable_a, variable_b)
-      self._test_hashable(variable_a, variable_b, True)
+      self._test_hashable(variable_a, variable_b, False)
 
       numpy_a = np.array(float('nan'))
       numpy_b = np.array(float('nan'))
@@ -223,12 +224,14 @@ class TFETest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         bool(tf_a == tf_c)
       self.assertAllEqual(tf_a == tf_c, [True, False])
+      self.assertNotAllEqual(tf_a, tf_c)
       with self.assertRaises(ValueError):
         bool(np_a == np_b)
       self.assertAllEqual(np_a == np_b, [True, True])
       with self.assertRaises(ValueError):
         bool(np_a == np_c)
       self.assertAllEqual(np_a == np_c, [True, False])
+      self.assertNotAllEqual(np_a, np_c)
 
       # Warning even though we technically shouldn't be able to compare here,
       # since the id is the same both TF & numpy will handle lists with the same
@@ -515,6 +518,22 @@ class TFETest(test_util.TensorFlowTestCase):
 
     test_var = variables.Variable([2., 3.])
     self.assertAllEqual(test_fn(test_var), 1.0)
+
+  def testPyFunctionAsync(self):
+
+    def simple_fn(v):
+      one = constant_op.constant(1.)
+      return v + one
+
+    @def_function.function
+    def test_fn(v):
+      return script_ops.eager_py_func(simple_fn, [v], dtypes.float32)
+
+    async_executor = executor.Executor(enable_async=True)
+    with context.executor_scope(async_executor):
+      test_var = variables.Variable(2.)
+      self.assertAllEqual(test_fn(test_var), 3.0)
+    async_executor.wait()
 
   @test_util.run_gpu_only
   def testNumpyForceCPU(self):

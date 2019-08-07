@@ -30,6 +30,7 @@ from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -84,7 +85,8 @@ def reduce_non_distributed_value(reduce_op, device_map, value, destinations):
   # If the same value is present on all replicas then the PerReplica value will
   # be a single value. We also handle the case when `value` is a single value
   # and equal to 0.
-  if value == 0:
+  # TODO:(b/138823479): handle the tensor value properly.
+  if not tensor_util.is_tensor(value) and value == 0:
     return 0
   # If there is only a single value and the reduce op is MEAN,
   # that value should be on all destinations.
@@ -262,7 +264,7 @@ class CrossDeviceOps(object):
       ValueError: if per_replica_value can't be converted to a PerReplica
         object.
     """
-    if not isinstance(per_replica_value, value_lib.PerReplica):
+    if not isinstance(per_replica_value, value_lib.DistributedValues):
       per_replica_value = _make_tensor_into_per_replica(per_replica_value)
 
     validate_destinations(destinations)

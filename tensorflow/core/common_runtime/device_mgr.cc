@@ -49,6 +49,14 @@ DeviceMgr::DeviceMgr(std::unique_ptr<Device> device)
         return vector;
       }()) {}
 
+DeviceMgr::~DeviceMgr() {
+  // Release resources ahead of destroying the device manager as the resource
+  // destructors (e.g. ~IteratorResource) assume devices still exist.
+  for (auto& device : devices_) {
+    device->ClearResourceMgr();
+  }
+}
+
 StringPiece DeviceMgr::CopyToBackingStore(StringPiece s) {
   size_t n = s.size();
   char* space = name_backing_store_.Alloc(n);

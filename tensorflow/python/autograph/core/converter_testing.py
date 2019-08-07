@@ -27,7 +27,7 @@ import six
 from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import function_wrapping
+from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import compiler
@@ -57,7 +57,7 @@ class TestCase(test.TestCase):
 
     self.dynamic_calls = []
     # See api.converted_call
-    def converted_call(f, unused_opts, args, kwargs):
+    def converted_call(f, unused_opts, args, kwargs, unused_function_ctx):
       """Mock version of api.converted_call."""
       self.dynamic_calls.append((args, kwargs))
       if kwargs is None:
@@ -78,7 +78,7 @@ class TestCase(test.TestCase):
       fake_ag.ConversionOptions = converter.ConversionOptions
       fake_ag.Feature = converter.Feature
       fake_ag.utils = utils
-      fake_ag.function_scope = function_wrapping.function_scope
+      fake_ag.FunctionScope = function_wrappers.FunctionScope
       result.ag__ = fake_ag
       result.ag_source_map__ = source_map
       for k, v in namespace.items():
@@ -135,7 +135,8 @@ class TestCase(test.TestCase):
         source_file='<fragment>',
         future_features=future_features,
         namespace=namespace)
-    ctx = converter.EntityContext(namer, entity_info, program_ctx)
+    ctx = converter.EntityContext(
+        namer, entity_info, program_ctx, 'test_fn')
     origin_info.resolve_entity(node, source, test_fn)
     node = converter.standard_analysis(node, ctx, is_initial=True)
     return node, ctx

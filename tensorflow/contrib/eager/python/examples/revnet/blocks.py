@@ -61,7 +61,7 @@ class RevBlock(tf.keras.Model):
       fused: use fused batch normalization if True
       dtype: float16, float32, or float64
     """
-    super(RevBlock, self).__init__()
+    super(RevBlock, self).__init__(dtype=dtype)
     self.blocks = tf.contrib.checkpoint.List()
     for i in range(n_res):
       curr_batch_norm_first = batch_norm_first and i == 0
@@ -135,7 +135,7 @@ class _Residual(tf.keras.Model):
       fused: use fused batch normalization if True
       dtype: float16, float32, or float64
     """
-    super(_Residual, self).__init__()
+    super(_Residual, self).__init__(dtype=dtype)
 
     self.filters = filters
     self.strides = strides
@@ -283,7 +283,7 @@ class _BottleneckResidualInner(tf.keras.Model):
       fused: use fused batch normalization if True
       dtype: float16, float32, or float64
     """
-    super(_BottleneckResidualInner, self).__init__()
+    super(_BottleneckResidualInner, self).__init__(dtype=dtype)
     axis = 1 if data_format == "channels_first" else 3
     if batch_norm_first:
       self.batch_norm_0 = tf.keras.layers.BatchNormalization(
@@ -365,7 +365,7 @@ class _ResidualInner(tf.keras.Model):
       fused: use fused batch normalization if True
       dtype: float16, float32, or float64
     """
-    super(_ResidualInner, self).__init__()
+    super(_ResidualInner, self).__init__(dtype=dtype)
     axis = 1 if data_format == "channels_first" else 3
     if batch_norm_first:
       self.batch_norm_0 = tf.keras.layers.BatchNormalization(
@@ -416,7 +416,7 @@ class InitBlock(tf.keras.Model):
     Args:
       config: tf.contrib.training.HParams object; specifies hyperparameters
     """
-    super(InitBlock, self).__init__()
+    super(InitBlock, self).__init__(config.dtype)
     self.config = config
     self.axis = 1 if self.config.data_format == "channels_first" else 3
     self.conv2d = tf.keras.layers.Conv2D(
@@ -430,7 +430,8 @@ class InitBlock(tf.keras.Model):
         dtype=self.config.dtype)
     self.batch_norm = tf.keras.layers.BatchNormalization(
         axis=self.axis, fused=self.config.fused, dtype=self.config.dtype)
-    self.activation = tf.keras.layers.Activation("relu")
+    self.activation = tf.keras.layers.Activation("relu",
+                                                 dtype=self.config.dtype)
 
     if self.config.init_max_pool:
       self.max_pool = tf.keras.layers.MaxPooling2D(
@@ -464,7 +465,7 @@ class FinalBlock(tf.keras.Model):
     Raises:
       ValueError: Unsupported data format
     """
-    super(FinalBlock, self).__init__()
+    super(FinalBlock, self).__init__(dtype=config.dtype)
     self.config = config
     self.axis = 1 if self.config.data_format == "channels_first" else 3
 
@@ -488,7 +489,8 @@ class FinalBlock(tf.keras.Model):
         input_shape=input_shape,
         fused=self.config.fused,
         dtype=self.config.dtype)
-    self.activation = tf.keras.layers.Activation("relu")
+    self.activation = tf.keras.layers.Activation("relu",
+                                                 dtype=self.config.dtype)
     self.global_avg_pool = tf.keras.layers.GlobalAveragePooling2D(
         data_format=self.config.data_format, dtype=self.config.dtype)
     self.dense = tf.keras.layers.Dense(

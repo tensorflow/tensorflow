@@ -24,10 +24,11 @@ from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.experimental.ops import unique
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
@@ -37,7 +38,6 @@ def chunk(l, n):
     yield l[i:i + n]
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
                            parameterized.TestCase):
 
@@ -65,7 +65,10 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     else:
       self.assertDatasetProduces(dataset, list(chunk(expected, batch)))
 
-  @parameterized.parameters(True, False)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(shuffle=[True, False])))
   def testFlatMapReaderPipeline(self, shuffle):
     dataset = dataset_ops.Dataset.list_files(
         self.test_filenames, shuffle=shuffle)
@@ -80,6 +83,7 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     ]
     self.assertDatasetProducesWithShuffle(dataset, expected, 5, 4, shuffle)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testZipReaderPipeline(self):
     dataset1 = dataset_ops.Dataset.list_files(
         self.test_filenames, shuffle=False)
@@ -101,7 +105,10 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
     self.assertDatasetProduces(dataset, expected)
 
-  @parameterized.parameters(True, False)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(shuffle=[True, False])))
   def testConcatenateReaderPipeline(self, shuffle):
     dataset1 = dataset_ops.Dataset.list_files(
         self.test_filenames, shuffle=shuffle)
@@ -125,7 +132,10 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     expected += expected
     self.assertDatasetProducesWithShuffle(dataset, expected, 5, 8, shuffle)
 
-  @parameterized.parameters(True, False)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(shuffle=[True, False])))
   def testPipelineWithMap(self, shuffle):
     dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
     dataset = dataset.apply(
@@ -141,6 +151,7 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     ]
     self.assertDatasetProducesWithShuffle(dataset, expected, 5, 4, shuffle)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDirectFilenameTFRecordReaderPipeline(self):
     dataset = core_readers.TFRecordDataset(self.test_filenames)
     dataset = distribute._AutoShardDataset(dataset, 5, 0)
@@ -152,7 +163,10 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     ]
     self.assertDatasetProduces(dataset, expected)
 
-  @parameterized.parameters(True, False)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(shuffle=[True, False])))
   def testValidPipelineWithRangeDataset(self, shuffle):
     dataset = dataset_ops.Dataset.range(self._num_files)
     dataset = dataset.map(lambda n: string_ops.string_join(  # pylint:disable=g-long-lambda
@@ -171,9 +185,13 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     ]
     self.assertDatasetProducesWithShuffle(dataset, expected, 5, 4, shuffle)
 
-  @parameterized.parameters((1, 0, 10, 10), (2, 1, 20, 5), (10, 1, 1, 10))
-  def testStandardReaderPipeline(self, num_epochs, index, batch_size,
-                                 parallel_reads):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(params=[(1, 0, 10, 10), (2, 1, 20, 5),
+                                       (10, 1, 1, 10)])))
+  def testStandardReaderPipeline(self, params):
+    num_epochs, index, batch_size, parallel_reads = params
     dataset = readers.make_tf_record_dataset(
         file_pattern=self.test_filenames,
         num_epochs=num_epochs,
@@ -195,7 +213,10 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(outputs())
 
-  @parameterized.parameters(True, False)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(shuffle=[True, False])))
   def testSampleResNetPipeline(self, shuffle):
     dataset = dataset_ops.Dataset.list_files(
         self.test_filenames, shuffle=shuffle)
@@ -211,6 +232,7 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     ]
     self.assertDatasetProducesWithShuffle(dataset, expected, 5, 4, shuffle)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testWorkersGreaterThanNumFiles(self):
     dataset = dataset_ops.Dataset.list_files(self.test_filenames)
     dataset = dataset.apply(
@@ -219,6 +241,7 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     dataset = distribute._AutoShardDataset(dataset, 500, 499)
     self.assertDatasetProduces(dataset, [])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTFRecordReaderWithDirectFileNames(self):
     # Using `_TFRecordDataset` creates a raw op rather than wrapping it around
     # a flat_map automatically.
@@ -232,6 +255,7 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     ]
     self.assertDatasetProduces(dataset, expected)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTFRecordReaderWithDirectFileNamesAndShapes(self):
     # Using `_TFRecordDataset` creates a raw op rather than wrapping it around
     # a flat_map automatically.
@@ -248,23 +272,27 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     ]
     self.assertDatasetProduces(dataset, list(chunk(expected, 5)))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testShardOutOfRange(self):
     dataset = dataset_ops.Dataset.range(5)
     with self.assertRaises(errors.InvalidArgumentError):
       dataset = distribute._AutoShardDataset(dataset, 10, 0)
       self.evaluate(self.getNext(dataset)())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testShardOutOfRangeEmptyDataset(self):
     dataset = dataset_ops.Dataset.range(0)
     with self.assertRaises(errors.OutOfRangeError):
       dataset = distribute._AutoShardDataset(dataset, 10, 0)
       self.evaluate(self.getNext(dataset)())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNoReaderPipelines(self):
     dataset = dataset_ops.Dataset.range(1024)
     dataset = distribute._AutoShardDataset(dataset, 2, 0)
     self.assertDatasetProduces(dataset, [i for i in range(1024) if i % 2 == 0])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testUnknownOpInPipelineStillShardsAtTheEnd(self):
     dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
     dataset = dataset.flat_map(core_readers.TFRecordDataset)
@@ -279,6 +307,7 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     ]
     self.assertDatasetProduces(dataset, expected)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testInvalidWorkerIndex(self):
     dataset = dataset_ops.Dataset.list_files(self.test_filenames)
     dataset = dataset.flat_map(core_readers.TFRecordDataset)
@@ -289,7 +318,6 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
       self.evaluate(self.getNext(dataset)())
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class AutoShardTextLineDatasetTest(
     reader_dataset_ops_test_base.TextLineDatasetTestBase,
     parameterized.TestCase):
@@ -300,6 +328,7 @@ class AutoShardTextLineDatasetTest(
     self._num_records = 10
     self.test_filenames = self._createFiles(self._num_files, self._num_records)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDirectFilenameTextLineReaderPipeline(self):
     dataset = core_readers.TextLineDataset(self.test_filenames)
     dataset = distribute._AutoShardDataset(dataset, 5, 0)

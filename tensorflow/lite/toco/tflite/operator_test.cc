@@ -917,7 +917,35 @@ TEST_F(OperatorTest, VersioningAddTest) { SimpleVersioningTest<AddOperator>(); }
 
 TEST_F(OperatorTest, VersioningSubTest) { SimpleVersioningTest<SubOperator>(); }
 
-TEST_F(OperatorTest, VersioningMulTest) { SimpleVersioningTest<MulOperator>(); }
+void SimpleMulVersioningTest(ArrayDataType data_type, float multiplier,
+                             int version) {
+  MulOperator op;
+  op.inputs = {"input1", "input2"};
+  op.outputs = {"output"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model model;
+  Array& input0 = model.GetOrCreateArray(op.inputs[0]);
+  Array& input1 = model.GetOrCreateArray(op.inputs[1]);
+  Array& output = model.GetOrCreateArray(op.outputs[0]);
+
+  input0.data_type = data_type;
+  input0.GetOrCreateQuantizationParams().scale = 1.0f;
+  input1.data_type = data_type;
+  input1.GetOrCreateQuantizationParams().scale = 1.0f;
+  output.data_type = data_type;
+  output.GetOrCreateQuantizationParams().scale = 1.0f / multiplier;
+
+  OperatorSignature signature = {.op = &op, .model = &model};
+  EXPECT_EQ(base_op->GetVersion(signature), version);
+}
+
+TEST_F(OperatorTest, VersioningMulTest) {
+  SimpleMulVersioningTest(ArrayDataType::kUint8, 0.5f, 1);
+  SimpleMulVersioningTest(ArrayDataType::kInt8, 0.5f, 2);
+  SimpleMulVersioningTest(ArrayDataType::kInt8, 2.0f, 3);
+}
 
 TEST_F(OperatorTest, VersioningPadTest) { SimpleVersioningTest<PadOperator>(); }
 

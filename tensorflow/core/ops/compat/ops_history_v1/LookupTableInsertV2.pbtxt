@@ -1,0 +1,24 @@
+op {
+  name: "LookupTableInsertV2"
+  input_arg {
+    name: "table_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "keys"
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "values"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+  }
+  is_stateful: true
+}
