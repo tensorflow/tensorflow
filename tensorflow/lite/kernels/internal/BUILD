@@ -167,6 +167,16 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "raspberry_pi_with_neon",
+    define_values = {
+        "raspberry_pi_with_neon": "true",
+    },
+    values = {
+        "cpu": "armeabi",
+    },
+)
+
 cc_library(
     name = "common",
     srcs = [],
@@ -617,6 +627,9 @@ cc_library(
             ":neon_tensor_utils",
         ],
         ":ios_arm64": [
+            ":neon_tensor_utils",
+        ],
+        ":raspberry_pi_with_neon": [
             ":neon_tensor_utils",
         ],
         ":ios_x86_64": [

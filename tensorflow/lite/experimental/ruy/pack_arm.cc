@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/experimental/ruy/pack.h"
-
 #include "tensorflow/lite/experimental/ruy/platform.h"
 
 namespace ruy {
@@ -1289,7 +1288,7 @@ void PackFloatNeonOutOfOrder(const float* src_ptr0, const float* src_ptr1,
 
           "ands r2, %[rows], #3\n"
           "beq 4f\n"
-          "mov r0, 0\n"
+          "mov r0, #0\n"
           // Zero out q0 - q3
           "vdup.32 q0, r0\n"
           "vdup.32 q1, r0\n"
