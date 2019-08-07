@@ -150,6 +150,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     r = add(x, v2)
     self.assertEqual(3.0, self.evaluate(r))
 
+  def testVariableOnly(self):
+    v = variables.Variable(1.0)
+    add = def_function.function(lambda x: x.assign_add(1.0))
+    r1 = add(v)
+    self.assertEqual(2.0, self.evaluate(r1))
+    c = constant_op.constant(1.0)
+    with self.assertRaisesRegexp(AttributeError, 'no attribute'):
+      add(c)
+
   def testExternalControlDependency(self):
     with ops.Graph().as_default(), self.test_session():
       v = variables.Variable(1.0)
@@ -288,7 +297,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    with self.assertRaisesRegexp(TypeError, 'set'):
+    with self.assertRaisesRegexp(AttributeError, 'set'):
       f(set([]))
 
   def testFuncName(self):
