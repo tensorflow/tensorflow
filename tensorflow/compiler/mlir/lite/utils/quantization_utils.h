@@ -85,11 +85,11 @@ struct GenericFullQuantizationPattern : public RewritePattern {
       return matchFailure();
     }
     auto quantize_op = cast<Q>(op);
-    auto quantized_op = quantize_op.input()->getDefiningOp();
+    Operation* quantized_op = quantize_op.input()->getDefiningOp();
     // If it is a block argument, requantize op, or has more than one result, we
     // shouldn't rewrite this op.
     if (!quantized_op || llvm::isa<Q>(quantized_op) ||
-        llvm::isa<DQ>(quantized_op) || quantized_op->getNumResults() != 1) {
+        llvm::isa<DQ>(quantized_op)) {
       return matchFailure();
     }
 
@@ -97,9 +97,8 @@ struct GenericFullQuantizationPattern : public RewritePattern {
     // inputs.
     SmallVector<Value*, 4> inputs;
     inputs.reserve(quantized_op->getNumOperands());
-    for (int i = 0, e = quantized_op->getNumOperands(); i != e; ++i) {
-      auto* operand = quantized_op->getOperand(i);
-      auto tensor_type = operand->getType().template dyn_cast<TensorType>();
+    for (auto operand : quantized_op->getOperands()) {
+      auto tensor_type = operand->getType().dyn_cast<TensorType>();
       if (!tensor_type) {
         // There are none type values.
         return matchFailure();
@@ -107,7 +106,7 @@ struct GenericFullQuantizationPattern : public RewritePattern {
       auto operand_ele_type = tensor_type.getElementType();
       if (auto op_inst = dyn_cast_or_null<DQ>(operand->getDefiningOp())) {
         inputs.push_back(op_inst.input());
-      } else if (operand_ele_type.template isa<IntegerType>()) {
+      } else if (operand_ele_type.isa<IntegerType>()) {
         // If the operand is an integer tensor, then it doesn't require the
         // DQ op in the pattern.
         inputs.push_back(operand);
@@ -115,13 +114,39 @@ struct GenericFullQuantizationPattern : public RewritePattern {
         return matchFailure();
       }
     }
+
+    // Collect all the quantized outputs and replace them by the results of the
+    // new quantized op.
+    llvm::SmallDenseMap<Value*, int> outputs_replaced;
+    SmallVector<Type, 4> output_types;
+    output_types.reserve(quantized_op->getNumResults());
+    for (auto result : llvm::enumerate(quantized_op->getResults())) {
+      if (!result.value()->hasOneUse()) return matchFailure();
+      auto result_ele_type =
+          result.value()->getType().cast<TensorType>().getElementType();
+      if (auto user = dyn_cast_or_null<Q>(*result.value()->user_begin())) {
+        outputs_replaced.insert({user.output(), result.index()});
+        output_types.push_back(user.getType());
+      } else if (result_ele_type.template isa<IntegerType>()) {
+        // If the result is an integer tensor, then it doesn't require the
+        // D op in the pattern.
+        outputs_replaced.insert({result.value(), result.index()});
+        output_types.push_back(result_ele_type);
+      } else {
+        return matchFailure();
+      }
+    }
+
     // Use OpBuilder so we can use op name to create the new op.
     OpBuilder builder(quantized_op);
-    OperationState new_state(
-        quantized_op->getLoc(), quantized_op->getName().getStringRef(), inputs,
-        op->getResult(0)->getType(), quantized_op->getAttrs());
+    OperationState new_state(quantized_op->getLoc(),
+                             quantized_op->getName().getStringRef(), inputs,
+                             output_types, quantized_op->getAttrs());
     Operation* new_op = builder.createOperation(new_state);
-    rewriter.replaceOp(op, {new_op->getResult(0)});
+    for (auto output : outputs_replaced) {
+      output.getFirst()->replaceAllUsesWith(
+          new_op->getResult(output.getSecond()));
+    }
     return matchSuccess();
   }
 };
