@@ -122,6 +122,8 @@ def TfExecutor_GraphOp : TfExecutor_Op<"graph",
 
   let regions = (region SizedRegion<1>:$body);
 
+  let hasCanonicalizer = 1;
+
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
   }];

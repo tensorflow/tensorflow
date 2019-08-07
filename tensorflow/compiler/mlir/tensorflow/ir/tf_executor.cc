@@ -875,6 +875,85 @@ ParseResult ParseLoopCondOp(OpAsmParser *parser, OperationState *result) {
 }  // namespace
 
 //===----------------------------------------------------------------------===//
+// Canonicalization patterns
+//===----------------------------------------------------------------------===//
+
+// TODO(lyandy): Add canonicalization for dedupping control inputs.
+
+//===----------------------------------------------------------------------===//
+// tf_executor.graph
+//===----------------------------------------------------------------------===//
+
+// TODO(lyandy): Add canonicalization for empty graphs.
+
+namespace {
+// This pattern matches GraphOps with only one island, pulls out all inner ops
+// of the island to the block containing the GraphOp, and then removes the
+// GraphOp.
+struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
+  using OpRewritePattern<GraphOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(GraphOp op,
+                                     PatternRewriter &rewriter) const override {
+    if (!HasSingleIslandInGraph(&op)) return matchFailure();
+    auto fetch_op = llvm::cast<FetchOp>(op.GetBody().back());
+    auto island_op = llvm::cast<IslandOp>(op.GetBody().front());
+    auto yield_op = llvm::cast<YieldOp>(island_op.GetBody().back());
+
+    // Mapping from island outputs to inner ops outputs.
+    llvm::SmallDenseMap<Value *, Value *, 8> island_rets_to_ops;
+    for (auto ops_and_ret_vals :
+         llvm::zip(island_op.outputs(), yield_op.fetches())) {
+      island_rets_to_ops.insert(
+          {std::get<0>(ops_and_ret_vals), std::get<1>(ops_and_ret_vals)});
+    }
+
+    // Map graph outputs to inner ops outputs.
+    llvm::SmallVector<Value *, 8> new_rets;
+    for (auto *fetch : fetch_op.fetches()) {
+      if (auto *op = island_rets_to_ops.lookup(fetch))
+        new_rets.push_back(op);
+      else
+        new_rets.push_back(fetch);
+    }
+
+    // Move inner ops from island to block containing graph.
+    auto &island_body = island_op.GetBody().getOperations();
+    Operation *operation = op.getOperation();
+    operation->getBlock()->getOperations().splice(
+        operation->getIterator(), island_body, island_body.begin(),
+        std::prev(island_body.end()));
+    rewriter.replaceOp(op, new_rets);
+
+    return matchSuccess();
+  }
+
+ private:
+  // Finds in a block if the op of type `InnerOpT` is the first operation
+  // and optionally followed by a terminator.
+  template <typename InnerOpT>
+  bool HasSingleOpInBlock(Block *block) const {
+    if (block->empty()) return false;
+    if (!llvm::isa<InnerOpT>(block->front())) return false;
+    // Either InnerOpT is the only instruction in the block, or there is a
+    // possible terminator.
+    return std::next(block->begin()) == block->end() ||
+           std::next(block->begin(), 2) == block->end();
+  }
+
+  // Checks if graph only has one island.
+  bool HasSingleIslandInGraph(GraphOp *graph_op) const {
+    return HasSingleOpInBlock<IslandOp>(&graph_op->GetBody());
+  }
+};
+}  // anonymous namespace
+
+void GraphOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<HoistInnerOpsSingleIslandGraph>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
