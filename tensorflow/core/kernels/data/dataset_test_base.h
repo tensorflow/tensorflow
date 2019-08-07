@@ -45,6 +45,9 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+constexpr int kDefaultCPUNum = 2;
+constexpr int kDefaultThreadNum = 2;
+
 enum class CompressionType { ZLIB = 0, GZIP = 1, RAW = 2, UNCOMPRESSED = 3 };
 
 // Returns a string representation for the given compression type.
@@ -218,9 +221,15 @@ class DatasetOpsTestBase : public ::testing::Test {
  public:
   DatasetOpsTestBase()
       : device_(DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0")),
-        device_type_(DEVICE_CPU) {
+        device_type_(DEVICE_CPU),
+        cpu_num_(kDefaultCPUNum),
+        thread_num_(kDefaultThreadNum) {
     allocator_ = device_->GetAllocator(AllocatorAttributes());
   }
+
+  // TODO(feihugis): change this function to the pure virtual functions once
+  // the implementations are added to all the existing tests.
+  virtual Status Initialize(DatasetParams* params) { return Status::OK(); }
 
   ~DatasetOpsTestBase() {}
 
@@ -378,6 +387,37 @@ class DatasetOpsTestBase : public ::testing::Test {
       const std::vector<Tensor>& expected_outputs,
       const std::vector<int>& breakpoints);
 
+  Status CheckIteratorGetNext(const std::vector<Tensor>& expected_outputs,
+                              bool compare_order);
+
+  Status CheckDatasetNodeName(const string& expected_dataset_node_name);
+
+  Status CheckDatasetTypeString(const string& expected_type_str);
+
+  Status CheckDatasetOutputDtypes(const DataTypeVector& expected_output_dtypes);
+
+  Status CheckDatasetOutputShapes(
+      const std::vector<PartialTensorShape>& expected_output_shapes);
+
+  Status CheckDatasetCardinality(int expected_cardinality);
+
+  Status CheckDatasetSave();
+
+  Status CheckDatasetIsStateful(bool expected_stateful);
+
+  Status CheckIteratorOutputDtypes(
+      const DataTypeVector& expected_output_dtypes);
+
+  Status CheckIteratorOutputShapes(
+      const std::vector<PartialTensorShape>& expected_output_shapes);
+
+  Status CheckIteratorPrefix(const string& expected_iterator_prefix);
+
+  Status CheckIteratorSaveAndRestore(
+      const string& iterator_prefix,
+      const std::vector<Tensor>& expected_outputs,
+      const std::vector<int>& breakpoints);
+
  protected:
   // Creates a thread pool for parallel tasks.
   Status InitThreadPool(int thread_num);
@@ -441,6 +481,8 @@ class DatasetOpsTestBase : public ::testing::Test {
  protected:
   std::unique_ptr<Device> device_;
   DeviceType device_type_;
+  int cpu_num_;
+  int thread_num_;
   Allocator* allocator_;  // Owned by `AllocatorFactoryRegistry`.
   std::vector<AllocatorAttributes> allocator_attrs_;
   std::unique_ptr<ScopedStepContainer> step_container_;
@@ -460,6 +502,12 @@ class DatasetOpsTestBase : public ::testing::Test {
   std::vector<std::unique_ptr<Tensor>> tensors_;  // Owns tensors.
   mutex lock_for_refs_;  // Used as the Mutex for inputs added as refs.
   std::unique_ptr<CancellationManager> cancellation_manager_;
+
+  std::unique_ptr<OpKernel> dataset_kernel_;
+  std::unique_ptr<OpKernelContext> dataset_ctx_;
+  std::unique_ptr<DatasetBase> dataset_;
+  std::unique_ptr<IteratorContext> iterator_ctx_;
+  std::unique_ptr<IteratorBase> iterator_;
 };
 
 }  // namespace data
