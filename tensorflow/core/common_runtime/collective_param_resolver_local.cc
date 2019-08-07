@@ -696,12 +696,23 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
 void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
     const string& device, const GroupRec* gr, CollectiveParams* cp,
     InstanceRec* ir, bool is_source, const StatusCallback& done) {
+  auto expected_shape = cp->instance.shape;
   // Populate the fields common across instance.
   {
     mutex_lock l(ir->out_mu);
     ir->WaitForOutMu(l);
     // custom operator= does a deep copy.
     cp->instance = ir->shared.instance;
+  }
+  if (expected_shape != cp->instance.shape) {
+    done(errors::InvalidArgument(
+        "Shape mismatch in the collective instance ", cp->instance.instance_key,
+        ". Op at device ", device, " expected shape ",
+        expected_shape.DebugString(), " but another member in the group ",
+        "expected shape ", cp->instance.shape.DebugString(), ". This is likely",
+        " due to different input shapes at different members of the collective",
+        " op."));
+    return;
   }
   // Populate the fields common across task.
   AssignCollectiveType(cp);
