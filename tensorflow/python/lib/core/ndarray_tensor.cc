@@ -131,6 +131,7 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
     case NPY_UINT32:
       *out_tf_datatype = TF_UINT32;
       break;
+    case NPY_ULONGLONG:
     case NPY_UINT64:
       *out_tf_datatype = TF_UINT64;
       break;
@@ -140,6 +141,7 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
     case NPY_INT16:
       *out_tf_datatype = TF_INT16;
       break;
+    case NPY_LONGLONG:
     case NPY_INT64:
       *out_tf_datatype = TF_INT64;
       break;
