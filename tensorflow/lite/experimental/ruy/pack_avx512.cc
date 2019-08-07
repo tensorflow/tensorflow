@@ -281,6 +281,16 @@ inline __m512 MaskLoaduTwo(__mmask8 row_mask, const float* addr_lo,
                             _mm256_maskz_loadu_ps(row_mask, addr_hi), 1);
 }
 
+inline __m512 Mm512UnpackloPsx2(const __m512 a, const __m512 b) {
+  return _mm512_castpd_ps(
+      _mm512_unpacklo_pd(_mm512_castps_pd(a), _mm512_castps_pd(b)));
+}
+
+inline __m512 Mm512UnpackhiPsx2(const __m512 a, const __m512 b) {
+  return _mm512_castpd_ps(
+      _mm512_unpackhi_pd(_mm512_castps_pd(a), _mm512_castps_pd(b)));
+}
+
 inline void HalfPackFloatAvx512(const float* src_ptr, const float* zerobuf,
                                 int src_stride, int remaining_src_cols,
                                 int src_rows, float* packed_ptr,
@@ -349,33 +359,29 @@ inline void HalfPackFloatAvx512(const float* src_ptr, const float* zerobuf,
         t2 = LoaduTwo(src_ptr2, src_ptr6);
         t3 = LoaduTwo(src_ptr3, src_ptr7);
 
-        r0 = _mm512_unpacklo_epi32(t0, t1);
-        r2 = _mm512_unpackhi_epi32(t0, t1);
-        r1 = _mm512_unpacklo_epi32(t2, t3);
-        r3 = _mm512_unpackhi_epi32(t2, t3);
+        r0 = _mm512_unpacklo_ps(t0, t1);
+        r2 = _mm512_unpackhi_ps(t0, t1);
+        r1 = _mm512_unpacklo_ps(t2, t3);
+        r3 = _mm512_unpackhi_ps(t2, t3);
 
-        t0 = _mm512_unpacklo_epi64(r0, r1);
-        t2 = _mm512_unpackhi_epi64(r0, r1);
-        t1 = _mm512_unpacklo_epi64(r2, r3);
-        t3 = _mm512_unpackhi_epi64(r2, r3);
+        t0 = Mm512UnpackloPsx2(r0, r1);
+        t2 = Mm512UnpackhiPsx2(r0, r1);
+        t1 = Mm512UnpackloPsx2(r2, r3);
+        t3 = Mm512UnpackhiPsx2(r2, r3);
 
-        r0 = _mm512_shuffle_i32x4(t0, t1, 0x88);
-        r1 = _mm512_shuffle_i32x4(t0, t1, 0xdd);
-        r2 = _mm512_shuffle_i32x4(t2, t3, 0x88);
-        r3 = _mm512_shuffle_i32x4(t2, t3, 0xdd);
+        r0 = _mm512_shuffle_f32x4(t0, t1, 0x88);
+        r1 = _mm512_shuffle_f32x4(t0, t1, 0xdd);
+        r2 = _mm512_shuffle_f32x4(t2, t3, 0x88);
+        r3 = _mm512_shuffle_f32x4(t2, t3, 0xdd);
 
-        _mm256_storeu_epi32(packed_ptr + 0 * 16, _mm512_castsi512_si256(r0));
-        _mm256_storeu_epi32(packed_ptr + 2 * 16,
-                            _mm512_extracti64x4_epi64(r0, 1));
-        _mm256_storeu_epi32(packed_ptr + 4 * 16, _mm512_castsi512_si256(r1));
-        _mm256_storeu_epi32(packed_ptr + 6 * 16,
-                            _mm512_extracti64x4_epi64(r1, 1));
-        _mm256_storeu_epi32(packed_ptr + 1 * 16, _mm512_castsi512_si256(r2));
-        _mm256_storeu_epi32(packed_ptr + 3 * 16,
-                            _mm512_extracti64x4_epi64(r2, 1));
-        _mm256_storeu_epi32(packed_ptr + 5 * 16, _mm512_castsi512_si256(r3));
-        _mm256_storeu_epi32(packed_ptr + 7 * 16,
-                            _mm512_extracti64x4_epi64(r3, 1));
+        _mm256_storeu_ps(packed_ptr + 0 * 16, _mm512_castps512_ps256(r0));
+        _mm256_storeu_ps(packed_ptr + 2 * 16, _mm512_extractf32x8_ps(r0, 1));
+        _mm256_storeu_ps(packed_ptr + 4 * 16, _mm512_castps512_ps256(r1));
+        _mm256_storeu_ps(packed_ptr + 6 * 16, _mm512_extractf32x8_ps(r1, 1));
+        _mm256_storeu_ps(packed_ptr + 1 * 16, _mm512_castps512_ps256(r2));
+        _mm256_storeu_ps(packed_ptr + 3 * 16, _mm512_extractf32x8_ps(r2, 1));
+        _mm256_storeu_ps(packed_ptr + 5 * 16, _mm512_castps512_ps256(r3));
+        _mm256_storeu_ps(packed_ptr + 7 * 16, _mm512_extractf32x8_ps(r3, 1));
       } else if (available_src_rows > 0) {
         const __mmask8 row_mask =
             (static_cast<std::uint32_t>(1) << available_src_rows) - 1;
@@ -388,32 +394,29 @@ inline void HalfPackFloatAvx512(const float* src_ptr, const float* zerobuf,
         t2 = MaskLoaduTwo(row_mask, src_ptr2, src_ptr6);
         t3 = MaskLoaduTwo(row_mask, src_ptr3, src_ptr7);
 
-        r0 = _mm512_unpacklo_epi32(t0, t1);
-        r2 = _mm512_unpackhi_epi32(t0, t1);
-        r1 = _mm512_unpacklo_epi32(t2, t3);
-        r3 = _mm512_unpackhi_epi32(t2, t3);
+        r0 = _mm512_unpacklo_ps(t0, t1);
+        r2 = _mm512_unpackhi_ps(t0, t1);
+        r1 = _mm512_unpacklo_ps(t2, t3);
+        r3 = _mm512_unpackhi_ps(t2, t3);
 
-        t0 = _mm512_unpacklo_epi64(r0, r1);
-        t2 = _mm512_unpackhi_epi64(r0, r1);
-        t1 = _mm512_unpacklo_epi64(r2, r3);
-        t3 = _mm512_unpackhi_epi64(r2, r3);
+        t0 = Mm512UnpackloPsx2(r0, r1);
+        t2 = Mm512UnpackhiPsx2(r0, r1);
+        t1 = Mm512UnpackloPsx2(r2, r3);
+        t3 = Mm512UnpackhiPsx2(r2, r3);
 
-        r0 = _mm512_shuffle_i32x4(t0, t1, 0x88);
-        r1 = _mm512_shuffle_i32x4(t0, t1, 0xdd);
-        r2 = _mm512_shuffle_i32x4(t2, t3, 0x88);
-        r3 = _mm512_shuffle_i32x4(t2, t3, 0xdd);
+        r0 = _mm512_shuffle_f32x4(t0, t1, 0x88);
+        r1 = _mm512_shuffle_f32x4(t0, t1, 0xdd);
+        r2 = _mm512_shuffle_f32x4(t2, t3, 0x88);
+        r3 = _mm512_shuffle_f32x4(t2, t3, 0xdd);
 
-        _mm256_storeu_epi32(trailing_buf + 0 * 16, _mm512_castsi512_si256(r0));
-        _mm256_storeu_epi32(trailing_buf + 2 * 16,
-                            _mm512_extracti64x4_epi64(r0, 1));
-        _mm256_storeu_epi32(trailing_buf + 4 * 16, _mm512_castsi512_si256(r1));
-        _mm256_storeu_epi32(trailing_buf + 6 * 16,
-                            _mm512_extracti64x4_epi64(r1, 1));
-        _mm256_storeu_epi32(trailing_buf + 1 * 16, _mm512_castsi512_si256(r2));
-        _mm256_storeu_epi32(trailing_buf + 3 * 16,
-                            _mm512_extracti64x4_epi64(r2, 1));
-        _mm256_storeu_epi32(trailing_buf + 5 * 16, _mm512_castsi512_si256(r3));
-        // Do not store _mm512_extracti64x4_epi64(r3, 1).
+        _mm256_storeu_ps(trailing_buf + 0 * 16, _mm512_castps512_ps256(r0));
+        _mm256_storeu_ps(trailing_buf + 2 * 16, _mm512_extractf32x8_ps(r0, 1));
+        _mm256_storeu_ps(trailing_buf + 4 * 16, _mm512_castps512_ps256(r1));
+        _mm256_storeu_ps(trailing_buf + 6 * 16, _mm512_extractf32x8_ps(r1, 1));
+        _mm256_storeu_ps(trailing_buf + 1 * 16, _mm512_castps512_ps256(r2));
+        _mm256_storeu_ps(trailing_buf + 3 * 16, _mm512_extractf32x8_ps(r2, 1));
+        _mm256_storeu_ps(trailing_buf + 5 * 16, _mm512_castps512_ps256(r3));
+        // Do not store _mm512_extractf32x8_ps(r3, 1).
       }
 
       packed_ptr += 16 * 8;
