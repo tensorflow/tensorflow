@@ -44,7 +44,8 @@ class PrefetchDatasetOpTest : public DatasetOpsTestBase {
         {PrefetchDatasetOp::kInputDataset, PrefetchDatasetOp::kBufferSize},
         {{PrefetchDatasetOp::kOutputTypes, output_types},
          {PrefetchDatasetOp::kOutputShapes, output_shapes},
-         {PrefetchDatasetOp::kSlackPeriod, 0}});
+         {PrefetchDatasetOp::kSlackPeriod, 0},
+         {PrefetchDatasetOp::kLegacyAutotune, true}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
