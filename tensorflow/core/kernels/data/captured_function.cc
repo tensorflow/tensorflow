@@ -437,11 +437,22 @@ Status CapturedFunction::Instantiate(
     // TODO(jsimsa): Correctly handle tensors on devices other than CPU:0.
     Device* cpu_device;
     TF_RETURN_IF_ERROR(lib->device_mgr()->LookupDevice("CPU:0", &cpu_device));
-    for (auto& input : captured_inputs_) {
+    std::unordered_map<int, DtypeAndPartialTensorShape>&
+        input_resource_variable_dtypes_and_shapes =
+            inst_opts.input_resource_dtypes_and_shapes;
+    for (size_t i = 0; i < captured_inputs_.size(); ++i) {
+      const auto& input = captured_inputs_[i];
       DataType dtype = input.dtype();
       if (dtype == DT_RESOURCE) {
         const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
         inst_opts.input_devices.push_back(handle.device());
+        const auto& dtypes_and_shapes = handle.dtypes_and_shapes();
+        // Set dtypes and shapes for resource variable inputs.
+        if (!dtypes_and_shapes.empty()) {
+          input_resource_variable_dtypes_and_shapes[num_non_captured_inputs +
+                                                    i] =
+              dtypes_and_shapes.at(0);
+        }
       } else if (MTypeFromDType(dtype) == HOST_MEMORY) {
         inst_opts.input_devices.push_back(cpu_device->name());
       } else {
