@@ -31,11 +31,15 @@ from six import StringIO
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.debug.wrappers import local_cli_wrapper
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.platform import test
-from tensorflow.python.tools import saved_model_cli
-
+from tensorflow.python.saved_model import save
+import saved_model_cli
+from tensorflow.python.training.tracking import util
 SAVED_MODEL_PATH = ('cc/saved_model/testdata/half_plus_two/00000123')
-
 
 @contextlib.contextmanager
 def captured_output():
@@ -47,6 +51,22 @@ def captured_output():
   finally:
     sys.stdout, sys.stderr = old_out, old_err
 
+class DummyModel(util.Checkpoint):
+  @def_function.function
+  def func1(self, a, b, c): 
+    if c:
+      return a + b 
+    else:
+      return a * b 
+  @def_function.function(
+		input_signature=[
+				tensor_spec.TensorSpec(shape=(2, 2),
+				dtype=dtypes.float32)])
+  def func2(self, x): 
+    return x + 2 
+  @def_function.function
+  def __call__(self, y, c=7):
+    return y + 2 * c 
 
 class SavedModelCLITestCase(test.TestCase):
 
@@ -57,6 +77,8 @@ class SavedModelCLITestCase(test.TestCase):
     with captured_output() as (out, err):
       saved_model_cli.show(args)
     output = out.getvalue().strip()
+    with open("out.txt", "w") as f:
+      f.write(output)
     # pylint: disable=line-too-long
     exp_out = """MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
 
@@ -141,7 +163,85 @@ signature_def['serving_default']:
     self.maxDiff = None # Produce a useful error msg if the comparison fails
     self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
+  def testShowAllWithConcreteFunctions(self):
+    
+    temp_dir = self.get_temp_dir()
+    trackable_object = DummyModel()
+    trackable_object.func1(
+        constant_op.constant(5),
+        constant_op.constant(9),
+        True)
+    trackable_object.func1(constant_op.constant(5), constant_op.constant(9), False)
+    trackable_object(constant_op.constant(5))
+    save.save(trackable_object, temp_dir)
+    self.parser = saved_model_cli.create_parser()
+    args = self.parser.parse_args(['show', '--dir', temp_dir, '--all'])
+    with captured_output() as (out, err):
+      saved_model_cli.show(args)
+    output = out.getvalue().strip()
+    exp_out = """MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
 
+signature_def['__saved_model_init_op']:
+  The given SavedModel SignatureDef contains the following input(s):
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['__saved_model_init_op'] tensor_info:
+        dtype: DT_INVALID
+        shape: unknown_rank
+        name: NoOp
+  Method name is: 
+
+signature_def['serving_default']:
+  The given SavedModel SignatureDef contains the following input(s):
+    inputs['x'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (2, 2)
+        name: serving_default_x:0
+  The given SavedModel SignatureDef contains the following output(s):
+    outputs['output_0'] tensor_info:
+        dtype: DT_FLOAT
+        shape: (2, 2)
+        name: PartitionedCall:0
+  Method name is: tensorflow/serving/predict
+
+Defined Functions:
+  Function Name: '__call__'
+    Option #1
+      Callable with:
+        Argument #1
+          y: TensorSpec(shape=(), dtype=tf.int32, name='y')
+        Argument #2
+          DType: int
+          Value: 7
+
+  Function Name: 'func1'
+    Option #1
+      Callable with:
+        Argument #1
+          a: TensorSpec(shape=(), dtype=tf.int32, name='a')
+        Argument #2
+          b: TensorSpec(shape=(), dtype=tf.int32, name='b')
+        Argument #3
+          DType: bool
+          Value: False
+    Option #2
+      Callable with:
+        Argument #1
+          a: TensorSpec(shape=(), dtype=tf.int32, name='a')
+        Argument #2
+          b: TensorSpec(shape=(), dtype=tf.int32, name='b')
+        Argument #3
+          DType: bool
+          Value: True
+
+  Function Name: 'func2'
+    Option #1
+      Callable with:
+        Argument #1
+          x: TensorSpec(shape=(2, 2), dtype=tf.float32, name='x')
+""".strip() # pylint: enable=line-too-long
+    self.maxDiff = None # Produce a useful error msg if the comparison fails
+    self.assertMultiLineEqual(output, exp_out)
+    self.assertEqual(err.getvalue().strip(), '')
   def testShowCommandTags(self):
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     self.parser = saved_model_cli.create_parser()

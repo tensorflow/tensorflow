@@ -170,23 +170,31 @@ def _show_defined_functions(saved_model_dir):
      Args:
        saved_model_dir: Directory containing the SavedModel to inspect.
   """
+  meta_graphs = saved_model_utils.read_saved_model(saved_model_dir).meta_graphs
+  has_object_graph_def = False
+
+  for meta_graph_def in meta_graphs:
+    has_object_graph_def |= meta_graph_def.HasField("object_graph_def")
+  if not has_object_graph_def:
+    return 
   with ops_lib.Graph().as_default():
     trackable_object = load.load(saved_model_dir)
 
-  print('\nDefined Functions:')
+  print('\nDefined Functions:', end="")
   functions = save._AugmentedGraphView(
       trackable_object).list_functions(trackable_object)
-  for name, function in functions.items():
-    print('  Function Name: \'%s\'' % name)
-    for index, concrete_functions in enumerate(
-            function._list_all_concrete_functions_for_serialization(), 1):
-      args, kwargs = concrete_functions.structured_input_signature
+  functions = sorted(functions.items(), key=lambda x: x[0])
+  for name, function in functions:
+    print('\n  Function Name: \'%s\'' % name)
+    concrete_functions = function._list_all_concrete_functions_for_serialization()
+    concrete_functions = sorted(concrete_functions, key=lambda x: x.name)
+    for index, concrete_function in enumerate(concrete_functions, 1):
+      args, kwargs = concrete_function.structured_input_signature
       print('    Option #%d' % index)
       print('      Callable with:')
       _print_args(args, indent=4)
       if kwargs:
         _print_args(kwargs, "Named Argument", indent=4)
-    print()
 
 
 def _print_args(arguments, argument_type="Argument", indent=0):
@@ -199,7 +207,7 @@ def _print_args(arguments, argument_type="Argument", indent=0):
   """
   indent_str = '  ' * indent
 
-  def _may_be_add_quotes(value):
+  def _maybe_add_quotes(value):
     is_quotes = '\'' * isinstance(value, str)
     return is_quotes + str(value) + is_quotes
 
@@ -215,13 +223,13 @@ def _print_args(arguments, argument_type="Argument", indent=0):
       in_print('  DType: %s' % type(element).__name__)
       in_print('  Value: [', end='')
       for value in element:
-          print('%s' %  _may_be_add_quotes(value), end=', ')
+          print('%s' %  _maybe_add_quotes(value), end=', ')
       print('\b\b]')
     elif isinstance(element, dict):
       in_print('  DType: %s' % type(element).__name__)
       in_print('  Value: {', end='')
       for (key, value) in element.items():
-          print('\'%s\': %s' % (str(key), _may_be_add_quotes(value)), end=', ')
+          print('\'%s\': %s' % (str(key), _maybe_add_quotes(value)), end=', ')
       print('\b\b}')
     else:
       in_print('  DType: %s' % type(element).__name__)
