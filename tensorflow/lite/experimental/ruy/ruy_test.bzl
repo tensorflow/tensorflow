@@ -25,6 +25,7 @@ def ruy_test(name, srcs, lhs_rhs_accum_dst, tags = []):
         )
 
 def ruy_benchmark(name, srcs, lhs_rhs_accum_dst):
+    tags = ["req_dep=@gemmlowp//:profiler"]
     for (lhs, rhs, accum, dst) in lhs_rhs_accum_dst:
         native.cc_binary(
             name = "%s_%s_%s_%s_%s" % (name, lhs, rhs, accum, dst),
@@ -38,11 +39,13 @@ def ruy_benchmark(name, srcs, lhs_rhs_accum_dst):
             ],
             deps = [
                 "//tensorflow/lite/experimental/ruy:test_lib",
-                "@gemmlowp//:profiler",
+                "@gemmlowp//:profiler",  # Note also tagged as req_dep.
             ],
+            tags = tags,
         )
 
 def ruy_benchmark_opt_sets(name, opt_sets, srcs, lhs_rhs_accum_dst):
+    tags = ["req_dep=@gemmlowp//:profiler"]
     for opt_set in opt_sets:
         for (lhs, rhs, accum, dst) in lhs_rhs_accum_dst:
             native.cc_binary(
@@ -58,6 +61,7 @@ def ruy_benchmark_opt_sets(name, opt_sets, srcs, lhs_rhs_accum_dst):
                 ],
                 deps = [
                     "//tensorflow/lite/experimental/ruy:test_lib",
-                    "@gemmlowp//:profiler",
+                    "@gemmlowp//:profiler",  # Note also tagged as req_dep.
                 ],
+                tags = tags,
             )
