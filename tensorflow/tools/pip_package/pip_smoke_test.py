@@ -56,8 +56,6 @@ def BuildPyTestDependencies():
   # Build list of test targets,
   # python - tensorboard - attr(manual|pno_pip)
   targets = " + ".join(python_targets)
-  for t in tensorboard_targets:
-    targets += " - " + t
   targets += ' - attr(tags, "manual|no_pip", %s)' % " + ".join(
       tensorflow_targets)
   query_kind = "kind(py_test, %s)" % targets
