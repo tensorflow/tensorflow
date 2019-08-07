@@ -112,6 +112,7 @@ cc_library(
         "ir/control_flow_ops.h",
         "ir/tf_executor.h",
         "ir/tf_ops.h",
+        "ir/tf_traits.h",
         "ir/tf_types.def",
         "ir/tf_types.h",
         "transforms/passes.h",

@@ -65,6 +65,23 @@ func @testTFComplex(tensor<*x!tf.complex64>, tensor<*x!tf.complex128>) -> (!tf.c
 
 // -----
 
+// CHECK-LABEL: func @testIdentity
+func @testIdentity(%arg0: tensor<4x2x!tf.stringref>) -> tensor<4x2x!tf.string> {
+  // CHECK: tf.Identity
+  %0 = "tf.Identity"(%arg0) : (tensor<4x2x!tf.stringref>) -> tensor<4x2x!tf.string>
+  return %0 : tensor<4x2x!tf.string>
+}
+
+// -----
+
+func @testIdentityWrongType(%arg0: tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref> {
+  // expected-error @+1 {{requires all operands to be either same as or ref type of results}}
+  %0 = "tf.Identity"(%arg0) : (tensor<4x2x!tf.string>) -> tensor<4x2x!tf.stringref>
+  return %0 : tensor<4x2x!tf.stringref>
+}
+
+// -----
+
 // TODO(hinsu): Move this to MLIR core once the test dialect have a custom type.
 
 // Check that broadcastable trait accepts TF specific element type
