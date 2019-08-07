@@ -29,10 +29,6 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
 
-#if (RUY_PLATFORM(NEON_64) || RUY_PLATFORM(NEON_32))
-#include <arm_neon.h>
-#endif
-
 #if RUY_OPT_ENABLED(RUY_OPT_PREFETCH)
 #define RUY_PREFETCH(X) X
 #else
