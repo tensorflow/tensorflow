@@ -2772,6 +2772,39 @@ TEST_F(ConstantFoldingTest, Packing) {
   EXPECT_GT(8000, output.ByteSizeLong());
 }
 
+TEST_F(ConstantFoldingTest, LargeConstantNoSizeIncrease) {
+  // Build a simple graph with a large constant with size greater than
+  // kMaxConstantSize that can be folded because the resulting size does not
+  // increase.
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  const int64 large_constant_size = kMaxConstantSize + 1;
+  Output a = ops::Variable(scope.WithOpName("a"), {1, 1}, DT_FLOAT);
+  Output b_const =
+      ops::Const(scope.WithOpName("b_const"), 3.14f, {1, large_constant_size});
+  Output b = ops::Identity(scope.WithOpName("b"), b_const);
+  Output matmul = ops::MatMul(scope.WithOpName("matmul"), a, b);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  item.graph.Swap(&output);
+  status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  for (const auto& node : output.node()) {
+    if (node.name() == "b") {
+      EXPECT_EQ("Const", node.op());
+    }
+  }
+  EXPECT_EQ(4, output.node_size());
+  EXPECT_LT(output.ByteSizeLong(), sizeof(float) * large_constant_size + 500);
+}
+
 TEST_F(ConstantFoldingTest, MaterializeBroadcastGradientArgs) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a =
