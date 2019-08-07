@@ -183,3 +183,14 @@ func @test7() {
   }
   return
 }
+
+// -----
+
+// Test with zero-dimensional operands.
+func @zero_dim(%arg0 : memref<i32>, %arg1 : memref<i32>) {
+  %0 = affine.load %arg0[] : memref<i32>
+  affine.store %0, %arg1[] : memref<i32>
+  // CHECK: affine.load %{{.*}}[] : memref<i32>
+  // CHECK: affine.store %{{.*}}, %{{.*}}[] : memref<i32>
+  return
+}

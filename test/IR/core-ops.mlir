@@ -339,6 +339,16 @@ func @load_store(memref<4x4xi32>, index) {
   return
 }
 
+// Test with zero-dimensional operands using no index in load/store.
+// CHECK-LABEL: func @zero_dim_no_idx
+func @zero_dim_no_idx(%arg0 : memref<i32>, %arg1 : memref<i32>, %arg2 : memref<i32>) {
+  %0 = std.load %arg0[] : memref<i32>
+  std.store %0, %arg1[] : memref<i32>
+  return
+  // CHECK: %0 = load %{{.*}}[] : memref<i32>
+  // CHECK: store %{{.*}}, %{{.*}}[] : memref<i32>
+}
+
 // CHECK-LABEL: func @return_op(%arg0: i32) -> i32 {
 func @return_op(%a : i32) -> i32 {
   // CHECK: return %arg0 : i32
