@@ -123,6 +123,25 @@ inline TfLiteTensor CreateFloatTensor(std::initializer_list<float> data,
   return CreateFloatTensor(data.begin(), dims, name);
 }
 
+inline TfLiteTensor CreateBoolTensor(const bool* data, TfLiteIntArray* dims,
+                                     const char* name) {
+  TfLiteTensor result;
+  result.type = kTfLiteBool;
+  result.data.b = const_cast<bool*>(data);
+  result.dims = dims;
+  result.params = {};
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(bool);
+  result.allocation = nullptr;
+  result.name = name;
+  return result;
+}
+
+inline TfLiteTensor CreateBoolTensor(std::initializer_list<bool> data,
+                                     TfLiteIntArray* dims, const char* name) {
+  return CreateBoolTensor(data.begin(), dims, name);
+}
+
 inline TfLiteTensor CreateQuantizedTensor(const uint8_t* data,
                                           TfLiteIntArray* dims,
                                           const char* name, float min,

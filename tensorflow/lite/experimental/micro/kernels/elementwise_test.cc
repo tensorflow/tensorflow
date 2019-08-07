@@ -22,7 +22,8 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 
-void TestElementwiseFloat(std::initializer_list<int> input_dims_data,
+void TestElementwiseFloat(tflite::BuiltinOperator op,
+                          std::initializer_list<int> input_dims_data,
                           std::initializer_list<float> input_data,
                           std::initializer_list<int> output_dims_data,
                           std::initializer_list<float> expected_output_data,
@@ -47,7 +48,7 @@ void TestElementwiseFloat(std::initializer_list<int> input_dims_data,
   PopulateContext(tensors, tensors_size, &context);
   tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_ABS, /* version= */ 1);
+      resolver.FindOp(op, /* version= */ 1);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   void* user_data = nullptr;
@@ -83,6 +84,67 @@ void TestElementwiseFloat(std::initializer_list<int> input_dims_data,
   }
 }
 
+void TestElementwiseBool(tflite::BuiltinOperator op,
+                         std::initializer_list<int> input_dims_data,
+                         std::initializer_list<bool> input_data,
+                         std::initializer_list<int> output_dims_data,
+                         std::initializer_list<bool> expected_output_data,
+                         bool* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
+  const int output_dims_count = ElementCount(*output_dims);
+
+  constexpr int input_size = 1;
+  constexpr int output_size = 1;
+  constexpr int tensors_size = input_size + output_size;
+  TfLiteTensor tensors[tensors_size] = {
+      CreateBoolTensor(input_data, input_dims, "input_tensor"),
+      CreateBoolTensor(output_data, output_dims, "output_tensor")};
+
+  // Place false in the uninitialized output buffer.
+  for (int i = 0; i < output_dims_count; ++i) {
+    output_data[i] = false;
+  }
+
+  TfLiteContext context;
+  PopulateContext(tensors, tensors_size, &context);
+  tflite::ops::micro::AllOpsResolver resolver;
+  const TfLiteRegistration* registration =
+      resolver.FindOp(op, /* version= */ 1);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
+
+  void* user_data = nullptr;
+  if (registration->init) {
+    user_data = registration->init(&context, nullptr, 0);
+  }
+  TfLiteIntArray* inputs_array = IntArrayFromInitializer({1, 0});
+  TfLiteIntArray* outputs_array = IntArrayFromInitializer({1, 1});
+  TfLiteIntArray* temporaries_array = IntArrayFromInitializer({0});
+
+  TfLiteNode node;
+  node.inputs = inputs_array;
+  node.outputs = outputs_array;
+  node.temporaries = temporaries_array;
+  node.user_data = user_data;
+  node.builtin_data = nullptr;
+  node.custom_initial_data = nullptr;
+  node.custom_initial_data_size = 0;
+  node.delegate = nullptr;
+
+  if (registration->prepare) {
+    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
+  }
+  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
+  if (registration->free) {
+    registration->free(&context, user_data);
+  }
+  for (int i = 0; i < output_dims_count; ++i) {
+    TF_LITE_MICRO_EXPECT_EQ(expected_output_data.begin()[i], output_data[i]);
+  }
+}
+
 }  // namespace testing
 }  // namespace tflite
 
@@ -92,7 +154,8 @@ TF_LITE_MICRO_TEST(Abs) {
   constexpr int output_dims_count = 4;
   float output_data[output_dims_count];
   tflite::testing::TestElementwiseFloat(
-      {2, 2, 2},  // Input shape
+      tflite::BuiltinOperator_ABS,  // ABS operator
+      {2, 2, 2},                    // Input shape
       {
           0.01, -0.01, 10, -10,  // Input values
       },
@@ -100,6 +163,18 @@ TF_LITE_MICRO_TEST(Abs) {
       {
           0.01, 0.01, 10, 10,  // Output values
       },
+      output_data);
+}
+
+TF_LITE_MICRO_TEST(LogicalNot) {
+  constexpr int output_dims_count = 4;
+  bool output_data[output_dims_count];
+  tflite::testing::TestElementwiseBool(
+      tflite::BuiltinOperator_LOGICAL_NOT,  // Logical NOT operator
+      {2, 2, 2},                            // Input shape
+      {true, false, false, true},           // Input values
+      {2, 2, 2},                            // Output shape
+      {false, true, true, false},           // Output values
       output_data);
 }
 
