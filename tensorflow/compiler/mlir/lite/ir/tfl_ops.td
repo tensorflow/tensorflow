@@ -1990,9 +1990,11 @@ def TFL_TileOp: TFL_Op<"tile", [NoSideEffect,
    For example, tiling [a b c d] by [2] produces [a b c d a b c d].
   }];
 
-  let arguments = (ins AnyTensor:$input, TFL_I32OrI64Tensor:$multiples);
+  let arguments = (ins
+    TensorOf<[F32, I1, I32, I64, TFL_Uint8]>:$input,
+    TFL_I32OrI64Tensor:$multiples);
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TensorOf<[F32, I1, I32, I64, TFL_Uint8]>:$output);
 
   let hasOptions = 0;
 }

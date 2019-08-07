@@ -651,6 +651,17 @@ func @pad(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
   // CHECK:  return %0 : tensor<?xf32>
 }
 
+func @tile(tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x6xf32> {
+^bb0(%arg0: tensor<2x3xf32>, %arg1: tensor<2xi32>):
+  %cst = constant dense<[1, 2]> : tensor<2xi32>
+  %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x6xf32>
+  return %0 : tensor<2x6xf32>
+
+  // CHECK-LABEL: tile
+  // CHECK:  %0 = "tfl.tile"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x6xf32>
+  // CHECK:  return %0 : tensor<2x6xf32>
+}
+
 func @padv2(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<2x1x3xf32>, %arg1: tensor<3x2xi32>):
   %cst = constant dense<2.0> : tensor<f32>

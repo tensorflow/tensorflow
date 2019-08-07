@@ -3518,6 +3518,30 @@ num_elements: optional. If not -1, the number of elements in the list.
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_TileOp : TF_Op<"Tile", [NoSideEffect]> {
+  let summary = "Constructs a tensor by tiling a given tensor.";
+
+  let description = [{
+This operation creates a new tensor by replicating `input` `multiples` times.
+The output tensor's i'th dimension has `input.dims(i) * multiples[i]` elements,
+and the values of `input` are replicated `multiples[i]` times along the 'i'th
+dimension. For example, tiling `[a b c d]` by `[2]` produces
+`[a b c d a b c d]`.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$multiples
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tmultiples = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_TopKV2Op : TF_Op<"TopKV2", [NoSideEffect]> {
   let summary = [{
 Finds values and indices of the `k` largest elements for the last dimension.
