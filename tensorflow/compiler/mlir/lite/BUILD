@@ -162,6 +162,7 @@ cc_library(
         "utils/attribute_utils.cc",
     ],
     hdrs = [
+        "ir/quantization_traits.h",
         "ir/tfl_ops.h",
         "ir/tfl_traits.h",
         "transforms/passes.h",
