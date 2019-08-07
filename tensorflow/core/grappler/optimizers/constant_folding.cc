@@ -1033,14 +1033,25 @@ bool ConstantFolding::IsFoldable(const NodeDef& node,
   // If we know the output shapes, make sure that the outputs are small enough
   // to materialize.
   if (properties != nullptr && properties->HasOutputProperties(node.name())) {
+    const std::vector<OpInfo::TensorProperties>& input_props =
+        properties->GetInputProperties(node.name());
     const std::vector<OpInfo::TensorProperties>& output_props =
         properties->GetOutputProperties(node.name());
+    // Compute total size of inputs.
+    int64 input_size_bytes = 0;
+    for (const auto& input_prop : input_props) {
+      const PartialTensorShape input_shape(input_prop.shape());
+      if (input_shape.IsFullyDefined()) {
+        input_size_bytes +=
+            input_shape.num_elements() * DataTypeSize(input_prop.dtype());
+      }
+    }
     for (const auto& output_prop : output_props) {
       const PartialTensorShape output_shape(output_prop.shape());
       if (output_shape.IsFullyDefined()) {
         const int64 num_bytes =
             output_shape.num_elements() * DataTypeSize(output_prop.dtype());
-        if (num_bytes > kMaxConstantSize) {
+        if (num_bytes > input_size_bytes && num_bytes > kMaxConstantSize) {
           // Do not fold nodes if the in-memory size of output is too large.
           // Notice that this is not exactly the same check used in
           // CreateNodeDef() where the actual encoded size is checked.
