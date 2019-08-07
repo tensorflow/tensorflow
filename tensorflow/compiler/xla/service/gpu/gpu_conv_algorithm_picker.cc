@@ -251,7 +251,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
 
   StatusOr<AutotuneResult> result_or(InternalError("Unknown platform."));
   if (stream_exec_->platform_kind() == se::PlatformKind::kROCm) {
-    result_or = PickBestAlgorithmNoCacheROCm(*instr, allocator, &stream);
+    result_or = PickBestAlgorithmNoCacheRocm(*instr, allocator, &stream);
   } else if (stream_exec_->platform_kind() == se::PlatformKind::kCuda) {
     result_or = PickBestAlgorithmNoCacheCuda(*instr, allocator, &stream);
   }
@@ -494,7 +494,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 }
 
 StatusOr<tensorflow::AutotuneResult>
-GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheROCm(
+GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     const HloCustomCallInstruction& instr, se::DeviceMemoryAllocator* allocator,
     se::Stream* stream) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
@@ -534,8 +534,10 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheROCm(
   VLOG(3) << "Auto-tuning for " << instr.ToString();
   RunConvOptions options;
   options.profile_result = &profile_result;
-  // ROCm: Needs to set the first time caller flag
-  options.first_call_from_algorithm_picker = true;
+
+  // ROCm: Set the overriding algorithm to empty to remind cudnn_conv_runner
+  // that the AlgorithmConfig in running convolution needs to be empty
+  options.algo_override = se::dnn::AlgorithmDesc();
 
   bool launch_ok =
       RunCudnnConv(&instr, absl::MakeSpan(operand_buffers), result_buffer,

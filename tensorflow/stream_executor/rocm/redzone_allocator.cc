@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 #include "tensorflow/stream_executor/stream.h"

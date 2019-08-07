@@ -722,6 +722,7 @@ cc_library(
     srcs = [] + if_rocm_is_configured([
         "//tensorflow/stream_executor/rocm:redzone_allocator.cc",
     ]) + if_cuda_is_configured([
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
         "//tensorflow/stream_executor/cuda:redzone_allocator.cc",
     ]),
     hdrs = ["redzone_allocator.h"],

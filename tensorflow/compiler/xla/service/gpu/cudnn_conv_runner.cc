@@ -80,23 +80,18 @@ Status RunCudnnConvImpl(const CudnnConvParams& params,
   auto output_buf = se::DeviceMemory<T>(params.output_buf);
   AlgorithmConfig algorithm = params.algorithm;
 
-#if TENSORFLOW_USE_ROCM
-  if (options.first_call_from_algorithm_picker) {
-    // in ROCm mode, the first call to run the convolution needs to trigger the
-    // code that calls miopenFind* API. That triggger is implicit, it is based
-    // on whether or not the AlgorithmConfig::algorithm is empty! So for the
-    // first call we need to ensure that the AlgorithmConfig::algorithm is
-    // empty. For all subsequent calls, we should use the value retrieved from
-    // the backend_config
+  // in ROCm mode, the first call to run the convolution needs to trigger the
+  // code that calls miopenFind* API. That triggger is implicit, it is based
+  // on whether or not the AlgorithmConfig::algorithm is empty! So for the
+  // first call we need to ensure that the AlgorithmConfig::algorithm is
+  // empty. For all subsequent calls, we should use the value retrieved from
+  // the backend_config
+  if ((options.algo_override.has_value()) &&
+      (*options.algo_override == se::dnn::AlgorithmDesc())) {
     algorithm = AlgorithmConfig();
-  } else if (options.algo_override) {
+  } else if (options.algo_override.has_value()) {
     algorithm = AlgorithmConfig(*options.algo_override);
   }
-#else
-  if (options.algo_override) {
-    algorithm = AlgorithmConfig(*options.algo_override);
-  }
-#endif
 
   switch (params.kind) {
     case CudnnConvKind::kForward:
