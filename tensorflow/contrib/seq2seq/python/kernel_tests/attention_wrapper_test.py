@@ -514,7 +514,7 @@ class AttentionWrapperTest(test.TestCase):
     for axis in [0, 1]:
       for exclusive in [True, False]:
         with self.cached_session():
-          # Compute cumprod with regular tf.cumprod
+          # Compute cumprod with regular tf.math.cumprod
           cumprod_output = math_ops.cumprod(
               test_input, axis=axis, exclusive=exclusive).eval()
           # Compute cumprod with safe_cumprod

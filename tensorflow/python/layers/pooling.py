@@ -59,8 +59,7 @@ class AveragePooling1D(keras_layers.AveragePooling1D, base.Layer):
 
 
 @deprecation.deprecated(
-    date=None,
-    instructions='Use keras.layers.average_pooling1d instead.')
+    date=None, instructions='Use keras.layers.AveragePooling1D instead.')
 @tf_export(v1=['layers.average_pooling1d'])
 def average_pooling1d(inputs, pool_size, strides,
                       padding='valid', data_format='channels_last',
@@ -130,8 +129,7 @@ class MaxPooling1D(keras_layers.MaxPooling1D, base.Layer):
 
 
 @deprecation.deprecated(
-    date=None,
-    instructions='Use keras.layers.max_pooling1d instead.')
+    date=None, instructions='Use keras.layers.MaxPooling1D instead.')
 @tf_export(v1=['layers.max_pooling1d'])
 def max_pooling1d(inputs, pool_size, strides,
                   padding='valid', data_format='channels_last',
@@ -201,8 +199,7 @@ class AveragePooling2D(keras_layers.AveragePooling2D, base.Layer):
 
 
 @deprecation.deprecated(
-    date=None,
-    instructions='Use keras.layers.average_pooling2d instead.')
+    date=None, instructions='Use keras.layers.AveragePooling2D instead.')
 @tf_export(v1=['layers.average_pooling2d'])
 def average_pooling2d(inputs,
                       pool_size, strides,
@@ -275,8 +272,7 @@ class MaxPooling2D(keras_layers.MaxPooling2D, base.Layer):
 
 
 @deprecation.deprecated(
-    date=None,
-    instructions='Use keras.layers.max_pooling2d instead.')
+    date=None, instructions='Use keras.layers.MaxPooling2D instead.')
 @tf_export(v1=['layers.max_pooling2d'])
 def max_pooling2d(inputs,
                   pool_size, strides,
@@ -351,8 +347,7 @@ class AveragePooling3D(keras_layers.AveragePooling3D, base.Layer):
 
 
 @deprecation.deprecated(
-    date=None,
-    instructions='Use keras.layers.average_pooling3d instead.')
+    date=None, instructions='Use keras.layers.AveragePooling3D instead.')
 @tf_export(v1=['layers.average_pooling3d'])
 def average_pooling3d(inputs,
                       pool_size, strides,
@@ -429,33 +424,30 @@ class MaxPooling3D(keras_layers.MaxPooling3D, base.Layer):
 
 
 @deprecation.deprecated(
-    date=None,
-    instructions='Use keras.layers.max_pooling3d instead.')
+    date=None, instructions='Use keras.layers.MaxPooling3D instead.')
 @tf_export(v1=['layers.max_pooling3d'])
 def max_pooling3d(inputs,
                   pool_size, strides,
                   padding='valid', data_format='channels_last',
                   name=None):
-  """Max pooling layer for 3D inputs (e.g. volumes).
+  """Max pooling layer for 3D inputs (e.g.
+
+  volumes).
 
   Arguments:
     inputs: The tensor over which to pool. Must have rank 5.
-    pool_size: An integer or tuple/list of 3 integers:
-      (pool_depth, pool_height, pool_width)
-      specifying the size of the pooling window.
-      Can be a single integer to specify the same value for
-      all spatial dimensions.
-    strides: An integer or tuple/list of 3 integers,
-      specifying the strides of the pooling operation.
-      Can be a single integer to specify the same value for
-      all spatial dimensions.
+    pool_size: An integer or tuple/list of 3 integers: (pool_depth, pool_height,
+      pool_width) specifying the size of the pooling window. Can be a single
+      integer to specify the same value for all spatial dimensions.
+    strides: An integer or tuple/list of 3 integers, specifying the strides of
+      the pooling operation. Can be a single integer to specify the same value
+      for all spatial dimensions.
     padding: A string. The padding method, either 'valid' or 'same'.
       Case-insensitive.
     data_format: A string. The ordering of the dimensions in the inputs.
       `channels_last` (default) and `channels_first` are supported.
-      `channels_last` corresponds to inputs with shape
-      `(batch, depth, height, width, channels)` while `channels_first`
-      corresponds to inputs with shape
+      `channels_last` corresponds to inputs with shape `(batch, depth, height,
+      width, channels)` while `channels_first` corresponds to inputs with shape
       `(batch, channels, depth, height, width)`.
     name: A string, the name of the layer.
 

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/concat_lib_gpu.h"
 #include "tensorflow/core/kernels/gpu_device_array_gpu.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -70,7 +70,7 @@ __global__ void concat_variable_kernel(
   IntType num_inputs = input_ptr_data.size;
 
   // verbose declaration needed due to template
-  extern __shared__ __align__(sizeof(T)) unsigned char smem[];
+  GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(T), unsigned char, smem);
   IntType* smem_col_scan = reinterpret_cast<IntType*>(smem);
 
   if (useSmem) {
@@ -90,7 +90,7 @@ __global__ void concat_variable_kernel(
   // works well when there are many small segments and when the
   // segments are much longer
   IntType segment =
-      cuda_helper::upper_bound<IntType>(col_scan, num_inputs, gidx) - 1;
+      gpu_helper::upper_bound<IntType>(col_scan, num_inputs, gidx) - 1;
 
   IntType curr_offset = col_scan[segment];
   IntType curr_segment = segment;
@@ -140,14 +140,15 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
                    const GpuDeviceArrayStruct<IntType>& output_scan,
                    bool fixed_size, int split_size,
                    typename TTypes<T, 2>::Matrix* output) {
-  auto config = GetCuda2DLaunchConfig(output->dimension(1),
-                                      output->dimension(0), gpu_device);
+  auto config = GetGpu2DLaunchConfig(output->dimension(1), output->dimension(0),
+                                     gpu_device);
 
   if (fixed_size) {
-    TF_CHECK_OK(CudaLaunchKernel(
+    TF_CHECK_OK(GpuLaunchKernel(
         concat_fixed_kernel<T, IntType>, config.block_count,
         config.thread_per_block, 0, gpu_device.stream(), input_ptrs, split_size,
-        output->dimension(0), output->dimension(1), output->data()));
+        static_cast<int>(output->dimension(0)),
+        static_cast<int>(output->dimension(1)), output->data()));
   } else {
     IntType smem_max = gpu_device.sharedMemPerBlock();
     IntType smem_usage = output_scan.size * sizeof(IntType);
@@ -156,18 +157,19 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
     // possibly due to decreasing occupancy
     // 4096 inputs is a lot, most code will take the smem path
     const int32 kMaxSmemBytesPerformance = 16384;
-    if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance)
-      TF_CHECK_OK(CudaLaunchKernel(concat_variable_kernel<T, IntType, true>,
-                                   config.block_count, config.thread_per_block,
-                                   smem_usage, gpu_device.stream(), input_ptrs,
-                                   output_scan, output->dimension(0),
-                                   output->dimension(1), output->data()));
-    else
-      TF_CHECK_OK(CudaLaunchKernel(concat_variable_kernel<T, IntType, false>,
-                                   config.block_count, config.thread_per_block,
-                                   0, gpu_device.stream(), input_ptrs,
-                                   output_scan, output->dimension(0),
-                                   output->dimension(1), output->data()));
+    if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance) {
+      TF_CHECK_OK(GpuLaunchKernel(
+          concat_variable_kernel<T, IntType, true>, config.block_count,
+          config.thread_per_block, smem_usage, gpu_device.stream(), input_ptrs,
+          output_scan, static_cast<IntType>(output->dimension(0)),
+          static_cast<IntType>(output->dimension(1)), output->data()));
+    } else {
+      TF_CHECK_OK(GpuLaunchKernel(
+          concat_variable_kernel<T, IntType, false>, config.block_count,
+          config.thread_per_block, 0, gpu_device.stream(), input_ptrs,
+          output_scan, static_cast<IntType>(output->dimension(0)),
+          static_cast<IntType>(output->dimension(1)), output->data()));
+    }
   }
 }
 
@@ -246,4 +248,4 @@ REGISTER_GPU64(bool);
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

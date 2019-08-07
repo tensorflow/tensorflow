@@ -25,7 +25,7 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
-#include "cuda/include/cusparse.h"
+#include "third_party/gpus/cuda/include/cusparse.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -103,11 +103,82 @@ class CudaSparse {
   //
 
   // Solves tridiagonal system of equations.
+  // Note: Cuda Toolkit 9.0+ has better-performing gtsv2 routine. gtsv will be
+  // removed in Cuda Toolkit 11.0.
   // See: https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-gtsv
   // Returns Status::OK() if the kernel was launched successfully.
   template <typename Scalar>
   Status Gtsv(int m, int n, const Scalar *dl, const Scalar *d, const Scalar *du,
               Scalar *B, int ldb) const;
+
+  // Solves tridiagonal system of equations without pivoting.
+  // Note: Cuda Toolkit 9.0+ has better-performing gtsv2_nopivot routine.
+  // gtsv_nopivot will be removed in Cuda Toolkit 11.0.
+  // See:
+  // https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-gtsv_nopivot
+  // Returns Status::OK() if the kernel was launched successfully.
+  template <typename Scalar>
+  Status GtsvNoPivot(int m, int n, const Scalar *dl, const Scalar *d,
+                     const Scalar *du, Scalar *B, int ldb) const;
+
+  // Solves a batch of tridiagonal systems of equations. Doesn't support
+  // multiple right-hand sides per each system. Doesn't do pivoting.
+  // Note: Cuda Toolkit 9.0+ has better-performing gtsv2StridedBatch routine.
+  // gtsvStridedBatch will be removed in Cuda Toolkit 11.0.
+  // See:
+  // https://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-gtsvstridedbatch
+  // Returns Status::OK() if the kernel was launched successfully.
+  template <typename Scalar>
+  Status GtsvStridedBatch(int m, const Scalar *dl, const Scalar *d,
+                          const Scalar *du, Scalar *x, int batchCount,
+                          int batchStride) const;
+
+  // Solves tridiagonal system of equations.
+  // See: https://docs.nvidia.com/cuda/cusparse/index.html#gtsv2
+  template <typename Scalar>
+  Status Gtsv2(int m, int n, const Scalar *dl, const Scalar *d,
+               const Scalar *du, Scalar *B, int ldb, void *pBuffer) const;
+
+  // Computes the size of a temporary buffer used by Gtsv2.
+  // See: https://docs.nvidia.com/cuda/cusparse/index.html#gtsv2_bufferSize
+  template <typename Scalar>
+  Status Gtsv2BufferSizeExt(int m, int n, const Scalar *dl, const Scalar *d,
+                            const Scalar *du, const Scalar *B, int ldb,
+                            size_t *bufferSizeInBytes) const;
+
+  // Solves tridiagonal system of equations without partial pivoting.
+  // See: https://docs.nvidia.com/cuda/cusparse/index.html#gtsv2_nopivot
+  template <typename Scalar>
+  Status Gtsv2NoPivot(int m, int n, const Scalar *dl, const Scalar *d,
+                      const Scalar *du, Scalar *B, int ldb,
+                      void *pBuffer) const;
+
+  // Computes the size of a temporary buffer used by Gtsv2NoPivot.
+  // See:
+  // https://docs.nvidia.com/cuda/cusparse/index.html#gtsv2_nopivot_bufferSize
+  template <typename Scalar>
+  Status Gtsv2NoPivotBufferSizeExt(int m, int n, const Scalar *dl,
+                                   const Scalar *d, const Scalar *du,
+                                   const Scalar *B, int ldb,
+                                   size_t *bufferSizeInBytes) const;
+
+  // Solves a batch of tridiagonal systems of equations. Doesn't support
+  // multiple right-hand sides per each system. Doesn't do pivoting.
+  // See: https://docs.nvidia.com/cuda/cusparse/index.html#gtsv2stridedbatch
+  template <typename Scalar>
+  Status Gtsv2StridedBatch(int m, const Scalar *dl, const Scalar *d,
+                           const Scalar *du, Scalar *x, int batchCount,
+                           int batchStride, void *pBuffer) const;
+
+  // Computes the size of a temporary buffer used by Gtsv2StridedBatch.
+  // See:
+  // https://docs.nvidia.com/cuda/cusparse/index.html#gtsv2stridedbatch_bufferSize
+  template <typename Scalar>
+  Status Gtsv2StridedBatchBufferSizeExt(int m, const Scalar *dl,
+                                        const Scalar *d, const Scalar *du,
+                                        const Scalar *x, int batchCount,
+                                        int batchStride,
+                                        size_t *bufferSizeInBytes) const;
 
  private:
   bool initialized_;

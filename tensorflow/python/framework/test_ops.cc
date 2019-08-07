@@ -684,32 +684,4 @@ REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_CPU),
                         DevicePlacementOp);
 REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_GPU),
                         DevicePlacementOp);
-
-// An operation that makes XLA compilation fail. Useful in testing fallback.
-// Returns its input unchanged.
-REGISTER_OP("CannotBeCompiledWithXla")
-    .Input("input: T")
-    .Output("output: T")
-    .Attr("T: type")
-    .SetShapeFn(shape_inference::UnchangedShape);
-
-class CannotBeCompiledWithXlaOp : public OpKernel {
- public:
-  explicit CannotBeCompiledWithXlaOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    if (IsRefType(context->input_dtype(0))) {
-      context->forward_ref_input_to_ref_output(0, 0);
-    } else {
-      context->set_output(0, context->input(0));
-    }
-  }
-};
-
-REGISTER_KERNEL_BUILDER(Name("CannotBeCompiledWithXla").Device(DEVICE_CPU),
-                        CannotBeCompiledWithXlaOp);
-REGISTER_KERNEL_BUILDER(Name("CannotBeCompiledWithXla").Device(DEVICE_GPU),
-                        CannotBeCompiledWithXlaOp);
-
 }  // end namespace tensorflow

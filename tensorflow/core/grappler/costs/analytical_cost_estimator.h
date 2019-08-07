@@ -47,9 +47,14 @@ class AnalyticalCostEstimator : public CostEstimator {
                           std::unique_ptr<ReadyNodeManager> node_manager,
                           bool use_static_shapes,
                           bool use_aggressive_shape_inference);
+  AnalyticalCostEstimator(Cluster* cluster,
+                          std::unique_ptr<OpLevelCostEstimator> node_estimator,
+                          std::unique_ptr<ReadyNodeManager> node_manager,
+                          std::unique_ptr<VirtualPlacer> placer,
+                          bool use_static_shapes,
+                          bool use_aggressive_shape_inference);
   ~AnalyticalCostEstimator() override {}
 
-  // Initializes the estimator for the specified grappler item.
   // This implementation always returns OK.
   Status Initialize(const GrapplerItem& item) override;
 
@@ -62,7 +67,7 @@ class AnalyticalCostEstimator : public CostEstimator {
   const VirtualScheduler* GetScheduler() const { return scheduler_.get(); }
 
  private:
-  GrapplerItem item_;
+  const GrapplerItem* item_;
   std::unique_ptr<OpLevelCostEstimator> node_estimator_;
   std::unique_ptr<ReadyNodeManager> node_manager_;
   std::unique_ptr<VirtualScheduler> scheduler_;

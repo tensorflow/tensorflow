@@ -169,8 +169,8 @@ def set_intersection(a, b, validate_indices=True):
     ])
     b = tf.SparseTensor(list(b.keys()), list(b.values()), dense_shape=[2, 2, 4])
 
-    # `tf.sets.set_intersection` is applied to each aligned pair of sets.
-    tf.sets.set_intersection(a, b)
+    # `tf.sets.intersection` is applied to each aligned pair of sets.
+    tf.sets.intersection(a, b)
 
     # The result will be equivalent to either of:
     #
@@ -202,7 +202,7 @@ def set_intersection(a, b, validate_indices=True):
 
 
 @tf_export(
-	   "sets.difference", v1=["sets.difference", "sets.set_difference"])
+    "sets.difference", v1=["sets.difference", "sets.set_difference"])
 def set_difference(a, b, aminusb=True, validate_indices=True):
   """Compute set difference of elements in last dimension of `a` and `b`.
 
@@ -241,7 +241,7 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
     b = tf.SparseTensor(list(b.keys()), list(b.values()), dense_shape=[2, 2, 4])
 
     # `set_difference` is applied to each aligned pair of sets.
-    tf.sets.set_difference(a, b)
+    tf.sets.difference(a, b)
 
     # The result will be equivalent to either of:
     #
@@ -266,6 +266,13 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
     A `SparseTensor` whose shape is the same rank as `a` and `b`, and all but
     the last dimension the same. Elements along the last dimension contain the
     differences.
+
+  Raises:
+    TypeError: If inputs are invalid types, or if `a` and `b` have
+        different types.
+    ValueError: If `a` is sparse and `b` is dense.
+    errors_impl.InvalidArgumentError: If the shapes of `a` and `b` do not
+        match in any dimension other than the last dimension.
   """
   a, b, flipped = _convert_to_tensors_or_sparse_tensors(a, b)
   if flipped:
@@ -274,7 +281,7 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
 
 
 @tf_export(
-	   "sets.union", v1=["sets.union", "sets.set_union"])
+    "sets.union", v1=["sets.union", "sets.set_union"])
 def set_union(a, b, validate_indices=True):
   """Compute set union of elements in last dimension of `a` and `b`.
 
@@ -312,7 +319,7 @@ def set_union(a, b, validate_indices=True):
     b = tf.SparseTensor(list(b.keys()), list(b.values()), dense_shape=[2, 2, 4])
 
     # `set_union` is applied to each aligned pair of sets.
-    tf.sets.set_union(a, b)
+    tf.sets.union(a, b)
 
     # The result will be a equivalent to either of:
     #

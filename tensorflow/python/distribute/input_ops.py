@@ -18,18 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import traverse
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import tf_logging
-
-
-# TODO(priyag): Any other reader datasets to consider here?
-_READER_DATASET_OPS = [
-    "TextLineDataset", "TFRecordDataset", "FixedLengthRecordDataset",
-    "FixedLengthRecordDatasetV2"
-]
 
 
 # pylint: disable=protected-access
@@ -49,12 +42,13 @@ def auto_shard_dataset(dataset, num_shards, index):
     files. The input dataset will be returned if we cannot automatically
     determine a good way to shard the input dataset.
   """
-
-  # TODO(rohanj): b/120673685 to track re-enabling auto sharding.
-  tf_logging.warn("Autosharding is currently disabled. Please shard your input "
-                  "manually.")
-  del num_shards, index
-  return dataset
+  if dataset.options().experimental_distribute.auto_shard:
+    if isinstance(dataset, dataset_ops.DatasetV1):
+      return distribute._AutoShardDatasetV1(dataset, num_shards, index)
+    else:
+      return distribute._AutoShardDataset(dataset, num_shards, index)
+  else:
+    return dataset
 
 
 def _clone_dataset(dataset):
@@ -62,8 +56,7 @@ def _clone_dataset(dataset):
   variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(dataset)
   remap_dict = _clone_helper(dataset._variant_tensor.op, variant_tensor_ops)
   new_variant_tensor = remap_dict[dataset._variant_tensor.op].outputs[0]
-  return dataset_ops._VariantDataset(new_variant_tensor,
-                                     dataset._element_structure)
+  return dataset_ops._VariantDataset(new_variant_tensor, dataset.element_spec)
 
 
 def _get_op_def(op):

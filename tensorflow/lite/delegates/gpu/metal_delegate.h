@@ -18,8 +18,6 @@ limitations under the License.
 
 #import <Metal/Metal.h>
 
-#include <stdint.h>
-
 #include "tensorflow/lite/c/c_api_internal.h"
 
 // Creates a new delegate instance that need to be destroyed with
@@ -35,8 +33,10 @@ struct GpuDelegateOptions {
     // additional CPU resources.
     kActive,
     // Useful when the output is used with GPU pipeline then or if external
-    // command encoder is set
+    // command encoder is set.
     kDoNotWait,
+    // Tries to avoid GPU sleep mode.
+    kAggressive,
   };
   WaitType wait_type;
 };
@@ -58,10 +58,5 @@ void DeleteGpuDelegate(TfLiteDelegate* delegate);
 // *** Must be called *before* `Interpreter::ModifyGraphWithDelegate`. ***
 bool BindMetalBufferToTensor(TfLiteDelegate* delegate, int tensor_index,
                              id<MTLBuffer> metal_buffer);
-
-// Binds user-defined MTLComputeCommandEncoder. The delegate puts all GPU tasks
-// into this encoder instead of the internal encoder.
-bool SetCommandEncoder(TfLiteDelegate* delegate,
-                       id<MTLComputeCommandEncoder> encoder);
 
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_H_

@@ -50,12 +50,12 @@ struct OpData {
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
                              TfLiteDepthwiseConvParams* params, int width,
                              int height, int filter_width, int filter_height,
-                             int out_width, int out_height,
                              const TfLiteType data_type, OpData* data) {
-  data->padding.height = ComputePadding(params->stride_height, 1, height,
-                                        filter_height, out_height);
-  data->padding.width =
-      ComputePadding(params->stride_width, 1, width, filter_width, out_width);
+  int unused_output_height, unused_output_width;
+  data->padding = ComputePaddingHeightWidth(
+      params->stride_height, params->stride_width, 1, 1, height, width,
+      filter_height, filter_width, params->padding, &unused_output_height,
+      &unused_output_width);
 
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.
@@ -168,15 +168,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   int height = SizeOfDimension(input, 1);
   int filter_width = SizeOfDimension(filter, 2);
   int filter_height = SizeOfDimension(filter, 1);
-  int out_width = ComputeOutSize(params->padding, width, filter_width,
-                                 params->stride_width);
-  int out_height = ComputeOutSize(params->padding, height, filter_height,
-                                  params->stride_height);
   OpData local_data_object;
   OpData* data = &local_data_object;
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, node, params, width, height,
-                                        filter_width, filter_height, out_width,
-                                        out_height, data_type, data));
+                                        filter_width, filter_height, data_type,
+                                        data));
 
   // TODO(aselle): Consider whether float conv and quantized conv should be
   // separate ops to avoid dispatch overhead here.

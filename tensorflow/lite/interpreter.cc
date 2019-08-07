@@ -26,10 +26,13 @@ limitations under the License.
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/nnapi_delegate.h"
-#include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
+
+// TODO(b/132087118): move static_assert to c_api_internal when compiled with
+// C++.
+static_assert(sizeof(TfLiteFloat16) == sizeof(uint16_t),
+              "Float 16 type must be 16 bits.");
 
 namespace tflite {
 
@@ -68,6 +71,12 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
     external_contexts_[i] = nullptr;
   }
 
+  // This operation is cheap because we allocate the CPU context resources (i.e.
+  // threads) lazily.
+  own_external_cpu_backend_context_.reset(new ExternalCpuBackendContext());
+  external_contexts_[kTfLiteCpuBackendContext] =
+      own_external_cpu_backend_context_.get();
+
   UseNNAPI(false);
 }
 
@@ -75,6 +84,26 @@ Interpreter::~Interpreter() {}
 
 void Interpreter::SetExternalContext(TfLiteExternalContextType type,
                                      TfLiteExternalContext* ctx) {
+  if (ctx == own_external_cpu_backend_context_.get()) {
+    error_reporter_->Report(
+        "WARNING: The passed external context is identical to the internally "
+        "owned one.");
+    return;
+  }
+
+  // We have an internally owned external context of kTfLiteCpuBackendContext.
+  // If it's overwritten here, we will release the resource of the internally
+  // owned external context.
+  // Note: the 'max thread count' info associated with the overwritten context
+  // will be lost here, and such info is now detemined by the new context, thus
+  // affecting how much parallelism a TFLite op would have.
+  if (kTfLiteCpuBackendContext == type &&
+      external_contexts_[kTfLiteCpuBackendContext] ==
+          own_external_cpu_backend_context_.get()) {
+    own_external_cpu_backend_context_.reset();
+  }
+
+  // This essentially changes the "external_contexts_[type]".
   primary_subgraph().SetExternalContext(type, ctx);
 }
 
@@ -105,8 +134,8 @@ void Interpreter::AddSubgraphs(int subgraphs_to_add,
 
   subgraphs_.reserve(base_index + subgraphs_to_add);
   for (int i = 0; i < subgraphs_to_add; ++i) {
-    Subgraph* subgraph =
-        new Subgraph(error_reporter_, external_contexts_, &subgraphs_);
+    Subgraph* subgraph = new Subgraph(error_reporter_, external_contexts_,
+                                      &subgraphs_, &resource_variables_);
     subgraphs_.emplace_back(subgraph);
   }
 }
@@ -115,9 +144,9 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
     const std::vector<int>& inputs, const std::vector<int>& outputs,
     const char* init_data, size_t init_data_size, void* builtin_data,
     const TfLiteRegistration* registration, int* node_index) {
-  return primary_subgraph().AddNodeWithParameters(inputs, outputs, init_data,
-                                                  init_data_size, builtin_data,
-                                                  registration, node_index);
+  return primary_subgraph().AddNodeWithParameters(
+      inputs, outputs, {}, init_data, init_data_size, builtin_data,
+      registration, node_index);
 }
 
 TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,
@@ -224,6 +253,13 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   return kTfLiteOk;
 }
 
+TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
+  // Note that we retain ownership of the delegate even if graph modification
+  // fails, as delegate use will be in an indeterminate state at that point.
+  owned_delegates_.push_back(std::move(delegate));
+  return ModifyGraphWithDelegate(owned_delegates_.back().get());
+}
+
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle buffer_handle,
                                           TfLiteDelegate* delegate) {
@@ -257,11 +293,11 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
   return kTfLiteOk;
 }
 
-void Interpreter::SetProfiler(profiling::Profiler* profiler) {
+void Interpreter::SetProfiler(Profiler* profiler) {
   for (auto& subgraph : subgraphs_) subgraph->SetProfiler(profiler);
 }
 
-profiling::Profiler* Interpreter::GetProfiler() {
+Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
 }
 

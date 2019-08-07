@@ -5,16 +5,16 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "gpu"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "optimizer"
     mtype: "<type \'module\'>"
   }
   member {
     name: "threading"
     mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "experimental_connect_to_cluster"
+    argspec: "args=[\'cluster_spec_or_resolver\', \'job_name\', \'task_index\', \'protocol\'], varargs=None, keywords=None, defaults=[\'localhost\', \'0\', \'None\'], "
   }
   member_method {
     name: "experimental_connect_to_host"

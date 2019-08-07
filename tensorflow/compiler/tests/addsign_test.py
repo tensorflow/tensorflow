@@ -63,7 +63,7 @@ class AddSignTest(xla_test.XLATestCase):
                  alpha=1.0,
                  beta=0.9):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         # Initialize variables for numpy implementation.
         m0, m1 = 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype)

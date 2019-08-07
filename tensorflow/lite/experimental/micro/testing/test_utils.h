@@ -73,7 +73,7 @@ inline uint8_t F2Q(const float value, const float min, const float max) {
 }
 
 // Converts a float value into a signed thirty-two-bit quantized value.
-inline uint8_t F2Q32(const float value, const float min, const float max) {
+inline int32_t F2Q32(const float value, const float min, const float max) {
   return static_cast<int32_t>((value - ZeroPointFromMinMax<int32_t>(min, max)) /
                               ScaleFromMinMax<int32_t>(min, max));
 }
@@ -121,6 +121,25 @@ inline TfLiteTensor CreateFloatTensor(const float* data, TfLiteIntArray* dims,
 inline TfLiteTensor CreateFloatTensor(std::initializer_list<float> data,
                                       TfLiteIntArray* dims, const char* name) {
   return CreateFloatTensor(data.begin(), dims, name);
+}
+
+inline TfLiteTensor CreateBoolTensor(const bool* data, TfLiteIntArray* dims,
+                                     const char* name) {
+  TfLiteTensor result;
+  result.type = kTfLiteBool;
+  result.data.b = const_cast<bool*>(data);
+  result.dims = dims;
+  result.params = {};
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(bool);
+  result.allocation = nullptr;
+  result.name = name;
+  return result;
+}
+
+inline TfLiteTensor CreateBoolTensor(std::initializer_list<bool> data,
+                                     TfLiteIntArray* dims, const char* name) {
+  return CreateBoolTensor(data.begin(), dims, name);
 }
 
 inline TfLiteTensor CreateQuantizedTensor(const uint8_t* data,

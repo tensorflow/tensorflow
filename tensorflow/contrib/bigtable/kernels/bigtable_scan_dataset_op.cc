@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/bigtable/kernels/bigtable_lib.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/core/refcount.h"
 
 namespace tensorflow {
 namespace data {
@@ -64,10 +65,9 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
         errors::InvalidArgument(
             "Probability outside the range of (0, 1]. Got: ", probability));
 
-    BigtableTableResource* resource;
+    core::RefCountPtr<BigtableTableResource> resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
-    core::ScopedUnref scoped_unref(resource);
 
     const uint64 num_outputs = columns.size() + 1;
     std::vector<PartialTensorShape> output_shapes;
@@ -79,7 +79,7 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
       output_types.push_back(DT_STRING);
     }
 
-    *output = new Dataset(ctx, resource, std::move(prefix),
+    *output = new Dataset(ctx, resource.get(), std::move(prefix),
                           std::move(start_key), std::move(end_key),
                           std::move(column_families), std::move(columns),
                           probability, output_types, std::move(output_shapes));
@@ -131,12 +131,14 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
 
     BigtableTableResource* table() const { return table_; }
 
+    bool IsStateful() const override { return true; }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented("%s does not support serialization",
-                                   DebugString());
+      return errors::Unimplemented(DebugString(),
+                                   " does not support serialization");
     }
 
    private:

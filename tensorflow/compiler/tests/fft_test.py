@@ -70,7 +70,7 @@ class FFTTest(xla_test.XLATestCase):
       data = np.reshape(data.astype(np.float32).view(np.complex64), shape)
       data = to_32bit(complex_to_input(data))
       expected = to_32bit(input_to_expected(data))
-      with self.cached_session() as sess:
+      with self.session() as sess:
         with self.test_scope():
           ph = array_ops.placeholder(
               dtypes.as_dtype(data.dtype), shape=data.shape)
@@ -92,7 +92,7 @@ class FFTTest(xla_test.XLATestCase):
         data, nperseg=ws, noverlap=ws - hs, boundary=None, window=window)[2]
     expected = np.swapaxes(expected, -1, -2)
     expected *= window.sum()  # scipy divides by window sum
-    with self.cached_session() as sess:
+    with self.session() as sess:
       with self.test_scope():
         ph = array_ops.placeholder(
             dtypes.as_dtype(data.dtype), shape=data.shape)
@@ -131,15 +131,19 @@ class FFTTest(xla_test.XLATestCase):
                           signal.ifft3d)
 
   def testRFFT(self):
-    self._VerifyFftMethod(
-        INNER_DIMS_1D, np.real, lambda x: np.fft.rfft(x, n=x.shape[-1]),
-        lambda x: signal.rfft(x, fft_length=[x.shape[-1].value]))
+
+    def _to_expected(x):
+      return np.fft.rfft(x, n=x.shape[-1])
+
+    def _tf_fn(x):
+      return signal.rfft(x, fft_length=[x.shape[-1]])
+
+    self._VerifyFftMethod(INNER_DIMS_1D, np.real, _to_expected, _tf_fn)
 
   def testRFFT2D(self):
 
     def _tf_fn(x):
-      return signal.rfft2d(
-          x, fft_length=[x.shape[-2].value, x.shape[-1].value])
+      return signal.rfft2d(x, fft_length=[x.shape[-2], x.shape[-1]])
 
     self._VerifyFftMethod(
         INNER_DIMS_2D, np.real,
@@ -153,8 +157,7 @@ class FFTTest(xla_test.XLATestCase):
 
     def _tf_fn(x):
       return signal.rfft3d(
-          x,
-          fft_length=[x.shape[-3].value, x.shape[-2].value, x.shape[-1].value])
+          x, fft_length=[x.shape[-3], x.shape[-2], x.shape[-1]])
 
     self._VerifyFftMethod(INNER_DIMS_3D, np.real, _to_expected, _tf_fn)
 
@@ -168,17 +171,14 @@ class FFTTest(xla_test.XLATestCase):
 
     def _tf_fn(x):
       return signal.rfft3d(
-          x,
-          fft_length=[
-              x.shape[-3].value // 2, x.shape[-2].value, x.shape[-1].value * 2
-          ])
+          x, fft_length=[x.shape[-3] // 2, x.shape[-2], x.shape[-1] * 2])
 
     self._VerifyFftMethod(INNER_DIMS_3D, np.real, _to_expected, _tf_fn)
 
   def testIRFFT(self):
 
     def _tf_fn(x):
-      return signal.irfft(x, fft_length=[2 * (x.shape[-1].value - 1)])
+      return signal.irfft(x, fft_length=[2 * (x.shape[-1] - 1)])
 
     self._VerifyFftMethod(
         INNER_DIMS_1D, lambda x: np.fft.rfft(np.real(x), n=x.shape[-1]),
@@ -187,8 +187,7 @@ class FFTTest(xla_test.XLATestCase):
   def testIRFFT2D(self):
 
     def _tf_fn(x):
-      return signal.irfft2d(
-          x, fft_length=[x.shape[-2].value, 2 * (x.shape[-1].value - 1)])
+      return signal.irfft2d(x, fft_length=[x.shape[-2], 2 * (x.shape[-1] - 1)])
 
     self._VerifyFftMethod(
         INNER_DIMS_2D,
@@ -212,10 +211,7 @@ class FFTTest(xla_test.XLATestCase):
 
     def _tf_fn(x):
       return signal.irfft3d(
-          x,
-          fft_length=[
-              x.shape[-3].value, x.shape[-2].value, 2 * (x.shape[-1].value - 1)
-          ])
+          x, fft_length=[x.shape[-3], x.shape[-2], 2 * (x.shape[-1] - 1)])
 
     self._VerifyFftMethod(INNER_DIMS_3D, _to_input, _to_expected, _tf_fn)
 
@@ -235,10 +231,7 @@ class FFTTest(xla_test.XLATestCase):
 
     def _tf_fn(x):
       return signal.irfft3d(
-          x,
-          fft_length=[
-              x.shape[-3].value // 2, x.shape[-2].value, x.shape[-1].value * 2
-          ])
+          x, fft_length=[x.shape[-3] // 2, x.shape[-2], x.shape[-1] * 2])
 
     self._VerifyFftMethod(INNER_DIMS_3D, _to_input, _to_expected, _tf_fn)
 

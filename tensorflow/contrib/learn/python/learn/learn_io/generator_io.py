@@ -59,7 +59,7 @@ def generator_input_fn(x,
               'age': np.random.randint(18, 80),
               'label': np.ones(1)}
 
-    with tf.Session() as session:
+    with tf.compat.v1.Session() as session:
       input_fn = generator_io.generator_input_fn(
           generator, target_key="label", batch_size=2, shuffle=False,
           num_epochs=1)

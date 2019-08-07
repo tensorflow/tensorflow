@@ -57,6 +57,11 @@ const uint32_t kMaxNumString = UINT_MAX / sizeof(int32_t) - 2;
 bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
                               ErrorReporter* error_reporter) {
   uint32_t buffer_size = buffer.data()->size();
+  if (buffer_size < sizeof(uint32_t)) {
+    ReportError(error_reporter, "String tensor %s is invalid (empty)",
+                tensor.name()->c_str());
+    return false;
+  }
   const char* buffer_ptr = reinterpret_cast<const char*>(buffer.data()->data());
 
   uint32_t num_strings = *GetIntPtr(buffer_ptr);
@@ -125,20 +130,30 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_FLOAT32:
       bytes_required *= sizeof(float);
       break;
-    case TensorType_INT8:
-      bytes_required *= sizeof(int8_t);
-      break;
-    case TensorType_UINT8:
-      bytes_required *= sizeof(uint8_t);
+    case TensorType_FLOAT16:
+      bytes_required *= sizeof(uint16_t);
       break;
     case TensorType_INT32:
       bytes_required *= sizeof(int32_t);
       break;
+    case TensorType_UINT8:
+      bytes_required *= sizeof(uint8_t);
+      break;
+    case TensorType_INT8:
+      bytes_required *= sizeof(int8_t);
+      break;
     case TensorType_INT64:
       bytes_required *= sizeof(int64_t);
       break;
-    case TensorType_FLOAT16:
-      // FALLTHROUGH_INTENDED;
+    case TensorType_BOOL:
+      bytes_required *= sizeof(bool);
+      break;
+    case TensorType_INT16:
+      bytes_required *= sizeof(uint16_t);
+      break;
+    case TensorType_COMPLEX64:
+      bytes_required *= sizeof(std::complex<float>);
+      break;
     default:
       ReportError(error_reporter, "Tensor %s invalid type: %d",
                   tensor.name()->c_str(), tensor.type());

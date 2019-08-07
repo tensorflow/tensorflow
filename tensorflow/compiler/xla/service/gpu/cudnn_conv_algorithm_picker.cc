@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
+
 #include "google/protobuf/any.pb.h"
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
@@ -23,15 +25,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_blacklist.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/redzone_allocator.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -74,28 +80,6 @@ string AlgorithmToString(const AlgorithmDesc& algo) {
 string NumBytesToString(int64 bytes) {
   return absl::StrCat(tensorflow::strings::HumanReadableNumBytes(bytes), " (",
                       bytes, "B)");
-}
-
-// Acquires a process-global lock on the device pointed to by the given
-// StreamExecutor.
-//
-// This is used to prevent other XLA instances from trying to autotune on this
-// device while we're using it.
-tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  // se::Platform*s are global singletons guaranteed to live forever.
-  static auto* mutexes =
-      new std::map<std::pair<const se::Platform*, /*device_ordinal*/ int64>,
-                   tensorflow::mutex>();
-
-  tensorflow::mutex_lock global_lock(mu);
-  auto it = mutexes
-                ->emplace(std::piecewise_construct,
-                          std::make_tuple(stream_exec->platform(),
-                                          stream_exec->device_ordinal()),
-                          std::make_tuple())
-                .first;
-  return tensorflow::mutex_lock{it->second};
 }
 
 tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
@@ -147,22 +131,29 @@ void PrintPlatformInfo(const se::Stream* stream) {
 // If the redzones are modified, logs an error, sets the appropriate failure
 // bits on `result`, and returns false.
 //
+// Returns a status if an unexpected error has occurred, and the stream
+// has been poisoned.
+//
 // `name` is a user-friendly name for the set of redzones being checked, e.g.
 // "input/output" or "scratch".
-bool CheckRedzones(const RedzoneAllocator& allocator, se::Stream* stream,
-                   absl::string_view name, const HloInstruction* instr,
-                   AutotuneResult* result) {
+StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
+                             se::Stream* stream, absl::string_view name,
+                             const HloInstruction* instr,
+                             AutotuneResult* result) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
-
-  Status status = allocator.CheckRedzones(stream);
-  if (status.ok()) {
+  using RedzoneCheckStatus = se::cuda::RedzoneAllocator::RedzoneCheckStatus;
+  TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
+                      allocator.CheckRedzones());
+  if (redzone_check.ok()) {
     return true;
   }
 
   auto* fail = result->mutable_failure();
   fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
-  *fail->mutable_msg() = status.ToString();
+  *fail->mutable_msg() = redzone_check.RedzoneFailureMsg();
+  fail->set_buffer_address(
+      reinterpret_cast<uint64>(redzone_check.user_buffer_address));
 
   LOG(ERROR) << absl::StreamFormat(
       "Detected cudnn out-of-bounds write in conv %s buffer! This is likely a "
@@ -173,38 +164,83 @@ bool CheckRedzones(const RedzoneAllocator& allocator, se::Stream* stream,
       "the problem, please file a bug with this full error message and we'll "
       "contact nvidia.",
       name);
-  LOG(ERROR) << status.ToString();
+  LOG(ERROR) << redzone_check.RedzoneFailureMsg();
   LOG(ERROR) << "HloInstruction " << instr->ToString();
   PrintPlatformInfo(stream);
   return false;
 }
 
+using ConvCacheKey =
+    std::tuple<se::StreamExecutor*,
+               /* conv->ToString(HloPrintOptions::Canonical()) */ std::string>;
+
+struct ConvCacheStats {
+  int64 cache_hits = 0;
+  int64 cache_misses = 0;
+
+  void LogStats() {
+    VLOG(2) << "Cache hits: " << cache_hits;
+    VLOG(2) << "Cache misses: " << cache_misses;
+  }
+};
+
+ConvCacheKey AutotuneCacheKeyfromInstruction(
+    const HloCustomCallInstruction* conv, se::StreamExecutor* se) {
+  auto options = HloPrintOptions::Canonical();
+  options.set_print_backend_config(true);
+  return std::make_tuple(se, conv->ToString(options));
+}
+
+tensorflow::mutex autotune_cache_lock(tensorflow::LINKER_INITIALIZED);
+auto& autotune_cache GUARDED_BY(autotune_cache_lock) =
+    *new absl::flat_hash_map<ConvCacheKey, AutotuneResult>();
+auto& autotune_cache_stats GUARDED_BY(autotune_cache_lock) =
+    *new ConvCacheStats();
 }  // anonymous namespace
 
-// We could have caching here so that we don't redo this work for two identical
-// convolutions.  Unfortunately our cache key would have to be a tuple
-// containing the protos passed to this function, and we have no utility for
-// hashing protos.  We could write our own hash functions, but they'd silently
-// break if we ever added a field to one of the protos.  Perhaps we could hack
-// using the binary-encoded proto as the hash key, on the assumption that two
-// protos being binary-equal is a sufficient, if not necessary, condition for
-// proper equality.  But that would still leave us open to having unnecessary
-// cache misses and doing extra work.  Overall, caching doesn't seem worth the
-// trouble, but we may want to revisit this if we ever find a model where
-// caching would speed up compilation a lot.
 StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
     const HloCustomCallInstruction* instr) {
-  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
-      "CudnnConvAlgorithmPicker::PickBestAlgorithm for ", instr->ToString()));
-
-  const Shape& result_shape = instr->shape().tuple_shapes(0);
-
   // Don't run this function concurrently on the same GPU.
   //
   // This is a bit of a hack and doesn't protect us against arbitrary concurrent
   // use of a GPU, but it's sufficient to let us compile two HLO modules
   // concurrently and then run them sequentially.
+  //
+  // Putting the lock in here rather than in PickBestAlgorithmNoCache lets us
+  // avoid ever doing duplicate work.  If we have a cache miss, only one thread
+  // will run PickBestAlgorithmImpl for a particular device.
   tensorflow::mutex_lock lock = LockGpu(stream_exec_);
+
+  // We cache the autotuning results to avoid doing the duplicate work,
+  // which can greatly improve both stability (deterministic numeric results
+  // within a process for a given input) and performance (2x speedup on some
+  // models).
+  ConvCacheKey key = AutotuneCacheKeyfromInstruction(instr, stream_exec_);
+  {
+    tensorflow::mutex_lock lock(autotune_cache_lock);
+    auto it = autotune_cache.find(key);
+    if (it != autotune_cache.end()) {
+      autotune_cache_stats.cache_hits++;
+      return it->second;
+    }
+    autotune_cache_stats.cache_misses++;
+  }
+
+  StatusOr<AutotuneResult> result_or = PickBestAlgorithmNoCache(instr);
+  if (result_or.ok()) {
+    tensorflow::mutex_lock lock(autotune_cache_lock);
+    CHECK(autotune_cache.insert({key, result_or.ValueOrDie()}).second);
+  }
+  return result_or;
+}
+
+StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
+    const HloCustomCallInstruction* instr) {
+  XLA_SCOPED_LOGGING_TIMER(
+      absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithmImpl for ",
+                   instr->ToString()));
+
+  const Shape& result_shape = instr->shape().tuple_shapes(0);
 
   // Make sure any previous activity on this executor is done. We don't want to
   // interfere with programs that are still running on the GPU.
@@ -215,72 +251,41 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   // Create a stream for us to do our work on.
   se::Stream stream{stream_exec_};
   stream.Init();
-  const auto device_ordinal = stream_exec_->device_ordinal();
-
   // allocator either points to this->allocator_ or, if that's null, to a
-  // StreamExecutorMemoryAllocator for stream_exec_.
-  DeviceMemoryAllocator* allocator;
-  optional<StreamExecutorMemoryAllocator> se_allocator;
+  // se::StreamExecutorMemoryAllocator for stream_exec_.
+  se::DeviceMemoryAllocator* allocator;
+  optional<se::StreamExecutorMemoryAllocator> se_allocator;
   if (allocator_ != nullptr) {
     allocator = allocator_;
   } else {
-    se_allocator.emplace(stream_exec_->platform(),
-                         absl::Span<se::StreamExecutor* const>({stream_exec_}));
+    se_allocator.emplace(stream_exec_);
     allocator = &*se_allocator;
   }
 
-  const auto initialize_buffer = [&stream,
-                                  &result_shape](DeviceMemoryBase buffer) {
-    constexpr float kBroadcastedConstant = 0.1f;
-    switch (result_shape.element_type()) {
-      case xla::F16: {
-        // Broadcast a constant to the buffer, instead of zeroing the buffer. A
-        // non-zero constant is useful for the cross checking, because
-        // zero-inputs may not always reveal the bugs.
-        CHECK_EQ(0, (uintptr_t)buffer.opaque() % 4);
-        size_t left_over_bytes = buffer.size() % 4;
-        CHECK_EQ(0, left_over_bytes % 2);
+  int64 rng_state = 0;
 
-        static const Eigen::half halfs[2] = {Eigen::half(kBroadcastedConstant),
-                                             Eigen::half(kBroadcastedConstant)};
-        uint32 bits;
-        static_assert(sizeof(bits) == sizeof(halfs), "");
-        memcpy(&bits, halfs, sizeof(bits));
-
-        size_t aligned_size = buffer.size() / 4 * 4;
-        stream.ThenMemset32(&buffer, bits, aligned_size);
-
-        DeviceMemoryBase left_over(
-            static_cast<char*>(buffer.opaque()) + aligned_size,
-            left_over_bytes);
-        stream.ThenMemcpy(&left_over, halfs, left_over_bytes);
-        break;
-      }
-      case xla::F32: {
-        uint32 bits;
-        memcpy(&bits, &kBroadcastedConstant, sizeof(bits));
-        stream.ThenMemset32(&buffer, bits, buffer.size());
-        break;
-      }
-      // TODO(timshen): populate non-zero data for f64.
-      default:
-        stream.ThenMemZero(&buffer, buffer.size());
-    }
+  const auto initialize_buffer = [&stream, &result_shape,
+                                  &rng_state](DeviceMemoryBase buffer) {
+    InitializeFloatBuffer(&stream, result_shape.element_type(), &rng_state,
+                          buffer);
   };
 
+  const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
+
   // Allocate space for the input, filter, and output of the convolution.
-  RedzoneAllocator input_output_allocator(device_ordinal, allocator);
+  se::cuda::RedzoneAllocator input_output_allocator(
+      &stream, allocator, PtxOptsFromConfig(hlo_module_config));
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator.AllocateBytes(
-                            &stream, ShapeUtil::ByteSizeOf(operand->shape())));
+                            ShapeUtil::ByteSizeOf(operand->shape())));
     initialize_buffer(buffer);
     operand_buffers.push_back(buffer);
   }
   TF_ASSIGN_OR_RETURN(auto result_buffer,
                       input_output_allocator.AllocateBytes(
-                          &stream, ShapeUtil::ByteSizeOf(result_shape)));
+                          ShapeUtil::ByteSizeOf(result_shape)));
   initialize_buffer(result_buffer);
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
@@ -296,11 +301,18 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
   std::vector<AutotuneResult> profile_results;
 
+  const DebugOptions& debug_options =
+      instr->GetModule()->config().debug_options();
+
   const bool crash_on_checking_failure =
-      instr->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_crash_on_verification_failures();
+      debug_options.xla_gpu_crash_on_verification_failures();
+
+  const auto canonical_hlo =
+      std::get<1>(AutotuneCacheKeyfromInstruction(instr, stream_exec_));
+
+  absl::Span<const AlgorithmDesc> blacklisted_algos =
+      GetBlacklistedAlgorithms(GetComputeCapability(stream_exec_),
+                               GetCudnnVersion(stream_exec_), canonical_hlo);
 
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
@@ -308,7 +320,14 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
                      AlgorithmToString(alg)),
         2);
 
-    RedzoneAllocator scratch_allocator(device_ordinal, allocator);
+    if (absl::c_linear_search(blacklisted_algos, alg)) {
+      LOG(INFO) << "Omitted potentially buggy algorithm "
+                << AlgorithmToString(alg) << " for conv " << instr->ToString();
+      continue;
+    }
+
+    se::cuda::RedzoneAllocator scratch_allocator(
+        &stream, allocator, PtxOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
@@ -341,16 +360,39 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
         absl::Milliseconds(profile_result.elapsed_time_in_ms()));
 
     // Check for writes to redzones.
-    if (!CheckRedzones(input_output_allocator, &stream, "input/output", instr,
-                       &result) ||
-        !CheckRedzones(scratch_allocator, &stream, "scratch", instr, &result)) {
+    TF_ASSIGN_OR_RETURN(bool input_output_allocator_redzone_clear,
+                        CheckRedzones(input_output_allocator, &stream,
+                                      "input/output", instr, &result));
+
+    TF_ASSIGN_OR_RETURN(
+        bool scratch_allocator_redzone_clear,
+        CheckRedzones(scratch_allocator, &stream, "scratch", instr, &result));
+
+    if (!input_output_allocator_redzone_clear ||
+        !scratch_allocator_redzone_clear) {
+      CudnnConvolutionList proto;
+      auto entry = proto.add_entries();
+      entry->set_hlo(canonical_hlo);
+      *entry->mutable_cc() = GetComputeCapability(stream_exec_);
+      *entry->add_cudnn_versions() = GetCudnnVersion(stream_exec_);
+      auto algo = entry->add_algos();
+      algo->set_id(alg.algo_id());
+      algo->set_tensor_ops(alg.tensor_ops_enabled());
+
+      LOG(ERROR)
+          << "To blacklist this algorithm for this convolution, "
+             "copy-paste the following "
+             "proto to the blacklist file pointed by XLA_FLAGS "
+             "--xla_gpu_cudnn_conv_blacklist_path="
+          << GetDebugOptionsFromFlags().xla_gpu_cudnn_conv_blacklist_path()
+          << " : " << proto.ShortDebugString();
       continue;
     }
 
     if (comparator.has_value()) {
       XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::CompareEqual", 2);
       StatusOr<bool> compare_result = comparator->CompareEqual(
-          &stream, allocator, reference_result_buffer, result_buffer);
+          &stream, reference_result_buffer, result_buffer);
       if (!compare_result.ok()) {
         LOG(ERROR) << "Unable to compare " << AlgorithmToString(first_algorithm)
                    << " against " << AlgorithmToString(alg) << " for "
@@ -369,8 +411,12 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
             << AlgorithmToString(first_algorithm) << " vs "
             << AlgorithmToString(alg);
         PrintPlatformInfo(&stream);
+        VLOG(1) << "Full module on failure: \n"
+                << instr->GetModule()->ToString();
         auto* fail = result.mutable_failure();
         fail->set_kind(AutotuneResult::WRONG_RESULT);
+        fail->set_buffer_address(
+            reinterpret_cast<uint64>(result_buffer.opaque()));
         auto* reference_conv = fail->mutable_reference_conv();
         reference_conv->set_algorithm(first_algorithm.algo_id());
         reference_conv->set_tensor_ops_enabled(
@@ -378,21 +424,13 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
       }
     } else {
       XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::Create", 2);
-      auto comp =
-          BufferComparator::Create(result_shape, stream.parent(), compiler_);
-      if (comp.ok()) {
-        comparator.emplace(comp.ConsumeValueOrDie());
-        reference_result_buffer = result_buffer;
-        TF_ASSIGN_OR_RETURN(result_buffer,
-                            input_output_allocator.AllocateBytes(
-                                &stream, reference_result_buffer.size()));
-        initialize_buffer(result_buffer);
-        first_algorithm = alg;
-      } else {
-        LOG(ERROR) << "Fail to initialize buffer comparator: " << comp.status()
-                   << ", instruction: " << instr->ToString();
-        CHECK(!crash_on_checking_failure);
-      }
+      comparator.emplace(result_shape, hlo_module_config);
+      TF_ASSIGN_OR_RETURN(
+          reference_result_buffer,
+          input_output_allocator.AllocateBytes(result_buffer.size()));
+      stream.ThenMemcpy(&reference_result_buffer, result_buffer,
+                        result_buffer.size());
+      first_algorithm = alg;
     }
   }
 
@@ -402,9 +440,13 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
     {
       ConvInstructionLog instr_log;
       *instr_log.mutable_instruction() = instr->ToProto();
-      for (const auto* op : instr->operands()) {
-        *instr_log.add_operand_shapes() = op->shape().ToProto();
+      for (int i = 0; i < instr->operand_count(); i++) {
+        *instr_log.add_operand_shapes() = instr->operand(i)->shape().ToProto();
+        instr_log.add_operand_addresses(
+            reinterpret_cast<uint64>(operand_buffers[i].opaque()));
       }
+      instr_log.set_result_address(
+          reinterpret_cast<uint64>(result_buffer.opaque()));
       log.mutable_instr()->PackFrom(instr_log);
     }
     for (const auto& profile : profile_results) {
@@ -414,8 +456,12 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
     *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
     log.set_device_pci_bus_id(
         stream_exec_->GetDeviceDescription().pci_bus_id());
-    VLOG(2) << "Autotuning result:\n" << log.DebugString();
-    tensorflow::Logger::Singleton()->LogProto(log);
+    VLOG(1) << "Autotuning result: " << log.ShortDebugString();
+    // If we crash on checking failure, we are in a testing/benchmark mode, thus
+    // omitting logging through the logger.
+    if (!crash_on_checking_failure) {
+      tensorflow::Logger::GetSingleton()->LogProto(log);
+    }
   }
 
   // Crash on miscompares and redzone violations if desired.  Do this after
@@ -426,13 +472,17 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
     }
   }
 
-  // Choose the fastest convolution that doesn't produce a REDZONE_MODIFIED
-  // error.
-  //
   // For now, we ignore WRONG_RESULT failures because false-positives are
   // possible (e.g. perhaps the reference algorithm is the one that's
   // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
   // quite severe and can be detected with high accuracy.
+  auto has_failure = [](const AutotuneResult& r) {
+    return r.has_failure() &&
+           r.failure().kind() != AutotuneResult::WRONG_RESULT;
+  };
+
+  // Choose the fastest convolution that doesn't produce a REDZONE_MODIFIED
+  // error.
   //
   // TODO(jlebar): We ought to be able to detect redzone reads by noticing NaNs
   // in the output of the conv and skip those.
@@ -440,9 +490,9 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   // The successful one should have a smaller key, since we are doing
   // min_element. If they are both unsuccessful, keep the earlier one in
   // the vector by comparing pointers.
-  auto result_comparison_key = [](const AutotuneResult& r) {
+  auto result_comparison_key = [&has_failure](const AutotuneResult& r) {
     return std::make_tuple(
-        r.has_failure() && r.failure().kind() != AutotuneResult::WRONG_RESULT,
+        has_failure(r),
         tensorflow::proto_utils::FromDurationProto(r.run_time()));
   };
   const auto& best_result = absl::c_min_element(
@@ -451,7 +501,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
         return result_comparison_key(lhs) < result_comparison_key(rhs);
       });
 
-  if (best_result != profile_results.end() && !best_result->has_failure()) {
+  if (best_result != profile_results.end() && !has_failure(*best_result)) {
     return *best_result;
   }
 
@@ -473,7 +523,7 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
   }
 
   auto best_algo = std::move(best_algo_or).ValueOrDie();
-  VLOG(1) << "Setting cudnn conv to use algorithm "
+  VLOG(2) << "Setting cudnn conv to use algorithm "
           << best_algo.conv().algorithm() << " and "
           << NumBytesToString(best_algo.scratch_bytes())
           << " of scratch memory: " << instr->ToString()
@@ -494,7 +544,7 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));
 
-  VLOG(1) << "Replacing convolution " << instr->ToString() << " with "
+  VLOG(2) << "Replacing convolution " << instr->ToString() << " with "
           << new_call->ToString();
 
   TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));
@@ -531,11 +581,24 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnComputation(
 
 StatusOr<bool> CudnnConvAlgorithmPicker::Run(HloModule* module) {
   XLA_SCOPED_LOGGING_TIMER("CudnnConvAlgorithmPicker");
+
+  if (module->config().debug_options().xla_gpu_disable_autotune()) {
+    VLOG(2) << "Convolution auto-tuning disabled, CudnnConvAlgorithmPicker "
+               "returning early.";
+    return false;
+  }
+
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
+
+  {
+    tensorflow::mutex_lock lock(autotune_cache_lock);
+    autotune_cache_stats.LogStats();
+  }
+
   return changed;
 }
 

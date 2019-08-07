@@ -32,6 +32,11 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
+// Delete the definition of CopyFile as the linker gets confused.
+#ifdef PLATFORM_WINDOWS
+#undef CopyFile
+#endif
+
 namespace tensorflow {
 
 class Thread;
@@ -455,6 +460,16 @@ Status WriteTextProto(Env* env, const string& fname,
 /// and store into `*proto`.
 Status ReadTextProto(Env* env, const string& fname,
                      ::tensorflow::protobuf::Message* proto);
+
+/// Read contents of named file and parse as either text or binary encoded proto
+/// data and store into `*proto`.
+Status ReadTextOrBinaryProto(Env* env, const string& fname,
+#if !defined(TENSORFLOW_LITE_PROTOS)
+                             ::tensorflow::protobuf::Message* proto
+#else
+                             ::tensorflow::protobuf::MessageLite* proto
+#endif
+);
 
 // START_SKIP_DOXYGEN
 

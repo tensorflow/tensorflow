@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/lower_if_op.h"
-#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -38,10 +38,10 @@ class CondBuilder {
   enum Branch { kElseBranch = 0, kThenBranch = 1 };
 
   // Create a CondBuilder to create the lowered form of `if_op` with then and
-  // else functions named `then_fn_name` and `else_fn_name` respectively in the
-  // `graph`. The functions should be available in `flib`.
-  CondBuilder(Node* if_op, const string& then_fn_name,
-              const string& else_fn_name, const FunctionLibraryDefinition& flib,
+  // else functions `then_fn` and `else_fn` respectively in the `graph`. The
+  // functions should be available in `flib`.
+  CondBuilder(Node* if_op, const NameAttrList& then_fn,
+              const NameAttrList& else_fn, bool keep_node_fetchable,
               Graph* graph);
 
   // Constructs the basic conditional control flow using switch and merge nodes.
@@ -73,8 +73,10 @@ class CondBuilder {
   Node* control_predecessor_;
   // The original If op.
   Node* if_op_;
-  // The identity node with the same outputs as the original If op. This node
-  // keeps lowered If fetchable.
+  // The node with the same name as the original If op:
+  //   (a) IdentityN node with same outputs if 'keep_node_fetchable_ == true'
+  //       and if the original If op had non-zero data outputs.
+  //   (b) NoOp node with control edge from 'branch_executed_node_' otherwise.
   Node* lowered_if_output_;
   // The predicate of the conditional.
   OutputTensor pred_;
@@ -87,36 +89,42 @@ class CondBuilder {
   Node* then_call_node_;
   Node* else_call_node_;
   // Merge node that has inputs from [pivot_t, pivot_f] and control edges from
-  // [^then_call_node_, ^else_call_node_]. This node will guarantee that if
-  // then/else branch functions do not have outputs, they still will be executed
-  // for the side effects.
+  // [^then_call_node_, ^else_call_node_]. This node will guarantee that even
+  // when then/else branch functions do not have outputs, they still will be
+  // executed for the side effects.
   Node* branch_executed_node_;
   Graph* graph_;
-  const FunctionLibraryDefinition& flib_;
   string name_;
+  bool keep_node_fetchable_;
 
   NodeDebugInfo debug_info_;
   NodeBuilder then_call_builder_;
   NodeBuilder else_call_builder_;
 };
 
-CondBuilder::CondBuilder(Node* if_op, const string& then_fn_name,
-                         const string& else_fn_name,
-                         const FunctionLibraryDefinition& flib, Graph* graph)
+CondBuilder::CondBuilder(Node* if_op, const NameAttrList& then_fn,
+                         const NameAttrList& else_fn,
+                         bool keep_node_fetchable, Graph* graph)
     : if_op_(if_op),
       graph_(graph),
-      flib_(flib),
       name_(if_op->name()),
+      keep_node_fetchable_(keep_node_fetchable),
       debug_info_(*if_op_),
-      then_call_builder_(NewName("then"), then_fn_name, graph->op_registry(),
+      then_call_builder_(NewName("then"), then_fn.name(), graph->op_registry(),
                          &debug_info_),
-      else_call_builder_(NewName("else"), else_fn_name, graph->op_registry(),
+      else_call_builder_(NewName("else"), else_fn.name(), graph->op_registry(),
                          &debug_info_) {
   TF_CHECK_OK(if_op_->input_tensor(0, &pred_));
   then_call_builder_.Device(if_op_->requested_device());
   then_call_builder_.Attr(kLowerAsMultiDeviceFunctionAttr, true);
+  for (const auto& i : then_fn.attr()) {
+    then_call_builder_.Attr(i.first, i.second);
+  }
   else_call_builder_.Device(if_op_->requested_device());
   else_call_builder_.Attr(kLowerAsMultiDeviceFunctionAttr, true);
+  for (const auto& i : else_fn.attr()) {
+    else_call_builder_.Attr(i.first, i.second);
+  }
 }
 
 Status CondBuilder::CreatePivotNodes() {
@@ -201,7 +209,7 @@ Status CondBuilder::AddOutputs() {
   outputs_.resize(merges.size());
   for (int i = 0; i < then_call_node_->num_outputs(); ++i) {
     TF_RETURN_IF_ERROR(
-        NodeBuilder(graph_->NewName("output"), "Merge", graph_->op_registry(),
+        NodeBuilder(NewName("output"), "Merge", graph_->op_registry(),
                     &debug_info_)
             .Input({NodeOut(then_call_node_, i), NodeOut(else_call_node_, i)})
             .Device(if_op_->requested_device())
@@ -219,7 +227,7 @@ Status CondBuilder::AddOutputs() {
   //
   // We will use this node to rewrite outgoing control edges from lowered 'If'
   // node. All data edges will read tensors directly from Merge nodes.
-  TF_RETURN_IF_ERROR(NodeBuilder(graph_->NewName("branch_executed"), "Merge",
+  TF_RETURN_IF_ERROR(NodeBuilder(NewName("branch_executed"), "Merge",
                                  graph_->op_registry(), &debug_info_)
                          .Input({pivot_t_, pivot_f_})
                          .ControlInputs({then_call_node_, else_call_node_})
@@ -246,19 +254,23 @@ Status CondBuilder::BuildLoweredIfOutput() {
   // If outputs are empty, it means that we might have only output control
   // edges (already connected to the `branch_executed_node`). Furthermore it's
   // illegal to have an IdentityN with empty inputs.
-  if (outputs_.empty()) return Status::OK();
+  //
+  // We still must keep lowered If node as a valid source of control edges,
+  // because it might be a part of function control output set.
+  NodeBuilder builder = keep_node_fetchable_ && !outputs_.empty()
+                            ? NodeBuilder(name_, "IdentityN").Input(outputs_)
+                            : NodeBuilder(name_, "NoOp");
 
-  return NodeBuilder(name_, "IdentityN")
-      .Input(outputs_)
-      .Device(if_op_->requested_device())
+  return builder.Device(if_op_->requested_device())
       .ControlInput(branch_executed_node_)
       .Finalize(graph_, &lowered_if_output_);
 }
 
 }  // namespace
 
-Status RewriteIfNode(Node* n, Graph* g, const FunctionLibraryDefinition& flib) {
-  VLOG(2) << "Lower If node: " << SummarizeNode(*n);
+Status RewriteIfNode(Node* n, Graph* g, bool keep_node_fetchable) {
+  VLOG(2) << "Lower If node (keep_node_fetchable=" << keep_node_fetchable
+          << "): " << SummarizeNode(*n);
 
   const AttrValue* then_attr = n->attrs().Find("then_branch");
   if (then_attr == nullptr) {
@@ -269,7 +281,7 @@ Status RewriteIfNode(Node* n, Graph* g, const FunctionLibraryDefinition& flib) {
     return errors::InvalidArgument("Else branch function missing");
   }
 
-  CondBuilder cb(n, then_attr->func().name(), else_attr->func().name(), flib,
+  CondBuilder cb(n, then_attr->func(), else_attr->func(), keep_node_fetchable,
                  g);
   TF_RETURN_IF_ERROR(cb.CreatePivotNodes());
   TF_RETURN_IF_ERROR(cb.AddInputs());

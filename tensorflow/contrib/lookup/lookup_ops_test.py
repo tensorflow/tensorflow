@@ -234,9 +234,8 @@ class HashTableOpTest(test.TestCase):
       table = lookup.HashTable(
           lookup.KeyValueTensorInitializer(keys, values), default_val)
       table.initializer.run()
-
-      with self.assertRaisesOpError("Table already initialized"):
-        table.initializer.run()
+      # Re-initializing should not throw an error.
+      table.initializer.run()
 
   def testInitializationWithInvalidDimensions(self):
     with self.cached_session():
@@ -747,9 +746,6 @@ class IndexToStringTest(test.TestCase):
       feats = lookup.index_to_string(indices, mapping=mapping_strings)
       lookup_ops.tables_initializer().run()
       self.assertAllEqual((b"hello", b"hello", b"UNK"), feats.eval())
-
-      self.assertRaises(errors_impl.OpError,
-                        lookup_ops.tables_initializer().run)
 
   def test_index_to_string_with_default_value(self):
     default_value = b"NONE"

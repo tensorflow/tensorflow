@@ -143,7 +143,7 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     Args:
       lstm_layer: The lstm layer either a single lstm cell or a multi lstm cell.
       sess: Old session.
-      saver: Saver created by tf.train.Saver()
+      saver: Saver created by tf.compat.v1.train.Saver()
       is_dynamic_rnn: Use dynamic_rnn or not.
 
     Returns:
@@ -162,7 +162,7 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     tf.reset_default_graph()
     x, prediction, output_class = self.buildModel(lstm_layer, is_dynamic_rnn)
 
-    new_sess = tf.Session(config=CONFIG)
+    new_sess = tf.compat.v1.Session(config=CONFIG)
     saver = tf.train.Saver()
     saver.restore(new_sess, model_dir)
     return x, prediction, output_class, new_sess
@@ -224,7 +224,7 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     return result
 
   def testStaticRnnMultiRnnCell(self):
-    sess = tf.Session(config=CONFIG)
+    sess = tf.compat.v1.Session(config=CONFIG)
 
     x, prediction, output_class = self.buildModel(
         self.buildLstmLayer(), is_dynamic_rnn=False)
@@ -242,7 +242,7 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
 
   @test_util.enable_control_flow_v2
   def testDynamicRnnMultiRnnCell(self):
-    sess = tf.Session(config=CONFIG)
+    sess = tf.compat.v1.Session(config=CONFIG)
 
     x, prediction, output_class = self.buildModel(
         self.buildLstmLayer(), is_dynamic_rnn=True)

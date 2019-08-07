@@ -17,15 +17,20 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import json
 import os
+import pickle
 
 import numpy
 import six
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import normalization
@@ -37,6 +42,8 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
+from tensorflow.python.util import nest
+from tensorflow.python.util import serialization
 
 
 class HasList(training.Model):
@@ -105,6 +112,78 @@ class ListTests(test.TestCase):
     self.assertIn(v, model.variables)
     self.assertIn(v, model.trainable_variables)
     self.assertNotIn(v, model.non_trainable_variables)
+    self.assertIn(model.layer_list[0].trainable_weights[0],
+                  model.trainable_weights)
+
+  def testSubModelTracking(self):
+    model = training.Model()
+    model.v = variables.Variable(1.)
+    self.assertIn(model.v, model.trainable_weights)
+    model2 = training.Model()
+    model2.m = [model]
+    self.assertIn(model.v, model2.trainable_weights)
+
+  def testSubSequentialTracking(self):
+
+    class _Subclassed(training.Model):
+
+      def __init__(self, wrapped):
+        super(_Subclassed, self).__init__()
+        self._wrapped = wrapped
+
+      def call(self, x):
+        return self._wrapped(x)
+
+    model = sequential.Sequential()
+    layer = core.Dense(1)
+    model.add(layer)
+    model2 = _Subclassed(model)
+    model2(array_ops.ones([1, 2]))
+    model2.m = [model]
+    self.assertIn(layer.kernel, model2.trainable_weights)
+
+  def testLayerTrackedThroughSequential(self):
+    class AttrDict(dict):
+
+      def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+
+    def ffnet(layer_sizes, name):
+      ff = sequential.Sequential(name=name)
+      for i, width in enumerate(layer_sizes):
+        ff.add(core.Dense(
+            width,
+            activation=("relu" if i < len(layer_sizes)-1 else None)))
+      return ff
+
+    class MyModel2(training.Model):
+
+      def __init__(self, config, name="my_model_2"):
+        super(MyModel2, self).__init__(name=name)
+        self._num_tokens = config.num_tokens
+
+        # list of sub-models
+        self._ffnet = [ffnet(config.module_layers + (self._num_tokens,), "ff")]
+
+      def null_input(self):
+        return array_ops.zeros([1, self._num_tokens], dtype=dtypes.float32)
+
+      def call(self, input_, module_index=None):
+        return self._ffnet[0](input_)
+
+    m2 = MyModel2(AttrDict(
+        num_tokens=5,
+        module_layers=(50, 30)))
+
+    # Construct
+    m2(m2.null_input())
+    self.assertLen(m2.trainable_variables, 6)
+
+  def testJSONSerialization(self):
+    obj = tracking.AutoTrackable()
+    obj.l = [1]
+    json.dumps(obj.l, default=serialization.get_json_type)
 
   @test_util.run_v1_only("b/120545219")
   def testUpdatesForwarded(self):
@@ -278,90 +357,111 @@ class ListWrapperTest(test.TestCase):
         # Skip methods that aren't overridden from object.
         continue
 
-      if list_method == getattr(data_structures._ListWrapper, name):
+      if list_method == getattr(data_structures.ListWrapper, name):
         not_overridden.append(name)
 
     if not_overridden:
-      self.fail("_ListWrapper does not override %s" % (not_overridden))
+      self.fail("ListWrapper does not override %s" % (not_overridden))
+
+  def testPickle(self):
+    original = data_structures.ListWrapper([1, 2])
+    serialized = pickle.dumps(original)
+    del original
+    deserialized = pickle.loads(serialized)
+    self.assertEqual([1, 2], deserialized)
+
+  def testSameStructure(self):
+    l = [1]
+    nest.assert_same_structure(l, data_structures.ListWrapper(copy.copy(l)))
+
+  def testFunctionCaching(self):
+    @def_function.function
+    def f(list_input):
+      return list_input[0] + constant_op.constant(1.)
+
+    first_trace = f.get_concrete_function([constant_op.constant(2.)])
+    second_trace = f.get_concrete_function(
+        data_structures.ListWrapper([constant_op.constant(3.)]))
+    self.assertIs(first_trace, second_trace)
 
   def testListWrapperBasic(self):
-    # _ListWrapper, unlike List, compares like the built-in list type (since it
+    # ListWrapper, unlike List, compares like the built-in list type (since it
     # is used to automatically replace lists).
     a = tracking.AutoTrackable()
     b = tracking.AutoTrackable()
     self.assertEqual([a, a],
                      [a, a])
-    self.assertEqual(data_structures._ListWrapper([a, a]),
-                     data_structures._ListWrapper([a, a]))
+    self.assertEqual(data_structures.ListWrapper([a, a]),
+                     data_structures.ListWrapper([a, a]))
     self.assertEqual([a, a],
-                     data_structures._ListWrapper([a, a]))
-    self.assertEqual(data_structures._ListWrapper([a, a]),
+                     data_structures.ListWrapper([a, a]))
+    self.assertEqual(data_structures.ListWrapper([a, a]),
                      [a, a])
     self.assertNotEqual([a, a],
                         [b, a])
-    self.assertNotEqual(data_structures._ListWrapper([a, a]),
-                        data_structures._ListWrapper([b, a]))
+    self.assertNotEqual(data_structures.ListWrapper([a, a]),
+                        data_structures.ListWrapper([b, a]))
     self.assertNotEqual([a, a],
-                        data_structures._ListWrapper([b, a]))
+                        data_structures.ListWrapper([b, a]))
     self.assertLess([a], [a, b])
-    self.assertLess(data_structures._ListWrapper([a]),
-                    data_structures._ListWrapper([a, b]))
+    self.assertLess(data_structures.ListWrapper([a]),
+                    data_structures.ListWrapper([a, b]))
     self.assertLessEqual([a], [a, b])
-    self.assertLessEqual(data_structures._ListWrapper([a]),
-                         data_structures._ListWrapper([a, b]))
+    self.assertLessEqual(data_structures.ListWrapper([a]),
+                         data_structures.ListWrapper([a, b]))
     self.assertGreater([a, b], [a])
-    self.assertGreater(data_structures._ListWrapper([a, b]),
-                       data_structures._ListWrapper([a]))
+    self.assertGreater(data_structures.ListWrapper([a, b]),
+                       data_structures.ListWrapper([a]))
     self.assertGreaterEqual([a, b], [a])
-    self.assertGreaterEqual(data_structures._ListWrapper([a, b]),
-                            data_structures._ListWrapper([a]))
-    self.assertEqual([a], data_structures._ListWrapper([a]))
+    self.assertGreaterEqual(data_structures.ListWrapper([a, b]),
+                            data_structures.ListWrapper([a]))
+    self.assertEqual([a], data_structures.ListWrapper([a]))
     self.assertEqual([a], list(data_structures.List([a])))
-    self.assertEqual([a, a], data_structures._ListWrapper([a]) + [a])
-    self.assertEqual([a, a], [a] + data_structures._ListWrapper([a]))
-    self.assertIsInstance(data_structures._ListWrapper([a]), list)
+    self.assertEqual([a, a], data_structures.ListWrapper([a]) + [a])
+    self.assertEqual([a, a], [a] + data_structures.ListWrapper([a]))
+    self.assertIsInstance(data_structures.ListWrapper([a]), list)
 
   def testAcceptsNonTrackableContent(self):
-    l = data_structures._ListWrapper([1, 2, 3])
+    l = data_structures.ListWrapper([1, 2, 3])
     self.assertEqual(l, [1, 2, 3])
 
   def testWrapperChangesList(self):
     l = []
-    l_wrapper = data_structures._ListWrapper(l)
+    l_wrapper = data_structures.ListWrapper(l)
     l_wrapper.append(1)
     self.assertEqual([1], l)
 
   def testListChangesWrapper(self):
     l = []
-    l_wrapper = data_structures._ListWrapper(l)
+    l_wrapper = data_structures.ListWrapper(l)
     l.append(1)
     self.assertEqual([1], l_wrapper)
 
   def testLayerCollectionWithExternalMutation(self):
     l = []
-    l_wrapper = data_structures._ListWrapper(l)
+    l_wrapper = data_structures.ListWrapper(l)
     layer = core.Dense(1)
     l.append(layer)
     self.assertEqual([layer], l_wrapper.layers)
 
   def testNotHashable(self):
     with self.assertRaises(TypeError):
-      hash(data_structures._ListWrapper())
+      hash(data_structures.ListWrapper())
 
   def testDelItem(self):
-    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l = data_structures.ListWrapper([1, 2, 3, 4])
     del l[0]
     self.assertEqual(l, [2, 3, 4])
     self.assertUnableToSave(l, "Unable to save .*__delitem__")
 
   def testDelSlice(self):
-    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l = data_structures.ListWrapper([1, 2, 3, 4])
     del l[2:3]
     self.assertEqual(l, [1, 2, 4])
     self.assertUnableToSave(l, "Unable to save .*__delslice__")
 
   def testSetSlice_canSaveForNonTrackableItems(self):
-    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l = data_structures.ListWrapper([1, 2, 3, 4])
     l[:] = 2, 8, 9, 0
     self.assertEqual(l, [2, 8, 9, 0])
     l._maybe_initialize_trackable()  # pylint: disable=protected-access
@@ -370,23 +470,43 @@ class ListWrapperTest(test.TestCase):
   def testSetSlice_cannotSaveIfTrackableModified(self):
     v1 = resource_variable_ops.ResourceVariable(1.)
     v2 = resource_variable_ops.ResourceVariable(1.)
-    l = data_structures._ListWrapper([1, 2, v1, v2])
+    l = data_structures.ListWrapper([1, 2, v1, v2])
     l[:] = 2, 8, 9, v2
     self.assertEqual(l, [2, 8, 9, v2])
     self.assertUnableToSave(l, "Unable to save .*__setslice__")
 
   def testSetSlice_truncate(self):
-    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l = data_structures.ListWrapper([1, 2, 3, 4])
     l[:] = []
     self.assertEqual(l, [])
 
   def testSetSlice_extend(self):
-    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l = data_structures.ListWrapper([1, 2, 3, 4])
     l[2:] = 1, 2, 3, 4
     self.assertEqual(l, [1, 2, 1, 2, 3, 4])
 
+  def testIMulNegative(self):
+    l = data_structures.ListWrapper([1, 2, 3, 4])
+    l *= -1
+    self.assertEqual(l, [1, 2, 3, 4] * -1)
+    self.assertUnableToSave(l, "Unable to save")
+
+  def testIMulPositive(self):
+    v = variables.Variable(1.)
+    l = data_structures.ListWrapper([1, 2, 3, 4, v])
+    self.assertEqual([("4", v)], l._checkpoint_dependencies)
+    root = util.Checkpoint(l=l)
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    path = root.save(prefix)
+    v.assign(5.)
+    l *= 2
+    self.assertEqual(l, [1, 2, 3, 4, v, 1, 2, 3, 4, v])
+    self.assertEqual([("4", v), ("9", v)], l._checkpoint_dependencies)
+    root.restore(path)
+    self.assertAllClose(1., v.numpy())
+
   def testSort(self):
-    l = data_structures._ListWrapper([1, 2, 3, 4])
+    l = data_structures.ListWrapper([1, 2, 3, 4])
     l.sort()
     self.assertEqual(l, [1, 2, 3, 4])
     # Regardless of being a no-op for the input list, we still refuse to save.
@@ -445,6 +565,11 @@ class MappingTests(test.TestCase):
     model.load_weights(save_path)
     self.assertAllEqual(numpy.ones([6, 7]),
                         self.evaluate(test_var))
+
+  def testJSONSerialization(self):
+    obj = tracking.AutoTrackable()
+    obj.d = {"a": 2}
+    json.dumps(obj.d, default=serialization.get_json_type)
 
   def testNoOverwrite(self):
     mapping = data_structures.Mapping()
@@ -546,22 +671,13 @@ class MappingTests(test.TestCase):
     model.save_weights(save_path)
     model.load_weights(save_path)
 
-  def testDelNoSave(self):
-    model = training.Model()
-    model.d = {}
-    model.d["a"] = []
-    del model.d["a"]
-    save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.assertRaisesRegexp(ValueError, "overwritten or deleted"):
-      model.save_weights(save_path)
-
   def testPopNoSave(self):
     model = training.Model()
     model.d = {}
     model.d["a"] = []
     model.d.pop("a")
     save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.assertRaisesRegexp(ValueError, "overwritten or deleted"):
+    with self.assertRaisesRegexp(ValueError, "Unable to save"):
       model.save_weights(save_path)
 
   def testExternalModificationNoSave(self):
@@ -573,14 +689,13 @@ class MappingTests(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "modified outside the wrapper"):
       model.save_weights(save_path)
 
-  def testOverwriteNoSave(self):
+  def testOverwriteCanStillSave(self):
     model = training.Model()
     model.d = {}
     model.d["a"] = {}
     model.d["a"] = {}
     save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.assertRaisesRegexp(ValueError, "overwritten or deleted"):
-      model.save_weights(save_path)
+    model.save_weights(save_path)
 
   def testIter(self):
     model = training.Model()
@@ -593,7 +708,7 @@ class MappingTests(test.TestCase):
     # methods/properties on the object. So the options are either not to
     # subclass dict (in which case update will call normal iter methods, but the
     # object won't pass isinstance checks) or to subclass dict and keep that
-    # storage updated (no shadowing all its methods like _ListWrapper).
+    # storage updated (no shadowing all its methods like ListWrapper).
     new_dict.update(model.d)
     self.assertEqual({1: 3}, new_dict)
 
@@ -636,6 +751,11 @@ class MappingTests(test.TestCase):
     orig_dict = {"a": [1.]}
     root.a = orig_dict
     copied = copy.copy(root.a)
+    self.assertAllEqual([1.], copied["a"])
+    self.assertIsNot(root.a, copied)
+    self.assertIs(root.a["a"], copied["a"])
+
+    copied = root.a.copy()
     self.assertAllEqual([1.], copied["a"])
     self.assertIsNot(root.a, copied)
     self.assertIs(root.a["a"], copied["a"])
@@ -684,7 +804,9 @@ class MappingTests(test.TestCase):
     original_sub = tracking.AutoTrackable()
     original.a = [[1.]]
     original.b = {"a": original_sub}
+    self.assertIsInstance(original.b, dict)
     deep_copied = copy.deepcopy(original)
+    self.assertIsInstance(deep_copied.b, dict)
     self.assertIsNot(original, deep_copied)
     self.assertIsNot(original_sub, deep_copied.b["a"])
     self.assertEqual([[1.]], deep_copied.a)
@@ -700,16 +822,37 @@ class MappingTests(test.TestCase):
     self.assertIsInstance(result, dict)
     self.assertEqual({1: 2, 3: 4}, result)
 
+  def testPickle(self):
+    original = data_structures._DictWrapper(dict(a=1, b=2))
+    serialized = pickle.dumps(original)
+    del original
+    deserialized = pickle.loads(serialized)
+    self.assertEqual(dict(a=1, b=2), deserialized)
+
   def testListAddOrder(self):
     self.assertEqual([1., 2.],
-                     data_structures._ListWrapper([1.])
-                     + data_structures._ListWrapper([2.]))
+                     data_structures.ListWrapper([1.])
+                     + data_structures.ListWrapper([2.]))
     self.assertEqual([1., 2.],
-                     data_structures._ListWrapper([1.])
+                     data_structures.ListWrapper([1.])
                      + [2.])
     self.assertEqual([1., 2.],
                      [1.]
-                     + data_structures._ListWrapper([2.]))
+                     + data_structures.ListWrapper([2.]))
+
+  def testSameStructure(self):
+    d = {1: "a"}
+    nest.assert_same_structure(d, data_structures._DictWrapper(d.copy()))
+
+  def testFunctionCaching(self):
+    @def_function.function
+    def f(dict_input):
+      return dict_input["x"] + constant_op.constant(1.)
+
+    first_trace = f.get_concrete_function({"x": constant_op.constant(2.)})
+    second_trace = f.get_concrete_function(
+        data_structures._DictWrapper({"x": constant_op.constant(3.)}))
+    self.assertIs(first_trace, second_trace)
 
 
 if __name__ == "__main__":

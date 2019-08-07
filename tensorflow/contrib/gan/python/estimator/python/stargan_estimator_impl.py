@@ -79,8 +79,8 @@ class StarGANEstimator(estimator.Estimator):
           generator_fn=generator_fn,
           discriminator_fn=discriminator_fn,
           loss_fn=loss_fn,
-          generator_optimizer=tf.train.AdamOptimizer(0.1, 0.5),
-          discriminator_optimizer=tf.train.AdamOptimizer(0.1, 0.5))
+          generator_optimizer=tf.compat.v1.train.AdamOptimizer(0.1, 0.5),
+          discriminator_optimizer=tf.compat.v1.train.AdamOptimizer(0.1, 0.5))
 
       # Train estimator.
       stargan_estimator.train(train_input_fn, steps)

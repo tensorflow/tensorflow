@@ -44,6 +44,11 @@ struct AllocationInfo;
 // execution. Since dynamic tensors don't have sizes until after the
 // corresponding operation is executed, this class supports incremental
 // planning.
+//
+// TODO(b/127354079): Remove the constrain below when the issue is fixed.
+// WARNING: MemoryPlanner's behavior must be deterministic. If the first N
+// nodes are unchanged, it must produce exactly the same allocation plan for
+// the first N nodes.
 class ArenaPlanner : public MemoryPlanner {
  public:
   // Ownership of 'context' is not taken and it must remain util the
@@ -97,11 +102,11 @@ class ArenaPlanner : public MemoryPlanner {
   // Stores allocation data for all tensors.
   std::vector<ArenaAlloc> allocs_;
 
-  // A chronological list of instructions to allocated and deallocate tensors,
+  // A chronological list of instructions to allocate and deallocate tensors,
   // reflecting the way they are used in the graph.
   std::vector<AllocationInfo> alloc_queue_;
 
-  // Raw memory buffer that is allocated for all temporary and graph outputs.
+  // Raw memory buffer that is allocated for all temporary and graph outputs
   // that are declared kTfLiteArenaRw.
   SimpleMemoryArena arena_;
 
@@ -114,7 +119,7 @@ class ArenaPlanner : public MemoryPlanner {
   // unpredictable results.
   bool preserve_inputs_;
 
-  // If true, then no overlapping of memory areas is done, meaning intermediates
+  // If true, then no overlapping of memory areas is done, meaning intermediate
   // results can be queried after running (modulo running delegates).
   bool preserve_intermediates_;
 

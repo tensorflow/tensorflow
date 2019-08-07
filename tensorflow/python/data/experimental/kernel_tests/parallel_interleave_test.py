@@ -171,6 +171,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
   def _testSingleThreaded(self, sloppy=False, prefetch_input_elements=0):
     # cycle_length=1,block_length=1 acts like `Dataset.interleave()` and
     # `Dataset.flat_map()` and is single-threaded. No synchronization required.
+    self.skipTest("b/131722904")
     self._clear_coordination_events()
     next_element = self.getNext(
         self.dataset_fn(
@@ -202,6 +203,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
 
   def testSingleThreadedRagged(self):
     # Tests a sequence with wildly different elements per iterator.
+    self.skipTest("b/131722904")
     self._clear_coordination_events()
     next_element = self.getNext(
         self.dataset_fn(
@@ -229,6 +231,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
   def _testTwoThreadsNoContention(self, sloppy=False):
     # num_threads > 1.
     # Explicit coordination should result in `Dataset.interleave()` behavior
+    self.skipTest("b/131722904")
     self._clear_coordination_events()
     done_first_event = False
     next_element = self.getNext(
@@ -271,6 +274,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     Args:
       sloppy: Whether to be sloppy or not.
     """
+    self.skipTest("b/131722904")
     self._clear_coordination_events()
     done_first_event = False
     next_element = self.getNext(
@@ -311,6 +315,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
   def _testTwoThreadsNoContentionBlockLength(self, sloppy=False):
     # num_threads > 1.
     # Explicit coordination should result in `Dataset.interleave()` behavior
+    self.skipTest("b/131722904")
     self._clear_coordination_events()
     done_first_event = False
     next_element = self.getNext(
@@ -354,6 +359,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     Args:
       sloppy: Whether to be sloppy or not.
     """
+    self.skipTest("b/131722904")
     self._clear_coordination_events()
     done_first_event = False
     next_element = self.getNext(
@@ -434,6 +440,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
   def _testPartiallyEmptyOutputs(self, sloppy=False, prefetch_input_elements=1):
     race_indices = {2, 8, 14}  # Sequence points when sloppy mode has race conds
     # Mixture of non-empty and empty interleaved datasets.
+    self.skipTest("b/131722904")
     self._clear_coordination_events()
     done_first_event = False
     next_element = self.getNext(
@@ -471,6 +478,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
   def testDelayedOutputSloppy(self):
     # Explicitly control the sequence of events to ensure we correctly avoid
     # head-of-line blocking.
+    self.skipTest("b/131722904")
     self._clear_coordination_events()
     next_element = self.getNext(
         self.dataset_fn(
@@ -493,6 +501,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
       self.evaluate(next_element())
 
   def testBlockLengthWithContentionSloppy(self):
+    self.skipTest("b/131722904")
     self._clear_coordination_events()
     done_first_event = False
     next_element = self.getNext(
@@ -526,6 +535,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
 
   def _testEarlyExit(self, sloppy=False):
     # Exiting without consuming all input should not block
+    self.skipTest("b/131722904")
     self._clear_coordination_events()
     next_element = self.getNext(
         self.dataset_fn(
@@ -601,6 +611,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
       self.evaluate(get_next())
 
   def testErrorsInOutputFn(self):
+    self.skipTest("b/131722904")
     self._clear_coordination_events()
     next_element = self.getNext(
         self.dataset_fn(

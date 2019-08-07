@@ -16,6 +16,7 @@ limitations under the License.
 // XLA-specific Ops for 2D convolution.
 
 #include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
+
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -293,10 +294,9 @@ xla::StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims,
   return attrs;
 }
 
-xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(StringPiece /*type_string*/,
-                                               xla::XlaOp conv_input,
-                                               xla::XlaOp filter,
-                                               const ConvOpAttrs& attrs) {
+xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
+    StringPiece /*type_string*/, xla::XlaOp conv_input, xla::XlaOp filter,
+    const ConvOpAttrs& attrs, const xla::PrecisionConfig* precision_config) {
   TF_RETURN_IF_ERROR(CheckConvAttrs(attrs));
 
   auto* builder = conv_input.builder();
@@ -377,12 +377,14 @@ xla::StatusOr<xla::XlaOp> MakeXlaForwardConvOp(StringPiece /*type_string*/,
   return xla::ConvGeneralDilated(
       conv_input, filter, window_strides, padding, lhs_dilation, rhs_dilation,
       dims,
-      /*feature_group_count=*/attrs.depthwise ? in_depth : feature_group_count);
+      /*feature_group_count=*/attrs.depthwise ? in_depth : feature_group_count,
+      /*batch_group_count=*/1, precision_config);
 }
 
 xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
     StringPiece type_string, const xla::Shape& input_shape, xla::XlaOp filter,
-    xla::XlaOp out_backprop, const ConvOpAttrs& attrs) {
+    xla::XlaOp out_backprop, const ConvOpAttrs& attrs,
+    const xla::PrecisionConfig* precision_config) {
   TF_RETURN_IF_ERROR(CheckConvAttrs(attrs));
 
   int num_dims = attrs.num_spatial_dims + 2;
@@ -456,13 +458,14 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
       /*feature_group_count=*/
       attrs.depthwise ? out_backprop_shape.dimensions(feature_dim) /
                             filter_shape.dimensions(attrs.num_spatial_dims + 1)
-                      : feature_group_count);
+                      : feature_group_count,
+      /*batch_group_count=*/1, precision_config);
 }
 
 xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
     StringPiece type_string, xla::XlaOp activations,
     const xla::Shape& filter_shape, xla::XlaOp gradients,
-    const ConvOpAttrs& attrs) {
+    const ConvOpAttrs& attrs, const xla::PrecisionConfig* precision_config) {
   TF_RETURN_IF_ERROR(CheckConvAttrs(attrs));
 
   auto* builder = activations.builder();
@@ -612,7 +615,8 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
       activations, gradients, window_strides, padding, /*lhs_dilation=*/ones,
       rhs_dilation, dnums,
       /*feature_group_count=*/feature_group_count,
-      /*batch_group_count=*/use_batch_group_count ? dims.in_depth : 1);
+      /*batch_group_count=*/use_batch_group_count ? dims.in_depth : 1,
+      precision_config);
 
   if (!use_batch_group_count && attrs.depthwise) {
     filter_backprop = ContractFilterForDepthwiseBackprop(

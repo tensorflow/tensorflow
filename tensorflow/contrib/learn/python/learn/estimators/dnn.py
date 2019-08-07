@@ -241,7 +241,7 @@ class DNNClassifier(estimator.Estimator):
   estimator = DNNClassifier(
       feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
       hidden_units=[1024, 512, 256],
-      optimizer=tf.train.ProximalAdagradOptimizer(
+      optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(
         learning_rate=0.1,
         l1_regularization_strength=0.001
       ))
@@ -554,7 +554,7 @@ class DNNRegressor(estimator.Estimator):
   estimator = DNNRegressor(
       feature_columns=[sparse_feature_a, sparse_feature_b],
       hidden_units=[1024, 512, 256],
-      optimizer=tf.train.ProximalAdagradOptimizer(
+      optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(
         learning_rate=0.1,
         l1_regularization_strength=0.001
       ))

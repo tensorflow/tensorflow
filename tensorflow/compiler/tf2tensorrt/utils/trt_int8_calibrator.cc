@@ -22,7 +22,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -118,6 +118,7 @@ void TRTInt8Calibrator::waitAndSetDone() {
   if (!done_) {
     done_ = true;
     cond_.notify_all();
+    dev_buffers_.clear();
   }
 }
 

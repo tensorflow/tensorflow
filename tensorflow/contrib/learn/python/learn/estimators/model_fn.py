@@ -131,7 +131,7 @@ class ModelFnOps(
         run on the chief worker during training.
       training_hooks: A list of `SessionRunHook` objects that will be run on
         all workers during training.
-      scaffold: A `tf.train.Scaffold` object that can be used to set
+      scaffold: A `tf.compat.v1.train.Scaffold` object that can be used to set
         initialization, saver, and more to be used in training.
 
     Returns:
@@ -162,7 +162,7 @@ class ModelFnOps(
       loss_shape = loss.get_shape()
       if loss_shape.num_elements() not in (None, 1):
         raise ValueError('Loss must be scalar: %s.' % loss)
-      if not loss_shape.is_compatible_with(tensor_shape.scalar()):
+      if not loss_shape.is_compatible_with(tensor_shape.TensorShape([])):
         loss = array_ops.reshape(loss, [])
 
     # Validate predictions.
@@ -220,7 +220,7 @@ class ModelFnOps(
         on. Pass the key of the output alternative here that you want to
         designate as default. A separate ExportOutpout for this default head
         will be added to the export_outputs dict with the special key
-        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY, unless there is
+        saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY, unless there is
         already an enry in output_alternatives with this special key.
 
     Returns:

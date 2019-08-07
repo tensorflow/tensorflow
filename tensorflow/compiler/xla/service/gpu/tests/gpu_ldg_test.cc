@@ -111,8 +111,8 @@ TEST_F(GpuLdgTest, NoLdgWhenSharingBuffer) {
         hlo_module->AddEmbeddedComputation(embedded_builder.Build());
   }
 
-  auto param_shape = ShapeUtil::MakeShape(F32, {2, 2});
-  auto reduce_shape = ShapeUtil::MakeShape(F32, {2});
+  auto param_shape = ShapeUtil::MakeShape(F32, {32, 32});
+  auto reduce_shape = ShapeUtil::MakeShape(F32, {32});
   HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "x"));
   HloInstruction* reduce = builder.AddInstruction(HloInstruction::CreateReduce(

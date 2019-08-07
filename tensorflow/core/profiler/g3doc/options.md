@@ -104,11 +104,14 @@ accelerator_micros and cpu_micros. Note: cpu and accelerator can run in parallel
 
 `-start_name_regexes`: Show node starting from the node that matches the regexes, recursively. regexes are comma-separated.
 
-`-trim_name_regexes`: Hide node starting from the node that matches the regexes, recursively, regexes are comma-seprated.
+`-trim_name_regexes`: Hide node starting from the node that matches the regexes,
+recursively, regexes are comma-separated.
 
-`-show_name_regexes`: Show node that match the regexes. regexes are comma-seprated.
+`-show_name_regexes`: Show node that match the regexes. regexes are
+comma-separated.
 
-`-hide_name_regexes`: Hide node that match the regexes. regexes are comma-seprated.
+`-hide_name_regexes`: Hide node that match the regexes. regexes are
+comma-separated.
 
 `-account_displayed_op_only`: If True, only account the statistics of ops eventually displayed. If False, account all op statistics matching -account_type_regexes recursively.
 

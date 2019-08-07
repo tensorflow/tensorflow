@@ -39,7 +39,7 @@ public final class Interpreter {
   /// - Parameters:
   ///   - modelPath: Local file path to a TensorFlow Lite model.
   ///   - options: Custom configurations for the interpreter. The default is `nil` indicating that
-  ///       interpreter will determine the configuration options.
+  ///       the interpreter will determine the configuration options.
   /// - Throws: An error if the model could not be loaded or the interpreter could not be created.
   public init(modelPath: String, options: InterpreterOptions? = nil) throws {
     guard let model = Model(filePath: modelPath) else { throw InterpreterError.failedToLoadModel }
@@ -51,23 +51,21 @@ public final class Interpreter {
       if let threadCount = options.threadCount, threadCount > 0 {
         TFL_InterpreterOptionsSetNumThreads(cOptions, Int32(threadCount))
       }
-      if options.isErrorLoggingEnabled {
-        TFL_InterpreterOptionsSetErrorReporter(
-          cOptions,
-          { (_, format, args) -> Void in
-            // Workaround for Swift optionality bug: https://bugs.swift.org/browse/SR-3429.
-            let optionalArgs: CVaListPointer? = args
-            guard let cFormat = format,
-                  let arguments = optionalArgs,
-                  let message = String(cFormat: cFormat, arguments: arguments)
-            else {
-              return
-            }
-            print(String(describing: InterpreterError.tensorFlowLiteError(message)))
-          },
-          nil
-        )
-      }
+      TFL_InterpreterOptionsSetErrorReporter(
+        cOptions,
+        { (_, format, args) -> Void in
+          // Workaround for optionality differences for x86_64 (non-optional) and arm64 (optional).
+          let optionalArgs: CVaListPointer? = args
+          guard let cFormat = format,
+            let arguments = optionalArgs,
+            let message = String(cFormat: cFormat, arguments: arguments)
+          else {
+            return
+          }
+          print(String(describing: InterpreterError.tensorFlowLiteError(message)))
+        },
+        nil
+      )
       return cOptions
     }
     defer { TFL_DeleteInterpreterOptions(cInterpreterOptions) }
@@ -87,7 +85,6 @@ public final class Interpreter {
   /// - Throws: An error if the model was not ready because tensors were not allocated.
   public func invoke() throws {
     guard TFL_InterpreterInvoke(cInterpreter) == kTfLiteOk else {
-      // TODO(b/117510052): Determine which error to throw.
       throw InterpreterError.allocateTensorsRequired
     }
   }
@@ -104,8 +101,8 @@ public final class Interpreter {
       throw InterpreterError.invalidTensorIndex(index: index, maxIndex: maxIndex)
     }
     guard let cTensor = TFL_InterpreterGetInputTensor(cInterpreter, Int32(index)),
-          let bytes = TFL_TensorData(cTensor),
-          let nameCString = TFL_TensorName(cTensor)
+      let bytes = TFL_TensorData(cTensor),
+      let nameCString = TFL_TensorName(cTensor)
     else {
       throw InterpreterError.allocateTensorsRequired
     }
@@ -124,7 +121,6 @@ public final class Interpreter {
     let zeroPoint = Int(cQuantizationParams.zero_point)
     var quantizationParameters: QuantizationParameters? = nil
     if scale != 0.0 {
-      // TODO(b/117510052): Update this check once the TfLiteQuantizationParams struct has a mode.
       quantizationParameters = QuantizationParameters(scale: scale, zeroPoint: zeroPoint)
     }
     let tensor = Tensor(
@@ -151,10 +147,9 @@ public final class Interpreter {
       throw InterpreterError.invalidTensorIndex(index: index, maxIndex: maxIndex)
     }
     guard let cTensor = TFL_InterpreterGetOutputTensor(cInterpreter, Int32(index)),
-          let bytes = TFL_TensorData(cTensor),
-          let nameCString = TFL_TensorName(cTensor)
+      let bytes = TFL_TensorData(cTensor),
+      let nameCString = TFL_TensorName(cTensor)
     else {
-      // TODO(b/117510052): Determine which error to throw.
       throw InterpreterError.invokeInterpreterRequired
     }
     guard let dataType = TensorDataType(type: TFL_TensorType(cTensor)) else {
@@ -172,7 +167,6 @@ public final class Interpreter {
     let zeroPoint = Int(cQuantizationParams.zero_point)
     var quantizationParameters: QuantizationParameters? = nil
     if scale != 0.0 {
-      // TODO(b/117510052): Update this check once the TfLiteQuantizationParams struct has a mode.
       quantizationParameters = QuantizationParameters(scale: scale, zeroPoint: zeroPoint)
     }
     let tensor = Tensor(
@@ -200,11 +194,11 @@ public final class Interpreter {
       throw InterpreterError.invalidTensorIndex(index: index, maxIndex: maxIndex)
     }
     guard TFL_InterpreterResizeInputTensor(
-            cInterpreter,
-            Int32(index),
-            shape.int32Dimensions,
-            Int32(shape.rank)
-          ) == kTfLiteOk
+      cInterpreter,
+      Int32(index),
+      shape.int32Dimensions,
+      Int32(shape.rank)
+    ) == kTfLiteOk
     else {
       throw InterpreterError.failedToResizeInputTensor(index: index)
     }
@@ -233,7 +227,13 @@ public final class Interpreter {
       throw InterpreterError.invalidTensorDataCount(provided: data.count, required: byteCount)
     }
 
+    #if swift(>=5.0)
+    let status = data.withUnsafeBytes {
+      TFL_TensorCopyFromBuffer(cTensor, $0.baseAddress, data.count)
+    }
+    #else
     let status = data.withUnsafeBytes { TFL_TensorCopyFromBuffer(cTensor, $0, data.count) }
+    #endif  // swift(>=5.0)
     guard status == kTfLiteOk else { throw InterpreterError.failedToCopyDataToInputTensor }
     return try input(at: index)
   }

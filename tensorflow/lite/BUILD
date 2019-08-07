@@ -1,12 +1,11 @@
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(glob([
     "testdata/*.bin",
@@ -96,6 +95,16 @@ cc_library(
 )
 
 cc_library(
+    name = "external_cpu_backend_context",
+    srcs = ["external_cpu_backend_context.cc"],
+    hdrs = ["external_cpu_backend_context.h"],
+    copts = TFLITE_DEFAULT_COPTS,
+    deps = [
+        "//tensorflow/lite/c:c_api_internal",
+    ],
+)
+
+cc_library(
     name = "graph_info",
     hdrs = ["graph_info.h"],
     copts = TFLITE_DEFAULT_COPTS,
@@ -145,11 +154,37 @@ cc_library(
     copts = TFLITE_DEFAULT_COPTS,
 )
 
+cc_library(
+    name = "allocation",
+    srcs = [
+        "allocation.cc",
+    ] + select({
+        "//tensorflow:android": [
+            "mmap_allocation.cc",
+        ],
+        "//tensorflow:windows": [
+            "mmap_allocation_disabled.cc",
+        ],
+        "//conditions:default": [
+            "mmap_allocation.cc",
+        ],
+    }),
+    hdrs = [
+        "allocation.h",
+    ],
+    copts = TFLITE_DEFAULT_COPTS,
+    deps = [
+        ":simple_memory_arena",
+        ":string",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/api",
+    ],
+)
+
 # TODO(ahentz): investigate dependency on gemm_support requiring usage of tf_copts.
 cc_library(
     name = "framework",
     srcs = [
-        "allocation.cc",
         "core/subgraph.cc",
         "graph_info.cc",
         "interpreter.cc",
@@ -157,20 +192,7 @@ cc_library(
         "mutable_op_resolver.cc",
         "optional_debug_tools.cc",
         "stderr_reporter.cc",
-    ] + select({
-        "//tensorflow:android": [
-            "nnapi_delegate.cc",
-            "mmap_allocation.cc",
-        ],
-        "//tensorflow:windows": [
-            "nnapi_delegate_disabled.cc",
-            "mmap_allocation_disabled.cc",
-        ],
-        "//conditions:default": [
-            "nnapi_delegate_disabled.cc",
-            "mmap_allocation.cc",
-        ],
-    }),
+    ],
     hdrs = [
         "allocation.h",
         "context.h",
@@ -181,14 +203,15 @@ cc_library(
         "interpreter.h",
         "model.h",
         "mutable_op_resolver.h",
-        "nnapi_delegate.h",
         "op_resolver.h",
         "optional_debug_tools.h",
         "stderr_reporter.h",
     ],
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
     deps = [
+        ":allocation",
         ":arena_planner",
+        ":external_cpu_backend_context",
         ":graph_info",
         ":memory_planner",
         ":minimal_logging",
@@ -198,9 +221,10 @@ cc_library(
         ":version",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/nnapi:nnapi_implementation",
-        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/experimental/resource_variable:resource_variable",
     ] + select({
         ":with_select_tf_ops": [
             "//tensorflow/lite/delegates/flex:delegate",
@@ -249,12 +273,15 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        ":version",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
+        "//third_party/eigen3",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -301,6 +328,7 @@ cc_test(
         "testdata/2_subgraphs.bin",
         "testdata/empty_model.bin",
         "testdata/multi_add_flex.bin",
+        "testdata/test_min_runtime.bin",
         "testdata/test_model.bin",
         "testdata/test_model_broken.bin",
     ],

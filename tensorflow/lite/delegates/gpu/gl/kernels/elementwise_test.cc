@@ -28,106 +28,188 @@ namespace gpu {
 namespace gl {
 namespace {
 
-class ElementwiseTest : public ::testing::Test {
- public:
-  ElementwiseTest() = default;
-  ~ElementwiseTest() override = default;
+TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
+  TensorRef<BHWC> tensor_ref;
+  tensor_ref.type = DataType::FLOAT32;
+  tensor_ref.ref = ref;
+  tensor_ref.shape = shape;
+  return tensor_ref;
+}
 
-  TensorRefFloat32 GetTensorRef(int ref) {
-    TensorRefFloat32 tensor_ref;
-    tensor_ref.type = DataType::FLOAT32;
-    tensor_ref.ref = ref;
-    tensor_ref.shape = BHWC(1, 2, 2, 1);
-    return tensor_ref;
-  }
-};
-
-TEST_F(ElementwiseTest, Abs) {
+TEST(ElementwiseTest, Abs) {
   OperationType op_type = OperationType::ABS;
-  SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
-                      {GetTensorRef(1)});
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
   ASSERT_TRUE(model.PopulateTensor(0, {0.0, -6.2, 2.0, 4.0}));
-  ASSERT_TRUE(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {0.0, 6.2, 2.0, 4.0}));
 }
 
-TEST_F(ElementwiseTest, Sin) {
-  OperationType op_type = OperationType::SIN;
-  SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
-                      {GetTensorRef(1)});
-  ASSERT_TRUE(model.PopulateTensor(0, {0.0, 3.1415926, -3.1415926, 1.0}));
-  ASSERT_TRUE(model.Invoke(*NewElementwiseNodeShader(op_type)));
-  EXPECT_THAT(model.GetOutput(0),
-              Pointwise(FloatNear(1e-6), {0.0, 0.0, 0.0, 0.841471}));
-}
-
-TEST_F(ElementwiseTest, Cos) {
+TEST(ElementwiseTest, Cos) {
   OperationType op_type = OperationType::COS;
-  SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
-                      {GetTensorRef(1)});
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
   ASSERT_TRUE(model.PopulateTensor(0, {0.0, 3.1415926, -3.1415926, 1}));
-  ASSERT_TRUE(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {1.0, -1.0, -1.0, 0.540302}));
 }
 
-TEST_F(ElementwiseTest, Log) {
+TEST(ElementwiseTest, Div) {
+  OperationType op_type = OperationType::DIV;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model(
+      {/*type=*/ToString(op_type), /*attributes=*/{}},
+      /*inputs=*/{GetTensorRef(0, shape), GetTensorRef(1, shape)},
+      /*outputs=*/{GetTensorRef(2, shape)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, -6.2, 2.0, 4.0}));
+  ASSERT_TRUE(model.PopulateTensor(1, {1.0, 2.0, -0.5, 4.0}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {0.0, -3.1, -4.0, 1.0}));
+}
+
+TEST(ElementwiseTest, HardSwish) {
+  OperationType op_type = OperationType::HARD_SWISH;
+  const BHWC shape(1, 1, 1, 7);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  ASSERT_TRUE(
+      model.PopulateTensor(0, {-4.5f, -3.0f, -1.5f, 0.0f, 1.5f, 3.0f, 4.5f}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6f),
+                        {0.0f, 0.0f, -0.375f, 0.0f, 1.125f, 3.f, 4.5f}));
+}
+
+TEST(ElementwiseTest, Log) {
   OperationType op_type = OperationType::LOG;
-  SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
-                      {GetTensorRef(1)});
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
   ASSERT_TRUE(model.PopulateTensor(0, {1.0, 3.1415926, 1.0, 1.0}));
-  ASSERT_TRUE(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {0.0, 1.14473, 0.0, 0.0}));
 }
 
-TEST_F(ElementwiseTest, Sqrt) {
-  OperationType op_type = OperationType::SQRT;
-  SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
-                      {GetTensorRef(1)});
+TEST(ElementwiseTest, Pow) {
+  OperationType op_type = OperationType::POW;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model(
+      {/*type=*/ToString(op_type), /*attributes=*/{}},
+      /*inputs=*/{GetTensorRef(0, shape), GetTensorRef(1, shape)},
+      /*outputs=*/{GetTensorRef(2, shape)});
   ASSERT_TRUE(model.PopulateTensor(0, {0.0, 1.0, 2.0, 4.0}));
-  ASSERT_TRUE(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  ASSERT_TRUE(model.PopulateTensor(1, {1.0, 2.0, 3.0, 4.0}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
   EXPECT_THAT(model.GetOutput(0),
-              Pointwise(FloatNear(1e-6), {0.0, 1.0, 1.414213, 2.0}));
+              Pointwise(FloatNear(1e-6), {0.0, 1.0, 8.0, 256.0}));
 }
 
-TEST_F(ElementwiseTest, Rsqrt) {
+TEST(ElementwiseTest, Rsqrt) {
   OperationType op_type = OperationType::RSQRT;
-  SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
-                      {GetTensorRef(1)});
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
   ASSERT_TRUE(model.PopulateTensor(0, {1.0, 2.0, 4.0, 9.0}));
-  ASSERT_TRUE(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {1.0, 0.707106, 0.5, 0.333333}));
 }
 
-TEST_F(ElementwiseTest, Square) {
-  OperationType op_type = OperationType::SQUARE;
-  SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
-                      {GetTensorRef(1)});
-  ASSERT_TRUE(model.PopulateTensor(0, {1.0, 2.0, 0.5, -3.0}));
-  ASSERT_TRUE(model.Invoke(*NewElementwiseNodeShader(op_type)));
-  EXPECT_THAT(model.GetOutput(0),
-              Pointwise(FloatNear(1e-6), {1.0, 4.0, 0.25, 9.0}));
-}
-
-TEST_F(ElementwiseTest, Sigmoid) {
+TEST(ElementwiseTest, Sigmoid) {
   OperationType op_type = OperationType::SIGMOID;
-  SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
-                      {GetTensorRef(1)});
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
   ASSERT_TRUE(model.PopulateTensor(0, {0.0, -6.0, 2.0, 4.0}));
-  ASSERT_TRUE(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {0.5, 0.002473, 0.880797, 0.982014}));
 }
 
-TEST_F(ElementwiseTest, Tanh) {
+TEST(ElementwiseTest, Sin) {
+  OperationType op_type = OperationType::SIN;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, 3.1415926, -3.1415926, 1.0}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {0.0, 0.0, 0.0, 0.841471}));
+}
+
+TEST(ElementwiseTest, Sqrt) {
+  OperationType op_type = OperationType::SQRT;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, 1.0, 2.0, 4.0}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {0.0, 1.0, 1.414213, 2.0}));
+}
+
+TEST(ElementwiseTest, Square) {
+  OperationType op_type = OperationType::SQUARE;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  ASSERT_TRUE(model.PopulateTensor(0, {1.0, 2.0, 0.5, -3.0}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {1.0, 4.0, 0.25, 9.0}));
+}
+
+TEST(ElementwiseTest, SquaredDiff) {
+  OperationType op_type = OperationType::SQUARED_DIFF;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model(
+      {/*type=*/ToString(op_type), /*attributes=*/{}},
+      /*inputs=*/{GetTensorRef(0, shape), GetTensorRef(1, shape)},
+      /*outputs=*/{GetTensorRef(2, shape)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, 2.0, 2.0, 4.0}));
+  ASSERT_TRUE(model.PopulateTensor(1, {1.0, 1.0, 5.0, 4.0}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {1.0, 1.0, 9.0, 0.0}));
+}
+
+TEST(ElementwiseTest, Sub) {
+  OperationType op_type = OperationType::SUB;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model(
+      {/*type=*/ToString(op_type), /*attributes=*/{}},
+      /*inputs=*/{GetTensorRef(0, shape), GetTensorRef(1, shape)},
+      /*outputs=*/{GetTensorRef(2, shape)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, -6.2, 2.0, 4.0}));
+  ASSERT_TRUE(model.PopulateTensor(1, {1.0, 2.0, 3.0, 4.0}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {-1.0, -8.2, -1.0, 0.0}));
+}
+
+TEST(ElementwiseTest, Tanh) {
   OperationType op_type = OperationType::TANH;
-  SingleOpModel model({ToString(op_type), {}}, {GetTensorRef(0)},
-                      {GetTensorRef(1)});
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
   ASSERT_TRUE(model.PopulateTensor(0, {0.0, -6.0, 2.0, 4.0}));
-  ASSERT_TRUE(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6), {0.0, -0.999987, 0.964027, 0.999329}));
 }

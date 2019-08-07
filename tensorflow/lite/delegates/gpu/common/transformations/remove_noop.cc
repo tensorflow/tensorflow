@@ -78,7 +78,8 @@ std::unique_ptr<SequenceTransformation> NewRemoveSingleInputAdd() {
         auto& attr =
             absl::any_cast<const AddAttributes&>(node->operation.attributes);
         return absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param) ==
-               nullptr;
+                   nullptr &&
+               absl::get_if<float>(&attr.param) == nullptr;
       });
 }
 
@@ -94,6 +95,32 @@ std::unique_ptr<SequenceTransformation> NewRemoveDegenerateUpsampling() {
         return inputs.size() == 1 && outputs.size() == 1 &&
                inputs[0]->tensor.shape == outputs[0]->tensor.shape;
       });
+}
+
+class RemoveIdentityReshape : public NodeTransformation {
+ public:
+  TransformResult ApplyToNode(Node* node, GraphFloat32* graph) final {
+    if (node->operation.type != ToString(OperationType::RESHAPE)) {
+      return {TransformStatus::SKIPPED, ""};
+    }
+    auto input_shape = graph->FindInputs(node->id)[0]->tensor.shape;
+    const auto& reshape_attr =
+        absl::any_cast<const ReshapeAttributes&>(node->operation.attributes);
+    if (input_shape != reshape_attr.new_shape) {
+      return {TransformStatus::SKIPPED, ""};
+    }
+    Status status = RemoveOneInputOneOutputNode(graph, node);
+    if (!status.ok()) {
+      return {TransformStatus::INVALID,
+              "Unable to remove a node: " + status.error_message()};
+    }
+    return {TransformStatus::APPLIED,
+            "Removed reshape with input_shape == output_shape."};
+  }
+};
+
+std::unique_ptr<NodeTransformation> NewRemoveIdentityReshape() {
+  return absl::make_unique<RemoveIdentityReshape>();
 }
 
 }  // namespace gpu

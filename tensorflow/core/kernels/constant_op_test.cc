@@ -86,7 +86,8 @@ void ConstantOpTest::PersistentMemoryTrackingTest(bool on_gpu) {
 
 TEST_F(ConstantOpTest, PersistentMemoryTracking) {
   PersistentMemoryTrackingTest(false);
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   PersistentMemoryTrackingTest(true);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }

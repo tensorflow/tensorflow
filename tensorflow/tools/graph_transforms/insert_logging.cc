@@ -101,7 +101,7 @@ Status InsertLogging(const GraphDef& input_graph_def,
     const bool op_matches = (ops.count(node.op()) > 0);
     bool prefix_matches = false;
     for (const string& prefix : prefixes) {
-      if (str_util::StartsWith(node.name(), prefix)) {
+      if (absl::StartsWith(node.name(), prefix)) {
         prefix_matches = true;
       }
     }

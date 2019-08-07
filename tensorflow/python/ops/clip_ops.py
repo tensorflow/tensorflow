@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import six
 
 from tensorflow.python.framework import constant_op
@@ -29,9 +27,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import numerics
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -49,6 +47,15 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   Note: `clip_value_min` needs to be smaller or equal to `clip_value_max` for
   correct results.
 
+  For example:
+
+  ```python
+  A = tf.constant([[1, 20, 13], [3, 21, 13]])
+  B = tf.clip_by_value(A, clip_value_min=0, clip_value_max=3) # [[1, 3, 3],[3, 3, 3]]
+  C = tf.clip_by_value(A, clip_value_min=0., clip_value_max=3.) # throws `TypeError`
+  as input and clip_values are of different dtype
+  ```
+
   Args:
     t: A `Tensor` or `IndexedSlices`.
     clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
@@ -63,6 +70,8 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   Raises:
     ValueError: If the clip tensors would trigger array broadcasting
       that would make the returned tensor larger than the input.
+    TypeError: If dtype of the input is `int32` and dtype of
+    the `clip_value_min' or `clip_value_max` is `float32`
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
@@ -146,6 +155,11 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
 
   Returns:
     A clipped `Tensor` or `IndexedSlices`.
+
+  Raises:
+    ValueError: If the clip_norm tensor is not a 0-D scalar tensor.
+    TypeError: If dtype of the input is not a floating point or
+      complex type.
   """
   with ops.name_scope(name, "clip_by_norm", [t, clip_norm]) as name:
     values = ops.convert_to_tensor(
@@ -193,8 +207,8 @@ def global_norm(t_list, name=None):
   Raises:
     TypeError: If `t_list` is not a sequence.
   """
-  if (not isinstance(t_list, collections.Sequence)
-      or isinstance(t_list, six.string_types)):
+  if (not isinstance(t_list, collections_abc.Sequence) or
+      isinstance(t_list, six.string_types)):
     raise TypeError("t_list should be a sequence")
   t_list = list(t_list)
   with ops.name_scope(name, "global_norm", t_list) as name:
@@ -241,6 +255,9 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   If `clip_norm > global_norm` then the entries in `t_list` remain as they are,
   otherwise they're all shrunk by the global ratio.
 
+  If `global_norm == infinity` then the entries in `t_list` are all set to `NaN`
+  to signal that an error occurred.
+
   Any of the entries of `t_list` that are of type `None` are ignored.
 
   This is the correct way to perform gradient clipping (for example, see
@@ -263,23 +280,25 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
 
   Raises:
     TypeError: If `t_list` is not a sequence.
-    InvalidArgumentError: If global norm is not finite.
   """
-  if (not isinstance(t_list, collections.Sequence)
-      or isinstance(t_list, six.string_types)):
+  if (not isinstance(t_list, collections_abc.Sequence) or
+      isinstance(t_list, six.string_types)):
     raise TypeError("t_list should be a sequence")
   t_list = list(t_list)
   if use_norm is None:
     use_norm = global_norm(t_list, name)
-  use_norm = numerics.verify_tensor_all_finite(use_norm,
-                                               "Found Inf or NaN global norm.")
 
   with ops.name_scope(name, "clip_by_global_norm",
                       t_list + [clip_norm]) as name:
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
-    scale = clip_norm * math_ops.minimum(
+    scale_for_finite = clip_norm * math_ops.minimum(
         1.0 / use_norm,
         constant_op.constant(1.0, dtype=use_norm.dtype) / clip_norm)
+    scale = array_ops.where(
+        math_ops.is_finite(use_norm),
+        scale_for_finite,
+        # Return NaN if use_norm is not finite.
+        constant_op.constant(float("nan"), dtype=use_norm.dtype))
 
     values = [
         ops.convert_to_tensor(

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/blas.h"
 
 namespace xla {
 namespace gpu {
@@ -36,54 +37,42 @@ namespace gpu {
 class GemmThunk : public Thunk {
  public:
   // Constructs a thunk that computes "output = (lhs <dot> rhs) * alpha" using
-  // BLAS gemm.  hlo_instruction is as in Thunk. alpha is a constant.
+  // BLAS gemm (alpha is stored in the instruction GemmBackendConfig).
   GemmThunk(const BufferAllocation::Slice& lhs_buffer,
             const BufferAllocation::Slice& rhs_buffer,
             const BufferAllocation::Slice& output_buffer,
-            const Shape& lhs_shape, const Shape& rhs_shape,
-            const Shape& output_shape, double alpha, double beta,
-            const HloInstruction* hlo_instruction,
-            bool implements_whole_instruction);
+            bool implements_whole_instruction,
+            const HloInstruction* hlo_instruction);
 
   GemmThunk(const GemmThunk&) = delete;
   GemmThunk& operator=(const GemmThunk&) = delete;
 
-  // Does the gemm operation for the thunk on "stream", which must be non-null.
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
-                         HloExecutionProfiler* profiler) override;
-
-  bool WillAutotuneKernel(se::Stream* stream) override {
-    // We will autotune this kernel if we don't already have a autotune result
-    // for the stream device.
-    return autotune_results_.find(
-               stream->parent()->GetDeviceDescription().name()) ==
-           autotune_results_.end();
-  }
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   const BufferAllocation::Slice lhs_buffer_;
   const BufferAllocation::Slice rhs_buffer_;
   const BufferAllocation::Slice output_buffer_;
-
-  const Shape lhs_shape_;
-  const Shape rhs_shape_;
-  const Shape output_shape_;
-
-  const double alpha_;
-  const double beta_;
-
-  const bool implements_whole_instruction_;
-
-  // Maps device names (StreamExecutor::DeviceDescription::name()) to autotune
-  // results.  The map's value is the best algorithm we've found for this thunk
-  // on this device, or an error if none of the algorithms worked and we should
-  // use the regular gemm without an algorithm.
-  //
-  // TODO(b/112415150):  Make this thread safe.
-  std::unordered_map<string, StatusOr<se::blas::AlgorithmType>>
-      autotune_results_;
+  bool implements_whole_instruction_;
 };
+
+// Run the given GEMM instruction `gemm` subject to the configuration
+// stored inside it's backend_config and the passed buffers.
+//
+// `implements_whole_instruction` is used for the default profiler creation
+// if the `profiler` is not supplied. False value indicates that the created
+// profiler will not specifically profile the `gemm` instruction.
+//
+// If `algorithm` is provided, it overrides the one specified in backend_config
+// of gemm.
+//
+Status RunGemm(
+    const HloInstruction* gemm, se::DeviceMemoryBase lhs_buffer,
+    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
+    se::Stream* stream, bool implements_whole_instruction,
+    HloExecutionProfiler* profiler = nullptr,
+    se::blas::ProfileResult* profile_result = nullptr,
+    absl::optional<se::blas::AlgorithmType> algorithm = absl::nullopt);
 
 }  // namespace gpu
 }  // namespace xla

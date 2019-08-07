@@ -35,9 +35,9 @@ class BigQueryReader(io_ops.ReaderBase):
 
     # Create the parse_examples list of features.
     features = dict(
-      name=tf.FixedLenFeature([1], tf.string),
-      age=tf.FixedLenFeature([1], tf.int32),
-      state=tf.FixedLenFeature([1], dtype=tf.string, default_value="UNK"))
+      name=tf.io.FixedLenFeature([1], tf.string),
+      age=tf.io.FixedLenFeature([1], tf.int32),
+      state=tf.io.FixedLenFeature([1], dtype=tf.string, default_value="UNK"))
 
     # Create a Reader.
     reader = bigquery_reader_ops.BigQueryReader(project_id=PROJECT,
@@ -48,11 +48,11 @@ class BigQueryReader(io_ops.ReaderBase):
                                                 features=features)
 
     # Populate a queue with the BigQuery Table partitions.
-    queue = tf.train.string_input_producer(reader.partitions())
+    queue = tf.compat.v1.train.string_input_producer(reader.partitions())
 
     # Read and parse examples.
     row_id, examples_serialized = reader.read(queue)
-    examples = tf.parse_example(examples_serialized, features=features)
+    examples = tf.io.parse_example(examples_serialized, features=features)
 
     # Process the Tensors examples["name"], examples["age"], etc...
     ```

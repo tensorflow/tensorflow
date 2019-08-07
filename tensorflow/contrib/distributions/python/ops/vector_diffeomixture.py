@@ -682,7 +682,7 @@ class VectorDiffeomixture(distribution_lib.Distribution):
         self._covariance_of_mean_given_quadrature_component(diag_only=False))
 
   def _variance(self):
-    # Equivalent to: tf.diag_part(self._covariance()),
+    # Equivalent to: tf.linalg.tensor_diag_part(self._covariance()),
     return add(
         self._mean_of_covariance_given_quadrature_component(diag_only=True),
         self._covariance_of_mean_given_quadrature_component(diag_only=True))
@@ -1060,5 +1060,5 @@ def softmax(x, axis, name=None):
     if axis_ is not None:
       axis = np.int(ndims + axis_ if axis_ < 0 else axis_)
     else:
-      axis = array_ops.where(axis < 0, ndims + axis, axis)
+      axis = array_ops.where_v2(axis < 0, ndims + axis, axis)
   return nn_ops.softmax(x, axis=axis)

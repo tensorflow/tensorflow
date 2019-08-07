@@ -100,36 +100,6 @@ TEST(SparseToDenseOpModelTest, TwoDimensionsTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 3, 3}));
 }
 
-TEST(SparseToDenseOpModelTest, DefaultValueTest) {
-  SparseToDenseOpModel<float> m({3, 3}, {3}, {3}, -1, TensorType_INT32,
-                                TensorType_FLOAT32);
-  m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
-  m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
-  m.PopulateTensor<float>(m.values(), {2, 4, 6});
-  m.Invoke();
-
-  EXPECT_THAT(
-      m.GetOutput(),
-      ElementsAreArray({2,  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-                        -1, -1, 4,  -1, -1, 6,  -1, -1, -1, -1, -1, -1, -1}));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 3, 3}));
-}
-
-TEST(SparseToDenseOpModelTest, IntegerValueTest) {
-  SparseToDenseOpModel<int32_t> m({3, 3}, {3}, {3}, -1, TensorType_INT32,
-                                  TensorType_INT32);
-  m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
-  m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
-  m.PopulateTensor<int32_t>(m.values(), {2, 4, 6});
-  m.Invoke();
-
-  EXPECT_THAT(
-      m.GetOutput(),
-      ElementsAreArray({2,  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-                        -1, -1, 4,  -1, -1, 6,  -1, -1, -1, -1, -1, -1, -1}));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 3, 3}));
-}
-
 TEST(SparseToDenseOpModelTest, Int64IndexTest) {
   SparseToDenseOpModel<float> m({3, 3}, {3}, {3}, -1, TensorType_INT64,
                                 TensorType_FLOAT32);
@@ -145,11 +115,79 @@ TEST(SparseToDenseOpModelTest, Int64IndexTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 3, 3}));
 }
 
+TEST(SparseToDenseOpModelTest, DefaultValueTest) {
+  SparseToDenseOpModel<float> m({3, 3}, {3}, {3}, -1, TensorType_INT32,
+                                TensorType_FLOAT32);
+  m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
+  m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
+  m.PopulateTensor<float>(m.values(), {2, 4, 6});
+  m.Invoke();
+
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({2,  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                        -1, -1, 4,  -1, -1, 6,  -1, -1, -1, -1, -1, -1, -1}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 3, 3}));
+}
+
+TEST(SparseToDenseOpModelTest, Int32ValueTest) {
+  SparseToDenseOpModel<int32_t> m({3, 3}, {3}, {3}, -1, TensorType_INT32,
+                                  TensorType_INT32);
+  m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
+  m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
+  m.PopulateTensor<int32_t>(m.values(), {2, 4, 6});
+  m.Invoke();
+
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({2,  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                        -1, -1, 4,  -1, -1, 6,  -1, -1, -1, -1, -1, -1, -1}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 3, 3}));
+}
+
+TEST(SparseToDenseOpModelTest, Int64ValueTest) {
+  SparseToDenseOpModel<int64_t> m({3, 3}, {3}, {3}, -1, TensorType_INT32,
+                                  TensorType_INT64);
+  m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
+  m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
+  m.PopulateTensor<int64_t>(m.values(), {2, 4, 6});
+  m.Invoke();
+
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({2,  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                        -1, -1, 4,  -1, -1, 6,  -1, -1, -1, -1, -1, -1, -1}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 3, 3}));
+}
+
+TEST(SparseToDenseOpModelTest, Int8ValueTest) {
+  SparseToDenseOpModel<int8_t> m({3, 3}, {3}, {3}, -1, TensorType_INT32,
+                                 TensorType_INT8);
+  m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
+  m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
+  m.PopulateTensor<int8_t>(m.values(), {2, 4, 6});
+  m.Invoke();
+
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({2,  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                        -1, -1, 4,  -1, -1, 6,  -1, -1, -1, -1, -1, -1, -1}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 3, 3}));
+}
+
+TEST(SparseToDenseOpModelTest, UInt8ValueTest) {
+  SparseToDenseOpModel<uint8_t> m({3, 3}, {3}, {3}, 1, TensorType_INT32,
+                                  TensorType_UINT8);
+  m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
+  m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
+  m.PopulateTensor<uint8_t>(m.values(), {2, 4, 6});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                                1, 1, 4, 1, 1, 6, 1, 1, 1, 1, 1, 1, 1}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 3, 3}));
+}
+
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

@@ -46,12 +46,12 @@ def main(_):
 
   # The raw formulation of cross-entropy,
   #
-  #   tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(tf.nn.softmax(y)),
+  #   tf.reduce_mean(-tf.reduce_sum(y_ * tf.math.log(tf.nn.softmax(y)),
   #                                 reduction_indices=[1]))
   #
   # can be numerically unstable.
   #
-  # So here we use tf.losses.sparse_softmax_cross_entropy on the raw
+  # So here we use tf.compat.v1.losses.sparse_softmax_cross_entropy on the raw
   # logit outputs of 'y', and then average across the batch.
   cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels=y_, logits=y)
   train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
@@ -64,7 +64,7 @@ def main(_):
 
   config.graph_options.optimizer_options.global_jit_level = jit_level
   run_metadata = tf.RunMetadata()
-  sess = tf.Session(config=config)
+  sess = tf.compat.v1.Session(config=config)
   tf.global_variables_initializer().run(session=sess)
   # Train
   train_loops = 1000

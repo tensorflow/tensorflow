@@ -108,8 +108,8 @@ class NumpyState(base.Trackable):
       except AttributeError:
         value = _NumpyWrapper(value)
         self._track_trackable(value, name=name, overwrite=True)
-    elif (name not in ("_setattr_tracking", "_update_uid")
-          and getattr(self, "_setattr_tracking", True)):
+    elif (name not in ("_self_setattr_tracking", "_self_update_uid")
+          and getattr(self, "_self_setattr_tracking", True)):
       # Mixing restore()-created attributes with user-added trackable
       # objects is tricky, since we can't use the `_lookup_dependency` trick to
       # re-create attributes (we might accidentally steal the restoration for
@@ -154,4 +154,3 @@ class _NumpyWrapper(core_python_state.PythonState):
       self.array = numpy.load(string_file, allow_pickle=False)
     finally:
       string_file.close()
-

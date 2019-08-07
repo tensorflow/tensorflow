@@ -84,6 +84,54 @@ GlBuffer GlBuffer::MakeRef() {
                   /* has_ownership = */ false);
 }
 
+GlPersistentBuffer::GlPersistentBuffer(GLenum target, GLuint id,
+                                       size_t bytes_size, size_t offset,
+                                       bool has_ownership, void* data)
+    : GlBuffer(target, id, bytes_size, offset, has_ownership), data_(data) {}
+
+GlPersistentBuffer::GlPersistentBuffer()
+    : GlPersistentBuffer(GL_INVALID_ENUM, GL_INVALID_INDEX, 0, 0, false,
+                         nullptr) {}
+
+GlPersistentBuffer::GlPersistentBuffer(GlPersistentBuffer&& buffer)
+    : GlBuffer(std::move(buffer)), data_(buffer.data_) {}
+
+GlPersistentBuffer& GlPersistentBuffer::operator=(GlPersistentBuffer&& buffer) {
+  if (this != &buffer) {
+    data_ = buffer.data_;
+    GlBuffer::operator=(std::move(buffer));
+  }
+  return *this;
+}
+
+GlPersistentBuffer::~GlPersistentBuffer() {
+  if (!data_) return;
+  gl_buffer_internal::BufferBinder binder(GL_SHADER_STORAGE_BUFFER, id());
+  glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+}
+
+Status CreatePersistentBuffer(size_t size, GlPersistentBuffer* gl_buffer) {
+  PFNGLBUFFERSTORAGEEXTPROC glBufferStorageEXT = nullptr;
+  glBufferStorageEXT = reinterpret_cast<PFNGLBUFFERSTORAGEEXTPROC>(
+      eglGetProcAddress("glBufferStorageEXT"));
+  if (!glBufferStorageEXT) {
+    return UnavailableError("glBufferStorageEXT is not supported");
+  }
+  gl_buffer_internal::BufferId id;
+  gl_buffer_internal::BufferBinder binder(GL_SHADER_STORAGE_BUFFER, id.id());
+  RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(
+      glBufferStorageEXT, GL_SHADER_STORAGE_BUFFER, size, nullptr,
+      GL_MAP_COHERENT_BIT_EXT | GL_MAP_READ_BIT | GL_MAP_WRITE_BIT |
+          GL_MAP_PERSISTENT_BIT_EXT));
+  void* data = nullptr;
+  RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(
+      glMapBufferRange, &data, GL_SHADER_STORAGE_BUFFER, 0, size,
+      GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT_EXT));
+  *gl_buffer = GlPersistentBuffer{
+      GL_SHADER_STORAGE_BUFFER, id.Release(), size, 0, true, data};
+  return OkStatus();
+}
+
 }  // namespace gl
 }  // namespace gpu
 }  // namespace tflite

@@ -30,11 +30,75 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace metal {
+namespace {
+std::string GetSoftmax1x1Code() {
+  std::string code = R"(
+#include <metal_stdlib>
+using namespace metal;
+
+struct uniforms {
+  int4 size;
+  float4 mask;
+};
+
+$0
+
+kernel void ComputeFunction($1
+                            uint tid[[thread_index_in_threadgroup]],
+                            uint3 ugid[[thread_position_in_grid]])
+{
+  int offset = 0;
+  float sum = 0.0f;
+  int s = 0;
+  do {
+    if (offset + tid < params.size.x) {
+      float4 mask_temp = offset + tid == params.size.x - 1 ? params.mask : float4(1.0h);
+      float4 src = float4(src_buffer[offset + tid]);
+      sum += dot(mask_temp, exp(src));
+      offset += 32;
+    }
+    s++;
+  } while (s < params.size.y);
+
+  threadgroup float4 tmp[8];
+  threadgroup float* tmpx1 = (threadgroup float*)tmp;
+  tmpx1[tid] = sum;
+  BARRIER(mem_flags::mem_threadgroup);
+  if (tid == 0) {
+    sum = dot(float4(1.0f), tmp[0]);
+    sum += dot(float4(1.0f), tmp[1]);
+    sum += dot(float4(1.0f), tmp[2]);
+    sum += dot(float4(1.0f), tmp[3]);
+    sum += dot(float4(1.0f), tmp[4]);
+    sum += dot(float4(1.0f), tmp[5]);
+    sum += dot(float4(1.0f), tmp[6]);
+    sum += dot(float4(1.0f), tmp[7]);
+    tmpx1[0] = 1.0 / sum;
+  }
+  BARRIER(mem_flags::mem_threadgroup);
+  sum = tmpx1[0];
+
+  offset = 0;
+  s = 0;
+  do {
+    if (offset + tid < params.size.x) {
+      int linear_index = offset + tid;
+      FLT4 value = FLT4(exp(float4(src_buffer[linear_index])) * sum);
+      uint3 gid = uint3(0, 0, linear_index);
+      $2
+      dst_buffer[linear_index] = value;
+      offset += 32;
+    }
+    s++;
+  } while (s < params.size.y);
+})";
+  return code;
+}
+}  // namespace
 
 std::vector<ComputeTaskDescriptorPtr> Softmax(int id, ValueId input_id,
                                               ValueId output_id,
-                                              int channels_count,
-                                              const RuntimeOptions& options) {
+                                              int channels_count) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
@@ -95,11 +159,55 @@ std::vector<ComputeTaskDescriptorPtr> Softmax(int id, ValueId input_id,
   };
 
   desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
-    uint3 groups_size{16, 16, 1};
+    uint3 groups_size{8, 4, 1};
     const auto& dimension = buffers.find(output_id)->second;
     uint3 groups_count{IntegralDivideRoundUp(dimension.w, groups_size.x),
                        IntegralDivideRoundUp(dimension.h, groups_size.y), 1};
     return std::make_pair(groups_size, groups_count);
+  };
+
+  return {desc};
+}
+
+std::vector<ComputeTaskDescriptorPtr> Softmax1x1(int id, ValueId input_id,
+                                                 ValueId output_id,
+                                                 int channels_count) {
+  auto desc = std::make_shared<ComputeTaskDescriptor>();
+  desc->id = id;
+  desc->is_linkable = false;
+  desc->shader_source = GetSoftmax1x1Code();
+
+  desc->input_buffers = {
+      {input_id, "device FLT4* const src_buffer"},
+  };
+
+  desc->output_buffer = {output_id, "device FLT4* dst_buffer",
+                         [input_id](const std::map<ValueId, BHWC>& buffers) {
+                           return buffers.find(input_id)->second;
+                         }};
+
+  desc->uniform_buffers = {
+      {"constant uniforms& params",
+       [channels_count](const std::map<ValueId, BHWC>& buffers) {
+         const int src_depth = IntegralDivideRoundUp(channels_count, 4);
+         struct uniforms {
+           int4 size;
+           float4 mask;
+         };
+         uniforms params;
+         params.size = {src_depth, IntegralDivideRoundUp(src_depth, 32), 1, 1};
+         params.mask = {0.0f, 0.0f, 0.0f, 0.0f};
+         const int reminder = channels_count % 4 == 0 ? 4 : channels_count % 4;
+         for (int i = 0; i < reminder; ++i) {
+           params.mask[i] = 1.0f;
+         }
+         const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&params);
+         return std::vector<uint8_t>(ptr, ptr + sizeof(uniforms));
+       }},
+  };
+
+  desc->resize_function = [](const std::map<ValueId, BHWC>& buffers) {
+    return std::make_pair(uint3{32u, 1u, 1u}, uint3{1u, 1u, 1u});
   };
 
   return {desc};

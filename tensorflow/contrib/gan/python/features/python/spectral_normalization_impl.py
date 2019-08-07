@@ -191,9 +191,9 @@ def spectral_normalization_custom_getter(name_filter=_default_name_filter,
   of output channels.
 
   Apply this to layers by supplying this as the `custom_getter` of a
-  `tf.variable_scope`. For example:
+  `tf.compat.v1.variable_scope`. For example:
 
-    with tf.variable_scope('discriminator',
+    with tf.compat.v1.variable_scope('discriminator',
                            custom_getter=spectral_norm_getter()):
       net = discriminator_fn(net)
 

@@ -2,7 +2,6 @@ path: "tensorflow.estimator.experimental.KMeans"
 tf_class {
   is_instance: "<class \'tensorflow_estimator.python.estimator.canned.kmeans.KMeansClustering\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
-  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "ALL_DISTANCES"

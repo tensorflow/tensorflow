@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -50,6 +50,25 @@ struct ApplyAdagrad<GPUDevice, T> {
     bcast[0] = grad.dimension(0);
     Eigen::Sizes<1> single;
     var.device(d) -= lr.reshape(single).broadcast(bcast) * grad * accum.rsqrt();
+  }
+};
+
+template <typename T>
+struct ApplyAdagradV2<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad, bool update_slots) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+    if (update_slots) {
+      accum.device(d) += grad.square();
+    }
+    const auto update =
+        grad / (accum.sqrt() + epsilon.reshape(single).broadcast(bcast));
+    var.device(d) -= lr.reshape(single).broadcast(bcast) * update;
   }
 };
 
@@ -348,6 +367,10 @@ template struct functor::ApplyAdagrad<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdagrad<GPUDevice, float>;
 template struct functor::ApplyAdagrad<GPUDevice, double>;
 
+template struct functor::ApplyAdagradV2<GPUDevice, Eigen::half>;
+template struct functor::ApplyAdagradV2<GPUDevice, float>;
+template struct functor::ApplyAdagradV2<GPUDevice, double>;
+
 template struct functor::ApplyAdadelta<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdadelta<GPUDevice, float>;
 template struct functor::ApplyAdadelta<GPUDevice, double>;
@@ -390,4 +413,4 @@ template struct functor::ApplyPowerSign<GPUDevice, double>;
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

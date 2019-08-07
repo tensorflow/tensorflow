@@ -64,7 +64,7 @@ TEST(LowerWhileOpTest, Simple) {
 
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
-  auto a = ops::_Arg(root.WithOpName("A"), DT_INT32, 0);
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
   Node* while_node;
   std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
   AttrValue cond_func;
@@ -181,8 +181,8 @@ TEST(LowerWhileOpTest, MultipleInputs) {
 
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
-  auto a = ops::_Arg(root.WithOpName("A"), DT_INT32, 0);
-  auto b = ops::_Arg(root.WithOpName("B"), DT_INT32, 1);
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
+  auto b = ops::Placeholder(root.WithOpName("B"), DT_INT32);
   Node* while_node;
   std::vector<NodeBuilder::NodeOut> inputs(
       {NodeBuilder::NodeOut(a.node()), NodeBuilder::NodeOut(b.node())});
@@ -297,7 +297,7 @@ TEST(LowerWhileOpTest, DoNotInlineLoweredFunctions) {
 
   Scope root = Scope::NewRootScope().ExitOnError();
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
-  auto a = ops::_Arg(root.WithOpName("A"), DT_INT32, 0);
+  auto a = ops::Placeholder(root.WithOpName("A"), DT_INT32);
   Node* while_node;
   std::vector<NodeBuilder::NodeOut> inputs({NodeBuilder::NodeOut(a.node())});
   AttrValue cond_func;

@@ -143,6 +143,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
             TF_LITE_ARG_MIN_MAX(int32_t, int32_t, int32_t);
             break;
           default:
+            context->ReportError(context,
+                                 "Only float32, uint8, int8 and int32 are "
+                                 "supported currently, got %s.",
+                                 TfLiteTypeGetName(input->type));
             return kTfLiteError;
         }
       } break;
@@ -161,10 +165,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
             TF_LITE_ARG_MIN_MAX(int32_t, int32_t, int64_t);
             break;
           default:
+            context->ReportError(context,
+                                 "Only float32, uint8, int8 and int32 are "
+                                 "supported currently, got %s.",
+                                 TfLiteTypeGetName(input->type));
             return kTfLiteError;
         }
       } break;
       default:
+        context->ReportError(
+            context, "Only int32 and int64 are supported currently, got %s.",
+            TfLiteTypeGetName(output->type));
         return kTfLiteError;
     }
   } else {
@@ -177,10 +188,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
           case kTfLiteUInt8:
             TF_LITE_ARG_MIN_MAX(uint8_t, int64_t, int32_t);
             break;
+          case kTfLiteInt8:
+            TF_LITE_ARG_MIN_MAX(int8_t, int64_t, int32_t);
+            break;
           case kTfLiteInt32:
             TF_LITE_ARG_MIN_MAX(int32_t, int64_t, int32_t);
             break;
           default:
+            context->ReportError(context,
+                                 "Only float32, uint8, int8 and int32 are "
+                                 "supported currently, got %s.",
+                                 TfLiteTypeGetName(input->type));
             return kTfLiteError;
         }
       } break;
@@ -192,14 +210,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
           case kTfLiteUInt8:
             TF_LITE_ARG_MIN_MAX(uint8_t, int64_t, int64_t);
             break;
+          case kTfLiteInt8:
+            TF_LITE_ARG_MIN_MAX(int8_t, int64_t, int64_t);
+            break;
           case kTfLiteInt32:
             TF_LITE_ARG_MIN_MAX(int32_t, int64_t, int64_t);
             break;
           default:
+            context->ReportError(context,
+                                 "Only float32, uint8, int8 and int32 are "
+                                 "supported currently, got %s.",
+                                 TfLiteTypeGetName(input->type));
             return kTfLiteError;
         }
       } break;
       default:
+        context->ReportError(
+            context, "Only int32 and int64 are supported currently, got %s.",
+            TfLiteTypeGetName(output->type));
         return kTfLiteError;
     }
   }

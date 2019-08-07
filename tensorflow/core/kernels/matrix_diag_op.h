@@ -19,76 +19,36 @@ limitations under the License.
 // Generator definition for MatrixDiagOp, must be compilable by nvcc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
-namespace generator {
-
-template <typename T>
-class MatrixDiagPartGenerator {
- public:
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-  MatrixDiagPartGenerator(typename TTypes<T, 3>::ConstTensor input)
-      : input_(input) {}
-
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
-  operator()(const Eigen::array<Eigen::DenseIndex, 2>& coords) const {
-    Eigen::array<Eigen::DenseIndex, 3> diag_from_coords(
-        {coords[0], coords[1], coords[1]});
-    return input_(diag_from_coords);
-  }
-
- private:
-  typename TTypes<T, 3>::ConstTensor input_;
-};
-
-template <typename T>
-class MatrixDiagGenerator {
- public:
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-  MatrixDiagGenerator(typename TTypes<T, 2>::ConstTensor input)
-      : input_(input) {}
-
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
-  operator()(const Eigen::array<Eigen::DenseIndex, 3>& coords) const {
-    if (coords[2] != coords[1]) return T();
-
-    Eigen::array<Eigen::DenseIndex, 2> diag_coords({coords[0], coords[1]});
-    return input_(diag_coords);
-  }
-
- private:
-  typename TTypes<T, 2>::ConstTensor input_;
-};
-
-}  // namespace generator
-
 namespace functor {
 
 template <typename Device, typename T>
 struct MatrixDiagPart {
   EIGEN_ALWAYS_INLINE static void Compute(
-      const Device& d, typename TTypes<T, 3>::ConstTensor input,
-      typename TTypes<T, 2>::Tensor output) {
-    generator::MatrixDiagPartGenerator<T> generator(input);
-    output.device(d) = output.generate(generator);
-  }
+      OpKernelContext* context, const Device& device,
+      typename TTypes<T, 3>::ConstTensor& input,
+      typename TTypes<T>::Tensor& output_original, const Eigen::Index d_lower,
+      const Eigen::Index d_upper, const Eigen::Index max_diag_len,
+      const T padding);
 };
 
 template <typename Device, typename T>
 struct MatrixDiag {
-  EIGEN_ALWAYS_INLINE static void Compute(
-      const Device& d, typename TTypes<T, 2>::ConstTensor input,
-      typename TTypes<T, 3>::Tensor output) {
-    generator::MatrixDiagGenerator<T> generator(input);
-    output.device(d) = output.generate(generator);
-  }
+  EIGEN_ALWAYS_INLINE static void Compute(OpKernelContext* context,
+                                          const Device& device,
+                                          typename TTypes<T>::ConstTensor& diag,
+                                          typename TTypes<T, 3>::Tensor& output,
+                                          const Eigen::Index d_lower,
+                                          const Eigen::Index d_upper,
+                                          const Eigen::Index max_diag_len,
+                                          const T padding);
 };
 
 }  // namespace functor
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_MATRIX_DIAG_OP_H_

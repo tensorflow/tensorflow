@@ -18,11 +18,13 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class ThreadPoolResource : public ResourceBase {
@@ -127,12 +129,10 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    ThreadPoolResource* threadpool_resource;
+    core::RefCountPtr<ThreadPoolResource> threadpool_resource;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 1),
                                        &threadpool_resource));
-    core::ScopedUnref unref_iterator(threadpool_resource);
-
-    *output = new Dataset(ctx, input, ctx->input(1), threadpool_resource);
+    *output = new Dataset(ctx, input, ctx->input(1), threadpool_resource.get());
   }
 
  private:
@@ -171,6 +171,8 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    bool IsStateful() const override { return input_->IsStateful(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -279,6 +281,8 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    bool IsStateful() const override { return input_->IsStateful(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -379,6 +383,8 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    bool IsStateful() const override { return input_->IsStateful(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -432,18 +438,30 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("MaxIntraOpParallelismDataset").Device(DEVICE_CPU),
+                        MaxIntraOpParallelismDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalMaxIntraOpParallelismDataset").Device(DEVICE_CPU),
     MaxIntraOpParallelismDatasetOp);
+
+REGISTER_KERNEL_BUILDER(Name("PrivateThreadPoolDataset").Device(DEVICE_CPU),
+                        PrivateThreadPoolDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalPrivateThreadPoolDataset").Device(DEVICE_CPU),
     PrivateThreadPoolDatasetOp);
+
+REGISTER_KERNEL_BUILDER(Name("ThreadPoolHandle").Device(DEVICE_CPU),
+                        ThreadPoolHandleOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalThreadPoolHandle").Device(DEVICE_CPU),
                         ThreadPoolHandleOp);
+
+REGISTER_KERNEL_BUILDER(Name("ThreadPoolDataset").Device(DEVICE_CPU),
+                        ThreadPoolDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalThreadPoolDataset").Device(DEVICE_CPU),
     ThreadPoolDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

@@ -400,10 +400,9 @@ class _WishartLinearOperator(distribution.Distribution):
 
   def _mode(self):
     s = self.df - self.dimension - 1.
-    s = array_ops.where(
+    s = array_ops.where_v2(
         math_ops.less(s, 0.),
-        constant_op.constant(float("NaN"), dtype=self.dtype, name="nan"),
-        s)
+        constant_op.constant(float("NaN"), dtype=self.dtype, name="nan"), s)
     if self.cholesky_input_output_matrices:
       return math_ops.sqrt(s) * self.scale_operator.to_dense()
     return s * self._square_scale_operator()
@@ -486,7 +485,7 @@ class WishartCholesky(_WishartLinearOperator):
   # Initialize a single 3x3 Wishart with Cholesky factored scale matrix and 5
   # degrees-of-freedom.(*)
   df = 5
-  chol_scale = tf.cholesky(...)  # Shape is [3, 3].
+  chol_scale = tf.linalg.cholesky(...)  # Shape is [3, 3].
   dist = tfd.WishartCholesky(df=df, scale=chol_scale)
 
   # Evaluate this on an observation in R^3, returning a scalar.
@@ -500,7 +499,7 @@ class WishartCholesky(_WishartLinearOperator):
 
   # Initialize two 3x3 Wisharts with Cholesky factored scale matrices.
   df = [5, 4]
-  chol_scale = tf.cholesky(...)  # Shape is [2, 3, 3].
+  chol_scale = tf.linalg.cholesky(...)  # Shape is [2, 3, 3].
   dist = tfd.WishartCholesky(df=df, scale=chol_scale)
 
   # Evaluate this on four observations.

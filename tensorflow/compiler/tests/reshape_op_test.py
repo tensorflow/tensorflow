@@ -33,7 +33,7 @@ class ReshapeTest(xla_test.XLATestCase, parameterized.TestCase):
                                   ('64_bit_index', dtypes.int64))
   def testBasic(self, index_dtype):
     for dtype in self.numeric_types:
-      with self.cached_session():
+      with self.session():
         i = array_ops.placeholder(dtype, shape=[2, 3])
         with self.test_scope():
           shape = constant_op.constant([3, 2], dtype=index_dtype)

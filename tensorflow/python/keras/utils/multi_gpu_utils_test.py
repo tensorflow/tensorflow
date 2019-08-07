@@ -221,7 +221,7 @@ class TestMultiGPUModel(test.TestCase):
                                    name='siamese')
       parallel_siamese = keras.utils.multi_gpu_model(siamese, gpus)
       self.assertEqual(parallel_siamese.output_names,
-                       ['add', 'nested_1', 'nested_2'])
+                       ['add', 'nested', 'nested_1'])
 
 if __name__ == '__main__':
   test.main()

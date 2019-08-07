@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import numbers
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -42,6 +41,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.util.compat import collections_abc
 
 _factorization_ops = loader.load_op_library(
     resource_loader.get_path_to_datafile("_factorization_ops.so"))
@@ -134,7 +134,7 @@ class WALSModel(object):
 
       # model_init_op is passed to Supervisor. Chief trainer runs it. Other
       # trainers wait.
-      sv = tf.train.Supervisor(is_chief=is_chief,
+      sv = tf.compat.v1.train.Supervisor(is_chief=is_chief,
                          ...,
                          init_op=tf.group(..., model_init_op, ...), ...)
       ...
@@ -388,7 +388,7 @@ class WALSModel(object):
       return None
 
     init_mode = "list"
-    if isinstance(wt_init, collections.Iterable):
+    if isinstance(wt_init, collections_abc.Iterable):
       if num_shards == 1 and len(wt_init) == num_wts:
         wt_init = [wt_init]
       assert len(wt_init) == num_shards
@@ -641,9 +641,9 @@ class WALSModel(object):
         extras = size % num_shards
         assignments = math_ops.maximum(ids // (ids_per_shard + 1),
                                        (ids - extras) // ids_per_shard)
-        new_ids = array_ops.where(assignments < extras,
-                                  ids % (ids_per_shard + 1),
-                                  (ids - extras) % ids_per_shard)
+        new_ids = array_ops.where_v2(assignments < extras,
+                                     ids % (ids_per_shard + 1),
+                                     (ids - extras) % ids_per_shard)
         return assignments, new_ids
 
     return func
@@ -912,7 +912,7 @@ class WALSModel(object):
       total_rhs = (
           self._unobserved_weight * sparse_ops.sparse_tensor_dense_matmul(
               new_sp_input, right, adjoint_a=transpose_input))
-      # TODO(rmlarsen): handle transposing in tf.matrix_solve instead of
+      # TODO(rmlarsen): handle transposing in tf.linalg.solve instead of
       # transposing explicitly.
       # TODO(rmlarsen): multi-thread tf.matrix_solve.
       new_left_values = array_ops.transpose(

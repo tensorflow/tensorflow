@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Converter for logical expressions.
-
-e.g. `a and b -> tf.logical_and(a, b)`. This is not done automatically in TF.
-"""
+"""Converter for logical expressions, e.g. `a and b -> tf.logical_and(a, b)`."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,7 +21,6 @@ from __future__ import print_function
 import gast
 
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
 
@@ -38,128 +34,104 @@ from tensorflow.python.autograph.pyct import templates
 SAFE_BOOLEAN_OPERAND = 'SAFE_BOOLEAN_OPERAND'
 
 
-OP_MAPPING = {
+LOGICAL_OPERATORS = {
     gast.And: 'ag__.and_',
+    gast.Not: 'ag__.not_',
+    gast.Or: 'ag__.or_',
+}
+
+EQUALITY_OPERATORS = {
     gast.Eq: 'ag__.eq',
     gast.NotEq: 'ag__.not_eq',
-    gast.Lt: 'ag__.lt',
-    gast.LtE: 'ag__.lt_e',
-    gast.Gt: 'ag__.gt',
-    gast.GtE: 'ag__.gt_e',
-    gast.Is: 'ag__.is_',
-    gast.IsNot: 'ag__.is_not',
-    gast.In: 'ag__.in_',
-    gast.Not: 'ag__.not_',
-    gast.NotIn: 'ag__.not_in',
-    gast.Or: 'ag__.or_',
-    gast.UAdd: 'ag__.u_add',
-    gast.USub: 'ag__.u_sub',
-    gast.Invert: 'ag__.invert',
 }
 
 
 class LogicalExpressionTransformer(converter.Base):
   """Converts logical expressions to corresponding TF calls."""
 
-  def _expect_simple_symbol(self, operand):
-    if isinstance(operand, gast.Name):
-      return
-    if anno.hasanno(operand, SAFE_BOOLEAN_OPERAND):
-      return
-    raise NotImplementedError(
-        'only simple local variables are supported in logical and compound '
-        'comparison expressions; for example, we support "a or b" but not '
-        '"a.x or b"; for a workaround, assign the expression to a local '
-        'variable and use that instead, for example "tmp = a.x", "tmp or b"')
-
-  def _has_matching_func(self, operator):
+  def _overload_of(self, operator):
     op_type = type(operator)
-    return op_type in OP_MAPPING
+    if op_type in LOGICAL_OPERATORS:
+      return LOGICAL_OPERATORS[op_type]
+    if self.ctx.program.options.uses(converter.Feature.EQUALITY_OPERATORS):
+      if op_type in EQUALITY_OPERATORS:
+        return EQUALITY_OPERATORS[op_type]
+    return None
 
-  def _matching_func(self, operator):
-    op_type = type(operator)
-    return OP_MAPPING[op_type]
+  def _as_lambda(self, expr):
+    return templates.replace_as_expression('lambda: expr', expr=expr)
 
-  def _as_function(self, func_name, args, args_as_lambda=False):
-    if args_as_lambda:
-      args_as_lambda = []
-      for arg in args:
-        template = """
-          lambda: arg
-        """
-        args_as_lambda.append(
-            templates.replace_as_expression(template, arg=arg))
-      args = args_as_lambda
+  def _as_binary_function(self, func_name, arg1, arg2):
+    return templates.replace_as_expression(
+        'func_name(arg1, arg2)',
+        func_name=parser.parse_expression(func_name),
+        arg1=arg1,
+        arg2=arg2)
 
-    if not args:
-      template = """
-        func_name()
-      """
-      replacement = templates.replace_as_expression(
-          template, func_name=parser.parse_expression(func_name))
-    elif len(args) == 1:
-      template = """
-        func_name(arg)
-      """
-      replacement = templates.replace_as_expression(
-          template, func_name=parser.parse_expression(func_name), arg=args[0])
-    elif len(args) == 2:
-      template = """
-        func_name(arg1, arg2)
-      """
-      replacement = templates.replace_as_expression(
-          template,
-          func_name=parser.parse_expression(func_name),
-          arg1=args[0],
-          arg2=args[1])
-    else:
-      raise NotImplementedError('{} arguments for {}'.format(
-          len(args), func_name))
+  def _as_binary_operation(self, op, arg1, arg2):
+    template = templates.replace_as_expression(
+        'arg1 is arg2',
+        arg1=arg1,
+        arg2=arg2)
+    template.ops[0] = op
+    return template
 
-    anno.setanno(replacement, SAFE_BOOLEAN_OPERAND, True)
-    return replacement
+  def _as_unary_function(self, func_name, arg):
+    return templates.replace_as_expression(
+        'func_name(arg)', func_name=parser.parse_expression(func_name), arg=arg)
 
   def visit_Compare(self, node):
     node = self.generic_visit(node)
 
+    if (not self.ctx.program.options.uses(
+        converter.Feature.EQUALITY_OPERATORS)):
+      return node
+
     ops_and_comps = list(zip(node.ops, node.comparators))
     left = node.left
-    op_tree = None
 
     # Repeated comparisons are converted to conjunctions:
     #   a < b < c   ->   a < b and b < c
+    op_tree = None
     while ops_and_comps:
       op, right = ops_and_comps.pop(0)
-      binary_comparison = self._as_function(
-          self._matching_func(op), (left, right))
-      if isinstance(left, gast.Name) and isinstance(right, gast.Name):
-        anno.setanno(binary_comparison, SAFE_BOOLEAN_OPERAND, True)
-      if op_tree:
-        self._expect_simple_symbol(right)
-        op_tree = self._as_function(
-            'ag__.and_', (op_tree, binary_comparison), args_as_lambda=True)
+      overload = self._overload_of(op)
+      if overload is not None:
+        binary_comparison = self._as_binary_function(overload, left, right)
+      else:
+        binary_comparison = self._as_binary_operation(op, left, right)
+      if op_tree is not None:
+        op_tree = self._as_binary_function('ag__.and_',
+                                           self._as_lambda(op_tree),
+                                           self._as_lambda(binary_comparison))
       else:
         op_tree = binary_comparison
       left = right
+
     assert op_tree is not None
     return op_tree
 
   def visit_UnaryOp(self, node):
     node = self.generic_visit(node)
-    return self._as_function(self._matching_func(node.op), (node.operand,))
+
+    overload = self._overload_of(node.op)
+    if overload is None:
+      return node
+
+    return self._as_unary_function(overload, node.operand)
 
   def visit_BoolOp(self, node):
     node = self.generic_visit(node)
     node_values = node.values
     right = node.values.pop()
-    self._expect_simple_symbol(right)
     while node_values:
       left = node_values.pop()
-      self._expect_simple_symbol(left)
-      right = self._as_function(
-          self._matching_func(node.op), (left, right), args_as_lambda=True)
+      right = self._as_binary_function(
+          self._overload_of(node.op), self._as_lambda(left),
+          self._as_lambda(right))
     return right
 
 
 def transform(node, ctx):
-  return LogicalExpressionTransformer(ctx).visit(node)
+  transformer = LogicalExpressionTransformer(ctx)
+  return transformer.visit(node)

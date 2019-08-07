@@ -38,6 +38,12 @@ struct XlaAutoJitFlag {
   int32 optimization_level_general;
 };
 
+// Sets the xla_auto_jit_flag based on the given flag sting. Supported syntax
+// is:
+// <number>: sets general and single_gpu setting to the provided number.
+// single-gpu(<number>): sets the single_gpu setting to the provided number.
+bool SetXlaAutoJitFlagFromFlagString(const string& value);
+
 // Flags associated with the XLA bridge's mark_for_compilation_pass module.
 struct MarkForCompilationPassFlags {
   XlaAutoJitFlag xla_auto_jit_flag;
@@ -63,6 +69,12 @@ struct MarkForCompilationPassFlags {
   // we do not do deadness related safety checks.  This is unsound in general,
   // but can be used as a debugging aid.
   bool tf_xla_disable_deadness_safety_checks_for_debugging;
+
+  // If tf_xla_disable_resource_variable_safety_checks_for_debugging is set to
+  // true then we do not do safety checks to preserve TensorFlow's resource
+  // variable concurrency semantics.  This is unsound in general, but can be
+  // used as a debugging aid.
+  bool tf_xla_disable_resource_variable_safety_checks_for_debugging;
 };
 
 // Flags associated with the XLA bridge's xla_device module.
@@ -90,6 +102,10 @@ struct BuildXlaOpsPassFlags {
   // If true then insert Print nodes to print out values produced by XLA
   // clusters.  Useful for debugging.
   bool tf_xla_print_cluster_outputs;
+
+  // Disables all constant folding. The primary use for this is for testing to
+  // guarantee that tests are run on XLA and not on TF's CPU implementation.
+  bool tf_xla_disable_constant_folding;
 };
 
 // Flags for the IntroduceFloatingPointJitter pass.
@@ -111,7 +127,7 @@ struct IntroduceFloatingPointJitterPassFlags {
 // parses TF_XLA_FLAGS for all of them.  Those functions which return a pointer
 // always return the same pointer.
 MarkForCompilationPassFlags* GetMarkForCompilationPassFlags();
-const BuildXlaOpsPassFlags& GetBuildXlaOpsPassFlags();
+BuildXlaOpsPassFlags* GetBuildXlaOpsPassFlags();
 XlaDeviceFlags* GetXlaDeviceFlags();
 const XlaOpsCommonFlags& GetXlaOpsCommonFlags();
 

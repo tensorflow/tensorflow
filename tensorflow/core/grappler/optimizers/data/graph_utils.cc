@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -157,6 +158,46 @@ NodeDef* AddScalarConstNode(StringPiece v, MutableGraphView* graph) {
       graph);
 }
 
+Status GetScalarConstNodeValueHelper(
+    const NodeDef& node, DataType dtype,
+    const std::function<void(const Tensor&)>& get_value) {
+  if (node.op() != kConstOpName)
+    return errors::InvalidArgument("Node ", node.name(),
+                                   " is not a Const node. Op: ", node.op());
+
+  Tensor tensor;
+  TF_RETURN_IF_ERROR(GetNodeAttr(node, "value", &tensor));
+  if (!TensorShapeUtils::IsScalar(tensor.shape())) {
+    return errors::InvalidArgument(
+        "Node ", node.name(),
+        " should be a scalar but has shape: ", tensor.shape());
+  }
+
+  if (tensor.dtype() != dtype) {
+    return errors::InvalidArgument(
+        "Node ", node.name(), " should have type ", DataTypeString(dtype),
+        " but has type: ", DataTypeString(tensor.dtype()));
+  }
+
+  get_value(tensor);
+
+  return Status::OK();
+}
+
+template <>
+Status GetScalarConstNodeValue(const NodeDef& node, int64* value) {
+  return GetScalarConstNodeValueHelper(
+      node, DT_INT64,
+      [value](const Tensor& tensor) { *value = tensor.scalar<int64>()(); });
+}
+
+template <>
+Status GetScalarConstNodeValue(const NodeDef& node, bool* value) {
+  return GetScalarConstNodeValueHelper(
+      node, DT_BOOL,
+      [value](const Tensor& tensor) { *value = tensor.scalar<bool>()(); });
+}
+
 bool Compare(const GraphDef& g1, const GraphDef& g2) {
   if (g1.node_size() != g2.node_size()) {
     return false;
@@ -239,6 +280,18 @@ NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph,
   return graph.GetRegularFanin(input_port).node;
 }
 
+Status GetDatasetOutputTypesAttr(const NodeDef& node,
+                                 DataTypeVector* output_types) {
+  // We don't name the output_types attr consistently, so should check for both.
+  for (const string& attr_name : {"output_types", "Toutput_types"}) {
+    if (node.attr().contains(attr_name)) {
+      return GetNodeAttr(node, attr_name, output_types);
+    }
+  }
+  return errors::InvalidArgument("Could not find output_types attr for node: ",
+                                 node.name(), " with op: ", node.op());
+}
+
 void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
                             NodeDef* node) {
   string name = string(prefix);
@@ -301,37 +354,17 @@ Status EnsureNodeNamesUnique(Graph* g) {
   return Status::OK();
 }
 
-// Tries to find a Sink node in the graph. A sink node is defined as a node
-// that has at least one input and no outputs. If there are multiple of these,
-// this might return any one of them. This is useful to identify the final
-// Dataset op in the graph but in some cases there might be multiple Identity
-// ops added to the end and this would return the last Identity op in that case.
+Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
+                    NodeDef** fetch_node) {
+  if (item.fetch.size() != 1) {
+    return errors::InvalidArgument(
+        "Expected only one fetch node but there were ", item.fetch.size(), ": ",
+        absl::StrJoin(item.fetch, ", "));
+  }
 
-Status FindSinkNode(const GraphDef& graph_def, NodeDef* sink_node) {
-  absl::flat_hash_map<string, int> all_node_names;
-  absl::flat_hash_map<string, int> node_input_map;
-  for (int i = 0; i < graph_def.node_size(); ++i) {
-    all_node_names.insert_or_assign(graph_def.node(i).name(), i);
-    node_input_map.insert_or_assign(graph_def.node(i).name(), 0);
-  }
-  // Counts how many graph nodes for each input name. Candidate sink
-  // nodes are ones which are inputs into zero nodes.
-  for (const NodeDef& node : graph_def.node()) {
-    for (const string& input_name : node.input()) {
-      node_input_map[input_name]++;
-    }
-  }
-  for (const auto& it : node_input_map) {
-    if (it.second == 0) {
-      const NodeDef& sink_graph_node = graph_def.node(all_node_names[it.first]);
-      if (sink_graph_node.input_size() == 0) {
-        continue;
-      }
-      *sink_node = sink_graph_node;
-      return Status::OK();
-    }
-  }
-  return errors::InvalidArgument("Failed to find a sink node");
+  *fetch_node = graph.GetNode(item.fetch.at(0));
+
+  return Status::OK();
 }
 
 }  // namespace graph_utils

@@ -172,6 +172,15 @@ StatusOr<bool> DotDecomposer::Run(HloModule* module) {
         non_canonical_dots.push_back(instruction);
         continue;
       }
+      // A dot is not canonical if it has more than one non-contracting
+      // dimension.
+      if (dnums.lhs_batch_dimensions_size() + 2 !=
+              instruction->operand(0)->shape().rank() ||
+          dnums.rhs_batch_dimensions_size() + 2 !=
+              instruction->operand(1)->shape().rank()) {
+        non_canonical_dots.push_back(instruction);
+        continue;
+      }
       if (dnums.lhs_batch_dimensions().empty() &&
           dnums.lhs_contracting_dimensions().empty()) {
         non_canonical_dots.push_back(instruction);

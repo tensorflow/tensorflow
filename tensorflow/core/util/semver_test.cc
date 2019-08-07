@@ -34,7 +34,7 @@ bool IsDotOrIdentifierChar(char c) {
 
 bool ConsumeDotSeparatedIdentifiers(StringPiece* s, const string& prefix,
                                     StringPiece* val) {
-  if (!str_util::ConsumePrefix(s, prefix)) return false;
+  if (!absl::ConsumePrefix(s, prefix)) return false;
   size_t i;
   for (i = 0; i < s->size() && IsDotOrIdentifierChar((*s)[i]); ++i) {
     // Intentionally empty
@@ -54,16 +54,16 @@ TEST(SemverTest, VersionStringFollowsSemver) {
   StringPiece semver(TF_VERSION_STRING);
 
   ASSERT_TRUE(str_util::ConsumeLeadingDigits(&semver, &major));
-  ASSERT_TRUE(str_util::ConsumePrefix(&semver, "."));
+  ASSERT_TRUE(absl::ConsumePrefix(&semver, "."));
   ASSERT_TRUE(str_util::ConsumeLeadingDigits(&semver, &minor));
-  ASSERT_TRUE(str_util::ConsumePrefix(&semver, "."));
+  ASSERT_TRUE(absl::ConsumePrefix(&semver, "."));
   // Till 0.11.0rc2, the prerelease version was (incorrectly) not separated from
   // the patch version number. Let that slide.
   // Remove this when TF_VERSION_STRING moves beyond 0.11.0rc2.
   if (major == 0 && minor <= 11) {
     return;
   }
-  if (str_util::ConsumePrefix(&semver, "head")) {
+  if (absl::ConsumePrefix(&semver, "head")) {
     ASSERT_TRUE(semver.empty());
     return;
   }

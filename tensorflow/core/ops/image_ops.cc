@@ -131,6 +131,32 @@ Status NMSShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+Status SoftNMSShapeFn(InferenceContext* c) {
+  // Get inputs and validate ranks.
+  ShapeHandle boxes;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &boxes));
+  ShapeHandle scores;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &scores));
+  ShapeHandle max_output_size;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size));
+  ShapeHandle iou_threshold;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &iou_threshold));
+  ShapeHandle score_threshold;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &score_threshold));
+  ShapeHandle soft_nms_sigma;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &soft_nms_sigma));
+  // The boxes is a 2-D float Tensor of shape [num_boxes, 4].
+  DimensionHandle unused;
+  // The boxes[0] and scores[0] are both num_boxes.
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(boxes, 0), c->Dim(scores, 0), &unused));
+  // The boxes[1] is 4.
+  TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
+
+  c->set_output(0, c->Vector(c->UnknownDim()));
+  c->set_output(1, c->Vector(c->UnknownDim()));
+  return Status::OK();
+}
+
 Status CombinedNMSShapeFn(InferenceContext* c) {
   // Get inputs and validate ranks
   ShapeHandle boxes;
@@ -602,6 +628,17 @@ REGISTER_OP("DrawBoundingBoxes")
     });
 
 // --------------------------------------------------------------------------
+REGISTER_OP("DrawBoundingBoxesV2")
+    .Input("images: T")
+    .Input("boxes: float")
+    .Input("colors: float")
+    .Output("output: T")
+    .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
+    });
+
+// --------------------------------------------------------------------------
 REGISTER_OP("SampleDistortedBoundingBox")
     .Input("image_size: T")
     .Input("bounding_boxes: float")
@@ -807,9 +844,10 @@ REGISTER_OP("NonMaxSuppressionV2")
     .Input("boxes: T")
     .Input("scores: T")
     .Input("max_output_size: int32")
-    .Input("iou_threshold: float")
+    .Input("iou_threshold: T_threshold")
     .Output("selected_indices: int32")
     .Attr("T: {half, float} = DT_FLOAT")
+    .Attr("T_threshold: {half, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       // Get inputs and validate ranks.
       ShapeHandle boxes;
@@ -836,21 +874,23 @@ REGISTER_OP("NonMaxSuppressionV3")
     .Input("boxes: T")
     .Input("scores: T")
     .Input("max_output_size: int32")
-    .Input("iou_threshold: float")
-    .Input("score_threshold: float")
+    .Input("iou_threshold: T_threshold")
+    .Input("score_threshold: T_threshold")
     .Output("selected_indices: int32")
     .Attr("T: {half, float} = DT_FLOAT")
+    .Attr("T_threshold: {half, float} = DT_FLOAT")
     .SetShapeFn(NMSShapeFn);
 
 REGISTER_OP("NonMaxSuppressionV4")
     .Input("boxes: T")
     .Input("scores: T")
     .Input("max_output_size: int32")
-    .Input("iou_threshold: float")
-    .Input("score_threshold: float")
+    .Input("iou_threshold: T_threshold")
+    .Input("score_threshold: T_threshold")
     .Output("selected_indices: int32")
     .Output("valid_outputs: int32")
     .Attr("T: {half, float} = DT_FLOAT")
+    .Attr("T_threshold: {half, float} = DT_FLOAT")
     .Attr("pad_to_max_output_size: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(NMSShapeFn(c));
@@ -864,6 +904,35 @@ REGISTER_OP("NonMaxSuppressionV4")
         c->set_output(0, c->MakeShape({output_dim}));
       }
       c->set_output(1, c->MakeShape({}));
+      return Status::OK();
+    });
+
+REGISTER_OP("NonMaxSuppressionV5")
+    .Input("boxes: T")
+    .Input("scores: T")
+    .Input("max_output_size: int32")
+    .Input("iou_threshold: T")
+    .Input("score_threshold: T")
+    .Input("soft_nms_sigma: T")
+    .Output("selected_indices: int32")
+    .Output("selected_scores: T")
+    .Output("valid_outputs: int32")
+    .Attr("T: {half, float} = DT_FLOAT")
+    .Attr("pad_to_max_output_size: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(SoftNMSShapeFn(c));
+
+      bool pad_to_max;
+      TF_RETURN_IF_ERROR(c->GetAttr("pad_to_max_output_size", &pad_to_max));
+      if (pad_to_max) {
+        // If padded, overwrite the shape of the output to be static.
+        DimensionHandle output_dim;
+        TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &output_dim));
+        c->set_output(0, c->MakeShape({output_dim}));
+        c->set_output(1, c->MakeShape({output_dim}));
+      }
+
+      c->set_output(2, c->MakeShape({}));
       return Status::OK();
     });
 
@@ -911,6 +980,7 @@ REGISTER_OP("CombinedNonMaxSuppression")
     .Output("nmsed_classes: float")
     .Output("valid_detections: int32")
     .Attr("pad_per_class: bool = false")
+    .Attr("clip_boxes: bool = true")
     .SetShapeFn(CombinedNMSShapeFn);
 
 }  // namespace tensorflow

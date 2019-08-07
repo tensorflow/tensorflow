@@ -15,14 +15,13 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/rocm/rocm_platform.h"
 
+#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
 
 namespace stream_executor {
@@ -39,30 +38,25 @@ ROCmPlatform::~ROCmPlatform() {}
 void ROCmPlatform::InspectNumaNodes() {
   // To get NUMA node information, we need to create all executors, so we can
   // examine their device descriptions to see their bus assignments.
-  static bool initialized = false;
-  static mutex numa_mutex(LINKER_INITIALIZED);
-  mutex_lock lock(numa_mutex);
-  if (initialized) {
-    return;
-  }
-
-  StreamExecutorConfig config;
-  for (int i = 0; i < VisibleDeviceCount(); i++) {
-    config.ordinal = i;
-    StreamExecutor* exec = GetExecutor(config).ValueOrDie();
-    if (i == 0) {
-      // NUMA nodes may not start at 0, so set the minimum node  based on the
-      // first executor we see.
-      min_numa_node_ = exec->GetDeviceDescription().numa_node();
-      limit_numa_node_ = min_numa_node_ + 1;
-    } else {
-      min_numa_node_ =
-          std::min(min_numa_node_, exec->GetDeviceDescription().numa_node());
-      limit_numa_node_ = std::max(limit_numa_node_,
-                                  exec->GetDeviceDescription().numa_node() + 1);
+  std::once_flag once;
+  std::call_once(once, [&] {
+    StreamExecutorConfig config;
+    for (int i = 0; i < VisibleDeviceCount(); i++) {
+      config.ordinal = i;
+      StreamExecutor* exec = GetExecutor(config).ValueOrDie();
+      if (i == 0) {
+        // NUMA nodes may not start at 0, so set the minimum node  based on the
+        // first executor we see.
+        min_numa_node_ = exec->GetDeviceDescription().numa_node();
+        limit_numa_node_ = min_numa_node_ + 1;
+      } else {
+        min_numa_node_ =
+            std::min(min_numa_node_, exec->GetDeviceDescription().numa_node());
+        limit_numa_node_ = std::max(
+            limit_numa_node_, exec->GetDeviceDescription().numa_node() + 1);
+      }
     }
-  }
-  initialized = true;
+  });
 }
 
 int ROCmPlatform::BusCount() {
@@ -109,6 +103,11 @@ int ROCmPlatform::VisibleDeviceCount() const {
 
 const string& ROCmPlatform::Name() const { return name_; }
 
+port::StatusOr<std::unique_ptr<DeviceDescription>>
+ROCmPlatform::DescriptionForDevice(int ordinal) const {
+  return GpuExecutor::CreateDeviceDescription(ordinal);
+}
+
 port::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
@@ -134,9 +133,10 @@ port::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = MakeUnique<StreamExecutor>(
-      this, MakeUnique<GpuExecutor>(config.plugin_config));
-  auto init_status = executor->Init(config.ordinal, config.device_options);
+  auto executor = absl::make_unique<StreamExecutor>(
+      this, absl::make_unique<GpuExecutor>(config.plugin_config),
+      config.ordinal);
+  auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
     return port::Status{
         port::error::INTERNAL,

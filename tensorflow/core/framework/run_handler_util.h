@@ -24,7 +24,7 @@ namespace tensorflow {
 // Assign thread ranges to requests.
 // Requests are numbered 0...num_active_requests-1, and
 // threads are numbered 0...num_threads-1.
-// On return, the range start_vec->at(i)...end_vec->at(i)-1
+// On return, the range [start_vec->at(i), end_vec->at(i))
 // indicates the subrange of the threads available to request i.
 // The ranges given to different requests may overlap.
 // Lower numbered requests will tend to be assigned more threads.
@@ -38,6 +38,20 @@ void ComputeInterOpSchedulingRanges(int num_active_requests, int num_threads,
                                     int min_threads_per_request,
                                     std::vector<std::uint_fast32_t>* start_vec,
                                     std::vector<std::uint_fast32_t>* end_vec);
+
+// Assign thread steal ranges to threads.Threads are numbered 0...num_threads-1.
+// On return, the range [start_vec->at(i), end_vec->at(i)) indicates the steal
+// range of the thread i. The ranges given to different threads may overlap.
+void ComputeInterOpStealingRanges(int num_threads, int min_threads_per_domain,
+                                  std::vector<std::uint_fast32_t>* start_vec,
+                                  std::vector<std::uint_fast32_t>* end_vec);
+
+// For each of the num_threads determine the index of the active_request whose
+// work queue should be attempted first by that the thread. Return a vector of
+// size num_threads which represents how threads should be distributed across
+// requests.
+std::vector<int> ChooseRequestsWithExponentialDistribution(
+    int num_active_requests, int num_threads);
 
 }  // end namespace tensorflow
 #endif  // TENSORFLOW_CORE_FRAMEWORK_RUN_HANDLER_UTIL_H_

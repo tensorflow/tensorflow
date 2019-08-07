@@ -196,8 +196,8 @@ class StreamExecutorInterface {
   // Releases any state associated with the kernel.
   virtual void UnloadKernel(const KernelBase *kernel) {}
   virtual void *Allocate(uint64 size) = 0;
-  virtual void *AllocateSubBuffer(DeviceMemoryBase *parent, uint64 offset,
-                                  uint64 size) = 0;
+  virtual void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset,
+                             uint64 size) = 0;
   virtual void Deallocate(DeviceMemoryBase *mem) = 0;
   // Allocates unified memory space of the given size, if supported.
   // See
@@ -288,7 +288,8 @@ class StreamExecutorInterface {
 
   // Creates a new DeviceDescription object. Ownership is transferred to the
   // caller.
-  virtual DeviceDescription *PopulateDeviceDescription() const = 0;
+  virtual port::StatusOr<std::unique_ptr<DeviceDescription>>
+  CreateDeviceDescription() const = 0;
 
   // Attempts to register the provided TraceListener with the device-specific
   // Executor implementation. When this is called, the PIMPL interface has
@@ -382,21 +383,6 @@ class StreamExecutorInterface {
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutorInterface);
 };
-
-using StreamExecutorFactory =
-    std::function<StreamExecutorInterface *(const PluginConfig &)>;
-using EventFactory = std::function<EventInterface *(StreamExecutor *)>;
-using StreamFactory = std::function<StreamInterface *(StreamExecutor *)>;
-using TimerFactory = std::function<TimerInterface *(StreamExecutor *)>;
-using KernelFactory = std::function<KernelInterface*()>;
-
-StreamExecutorFactory *MakeCUDAExecutorImplementation();
-
-StreamExecutorFactory *MakeROCMExecutorImplementation();
-
-StreamExecutorFactory *MakeOpenCLExecutorImplementation();
-
-extern StreamExecutorFactory MakeHostExecutorImplementation;
 
 
 }  // namespace internal

@@ -64,6 +64,9 @@ void UpdateGraphExecTime(const uint64 running_time_usecs);
 // TODO(jtkeeling): Should we record building/optimizing tf.functions?
 void UpdateGraphBuildTime(const uint64 running_time_usecs);
 
+// Updates the metrics stored about time XLA spents compiling graphs.
+void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
+
 }  // namespace metrics
 }  // namespace tensorflow
 

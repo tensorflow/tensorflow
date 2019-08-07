@@ -37,9 +37,7 @@ class SampleFromDatasetsSerializationTest(
     return dataset.take(num_samples)
 
   def testSerializationCore(self):
-    self.run_core_tests(
-        lambda: self._build_dataset([0.5, 0.5], 100),
-        lambda: self._build_dataset([0.25, 0.25, 0.25, 0.25], 1000), 100)
+    self.run_core_tests(lambda: self._build_dataset([0.5, 0.5], 100), 100)
 
 
 if __name__ == "__main__":

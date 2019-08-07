@@ -491,6 +491,26 @@ class HParamsTest(test.TestCase):
     with self.assertRaises(ValueError):
       hparams.set_hparam('bool_', 1)
 
+    # Unfortunately there is no automagic conversion of bool-like strings to
+    # bool.
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('bool_', 'true')
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('bool_', 'True')
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('bool_', 'false')
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('bool_', 'False')
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('bool_', '0')
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('bool_', '1')
+
     with self.assertRaises(ValueError):
       hparams.set_hparam('int_', 2.2)
 

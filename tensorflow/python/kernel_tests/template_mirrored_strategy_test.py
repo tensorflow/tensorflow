@@ -45,7 +45,8 @@ class TemplateMirroredStrategyTest(test.TestCase):
     temp = template.make_template("my_template", fn)
 
     strategy = mirrored_strategy.MirroredStrategy(["/cpu:0", "/gpu:0"])
-    out = strategy.unwrap(strategy.experimental_run_v2(temp))
+    out = strategy.experimental_local_results(
+        strategy.experimental_run_v2(temp))
 
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual([42., 42.], self.evaluate(out))

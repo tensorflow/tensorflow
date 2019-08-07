@@ -16,13 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
 
+#include "grpcpp/completion_queue.h"
+#include "grpcpp/impl/service_type.h"
+#include "grpcpp/server_builder.h"
+#include "grpcpp/server_context.h"
+#include "grpcpp/support/async_stream.h"
+#include "grpcpp/support/async_unary_call.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-
-#include "grpcpp/grpcpp.h"
-#include "grpcpp/impl/codegen/service_type.h"
-#include "grpcpp/server_builder.h"
 
 namespace tensorflow {
 
@@ -70,6 +72,16 @@ namespace tensorflow {
 //
 // 4. When the response has been sent, the tag is returned from
 //    `cq_->Next()`, and the call object is deleted.
+//
+
+template <class Service>
+class GrpcCallTag {
+ public:
+  virtual ~GrpcCallTag() {}
+
+  // Calls the callback associated with this tag.
+  virtual void OnCompleted(Service* service, bool ok) = 0;
+};
 
 // Represents a pending request with unknown message types.
 template <class Service>
@@ -98,7 +110,7 @@ class UntypedCall : public core::RefCounted {
   // Associates a tag in a `::grpc::CompletionQueue` with a callback
   // for an incoming RPC.  An active Tag owns a reference on the corresponding
   // Call object.
-  class Tag {
+  class Tag : public GrpcCallTag<Service> {
    public:
     // One enum value per supported callback.
     enum Callback { kRequestReceived, kResponseSent, kCancelled };
@@ -108,7 +120,7 @@ class UntypedCall : public core::RefCounted {
     // Calls the callback associated with this tag.
     //
     // The callback takes ownership of `this->call_`.
-    void OnCompleted(Service* service, bool ok) {
+    void OnCompleted(Service* service, bool ok) override {
       switch (callback_) {
         case kRequestReceived:
           call_->RequestReceived(service, ok);
@@ -261,6 +273,248 @@ class Call : public UntypedCall<Service> {
 
   mutex mu_;
   std::function<void()> cancel_callback_ GUARDED_BY(mu_);
+};
+
+// Lifetime of a server-side bidirectional streaming call:
+// - The call is created in the static EnqueueRequest method. It transfers
+//   ownership to the kCallOpen tag pushed onto the completion queue.
+// - If kCallOpen completes successfully, a read is requested and the
+//   kRequestReceived tag takes ownership of the call. If kCallOpen fails,
+//   e.g. server is shutdown, no further requests are pushed and the call is
+//   destroyed (at the end of Tag::OnCompleted).
+// - When the first request is received, we Ref() the call and invoke the
+//   handler method thereby transferring ownership to the handler method.
+//   The handler is responsible for calling SendResponse() or Finish() on this
+//   call.
+//   - If the handler calls Finish(), e.g. the request was invalid, Finish()
+//     transfers ownership from the handler to the kServerFinished tag that
+//     it pushes on the completion queue. The ownership is transferred because
+//     the ref count is not incremented before putting the tag on the queue.
+//   - If the handler calls SendResponse(), SendResponse() transfers ownership
+//     to the kResponseSent tag.
+// - When kResponseSent completes, we request a new read, which owns the call
+//   now.
+// - When the next request is received, it is handled the same way as the first
+//   request.
+//
+// Because we request a read only after the write is sent, we can safely reuse
+// the same request and response messages for the whole call.
+template <class Service>
+class ServerUntypedBidirectionalStreamingCall : public core::RefCounted {
+ public:
+  virtual void RequestReceived(Service* service) = 0;
+
+  // Enqueues a request on the completion queue to read the next request.
+  virtual void CallOpen() = 0;
+
+  virtual void RequestRead() = 0;
+
+  // Associates a tag in a `::grpc::CompletionQueue` with a callback.
+  // An active Tag owns a reference on the corresponding Call object.
+  class Tag : public GrpcCallTag<Service> {
+   public:
+    // One enum value per supported callback.
+    enum class TagType {
+      kCallOpen,
+      kRequestReceived,
+      kResponseSent,
+      kServerFinished,
+    };
+
+    Tag(ServerUntypedBidirectionalStreamingCall* call, TagType cb)
+        : call_(call), callback_(cb) {}
+
+    // Calls the callback associated with this tag and Unrefs this->call_.
+    void OnCompleted(Service* service, bool ok) override {
+      switch (callback_) {
+        case TagType::kCallOpen:
+          // Non-ok value indicates that the server has been shutdown before we
+          // received a message for this call type. We do nothing to let this
+          // call object be destroyed and avoid enqueuing request for another
+          // call.
+          if (ok) {
+            call_->CallOpen();
+          }
+          break;
+        case TagType::kRequestReceived:
+          // Non-ok value from completion queue here means that we will not
+          // receive any more messages from the client, e.g. the client called
+          // WritesDone. There is nothing we need to do in this case. The call
+          // will be Unref'ed and deleted. If the client wants to open a new
+          // call, we have already enqueued a request for a new call in CallOpen
+          // above.
+          if (ok) {
+            call_->RequestReceived(service);
+          }
+          break;
+        case TagType::kResponseSent:
+          if (ok) {
+            // The obvious place to request a read would be at the end of
+            // RequestReceived(). Unfortunately, this can result in multiple
+            // outstanding write requests in the completion queue. This is
+            // currently not supported by gRPC, which requires at most one
+            // outstanding write request in the completion queue.
+            // Requesting a read here, in ResponseSent, works because at
+            // this point, the completion queue has no write requests
+            // (kResponseSent happens when a write completes).
+            // This might be synchronizing the processing more than strictly
+            // necessary, but is probably fine because, AFAICT from gRPC docs,
+            // the write request completes as soon as it can be written to
+            // outgoing buffer.
+            call_->RequestRead();
+          }
+          // ok == false means that the response is not going on the wire
+          // because the call is already dead (i.e., canceled, deadline
+          // expired, other side dropped the channel, etc). Since the call is
+          // dead, there is nothing for us to do, we just let the call be
+          // deleted.
+          break;
+        case TagType::kServerFinished:
+          // Whether our finish request is successful or not (whether it went
+          // on the wire towards the client), there is nothing for us to do.
+          // In the current implementation, there can be no read or write
+          // requests in the completion queue (see the comment in kResponseSent)
+          // above. Even if there were pending requests, they would complete
+          // with a non-ok status, we would not do anything, and let the call be
+          // deleted.
+          break;
+      }
+      call_->Unref();  // Ref acquired when tag was handed to grpc.
+    }
+
+   private:
+    ServerUntypedBidirectionalStreamingCall* const
+        call_;  // `this` owns one reference.
+    TagType callback_;
+  };
+};
+
+// Represents a pending call with known request and response message
+// types, and a known request-handling method.
+// Common usage pattern is to have a single thread waiting on events from
+// completion queue and calling Tag::OnCompleted(), which invokes methods
+// on this.
+// This implementation assumes that the server will generate a single response
+// message for each request message. More precisely, this class expects that
+// each time it invokes handle_request_function_, the service implementation
+// will either call SendResponse or Finish exactly once.
+// Not thread-safe.
+template <class Service, class GrpcService, class RequestMessage,
+          class ResponseMessage>
+class ServerBidirectionalStreamingCall
+    : public ServerUntypedBidirectionalStreamingCall<Service> {
+ public:
+  // Represents the generic signature of a generated
+  // `GrpcService::RequestFoo()` method, where `Foo` is the name of an
+  // RPC method.
+  using EnqueueFunction = void (GrpcService::*)(
+      ::grpc::ServerContext*,
+      ::grpc::ServerAsyncReaderWriter<ResponseMessage, RequestMessage>*,
+      ::grpc::CompletionQueue*, ::grpc::ServerCompletionQueue*, void*);
+
+  // Represents the generic signature of a `Service::HandleFoo()`
+  // method, where `Foo` is the name of an RPC method.
+  using HandleRequestFunction = void (Service::*)(
+      ServerBidirectionalStreamingCall<Service, GrpcService, RequestMessage,
+                                       ResponseMessage>*);
+
+  ServerBidirectionalStreamingCall(
+      HandleRequestFunction handle_request_function, GrpcService* grpc_service,
+      ::grpc::ServerCompletionQueue* cq, EnqueueFunction enqueue_function)
+      : handle_request_function_(handle_request_function),
+        stream_(&ctx_),
+        grpc_service_(grpc_service),
+        cq_(cq),
+        enqueue_function_(enqueue_function) {
+    VLOG(3) << "Creating ServerBidirectionalStreamingCall " << this;
+  }
+
+  ~ServerBidirectionalStreamingCall() override {
+    VLOG(3) << "Destroying ServerBidirectionalStreamingCall " << this;
+  }
+
+  void CallOpen() override {
+    // Let gRPC know that we can accept another call.
+    ServerBidirectionalStreamingCall<
+        Service, GrpcService, RequestMessage,
+        ResponseMessage>::EnqueueRequest(grpc_service_, cq_, enqueue_function_,
+                                         handle_request_function_);
+    RequestRead();
+  }
+
+  void RequestRead() override {
+    this->Ref();
+    request_.Clear();
+    stream_.Read(&request_, &request_received_tag_);
+  }
+
+  void RequestReceived(Service* service) override {
+    this->Ref();
+    // Request handling should result in a call to SendResponse or Finish.
+    (service->*handle_request_function_)(this);
+  }
+
+  void SendResponse() {
+    // Transferring ownership of this to the response_sent_tag_.
+    stream_.Write(response_, &response_sent_tag_);
+    // stream_.Write does not save references to response_. We are free to muck
+    // around with it as soon as Write returns.
+    // We clear the response_ to prepare it for the next response.
+    response_.Clear();
+  }
+
+  void Finish(::grpc::Status status) {
+    // Transferring ownership of this to the server_finished_tag_.
+    stream_.Finish(status, &server_finished_tag_);
+  }
+
+  // Enqueues a new request for the given service on the given
+  // completion queue, using the given `enqueue_function`.
+  //
+  // The request will be handled by the given `handle_request_function`.
+  static void EnqueueRequest(GrpcService* grpc_service,
+                             ::grpc::ServerCompletionQueue* cq,
+                             EnqueueFunction enqueue_function,
+                             HandleRequestFunction handle_request_function) {
+    auto call =
+        new ServerBidirectionalStreamingCall<Service, GrpcService,
+                                             RequestMessage, ResponseMessage>(
+            handle_request_function, grpc_service, cq, enqueue_function);
+
+    // Initial ref for call handed to grpc; released in Tag callback.
+    (grpc_service->*enqueue_function)(&call->ctx_, &call->stream_, cq, cq,
+                                      &call->call_open_tag_);
+  }
+
+  const RequestMessage& request() const { return request_; }
+  ResponseMessage* mutable_response() { return &response_; }
+
+ private:
+  // Request and response messages are reused for each request/response exchange
+  // between the client and the server.
+  RequestMessage request_;
+  ResponseMessage response_;
+  ::grpc::ServerContext ctx_;
+
+  HandleRequestFunction handle_request_function_;
+  ::grpc::ServerAsyncReaderWriter<ResponseMessage, RequestMessage> stream_;
+
+  // Used as void* completion markers from grpc to indicate different
+  // events of interest for a ServerBidirectionalStreamingCall.
+  typedef typename ServerUntypedBidirectionalStreamingCall<Service>::Tag Tag;
+  // At most one tag of each kind may be given to gRPC at any one time.
+  // Beyond semantic sanity, this is needed to ensure proper ref counting
+  // of this call object.
+  Tag call_open_tag_{this, Tag::TagType::kCallOpen};
+  Tag request_received_tag_{this, Tag::TagType::kRequestReceived};
+  Tag response_sent_tag_{this, Tag::TagType::kResponseSent};
+  Tag server_finished_tag_{this, Tag::TagType::kServerFinished};
+
+  // These fields are used only to spawn another instance of this to accept
+  // more streaming calls.
+  GrpcService* grpc_service_;
+  ::grpc::ServerCompletionQueue* cq_;
+  EnqueueFunction enqueue_function_;
 };
 
 }  // namespace tensorflow

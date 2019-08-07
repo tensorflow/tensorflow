@@ -22,6 +22,7 @@ import math
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu.topology import Topology
 from tensorflow.python.util.tf_export import tf_export
 
@@ -174,6 +175,43 @@ class DeviceAssignment(object):
                              num_replicas)
 
 
+def _ring_2d(height, width):
+  """Ring-order of a height x width mesh.
+
+  For example, in a 4x4 mesh, this returns the following order.
+    0 -- 1 -- 2 -- 3
+    |    |    |    |
+    15-- 6 -- 5 -- 4
+    |    |    |    |
+    14-- 7 -- 8 -- 9
+    |    |    |    |
+    13-- 12-- 11-- 10
+
+  Args:
+    height: An integer represents the height.
+    width: An integer represents the width.
+
+  Returns:
+    A list of [y, x] pairs with ring order.
+  """
+  if height == 1:
+    return [(0, i) for i in range(width)]
+  if width == 1:
+    return [(i, 0) for i in range(height)]
+  if height % 2 != 0:
+    logging.warning("Odd dimension")
+    return [(i % height, i // height) for i in range(width * height)]
+  ret = [(0, 0)]
+  for i in range(height // 2):
+    for j in range(1, width):
+      ret.append((2 * i, j))
+    for j in range(width - 1, 0, -1):
+      ret.append((2 * i + 1, j))
+  for i in range(height - 1, 0, -1):
+    ret.append((i, 0))
+  return ret
+
+
 def device_assignment(topology,
                       computation_shape=None,
                       computation_stride=None,
@@ -296,28 +334,53 @@ def device_assignment(topology,
 
   # Assigns an offset to each replica such that no two replicas overlap.
   replica_offsets = np.full([num_replicas, topology_rank], -1, dtype=np.int32)
-  for replica in xrange(num_replicas):
-    # Chooses a replica number in each axis.
-    t = replica
-    pos = []
-    for dim in replica_shape[::-1]:
-      pos.append(t % dim)
-      t //= dim
-    replica_pos = np.array(pos[::-1], dtype=np.int32)
 
-    # Determines where that replica starts in each axis.
-    outer = replica_pos // computation_stride
-    inner = replica_pos % computation_stride
-    replica_offsets[replica, :] = outer * computation_footprint + inner
+  # TODO(ylc): Revisit here when topology_rank > 3.
+  enable_2d_tiling = (
+      topology_rank == 3 and
+      computation_shape[-1] == 2  # Only handle 2D case.
+      and np.prod(computation_stride) == 1  # Ensure no stride.
+      and num_replicas == max_replicas)  # Full replication.
+  logging.info("enable_2d_tiling: {}".format(enable_2d_tiling))
+  if enable_2d_tiling:
+    assignment = []
+    inner_ring = _ring_2d(computation_shape[0], computation_shape[1])
+    outer_ring = _ring_2d(replica_shape[0], replica_shape[1])
 
-  # Computes a complete logical core -> physical core mapping for each replica.
-  indices = [
-      np.arange(0, computation_shape[i] * computation_stride[i],
-                computation_stride[i]) for i in xrange(topology_rank)
-  ]
-  indices = np.concatenate(
-      [i[..., np.newaxis] for i in np.meshgrid(*indices, indexing="ij")],
-      axis=-1)
-  indices = indices.reshape((-1, topology_rank))
-  assignment = indices + replica_offsets[:, np.newaxis, :]
+    for replica in xrange(num_replicas):
+      outer_x, outer_y = outer_ring[replica]
+      per_replica_assignment = []
+      for index in xrange(np.prod(computation_shape)):
+        inner_x, inner_y = inner_ring[index // 2]
+        px = outer_x * computation_shape[0] + inner_x
+        py = outer_y * computation_shape[1] + inner_y
+        pz = index % 2
+        per_replica_assignment.append([px, py, pz])
+      assignment.append(per_replica_assignment)
+  else:
+    for replica in xrange(num_replicas):
+      # Chooses a replica number in each axis.
+      t = replica
+      pos = []
+      for dim in replica_shape[::-1]:
+        pos.append(t % dim)
+        t //= dim
+      replica_pos = np.array(pos[::-1], dtype=np.int32)
+
+      # Determines where that replica starts in each axis.
+      outer = replica_pos // computation_stride
+      inner = replica_pos % computation_stride
+      replica_offsets[replica, :] = outer * computation_footprint + inner
+
+    # Computes a logical core -> physical core mapping for each replica.
+    indices = [
+        np.arange(0, computation_shape[i] * computation_stride[i],
+                  computation_stride[i]) for i in xrange(topology_rank)
+    ]
+    indices = np.concatenate(
+        [i[..., np.newaxis] for i in np.meshgrid(*indices, indexing="ij")],
+        axis=-1)
+    indices = indices.reshape((-1, topology_rank))
+    assignment = indices + replica_offsets[:, np.newaxis, :]
+
   return DeviceAssignment(topology, core_assignment=assignment)

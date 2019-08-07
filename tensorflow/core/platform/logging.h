@@ -21,6 +21,16 @@ limitations under the License.
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
     defined(GOOGLE_LOGGING) || defined(__EMSCRIPTEN__)
 #include "tensorflow/core/platform/google/build_config/logging.h"
+namespace tensorflow {
+// Adapt Google LogSink interface to the TF interface.
+using TFLogSink = ::absl::LogSink;
+using TFLogEntry = ::absl::LogEntry;
+
+inline void TFAddLogSink(TFLogSink* sink) { ::absl::AddLogSink(sink); }
+inline void TFRemoveLogSink(TFLogSink* sink) { ::absl::RemoveLogSink(sink); }
+
+}  // namespace tensorflow
+
 #else
 #include "tensorflow/core/platform/default/logging.h"
 #endif

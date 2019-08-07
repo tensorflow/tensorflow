@@ -98,6 +98,9 @@ struct GrapplerItem {
     // undefined type parameters in the function signature, or placeholder
     // attributes in the function body).
     bool optimize_function_library = true;
+
+    // Mark the grapper optimization run in eager mode or not.
+    bool is_eager_mode = false;
   };
 
   const std::unordered_set<string>& devices() const;

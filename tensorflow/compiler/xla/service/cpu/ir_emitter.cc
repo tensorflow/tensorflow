@@ -176,6 +176,13 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   bool use_rdtscp = arch_type_ == llvm::Triple::ArchType::x86 ||
                     arch_type_ == llvm::Triple::ArchType::x86_64;
   profiling_state_ = ProfilingState(use_rdtscp);
+
+  bool emit_tracing =
+      hlo_module_config_.hlo_profiling_enabled() &&
+      hlo_module_config_.debug_options().xla_backend_extra_options().count(
+          "xla_hlo_trace");
+  tracing_state_.set_enabled(emit_tracing);
+
   TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, instruction_order));
   llvm::Function* ir_function = compute_function_->function();
   InsertOrDie(&emitted_functions_, computation, ir_function);
@@ -1020,10 +1027,13 @@ StatusOr<llvm::Value*> IrEmitter::EmitElementalConvolution(
   PrimitiveType lhs_element_type = lhs->shape().element_type();
   llvm::Type* lhs_llvm_type =
       llvm_ir::PrimitiveTypeToIrType(lhs_element_type, module_);
+  // Upcast the accumulator to F32 from F16 for increased precision.
+  llvm::Type* accumulator_type =
+      lhs_element_type == F16 ? b_.getFloatTy() : lhs_llvm_type;
   llvm::Value* sum_address = llvm_ir::EmitAllocaAtFunctionEntry(
-      lhs_llvm_type, "convolution_sum_address", &b_,
+      accumulator_type, "convolution_sum_address", &b_,
       MinimumAlignmentForPrimitiveType(lhs_element_type));
-  llvm::Value* constant_zero = llvm::Constant::getNullValue(lhs_llvm_type);
+  llvm::Value* constant_zero = llvm::Constant::getNullValue(accumulator_type);
   Store(constant_zero, sum_address);
 
   llvm_ir::ForLoopNest loops(IrName(convolution, "inner"), &b_);
@@ -1132,11 +1142,11 @@ StatusOr<llvm::Value*> IrEmitter::EmitElementalConvolution(
   TF_ASSIGN_OR_RETURN(llvm::Value* const kernel_value,
                       kernel_generator(kernel_index));
   llvm::Value* product = FMul(input_value, kernel_value);
-  llvm::Value* sum = FAdd(Load(sum_address), product);
+  llvm::Value* sum = FAdd(Load(sum_address), FPCast(product, accumulator_type));
   Store(sum, sum_address);
 
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b_);
-  return Load(sum_address);
+  return FPCast(Load(sum_address), lhs_llvm_type);
 }
 
 Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
@@ -1726,6 +1736,16 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   ReductionGenerator reduction_generator =
       MatchReductionGenerator(function, failure_reason);
   if (!reduction_generator) {
+    return false;
+  }
+
+  int vector_register_size_in_elements =
+      target_machine_features_.vector_register_byte_size(
+          *compute_function_->function()) /
+      ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type());
+  if (vector_register_size_in_elements == 0) {
+    // Either we don't know the vector register width for the target or the
+    // vector register is smaller than the size of the primitive type.
     return false;
   }
 
@@ -2746,18 +2766,26 @@ Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
 }
 
 Status IrEmitter::HandleRng(HloInstruction* rng) {
-  ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
-  for (const HloInstruction* operand : rng->operands()) {
-    operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
-      return GetIrArrayFor(operand).EmitReadArrayElement(index, &b_);
-    };
-  }
+  return Unimplemented("Rng should be expanded for CPU.");
+}
 
-  CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
-  TF_RETURN_IF_ERROR(EmitTargetElementLoop(
-      rng, elemental_emitter.MakeElementGenerator(rng, operand_to_generator)));
+Status IrEmitter::HandleRngGetAndUpdateState(HloInstruction* rng_state) {
+  VLOG(2) << "RngGetAndUpdateState: " << rng_state->ToString();
+  llvm::Value* old_state = llvm_ir::RngGetAndUpdateState(
+      Cast<HloRngGetAndUpdateStateInstruction>(rng_state)->delta(), module_,
+      &b_);
 
-  llvm_ir::IncrementVariableForPhiloxRngState(1, module_, &b_);
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(rng_state));
+  llvm::Value* address = GetEmittedValueFor(rng_state);
+
+  // The buffer has an array type while the value has a i128. Cast the
+  // buffer to i128 type to store the value.
+  address = BitCast(address, llvm::PointerType::get(
+                                 old_state->getType()->getScalarType(),
+                                 address->getType()->getPointerAddressSpace()));
+  llvm::StoreInst* store = Store(old_state, address);
+  store->setAlignment(IrEmitter::MinimumAlignmentForPrimitiveType(
+      rng_state->shape().element_type()));
 
   return Status::OK();
 }
@@ -2883,9 +2911,70 @@ void IrEmitter::ProfilingState::RecordCompleteComputation(
   }
 }
 
+void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilder<>* b,
+                                               HloInstruction* hlo,
+                                               llvm::Value* run_options) {
+  if (!enabled_) {
+    return;
+  }
+
+  llvm::Type* int8_ptr_type = b->getInt8Ty()->getPointerTo();
+  llvm::Type* void_ptr_type = b->getVoidTy()->getPointerTo();
+  llvm::FunctionType* fn_type =
+      llvm::FunctionType::get(b->getInt64Ty(), {void_ptr_type, int8_ptr_type},
+                              /*isVarArg=*/false);
+
+  llvm::Function* function = b->GetInsertBlock()->getParent();
+  llvm::Module* module = function->getParent();
+  const char* fn_name = runtime::kTracingStartSymbolName;
+  llvm::FunctionCallee trace_func =
+      module->getOrInsertFunction(fn_name, fn_type);
+  if (auto* fn = llvm::dyn_cast<llvm::Function>(trace_func.getCallee())) {
+    fn->setCallingConv(llvm::CallingConv::C);
+    fn->setDoesNotThrow();
+    fn->setOnlyAccessesArgMemory();
+  }
+  auto* hlo_name = b->CreateGlobalStringPtr(hlo->name());
+  auto* activity_id =
+      b->CreateCall(trace_func, {b->CreateBitCast(run_options, void_ptr_type),
+                                 b->CreateBitCast(hlo_name, int8_ptr_type)});
+  activity_id->setName(IrName(hlo, "activity_id"));
+  activity_ids_[hlo] = activity_id;
+}
+
+void IrEmitter::TracingState::EmitTracingEnd(llvm::IRBuilder<>* b,
+                                             HloInstruction* hlo,
+                                             llvm::Value* run_options) {
+  if (!enabled_) {
+    return;
+  }
+
+  llvm::Type* void_ptr_type = b->getVoidTy()->getPointerTo();
+  llvm::FunctionType* fn_type =
+      llvm::FunctionType::get(b->getVoidTy(), {void_ptr_type, b->getInt64Ty()},
+                              /*isVarArg=*/false);
+
+  llvm::Function* function = b->GetInsertBlock()->getParent();
+  llvm::Module* module = function->getParent();
+  const char* fn_name = runtime::kTracingEndSymbolName;
+  llvm::FunctionCallee trace_func =
+      module->getOrInsertFunction(fn_name, fn_type);
+  if (auto* fn = llvm::dyn_cast<llvm::Function>(trace_func.getCallee())) {
+    fn->setCallingConv(llvm::CallingConv::C);
+    fn->setDoesNotThrow();
+    fn->setOnlyAccessesArgMemory();
+  }
+  auto* activity_id = activity_ids_.at(hlo);
+  b->CreateCall(trace_func,
+                {b->CreateBitCast(run_options, void_ptr_type), activity_id});
+}
+
 Status IrEmitter::Preprocess(HloInstruction* hlo) {
   VLOG(3) << "Visiting: " << hlo->ToString();
   if (instruction_to_profile_idx_.count(hlo)) {
+    // Only trace the same HLOs that the profiler does.
+    tracing_state_.EmitTracingStart(&b_, hlo,
+                                    GetExecutableRunOptionsArgument());
     profiling_state_.RecordCycleStart(&b_, hlo);
   }
   return Status::OK();
@@ -2894,6 +2983,10 @@ Status IrEmitter::Preprocess(HloInstruction* hlo) {
 Status IrEmitter::Postprocess(HloInstruction* hlo) {
   if (auto* prof_counter = GetProfileCounterFor(*hlo)) {
     profiling_state_.RecordCycleDelta(&b_, hlo, prof_counter);
+  }
+  // Only trace the same HLOs that the profiler does.
+  if (instruction_to_profile_idx_.count(hlo)) {
+    tracing_state_.EmitTracingEnd(&b_, hlo, GetExecutableRunOptionsArgument());
   }
   return Status::OK();
 }
@@ -3053,7 +3146,7 @@ Status IrEmitter::EmitTargetElementLoop(
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(target_op));
   llvm_ir::IrArray target_array = GetIrArrayFor(target_op);
 
-  if (target_shape.IsTuple() && (target_op->IsMultiOutputFusion() ||
+  if (target_shape.IsTuple() && (target_op->opcode() == HloOpcode::kFusion ||
                                  target_op->opcode() == HloOpcode::kReduce)) {
     // For multiple outputs fusion, we need to emit each operand and the root.
     TF_RET_CHECK(num_dynamic_loop_bounds_ == 0);

@@ -16,7 +16,7 @@
 
 EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
-To use, at program startup, call `tf.enable_eager_execution()`.
+To use, at program startup, call `tf.compat.v1.enable_eager_execution()`.
 
 @@metrics
 

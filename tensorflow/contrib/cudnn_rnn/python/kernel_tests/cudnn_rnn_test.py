@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import collections
 import functools
 import itertools
 import os
@@ -59,6 +58,7 @@ from tensorflow.python.training import momentum
 from tensorflow.python.training import rmsprop
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
+from tensorflow.python.util.compat import collections_abc
 
 
 CUDNN_LSTM = cudnn_rnn_ops.CUDNN_LSTM
@@ -1131,7 +1131,7 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
     return numeric_grad.reshape(x_shape)
 
   def _GetShape(self, sess, inputs):
-    if not isinstance(inputs, collections.Iterable):
+    if not isinstance(inputs, collections_abc.Iterable):
       return sess.run(array_ops.shape(inputs))
     else:
       return sess.run([array_ops.shape(x) for x in inputs])
@@ -1155,7 +1155,7 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
     The gradient check verifies the expected delta_y calculated by the above
     equation is close to the actual delta_y.
     Args:
-      sess: tf.Session object.
+      sess: tf.compat.v1.Session object.
       y: output tensor.
       xs: a tensor or a list of input tensors.
       num_samples: number of test samples to run.

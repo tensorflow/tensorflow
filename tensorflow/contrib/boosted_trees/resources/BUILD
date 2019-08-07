@@ -1,13 +1,12 @@
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 package(
     default_visibility = [
         "//tensorflow/contrib/boosted_trees:__subpackages__",
         "//tensorflow/contrib/boosted_trees:friends",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
+
+exports_files(["LICENSE"])
 
 cc_library(
     name = "stamped_resource",

@@ -63,7 +63,7 @@ Status GetOpSig(const string& op, const OpDef** sig) {
 }
 
 void HasError(const Status& s, StringPiece substr) {
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }
 
@@ -97,6 +97,11 @@ class FunctionTest : public ::testing::Test {
     };
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
+    };
+    params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
+                                   Rendezvous** r) {
+      *r = new IntraProcessRendezvous(device_mgr);
+      return Status::OK();
     };
     Executor* exec;
     TF_CHECK_OK(NewLocalExecutor(params, std::move(g), &exec));
@@ -145,8 +150,7 @@ TEST_F(FunctionTest, WXPlusB) {
 
 class FunctionLibraryRuntimeTest : public ::testing::Test {
  protected:
-  void Init(const std::vector<FunctionDef>& flib,
-            thread::ThreadPool* default_thread_pool = nullptr) {
+  void Init(const std::vector<FunctionDef>& flib) {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 3});
@@ -161,7 +165,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts, default_thread_pool, nullptr /* cluster_flr */));
+        opts));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
@@ -250,8 +254,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsNotFound(status2))
         << "Actual status: " << status2.ToString();
-    EXPECT_TRUE(str_util::StrContains(status2.error_message(), "Handle"));
-    EXPECT_TRUE(str_util::StrContains(status2.error_message(), "not found"));
+    EXPECT_TRUE(absl::StrContains(status2.error_message(), "Handle"));
+    EXPECT_TRUE(absl::StrContains(status2.error_message(), "not found"));
 
     return status;
   }
@@ -320,8 +324,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsNotFound(status2));
-    EXPECT_TRUE(str_util::StrContains(status2.error_message(), "Handle"));
-    EXPECT_TRUE(str_util::StrContains(status2.error_message(), "not found"));
+    EXPECT_TRUE(absl::StrContains(status2.error_message(), "Handle"));
+    EXPECT_TRUE(absl::StrContains(status2.error_message(), "not found"));
 
     return status;
   }
@@ -975,8 +979,9 @@ TEST_F(FunctionLibraryRuntimeTest,
   }
 }
 
-TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepThemFetchable) {
+TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepCallerNode) {
   using test::function::NDef;
+  using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
 
   const FunctionDef func =
       FDH::Create("AddAndMul", {"i: float"}, {"o: float"}, {},
@@ -989,34 +994,185 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepThemFetchable) {
   // Construct a graph:
   //   a = Arg[dtype=DT_FLOAT]
   //   b = FunctionWithControlOutputs(a)
-  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
-
-  Scope s = Scope::NewRootScope();
-  TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
-  auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
-  auto b = test::function::Call(&s, "b", "AddAndMul", {a});
-  TF_ASSERT_OK(s.ToGraph(g.get()));
-
-  ExpandInlineFunctionsOptions opts;
-  opts.native_options.keep_caller_fetchable = true;
-  opts.native_options.output_control_src = OutputControlSrc::kControlOutputs;
+  auto construct_graph = [this](std::unique_ptr<Graph>* g) -> Status {
+    Scope s = Scope::NewRootScope();
+    TF_RETURN_IF_ERROR(s.graph()->AddFunctionLibrary(fdef_lib_));
+    auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
+    auto b = test::function::Call(&s, "b", "AddAndMul", {a});
+    TF_RETURN_IF_ERROR(s.ToGraph(g->get()));
+    return Status::OK();
+  };
 
   const string input_node = "Func/b/input/_0";
   const string output_node = "Func/b/output/_1";
   const string output_control_node = "Func/b/output_control_node/_2";
 
-  ExpandInlineFunctions(flr0_, g.get(), opts);
-  {
-    GraphDef expected = test::function::GDef(
-        {NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}),
-         NDef(input_node, "Identity", {"a"}, {{"T", DT_FLOAT}}),
-         NDef("b/add", "Add", {input_node, input_node}, {{"T", DT_FLOAT}}),
-         NDef("b/ret", "Mul", {input_node, input_node}, {{"T", DT_FLOAT}}),
-         NDef(output_node, "Identity", {"b/ret"}, {{"T", DT_FLOAT}}),
-         NDef(output_control_node, "NoOp", {"^b/add"}, {}),
-         NDef("b", "IdentityN", {output_node, "^" + output_control_node},
-              {{"T", DataTypeSlice{DT_FLOAT}}})},
+  // Construct expected graph after function inlining.
+  auto expected_graph = [&](const NodeDef& caller) -> GraphDef {
+    return test::function::GDef(
+        {
+            NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}),
+            NDef(input_node, "Identity", {"a"}, {{"T", DT_FLOAT}}),
+            NDef("b/add", "Add", {input_node, input_node}, {{"T", DT_FLOAT}}),
+            NDef("b/ret", "Mul", {input_node, input_node}, {{"T", DT_FLOAT}}),
+            NDef(output_node, "Identity", {"b/ret"}, {{"T", DT_FLOAT}}),
+            NDef(output_control_node, "NoOp", {"^b/add"}, {}),
+            caller,  // Keep node in a graph with the same name as caller node.
+        },
         {func});
+  };
+
+  ExpandInlineFunctionsOptions opts;
+  opts.native_options.output_control_src = OutputControlSrc::kControlOutputs;
+
+  // Keep inlined function call node fetchable.
+  {
+    opts.native_options.keep_caller_node = KeepCallerNode::kFetchable;
+
+    std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+    TF_ASSERT_OK(construct_graph(&g));
+
+    ExpandInlineFunctions(flr0_, g.get(), opts);
+    GraphDef expected =
+        expected_graph(/*caller=*/
+                       NDef("b", "IdentityN",
+                            {output_node, "^" + output_control_node},
+                            {{"T", DataTypeSlice{DT_FLOAT}}}));
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+
+  // Keep inlined function call node targetable.
+  {
+    opts.native_options.keep_caller_node = KeepCallerNode::kTargetable;
+
+    std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+    TF_ASSERT_OK(construct_graph(&g));
+
+    ExpandInlineFunctions(flr0_, g.get(), opts);
+    GraphDef expected =
+        expected_graph(/*caller=*/
+                       NDef("b", "NoOp", {"^" + output_control_node}, {}));
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+}
+
+TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndPlaceInlinedNodes) {
+  using test::function::NDef;
+  using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
+
+  const string arg_device = "/job:arg/replica:0/task:0/device:GPU";
+  const string call_device = "/job:call/replica:0/task:1/device:GPU";
+  const string body_device = "/job:body/replica:0/task:1/device:CPU";
+
+  const FunctionDef func = FDH::Create(
+      "AddFunc", {"i: float"}, {"o: float"}, {},
+      {{{"ret"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}, {}, body_device}},
+      /*ret_def=*/{{"o", "ret:z:0"}});
+  Init({func});
+
+  // Construct a graph:
+  //   a = Arg[dtype=DT_FLOAT, _device=arg_device]
+  //   b = AddFunc[_device=call_device](a)
+  auto construct_graph = [&](std::unique_ptr<Graph>* g) -> Status {
+    Scope s = Scope::NewRootScope();
+    TF_RETURN_IF_ERROR(s.graph()->AddFunctionLibrary(fdef_lib_));
+    auto a = ops::_Arg(s.WithOpName("a").WithDevice(arg_device), DT_FLOAT, 0);
+    auto b = test::function::Call(&s, "b", "AddFunc", {a});
+    TF_RETURN_IF_ERROR(s.ToGraph(g->get()));
+    for (Node* node : (*g)->op_nodes()) {
+      if (node->name() == "b") node->set_requested_device(call_device);
+    }
+    return Status::OK();
+  };
+
+  const string input_node = "Func/b/input/_0";
+  const string output_node = "Func/b/output/_1";
+  const string output_control_node = "Func/b/output_control_node/_2";
+
+  // Construct expected graph after function inlining.
+  auto expected_graph = [&](const std::vector<string>& placed) -> GraphDef {
+    return test::function::GDef(
+        {
+            NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}, placed[0]),
+            NDef(input_node, "Identity", {"a"}, {{"T", DT_FLOAT}}, placed[1]),
+            NDef("b/ret", "Add", {input_node, input_node}, {{"T", DT_FLOAT}},
+                 placed[2]),
+            NDef(output_node, "Identity", {"b/ret"}, {{"T", DT_FLOAT}},
+                 placed[3]),
+            NDef(output_control_node, "NoOp", {"^" + output_node}, {},
+                 placed[4]),
+        },
+        {func});
+  };
+
+  ExpandInlineFunctionsOptions opts;
+  opts.native_options.keep_caller_node = KeepCallerNode::kDoNotKeep;
+
+  // Place only input nodes to match input device.
+  {
+    opts.native_options.inlined_function_body_placer =
+        InlinedFunctionBodyPlacer::Default();
+
+    auto g = absl::make_unique<Graph>(OpRegistry::Global());
+    TF_ASSERT_OK(construct_graph(&g));
+
+    ExpandInlineFunctions(flr0_, g.get(), opts);
+    GraphDef expected = expected_graph({/*a*/ arg_device,       //
+                                        /*input*/ arg_device,   //
+                                        /*body*/ body_device,   //
+                                        /*output*/ "",          //
+                                        /*control_output*/ ""}  //
+    );
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+
+  // Place all nodes on the call node device.
+  {
+    opts.native_options.inlined_function_body_placer =
+        InlinedFunctionBodyPlacer::SingleDevice();
+
+    auto g = absl::make_unique<Graph>(OpRegistry::Global());
+    TF_ASSERT_OK(construct_graph(&g));
+
+    ExpandInlineFunctions(flr0_, g.get(), opts);
+    GraphDef expected = expected_graph({/*a*/ arg_device,                //
+                                        /*input*/ call_device,           //
+                                        /*body*/ call_device,            //
+                                        /*output*/ call_device,          //
+                                        /*control_output*/ call_device}  //
+    );
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+
+  // Multi device function placement.
+  {
+    opts.native_options.inlined_function_body_placer =
+        InlinedFunctionBodyPlacer::MultiDevice();
+
+    auto g = absl::make_unique<Graph>(OpRegistry::Global());
+    TF_ASSERT_OK(construct_graph(&g));
+
+    const string merged_device = "/job:call/replica:0/task:1/device:CPU:*";
+
+    ExpandInlineFunctions(flr0_, g.get(), opts);
+    GraphDef expected = expected_graph({/*a*/ arg_device,                //
+                                        /*input*/ arg_device,            //
+                                        /*body*/ merged_device,          //
+                                        /*output*/ "",                   //
+                                        /*control_output*/ call_device}  //
+    );
 
     GraphDef actual;
     g->ToGraphDef(&actual);
@@ -1247,8 +1403,8 @@ TEST_F(FunctionLibraryRuntimeTest, ControlDeps) {
   ASSERT_TRUE(g != nullptr);
   OptimizeGraph(flr0_, &g);
 
-  // NOTE: We can remove func0, func1, func2, func9 with a control edge n8->n5.
-  // But we don't have a pass doing that.
+  // NOTE: We can remove func0, func1, func2, func9 with a control edge
+  // n8->n5. But we don't have a pass doing that.
   {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
@@ -1404,6 +1560,58 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     g->ToGraphDef(&actual);
     TF_EXPECT_GRAPH_EQ(expected, actual);
   }
+}
+
+TEST_F(FunctionLibraryRuntimeTest, Gradient_Select) {
+  FunctionDef my_select = FunctionDefHelper::Create(
+      "MySelect",
+      // Args
+      {"condition: bool", "t: float32", "e: float32"},
+      // Return values
+      {"z: float32"},
+      // Attrs
+      {},
+      // Nodes
+      {
+          {{"select0"}, "Select", {"condition", "t", "e"}, {{"T", DT_FLOAT}}},
+          {{"select1"}, "Select", {"condition", "t", "e"}, {{"T", DT_FLOAT}}},
+          {{"add"},
+           "Add",
+           {"select0:output", "select1:output"},
+           {{"T", DT_FLOAT}}},
+      },
+      // Output mapping
+      {{"z", "add:z"}});
+  FunctionDef select_grad = FunctionDefHelper::Create(
+      "MySelectGrad",
+      // Args
+      {"condition: bool", "t:float32", "e: float32", "dz: float32"},
+      // Return values
+      {"dt: float32"},
+      // Attrs
+      {},
+      // Nodes
+      {{
+          {"grad"},
+          "SymbolicGradient",
+          {"condition", "t", "e", "dz"},
+          {
+              {"f", FunctionDefHelper::FunctionRef("MySelect")},
+              {"Tin", DataTypeSlice({DT_BOOL, DT_FLOAT, DT_FLOAT, DT_FLOAT})},
+              {"Tout", DataTypeSlice({DT_BOOL, DT_FLOAT, DT_FLOAT})},
+          },
+      }},
+      // Output mapping
+      {{"dt", "grad:output:1"}});
+  Init({my_select, select_grad});
+
+  auto condition = test::AsTensor<bool>({false});
+  auto t = test::AsTensor<float>({13.0});
+  auto e = test::AsTensor<float>({15.0});
+  auto dz = test::AsTensor<float>({1.0});
+  Tensor y;
+  TF_EXPECT_OK(InstantiateAndRun(flr0_, "MySelectGrad", {},
+                                 {condition, t, e, dz}, {&y}));
 }
 
 TEST_F(FunctionLibraryRuntimeTest, Gradient_Add) {

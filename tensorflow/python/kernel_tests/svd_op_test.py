@@ -21,14 +21,19 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import tf2
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
@@ -309,10 +314,64 @@ def _GetSvdGradGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
   return Test
 
 
+class SVDBenchmark(test.Benchmark):
+
+  shapes = [
+      (4, 4),
+      (8, 8),
+      (16, 16),
+      (101, 101),
+      (256, 256),
+      (1024, 1024),
+      (2048, 2048),
+      (1, 8, 8),
+      (10, 8, 8),
+      (100, 8, 8),
+      (1, 256, 256),
+      (10, 256, 256),
+      (100, 256, 256),
+  ]
+
+  def benchmarkSVDOp(self):
+    for shape_ in self.shapes:
+      with ops.Graph().as_default(), \
+          session.Session(config=benchmark.benchmark_config()) as sess, \
+          ops.device("/cpu:0"):
+        matrix_value = np.random.uniform(
+            low=-1.0, high=1.0, size=shape_).astype(np.float32)
+        matrix = variables.Variable(matrix_value)
+        u, s, v = linalg_ops.svd(matrix)
+        variables.global_variables_initializer().run()
+        self.run_op_benchmark(
+            sess,
+            control_flow_ops.group(u, s, v),
+            min_iters=25,
+            name="SVD_cpu_{shape}".format(shape=shape_))
+
+      if test.is_gpu_available(True):
+        with ops.Graph().as_default(), \
+            session.Session(config=benchmark.benchmark_config()) as sess, \
+            ops.device("/device:GPU:0"):
+          matrix_value = np.random.uniform(
+              low=-1.0, high=1.0, size=shape_).astype(np.float32)
+          matrix = variables.Variable(matrix_value)
+          u, s, v = linalg_ops.svd(matrix)
+          variables.global_variables_initializer().run()
+          self.run_op_benchmark(
+              sess,
+              control_flow_ops.group(u, s, v),
+              min_iters=25,
+              name="SVD_gpu_{shape}".format(shape=shape_))
+
+
 if __name__ == "__main__":
+  dtypes_to_test = [np.float32, np.float64]
+  if not test.is_built_with_rocm():
+    # ROCm does not support BLAS operations for complex types
+    dtypes_to_test += [np.complex64, np.complex128]
   for compute_uv in False, True:
     for full_matrices in False, True:
-      for dtype in np.float32, np.float64, np.complex64, np.complex128:
+      for dtype in dtypes_to_test:
         for rows in 1, 2, 5, 10, 32, 100:
           for cols in 1, 2, 5, 10, 32, 100:
             for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
@@ -327,8 +386,8 @@ if __name__ == "__main__":
                                        compute_uv, full_matrices))
   for compute_uv in False, True:
     for full_matrices in False, True:
-      dtypes = ([np.float32, np.float64]
-                + [np.complex64, np.complex128] * (not compute_uv))
+      dtypes = ([np.float32, np.float64] + [np.complex64, np.complex128] *
+                (not compute_uv) * (not test.is_built_with_rocm()))
       for dtype in dtypes:
         mat_shapes = [(10, 11), (11, 10), (11, 11), (2, 2, 2, 3)]
         if not full_matrices or not compute_uv:

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """TensorSignature class and utilities (deprecated).
 
 This module and all its submodules are deprecated. See
@@ -34,8 +33,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 
 
-class TensorSignature(collections.namedtuple(
-    "TensorSignature", ["dtype", "shape", "is_sparse"])):
+class TensorSignature(
+    collections.namedtuple("TensorSignature", ["dtype", "shape", "is_sparse"])):
   """Signature of the `Tensor` object.
 
   THIS CLASS IS DEPRECATED. See
@@ -47,7 +46,7 @@ class TensorSignature(collections.namedtuple(
   Example:
 
   ```python
-  examples = tf.placeholder(...)
+  examples = tf.compat.v1.placeholder(...)
   inputs = {'a': var_a, 'b': var_b}
   signatures = tensor_signature.create_signatures(inputs)
   result = tensor_signature.create_example_parser_from_signatures(
@@ -94,8 +93,8 @@ class TensorSignature(collections.namedtuple(
   def get_placeholder(self):
     if self.is_sparse:
       return array_ops.sparse_placeholder(dtype=self.dtype)
-    return array_ops.placeholder(dtype=self.dtype,
-                                 shape=[None] + list(self.shape[1:]))
+    return array_ops.placeholder(
+        dtype=self.dtype, shape=[None] + list(self.shape[1:]))
 
   def get_feature_spec(self):
     dtype = self.dtype
@@ -114,8 +113,8 @@ def tensors_compatible(tensors, signatures):
 
   Args:
     tensors: Dict of `Tensor` objects or single `Tensor` object.
-    signatures: Dict of `TensorSignature` objects or
-                single `TensorSignature` object.
+    signatures: Dict of `TensorSignature` objects or single `TensorSignature`
+      object.
 
   Returns:
     True if all tensors are compatible, False otherwise.
@@ -150,8 +149,7 @@ def create_signatures(tensors):
     Dict of `TensorSignature` objects or single `TensorSignature`.
   """
   if isinstance(tensors, dict):
-    return {
-        key: TensorSignature(tensors[key]) for key in tensors}
+    return {key: TensorSignature(tensors[key]) for key in tensors}
   if tensors is None:
     return None
   return TensorSignature(tensors)
@@ -165,18 +163,18 @@ def create_placeholders_from_signatures(signatures):
       or `None`.
 
   Returns:
-    Dict of `tf.placeholder` objects or single `tf.placeholder`, or `None`.
+    Dict of `tf.compat.v1.placeholder` objects or single
+    `tf.compat.v1.placeholder`, or `None`.
   """
   if signatures is None:
     return None
   if not isinstance(signatures, dict):
     return signatures.get_placeholder()
-  return {
-      key: signatures[key].get_placeholder()
-      for key in signatures}
+  return {key: signatures[key].get_placeholder() for key in signatures}
 
 
-def create_example_parser_from_signatures(signatures, examples_batch,
+def create_example_parser_from_signatures(signatures,
+                                          examples_batch,
                                           single_feature_name="feature"):
   """Creates example parser from given signatures.
 
@@ -192,8 +190,9 @@ def create_example_parser_from_signatures(signatures, examples_batch,
   if not isinstance(signatures, dict):
     feature_spec[single_feature_name] = signatures.get_feature_spec()
   else:
-    feature_spec = {key: signatures[key].get_feature_spec()
-                    for key in signatures}
+    feature_spec = {
+        key: signatures[key].get_feature_spec() for key in signatures
+    }
   features = parsing_ops.parse_example(examples_batch, feature_spec)
   if not isinstance(signatures, dict):
     # Returns single feature, casts if needed.

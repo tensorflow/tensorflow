@@ -82,7 +82,7 @@ class TruncatedNormal(TFTruncatedNormal):
     stddev: a python scalar or a scalar tensor. Standard deviation of the random
       values to generate. Defaults to 0.05.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: The data type. Only floating point types are supported.
     
   Returns:
@@ -106,7 +106,7 @@ class RandomUniform(TFRandomUniform):
     maxval: A python scalar or a scalar tensor. Upper bound of the range of
       random values to generate. Defaults to 0.05.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: The data type.
     
   Returns:
@@ -131,7 +131,7 @@ class RandomNormal(TFRandomNormal):
     stddev: a python scalar or a scalar tensor. Standard deviation of the random
       values to generate. Defaults to 0.05.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: The data type. Only floating point types are supported.
 
   Returns:
@@ -193,8 +193,14 @@ def get(identifier):
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
-    config = {'class_name': str(identifier), 'config': {}}
-    return deserialize(config)
+    identifier = str(identifier)
+    # We have to special-case functions that return classes.
+    # TODO(omalleyt): Turn these into classes or class aliases.
+    special_cases = ['he_normal', 'he_uniform', 'lecun_normal', 'lecun_uniform']
+    if identifier in special_cases:
+      # Treat like a class.
+      return deserialize({'class_name': identifier, 'config': {}})
+    return deserialize(identifier)
   elif callable(identifier):
     return identifier
   else:

@@ -5,9 +5,8 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
@@ -39,6 +38,7 @@ py_test(
     name = "state_space_model_test",
     timeout = "long",  # Moderate but for asan
     srcs = ["state_space_model_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     tags = [
         "no_mac",
@@ -180,6 +180,7 @@ py_test(
     name = "structural_ensemble_test",
     timeout = "long",  # Moderate but for asan/tsan/msan timeouts
     srcs = ["structural_ensemble_test.py"],
+    python_version = "PY2",
     shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [

@@ -20,6 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 // This op defines a `Dataset` that passes through its input elements and
@@ -258,13 +259,19 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("ExperimentalLatencyStatsDataset").Device(DEVICE_CPU),
-    LatencyStatsDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("BytesProducedStatsDataset").Device(DEVICE_CPU),
+                        BytesProducedStatsDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalBytesProducedStatsDataset").Device(DEVICE_CPU),
     BytesProducedStatsDatasetOp);
 
+REGISTER_KERNEL_BUILDER(Name("LatencyStatsDataset").Device(DEVICE_CPU),
+                        LatencyStatsDatasetOp);
+REGISTER_KERNEL_BUILDER(
+    Name("ExperimentalLatencyStatsDataset").Device(DEVICE_CPU),
+    LatencyStatsDatasetOp);
+
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

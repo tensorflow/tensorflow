@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 package tensorflow.boosted_trees;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "BoostedTreesProtos";
 option java_multiple_files = true;
@@ -126,7 +127,7 @@ message TreeMetadata {
 
   message PostPruneNodeUpdate {
     int32 new_node_id = 1;
-    float logit_change = 2;
+    repeated float logit_change = 2;
   }
 }
 

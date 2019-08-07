@@ -21,7 +21,7 @@ from __future__ import division
 from __future__ import print_function
 import itertools
 
-import tensorflow.lite.python.op_hint as op_hint
+from tensorflow.lite.python.op_hint import OpHint
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import initializers
 from tensorflow.python.layers import base as base_layer
@@ -36,7 +36,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("lite.experimental.nn.TfLiteRNNCell")
+@tf_export(v1=["lite.experimental.nn.TfLiteRNNCell"])
 class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
   """The most basic RNN cell.
 
@@ -76,7 +76,7 @@ class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
     # Inputs must be Rank-2.
     self.input_spec = base_layer.InputSpec(ndim=2)
 
-    self._tflite_wrapper = op_hint.OpHint("UnidirectionalSequenceRnn")
+    self._tflite_wrapper = OpHint("UnidirectionalSequenceRnn")
     self._num_units = num_units
     if activation:
       self._activation = activations.get(activation)
@@ -156,7 +156,7 @@ class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
     return dict(itertools.chain(base_config.items(), config.items()))
 
 
-@tf_export("lite.experimental.nn.TFLiteLSTMCell")
+@tf_export(v1=["lite.experimental.nn.TFLiteLSTMCell"])
 class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
@@ -254,7 +254,7 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
     # TODO(raziel): layers stuff -- chop if un-layerizing Op.
     self.input_spec = base_layer.InputSpec(ndim=2)
 
-    self._tflite_wrapper = op_hint.OpHint("UnidirectionalSequenceLstm")
+    self._tflite_wrapper = OpHint("UnidirectionalSequenceLstm")
 
     self._num_units = num_units
     self._use_peepholes = use_peepholes

@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/bigtable/kernels/bigtable_lib.h"
-
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
@@ -140,19 +140,19 @@ class BigtableTableOp : public OpKernel {
       ResourceMgr* mgr = ctx->resource_manager();
       OP_REQUIRES_OK(ctx, cinfo_.Init(mgr, def()));
 
-      BigtableClientResource* client_resource;
+      core::RefCountPtr<BigtableClientResource> client_resource;
       OP_REQUIRES_OK(
           ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &client_resource));
-      core::ScopedUnref unref_client(client_resource);
 
       BigtableTableResource* resource;
-      OP_REQUIRES_OK(
-          ctx, mgr->LookupOrCreate<BigtableTableResource>(
-                   cinfo_.container(), cinfo_.name(), &resource,
-                   [this, client_resource](BigtableTableResource** ret) {
-                     *ret = new BigtableTableResource(client_resource, table_);
-                     return Status::OK();
-                   }));
+      OP_REQUIRES_OK(ctx,
+                     mgr->LookupOrCreate<BigtableTableResource>(
+                         cinfo_.container(), cinfo_.name(), &resource,
+                         [this, &client_resource](BigtableTableResource** ret) {
+                           *ret = new BigtableTableResource(
+                               client_resource.get(), table_);
+                           return Status::OK();
+                         }));
       initialized_ = true;
     }
     OP_REQUIRES_OK(ctx, MakeResourceHandleToOutput(
@@ -237,10 +237,9 @@ class ToBigtableOp : public AsyncOpKernel {
                         errors::InvalidArgument("timestamp must be >= -1"),
                         done);
 
-      BigtableTableResource* resource;
+      core::RefCountPtr<BigtableTableResource> resource;
       OP_REQUIRES_OK_ASYNC(
           ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &resource), done);
-      core::ScopedUnref resource_cleanup(resource);
 
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
@@ -262,30 +261,31 @@ class ToBigtableOp : public AsyncOpKernel {
           }
           components.clear();
         }
-        grpc::Status mutation_status;
+        ::google::cloud::Status mutation_status;
         std::vector<::google::cloud::bigtable::FailedMutation> failures =
-            resource->table().BulkApply(std::move(mutation), mutation_status);
-        if (!mutation_status.ok()) {
-          LOG(ERROR) << "Failure applying mutation: "
-                     << mutation_status.error_code() << " - "
-                     << mutation_status.error_message() << " ("
-                     << mutation_status.error_details() << ").";
-        }
+            resource->table().BulkApply(mutation);
         if (!failures.empty()) {
+          mutation_status = failures.front().status();
+          if (!mutation_status.ok()) {
+            LOG(ERROR) << "Failure applying mutation: "
+                       << mutation_status.code() << " - "
+                       << mutation_status.message() << ".";
+          }
+          ::google::bigtable::v2::MutateRowsRequest request;
+          mutation.MoveTo(&request);
           for (const auto& failure : failures) {
             LOG(ERROR) << "Failure applying mutation on row ("
-                       << failure.original_index()
-                       << "): " << failure.mutation().row_key()
+                       << failure.original_index() << "): "
+                       << request.entries(failure.original_index()).row_key()
                        << " - error: " << failure.status().message() << ".";
           }
         }
         OP_REQUIRES_ASYNC(
-            ctx, failures.empty() && mutation_status.ok(),
+            ctx, failures.empty(),
             errors::Unknown("Failure while writing to Cloud Bigtable: ",
-                            mutation_status.error_code(), " - ",
-                            mutation_status.error_message(), " (",
-                            mutation_status.error_details(),
-                            "), # of mutation failures: ", failures.size(),
+                            mutation_status.code(), " - ",
+                            mutation_status.message(),
+                            "; # of mutation failures: ", failures.size(),
                             ". See the log for the specific error details."),
             done);
       } while (!end_of_sequence);

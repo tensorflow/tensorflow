@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -100,6 +101,19 @@ Status ThreadPoolDevice::MakeTensorFromProto(
   }
   return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                  ProtoDebugString(tensor_proto));
+}
+
+void ThreadPoolDevice::CopyTensorInSameDevice(
+    const Tensor* input_tensor, Tensor* output_tensor,
+    const DeviceContext* device_context, StatusCallback done) {
+  if (input_tensor->NumElements() != output_tensor->NumElements()) {
+    done(errors::Internal(
+        "CPU->CPU copy shape mismatch: input=", input_tensor->shape(),
+        ", output=", output_tensor->shape()));
+    return;
+  }
+  tensor::DeepCopy(*input_tensor, output_tensor);
+  done(Status::OK());
 }
 
 #ifdef INTEL_MKL

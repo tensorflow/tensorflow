@@ -64,8 +64,8 @@ class TPUGANEstimator(tpu_estimator.TPUEstimator):
           discriminator_fn=discriminator_fn,
           generator_loss_fn=tfgan.losses.wasserstein_generator_loss,
           discriminator_loss_fn=tfgan.losses.wasserstein_discriminator_loss,
-          generator_optimizer=tf.train.AdamOptimizer(0.1, 0.5),
-          discriminator_optimizer=tf.train.AdamOptimizer(0.1, 0.5),
+          generator_optimizer=tf.compat.v1.train.AdamOptimizer(0.1, 0.5),
+          discriminator_optimizer=tf.compat.v1.train.AdamOptimizer(0.1, 0.5),
           train_batch_size=4,
           config=config)
 

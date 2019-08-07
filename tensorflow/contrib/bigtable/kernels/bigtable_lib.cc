@@ -16,22 +16,6 @@ limitations under the License.
 #include "tensorflow/contrib/bigtable/kernels/bigtable_lib.h"
 
 namespace tensorflow {
-
-Status GrpcStatusToTfStatus(const ::grpc::Status& status) {
-  if (status.ok()) {
-    return Status::OK();
-  }
-  auto grpc_code = status.error_code();
-  if (status.error_code() == ::grpc::StatusCode::ABORTED ||
-      status.error_code() == ::grpc::StatusCode::UNAVAILABLE ||
-      status.error_code() == ::grpc::StatusCode::OUT_OF_RANGE) {
-    grpc_code = ::grpc::StatusCode::INTERNAL;
-  }
-  return Status(static_cast<::tensorflow::error::Code>(grpc_code),
-                strings::StrCat("Error reading from Cloud Bigtable: ",
-                                status.error_message()));
-}
-
 namespace {
 ::tensorflow::error::Code GcpErrorCodeToTfErrorCode(
     ::google::cloud::StatusCode code) {
@@ -89,7 +73,7 @@ string RegexFromStringSet(const std::vector<string>& strs) {
   if (uniq.size() == 1) {
     return *uniq.begin();
   }
-  return str_util::Join(uniq, "|");
+  return absl::StrJoin(uniq, "|");
 }
 
 }  // namespace tensorflow

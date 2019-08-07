@@ -3,6 +3,9 @@ ifeq ($(TARGET), riscv32_mcu)
   TARGET_ARCH := riscv32_mcu
   TARGET_TOOLCHAIN_PREFIX := riscv64-unknown-elf-
 
+  $(eval $(call add_third_party_download,$(RISCV_TOOLCHAIN_URL),$(RISCV_TOOLCHAIN_MD5),riscv_toolchain,))
+  $(eval $(call add_third_party_download,$(SIFIVE_FE310_LIB_URL),$(SIFIVE_FE310_LIB_MD5),sifive_fe310_lib,))
+
   PLATFORM_FLAGS = \
     -march=rv32imac \
     -mabi=ilp32 \

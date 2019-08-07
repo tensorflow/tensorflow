@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/concatenate_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -20,7 +21,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "concatenate_dataset";
-constexpr char kOpName[] = "ConcatenateDataset";
 
 class ConcatenateDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -49,8 +49,11 @@ class ConcatenateDatasetOpTest : public DatasetOpsTestBase {
       const std::vector<PartialTensorShape> &output_shapes,
       std::unique_ptr<OpKernel> *op_kernel) {
     NodeDef node_def = test::function::NDef(
-        kNodeName, kOpName, {"input_dataset", "another_dataset"},
-        {{"output_types", output_types}, {"output_shapes", output_shapes}});
+        kNodeName, name_utils::OpName(ConcatenateDatasetOp::kDatasetType),
+        {ConcatenateDatasetOp::kInputDataset,
+         ConcatenateDatasetOp::kAnotherDataset},
+        {{ConcatenateDatasetOp::kOutputTypes, output_types},
+         {ConcatenateDatasetOp::kOutputShapes, output_shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
@@ -78,23 +81,19 @@ struct TestCase {
 // Test case 1: same shape.
 TestCase SameShapeTestCase() {
   return {/*input_tensors*/
-          {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                                    {1, 2, 3, 4}),
-            DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                                    {5, 6, 7, 8})},
-           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                                    {11, 12, 13, 14}),
-            DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                                    {15, 16, 17, 18})}},
+          {{CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
+            CreateTensor<int64>(TensorShape{2, 2}, {5, 6, 7, 8})},
+           {CreateTensor<int64>(TensorShape{2, 2}, {11, 12, 13, 14}),
+            CreateTensor<int64>(TensorShape{2, 2}, {15, 16, 17, 18})}},
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {1, 2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {5, 6}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {3, 4}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {7, 8}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {11, 12}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {15, 16}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {13, 14}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {17, 18})},
+          {CreateTensor<int64>(TensorShape{2}, {1, 2}),
+           CreateTensor<int64>(TensorShape{2}, {5, 6}),
+           CreateTensor<int64>(TensorShape{2}, {3, 4}),
+           CreateTensor<int64>(TensorShape{2}, {7, 8}),
+           CreateTensor<int64>(TensorShape{2}, {11, 12}),
+           CreateTensor<int64>(TensorShape{2}, {15, 16}),
+           CreateTensor<int64>(TensorShape{2}, {13, 14}),
+           CreateTensor<int64>(TensorShape{2}, {17, 18})},
           /*expected_output_dtypes*/ {DT_INT64, DT_INT64},
           /*expected_output_shapes*/
           {PartialTensorShape({2}), PartialTensorShape({2})},
@@ -104,42 +103,38 @@ TestCase SameShapeTestCase() {
 
 // Test case 2: different shape.
 TestCase DifferentShapeTestCase() {
-  return {
-      /*input_tensors*/
-      {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                                {1, 2, 3, 4, 5, 6}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                                {7, 8, 9, 10})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                                {11, 12, 13, 14}),
-        DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 1}, {15, 16})}},
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3}, {1, 2, 3}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {7, 8}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3}, {4, 5, 6}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {9, 10}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {11, 12}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {15}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {13, 14}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {16})},
-      /*expected_output_dtypes*/ {DT_INT64, DT_INT64},
-      /*expected_output_shapes*/
-      {PartialTensorShape({-1}), PartialTensorShape({-1})},
-      /*expected_cardinality*/ 4,
-      /*breakpoints*/ {0, 2, 5}};
+  return {/*input_tensors*/
+          {{CreateTensor<int64>(TensorShape{2, 3}, {1, 2, 3, 4, 5, 6}),
+            CreateTensor<int64>(TensorShape{2, 2}, {7, 8, 9, 10})},
+           {CreateTensor<int64>(TensorShape{2, 2}, {11, 12, 13, 14}),
+            CreateTensor<int64>(TensorShape{2, 1}, {15, 16})}},
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape{3}, {1, 2, 3}),
+           CreateTensor<int64>(TensorShape{2}, {7, 8}),
+           CreateTensor<int64>(TensorShape{3}, {4, 5, 6}),
+           CreateTensor<int64>(TensorShape{2}, {9, 10}),
+           CreateTensor<int64>(TensorShape{2}, {11, 12}),
+           CreateTensor<int64>(TensorShape{1}, {15}),
+           CreateTensor<int64>(TensorShape{2}, {13, 14}),
+           CreateTensor<int64>(TensorShape{1}, {16})},
+          /*expected_output_dtypes*/ {DT_INT64, DT_INT64},
+          /*expected_output_shapes*/
+          {PartialTensorShape({-1}), PartialTensorShape({-1})},
+          /*expected_cardinality*/ 4,
+          /*breakpoints*/ {0, 2, 5}};
 }
 
 // Test case 3: different dtypes
 TestCase DifferentDtypeTestCase() {
-  return {/*input_tensors*/ {{DatasetOpsTestBase::CreateTensor<int64>(
-                                 TensorShape({2, 2}), {1, 2, 3, 4})},
-                             {DatasetOpsTestBase::CreateTensor<double>(
-                                 TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}},
-          /*expected_outputs*/ {},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({2})},
-          /*expected_cardinality*/ 0,
-          /*breakpoints*/ {}};
+  return {
+      /*input_tensors*/ {
+          {CreateTensor<int64>(TensorShape({2, 2}), {1, 2, 3, 4})},
+          {CreateTensor<double>(TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}},
+      /*expected_outputs*/ {},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({2})},
+      /*expected_cardinality*/ 0,
+      /*breakpoints*/ {}};
 }
 
 class ParameterizedConcatenateDatasetOpTest
@@ -273,7 +268,8 @@ TEST_F(ConcatenateDatasetOpTest, DatasetTypeString) {
                              &concatenate_dataset));
   core::ScopedUnref scoped_unref(concatenate_dataset);
 
-  EXPECT_EQ(concatenate_dataset->type_string(), kOpName);
+  EXPECT_EQ(concatenate_dataset->type_string(),
+            name_utils::OpName(ConcatenateDatasetOp::kDatasetType));
 }
 
 TEST_P(ParameterizedConcatenateDatasetOpTest, DatasetOutputDtypes) {
@@ -490,7 +486,9 @@ TEST_F(ConcatenateDatasetOpTest, IteratorOutputPrefix) {
   std::unique_ptr<IteratorBase> iterator;
   TF_ASSERT_OK(concatenate_dataset->MakeIterator(iterator_ctx.get(), "Iterator",
                                                  &iterator));
-  EXPECT_EQ(iterator->prefix(), "Iterator::Concatenate");
+  EXPECT_EQ(iterator->prefix(),
+            name_utils::IteratorPrefix(ConcatenateDatasetOp::kDatasetType,
+                                       "Iterator"));
 }
 
 TEST_P(ParameterizedConcatenateDatasetOpTest, Roundtrip) {
@@ -536,7 +534,8 @@ TEST_P(ParameterizedConcatenateDatasetOpTest, Roundtrip) {
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
     TF_EXPECT_OK(writer.Flush());
     VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(iterator->Restore(iterator_ctx.get(), &reader));
+    TF_EXPECT_OK(RestoreIterator(iterator_ctx.get(), &reader, "Iterator",
+                                 *concatenate_dataset, &iterator));
 
     while (cur_iteration < breakpoint) {
       TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,

@@ -44,6 +44,10 @@ tf_class {
     argspec: "args=[\'self\', \'offset\', \'whence\', \'position\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\'], "
   }
   member_method {
+    name: "seekable"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "size"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

@@ -55,9 +55,31 @@ static xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
 
 class XlaGpuDeviceFactory : public DeviceFactory {
  public:
+  Status ListPhysicalDevices(std::vector<string>* devices) override;
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override;
 };
+
+Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
+  auto platform = se::MultiPlatformManager::PlatformWithName("CUDA");
+  if (!platform.ok()) {
+    // Treat failures as non-fatal; there might not be a GPU in the machine.
+    VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();
+    return Status::OK();
+  }
+
+  int device_count = platform.ValueOrDie()->VisibleDeviceCount();
+  if (device_count <= 0) {
+    return Status::OK();
+  }
+
+  for (int i = 0; i < device_count; ++i) {
+    devices->push_back(
+        absl::StrCat("/physical_device:", DEVICE_XLA_GPU, ":", i));
+  }
+
+  return Status::OK();
+}
 
 Status XlaGpuDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const string& name_prefix,
@@ -66,7 +88,15 @@ Status XlaGpuDeviceFactory::CreateDevices(
   registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
   registration.autoclustering_policy =
       XlaOpRegistry::AutoclusteringPolicy::kAlways;
-  registration.compile_all_resource_ops = true;
+  registration.cluster_resource_variable_ops_unsafely = true;
+  registration.cluster_stack_ops = false;
+  registration.cluster_tensor_array_ops = true;
+  registration.cluster_stateful_rng_ops = true;
+  registration.cluster_control_trigger = true;
+  registration.elide_assert_and_checknumerics = true;
+  registration.cluster_variant_ops = true;
+  registration.cluster_slow_ops = true;
+  registration.cluster_inaccurate_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_GPU, registration);
 
   static XlaDeviceOpRegistrations* registrations =
@@ -117,9 +147,10 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_GPU, XlaGpuDeviceFactory);
 
 // Kernel registrations
 
-constexpr std::array<DataType, 13> kAllXlaGpuTypes = {
+constexpr std::array<DataType, 14> kAllXlaGpuTypes = {
     {DT_UINT8, DT_QUINT8, DT_INT8, DT_QINT8, DT_INT32, DT_QINT32, DT_INT64,
-     DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL, DT_BFLOAT16}};
+     DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128, DT_BOOL,
+     DT_BFLOAT16}};
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_GPU, XlaLocalLaunchOp, kAllXlaGpuTypes);
 REGISTER_XLA_COMPILE_KERNEL(DEVICE_XLA_GPU, XlaCompileOp, kAllXlaGpuTypes);

@@ -32,12 +32,14 @@ def downsample(x, filters, strides, axis=1):
   def pad_strides(strides, axis=1):
     """Convert length 2 to length 4 strides.
 
-    Needed since `tf.layers.Conv2D` uses length 2 strides, whereas operations
-    such as `tf.nn.avg_pool` use length 4 strides.
+    Needed since `tf.compat.v1.layers.Conv2D` uses length 2 strides, whereas
+    operations
+    such as `tf.nn.avg_pool2d` use length 4 strides.
 
     Args:
       strides: length 2 list/tuple strides for height and width
       axis: integer specifying feature dimension according to data format
+
     Returns:
       length 4 strides padded with 1 on batch and channel dimension
     """

@@ -36,9 +36,12 @@ from tensorflow.python.ops import nn
 from tensorflow.python.util import tf_inspect
 
 
-def assert_integer_form(
-    x, data=None, summarize=None, message=None,
-    int_dtype=None, name="assert_integer_form"):
+def assert_integer_form(x,
+                        data=None,
+                        summarize=None,
+                        message=None,
+                        int_dtype=None,
+                        name="assert_integer_form"):
   """Assert that x has integer components (or floats equal to integers).
 
   Args:
@@ -69,8 +72,12 @@ def assert_integer_form(
       except KeyError:
         raise TypeError("Unrecognized type {}".format(x.dtype.name))
     return check_ops.assert_equal(
-        x, math_ops.cast(math_ops.cast(x, int_dtype), x.dtype),
-        data=data, summarize=summarize, message=message, name=name)
+        x,
+        math_ops.cast(math_ops.cast(x, int_dtype), x.dtype),
+        data=data,
+        summarize=summarize,
+        message=message,
+        name=name)
 
 
 def assert_symmetric(matrix):
@@ -91,8 +98,8 @@ def embed_check_nonnegative_integer_form(
     if not x.dtype.is_integer:
       assertions += [
           assert_integer_form(
-              x, message="'{}' cannot contain fractional components.".format(
-                  x)),
+              x,
+              message="'{}' cannot contain fractional components.".format(x)),
       ]
     return control_flow_ops.with_dependencies(assertions, x)
 
@@ -114,16 +121,18 @@ def same_dynamic_shape(a, b):
   # static shape inference may break the equality comparison between
   # shape(a) and shape(b) in math_ops.equal.
   def all_shapes_equal():
-    return math_ops.reduce_all(math_ops.equal(
-        array_ops.concat([array_ops.shape(a), array_ops.shape(b)], 0),
-        array_ops.concat([array_ops.shape(b), array_ops.shape(a)], 0)))
+    return math_ops.reduce_all(
+        math_ops.equal(
+            array_ops.concat(
+                [array_ops.shape(a), array_ops.shape(b)], 0),
+            array_ops.concat(
+                [array_ops.shape(b), array_ops.shape(a)], 0)))
 
   # One of the shapes isn't fully defined, so we need to use the dynamic
   # shape.
   return control_flow_ops.cond(
       math_ops.equal(array_ops.rank(a), array_ops.rank(b)),
-      all_shapes_equal,
-      lambda: constant_op.constant(False))
+      all_shapes_equal, lambda: constant_op.constant(False))
 
 
 def maybe_get_static_value(x, dtype=None):
@@ -162,13 +171,13 @@ def get_logits_and_probs(logits=None,
   Args:
     logits: Floating-point `Tensor` representing log-odds.
     probs: Floating-point `Tensor` representing probabilities.
-    multidimensional: Python `bool`, default `False`.
-      If `True`, represents whether the last dimension of `logits` or `probs`,
-      a `[N1, N2, ...  k]` dimensional tensor, representing the
-      logit or probability of `shape[-1]` classes.
-    validate_args: Python `bool`, default `False`. When `True`, either assert
-      `0 <= probs <= 1` (if not `multidimensional`) or that the last dimension
-      of `probs` sums to one.
+    multidimensional: Python `bool`, default `False`. If `True`, represents
+      whether the last dimension of `logits` or `probs`, a `[N1, N2, ...  k]`
+      dimensional tensor, representing the logit or probability of `shape[-1]`
+      classes.
+    validate_args: Python `bool`, default `False`. When `True`, either assert `0
+      <= probs <= 1` (if not `multidimensional`) or that the last dimension of
+      `probs` sums to one.
     name: A name for this operation (optional).
     dtype: `tf.DType` to prefer when converting args to `Tensor`s.
 
@@ -213,8 +222,10 @@ def get_logits_and_probs(logits=None,
                   message="probs does not sum to 1.")
           ]
         else:
-          dependencies += [check_ops.assert_less_equal(
-              probs, one, message="probs has components greater than 1.")]
+          dependencies += [
+              check_ops.assert_less_equal(
+                  probs, one, message="probs has components greater than 1.")
+          ]
         probs = control_flow_ops.with_dependencies(dependencies, probs)
 
     with ops.name_scope("logits"):
@@ -288,8 +299,7 @@ def _is_integer_like_by_dtype(dt):
 
 
 def embed_check_categorical_event_shape(
-    categorical_param,
-    name="embed_check_categorical_event_shape"):
+    categorical_param, name="embed_check_categorical_event_shape"):
   """Embeds checks that categorical distributions don't have too many classes.
 
   A categorical-type distribution is one which, e.g., returns the class label
@@ -341,8 +351,8 @@ def embed_check_categorical_event_shape(
     # For more details, see:
     # https://en.wikipedia.org/wiki/Floating-point_arithmetic#Internal_representation
     x_dtype = x.dtype.base_dtype
-    max_event_size = (_largest_integer_by_dtype(x_dtype)
-                      if x_dtype.is_floating else 0)
+    max_event_size = (
+        _largest_integer_by_dtype(x_dtype) if x_dtype.is_floating else 0)
     if max_event_size == 0:
       raise TypeError("Unable to validate size of unrecognized dtype "
                       "({}).".format(x_dtype.name))
@@ -357,34 +367,36 @@ def embed_check_categorical_event_shape(
         raise ValueError("A categorical-distribution parameter must have at "
                          "least 2 events.")
       if event_size > max_event_size:
-        raise ValueError(
-            "Number of classes exceeds `dtype` precision, i.e., "
-            "{} implies shape ({}) cannot exceed {}.".format(
-                x_dtype.name, event_size, max_event_size))
+        raise ValueError("Number of classes exceeds `dtype` precision, i.e., "
+                         "{} implies shape ({}) cannot exceed {}.".format(
+                             x_dtype.name, event_size, max_event_size))
       return x
     else:
       event_size = array_ops.shape(x, name="x_shape")[-1]
       return control_flow_ops.with_dependencies([
           check_ops.assert_rank_at_least(
-              x, 1, message=("A categorical-distribution parameter must have "
-                             "at least 1 dimension.")),
+              x,
+              1,
+              message=("A categorical-distribution parameter must have "
+                       "at least 1 dimension.")),
           check_ops.assert_greater_equal(
-              array_ops.shape(x)[-1], 2,
+              array_ops.shape(x)[-1],
+              2,
               message=("A categorical-distribution parameter must have at "
                        "least 2 events.")),
           check_ops.assert_less_equal(
-              event_size, max_event_size,
+              event_size,
+              max_event_size,
               message="Number of classes exceeds `dtype` precision, "
-                      "i.e., {} dtype cannot exceed {} shape.".format(
-                          x_dtype.name, max_event_size)),
+              "i.e., {} dtype cannot exceed {} shape.".format(
+                  x_dtype.name, max_event_size)),
       ], x)
 
 
-def embed_check_integer_casting_closed(
-    x,
-    target_dtype,
-    assert_nonnegative=True,
-    name="embed_check_casting_closed"):
+def embed_check_integer_casting_closed(x,
+                                       target_dtype,
+                                       assert_nonnegative=True,
+                                       name="embed_check_casting_closed"):
   """Ensures integers remain unaffected despite casting to/from int/float types.
 
   Example integer-types: `uint8`, `int32`, `bool`.
@@ -416,19 +428,18 @@ def embed_check_integer_casting_closed(
 
   with ops.name_scope(name, values=[x]):
     x = ops.convert_to_tensor(x, name="x")
-    if (not _is_integer_like_by_dtype(x.dtype)
-        and not x.dtype.is_floating):
+    if (not _is_integer_like_by_dtype(x.dtype) and not x.dtype.is_floating):
       raise TypeError("{}.dtype must be floating- or "
                       "integer-type.".format(x.dtype.name))
-    if (not _is_integer_like_by_dtype(target_dtype)
-        and not target_dtype.is_floating):
+    if (not _is_integer_like_by_dtype(target_dtype) and
+        not target_dtype.is_floating):
       raise TypeError("target_dtype ({}) must be floating- or "
                       "integer-type.".format(target_dtype.name))
-    if (not _is_integer_like_by_dtype(x.dtype)
-        and not _is_integer_like_by_dtype(target_dtype)):
+    if (not _is_integer_like_by_dtype(x.dtype) and
+        not _is_integer_like_by_dtype(target_dtype)):
       raise TypeError("At least one of {}.dtype ({}) and target_dtype ({}) "
-                      "must be integer-type.".format(
-                          x, x.dtype.name, target_dtype.name))
+                      "must be integer-type.".format(x, x.dtype.name,
+                                                     target_dtype.name))
 
     assertions = []
     if assert_nonnegative:
@@ -442,26 +453,28 @@ def embed_check_integer_casting_closed(
       # Since this check implies the magnitude check below, we need only it.
       assertions += [
           assert_integer_form(
-              x, int_dtype=target_dtype,
+              x,
+              int_dtype=target_dtype,
               message="Elements must be {}-equivalent.".format(
                   target_dtype.name)),
       ]
     else:
-      if (_largest_integer_by_dtype(x.dtype)
-          > _largest_integer_by_dtype(target_dtype)):
+      if (_largest_integer_by_dtype(x.dtype) >
+          _largest_integer_by_dtype(target_dtype)):
         # Cast may lose integer precision.
         assertions += [
             check_ops.assert_less_equal(
-                x, _largest_integer_by_dtype(target_dtype),
+                x,
+                _largest_integer_by_dtype(target_dtype),
                 message=("Elements cannot exceed {}.".format(
                     _largest_integer_by_dtype(target_dtype)))),
         ]
-      if (not assert_nonnegative and
-          (_smallest_integer_by_dtype(x.dtype)
-           < _smallest_integer_by_dtype(target_dtype))):
+      if (not assert_nonnegative and (_smallest_integer_by_dtype(
+          x.dtype) < _smallest_integer_by_dtype(target_dtype))):
         assertions += [
             check_ops.assert_greater_equal(
-                x, _smallest_integer_by_dtype(target_dtype),
+                x,
+                _smallest_integer_by_dtype(target_dtype),
                 message=("Elements cannot be smaller than {}.".format(
                     _smallest_integer_by_dtype(target_dtype)))),
         ]
@@ -547,11 +560,10 @@ def matrix_diag_transform(matrix, transform=None, name=None):
   Args:
     matrix:  Rank `R` `Tensor`, `R >= 2`, where the last two dimensions are
       equal.
-    transform:  Element-wise function mapping `Tensors` to `Tensors`. To
-      be applied to the diagonal of `matrix`. If `None`, `matrix` is returned
+    transform:  Element-wise function mapping `Tensors` to `Tensors`. To be
+      applied to the diagonal of `matrix`. If `None`, `matrix` is returned
       unchanged. Defaults to `None`.
-    name:  A name to give created ops.
-      Defaults to "matrix_diag_transform".
+    name:  A name to give created ops. Defaults to "matrix_diag_transform".
 
   Returns:
     A `Tensor` with same shape and `dtype` as `matrix`.
@@ -583,7 +595,7 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
   Example:
 
   ```python
-  x = tf.random_normal([1, 2, 3, 4])  # Tensor of shape [1, 2, 3, 4].
+  x = tf.random.normal([1, 2, 3, 4])  # Tensor of shape [1, 2, 3, 4].
   rotate_transpose(x, -1).shape == [2, 3, 4, 1]
   rotate_transpose(x, -2).shape == [3, 4, 1, 2]
   rotate_transpose(x,  1).shape == [4, 1, 2, 3]
@@ -612,10 +624,12 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
     shift_value_static = tensor_util.constant_value(shift)
     ndims = x.get_shape().ndims
     if ndims is not None and shift_value_static is not None:
-      if ndims < 2: return x
+      if ndims < 2:
+        return x
       shift_value_static = np.sign(shift_value_static) * (
           abs(shift_value_static) % ndims)
-      if shift_value_static == 0: return x
+      if shift_value_static == 0:
+        return x
       perm = np.roll(np.arange(ndims), shift_value_static)
       return array_ops.transpose(x, perm=perm)
     else:
@@ -633,19 +647,16 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
       # Finally, we transform shift by modulo length so it can be specified
       # independently from the array upon which it operates (like python).
       ndims = array_ops.rank(x)
-      shift = array_ops.where(math_ops.less(shift, 0),
-                              math_ops.mod(-shift, ndims),
-                              ndims - math_ops.mod(shift, ndims))
+      shift = array_ops.where_v2(
+          math_ops.less(shift, 0), math_ops.mod(-shift, ndims),
+          ndims - math_ops.mod(shift, ndims))
       first = math_ops.range(0, shift)
       last = math_ops.range(shift, ndims)
       perm = array_ops.concat([last, first], 0)
       return array_ops.transpose(x, perm=perm)
 
 
-def pick_vector(cond,
-                true_vector,
-                false_vector,
-                name="pick_vector"):
+def pick_vector(cond, true_vector, false_vector, name="pick_vector"):
   """Picks possibly different length row `Tensor`s based on condition.
 
   Value `Tensor`s should have exactly one dimension.
@@ -659,13 +670,9 @@ def pick_vector(cond,
     true_vector: `Tensor` of one dimension. Returned when cond is `True`.
     false_vector: `Tensor` of one dimension. Returned when cond is `False`.
     name: Python `str`. The name to give this op.
-
-  Example:
-
-  ```python
-  pick_vector(tf.less(0, 5), tf.range(10, 12), tf.range(15, 18))  # [10, 11]
-  pick_vector(tf.less(5, 0), tf.range(10, 12), tf.range(15, 18))  # [15, 16, 17]
-  ```
+  Example:  ```python pick_vector(tf.less(0, 5), tf.range(10, 12), tf.range(15,
+    18))  # [10, 11] pick_vector(tf.less(5, 0), tf.range(10, 12), tf.range(15,
+    18))  # [15, 16, 17] ```
 
   Returns:
     true_or_false_vector: `Tensor`.
@@ -687,17 +694,17 @@ def pick_vector(cond,
     false_vector = ops.convert_to_tensor(false_vector, name="false_vector")
     if true_vector.dtype != false_vector.dtype:
       raise TypeError(
-          "%s.dtype=%s does not match %s.dtype=%s"
-          % (true_vector, true_vector.dtype,
-             false_vector, false_vector.dtype))
+          "%s.dtype=%s does not match %s.dtype=%s" %
+          (true_vector, true_vector.dtype, false_vector, false_vector.dtype))
     n = array_ops.shape(true_vector)[0]
     return array_ops.slice(
         array_ops.concat([true_vector, false_vector], 0),
-        [array_ops.where(cond, 0, n)], [array_ops.where(cond, n, -1)])
+        [array_ops.where_v2(cond, 0, n)], [array_ops.where(cond, n, -1)])
 
 
-def prefer_static_broadcast_shape(
-    shape1, shape2, name="prefer_static_broadcast_shape"):
+def prefer_static_broadcast_shape(shape1,
+                                  shape2,
+                                  name="prefer_static_broadcast_shape"):
   """Convenience function which statically broadcasts shape when possible.
 
   Args:
@@ -710,6 +717,7 @@ def prefer_static_broadcast_shape(
       statically), or as a `Tensor`.
   """
   with ops.name_scope(name, values=[shape1, shape2]):
+
     def make_shape_tensor(x):
       return ops.convert_to_tensor(x, name="shape", dtype=dtypes.int32)
 
@@ -892,14 +900,11 @@ def fill_triangular(x, upper=False, name=None):
     else:
       x_list = [x[..., n:], array_ops.reverse(x, axis=[ndims - 1])]
     new_shape = (
-        static_final_shape.as_list()
-        if static_final_shape.is_fully_defined()
+        static_final_shape.as_list() if static_final_shape.is_fully_defined()
         else array_ops.concat([array_ops.shape(x)[:-1], [n, n]], axis=0))
     x = array_ops.reshape(array_ops.concat(x_list, axis=-1), new_shape)
     x = array_ops.matrix_band_part(
-        x,
-        num_lower=(0 if upper else -1),
-        num_upper=(-1 if upper else 0))
+        x, num_lower=(0 if upper else -1), num_upper=(-1 if upper else 0))
     x.set_shape(static_final_shape)
     return x
 
@@ -1041,17 +1046,17 @@ def tridiag(below=None, diag=None, above=None, name=None):
     return _add(below, diag, above)
 
 
-def reduce_weighted_logsumexp(
-    logx,
-    w=None,
-    axis=None,
-    keep_dims=False,
-    return_sign=False,
-    name=None):
+def reduce_weighted_logsumexp(logx,
+                              w=None,
+                              axis=None,
+                              keep_dims=False,
+                              return_sign=False,
+                              name=None):
   """Computes `log(abs(sum(weight * exp(elements across tensor dimensions))))`.
 
   If all weights `w` are known to be positive, it is more efficient to directly
-  use `reduce_logsumexp`, i.e., `tf.reduce_logsumexp(logx + tf.log(w))` is more
+  use `reduce_logsumexp`, i.e., `tf.reduce_logsumexp(logx + tf.math.log(w))` is
+  more
   efficient than `du.reduce_weighted_logsumexp(logx, w)`.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1094,9 +1099,9 @@ def reduce_weighted_logsumexp(
   Args:
     logx: The tensor to reduce. Should have numeric type.
     w: The weight tensor. Should have numeric type identical to `logx`.
-    axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions. Must be in the range
-      `[-rank(input_tensor), rank(input_tensor))`.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
     keep_dims: If true, retains reduced dimensions with length 1.
     return_sign: If `True`, returns the sign of the result.
     name: A name for the operation (optional).
@@ -1120,9 +1125,8 @@ def reduce_weighted_logsumexp(
     # off the max. We do this because otherwise we'd get `inf - inf = NaN`. That
     # this is ok follows from the fact that we're actually free to subtract any
     # value we like, so long as we add it back after taking the `log(sum(...))`.
-    max_log_absw_x = array_ops.where(
-        math_ops.is_inf(max_log_absw_x),
-        array_ops.zeros_like(max_log_absw_x),
+    max_log_absw_x = array_ops.where_v2(
+        math_ops.is_inf(max_log_absw_x), array_ops.zeros_like(max_log_absw_x),
         max_log_absw_x)
     wx_over_max_absw_x = (
         math_ops.sign(w) * math_ops.exp(log_absw_x - max_log_absw_x))
@@ -1187,11 +1191,13 @@ def softplus_inverse(x, name=None):
     too_large_value = x
     # This `where` will ultimately be a NOP because we won't select this
     # codepath whenever we used the surrogate `ones_like`.
-    x = array_ops.where(math_ops.logical_or(is_too_small, is_too_large),
-                        array_ops.ones_like(x), x)
+    x = array_ops.where_v2(
+        math_ops.logical_or(is_too_small, is_too_large), array_ops.ones_like(x),
+        x)
     y = x + math_ops.log(-math_ops.expm1(-x))  # == log(expm1(x))
-    return array_ops.where(is_too_small, too_small_value,
-                           array_ops.where(is_too_large, too_large_value, y))
+    return array_ops.where_v2(
+        is_too_small, too_small_value,
+        array_ops.where_v2(is_too_large, too_large_value, y))
 
 
 # TODO(b/35290280): Add unit-tests.
@@ -1206,15 +1212,17 @@ def dimension_size(x, axis):
   return array_ops.shape(x)[axis]
 
 
-def process_quadrature_grid_and_probs(
-    quadrature_grid_and_probs, dtype, validate_args, name=None):
+def process_quadrature_grid_and_probs(quadrature_grid_and_probs,
+                                      dtype,
+                                      validate_args,
+                                      name=None):
   """Validates quadrature grid, probs or computes them as necessary.
 
   Args:
     quadrature_grid_and_probs: Python pair of `float`-like `Tensor`s
       representing the sample points and the corresponding (possibly
       normalized) weight.  When `None`, defaults to:
-      `np.polynomial.hermite.hermgauss(deg=8)`.
+        `np.polynomial.hermite.hermgauss(deg=8)`.
     dtype: The expected `dtype` of `grid` and `probs`.
     validate_args: Python `bool`, default `False`. When `True` distribution
       parameters are checked for validity despite possibly degrading runtime
@@ -1244,8 +1252,7 @@ def process_quadrature_grid_and_probs(
 
     grid, probs = tuple(quadrature_grid_and_probs)
     grid = ops.convert_to_tensor(grid, name="grid", dtype=dtype)
-    probs = ops.convert_to_tensor(probs, name="unnormalized_probs",
-                                  dtype=dtype)
+    probs = ops.convert_to_tensor(probs, name="unnormalized_probs", dtype=dtype)
     probs /= linalg_ops.norm(probs, ord=1, axis=-1, keepdims=True, name="probs")
 
     def _static_event_size(x):
@@ -1281,13 +1288,13 @@ def pad(x, axis, front=False, back=False, value=0, count=1, name=None):
       (Negative indexing is supported.)
     front: Python `bool`; if `True` the beginning of the `axis` dimension is
       padded with `value`, `count` times. If `False` no front padding is made.
-    back: Python `bool`; if `True` the end of the `axis` dimension is
-      padded with `value`, `count` times. If `False` no end padding is made.
+    back: Python `bool`; if `True` the end of the `axis` dimension is padded
+      with `value`, `count` times. If `False` no end padding is made.
     value: Scalar `int`-like `Tensor` representing the actual value added to the
       front and/or back of the `axis` dimension of `x`.
     count: Scalar `int`-like `Tensor` representing number of elements added to
-      the front and/or back of the `axis` dimension of `x`. E.g., if
-      `front = back = True` then `2 * count` elements are added.
+      the front and/or back of the `axis` dimension of `x`. E.g., if `front =
+      back = True` then `2 * count` elements are added.
     name: Python `str` name prefixed to Ops created by this function.
 
   Returns:
@@ -1306,8 +1313,9 @@ def pad(x, axis, front=False, back=False, value=0, count=1, name=None):
           count.dtype.name))
     if not front and not back:
       raise ValueError("At least one of `front`, `back` must be `True`.")
-    ndims = (x.shape.ndims if x.shape.ndims is not None
-             else array_ops.rank(x, name="ndims"))
+    ndims = (
+        x.shape.ndims if x.shape.ndims is not None else array_ops.rank(
+            x, name="ndims"))
     axis = ops.convert_to_tensor(axis, name="axis")
     axis_ = tensor_util.constant_value(axis)
     if axis_ is not None:
@@ -1317,22 +1325,21 @@ def pad(x, axis, front=False, back=False, value=0, count=1, name=None):
       count_ = tensor_util.constant_value(count)
       if axis_ >= 0 or x.shape.ndims is not None:
         head = x.shape[:axis]
-        middle = tensor_shape.TensorShape(
-            None if count_ is None
-            else (tensor_shape.dimension_at_index(
-                x.shape, axis) + count_ * (front + back)))
-        tail = x.shape[axis+1:]
+        middle = tensor_shape.TensorShape(None if count_ is None else (
+            tensor_shape.dimension_at_index(x.shape, axis) + count_ *
+            (front + back)))
+        tail = x.shape[axis + 1:]
         final_shape = head.concatenate(middle.concatenate(tail))
       else:
         final_shape = None
     else:
-      axis = array_ops.where(axis < 0, ndims + axis, axis)
+      axis = array_ops.where_v2(axis < 0, ndims + axis, axis)
       final_shape = None
     x = array_ops.pad(
         x,
         paddings=array_ops.one_hot(
-            indices=array_ops.stack([axis if front else -1,
-                                     axis if back else -1]),
+            indices=array_ops.stack(
+                [axis if front else -1, axis if back else -1]),
             depth=ndims,
             axis=0,
             on_value=count,
@@ -1407,8 +1414,8 @@ class AppendDocstring(object):
     Args:
       additional_note: Python string added as additional docstring to public
         version of function.
-      kwargs_dict: Python string/string dictionary representing
-        specific kwargs expanded from the **kwargs input.
+      kwargs_dict: Python string/string dictionary representing specific kwargs
+        expanded from the **kwargs input.
 
     Raises:
       ValueError: if kwargs_dict.key contains whitespace.
@@ -1420,20 +1427,20 @@ class AppendDocstring(object):
       for key in sorted(kwargs_dict.keys()):
         value = kwargs_dict[key]
         if any(x.isspace() for x in key):
-          raise ValueError(
-              "Parameter name \"%s\" contains whitespace." % key)
+          raise ValueError("Parameter name \"%s\" contains whitespace." % key)
         value = value.lstrip()
         if "\n" in value:
           raise ValueError(
               "Parameter description for \"%s\" contains newlines." % key)
         bullets.append("*  `%s`: %s" % (key, value))
-      self._additional_note += ("\n\n##### `kwargs`:\n\n" +
-                                "\n".join(bullets))
+      self._additional_note += ("\n\n##### `kwargs`:\n\n" + "\n".join(bullets))
 
   def __call__(self, fn):
+
     @functools.wraps(fn)
     def _fn(*args, **kwargs):
       return fn(*args, **kwargs)
+
     if _fn.__doc__ is None:
       _fn.__doc__ = self._additional_note
     else:

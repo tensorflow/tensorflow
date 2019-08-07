@@ -17,9 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <vector>
 
@@ -82,7 +82,7 @@ struct ReduceAndReshape {
 // Explicit instantiations are defined in tile_ops_{cpu,gpu}_impl.*,
 // below are their declarations.
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 extern template struct Tile<GPUDevice, bool, int32>;
 extern template struct Tile<GPUDevice, bool, int64>;
 extern template struct Tile<GPUDevice, float, int32>;
@@ -104,9 +104,9 @@ extern template struct Tile<GPUDevice, int64, int64>;
 #define DECLARE_CUDA_DIM(T, NDIM)                      \
   extern template struct TileGrad<GPUDevice, T, NDIM>; \
   extern template struct ReduceAndReshape<GPUDevice, T, NDIM, 1>
-#else  // GOOGLE_CUDA
+#else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define DECLARE_CUDA_DIM(T, NDIM)
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 #define DECLARE_TYPE(T)                              \
@@ -236,6 +236,7 @@ class TileOp : public OpKernel {
     TF_CALL_float(HANDLE_TYPE_NAME);
     TF_CALL_double(HANDLE_TYPE_NAME);
     TF_CALL_uint8(HANDLE_TYPE_NAME);
+    TF_CALL_int8(HANDLE_TYPE_NAME);
     TF_CALL_int32(HANDLE_TYPE_NAME);
     TF_CALL_int16(HANDLE_TYPE_NAME);
     TF_CALL_int64(HANDLE_TYPE_NAME);
@@ -314,6 +315,7 @@ TF_CALL_float(HANDLE_TYPE_NAME_CPU);
 TF_CALL_bfloat16(HANDLE_TYPE_NAME_CPU);
 TF_CALL_double(HANDLE_TYPE_NAME_CPU);
 TF_CALL_uint8(HANDLE_TYPE_NAME_CPU);
+TF_CALL_int8(HANDLE_TYPE_NAME_CPU);
 TF_CALL_int32(HANDLE_TYPE_NAME_CPU);
 TF_CALL_int16(HANDLE_TYPE_NAME_CPU);
 TF_CALL_int64(HANDLE_TYPE_NAME_CPU);
@@ -322,7 +324,7 @@ TF_CALL_complex64(HANDLE_TYPE_NAME_CPU);
 TF_CALL_complex128(HANDLE_TYPE_NAME_CPU);
 TF_CALL_string(HANDLE_TYPE_NAME_CPU);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TF_CALL_bool(HANDLE_TYPE_NAME_GPU);
 TF_CALL_float(HANDLE_TYPE_NAME_GPU);
 TF_CALL_double(HANDLE_TYPE_NAME_GPU);
@@ -332,7 +334,7 @@ TF_CALL_int64(HANDLE_TYPE_NAME_GPU);
 TF_CALL_half(HANDLE_TYPE_NAME_GPU);
 TF_CALL_complex64(HANDLE_TYPE_NAME_GPU);
 TF_CALL_complex128(HANDLE_TYPE_NAME_GPU);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 TF_CALL_float(HANDLE_TYPE_NAME_SYCL);
@@ -588,7 +590,7 @@ TF_CALL_half(HANDLE_TYPE_NAME_CPU);
 TF_CALL_complex64(HANDLE_TYPE_NAME_CPU);
 TF_CALL_complex128(HANDLE_TYPE_NAME_CPU);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TF_CALL_float(HANDLE_TYPE_NAME_GPU);
 TF_CALL_double(HANDLE_TYPE_NAME_GPU);
 TF_CALL_int16(HANDLE_TYPE_NAME_GPU);
@@ -597,7 +599,7 @@ TF_CALL_int64(HANDLE_TYPE_NAME_GPU);
 TF_CALL_half(HANDLE_TYPE_NAME_GPU);
 TF_CALL_complex64(HANDLE_TYPE_NAME_GPU);
 TF_CALL_complex128(HANDLE_TYPE_NAME_GPU);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if TENSORFLOW_USE_SYCL
 #define HANDLE_TYPE_NAME_SYCL(T) \
@@ -637,7 +639,7 @@ REGISTER_KERNEL_BUILDER(Name("TileGrad")
                             .TypeConstraint<int64>("Tmultiples"),
                         TileGradientOp<CPUDevice, int64>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_TILE(type)                                    \
   REGISTER_KERNEL_BUILDER(Name("Tile")                             \
                               .Device(DEVICE_GPU)                  \
@@ -683,7 +685,7 @@ TF_CALL_complex128(REGISTER_GPU)
 #undef REGISTER_GPU_TILE
 #undef REGISTER_GPU_TILE_GRAD
 #undef REGISTER_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL(type)                                        \

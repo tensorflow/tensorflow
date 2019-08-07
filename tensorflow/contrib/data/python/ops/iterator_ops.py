@@ -36,11 +36,11 @@ def make_saveable_from_iterator(iterator):
     ds = tf.data.Dataset.range(10)
     iterator = ds.make_initializable_iterator()
     # Build the iterator SaveableObject.
-    saveable_obj = tf.contrib.data.make_saveable_from_iterator(iterator)
+    saveable_obj = tf.data.experimental.make_saveable_from_iterator(iterator)
     # Add the SaveableObject to the SAVEABLE_OBJECTS collection so
     # it can be automatically saved using Saver.
-    tf.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
-    saver = tf.train.Saver()
+    tf.compat.v1.add_to_collection(tf.GraphKeys.SAVEABLE_OBJECTS, saveable_obj)
+    saver = tf.compat.v1.train.Saver()
 
     while continue_training:
       ... Perform training ...
@@ -82,7 +82,7 @@ class CheckpointInputPipelineHook(iterator_ops.CheckpointInputPipelineHook):
   while True:
     est.train(
         train_input_fn,
-        hooks=[tf.contrib.data.CheckpointInputPipelineHook(est)],
+        hooks=[tf.data.experimental.CheckpointInputPipelineHook(est)],
         steps=train_steps_per_eval)
     # Note: We do not pass the hook here.
     metrics = est.evaluate(eval_input_fn)
@@ -99,7 +99,7 @@ class CheckpointInputPipelineHook(iterator_ops.CheckpointInputPipelineHook):
      pipeline.
 
   For saving the input pipeline checkpoint alongside the model weights use
-  `tf.contrib.data.make_saveable_from_iterator` directly to create a
+  `tf.data.experimental.make_saveable_from_iterator` directly to create a
   `SaveableObject` and add to the `SAVEABLE_OBJECTS` collection. Note, however,
   that you will need to be careful not to restore the training iterator during
   eval. You can do that by not adding the iterator to the SAVEABLE_OBJECTS

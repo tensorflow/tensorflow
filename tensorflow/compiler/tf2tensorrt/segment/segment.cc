@@ -459,7 +459,7 @@ Status SegmentGraph(const Graph* tf_graph,
   }
   LOG(INFO) << msg << "(For more information see "
             << "https://docs.nvidia.com/deeplearning"
-            << "/dgx/integrate-tf-trt/index.html#support-ops).";
+            << "/frameworks/tf-trt-user-guide/index.html#supported-ops).";
 
   // The segmentation algorithm below visits nodes in reverse topological order
   // and attempts to merge nodes along output edges. That means that subgraphs
@@ -681,31 +681,33 @@ Status SegmentGraph(const Graph* tf_graph,
               << " with parent=" << segment_root << ":" << s;
     }
 
-    // Don't use small segments.
-    if (static_cast<int>(segment_nodes.size()) < options.minimum_segment_size) {
+    const int num_effective_nodes = std::count_if(
+        segment_nodes.begin(), segment_nodes.end(), [](const Node* node) {
+          static auto noops =
+              new std::set<string>{"Identity", "Snapshot", "StopGradient"};
+          return noops->count(node->type_string()) == 0;
+        });
+
+    // Don't use segments whose number of effective nodes is small.
+    if (num_effective_nodes < options.minimum_segment_size) {
       VLOG(1) << "Segment " << segments->size() << " has only "
-              << segment_nodes.size() << " nodes, dropping";
+              << num_effective_nodes << " effective nodes, dropping";
       continue;
     }
 
-    // TODO(sami): Make segmenter placement aware once trtscopes are in place
     const auto& dev_itr = device_maps.find(segment_root);
     if (dev_itr == device_maps.end() || dev_itr->second.empty()) {
       VLOG(1) << "No device assigned to segment " << segments->size();
-      segments->emplace_back(std::make_pair(segment_nodes, string()));
     } else if (dev_itr->second.size() > 1) {
-      string s("Segment ");
-      StrAppend(&s, segments->size(), " has multiple devices attached: ");
+      string s = StrCat("Segment ", segments->size(),
+                        " has multiple devices attached: ");
       for (const auto& dev : dev_itr->second) {
         StrAppend(&s, dev, ", ");
       }
-      LOG(WARNING) << s << " choosing " << *(dev_itr->second.begin());
-      segments->emplace_back(
-          std::make_pair(segment_nodes, *(dev_itr->second.begin())));
-    } else {
-      segments->emplace_back(
-          std::make_pair(segment_nodes, *(dev_itr->second.begin())));
+      LOG(WARNING) << s;
     }
+
+    segments->emplace_back(segment_nodes);
   }
   if (VLOG_IS_ON(1)) {
     for (const auto& d : device_maps) {

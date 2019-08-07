@@ -26,27 +26,60 @@ import sys as _sys
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+from tensorflow.python.tools import module_util as _module_util
+from tensorflow.python.platform import tf_logging as _logging
 
 # API IMPORTS PLACEHOLDER
 
-from tensorflow.python.tools import component_api_helper as _component_api_helper
-_component_api_helper.package_hook(
-    parent_package_str=__name__,
-    child_package_str=(
-        'tensorflow_estimator.python.estimator.api._v1.estimator'))
+# WRAPPER_PLACEHOLDER
 
+if "dev" in __version__:   # pylint: disable=undefined-variable
+  _logging.warning("""
+
+  TensorFlow's `tf-nightly` package will soon be updated to TensorFlow 2.0.
+
+  Please upgrade your code to TensorFlow 2.0:
+    * https://www.tensorflow.org/beta/guide/migration_guide
+
+  Or install the latest stable TensorFlow 1.X release:
+    * `pip install -U "tensorflow==1.*"`
+
+  Otherwise your code may be broken by the change.
+
+  """)
+
+# Make sure directory containing top level submodules is in
+# the __path__ so that "from tensorflow.foo import bar" works.
+# We're using bitwise, but there's nothing special about that.
+_API_MODULE = _sys.modules[__name__].bitwise  # pylint: disable=undefined-variable
 _current_module = _sys.modules[__name__]
-if not hasattr(_current_module, 'estimator'):
-  _component_api_helper.package_hook(
-      parent_package_str=__name__,
-      child_package_str=(
-          'tensorflow_estimator.python.estimator.api.estimator'))
-_component_api_helper.package_hook(
-    parent_package_str=__name__,
-    child_package_str=('tensorflow.python.keras.api._v1.keras'))
+_tf_api_dir = _os.path.dirname(_os.path.dirname(_API_MODULE.__file__))
+if not hasattr(_current_module, '__path__'):
+  __path__ = [_tf_api_dir]
+elif _tf_api_dir not in __path__:
+  __path__.append(_tf_api_dir)
+
+# Hook external TensorFlow modules.
+try:
+  from tensorflow_estimator.python.estimator.api._v1 import estimator
+  _current_module.__path__ = (
+      [_module_util.get_parent_dir(estimator)] + _current_module.__path__)
+  setattr(_current_module, "estimator", estimator)
+except ImportError:
+  pass
+
+try:
+  from tensorflow.python.keras.api._v1 import keras
+  _current_module.__path__ = (
+      [_module_util.get_parent_dir(keras)] + _current_module.__path__)
+  setattr(_current_module, "keras", keras)
+except ImportError:
+  pass
+
+
 from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
 _CONTRIB_WARNING = """
-WARNING: The TensorFlow contrib module will not be included in TensorFlow 2.0.
+The TensorFlow contrib module will not be included in TensorFlow 2.0.
 For more information, please see:
   * https://github.com/tensorflow/community/blob/master/rfcs/20180907-contrib-sunset.md
   * https://github.com/tensorflow/addons
@@ -64,18 +97,8 @@ if '__all__' in vars():
 
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
 # The 'app' module will be imported as part of the placeholder section above.
-app.flags = flags  # pylint: disable=undefined-variable
-
-# Also use 'app' module (choice is arbitrary) to derive the API directory below.
-_API_MODULE = app  # pylint: disable=undefined-variable
-
-# Make sure directory containing top level submodules is in
-# the __path__ so that "from tensorflow.foo import bar" works.
-_tf_api_dir = _os.path.dirname(_os.path.dirname(_API_MODULE.__file__))
-if not hasattr(_current_module, '__path__'):
-  __path__ = [_tf_api_dir]
-elif _tf_api_dir not in __path__:
-  __path__.append(_tf_api_dir)
+_current_module.app.flags = flags  # pylint: disable=undefined-variable
+setattr(_current_module, "flags", flags)
 
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
 # running under pip.
@@ -118,17 +141,16 @@ if _running_from_pip_package():
 # pylint: disable=undefined-variable
 try:
   del python
+except NameError:
+  pass
+try:
   del core
 except NameError:
-  # Don't fail if these modules are not available.
-  # For e.g. this file will be originally placed under tensorflow/_api/v1 which
-  # does not have 'python', 'core' directories. Then, it will be copied
-  # to tensorflow/ which does have these two directories.
   pass
-# Similarly for compiler. Do it separately to make sure we do this even if the
-# others don't exist.
 try:
   del compiler
 except NameError:
   pass
+
+_current_module.compat.v2.compat.v1 = _current_module.compat.v1
 # pylint: enable=undefined-variable

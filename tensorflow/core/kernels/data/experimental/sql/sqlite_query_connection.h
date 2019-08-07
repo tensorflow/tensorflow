@@ -23,6 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace sql {
 
 class SqliteQueryConnection : public QueryConnection {
@@ -50,6 +51,7 @@ class SqliteQueryConnection : public QueryConnection {
 };
 
 }  // namespace sql
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow
 

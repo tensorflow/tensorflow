@@ -253,7 +253,7 @@ class CApiFunctionTest : public ::testing::Test {
                        const std::unordered_set<string>& nodes) {
     ASSERT_EQ(nodes.size(), fdef.node_def_size())
         << "Got unexpected number of nodes. Expected: ["
-        << str_util::Join(nodes, ", ")
+        << absl::StrJoin(nodes, ", ")
         << "] Actual nodes in fdef: " << fdef.DebugString();
     for (const NodeDef& node_def : fdef.node_def()) {
       ASSERT_TRUE(nodes.find(node_def.name()) != nodes.end())
@@ -1276,6 +1276,46 @@ TEST_F(CApiFunctionTest, GraphToFunctionDefWithPlaceholderAttr) {
   EXPECT_EQ(func_->fdef.signature().attr(0).type(), "int");
   EXPECT_EQ(func_->fdef.signature().attr(1).name(), "v2");
   EXPECT_EQ(func_->fdef.signature().attr(1).type(), "int");
+}
+
+void NodeWithAttrHelper(TF_Graph* graph, TF_Status* s, const char* name,
+                        const char* attr_name, const char* attr_value,
+                        TF_Operation** op) {
+  TF_OperationDescription* desc = TF_NewOperation(graph, "Placeholder", name);
+  TF_SetAttrType(desc, "dtype", TF_INT32);
+  TF_SetAttrString(desc, attr_name, attr_value, strlen(attr_value));
+  *op = TF_FinishOperation(desc, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  ASSERT_NE(*op, nullptr);
+}
+
+TEST_F(CApiFunctionTest, GraphToFunctionDefWithArgAttr) {
+  std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> func_graph(
+      TF_NewGraph(), TF_DeleteGraph);
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> s(TF_NewStatus(),
+                                                           TF_DeleteStatus);
+
+  TF_Operation* node;
+  NodeWithAttrHelper(func_graph.get(), s.get(), "node", "_test_attr", "value",
+                     &node);
+
+  TF_Output inputs[] = {{node, 0}};
+  TF_Output outputs[] = {};
+  func_ = TF_GraphToFunction(
+      func_graph.get(), "func", /*append_hash_to_fn_name=*/false, -1,
+      /*opers=*/nullptr, 1, inputs, 0, outputs,
+      /*output_names=*/nullptr,
+      /*opts=*/nullptr, /*description=*/nullptr, s.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(s.get())) << TF_Message(s.get());
+  ASSERT_NE(func_, nullptr);
+
+  // Verify that FunctionDef ArgDef has attributes.
+  ASSERT_EQ(func_->fdef.arg_attr_size(), 1);
+  auto arg_attrs = func_->fdef.arg_attr().find(0);
+  ASSERT_NE(arg_attrs, func_->fdef.arg_attr().end());
+  auto iter = arg_attrs->second.attr().find("_test_attr");
+  ASSERT_NE(iter, arg_attrs->second.attr().end());
+  EXPECT_EQ(iter->second.s(), "value");
 }
 
 TEST_F(CApiFunctionTest, SetGradientAndRun) {

@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -61,12 +61,12 @@ __device__ void ComputePermutationFromTranspositions(
 // transpositions.
 template <typename Scalar>
 __global__ void ComputePermutationFromTranspositionsKernel(
-    CudaLaunchConfig config, const int64 num_rows, const int* all_pivots,
+    GpuLaunchConfig config, const int64 num_rows, const int* all_pivots,
     Scalar* all_permutation_indices) {
   // We only parallelize over batches here. Performance is not critical,
   // since this cheap O(num_rows) kernel always follows an O(num_rows^3)
   // LU factorization.
-  CUDA_1D_KERNEL_LOOP(index, config.virtual_thread_count) {
+  GPU_1D_KERNEL_LOOP(index, config.virtual_thread_count) {
     ComputePermutationFromTranspositions(
         num_rows, all_pivots + index * num_rows,
         all_permutation_indices + index * num_rows);
@@ -222,8 +222,8 @@ class LuOpGpu : public AsyncOpKernel {
     int* pivots_ptr = pivots.flat<int>().data();
     Tidx* permutation_indices_ptr =
         permutation_indices->template flat<Tidx>().data();
-    CudaLaunchConfig cfgPivots = GetCudaLaunchConfig(batch_size, device);
-    TF_CHECK_OK(CudaLaunchKernel(
+    GpuLaunchConfig cfgPivots = GetGpuLaunchConfig(batch_size, device);
+    TF_CHECK_OK(GpuLaunchKernel(
         ComputePermutationFromTranspositionsKernel<Tidx>, cfgPivots.block_count,
         cfgPivots.thread_per_block, 0, device.stream(), cfgPivots, num_rows,
         pivots_ptr, permutation_indices_ptr));

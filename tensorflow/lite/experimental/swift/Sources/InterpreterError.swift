@@ -40,7 +40,7 @@ extension InterpreterError: LocalizedError {
     case .invalidTensorDataCount(let providedCount, let requiredCount):
       return "Provided data count \(providedCount) must match the required count \(requiredCount)."
     case .invalidTensorDataType:
-      return "Tensor data type is unsupported or could not be determined because of a model error."
+      return "Tensor data type is unsupported or could not be determined due to a model error."
     case .failedToLoadModel:
       return "Failed to load the given model."
     case .failedToCreateInterpreter:
@@ -68,32 +68,4 @@ extension InterpreterError: CustomStringConvertible {
   }
 }
 
-#if swift(>=4.2)
 extension InterpreterError: Equatable {}
-#else
-extension InterpreterError: Equatable {
-  public static func == (lhs: InterpreterError, rhs: InterpreterError) -> Bool {
-    switch (lhs, rhs) {
-    case (.invalidTensorDataType, .invalidTensorDataType),
-         (.failedToLoadModel, .failedToLoadModel),
-         (.failedToCreateInterpreter, .failedToCreateInterpreter),
-         (.failedToAllocateTensors, .failedToAllocateTensors),
-         (.allocateTensorsRequired, .allocateTensorsRequired),
-         (.invokeInterpreterRequired, .invokeInterpreterRequired):
-      return true
-    case (.invalidTensorIndex(let lhsIndex, let lhsMaxIndex),
-          .invalidTensorIndex(let rhsIndex, let rhsMaxIndex)):
-      return lhsIndex == rhsIndex && lhsMaxIndex == rhsMaxIndex
-    case (.invalidTensorDataCount(let lhsProvidedCount, let lhsRequiredCount),
-          .invalidTensorDataCount(let rhsProvidedCount, let rhsRequiredCount)):
-      return lhsProvidedCount == rhsProvidedCount && lhsRequiredCount == rhsRequiredCount
-    case (.failedToResizeInputTensor(let lhsIndex), .failedToResizeInputTensor(let rhsIndex)):
-      return lhsIndex == rhsIndex
-    case (.tensorFlowLiteError(let lhsMessage), .tensorFlowLiteError(let rhsMessage)):
-      return lhsMessage == rhsMessage
-    default:
-      return false
-    }
-  }
-}
-#endif  // swift(>=4.2)

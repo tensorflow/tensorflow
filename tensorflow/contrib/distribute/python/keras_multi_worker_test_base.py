@@ -95,9 +95,9 @@ class KerasIndependentWorkerTestBase(
                                                  **kwargs)
     strategy = get_strategy_object(strategy_cls)
     if strategy.extended.experimental_between_graph:
-      threads_to_join = [
-          ts for task_type, ts in threads.items() if task_type == 'ps'
-      ]
+      threads_to_join = threads.get('chief', []) + threads.get('worker', [])
     else:
-      threads_to_join = [threads['worker'][0]]
+      threads_to_join = [
+          threads['chief'][0] if 'chief' in threads else threads['worker'][0]
+      ]
     self.join_independent_workers(threads_to_join)

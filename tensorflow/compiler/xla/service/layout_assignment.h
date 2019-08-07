@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -359,7 +360,7 @@ class LayoutAssignment : public HloModulePass {
   // the cost of `instruction`. `output_layout` is the layout of `instruction`.
   // Returns null if it can't decide the best layout.
   // Precondition: `instruction` and the operand are array-shaped.
-  std::unique_ptr<Layout> ChooseOperandLayoutFromOutputLayout(
+  virtual std::unique_ptr<Layout> ChooseOperandLayoutFromOutputLayout(
       const Layout& output_layout, const HloInstruction* instruction,
       int64 operand_no);
   // Given the layout of `user`'s `operand_no`-th operand, chooses a layout of
@@ -532,6 +533,9 @@ class LayoutAssignment : public HloModulePass {
 
   std::function<bool(const HloInstruction*)>
       instruction_can_change_layout_func_;
+
+  // CallGraph of the module, used to track callsites of each computation.
+  std::unique_ptr<CallGraph> call_graph_;
 };
 
 }  // namespace xla

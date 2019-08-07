@@ -41,6 +41,8 @@ class HloPassInterface {
   // module group. Ideally, the module group variant would be named "Run" as
   // well, but C++ does not handle overloaded virtual methods well.
   virtual StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) = 0;
+
+  virtual bool IsPassPipeline() { return false; }
 };
 
 // Base class for passes which are module-scoped.

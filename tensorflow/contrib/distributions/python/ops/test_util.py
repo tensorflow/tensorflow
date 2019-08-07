@@ -28,7 +28,6 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as variables_ops
 
-
 __all__ = [
     "DiscreteScalarDistributionTestHelpers",
     "VectorDistributionTestHelpers",
@@ -38,11 +37,15 @@ __all__ = [
 class DiscreteScalarDistributionTestHelpers(object):
   """DiscreteScalarDistributionTestHelpers."""
 
-  def run_test_sample_consistent_log_prob(
-      self, sess_run_fn, dist,
-      num_samples=int(1e5), num_threshold=int(1e3), seed=42,
-      batch_size=None,
-      rtol=1e-2, atol=0.):
+  def run_test_sample_consistent_log_prob(self,
+                                          sess_run_fn,
+                                          dist,
+                                          num_samples=int(1e5),
+                                          num_threshold=int(1e3),
+                                          seed=42,
+                                          batch_size=None,
+                                          rtol=1e-2,
+                                          atol=0.):
     """Tests that sample/log_prob are consistent with each other.
 
     "Consistency" means that `sample` and `log_prob` correspond to the same
@@ -62,9 +65,9 @@ class DiscreteScalarDistributionTestHelpers(object):
         samples to draw from `dist`.
       num_threshold: Python `int` scalar indicating the number of samples a
         bucket must contain before being compared to the probability.
-        Default value: 1e3; must be at least 1.
-        Warning, set too high will cause test to falsely pass but setting too
-        low will cause the test to falsely fail.
+        Default value: 1e3; must be at least 1. Warning, set too high will cause
+          test to falsely pass but setting too low will cause the test to
+          falsely fail.
       seed: Python `int` indicating the seed to use when sampling from `dist`.
         In general it is not recommended to use `None` during a test as this
         increases the likelihood of spurious test failure.
@@ -79,8 +82,8 @@ class DiscreteScalarDistributionTestHelpers(object):
       ValueError: if `num_threshold < 1`.
     """
     if num_threshold < 1:
-      raise ValueError("num_threshold({}) must be at least 1.".format(
-          num_threshold))
+      raise ValueError(
+          "num_threshold({}) must be at least 1.".format(num_threshold))
     # Histogram only supports vectors so we call it once per batch coordinate.
     y = dist.sample(num_samples, seed=seed)
     y = array_ops.reshape(y, shape=[num_samples, -1])
@@ -98,13 +101,15 @@ class DiscreteScalarDistributionTestHelpers(object):
       valid = counts_ > num_threshold
       probs_ = probs_[valid]
       counts_ = counts_[valid]
-      self.assertAllClose(probs_, counts_ / num_samples,
-                          rtol=rtol, atol=atol)
+      self.assertAllClose(probs_, counts_ / num_samples, rtol=rtol, atol=atol)
 
-  def run_test_sample_consistent_mean_variance(
-      self, sess_run_fn, dist,
-      num_samples=int(1e5), seed=24,
-      rtol=1e-2, atol=0.):
+  def run_test_sample_consistent_mean_variance(self,
+                                               sess_run_fn,
+                                               dist,
+                                               num_samples=int(1e5),
+                                               seed=24,
+                                               rtol=1e-2,
+                                               atol=0.):
     """Tests that sample/mean/variance are consistent with each other.
 
     "Consistency" means that `sample`, `mean`, `variance`, etc all correspond
@@ -132,21 +137,15 @@ class DiscreteScalarDistributionTestHelpers(object):
         math_ops.square(x - sample_mean), axis=0)
     sample_stddev = math_ops.sqrt(sample_variance)
 
-    [
-        sample_mean_,
-        sample_variance_,
-        sample_stddev_,
-        mean_,
-        variance_,
-        stddev_
-    ] = sess_run_fn([
-        sample_mean,
-        sample_variance,
-        sample_stddev,
-        dist.mean(),
-        dist.variance(),
-        dist.stddev(),
-    ])
+    [sample_mean_, sample_variance_, sample_stddev_, mean_, variance_,
+     stddev_] = sess_run_fn([
+         sample_mean,
+         sample_variance,
+         sample_stddev,
+         dist.mean(),
+         dist.variance(),
+         dist.stddev(),
+     ])
 
     self.assertAllClose(mean_, sample_mean_, rtol=rtol, atol=atol)
     self.assertAllClose(variance_, sample_variance_, rtol=rtol, atol=atol)
@@ -194,16 +193,15 @@ class DiscreteScalarDistributionTestHelpers(object):
 class VectorDistributionTestHelpers(object):
   """VectorDistributionTestHelpers helps test vector-event distributions."""
 
-  def run_test_sample_consistent_log_prob(
-      self,
-      sess_run_fn,
-      dist,
-      num_samples=int(1e5),
-      radius=1.,
-      center=0.,
-      seed=42,
-      rtol=1e-2,
-      atol=0.):
+  def run_test_sample_consistent_log_prob(self,
+                                          sess_run_fn,
+                                          dist,
+                                          num_samples=int(1e5),
+                                          radius=1.,
+                                          center=0.,
+                                          seed=42,
+                                          rtol=1e-2,
+                                          atol=0.):
     """Tests that sample/log_prob are mutually consistent.
 
     "Consistency" means that `sample` and `log_prob` correspond to the same
@@ -269,24 +267,23 @@ class VectorDistributionTestHelpers(object):
       rtol: Python `float`-type indicating the admissible relative error between
         actual- and approximate-volumes.
       atol: Python `float`-type indicating the admissible absolute error between
-        actual- and approximate-volumes. In general this should be zero since
-        a typical radius implies a non-zero volume.
+        actual- and approximate-volumes. In general this should be zero since a
+        typical radius implies a non-zero volume.
     """
 
     def actual_hypersphere_volume(dims, radius):
       # https://en.wikipedia.org/wiki/Volume_of_an_n-ball
-      # Using tf.lgamma because we'd have to otherwise use SciPy which is not
-      # a required dependency of core.
+      # Using tf.math.lgamma because we'd have to otherwise use SciPy which is
+      # not a required dependency of core.
       radius = np.asarray(radius)
       dims = math_ops.cast(dims, dtype=radius.dtype)
-      return math_ops.exp(
-          (dims / 2.) * np.log(np.pi)
-          - math_ops.lgamma(1. + dims / 2.)
-          + dims * math_ops.log(radius))
+      return math_ops.exp((dims / 2.) * np.log(np.pi) -
+                          math_ops.lgamma(1. + dims / 2.) +
+                          dims * math_ops.log(radius))
 
     def is_in_ball(x, radius, center):
-      return math_ops.cast(linalg_ops.norm(x - center, axis=-1) <= radius,
-                           dtype=x.dtype)
+      return math_ops.cast(
+          linalg_ops.norm(x - center, axis=-1) <= radius, dtype=x.dtype)
 
     def monte_carlo_hypersphere_volume(dist, num_samples, radius, center):
       # https://en.wikipedia.org/wiki/Importance_sampling
@@ -302,35 +299,32 @@ class VectorDistributionTestHelpers(object):
         values=[num_samples, radius, center] + dist._graph_parents):  # pylint: disable=protected-access
       batch_shape = dist.batch_shape_tensor()
       actual_volume = actual_hypersphere_volume(
-          dims=dist.event_shape_tensor()[0],
-          radius=radius)
+          dims=dist.event_shape_tensor()[0], radius=radius)
       sample_volume = monte_carlo_hypersphere_volume(
-          dist,
-          num_samples=num_samples,
-          radius=radius,
-          center=center)
+          dist, num_samples=num_samples, radius=radius, center=center)
       init_op = variables_ops.global_variables_initializer()
 
     # Execute graph.
     sess_run_fn(init_op)
-    [batch_shape_, actual_volume_, sample_volume_] = sess_run_fn([
-        batch_shape, actual_volume, sample_volume])
+    [batch_shape_, actual_volume_,
+     sample_volume_] = sess_run_fn([batch_shape, actual_volume, sample_volume])
 
     # Check results.
-    self.assertAllClose(np.tile(actual_volume_, reps=batch_shape_),
-                        sample_volume_,
-                        rtol=rtol, atol=atol)
+    self.assertAllClose(
+        np.tile(actual_volume_, reps=batch_shape_),
+        sample_volume_,
+        rtol=rtol,
+        atol=atol)
 
-  def run_test_sample_consistent_mean_covariance(
-      self,
-      sess_run_fn,
-      dist,
-      num_samples=int(1e5),
-      seed=24,
-      rtol=1e-2,
-      atol=0.1,
-      cov_rtol=None,
-      cov_atol=None):
+  def run_test_sample_consistent_mean_covariance(self,
+                                                 sess_run_fn,
+                                                 dist,
+                                                 num_samples=int(1e5),
+                                                 seed=24,
+                                                 rtol=1e-2,
+                                                 atol=0.1,
+                                                 cov_rtol=None,
+                                                 cov_atol=None):
     """Tests that sample/mean/covariance are consistent with each other.
 
     "Consistency" means that `sample`, `mean`, `covariance`, etc all correspond
@@ -365,14 +359,8 @@ class VectorDistributionTestHelpers(object):
     sample_stddev = math_ops.sqrt(sample_variance)
 
     [
-        sample_mean_,
-        sample_covariance_,
-        sample_variance_,
-        sample_stddev_,
-        mean_,
-        covariance_,
-        variance_,
-        stddev_
+        sample_mean_, sample_covariance_, sample_variance_, sample_stddev_,
+        mean_, covariance_, variance_, stddev_
     ] = sess_run_fn([
         sample_mean,
         sample_covariance,
@@ -385,9 +373,11 @@ class VectorDistributionTestHelpers(object):
     ])
 
     self.assertAllClose(mean_, sample_mean_, rtol=rtol, atol=atol)
-    self.assertAllClose(covariance_, sample_covariance_,
-                        rtol=cov_rtol or rtol,
-                        atol=cov_atol or atol)
+    self.assertAllClose(
+        covariance_,
+        sample_covariance_,
+        rtol=cov_rtol or rtol,
+        atol=cov_atol or atol)
     self.assertAllClose(variance_, sample_variance_, rtol=rtol, atol=atol)
     self.assertAllClose(stddev_, sample_stddev_, rtol=rtol, atol=atol)
 

@@ -55,15 +55,6 @@ def all_strategy_and_eager_plus_graph():
 
 class ContribMirroredStrategyTest(test.TestCase, parameterized.TestCase):
 
-  def _get_numpy_iterator(self, distribution, data):
-    if context.executing_eagerly():
-      return distribution.experimental_make_numpy_iterator(
-          data, 2, shuffle=None)
-    else:
-      with self.cached_session() as sess:
-        return distribution.experimental_make_numpy_iterator(
-            data, 2, shuffle=None, session=sess)
-
   def _initialize_and_evaluate_iterator(self, iterator):
     if context.executing_eagerly():
       iterator.initialize()
@@ -94,20 +85,6 @@ class ContribMirroredStrategyTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(data, res[1])
     else:
       self.assertAllEqual(data, res)
-
-  @combinations.generate(all_strategy_and_eager_plus_graph())
-  def test_numpy_iterator(self, distribution):
-    data = np.array([[1, 1], [2, 1], [3, 1], [4, 1]])
-
-    iterator = self._get_numpy_iterator(distribution, data)
-    res = self._initialize_and_evaluate_iterator(iterator)
-
-    if isinstance(res, tuple):
-      self.assertLen(res, 2)
-      self.assertAllEqual(np.array([[1, 1], [2, 1]]), res[0])
-      self.assertAllEqual(np.array([[3, 1], [4, 1]]), res[1])
-    else:
-      self.assertAllEqual(np.array([[1, 1], [2, 1]]), res)
 
 
 if __name__ == "__main__":

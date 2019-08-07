@@ -44,6 +44,10 @@ string MakeAddress(const string& job, int task) {
 
 // Allows the host to be a raw IP (either v4 or v6).
 Status ValidateHostPortPair(const string& host_port) {
+  string bns_prefix = "/bns/";
+  if (host_port.substr(0, bns_prefix.length()) == bns_prefix) {
+    return Status::OK();
+  }
   uint32 port;
   auto colon_index = host_port.find_last_of(':');
   if (!strings::safe_strtou32(host_port.substr(colon_index + 1), &port) ||
@@ -81,6 +85,10 @@ Status ValidateHostPortPair(const string& host_port) {
     } else if (!rpc_options->compression_algorithm().empty()) {
       LOG(ERROR) << "Invalid compression algorithm: "
                  << rpc_options->compression_algorithm();
+    }
+    if (rpc_options->disable_session_connection_sharing()) {
+      VLOG(5) << "Disabling TCP connection sharing";
+      args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
     }
   }
   return args;
@@ -306,7 +314,7 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
       task_strings.emplace_back(
           strings::StrCat(id_host_port.first, " -> ", id_host_port.second));
     }
-    return strings::StrCat(job_id_, " -> {", str_util::Join(task_strings, ", "),
+    return strings::StrCat(job_id_, " -> {", absl::StrJoin(task_strings, ", "),
                            "}");
   }
 

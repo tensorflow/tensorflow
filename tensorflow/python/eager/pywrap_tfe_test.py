@@ -26,6 +26,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -46,6 +47,7 @@ class Tests(test.TestCase):
     b_100_by_784 = random_ops.random_uniform((100, 784))
 
     ctx = context.context()
+    ctx.ensure_initialized()
 
     self.assertAllClose(
         math_ops.matmul(a_2_by_2, b_2_by_2),
@@ -62,6 +64,8 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testFastpathExecute_ResourceVariableMatMulCorrectResponse(self):
     ctx = context.context()
+    ctx.ensure_initialized()
+
     a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
     m = resource_variable_ops.ResourceVariable(a_2_by_2)
     x = pywrap_tensorflow.TFE_Py_FastPathExecute(
@@ -77,6 +81,8 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testFastpathExecute_TapeWrite(self):
     ctx = context.context()
+    ctx.ensure_initialized()
+
     with backprop.GradientTape(persistent=True) as tape:
       a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
       tape.watch(a_2_by_2)
@@ -91,6 +97,8 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testFastpathExecute_ResourceVariableTapeWrite(self):
     ctx = context.context()
+    ctx.ensure_initialized()
+
     with backprop.GradientTape(persistent=True) as tape:
       a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
       m = resource_variable_ops.ResourceVariable(a_2_by_2)
@@ -107,6 +115,8 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testFastpathExecute_AddNCorrectResponse(self):
     ctx = context.context()
+    ctx.ensure_initialized()
+
     a_2_by_2 = random_ops.random_uniform((2, 2))
     b_2_by_2 = random_ops.random_uniform((2, 2))
 
@@ -121,6 +131,8 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testFastpathExecute_AddNTapeWrite(self):
     ctx = context.context()
+    ctx.ensure_initialized()
+
     a_2_by_2 = random_ops.random_uniform((2, 2))
     b_2_by_2 = random_ops.random_uniform((2, 2))
 
@@ -140,6 +152,8 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testFastpathExecute_IdentityNCorrectResponse(self):
     ctx = context.context()
+    ctx.ensure_initialized()
+
     a_2_by_2 = random_ops.random_uniform((2, 2))
     b_2_by_2 = random_ops.random_uniform((2, 2))
 
@@ -154,6 +168,8 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testFastpathExecute_IdentityNTapeWrite(self):
     ctx = context.context()
+    ctx.ensure_initialized()
+
     a_2_by_2 = random_ops.random_uniform((2, 2))
     b_2_by_2 = random_ops.random_uniform((2, 2))
 
@@ -173,6 +189,8 @@ class Tests(test.TestCase):
   def testFastpathExecute_InvalidInputs(self):
     a_2_by_2 = random_ops.random_uniform((2, 2))
     ctx = context.context()
+    ctx.ensure_initialized()
+
     assert ctx.executing_eagerly(
     ), "The prototype doesn't contain C code for graph construction"
     ctx_handle = ctx._handle  # pylint: disable=protected-access
@@ -200,6 +218,8 @@ class Tests(test.TestCase):
     split_dim = constant_op.constant(0, dtype=dtypes.int32)
     value = constant_op.constant([0, 1, 2, 3], dtype=dtypes.float32)
     ctx = context.context()
+    ctx.ensure_initialized()
+
     ctx_handle = ctx._handle
     with self.assertRaises(core._FallbackException):
       pywrap_tensorflow.TFE_Py_FastPathExecute(ctx_handle, ctx.device_name,
@@ -235,6 +255,18 @@ class Tests(test.TestCase):
     with self.assertRaisesRegexp(TypeError,
                                  "Expected list for 'values' argument"):
       _ = array_ops.stack(value, axis=1)
+
+  def testGraphResourceVariableRaisesFallback(self):
+    with ops.Graph().as_default():
+      a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
+      m = resource_variable_ops.ResourceVariable(a_2_by_2)
+    ctx = context.context()
+    ctx.ensure_initialized()
+    with self.assertRaises(core._FallbackException):
+      pywrap_tensorflow.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                               "MatMul", None, None, m, m,
+                                               "transpose_a", False,
+                                               "transpose_b", False)
 
 
 if __name__ == "__main__":

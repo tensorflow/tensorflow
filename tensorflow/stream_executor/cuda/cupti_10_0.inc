@@ -5,7 +5,12 @@ CUptiResult CUPTIAPI cuptiGetResultString(CUptiResult result,
                                           const char** str) {
   using FuncPtr = CUptiResult(CUPTIAPI*)(CUptiResult, const char**);
   static auto func_ptr = LoadSymbol<FuncPtr>("cuptiGetResultString");
-  if (!func_ptr) return GetSymbolNotFoundError();
+  if (!func_ptr) {
+    if (str) {
+      *str = "CUPTI could not be loaded or symbol could not be found.";
+    }
+    return GetSymbolNotFoundError();
+  }
   return func_ptr(result, str);
 }
 

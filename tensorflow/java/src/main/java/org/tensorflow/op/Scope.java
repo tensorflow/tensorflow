@@ -16,6 +16,10 @@ limitations under the License.
 package org.tensorflow.op;
 
 import org.tensorflow.ExecutionEnvironment;
+import org.tensorflow.Operand;
+import org.tensorflow.OperationBuilder;
+
+import java.util.ArrayList;
 
 /**
  * Manages groups of related properties when creating Tensorflow Operations, such as a common name
@@ -81,7 +85,7 @@ public final class Scope {
    * @param env The execution environment used by the scope.
    */
   public Scope(ExecutionEnvironment env) {
-    this(env, new NameScope());
+    this(env, new NameScope(), new ArrayList<Operand<?>>());
   }
 
   /** Returns the execution environment used by this scope. */
@@ -103,7 +107,7 @@ public final class Scope {
    * @throws IllegalArgumentException if the name is invalid
    */
   public Scope withSubScope(String childScopeName) {
-    return new Scope(env, nameScope.withSubScope(childScopeName));
+    return new Scope(env, nameScope.withSubScope(childScopeName), controlDependencies);
   }
 
   /**
@@ -119,7 +123,7 @@ public final class Scope {
    * @throws IllegalArgumentException if the name is invalid
    */
   public Scope withName(String opName) {
-    return new Scope(env, nameScope.withName(opName));
+    return new Scope(env, nameScope.withName(opName), controlDependencies);
   }
 
   /**
@@ -146,11 +150,39 @@ public final class Scope {
     return nameScope.makeOpName(defaultName);
   }
 
-  private Scope(ExecutionEnvironment env, NameScope nameScope) {
+  private Scope(
+      ExecutionEnvironment env, NameScope nameScope, Iterable<Operand<?>> controlDependencies) {
     this.env = env;
     this.nameScope = nameScope;
+    this.controlDependencies = controlDependencies;
+  }
+
+  /**
+   * Returns a new scope where added operations will have the provided control dependencies.
+   *
+   * <p>Ops created with this scope will have a control edge from each of the provided controls. All
+   * other properties are inherited from the current scope.
+   *
+   * @param controls control dependencies for ops created with the returned scope
+   * @return a new scope with the provided control dependencies
+   */
+  public Scope withControlDependencies(Iterable<Operand<?>> controls) {
+    return new Scope(env, nameScope, controls);
+  }
+
+  /**
+   * Adds each Operand in controlDependencies as a control input to the provided builder.
+   *
+   * @param builder OperationBuilder to add control inputs to
+   */
+  public OperationBuilder applyControlDependencies(OperationBuilder builder) {
+    for (Operand<?> control : controlDependencies) {
+      builder = builder.addControlInput(control.asOutput().op());
+    }
+    return builder;
   }
 
   private final ExecutionEnvironment env;
+  private final Iterable<Operand<?>> controlDependencies;
   private final NameScope nameScope;
 }

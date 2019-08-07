@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device.h"
 
 #include <stdlib.h>
+
 #include <unordered_set>
 
 #include "absl/memory/memory.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -201,6 +203,8 @@ XlaDevice::XlaDevice(const SessionOptions& session_options,
       device_ordinal_(options.device_ordinal),
       jit_device_name_(options.compilation_device_name),
       platform_(options.platform),
+      intra_op_parallelism_threads_(
+          session_options.config.intra_op_parallelism_threads()),
       use_multiple_streams_(options.use_multiple_streams),
       shape_representation_fn_(options.shape_representation_fn),
       allowed_devices_(options.allowed_devices) {
@@ -231,10 +235,13 @@ xla::LocalClient* XlaDevice::client() const {
   // don't want to do it until we get a chance to hook the platform up
   // to a simulator.
 
+  xla::LocalClientOptions options;
+  options.set_platform(platform_)
+      .set_allowed_devices(allowed_devices_)
+      .set_intra_op_parallelism_threads(intra_op_parallelism_threads_);
   // TODO(b/78468222): This can fail, at least when the backend is GPU and
   // there is no GPU on the host.
-  return xla::ClientLibrary::GetOrCreateLocalClient(platform_, allowed_devices_)
-      .ValueOrDie();
+  return xla::ClientLibrary::GetOrCreateLocalClient(options).ValueOrDie();
 }
 
 Allocator* XlaDevice::GetAllocator(AllocatorAttributes attr) {
@@ -380,14 +387,12 @@ void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                              AsyncOpKernel::DoneCallback done) {
   VLOG(2) << "XlaDevice::ComputeAsync " << op_kernel->name() << ":"
           << op_kernel->type_string();
-  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
-                                   op_kernel->IsExpensive());
   op_kernel->ComputeAsync(context, done);
 }
 
 Status XlaDevice::Sync() {
   VLOG(1) << "XlaDevice::Sync";
-  tracing::ScopedActivity activity("XlaDevice::Sync", /*is_expensive=*/true);
+  profiler::TraceMe activity("XlaDevice::Sync", profiler::TraceMeLevel::kInfo);
   std::shared_ptr<se::Stream> stream;
   {
     mutex_lock lock(mu_);
@@ -428,13 +433,12 @@ void XlaDevice::Sync(const DoneCallback& done) {
   // that everything enqueued onto the stream (i.e., the device) at this very
   // moment--when ThenEnqueueOnBackgroundThread is called--will have finished.
   // This achieves a device-wide sync.
-  stream->ThenEnqueueOnBackgroundThread(
-      [stream, done](se::StreamExecutor*) {
-        tracing::ScopedActivity activity("XlaDevice::Sync::Callback",
-                                         /*is_expensive=*/true);
-        done(stream->ok() ? Status::OK()
-                          : errors::Internal("XlaDevice::Sync() failed."));
-      });
+  stream->ThenEnqueueOnBackgroundThread([stream, done](se::StreamExecutor*) {
+    profiler::TraceMe activity("XlaDevice::Sync::Callback",
+                               profiler::TraceMeLevel::kInfo);
+    done(stream->ok() ? Status::OK()
+                      : errors::Internal("XlaDevice::Sync() failed."));
+  });
 }
 
 Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
@@ -458,11 +462,13 @@ Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
     Allocator* allocator = GetAllocatorLocked(alloc_attrs);
     Tensor copy(allocator, parsed.dtype(), parsed.shape());
     Notification n;
-    device_context->CopyCPUTensorToDevice(&parsed, this, &copy,
-                                          [&n, &status](const Status& s) {
-                                            status = s;
-                                            n.Notify();
-                                          });
+    device_context->CopyCPUTensorToDevice(
+        &parsed, this, &copy,
+        [&n, &status](const Status& s) {
+          status = s;
+          n.Notify();
+        },
+        true /*sync_dst_compute*/);
     n.WaitForNotification();
     *tensor = copy;
   }
@@ -519,7 +525,7 @@ Status XlaDevice::RefreshStatus() {
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device) {
   // Any op assigned to the device that isn't rewritten by the graph rewriter
-  // gets executed by a n XlaCompileOnDemandOp, which compiles it and executes
+  // gets executed by an XlaCompileOnDemandOp, which compiles it and executes
   // it just-in-time.
   OpKernel* (*factory)(OpKernelConstruction*) =
       [](OpKernelConstruction* context) -> OpKernel* {

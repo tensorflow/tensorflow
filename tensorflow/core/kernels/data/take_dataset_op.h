@@ -16,52 +16,31 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_DATA_TAKE_DATASET_OP_H_
 
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
-#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 namespace data {
 
 class TakeDataset : public DatasetBase {
  public:
-  TakeDataset(OpKernelContext* ctx, int64 count, const DatasetBase* input)
-      : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
-    input_->Ref();
-  }
+  TakeDataset(OpKernelContext* ctx, int64 count, const DatasetBase* input);
 
   TakeDataset(DatasetContext::Params params, int64 count,
-              const DatasetBase* input)
-      : DatasetBase(DatasetContext(std::move(params))),
-        count_(count),
-        input_(input) {
-    input_->Ref();
-  }
+              const DatasetBase* input);
 
-  ~TakeDataset() override { input_->Unref(); }
+  ~TakeDataset() override;
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override;
 
-  const DataTypeVector& output_dtypes() const override {
-    return input_->output_dtypes();
-  }
+  const DataTypeVector& output_dtypes() const override;
 
-  const std::vector<PartialTensorShape>& output_shapes() const override {
-    return input_->output_shapes();
-  }
+  const std::vector<PartialTensorShape>& output_shapes() const override;
 
-  string DebugString() const override { return "TakeDatasetOp::Dataset"; }
+  string DebugString() const override;
 
-  int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
-    if (n == kUnknownCardinality) {
-      return kUnknownCardinality;
-    }
-    if (n == kInfiniteCardinality) {
-      return count_;
-    }
-    return std::min(n, count_);
-  }
+  int64 Cardinality() const override;
+
+  bool IsStateful() const override;
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -73,6 +52,21 @@ class TakeDataset : public DatasetBase {
   class FiniteIterator;
   const int64 count_;
   const DatasetBase* const input_;
+};
+
+class TakeDatasetOp : public UnaryDatasetOpKernel {
+ public:
+  static constexpr const char* const kDatasetType = "Take";
+  static constexpr const char* const kInputDataset = "input_dataset";
+  static constexpr const char* const kCount = "count";
+  static constexpr const char* const kOutputTypes = "output_types";
+  static constexpr const char* const kOutputShapes = "output_shapes";
+
+  explicit TakeDatasetOp(OpKernelConstruction* ctx);
+
+ protected:
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override;
 };
 
 }  // namespace data

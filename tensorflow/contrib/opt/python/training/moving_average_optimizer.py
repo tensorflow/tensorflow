@@ -44,7 +44,7 @@ class MovingAverageOptimizer(optimizer.Optimizer):
 
   // Encapsulate your favorite optimizer (here the momentum one)
   // inside the MovingAverageOptimizer.
-  opt = tf.train.MomentumOptimizer(learning_rate, FLAGS.momentum)
+  opt = tf.compat.v1.train.MomentumOptimizer(learning_rate, FLAGS.momentum)
   opt = tf.contrib.opt.MovingAverageOptimizer(opt)
   // Then create your model and all its variables.
   model = build_model()
@@ -152,7 +152,7 @@ class MovingAverageOptimizer(optimizer.Optimizer):
       **kwargs: Keyword arguments of `Saver()`.
 
     Returns:
-      A `tf.train.Saver` object.
+      A `tf.compat.v1.train.Saver` object.
 
     Raises:
       RuntimeError: If apply_gradients or minimize has not been called before.

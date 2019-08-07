@@ -517,7 +517,8 @@ Status ReadBinaryProto(Env* env, const string& fname,
   // respectively.
   coded_stream.SetTotalBytesLimit(1024LL << 20, 512LL << 20);
 
-  if (!proto->ParseFromCodedStream(&coded_stream)) {
+  if (!proto->ParseFromCodedStream(&coded_stream) ||
+      !coded_stream.ConsumedEntireMessage()) {
     TF_RETURN_IF_ERROR(stream->status());
     return errors::DataLoss("Can't parse ", fname, " as binary proto");
   }
@@ -552,6 +553,21 @@ Status ReadTextProto(Env* env, const string& fname,
 #else
   return errors::Unimplemented("Can't parse text protos with protolite.");
 #endif
+}
+
+Status ReadTextOrBinaryProto(Env* env, const string& fname,
+#if !defined(TENSORFLOW_LITE_PROTOS)
+                             ::tensorflow::protobuf::Message* proto
+#else
+                             ::tensorflow::protobuf::MessageLite* proto
+#endif
+) {
+#if !defined(TENSORFLOW_LITE_PROTOS)
+  if (ReadTextProto(env, fname, proto).ok()) {
+    return Status::OK();
+  }
+#endif
+  return ReadBinaryProto(env, fname, proto);
 }
 
 }  // namespace tensorflow

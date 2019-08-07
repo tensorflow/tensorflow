@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Script Language Operators.
 
 @@py_func
@@ -39,7 +38,8 @@ def py_func(func,
             name=None):
   """Wraps a python function and uses it as a TensorFlow op.
 
-  This function is a wrapper around `tf.py_func` and improve it with kwargs
+  This function is a wrapper around `tf.compat.v1.py_func` and improve it with
+  kwargs
   and output_shapes. Further it changed some argument names.
 
   Given a python function `func`, which takes numpy arrays as its
@@ -52,27 +52,31 @@ def py_func(func,
   def my_func(x):
     # x will be a numpy array with the contents of the placeholder below
     return np.sinh(x)
-  inp = tf.placeholder(tf.float32)
-  y = tf.py_func(my_func, [inp], tf.float32)
+  inp = tf.compat.v1.placeholder(tf.float32)
+  y = tf.compat.v1.py_func(my_func, [inp], tf.float32)
   ```
 
 
-  **N.B.** The `tf.py_func()` operation has the following known limitations:
+  **N.B.** The `tf.compat.v1.py_func()` operation has the following known
+  limitations:
 
   * The body of the function (i.e. `func`) will not be serialized in a
     `GraphDef`. Therefore, you should not use this function if you need to
     serialize your model and restore it in a different environment.
 
   * The operation must run in the same address space as the Python program
-    that calls `tf.py_func()`. If you are using distributed TensorFlow, you
-    must run a `tf.train.Server` in the same process as the program that calls
-    `tf.py_func()` and you must pin the created operation to a device in that
+    that calls `tf.compat.v1.py_func()`. If you are using distributed
+    TensorFlow, you
+    must run a `tf.distribute.Server` in the same process as the program that
+    calls
+    `tf.compat.v1.py_func()` and you must pin the created operation to a device
+    in that
     server (e.g. using `with tf.device():`).
 
   Args:
     func: A Python function, which accepts a list of NumPy `ndarray` objects
-      having element types that match the corresponding `tf.Tensor` objects
-      in `inp`, and returns a list of `ndarray` objects (or a single `ndarray`)
+      having element types that match the corresponding `tf.Tensor` objects in
+      `inp`, and returns a list of `ndarray` objects (or a single `ndarray`)
       having element types that match the corresponding values in `Tout`.
     args: A list of `Tensor` objects.
     kwargs: A dict with `Tensor` objects as values.
@@ -80,11 +84,10 @@ def py_func(func,
       tensorflow data type if there is only one, indicating what `func` returns.
     output_shapes: Same as output_types, except the types are replaces with
       shapes (optional).
-    stateful: (Boolean.) If True, the function should be considered stateful.
-      If a function is stateless, when given the same input it will return the
-      same output and have no observable side effects. Optimizations such as
-      common subexpression elimination are only performed on stateless
-      operations.
+    stateful: (Boolean.) If True, the function should be considered stateful. If
+      a function is stateless, when given the same input it will return the same
+      output and have no observable side effects. Optimizations such as common
+      subexpression elimination are only performed on stateless operations.
     name: A name for the operation (optional).
 
   Returns:
@@ -133,8 +136,9 @@ def py_func(func,
 
   if output_shapes is not None:
     # I am not sure if this is nessesary
-    output_shapes = nest.map_structure_up_to(
-        output_types, tensor_shape.as_shape, output_shapes)
+    output_shapes = nest.map_structure_up_to(output_types,
+                                             tensor_shape.as_shape,
+                                             output_shapes)
 
     flattened_shapes = nest.flatten(output_shapes)
     for ret_t, shape in zip(flat_values, flattened_shapes):

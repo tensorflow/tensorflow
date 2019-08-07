@@ -104,6 +104,30 @@ class Spectrogram {
   std::vector<double> fft_double_working_area_;
 };
 
+// Explicit instantiations in spectrogram.cc.
+
+extern template bool Spectrogram::ComputeComplexSpectrogram(
+    const std::vector<float>& input,
+    std::vector<std::vector<std::complex<float>>>*);
+extern template bool Spectrogram::ComputeComplexSpectrogram(
+    const std::vector<double>& input,
+    std::vector<std::vector<std::complex<float>>>*);
+extern template bool Spectrogram::ComputeComplexSpectrogram(
+    const std::vector<float>& input,
+    std::vector<std::vector<std::complex<double>>>*);
+extern template bool Spectrogram::ComputeComplexSpectrogram(
+    const std::vector<double>& input,
+    std::vector<std::vector<std::complex<double>>>*);
+
+extern template bool Spectrogram::ComputeSquaredMagnitudeSpectrogram(
+    const std::vector<float>& input, std::vector<std::vector<float>>*);
+extern template bool Spectrogram::ComputeSquaredMagnitudeSpectrogram(
+    const std::vector<double>& input, std::vector<std::vector<float>>*);
+extern template bool Spectrogram::ComputeSquaredMagnitudeSpectrogram(
+    const std::vector<float>& input, std::vector<std::vector<double>>*);
+extern template bool Spectrogram::ComputeSquaredMagnitudeSpectrogram(
+    const std::vector<double>& input, std::vector<std::vector<double>>*);
+
 }  // namespace internal
 }  // namespace tflite
 

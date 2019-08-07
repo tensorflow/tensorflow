@@ -80,8 +80,8 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
   @parameterized.named_parameters(*_map_and_filter_fusion_test_cases())
   def testMapFilterFusion(self, function, predicate):
     dataset = dataset_ops.Dataset.range(10).apply(
-        optimization.assert_next(
-            ["Map", "FilterByLastComponent"])).map(function).filter(predicate)
+        optimization.assert_next(["Map", "Filter",
+                                  "Map"])).map(function).filter(predicate)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_and_filter_fusion = True

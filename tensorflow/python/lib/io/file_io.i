@@ -32,125 +32,121 @@ limitations under the License.
 %}
 
 %{
-inline void FileExists(const string& filename, TF_Status* out_status) {
-  tensorflow::Status status = tensorflow::Env::Default()->FileExists(filename);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+inline void FileExists(const string& filename, TF_Status* status) {
+  tensorflow::Status s = tensorflow::Env::Default()->FileExists(filename);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
   }
 }
 
 inline void FileExists(const tensorflow::StringPiece& filename,
-    TF_Status* out_status) {
-  tensorflow::Status status =
+    TF_Status* status) {
+  tensorflow::Status s =
       tensorflow::Env::Default()->FileExists(string(filename));
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
   }
 }
 
-inline void DeleteFile(const string& filename, TF_Status* out_status) {
-  tensorflow::Status status = tensorflow::Env::Default()->DeleteFile(filename);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+inline void DeleteFile(const string& filename, TF_Status* status) {
+  tensorflow::Status s = tensorflow::Env::Default()->DeleteFile(filename);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
   }
 }
 
-string ReadFileToString(const string& filename, TF_Status* out_status) {
+string ReadFileToString(const string& filename, TF_Status* status) {
   string file_content;
-  tensorflow::Status status = ReadFileToString(tensorflow::Env::Default(),
+  tensorflow::Status s = ReadFileToString(tensorflow::Env::Default(),
       filename, &file_content);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
   }
   return file_content;
 }
 
 void WriteStringToFile(const string& filename, const string& file_content,
-                       TF_Status* out_status) {
-  tensorflow::Status status = WriteStringToFile(tensorflow::Env::Default(),
+                       TF_Status* status) {
+  tensorflow::Status s = WriteStringToFile(tensorflow::Env::Default(),
       filename, file_content);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
   }
 }
 
-std::vector<string> GetChildren(const string& dir, TF_Status* out_status) {
+std::vector<string> GetChildren(const string& dir, TF_Status* status) {
   std::vector<string> results;
-  tensorflow::Status status = tensorflow::Env::Default()->GetChildren(
+  tensorflow::Status s = tensorflow::Env::Default()->GetChildren(
       dir, &results);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
   }
   return results;
 }
 
-std::vector<string> GetMatchingFiles(const string& filename,
-                                     TF_Status* out_status) {
+std::vector<string> GetMatchingFiles(const string& filename, TF_Status* status) {
   std::vector<string> results;
-  tensorflow::Status status = tensorflow::Env::Default()->GetMatchingPaths(
+  tensorflow::Status s = tensorflow::Env::Default()->GetMatchingPaths(
       filename, &results);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
   }
   return results;
 }
 
-void CreateDir(const string& dirname, TF_Status* out_status) {
-  tensorflow::Status status = tensorflow::Env::Default()->CreateDir(dirname);
-  if (!status.ok() && status.code() != tensorflow::error::ALREADY_EXISTS) {
-    Set_TF_Status_from_Status(out_status, status);
+void CreateDir(const string& dirname, TF_Status* status) {
+  tensorflow::Status s = tensorflow::Env::Default()->CreateDir(dirname);
+  if (!s.ok() && s.code() != tensorflow::error::ALREADY_EXISTS) {
+    Set_TF_Status_from_Status(status, s);
   }
 }
 
-void RecursivelyCreateDir(const string& dirname, TF_Status* out_status) {
-  tensorflow::Status status = tensorflow::Env::Default()->RecursivelyCreateDir(
+void RecursivelyCreateDir(const string& dirname, TF_Status* status) {
+  tensorflow::Status s = tensorflow::Env::Default()->RecursivelyCreateDir(
       dirname);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
   }
 }
 
 void CopyFile(const string& src, const string& target, bool overwrite,
-              TF_Status* out_status) {
+              TF_Status* status) {
   // If overwrite is false and the target file exists then its an error.
   if (!overwrite && tensorflow::Env::Default()->FileExists(target).ok()) {
-    TF_SetStatus(out_status, TF_ALREADY_EXISTS, "file already exists");
+    TF_SetStatus(status, TF_ALREADY_EXISTS, "file already exists");
     return;
   }
-  tensorflow::Status status =
-      tensorflow::Env::Default()->CopyFile(src, target);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  tensorflow::Status s = tensorflow::Env::Default()->CopyFile(src, target);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
   }
 }
 
 void RenameFile(const string& src, const string& target, bool overwrite,
-                TF_Status* out_status) {
+                TF_Status* status) {
   // If overwrite is false and the target file exists then its an error.
   if (!overwrite && tensorflow::Env::Default()->FileExists(target).ok()) {
-    TF_SetStatus(out_status, TF_ALREADY_EXISTS, "file already exists");
+    TF_SetStatus(status, TF_ALREADY_EXISTS, "file already exists");
     return;
   }
-  tensorflow::Status status = tensorflow::Env::Default()->RenameFile(src,
-                                                                     target);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  tensorflow::Status s = tensorflow::Env::Default()->RenameFile(src, target);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
   }
 }
 
 using tensorflow::int64;
 
-void DeleteRecursively(const string& dirname, TF_Status* out_status) {
+void DeleteRecursively(const string& dirname, TF_Status* status) {
   int64 undeleted_files, undeleted_dirs;
-  tensorflow::Status status = tensorflow::Env::Default()->DeleteRecursively(
+  tensorflow::Status s = tensorflow::Env::Default()->DeleteRecursively(
       dirname, &undeleted_files, &undeleted_dirs);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
     return;
   }
   if (undeleted_files > 0 || undeleted_dirs > 0) {
-    TF_SetStatus(out_status, TF_PERMISSION_DENIED,
-                 "could not fully delete dir");
+    TF_SetStatus(status, TF_PERMISSION_DENIED, "could not fully delete dir");
     return;
   }
 }
@@ -169,22 +165,21 @@ bool IsDirectory(const string& dirname, TF_Status* out_status) {
 
 using tensorflow::FileStatistics;
 
-void Stat(const string& filename, FileStatistics* stats,
-          TF_Status* out_status) {
-  tensorflow::Status status = tensorflow::Env::Default()->Stat(filename,
+void Stat(const string& filename, FileStatistics* stats, TF_Status* status) {
+  tensorflow::Status s = tensorflow::Env::Default()->Stat(filename,
                                                                stats);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
   }
 }
 
 tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
-    const string& filename, size_t buffer_size, TF_Status* out_status) {
+    const string& filename, size_t buffer_size, TF_Status* status) {
   std::unique_ptr<tensorflow::RandomAccessFile> file;
-  tensorflow::Status status =
+  tensorflow::Status s =
       tensorflow::Env::Default()->NewRandomAccessFile(filename, &file);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
     return nullptr;
   }
   std::unique_ptr<tensorflow::io::RandomAccessInputStream> input_stream(
@@ -197,34 +192,34 @@ tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
 }
 
 tensorflow::WritableFile* CreateWritableFile(
-    const string& filename, const string& mode, TF_Status* out_status) {
+    const string& filename, const string& mode, TF_Status* status) {
   std::unique_ptr<tensorflow::WritableFile> file;
-  tensorflow::Status status;
+  tensorflow::Status s;
   if (mode.find("a") != std::string::npos) {
-    status = tensorflow::Env::Default()->NewAppendableFile(filename, &file);
+    s = tensorflow::Env::Default()->NewAppendableFile(filename, &file);
   } else {
-    status = tensorflow::Env::Default()->NewWritableFile(filename, &file);
+    s = tensorflow::Env::Default()->NewWritableFile(filename, &file);
   }
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
     return nullptr;
   }
   return file.release();
 }
 
 void AppendToFile(const string& file_content, tensorflow::WritableFile* file,
-                  TF_Status* out_status) {
-  tensorflow::Status status = file->Append(file_content);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+                  TF_Status* status) {
+  tensorflow::Status s = file->Append(file_content);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
   }
 }
 
-int64 TellFile(tensorflow::WritableFile* file, TF_Status* out_status) {
+int64 TellFile(tensorflow::WritableFile* file, TF_Status* status) {
   int64 position = -1;
-  tensorflow::Status status = file->Tell(&position);
-  if (!status.ok()) {
-    Set_TF_Status_from_Status(out_status, status);
+  tensorflow::Status s = file->Tell(&position);
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(status, s);
   }
   return position;
 }
@@ -232,11 +227,11 @@ int64 TellFile(tensorflow::WritableFile* file, TF_Status* out_status) {
 
 string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
                       size_t bytes,
-                      TF_Status* out_status) {
+                      TF_Status* status) {
   string result;
-  tensorflow::Status status = stream->ReadNBytes(bytes, &result);
-  if (!status.ok() && status.code() != tensorflow::error::OUT_OF_RANGE) {
-    Set_TF_Status_from_Status(out_status, status);
+  tensorflow::Status s = stream->ReadNBytes(bytes, &result);
+  if (!s.ok() && s.code() != tensorflow::error::OUT_OF_RANGE) {
+    Set_TF_Status_from_Status(status, s);
     result.clear();
   }
   return result;
@@ -250,35 +245,35 @@ string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
 %newobject CreateWritableFile;
 
 // Wrap the above functions.
-inline void FileExists(const string& filename, TF_Status* out_status);
-inline void DeleteFile(const string& filename, TF_Status* out_status);
-string ReadFileToString(const string& filename, TF_Status* out_status);
+inline void FileExists(const string& filename, TF_Status* status);
+inline void DeleteFile(const string& filename, TF_Status* status);
+string ReadFileToString(const string& filename, TF_Status* status);
 void WriteStringToFile(const string& filename, const string& file_content,
-                       TF_Status* out_status);
-std::vector<string> GetChildren(const string& dir, TF_Status* out_status);
+                       TF_Status* status);
+std::vector<string> GetChildren(const string& dir, TF_Status* status);
 std::vector<string> GetMatchingFiles(const string& filename,
-                                     TF_Status* out_status);
-void CreateDir(const string& dirname, TF_Status* out_status);
-void RecursivelyCreateDir(const string& dirname, TF_Status* out_status);
+                                     TF_Status* status);
+void CreateDir(const string& dirname, TF_Status* status);
+void RecursivelyCreateDir(const string& dirname, TF_Status* status);
 void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
-              TF_Status* out_status);
+              TF_Status* status);
 void RenameFile(const string& oldname, const string& newname, bool overwrite,
-                TF_Status* out_status);
-void DeleteRecursively(const string& dirname, TF_Status* out_status);
+                TF_Status* status);
+void DeleteRecursively(const string& dirname, TF_Status* status);
 bool IsDirectory(const string& dirname, TF_Status* out_status);
 void Stat(const string& filename, tensorflow::FileStatistics* stats,
-          TF_Status* out_status);
+          TF_Status* status);
 tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
-    const string& filename, size_t buffer_size, TF_Status* out_status);
+    const string& filename, size_t buffer_size, TF_Status* status);
 tensorflow::WritableFile* CreateWritableFile(const string& filename,
                                              const string& mode,
-                                             TF_Status* out_status);
+                                             TF_Status* status);
 void AppendToFile(const string& file_content, tensorflow::WritableFile* file,
-                  TF_Status* out_status);
-int64 TellFile(tensorflow::WritableFile* file, TF_Status* out_status);
+                  TF_Status* status);
+int64 TellFile(tensorflow::WritableFile* file, TF_Status* status);
 string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
                       size_t bytes,
-                      TF_Status* out_status);
+                      TF_Status* status);
 
 %ignore tensorflow::Status::operator=;
 %include "tensorflow/core/lib/core/status.h"
