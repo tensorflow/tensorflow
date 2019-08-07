@@ -13311,7 +13311,7 @@ op {
     type: DT_VARIANT
   }
   input_arg {
-    name: "num_workers"
+    name: "num_replicas"
     type: DT_INT64
   }
   output_arg {
@@ -31257,7 +31257,7 @@ op {
     type: DT_VARIANT
   }
   input_arg {
-    name: "num_workers"
+    name: "num_replicas"
     type: DT_INT64
   }
   output_arg {
