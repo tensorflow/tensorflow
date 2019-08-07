@@ -76,14 +76,6 @@ inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
   return nullptr;
 }
 
-inline int8_t* GetInt8DataPtr(const TfLiteTensor* tensor, const bool is_uint8) {
-  if (is_uint8) {
-    return reinterpret_cast<int8_t*>(tensor->data.uint8);
-  } else {
-    return tensor->data.int8;
-  }
-}
-
 // Determines whether tensor is constant.
 inline bool IsConstantTensor(const TfLiteTensor* tensor) {
   return tensor->allocation_type == kTfLiteMmapRo;

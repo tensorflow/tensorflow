@@ -549,6 +549,7 @@ cc_library(
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels/internal:kernel_utils",
+        "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//third_party/eigen3",
         "@gemmlowp",
