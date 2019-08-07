@@ -35,7 +35,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_traits.h"
-#include "tensorflow/compiler/mlir/lite/utils/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {

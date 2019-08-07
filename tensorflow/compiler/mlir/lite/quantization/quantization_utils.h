@@ -16,8 +16,8 @@ limitations under the License.
 // This header file defines common utils used by TFLite transformation
 // passes to work with op attributes.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_QUANTIZATION_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_QUANTIZATION_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_
 
 #include <unordered_map>
 
@@ -206,4 +206,4 @@ void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
 }  // end namespace TFL
 }  // end namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_UTILS_QUANTIZATION_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_

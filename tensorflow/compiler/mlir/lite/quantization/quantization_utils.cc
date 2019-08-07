@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/lite/utils/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
 #include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir

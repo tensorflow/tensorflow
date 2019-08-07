@@ -165,9 +165,9 @@ cc_library(
         "ir/quantization_traits.h",
         "ir/tfl_ops.h",
         "ir/tfl_traits.h",
+        "quantization/quantization_utils.h",
         "transforms/passes.h",
         "utils/attribute_utils.h",
-        "utils/quantization_utils.h",
     ],
     deps = [
         ":tensorflow_lite_ops_inc_gen",
@@ -189,11 +189,11 @@ cc_library(
 cc_library(
     name = "tensorflow_lite_quantization_utils",
     srcs = [
-        "utils/quantization_driver.cc",
-        "utils/quantization_utils.cc",
+        "quantization/quantization_driver.cc",
+        "quantization/quantization_utils.cc",
     ],
     hdrs = [
-        "utils/quantization_utils.h",
+        "quantization/quantization_utils.h",
     ],
     deps = [
         ":tensorflow_lite",
