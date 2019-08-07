@@ -50,7 +50,7 @@ def GetBuild(dir_base):
   return items
 
 
-def BuildPyTestDependencies(api_version):
+def BuildPyTestDependencies():
   python_targets = GetBuild("tensorflow/python")
   tensorflow_targets = GetBuild("tensorflow")
   # Build list of test targets,
@@ -147,7 +147,7 @@ def main():
   # tf_py_test_dependencies is the list of dependencies for all python
   # tests in tensorflow
   tf_py_test_dependencies = subprocess.check_output(
-      ["bazel", "cquery", py_test_query_expression])
+      ["bazel", "cquery", PY_TEST_QUERY_EXPRESSION])
   if isinstance(tf_py_test_dependencies, bytes):
     tf_py_test_dependencies = tf_py_test_dependencies.decode("utf-8")
   tf_py_test_dependencies_list = tf_py_test_dependencies.strip().split("\n")
@@ -187,7 +187,7 @@ def main():
       print("\nMissing dependency: %s " % missing_dependency)
       print("Affected Tests:")
       rdep_query = ("rdeps(kind(py_test, %s), %s)" %
-                    (" + ".join(python_targets), missing_dependency))
+                    (" + ".join(PYTHON_TARGETS), missing_dependency))
       affected_tests = subprocess.check_output(["bazel", "cquery", rdep_query])
       affected_tests_list = affected_tests.split("\n")[:-2]
       print("\n".join(affected_tests_list))
