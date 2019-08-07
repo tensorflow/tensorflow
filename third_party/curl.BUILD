@@ -156,7 +156,6 @@ cc_library(
         "lib/pingpong.h",
         "lib/pingpong.c",
         "lib/pipeline.c",
-        "lib/pingpong.c",
         "lib/pipeline.h",
         "lib/pop3.h",
         "lib/progress.c",
