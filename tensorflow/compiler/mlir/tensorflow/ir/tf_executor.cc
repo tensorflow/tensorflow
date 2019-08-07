@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
 #include <algorithm>
+#include <iterator>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -884,9 +886,39 @@ ParseResult ParseLoopCondOp(OpAsmParser *parser, OperationState *result) {
 // tf_executor.graph
 //===----------------------------------------------------------------------===//
 
-// TODO(lyandy): Add canonicalization for empty graphs.
-
 namespace {
+// Finds in a block if the op of type `InnerOpT` is the first operation and
+// optionally followed by a terminator.
+template <typename InnerOpT>
+bool HasSingleOpInBlock(Block *block) {
+  if (block->empty()) return false;
+  if (!llvm::isa<InnerOpT>(block->front())) return false;
+  // Either InnerOpT is the only instruction in the block, or there is a
+  // possible terminator.
+  return std::next(block->begin()) == block->end() ||
+         std::next(block->begin(), 2) == block->end();
+}
+
+// This pattern matches GraphOps with only one FetchOp (empty) and remaps the
+// results of the GraphOp to the operands of the FetchOp.
+struct DropEmptyGraph : public OpRewritePattern<GraphOp> {
+  using OpRewritePattern<GraphOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(GraphOp op,
+                                     PatternRewriter &rewriter) const override {
+    Block &block = op.GetBody();
+    // Check if graph only has one fetch.
+    auto fetch_op = llvm::dyn_cast<FetchOp>(block.front());
+    if (!fetch_op) return matchFailure();
+
+    // Map graph results to fetch operands.
+    llvm::SmallVector<Value *, 8> new_rets(fetch_op.fetches());
+    rewriter.replaceOp(op, new_rets);
+
+    return matchSuccess();
+  }
+};
+
 // This pattern matches GraphOps with only one island, pulls out all inner ops
 // of the island to the block containing the GraphOp, and then removes the
 // GraphOp.
@@ -895,12 +927,15 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
 
   PatternMatchResult matchAndRewrite(GraphOp op,
                                      PatternRewriter &rewriter) const override {
-    if (!HasSingleIslandInGraph(&op)) return matchFailure();
-    auto fetch_op = llvm::cast<FetchOp>(op.GetBody().back());
-    auto island_op = llvm::cast<IslandOp>(op.GetBody().front());
+    Block &block = op.GetBody();
+    // Check if graph only has one island.
+    if (!HasSingleOpInBlock<IslandOp>(&block)) return matchFailure();
+
+    auto fetch_op = llvm::cast<FetchOp>(block.back());
+    auto island_op = llvm::cast<IslandOp>(block.front());
     auto yield_op = llvm::cast<YieldOp>(island_op.GetBody().back());
 
-    // Mapping from island outputs to inner ops outputs.
+    // Mapping from island results to inner ops results.
     llvm::SmallDenseMap<Value *, Value *, 8> island_rets_to_ops;
     for (auto ops_and_ret_vals :
          llvm::zip(island_op.outputs(), yield_op.fetches())) {
@@ -908,7 +943,7 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
           {std::get<0>(ops_and_ret_vals), std::get<1>(ops_and_ret_vals)});
     }
 
-    // Map graph outputs to inner ops outputs.
+    // Map graph results to inner ops results.
     llvm::SmallVector<Value *, 8> new_rets;
     for (auto *fetch : fetch_op.fetches()) {
       if (auto *op = island_rets_to_ops.lookup(fetch))
@@ -927,30 +962,12 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
 
     return matchSuccess();
   }
-
- private:
-  // Finds in a block if the op of type `InnerOpT` is the first operation
-  // and optionally followed by a terminator.
-  template <typename InnerOpT>
-  bool HasSingleOpInBlock(Block *block) const {
-    if (block->empty()) return false;
-    if (!llvm::isa<InnerOpT>(block->front())) return false;
-    // Either InnerOpT is the only instruction in the block, or there is a
-    // possible terminator.
-    return std::next(block->begin()) == block->end() ||
-           std::next(block->begin(), 2) == block->end();
-  }
-
-  // Checks if graph only has one island.
-  bool HasSingleIslandInGraph(GraphOp *graph_op) const {
-    return HasSingleOpInBlock<IslandOp>(&graph_op->GetBody());
-  }
 };
 }  // anonymous namespace
 
 void GraphOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  results.insert<HoistInnerOpsSingleIslandGraph>(context);
+  results.insert<DropEmptyGraph, HoistInnerOpsSingleIslandGraph>(context);
 }
 
 //===----------------------------------------------------------------------===//
