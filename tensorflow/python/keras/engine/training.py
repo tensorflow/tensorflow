@@ -2559,7 +2559,7 @@ class Model(network.Network):
             'declared using a keras.Input() with sparse=True or ragged=True. '
             'We found an undeclared input %s. For Sequential models, please '
             'add a keras.Input() as your first Layer. For subclassed models, '
-            'please call self._add_inputs() on your input set, which you can '
+            'please call self._set_inputs() on your input set, which you can '
             'create using keras.Input() for each input to your model.' %
             (input_tensor,))
     # Build the model using the retrieved inputs (value or symbolic).
