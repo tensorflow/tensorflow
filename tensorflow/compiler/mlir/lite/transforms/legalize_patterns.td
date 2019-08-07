@@ -29,7 +29,6 @@ class ExtractI32At<int i> : NativeCodeCall<
     "$_builder.getI32IntegerAttr($_self.cast<ArrayAttr>().getValue()[" # i #
     "].cast<IntegerAttr>().getInt())">;
 
-
 // Merge the two Attributes to a ArrayAttr;
 def Merge2AttrsToArray : NativeCodeCall<"$_builder.getArrayAttr({$0, $1})">;
 
