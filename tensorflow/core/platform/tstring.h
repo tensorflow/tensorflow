@@ -23,7 +23,14 @@ limitations under the License.
 
 #ifdef USE_TSTRING
 
-#include "absl/strings/string_view.h"
+// The inclusion of absl/strings/string_view.h in tstring.h would preclude the
+// use of tstring in tflite.  Given that, in order to mitigate the forced
+// inclusion of absl/strings/string_view.h while providing convenience methods
+// for implicit conversion, we replace explicit uses of absl::string_view with a
+// forward declaration and associated templates.
+namespace absl {
+class string_view;
+}
 
 namespace tensorflow {
 
@@ -44,7 +51,7 @@ class tstring {
  public:
   tstring() : str_() {}
 
-  tstring(const tstring& str) : str_(str.str_) {}
+  tstring(const tstring& str) = default;
 
   tstring(const std::string& str) : str_(str) {}
 
@@ -52,17 +59,23 @@ class tstring {
 
   tstring(const char* str) : str_(str) {}
 
-  tstring(const absl::string_view& str) : str_(str.data(), str.size()) {}
+  template <typename T, typename = std::enable_if_t<
+                            std::is_same<T, absl::string_view>::value, T>>
+  explicit tstring(const T& str) : str_(str.data(), str.size()) {}
 
   ~tstring() {}
 
-  tstring& operator=(const tstring& str) {
+  tstring& operator=(const tstring& str) = default;
+
+  tstring& operator=(const std::string& str) {
     str_ = str;
 
     return *this;
   }
 
-  tstring& operator=(const absl::string_view& str) {
+  template <typename T, typename = std::enable_if_t<
+                            std::is_same<T, absl::string_view>::value, T>>
+  tstring& operator=(const T& str) {
     str_.assign(str.data(), str.size());
 
     return *this;
@@ -78,13 +91,21 @@ class tstring {
 
   bool operator>(const tstring& o) const { return str_ > o.str_; }
 
+  bool operator==(const char* o) const { return str_ == o; }
+
   bool operator==(const tstring& o) const { return str_ == o.str_; }
+
+  bool operator!=(const char* o) const { return str_ != o; }
 
   bool operator!=(const tstring& o) const { return str_ != o.str_; }
 
   operator std::string() const { return str_; }
 
-  operator absl::string_view() const { return absl::string_view(str_); }
+  template <typename T, typename = std::enable_if_t<
+                            std::is_same<T, absl::string_view>::value, T>>
+  operator T() const {
+    return T(str_.data(), str_.size());
+  }
 
   bool empty() const { return str_.empty(); }
 
@@ -117,9 +138,17 @@ class tstring {
   }
 
   friend const tstring operator+(const tstring& a, const tstring& b);
+  friend bool operator==(const char* a, const tstring& b);
+  friend bool operator==(const std::string& a, const tstring& b);
   friend std::ostream& operator<<(std::ostream& o, const tstring& str);
   friend std::hash<tstring>;
 };
+
+inline bool operator==(const char* a, const tstring& b) { return a == b.str_; }
+
+inline bool operator==(const std::string& a, const tstring& b) {
+  return a == b.str_;
+}
 
 inline const tstring operator+(const tstring& a, const tstring& b) {
   return tstring(a.str_ + b.str_);
