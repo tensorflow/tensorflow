@@ -137,6 +137,25 @@ public:
   /// Replace any uses of 'from' with 'to' within this operation.
   void replaceUsesOfWith(Value *from, Value *to);
 
+  /// Replace all uses of results of this operation with the provided 'values'.
+  template <typename ValuesT,
+            typename = decltype(std::declval<ValuesT>().begin())>
+  void replaceAllUsesWith(ValuesT &&values) {
+    assert(std::distance(values.begin(), values.end()) == getNumResults() &&
+           "expected 'values' to correspond 1-1 with the number of results");
+
+    auto valueIt = values.begin();
+    for (unsigned i = 0, e = getNumResults(); i != e; ++i)
+      getResult(i)->replaceAllUsesWith(*(valueIt++));
+  }
+
+  /// Replace all uses of results of this operation with results of 'op'.
+  void replaceAllUsesWith(Operation *op) {
+    assert(getNumResults() == op->getNumResults());
+    for (unsigned i = 0, e = getNumResults(); i != e; ++i)
+      getResult(i)->replaceAllUsesWith(op->getResult(i));
+  }
+
   /// Destroys this operation and its subclass data.
   void destroy();
 
