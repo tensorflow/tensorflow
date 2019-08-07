@@ -1,4 +1,30 @@
 op {
   graph_op_name: "AssertNextDataset"
   visibility: HIDDEN
+  in_arg {
+    name: "input_dataset"
+    description: <<END
+A variant tensor representing the input dataset.
+`AssertNextDataset` passes through the outputs of its input dataset.
+END
+  }
+  in_arg {
+  name: "transformations"
+  description: <<END
+A `tf.string` vector `tf.Tensor` identifying the transformations that are
+expected to happen next.
+END
+  }
+  summary: "A transformation that asserts which transformations happen next."
+  description: <<END
+Core C++ implementation of the transformation `assert_next()`, which is
+an internal component of `tf.data`'s Python API.
+This transformation checks whether the Pascal-case names (i.e. "FlatMap", not
+"flat_map") of the transformations immediately after it match the list of names
+in the `transformations` argument. The transformation raises an exception if
+it finds any discrepancies.
+The check occurs immediately before iterating over the results of the
+root dataset, which means that the check happens *after* any `tf.data`
+optimizations or static optimizations are applied to the dataflow graph.
+END
 }
