@@ -18,10 +18,12 @@ limitations under the License.
 #include <atomic>
 #include <chrono>              // NOLINT(build/c++11)
 #include <condition_variable>  // NOLINT(build/c++11)
+#include <cstdint>
+#include <cstdlib>
+#include <memory>
 #include <mutex>               // NOLINT(build/c++11)
 #include <thread>              // NOLINT(build/c++11)
 
-#include "tensorflow/lite/experimental/ruy/blocking_counter.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/wait.h"
 

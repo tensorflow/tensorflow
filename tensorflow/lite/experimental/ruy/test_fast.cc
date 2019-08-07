@@ -15,6 +15,8 @@ limitations under the License.
 
 // This test contains cheap test cases, completes in a few seconds.
 
+#include <vector>
+
 #include "tensorflow/lite/experimental/ruy/test.h"
 
 namespace ruy {

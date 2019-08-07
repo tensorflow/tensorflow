@@ -18,8 +18,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_COMMON_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_COMMON_H_
 
-#include <atomic>
-#include <cstdint>
 #include <limits>
 #include <type_traits>
 
