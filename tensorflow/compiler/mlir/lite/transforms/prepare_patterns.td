@@ -110,7 +110,7 @@ def : Pat<(TF_ReshapeOp
 // Casts result type of $1 to a quantized type by using the quantization
 // parameters from the type in $0.
 def UpdateShape : NativeCodeCall<
-  "CastQuantizedTypeAttrFromExpressedType($_builder, $0, $1->getResult(0)->getType())">;
+  "CastQuantizedTypeAttrFromExpressedType($_builder, $0, GetFirstResultType($1))">;
 
 // When the op is passing-through, the output types of the quantized ops need
 // to be updated as well. Since the quantize op manages its own type by the

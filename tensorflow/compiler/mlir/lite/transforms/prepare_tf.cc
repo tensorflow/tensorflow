@@ -65,6 +65,18 @@ namespace TFL {
 // pass.
 namespace {
 
+// Returns the first result type of the given `op`.
+Type GetFirstResultType(Operation *op) { return *op->result_type_begin(); }
+// TODO(antiagainst): We need overload functions of the above to facilitate
+// changes brought by declarative rewrite rules. Remove this post variadic
+// operand support is improved.
+// NOLINTNEXTLINE
+Type GetFirstResultType(TF::TransposeOp op) { return op.getType(); }
+// NOLINTNEXTLINE
+Type GetFirstResultType(TF::ReshapeOp op) { return op.getType(); }
+// NOLINTNEXTLINE
+Type GetFirstResultType(Value *val) { return val->getType(); }
+
 // Prepare TF operations in functions for subsequent legalization.
 struct PrepareTFPass : public FunctionPass<PrepareTFPass> {
   void runOnFunction() override;
