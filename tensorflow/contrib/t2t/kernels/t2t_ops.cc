@@ -1,6 +1,5 @@
 
 #include "t2t_ops.h"
-#include <cuda_fp16.h>
 
 namespace tensorflow {
 

@@ -18,136 +18,91 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-//
-// fall-back version
-//
+__device__ float2& operator+=(float2& a, const float2& b)
+{
+  a.x+=b.x;
+  a.y+=b.y;
+  return a;
+}
+
+__device__ void add_shfl_xor(float2& var, unsigned m)
+{
+  var.x += __shfl_xor_sync((unsigned)-1, var.x, m);
+  var.y += __shfl_xor_sync((unsigned)-1, var.y, m);
+}
+
+template <class T>
+__device__ void reduce_sum_across_block(T& v)
+{
+    assert(!(blockDim.x & 31));
+    int tid = threadIdx.x & 31;
+    int xid = threadIdx.x >> 5;
+    int xdim = blockDim.x >> 5;
+    int yid = threadIdx.y;
+    __shared__ T sums[32][32]; // 8 kb for 2x float - overkill but simplifies coding
+    T* p = &sums[yid][xid];
+
+    for(int m=1; m<32; m*=2)
+      add_shfl_xor(v, m);
+
+    if(tid==0)
+      p[0] = v;
+   __syncthreads();
+    for(int m=1; m<32; m*=2)
+    {
+      if((tid==0) && (!(xid & m)) && (xid+m<xdim))
+          p[0] += p[m];
+      __syncthreads();
+    }
+    v = sums[yid][0];
+}
+
 template <typename T, typename U>
 __global__ void CustomL2NormFunctor_kernel_stage1(int N, int k, const T* in, float* out, float averager, const U* _eps)
 {
+    int idx = threadIdx.y + blockDim.y*(blockIdx.x + 1024*blockIdx.y);
+    if(idx>=N)
+      return;
     float eps = (float)*_eps;
-    for(int idx = threadIdx.x + 1024*blockIdx.x; idx<N; idx+=1024*1024)
+    if(threadIdx.x==0)
     {
-      float sum = 0;
-      float sumsq = 0;
-      for(int i=0; i<k; i++)
-      {
-        float x = (float)in[idx*k+i];
-        sum += x;
-        sumsq += x*x;
-      }
-
-      sumsq -= sum*sum*averager;
-      float mean = sum*averager;
-      float sigma = sumsq*averager;
+      out[idx*2+0] = 0;
+      out[idx*2+1] = 0;
+    }
+    float2 sum = {0,0};
+    for(int i=threadIdx.x; i<k; i+=blockDim.x)
+    { 
+      float t = (float)in[idx*k+i];
+      sum.x += t;
+      sum.y += t*t;
+    }
+    reduce_sum_across_block(sum);
+    if(threadIdx.x==0)
+    {
+      sum.y -= sum.x*sum.x*averager;
+      float mean = sum.x*averager;
+      float sigma = sum.y*averager;
       sigma = rsqrt(sigma+eps);
-
       out[idx*2+0] = mean;
       out[idx*2+1] = sigma;
-  }
+    }
 }
 
 template <typename T, typename U>
 __global__ void CustomL2NormFunctor_kernel_stage2(int N, int k, const T* in, const float* temp, T* out, const U* _bias, const U* _scale)
 {
-    for(int idx = threadIdx.x + 1024*blockIdx.x; idx<N; idx+=1024*1024)
-    {
-      float mean = temp[idx*2+0];
-      float sigma = temp[idx*2+1];
-      for(int i=0; i<k; i++)
-        out[idx*k+i] = (T)(((float)in[idx*k+i] - mean) * (float)_scale[i] * sigma + (float)_bias[i]);
-    }
-}
-
-template <typename T, typename U>
-__global__ void CustomL2NormGradFunctor_kernel_stage2(int N, int k, const T* in, const T* out_grad, const float* temp, T* out, float a, 
-  const U* _bias, const U* _scale)
-{
-  for(int idx = threadIdx.x + 1024*blockIdx.x; idx<N; idx+=1024*1024)
-  {
-    float mean = temp[idx*2+0];
-    float sigma = temp[idx*2+1];
-    T* op = out+idx*k;
-    const T* ip = in+idx*k;
-    const T* ogp = out_grad+idx*k;
-    float s1 = 0;
-    float s2 = 0;
-    for(int y=0; y<k; y++)
-    {
-      s1 += (float)ogp[y] * (float)_scale[y];
-      s2 += (float)ogp[y] * (float)_scale[y] * ((float)ip[y]-mean);
-    }
-
-    s1 *= a*sigma;
-    s2 *= a*sigma*sigma*sigma;
-
-    for(int y=0; y<k; y++)
-        op[y] = (T) ((float)ogp[y] * (float)_scale[y] * sigma - s1 - s2*((float)ip[y]-mean));
-  }
-}
-
-//
-// optimized version for k<=1024
-//
-template <typename T, typename U>
-__global__ void CustomL2NormFunctor_kernel_stage1_v2(int N, int k, const T* in, float* out, float averager, const U* _eps)
-{
-    int i = threadIdx.x;
-    int idx = threadIdx.y + blockDim.y*(blockIdx.x + 1024*blockIdx.y);
-    if(idx>=N)
-      return;
-    float eps = (float)*_eps;
-    if(i==0)
-    {
-      out[idx*2+0] = 0;
-      out[idx*2+1] = 0;
-    }
-    
-    float sum = (i<k) ? (float)in[idx*k+i] : 0.0f;
-    float sumsq = sum*sum;
-    for(int m=1; m<32; m*=2)
-    {
-      sum += __shfl_xor_sync((unsigned)-1, sum, m);
-      sumsq += __shfl_xor_sync((unsigned)-1, sumsq, m);
-    }
-    __syncthreads();
-    if((i & 31)==0)
-    {
-      atomicAdd(out+idx*2+0, sum);
-      atomicAdd(out+idx*2+1, sumsq);
-    }
-    __syncthreads();
-    if(i==0)
-    {
-      sum = out[idx*2+0];
-      sumsq = out[idx*2+1];
-      sumsq -= sum*sum*averager;
-      float mean = sum*averager;
-      float sigma = sumsq*averager;
-      sigma = rsqrt(sigma+eps);
-
-      out[idx*2+0] = mean;
-      out[idx*2+1] = sigma;
-    }
- 
-}
-
-template <typename T, typename U>
-__global__ void CustomL2NormFunctor_kernel_stage2_v2(int N, const T* in, const float* temp, T* out, const U* _bias, const U* _scale)
-{
-  int k = blockDim.x;
-  int i = threadIdx.x;
   int idx = threadIdx.y + blockDim.y*(blockIdx.x + 1024*blockIdx.y);
   if(idx>=N)
     return;
   float mean = temp[idx*2+0];
   float sigma = temp[idx*2+1];
-  out[idx*k+i] = (T) (((float)in[idx*k+i] - mean) * (float)_scale[i] * sigma + (float)_bias[i]);
+  for(int i = threadIdx.x; i<k; i+=blockDim.x)
+    out[idx*k+i] = (T) (((float)in[idx*k+i] - mean) * (float)_scale[i] * sigma + (float)_bias[i]);
 }
 
 template <typename T, typename U>
-__global__ void CustomL2NormGradFunctor_kernel_stage2_v2(int N, int k, const T* in, const T* out_grad, float* temp, T* out, float a,   const U* _bias, const U* _scale)
+__global__ void CustomL2NormGradFunctor_kernel_stage2(int N, int k, const T* in, const T* out_grad, float* temp, T* out, float a,   const U* _bias, const U* _scale)
 {
-    int i = threadIdx.x;
     int idx = threadIdx.y + blockDim.y*(blockIdx.x + 1024*blockIdx.y);
     if(idx>=N)
       return;
@@ -156,36 +111,19 @@ __global__ void CustomL2NormGradFunctor_kernel_stage2_v2(int N, int k, const T* 
     T* op = out+idx*k;
     const T* ip = in+idx*k;
     const T* ogp = out_grad+idx*k;
-    float s1 = 0;
-    float s2 = 0;
-    if(i<k)
+    float2 s = {0,0};
+    for(int i=threadIdx.x; i<k; i+=blockDim.x)
     {
-      s1 = (float)ogp[i] * (float)_scale[i];
-      s2 = s1 * ((float)ip[i]-mean);
+      float t = (float)ogp[i] * (float)_scale[i];
+      s.x += t;
+      s.y += t * ((float)ip[i]-mean);
     }
-    __syncthreads();
-    if(i==0)
-    {
-      temp[idx*2+0]=0;
-      temp[idx*2+1]=0;
-    }
-    for(int m=1; m<32; m*=2)
-    {
-      s1 += __shfl_xor_sync((unsigned)-1, s1, m);
-      s2 += __shfl_xor_sync((unsigned)-1, s2, m);
-    }
-    __syncthreads();
-    if((i & 31)==0)
-    {
-      atomicAdd(temp+idx*2+0, s1);
-      atomicAdd(temp+idx*2+1, s2);
-    }
-    __syncthreads();
-    s1 = temp[idx*2+0];
-    s2 = temp[idx*2+1];
+    reduce_sum_across_block(s);
+    float s1 = s.x;
+    float s2 = s.y;
     s1 *= a*sigma;
     s2 *= a*sigma*sigma*sigma;
-    if(i<k)
+    for(int i=threadIdx.x; i<k; i+=blockDim.x)
         op[i] = (T) ((float)ogp[i] * (float)_scale[i] * sigma - s1 - s2*((float)ip[i]-mean));
 }
 
@@ -197,25 +135,19 @@ void CustomL2NormFunctor<Eigen::GpuDevice, T, U>::operator()(const Eigen::GpuDev
 {
   uint64_t blocks = max(1ul,min(1024ul, (N+1023)>>10));
 
-  if(k>=2 && k<=1024)
   {
     dim3 threads, blocks;
-    int thrRound = (k+31)&~31;
+    int thrRound = min(1024ul, (k+31)&~31);
     threads=dim3(thrRound, 1024/thrRound, 1);
     blocks=dim3( max(1ul, uint64_t((N+threads.y-1) / threads.y)), 1, 1);
-    CustomL2NormFunctor_kernel_stage1_v2<T,U> <<<blocks, threads, 0, d.stream()>>> (N, k, in, temp, 1./k, eps);
+    CustomL2NormFunctor_kernel_stage1<T,U> <<<blocks, threads, 0, d.stream()>>> (N, k, in, temp, 1./k, eps);
 
-    threads = dim3(k, 1024/k, 1);
+    thrRound = min(1024ul, k);
+    threads = dim3(thrRound, 1024/thrRound, 1);
     blocks=dim3( max(1ul, uint64_t((N+threads.y-1) / threads.y)), 1, 1);
     if(blocks.x>1024)
       blocks=dim3(1024, (blocks.x+1023)/1024, 1);
-    CustomL2NormFunctor_kernel_stage2_v2<T,U> <<<blocks, threads, 0, d.stream()>>> (N, in, temp, out, bias, scale);
-  }
-  else
-  {
-    uint64_t blocks = max(1ul,min(1024ul, (N+1023)>>10));
-    CustomL2NormFunctor_kernel_stage1<T,U> <<<blocks, 1024, 0, d.stream()>>> (N, k, in, temp, 1./k, eps);
-    CustomL2NormFunctor_kernel_stage2<T,U> <<<blocks, 1024, 0, d.stream()>>> (N, k, in, temp, out, bias, scale);
+    CustomL2NormFunctor_kernel_stage2<T,U> <<<blocks, threads, 0, d.stream()>>> (N, k, in, temp, out, bias, scale);
   }
 }
 
@@ -229,22 +161,15 @@ void CustomL2NormGradFunctor<Eigen::GpuDevice, T, U>::operator()(const Eigen::Gp
     T* out,
     const U* eps, const U* bias, const U* scale)
 {
-  if(k>=2 && k<=1024)
   {
     dim3 threads, blocks;
-    int thrRound = (k+31)&~31;
+    int thrRound = min(1024ul, (k+31)&~31);
     threads=dim3(thrRound, 1024/thrRound, 1);
     blocks=dim3( max(1ul, uint64_t((N+threads.y-1) / threads.y)), 1, 1);
     if(blocks.x>1024)
       blocks=dim3(1024, (blocks.x+1023)/1024, 1);
-    CustomL2NormFunctor_kernel_stage1_v2<T,U> <<<blocks, threads, 0, d.stream()>>> (N, k, in, temp, 1./k, eps);
-    CustomL2NormGradFunctor_kernel_stage2_v2<T,U> <<<blocks, threads, 0, d.stream()>>> (N, k, in, outgrad, temp, out, 1./k, bias, scale);
-  }
-  else
-  {
-    uint64_t blocks = max(1ul,min(1024ul, (N+1023)>>10));
-    CustomL2NormFunctor_kernel_stage1<T,U> <<<blocks, 1024, 0, d.stream()>>> (N, k, in, temp, 1./k, eps);
-    CustomL2NormGradFunctor_kernel_stage2<T,U> <<<blocks, 1024, 0, d.stream()>>> (N, k, in, outgrad, temp, out, 1./k, bias, scale);
+    CustomL2NormFunctor_kernel_stage1<T,U> <<<blocks, threads, 0, d.stream()>>> (N, k, in, temp, 1./k, eps);
+    CustomL2NormGradFunctor_kernel_stage2<T,U> <<<blocks, threads, 0, d.stream()>>> (N, k, in, outgrad, temp, out, 1./k, bias, scale);
   }
 }
 
