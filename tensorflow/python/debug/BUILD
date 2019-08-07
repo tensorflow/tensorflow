@@ -677,6 +677,7 @@ py_test(
         "//third_party/py/numpy",
     ],
     tags = [
+        "no_cuda",
         "no_rocm",
         "no_rocm_v2",
     ],
@@ -1129,6 +1130,7 @@ py_test(
         "//tensorflow/python:variables",
     ],
     tags = [
+        "no_cuda",
         "no_rocm",
         "no_rocm_v2",
     ],
@@ -1162,6 +1164,7 @@ py_test(
         "//third_party/py/numpy",
     ],
     tags = [
+        "no_cuda",
         "no_rocm",
         "no_rocm_v2",
     ],
