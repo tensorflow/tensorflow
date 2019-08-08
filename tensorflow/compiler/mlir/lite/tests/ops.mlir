@@ -307,11 +307,9 @@ func @testFloorDivF32(%arg0: tensor<2 x f32>, %arg1: tensor<2 x i32>) -> tensor<
 // -----
 
 // CHECK-LABEL: testFloorMod
-func @testFloorMod(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
-^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):
-  // CHECK: tfl.floor_mod %arg0, %arg1
-  %0 = tfl.floor_mod %arg0, %arg1 : tensor<? x i32>
-  return %0#0 : tensor<? x i32>
+func @testFloorMod(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>) -> tensor<? x i32> {
+  %0 = "tfl.floor_mod"(%arg0, %arg1) : (tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32>
+  return %0 : tensor<? x i32>
 }
 
 // CHECK-LABEL: testPow

@@ -1052,3 +1052,17 @@ func @where(%arg0: tensor<3x5xi1>) -> tensor<?x2xi64> {
   // CHECK-LABEL: where
   // CHECK: "tfl.where"(%arg0) : (tensor<3x5xi1>) -> tensor<?x2xi64>
 }
+
+func @floor_mod(%arg0: tensor<5xf32>, %arg1: tensor<5xf32>) -> tensor<5xf32> {
+  %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
+  return %0 : tensor<5xf32>
+  // CHECK-LABEL: floor_mod
+  // CHECK: "tfl.floor_mod"(%arg0, %arg1) : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
+}
+
+func @exp(%arg0: tensor<5xf32>) -> tensor<5xf32> {
+  %0 = "tf.Exp"(%arg0) : (tensor<5xf32>) -> tensor<5xf32>
+  return %0 : tensor<5xf32>
+  // CHECK-LABEL: exp
+  // CHECK: "tfl.exp"(%arg0) : (tensor<5xf32>) -> tensor<5xf32>
+}

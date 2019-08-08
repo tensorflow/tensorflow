@@ -299,4 +299,7 @@ def : Pat<
 
 def : Pat<(TF_UniqueOp $arg0),(TFL_UniqueOp $arg0)>;
 
+def : Pat<(TF_FloorModOp $arg0, $arg1), (TFL_FloorModOp $arg0, $arg1)>;
+def : Pat<(TF_ExpOp $arg0), (TFL_ExpOp $arg0)>;
+
 def : Pat<(TF_LRNOp $arg0, $radius, F32Attr:$bias, F32Attr:$alpha, F32Attr:$beta), (TFL_LocalResponseNormalizationOp $arg0, (convertIntAttrTo32Bit $radius), $bias, $alpha, $beta)>;
