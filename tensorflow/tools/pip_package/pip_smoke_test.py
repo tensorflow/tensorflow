@@ -52,16 +52,10 @@ def GetBuild(dir_base):
 
 def BuildPyTestDependencies():
   python_targets = GetBuild("tensorflow/python")
-  contrib_targets = GetBuild("tensorflow/contrib")
-  tensorboard_targets = GetBuild("tensorflow/contrib/tensorboard")
   tensorflow_targets = GetBuild("tensorflow")
   # Build list of test targets,
-  # python + contrib - tensorboard - attr(manual|pno_pip)
+  # python - tensorboard - attr(manual|pno_pip)
   targets = " + ".join(python_targets)
-  for t in contrib_targets:
-    targets += " + " + t
-  for t in tensorboard_targets:
-    targets += " - " + t
   targets += ' - attr(tags, "manual|no_pip", %s)' % " + ".join(
       tensorflow_targets)
   query_kind = "kind(py_test, %s)" % targets
@@ -137,7 +131,6 @@ def main():
       3. Configure has been run.
 
   """
-
   # pip_package_dependencies_list is the list of included files in pip packages
   pip_package_dependencies = subprocess.check_output(
       ["bazel", "cquery", PIP_PACKAGE_QUERY_EXPRESSION])

@@ -882,7 +882,6 @@ distribute_py_test(
     deps = [
         ":mirrored_strategy",
         ":single_loss_example",
-        "//tensorflow/contrib/tpu:tpu_lib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:framework_ops",
@@ -935,7 +934,6 @@ distribute_py_test(
     ],
     deps = [
         ":single_loss_example",
-        "//tensorflow/contrib/tpu:tpu_lib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:combinations",
