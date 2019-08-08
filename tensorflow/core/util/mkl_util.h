@@ -1121,7 +1121,7 @@ inline memory::dims MklDnnDimsInNCHW(const memory::dims& in_dims,
 /// Input parameters are self-explanatory.
 inline memory::dims MklDnnDimsInNCDHW(const memory::dims& in_dims,
                                       TensorFormat format) {
-  // Check validity of format.
+  // Validate format.
   CHECK_NE(TFDataFormatToMklDnnDataFormat(format),
            memory::format::format_undef);
 
@@ -1131,7 +1131,7 @@ inline memory::dims MklDnnDimsInNCDHW(const memory::dims& in_dims,
   int h = in_dims[GetTensorDimIndex<3>(format, '1')];
   int w = in_dims[GetTensorDimIndex<3>(format, '2')];
 
-  // MKL-DNN requires dimensions in NCDHW format.
+  // MKL DNN requires dimensions in NCDHW format.
   return memory::dims({n, c, d, h, w});
 }
 
