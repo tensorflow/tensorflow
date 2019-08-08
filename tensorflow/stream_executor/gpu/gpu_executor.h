@@ -61,12 +61,12 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   port::Status Init(int device_ordinal, DeviceOptions device_options) override;
 
-  bool GetKernel(const MultiKernelLoaderSpec& spec,
-                 KernelBase* kernel) override;
+  port::Status GetKernel(const MultiKernelLoaderSpec& spec,
+                         KernelBase* kernel) override;
   // (supported on CUDA only)
   void UnloadKernel(const KernelBase* kernel) override;
-  bool LoadModule(const MultiModuleLoaderSpec& spec,
-                  ModuleHandle* module_handle) override;
+  port::Status LoadModule(const MultiModuleLoaderSpec& spec,
+                          ModuleHandle* module_handle) override;
   bool UnloadModule(ModuleHandle module_handle) override;
 
   bool Launch(Stream* stream, const ThreadDim& thread_dims,

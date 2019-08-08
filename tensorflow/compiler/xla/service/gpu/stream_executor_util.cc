@@ -201,10 +201,7 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
   }
 
   auto kernel_base = absl::make_unique<se::KernelBase>(stream_exec);
-  if (!stream_exec->GetKernel(loader_spec, kernel_base.get())) {
-    return InternalError("Unable to load kernel '%s'", kernel_name);
-  }
-
+  TF_RETURN_IF_ERROR(stream_exec->GetKernel(loader_spec, kernel_base.get()));
   return std::move(kernel_base);
 }
 

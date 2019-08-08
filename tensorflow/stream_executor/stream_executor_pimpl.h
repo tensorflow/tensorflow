@@ -100,8 +100,8 @@ class StreamExecutor {
   //    instantiation should not be loaded into more than once.
   //
   // If an error occurs, or there is no kernel available for the StreamExecutor
-  // platform, false is returned.
-  bool GetKernel(const MultiKernelLoaderSpec &spec, KernelBase *kernel);
+  // platform, error status is returned.
+  port::Status GetKernel(const MultiKernelLoaderSpec &spec, KernelBase *kernel);
 
   // Releases any state associated with the previously loaded kernel.
   void UnloadKernel(const KernelBase *kernel);
@@ -109,9 +109,10 @@ class StreamExecutor {
   // Loads a module for the platform this StreamExecutor is acting upon.
   //
   // `spec` describes the module to be loaded.  On success writes the handle for
-  // the loaded module to `module_handle` and returns true.  Else returns false.
-  bool LoadModule(const MultiModuleLoaderSpec &spec,
-                  ModuleHandle *module_handle);
+  // the loaded module to `module_handle` and returns Status::OK.
+  // Otherwise, returns the error which has occurred.
+  port::Status LoadModule(const MultiModuleLoaderSpec &spec,
+                          ModuleHandle *module_handle);
 
   // Unloads the module with handle `module_handle`.
   bool UnloadModule(ModuleHandle module_handle);
@@ -786,10 +787,7 @@ StreamExecutor::CreateTypedKernel(absl::string_view kernel_name,
         reinterpret_cast<const char *>(cubin_data.data()), kernel_name);
   }
 
-  if (!GetKernel(loader_spec, kernel_base.get())) {
-    return port::InternalError("Unable to load kernel");
-  }
-
+  TF_RETURN_IF_ERROR(GetKernel(loader_spec, kernel_base.get()));
   return std::move(kernel_base);
 }
 
