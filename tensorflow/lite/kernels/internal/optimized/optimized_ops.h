@@ -266,7 +266,9 @@ inline void FullyConnected(
   TFLITE_DCHECK_EQ(filter_shape.FlatSize(), filter_rows * filter_cols);
   const int output_rows = output_shape.Dims(output_dim_count - 1);
   TFLITE_DCHECK_EQ(output_rows, filter_rows);
-  TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
+  if (bias_data) {
+    TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
+  }
 
   cpu_backend_gemm::MatrixParams<uint8> lhs_params;
   lhs_params.rows = filter_rows;
