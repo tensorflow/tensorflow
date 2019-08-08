@@ -54,13 +54,13 @@ private:
   Token emitError(const char *loc, const Twine &message);
 
   // Lexer implementation methods.
-  Token lexComment();
-  Token lexBareIdentifierOrKeyword(const char *tokStart);
   Token lexAtIdentifier(const char *tokStart);
-  Token lexPrefixedIdentifier(const char *tokStart);
-  Token lexNumber(const char *tokStart);
-  Token lexString(const char *tokStart);
+  Token lexBareIdentifierOrKeyword(const char *tokStart);
+  Token lexComment();
   Token lexEllipsis(const char *tokStart);
+  Token lexNumber(const char *tokStart);
+  Token lexPrefixedIdentifier(const char *tokStart);
+  Token lexString(const char *tokStart);
 
   const llvm::SourceMgr &sourceMgr;
   MLIRContext *context;
