@@ -18,7 +18,6 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::stream;
 using mkldnn::view;
@@ -396,8 +396,9 @@ class MklSliceOp : public OpKernel {
         auto input_tf_format = MklDnnDataFormatToTFDataFormat(input_mkl_format);
 
         bool is_slice2d = (input_mkl_shape.GetDimension() == 4);
-        begin_dims = is_slice2d ? MklDnnDimsInNCHW(begin_dims, input_tf_format)
-                                : MklDnnDimsInNCDHW(begin_dims, input_tf_format);
+        begin_dims = is_slice2d
+                         ? MklDnnDimsInNCHW(begin_dims, input_tf_format)
+                         : MklDnnDimsInNCDHW(begin_dims, input_tf_format);
         size_dims = is_slice2d ? MklDnnDimsInNCHW(size_dims, input_tf_format)
                                : MklDnnDimsInNCDHW(size_dims, input_tf_format);
         auto input_md = input_mkl_shape.GetMklLayout();
