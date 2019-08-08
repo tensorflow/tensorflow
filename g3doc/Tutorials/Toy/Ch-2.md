@@ -185,9 +185,9 @@ func @main() loc("test/codegen.toy":6:1) {
 }
 ```
 
-You can build `toyc` and try yourself: `toyc test/codegen.toy -emit=mlir
--mlir-print-debuginfo`. We can also check our RoundTrip: `toyc test/codegen.toy
--emit=mlir -mlir-print-debuginfo > codegen.mlir` followed by `toyc codegen.mlir
+You can build `toyc-ch2` and try yourself: `toyc-ch2 test/codegen.toy -emit=mlir
+-mlir-print-debuginfo`. We can also check our RoundTrip: `toyc-ch2 test/codegen.toy
+-emit=mlir -mlir-print-debuginfo > codegen.mlir` followed by `toyc-ch2 codegen.mlir
 -emit=mlir`.
 
 Notice how these MLIR operations are prefixed with `toy.` ; by convention we use
