@@ -33,9 +33,11 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_runtime.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -122,7 +124,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   Tensor GPUToCPU(const Tensor& device_tensor) {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     CHECK(gpu_device_);
     CHECK(gpu_device_->tensorflow_gpu_device_info() != nullptr);
     DeviceContext* device_context =
@@ -146,7 +148,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   Tensor CPUToGPU(const Tensor& cpu_tensor) {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     CHECK(gpu_device_);
     CHECK(gpu_device_->tensorflow_gpu_device_info() != nullptr);
     DeviceContext* device_context =
@@ -461,6 +463,12 @@ bool IsCUDATensor(const Tensor& t) {
   if (err == cudaErrorInvalidValue) return false;
   CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
   return (attributes.memoryType == cudaMemoryTypeDevice);
+#elif TENSORFLOW_USE_ROCM
+  hipPointerAttribute_t attributes;
+  hipError_t err = hipPointerGetAttributes(&attributes, t.tensor_data().data());
+  if (err == hipErrorInvalidValue) return false;
+  CHECK_EQ(hipSuccess, err) << hipGetErrorString(err);
+  return (attributes.memoryType == hipMemoryTypeDevice);
 #else
   CHECK(false)
       << "IsCUDATensor should not be called when CUDA is not available";

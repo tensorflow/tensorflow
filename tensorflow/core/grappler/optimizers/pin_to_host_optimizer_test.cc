@@ -203,7 +203,7 @@ TEST_F(PinToHostOptimizerTest, Identity) {
       // If CUDA, then there is a GPU kernel registration that is pinned to Host
       // memory. Consequently, `b` will be mapped to Host correct if there is
       // a GPU kernel registered.
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       EXPECT_EQ(node.device(), "/device:CPU:0");
 #else
       EXPECT_TRUE(node.device().empty());
