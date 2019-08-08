@@ -25,9 +25,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_blacklist.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/scratch_allocator.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -47,6 +47,54 @@ using absl::optional;
 using se::DeviceMemoryBase;
 using se::dnn::AlgorithmDesc;
 using tensorflow::AutotuneResult;
+
+class ScratchAllocator : public se::ScratchAllocator {
+ public:
+  ScratchAllocator(int device_ordinal,
+                   se::DeviceMemoryAllocator* memory_allocator)
+      : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
+
+  int64 GetMemoryLimitInBytes() override {
+    return 1LL << 32;  // 4GB.  TODO(jlebar): Tune this?
+  }
+  int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
+
+  StatusOr<se::DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override;
+
+  template <typename T>
+  StatusOr<se::DeviceMemory<T>> Allocate(int64 num_elements) {
+    TF_ASSIGN_OR_RETURN(se::DeviceMemory<uint8> bytes,
+                        AllocateBytes(num_elements * sizeof(T)));
+    return se::DeviceMemory<T>(bytes);
+  }
+
+ private:
+  const int device_ordinal_;
+  se::DeviceMemoryAllocator* memory_allocator_;
+  std::vector<se::OwningDeviceMemory> allocated_buffers_;
+  int64 total_allocated_bytes_ = 0;
+};
+
+StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
+    int64 byte_size) {
+  CHECK_GE(byte_size, 0) << "byte_size must be positive.";
+  if (byte_size > GetMemoryLimitInBytes()) {
+    return se::port::Status(
+        se::port::error::RESOURCE_EXHAUSTED,
+        absl::StrFormat(
+            "Allocating %d bytes exceeds the memory limit of %d bytes.",
+            byte_size, GetMemoryLimitInBytes()));
+  }
+
+  TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory allocated_buffer,
+                      memory_allocator_->Allocate(device_ordinal_, byte_size,
+                                                  /*retry_on_failure=*/false));
+  total_allocated_bytes_ += byte_size;
+
+  se::DeviceMemoryBase buffer_addr = *allocated_buffer;
+  allocated_buffers_.push_back(std::move(allocated_buffer));
+  return se::DeviceMemory<uint8>(buffer_addr);
+}
 
 std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
                                          se::StreamExecutor* stream_exec) {
@@ -319,11 +367,24 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   const bool crash_on_checking_failure =
       debug_options.xla_gpu_crash_on_verification_failures();
 
+  const auto canonical_hlo =
+      std::get<1>(AutotuneCacheKeyfromInstruction(&instr, stream_exec_));
+
+  absl::Span<const AlgorithmDesc> blacklisted_algos =
+      GetBlacklistedAlgorithms(GetComputeCapability(stream_exec_),
+                               GetCudnnVersion(stream_exec_), canonical_hlo);
+
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
         absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
                      AlgorithmToString(alg)),
         2);
+
+    if (absl::c_linear_search(blacklisted_algos, alg)) {
+      LOG(INFO) << "Omitted potentially buggy algorithm "
+                << AlgorithmToString(alg) << " for conv " << instr.ToString();
+      continue;
+    }
 
     se::RedzoneAllocator scratch_allocator(
         stream, allocator, GpuAsmOptsFromConfig(hlo_module_config));
@@ -369,6 +430,22 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
     if (!input_output_allocator_redzone_clear ||
         !scratch_allocator_redzone_clear) {
+      CudnnConvolutionList proto;
+      auto entry = proto.add_entries();
+      entry->set_hlo(canonical_hlo);
+      *entry->mutable_cc() = GetComputeCapability(stream_exec_);
+      *entry->add_cudnn_versions() = GetCudnnVersion(stream_exec_);
+      auto algo = entry->add_algos();
+      algo->set_id(alg.algo_id());
+      algo->set_tensor_ops(alg.tensor_ops_enabled());
+
+      LOG(ERROR)
+          << "To blacklist this algorithm for this convolution, "
+             "copy-paste the following "
+             "proto to the blacklist file pointed by XLA_FLAGS "
+             "--xla_gpu_cudnn_conv_blacklist_path="
+          << GetDebugOptionsFromFlags().xla_gpu_cudnn_conv_blacklist_path()
+          << " : " << proto.ShortDebugString();
       continue;
     }
 
