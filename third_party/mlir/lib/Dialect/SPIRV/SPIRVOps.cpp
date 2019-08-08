@@ -766,22 +766,19 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
   auto &op = *moduleOp.getOperation();
   auto *dialect = op.getDialect();
   auto &body = op.getRegion(0).front();
-  llvm::StringMap<FuncOp> funcNames;
   llvm::DenseMap<std::pair<FuncOp, spirv::ExecutionModel>, spirv::EntryPointOp>
       entryPoints;
 
   for (auto &op : body) {
     if (op.getDialect() == dialect) {
-      // For EntryPoint op, check that the function name is one of the specified
-      // func ops already specified, and that the function and execution model
-      // is not duplicated in EntryPointOps
+      // For EntryPoint op, check that the function and execution model is not
+      // duplicated in EntryPointOps
       if (auto entryPointOp = llvm::dyn_cast<spirv::EntryPointOp>(op)) {
-        auto it = funcNames.find(entryPointOp.fn());
-        if (it == funcNames.end()) {
+        auto funcOp = moduleOp.lookupSymbol(entryPointOp.fn());
+        if (!funcOp) {
           return entryPointOp.emitError("function '")
                  << entryPointOp.fn() << "' not found in 'spv.module'";
         }
-        auto funcOp = it->second;
         auto key = std::pair<FuncOp, spirv::ExecutionModel>(
             funcOp, entryPointOp.execution_model());
         auto entryPtIt = entryPoints.find(key);
@@ -796,8 +793,6 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
     auto funcOp = llvm::dyn_cast<FuncOp>(op);
     if (!funcOp)
       return op.emitError("'spv.module' can only contain func and spv.* ops");
-
-    funcNames[funcOp.getName()] = funcOp;
 
     if (funcOp.isExternal())
       return op.emitError("'spv.module' cannot contain external functions");
