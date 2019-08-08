@@ -825,3 +825,7 @@ func @stringconstant() -> !llvm<"i8*"> {
   llvm.return %1 : !llvm<"i8*">
 }
 
+func @noreach() {
+// CHECK:    unreachable
+  llvm.unreachable
+}
