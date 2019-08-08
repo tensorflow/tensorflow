@@ -18,7 +18,10 @@ package_group(
 package_group(
     name = "friends",
     includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
-    packages = ["//..."],
+    packages = [
+        "//...",
+        "//learning/glassbox/evaluation/compiler/...",
+    ],
 )
 
 exports_files([
