@@ -673,7 +673,6 @@ cc_library(
         "//tensorflow/core/platform:stringpiece.h",
         "//tensorflow/core/platform:tstring.h",
         "//tensorflow/core/platform:types.h",
-        "//tensorflow/core/platform:windows/cpu_info.h",
     ],
     copts = tf_copts(),
     deps = tf_lib_proto_parsing_deps() + [
