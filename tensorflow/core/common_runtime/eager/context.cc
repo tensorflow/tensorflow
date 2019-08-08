@@ -80,7 +80,7 @@ EagerContext::EagerContext(
       log_device_placement_(opts.config.log_device_placement()),
       allow_soft_placement_(opts.config.allow_soft_placement()),
       num_active_steps_(0),
-      async_default_(async),
+      default_executor_(async),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
       use_send_tensor_rpc_(false),
@@ -96,9 +96,6 @@ EagerContext::EagerContext(
     local_unowned_device_manager_ = nullptr;
   } else {
     local_unowned_device_manager_ = device_mgr;
-  }
-  if (async_default_) {
-    default_executor_.EnableAsync();
   }
   InitDeviceMapAndAsync();
   runner_ = [this](std::function<void()> closure) {
@@ -147,12 +144,11 @@ EagerExecutor* EagerContext::Executor() {
 
 void EagerContext::SetExecutorForThread(EagerExecutor* executor) {
   tensorflow::mutex_lock l(executor_map_mu_);
-  thread_local_executor_[std::this_thread::get_id()] = executor;
-}
-
-void EagerContext::ClearExecutorForThread() {
-  tensorflow::mutex_lock l(executor_map_mu_);
-  thread_local_executor_.erase(std::this_thread::get_id());
+  if (executor == &default_executor_) {
+    thread_local_executor_.erase(std::this_thread::get_id());
+  } else {
+    thread_local_executor_[std::this_thread::get_id()] = executor;
+  }
 }
 
 void EagerContext::ClearCaches() {

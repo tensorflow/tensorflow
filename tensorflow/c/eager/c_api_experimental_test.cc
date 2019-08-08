@@ -69,8 +69,10 @@ void ExecuteWithProfiling(bool async) {
   ASSERT_EQ(1, num_retvals);
   TF_Buffer* profiler_result = TF_NewBuffer();
   if (async) {
-    TFE_ContextAsyncWait(ctx, status);
+    TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+    TFE_ExecutorWaitForAllPendingNodes(executor, status);
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_DeleteExecutor(executor);
   }
   TFE_ProfilerSerializeToString(profiler, profiler_result, status);
   TFE_DeleteProfiler(profiler);
@@ -323,6 +325,7 @@ TEST(CAPI, Function_ident_CPU) {
   TF_DeleteFunction(fn);
 
   for (bool async : {false, true, false}) {
+    TFE_Executor* old_executor = TFE_ContextGetExecutorForThread(ctx);
     TFE_Executor* executor = TFE_NewExecutor(async);
     TFE_ContextSetExecutorForThread(ctx, executor);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -350,9 +353,11 @@ TEST(CAPI, Function_ident_CPU) {
     TF_Tensor* r = TFE_TensorHandleResolve(result[0], status);
     ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
     EXPECT_EQ(*reinterpret_cast<tensorflow::int32*>(TF_TensorData(r)), 42);
-    TFE_ContextClearExecutorForThread(ctx);
+    TFE_ContextSetExecutorForThread(ctx, old_executor);
     TFE_ExecutorWaitForAllPendingNodes(executor, status);
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_DeleteExecutor(executor);
+    TFE_DeleteExecutor(old_executor);
     TFE_DeleteTensorHandle(h);
     TF_DeleteTensor(r);
     TFE_DeleteTensorHandle(result[0]);
@@ -396,6 +401,7 @@ TEST(CAPI, Function_ident_XLA_CPU) {
   TF_DeleteFunction(fn);
 
   for (bool async : {false, true, false}) {
+    TFE_Executor* old_executor = TFE_ContextGetExecutorForThread(ctx);
     TFE_Executor* executor = TFE_NewExecutor(async);
     TFE_ContextSetExecutorForThread(ctx, executor);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -426,9 +432,11 @@ TEST(CAPI, Function_ident_XLA_CPU) {
     TF_Tensor* r = TFE_TensorHandleResolve(result[0], status);
     ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
     EXPECT_EQ(*reinterpret_cast<tensorflow::int32*>(TF_TensorData(r)), 42);
-    TFE_ContextClearExecutorForThread(ctx);
+    TFE_ContextSetExecutorForThread(ctx, old_executor);
     TFE_ExecutorWaitForAllPendingNodes(executor, status);
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_DeleteExecutor(executor);
+    TFE_DeleteExecutor(old_executor);
     TFE_DeleteTensorHandle(h);
     TF_DeleteTensor(r);
     TFE_DeleteTensorHandle(result[0]);
@@ -448,9 +456,9 @@ void Executor_MatMul_CPU(bool async) {
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
 
+  TFE_Executor* old_executor = TFE_ContextGetExecutorForThread(ctx);
   TFE_Executor* executor = TFE_NewExecutor(async);
   TFE_ContextSetExecutorForThread(ctx, executor);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle();
   TFE_Op* matmul = MatMulOp(ctx, m, m);
@@ -466,10 +474,11 @@ void Executor_MatMul_CPU(bool async) {
   TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteTensorHandle(retvals[0]);
-  TFE_ContextClearExecutorForThread(ctx);
+  TFE_ContextSetExecutorForThread(ctx, old_executor);
   TFE_ExecutorWaitForAllPendingNodes(executor, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteExecutor(executor);
+  TFE_DeleteExecutor(old_executor);
   TFE_DeleteContext(ctx);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   float product[4] = {0};

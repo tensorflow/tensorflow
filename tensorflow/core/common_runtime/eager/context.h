@@ -139,9 +139,6 @@ class EagerContext : public core::RefCounted {
   // Specify a executor for this thread.
   void SetExecutorForThread(EagerExecutor* executor);
 
-  // Clear the executor for this thread.
-  void ClearExecutorForThread();
-
   // TODO(apassos) make this return a constant reference
   gtl::FlatMap<string, Device*, StringPieceHasher>* device_map() {
     return &devices_map_;
@@ -415,10 +412,6 @@ class EagerContext : public core::RefCounted {
   // Information related to step containers.
   std::atomic<int> num_active_steps_;
   std::unique_ptr<ScopedStepContainer> step_container_ GUARDED_BY(metadata_mu_);
-
-  // True if the default value for execution mode is async. Note that this value
-  // can be overridden per thread based on `thread_local_async` overrides.
-  const bool async_default_;
 
   EagerExecutor default_executor_;
   mutable mutex executor_map_mu_;

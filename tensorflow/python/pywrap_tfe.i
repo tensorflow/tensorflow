@@ -42,13 +42,13 @@ limitations under the License.
 %rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
 %rename("%s") TFE_ContextSetThreadLocalMirroringPolicy;
 %rename("%s") TFE_ContextSetServerDef;
-%rename("%s") TFE_ContextAsyncWait;
-%rename("%s") TFE_ContextAsyncClearError;
 %rename("%s") TFE_NewExecutor;
 %rename("%s") TFE_DeleteExecutor;
+%rename("%s") TFE_ExecutorIsAsync;
 %rename("%s") TFE_ExecutorWaitForAllPendingNodes;
+%rename("%s") TFE_ExecutorClearError;
 %rename("%s") TFE_ContextSetExecutorForThread;
-%rename("%s") TFE_ContextClearExecutorForThread;
+%rename("%s") TFE_ContextGetExecutorForThread;
 %rename("%s") TFE_NewProfiler;
 %rename("%s") TFE_ProfilerIsOk;
 %rename("%s") TFE_DeleteProfiler;

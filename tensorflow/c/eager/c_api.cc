@@ -455,18 +455,6 @@ extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
       ctx->context->GetDevicePlacementPolicy());
 }
 
-void TFE_ContextAsyncWait(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->context->Executor()->WaitForAllPendingNodes();
-}
-
-void TFE_ContextGetStatus(TFE_Context* ctx, TF_Status* status) {
-  status->status = ctx->context->Executor()->status();
-}
-
-void TFE_ContextAsyncClearError(TFE_Context* ctx) {
-  ctx->context->Executor()->ClearError();
-}
-
 TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
   tensorflow::Tensor tensor;
   status->status = tensorflow::TF_TensorToTensor(t, &tensor);
@@ -977,7 +965,7 @@ TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
 
 void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
                                   TF_Status* status) {
-  TFE_ContextAsyncWait(ctx, status);
+  status->status = ctx->context->Executor()->WaitForAllPendingNodes();
   if (!status->status.ok()) return;
   tensorflow::mutex_lock ml(*ctx->context->MetadataMu());
   status->status = MessageToBuffer(*ctx->context->RunMetadataProto(), buf);

@@ -491,13 +491,13 @@ class TFETest(test_util.TensorFlowTestCase):
       x = x.gpu()
       x = x.gpu()
       x = x.cpu()
-      context.async_wait()
+      context.context().executor.wait()
 
     # Invalid device
     with self.assertRaises(RuntimeError):
       x.gpu(context.context().num_gpus() + 1)
-      context.async_wait()
-    context.async_clear_error()
+      context.context().executor.wait()
+    context.context().executor.clear_error()
 
   @test_util.run_gpu_only
   def testCopyScope(self):
@@ -529,7 +529,7 @@ class TFETest(test_util.TensorFlowTestCase):
     def test_fn(v):
       return script_ops.eager_py_func(simple_fn, [v], dtypes.float32)
 
-    async_executor = executor.Executor(enable_async=True)
+    async_executor = executor.new_executor(enable_async=True)
     with context.executor_scope(async_executor):
       test_var = variables.Variable(2.)
       self.assertAllEqual(test_fn(test_var), 3.0)
@@ -583,8 +583,8 @@ class TFETest(test_util.TensorFlowTestCase):
           inputs=[three, five],
           attrs=('transpose_a', False, 'transpose_b', False, 'T',
                  three.dtype.as_datatype_enum))
-      context.async_wait()
-    context.async_clear_error()
+      context.context().executor.wait()
+    context.context().executor.clear_error()
     context.context().execution_mode = context.SYNC
 
   def testExecuteTooManyNumOutputs(self):
