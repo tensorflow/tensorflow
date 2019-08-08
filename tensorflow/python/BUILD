@@ -4547,6 +4547,12 @@ py_library(
     ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass"]),
 )
 
+tf_py_test(
+    name = "object_identity_test",
+    size = "small",
+    srcs = ["util/object_identity_test.py"],
+)
+
 # Placeholder for intenal nest_test comments.
 tf_py_test(
     name = "util_nest_test",

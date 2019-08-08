@@ -40,7 +40,10 @@ class _ObjectIdentityWrapper(object):
   def __eq__(self, other):
     if isinstance(other, _ObjectIdentityWrapper):
       return self._wrapped is other._wrapped  # pylint: disable=protected-access
-    return self._wrapped is other
+    return False
+
+  def __ne__(self, other):
+    return not self.__eq__(other)
 
   def __hash__(self):
     # Wrapper id() is also fine for weakrefs. In fact, we rely on
