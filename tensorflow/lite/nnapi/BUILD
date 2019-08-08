@@ -64,7 +64,6 @@ cc_library(
 cc_test(
     name = "nnapi_implementation_test",
     srcs = ["nnapi_implementation_test.cc"],
-    tags = ["nomac"],
     deps = [
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "@com_google_googletest//:gtest_main",
