@@ -83,7 +83,7 @@ bool try_asm_snippet(bool (*asm_snippet)()) {
 #include <cstdio>
 #include <cstdlib>
 #include <mutex>  // NOLINT(build/c++11)
-#include <string>
+#include <cstring>
 
 // Intentionally keep checking for __linux__ here in case we want to
 // extend RUY_IMPLEMENT_DETECT_DOTPROD outside of linux in the future.
