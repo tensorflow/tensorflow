@@ -21,22 +21,23 @@ limitations under the License.
 
 namespace tflite {
 
-// Abstract interface that returns TfLiteRegistrations given op codes or custom
-// op names. This is the mechanism that ops being referenced in the flatbuffer
-// model are mapped to executable function pointers (TfLiteRegistrations).
+/// Abstract interface that returns TfLiteRegistrations given op codes or custom
+/// op names. This is the mechanism that ops being referenced in the flatbuffer
+/// model are mapped to executable function pointers (TfLiteRegistrations).
 class OpResolver {
  public:
-  // Finds the op registration for a builtin operator by enum code.
+  /// Finds the op registration for a builtin operator by enum code.
   virtual const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
                                            int version) const = 0;
-  // Finds the op registration of a custom operator by op name.
+  /// Finds the op registration of a custom operator by op name.
   virtual const TfLiteRegistration* FindOp(const char* op,
                                            int version) const = 0;
   virtual ~OpResolver() {}
 };
 
 // Handles the logic for converting between an OperatorCode structure extracted
-// from a flatbuffer and information about a registered operator implementation.
+// from a flatbuffer and information about a registered operator
+// implementation.
 TfLiteStatus GetRegistrationFromOpCode(const OperatorCode* opcode,
                                        const OpResolver& op_resolver,
                                        ErrorReporter* error_reporter,

@@ -33,7 +33,7 @@ namespace tensorflow {
 namespace {
 
 static bool HasSubstr(absl::string_view base, absl::string_view substr) {
-  bool ok = str_util::StrContains(base, substr);
+  bool ok = absl::StrContains(base, substr);
   EXPECT_TRUE(ok) << base << ", expected substring " << substr;
   return ok;
 }

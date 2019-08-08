@@ -113,6 +113,8 @@ class LinearAlgebraOp : public OpKernel {
       Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
   using ConstMatrixMap = Eigen::Map<const Matrix>;
   using MatrixMap = Eigen::Map<Matrix>;
+  using ConstVectorMap =
+      Eigen::Map<const Eigen::Matrix<Scalar, 1, Eigen::Dynamic>>;
   using ConstMatrixMaps = gtl::InlinedVector<ConstMatrixMap, 4>;
   using MatrixMaps = gtl::InlinedVector<MatrixMap, 4>;
   using RealScalar = typename Eigen::NumTraits<Scalar>::Real;
@@ -180,6 +182,7 @@ extern template class LinearAlgebraOp<complex128>;
   using MatrixMaps = typename Base::MatrixMaps;               \
   using ConstMatrixMap = typename Base::ConstMatrixMap;       \
   using ConstMatrixMaps = typename Base::ConstMatrixMaps;     \
+  using ConstVectorMap = typename Base::ConstVectorMap;       \
   using TensorShapes = typename Base::TensorShapes;
 
 #define REGISTER_LINALG_OP_CPU(OpName, OpClass, Scalar) \

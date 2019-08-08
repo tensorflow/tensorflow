@@ -32,7 +32,7 @@ struct PoolRecord {
   PoolRecord(uint32_t size, size_t obj_id)
       : object_size(size), object_id(obj_id) {}
 
-  // objects in pool are ordered by size
+  // Objects in pool are ordered by size.
   bool operator<(const PoolRecord& other) const {
     return (object_size < other.object_size) ||
            (object_size == other.object_size && object_id < other.object_id);

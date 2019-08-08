@@ -121,7 +121,7 @@ __global__ void CompareAndBitpackKernel<double>(const int size,
       TTypes<uint8>::Matrix output) {                                          \
     const GPUDevice& d = c->eigen_device<GPUDevice>();                         \
     int64 total_count = output.size();                                         \
-    CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);             \
+    GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);              \
                                                                                \
     TF_CHECK_OK(CudaLaunchKernel(CompareAndBitpackKernel<T>,                   \
                                  config.block_count, config.thread_per_block,  \

@@ -1,9 +1,10 @@
 # Description:
 #   C++ implementation code for the summary writing APIs.
 
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load(
     "//tensorflow:tensorflow.bzl",

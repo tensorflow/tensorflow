@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -535,7 +535,7 @@ class CudaEventCollector {
   }
 
   // Returns time in microseconds between events recorded on the GPU.
-  static uint64_t GetElasedTimeUs(CUevent start, CUevent stop) {
+  static uint64_t GetElapsedTimeUs(CUevent start, CUevent stop) {
     float elapsed_ms = 0.0f;
     LogIfError(ToStatus(cuEventElapsedTime(&elapsed_ms, start, stop)));
     return static_cast<uint64>(
@@ -582,8 +582,8 @@ class CudaEventCollector {
     const auto& stream_info =
         stream_infos_.at(StreamKey(record.context, record.stream));
     auto start_us =
-        GetElasedTimeUs(record.start_event, stream_info.ctx_info->end_event);
-    auto elapsed_us = GetElasedTimeUs(record.start_event, record.stop_event);
+        GetElapsedTimeUs(record.start_event, stream_info.ctx_info->end_event);
+    auto elapsed_us = GetElapsedTimeUs(record.start_event, record.stop_event);
 
     auto stats = absl::make_unique<NodeExecStats>();
     std::string node_name = record.kernel_name;
@@ -611,8 +611,8 @@ class CudaEventCollector {
     const auto& stream_info =
         stream_infos_.at(StreamKey(record.context, record.stream));
     auto start_us =
-        GetElasedTimeUs(record.start_event, stream_info.ctx_info->end_event);
-    auto elapsed_us = GetElasedTimeUs(record.start_event, record.stop_event);
+        GetElapsedTimeUs(record.start_event, stream_info.ctx_info->end_event);
+    auto elapsed_us = GetElapsedTimeUs(record.start_event, record.stop_event);
 
     auto stats = absl::make_unique<NodeExecStats>();
     std::string node_name = GetMemcpyName(record);

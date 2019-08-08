@@ -41,6 +41,7 @@ using namespace stream_executor;  // NOLINT[build/namespaces]
 
 namespace stream_executor {
 
+class DeviceMemoryAllocator;
 class StreamExecutor;
 
 // void*-analogous device memory allocation. For the typed variation, see
@@ -115,7 +116,7 @@ class DeviceMemory final : public DeviceMemoryBase {
  public:
   // Default constructor instantiates a null-pointed, zero-sized memory region.
   DeviceMemory() : DeviceMemoryBase(nullptr, 0) {}
-  DeviceMemory(std::nullptr_t) : DeviceMemory() {}
+  explicit DeviceMemory(std::nullptr_t) : DeviceMemory() {}
 
   // Typed device memory regions may be constructed from untyped device memory
   // regions, this effectively amounts to a cast from a void*.
@@ -178,91 +179,6 @@ class SharedDeviceMemory final : public DeviceMemoryBase {
   bool IsScalar() const { return ElementCount() == 1; }
 };
 
-// Similar to the typed DeviceMemory, but is the unique owner of its
-// memory, if any. ScopedDeviceMemory is thread-compatible. It is also
-// movable and uncopyable to represent unique ownership.
-template <typename ElemT>
-class ScopedDeviceMemory {
- public:
-  // Default construction initializes the internal state to nullptr.  This
-  // mirrors the std::unique_ptr<> functionality, where default construction
-  // produces a nullptr unique_ptr, which can be assigned later.
-  ScopedDeviceMemory();
-
-  // Parameters:
-  //  parent: Executor used to deallocate memory when this instance goes
-  //          out of scope.
-  //  value: Already-allocated device memory value for this scoped mechanism to
-  //         deallocate. This memory must have been allocated by parent.
-  ScopedDeviceMemory(StreamExecutor *parent, DeviceMemoryBase value);
-
-  // Constructor overload that places a literal array into device memory
-  ScopedDeviceMemory(StreamExecutor *parent,
-                     std::initializer_list<ElemT> values);
-
-  // Moves ownership of the memory from other to the constructed
-  // object.
-  //
-  // Postcondition: other == nullptr.
-  ScopedDeviceMemory(ScopedDeviceMemory &&other) noexcept:
-      ScopedDeviceMemory(other.parent_, other.Release()) {}
-
-  // Releases the memory that was provided in the constructor, through the
-  // "parent" StreamExecutor.
-  ~ScopedDeviceMemory();
-
-  // Moves ownership of the memory from other to this object.
-  //
-  // Postcondition: other == nullptr.
-  ScopedDeviceMemory& operator=(ScopedDeviceMemory &&other) {
-    Reset(other.Release());
-    parent_ = other.parent_;
-    return *this;
-  }
-
-  // Returns the memory that backs this scoped allocation converted to
-  // DeviceMemory<T> apparent type. This is useful for cases where the
-  // DeviceMemory must be passed by const-ref, as the ScopedDeviceMemory doesn't
-  // allow copying, for scoped-object-lifetime reasons.
-  const DeviceMemory<ElemT> &cref() const { return wrapped_; }
-
-  // Returns a pointer to the DeviceMemory<T> apparent type for use in mutable
-  // operations. The value returned should not be used outside the scope of this
-  // ScopedDeviceMemory object's lifetime.
-  DeviceMemory<ElemT> *ptr() { return &wrapped_; }
-  const DeviceMemory<ElemT> *ptr() const { return &wrapped_; }
-
-  // Smart-pointer-like operators for the wrapped DeviceMemory.
-  // This reference must not be used outside the lifetime of this
-  // ScopedDeviceMemory.
-  const DeviceMemory<ElemT> &operator*() const { return cref(); }
-  DeviceMemory<ElemT> *operator->() { return ptr(); }
-  const DeviceMemory<ElemT> *operator->() const { return ptr(); }
-  bool operator==(std::nullptr_t other) const { return wrapped_.is_null(); }
-  bool operator!=(std::nullptr_t other) const { return !wrapped_.is_null(); }
-
-  // Analogous to std::unique_ptr::reset, frees the existing memory held in
-  // this scoped memory container and replaces it with updated. Ownership
-  // of updated is transferred to this object.
-  void Reset(DeviceMemory<ElemT> updated);
-  void Reset(std::nullptr_t);
-
-  // Analogous to std::unique_ptr::release, releases ownership of the held
-  // memory and transfers it to the caller.
-  //
-  // Postcondition: *this == nullptr
-  DeviceMemory<ElemT> Release() {
-    auto tmp = wrapped_;
-    wrapped_.ResetFromByteSize(nullptr, 0);
-    return tmp;
-  }
-
- private:
-  DeviceMemory<ElemT> wrapped_;  // Value we wrap with scoped-release.
-  StreamExecutor *parent_;       // See constructor.
-
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedDeviceMemory);
-};
 
 // Host-side representation of packed-and-aligned vector datatypes on the device
 // side. Since these can appear in device kernel signatures, we support

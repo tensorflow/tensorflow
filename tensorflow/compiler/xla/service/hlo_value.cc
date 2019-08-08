@@ -91,7 +91,8 @@ string HloValue::ToShortString() const {
                          ? defining_index().ToString()
                          : "";
   return StrCat(id(), " ", is_phi_ ? "PHI " : "",
-                defining_instruction()->name(), index_str);
+                defining_instruction()->name(), index_str, " @",
+                (has_color() ? color().value() : -1));
 }
 
 string HloValue::ToString(int indent) const {

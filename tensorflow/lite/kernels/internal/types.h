@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstring>
+#include <initializer_list>
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
@@ -1022,6 +1023,11 @@ struct UnpackParams {
 
 struct LeakyReluParams {
   float alpha;
+  int32 input_offset;
+  int32 alpha_offset;
+  int32 output_offset;
+  int32 output_multiplier;
+  int output_shift;
 };
 
 template <typename P>

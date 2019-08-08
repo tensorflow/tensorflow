@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#import "tensorflow/lite/experimental/objc/apis/TFLInterpreter.h"
+#import "tensorflow/lite/experimental/objc/apis/TFLTensorFlowLite.h"
 
 #import <XCTest/XCTest.h>
 
-#import "tensorflow/lite/experimental/objc/apis/TFLInterpreterOptions.h"
-#import "tensorflow/lite/experimental/objc/apis/TFLQuantizationParameters.h"
-#import "tensorflow/lite/experimental/objc/apis/TFLTensor.h"
-
 NS_ASSUME_NONNULL_BEGIN
+
+/**
+ * Regular expression for TensorFlow Lite runtime version string, e.g. "1.14.0", "0.1.2-alpha.1",
+ * "0.3.4-beta2", "1.14.0-rc.3".
+ */
+static NSString *const kTFLVersionRegex = @"^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$";
 
 /** Float model resource name. */
 static NSString *const kAddFloatModelResourceName = @"add";
@@ -30,9 +32,6 @@ static NSString *const kAddQuantizedModelResourceName = @"add_quantized";
 
 /** Model resource type. */
 static NSString *const kAddModelResourceType = @"bin";
-
-/** Rank of the input and output tensor in the Add model. */
-static const NSUInteger kAddModelTensorRank = 1U;
 
 /** Size of the first (and only) dimension of the input and output tensor in the Add model. */
 static const NSUInteger kAddModelTensorFirstDimensionSize = 2U;
@@ -91,10 +90,14 @@ static const float kTestAccuracy = 1E-5F;
 
 #pragma mark - Tests
 
+- (void)testTFLVersion {
+  NSRange range = [TFLVersion rangeOfString:kTFLVersionRegex options:NSRegularExpressionSearch];
+  XCTAssertNotEqual(range.location, NSNotFound);
+}
+
 - (void)testSuccessfulFullRunAddFloatModel {
   // Shape for both input and output tensor.
-  NSMutableArray *shape = [NSMutableArray arrayWithCapacity:kAddModelTensorRank];
-  shape[0] = [NSNumber numberWithUnsignedInteger:kAddModelTensorFirstDimensionSize];
+  NSArray<NSNumber *> *shape = @[@(kAddModelTensorFirstDimensionSize)];
 
   // Creates the interpreter options.
   TFLInterpreterOptions *options = [[TFLInterpreterOptions alloc] init];
@@ -177,8 +180,7 @@ static const float kTestAccuracy = 1E-5F;
 
 - (void)testSuccessfulFullRunQuantizedModel {
   // Shape for both input and output tensor.
-  NSMutableArray *shape = [NSMutableArray arrayWithCapacity:kAddModelTensorRank];
-  shape[0] = [NSNumber numberWithUnsignedInteger:kAddModelTensorFirstDimensionSize];
+  NSArray<NSNumber *> *shape = @[@(kAddModelTensorFirstDimensionSize)];
 
   // Creates the interpreter options.
   TFLInterpreterOptions *options = [[TFLInterpreterOptions alloc] init];
@@ -269,10 +271,6 @@ static const float kTestAccuracy = 1E-5F;
 }
 
 - (void)testInitWithModelPath_invalidPath {
-  // Shape for both input and output tensor.
-  NSMutableArray *shape = [NSMutableArray arrayWithCapacity:kAddModelTensorRank];
-  shape[0] = [NSNumber numberWithUnsignedInteger:kAddModelTensorFirstDimensionSize];
-
   // Creates the interpreter.
   NSError *error;
   TFLInterpreter *brokenInterpreter = [[TFLInterpreter alloc] initWithModelPath:@"InvalidPath"
@@ -301,8 +299,7 @@ static const float kTestAccuracy = 1E-5F;
 }
 
 - (void)testResizeInputTensorAtIndex_invalidIndex {
-  NSMutableArray *shape = [NSMutableArray arrayWithCapacity:kAddModelTensorRank];
-  shape[0] = [NSNumber numberWithUnsignedInteger:kAddModelTensorFirstDimensionSize];
+  NSArray<NSNumber *> *shape = @[@(kAddModelTensorFirstDimensionSize)];
   NSError *error;
   XCTAssertFalse([self.interpreter resizeInputTensorAtIndex:kInvalidInputTensorIndex
                                                     toShape:shape
@@ -318,8 +315,7 @@ static const float kTestAccuracy = 1E-5F;
 }
 
 - (void)testResizeInputTensorAtIndex_zeroDimensionSize {
-  NSMutableArray *shape = [NSMutableArray arrayWithCapacity:kAddModelTensorRank];
-  shape[0] = [NSNumber numberWithUnsignedInteger:0];
+  NSArray<NSNumber *> *shape = @[@0];
   NSError *error;
   XCTAssertFalse([self.interpreter resizeInputTensorAtIndex:0 toShape:shape error:&error]);
   XCTAssertEqual(error.code, TFLInterpreterErrorCodeInvalidShape);

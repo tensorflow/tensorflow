@@ -30,7 +30,7 @@ def set_stats_aggregator(stats_aggregator, prefix="", counter_prefix=""):
   """Set the given `stats_aggregator` for aggregating the input dataset stats.
 
   Args:
-    stats_aggregator: A `tf.contrib.data.StatsAggregator` object.
+    stats_aggregator: A `tf.data.experimental.StatsAggregator` object.
     prefix: (Optional) String, all statistics recorded for the input `dataset`
       will have given `prefix` prepend with the name.
     counter_prefix: (Optional) String, all statistics recorded as `counters`

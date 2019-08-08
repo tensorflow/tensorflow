@@ -79,7 +79,7 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
   // Launch kernel to q[...] = p[...].
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
-  CudaLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
+  GpuLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
   TF_CHECK_OK(CudaLaunchKernel(
       TransposeKernel<T, conjugate>, cfg.block_count, cfg.thread_per_block, 0,
       d.stream(), cfg.virtual_thread_count, p,

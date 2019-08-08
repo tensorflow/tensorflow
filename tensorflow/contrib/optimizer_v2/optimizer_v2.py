@@ -188,7 +188,7 @@ def _is_dynamic(value):
     return True
   # Don't need to do anything special in graph mode, since dynamic values
   # will propagate correctly automatically.
-  # TODO(josh11b): Add per-device caching across steps using variables for
+  # TODO(josh11b): Add per-replica caching across steps using variables for
   # truly static values once we add distributed support.
   if context.executing_eagerly() and isinstance(
       value, resource_variable_ops.ResourceVariable):

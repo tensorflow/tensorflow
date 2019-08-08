@@ -245,9 +245,12 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
       nativeResources.tryCleanup();
     }
     checkSession();
-    // TODO (karllessard) create a new EagerOperationBuilder
-    throw new UnsupportedOperationException(
-        "Eager execution mode is not yet supported in this version of TensorFlow");
+    return new EagerOperationBuilder(this, type, name);
+  }
+
+  long nativeHandle() {
+    checkSession();
+    return nativeHandle;
   }
 
   /**
@@ -407,8 +410,6 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
   private static native long allocate(boolean async, int devicePlacementPolicy, byte[] config);
 
   private static native void delete(long handle);
-
-  private static native long allocateOperation(long contextHandle, String name);
 
   static {
     TensorFlow.init();

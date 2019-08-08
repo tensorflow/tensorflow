@@ -27,6 +27,15 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Returns true if the given StreamExecutor is for a Volta or newer nvidia GPU.
+inline bool IsVoltaOrLater(const se::StreamExecutor& stream_exec) {
+  int major, minor;
+  CHECK(stream_exec  // Crash OK
+            .GetDeviceDescription()
+            .cuda_compute_capability(&major, &minor));
+  return major >= 7;
+}
+
 // Get the Dnn workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.

@@ -87,7 +87,11 @@ def function_def_to_graph(fdef, input_shapes=None):
       output_shapes = node.attr.get("_output_shapes", None)
       if output_shapes is not None:
         op = func_graph.get_operation_by_name(node.name)
-        for output_index, shape in enumerate(output_shapes.list.shape):
+        # _output_shapes for functions can sometimes be too long because the
+        # output-intermediates-for-gradients version of the function was
+        # substituted before saving. We'll accept that here. (See b/133666530).
+        for output_index, shape in enumerate(
+            output_shapes.list.shape[:len(op.outputs)]):
           op.outputs[output_index].set_shape(shape)
   return func_graph
 

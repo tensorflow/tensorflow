@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
+#include "tensorflow/core/framework/cancellation.h"
+
 namespace tensorflow {
 namespace data {
 
@@ -54,6 +56,8 @@ Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
     break;
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_string(CASE);
+    TF_CALL_uint32(CASE);
+    TF_CALL_uint64(CASE);
     // TODO(feihugis): figure out how to support variant tensors.
 #undef CASE
     default:
@@ -288,21 +292,22 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
     OpKernel* kernel, gtl::InlinedVector<TensorValue, 4>* inputs,
     std::unique_ptr<OpKernelContext>* context) {
   params_ = absl::make_unique<OpKernelContext::Params>();
+  cancellation_manager_ = absl::make_unique<CancellationManager>();
+  params_->cancellation_manager = cancellation_manager_.get();
   params_->device = device_.get();
-  params_->resource_manager = device_->resource_manager();
   params_->frame_iter = FrameAndIter(0, 0);
+  params_->function_library = flr_;
   params_->inputs = inputs;
   params_->op_kernel = kernel;
-  params_->function_library = flr_;
-  params_->runner = &runner_;
-  step_container_ =
-      absl::make_unique<ScopedStepContainer>(0, [](const string&) {});
-  params_->step_container = step_container_.get();
   params_->resource_manager = resource_mgr_.get();
+  params_->runner = &runner_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
   slice_reader_cache_ =
       absl::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
   params_->slice_reader_cache = slice_reader_cache_.get();
+  step_container_ =
+      absl::make_unique<ScopedStepContainer>(0, [](const string&) {});
+  params_->step_container = step_container_.get();
 
   // Set the allocator attributes for the outputs.
   allocator_attrs_.clear();

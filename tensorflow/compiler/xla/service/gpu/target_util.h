@@ -31,9 +31,7 @@ namespace gpu {
 
 // Enmeration to get target specific intrinsics.
 enum class TargetIntrinsicID {
-  kShflDownF32 = 0,
-  kShflDownI32,
-  kThreadIdx,
+  kThreadIdx = 0,
   kThreadIdy,
   kThreadIdz,
   kBlockIdx,

@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <atomic>
-
 #include "tensorflow/core/framework/resource_mgr.h"
+
+#include <atomic>
 
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -143,7 +143,7 @@ string ResourceMgr::DebugString() const {
         line.type.c_str(), line.resource->c_str(), line.detail.c_str()));
   }
   std::sort(text.begin(), text.end());
-  return str_util::Join(text, "\n");
+  return absl::StrJoin(text, "\n");
 }
 
 Status ResourceMgr::DoCreate(const string& container, TypeIndex type,

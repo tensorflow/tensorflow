@@ -381,6 +381,18 @@ class TestSequential(keras_parameterized.TestCase):
     preds = seq.predict([['tensorflow eager']])
     self.assertEqual(preds.shape, (1,))
 
+  @keras_parameterized.run_all_keras_modes
+  def test_multi_output_layer_not_accepted(self):
+
+    class MultiOutputLayer(keras.layers.Layer):
+
+      def call(self, inputs):
+        return inputs, inputs
+
+    with self.assertRaisesRegexp(
+        ValueError, 'should have a single output tensor'):
+      keras.Sequential([MultiOutputLayer(input_shape=(3,))])
+
 
 class TestSequentialEagerIntegration(keras_parameterized.TestCase):
 

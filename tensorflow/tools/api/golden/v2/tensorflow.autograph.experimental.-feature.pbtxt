@@ -18,15 +18,11 @@ tf_class {
     mtype: "<enum \'Feature\'>"
   }
   member {
-    name: "ERROR_REWRITING"
+    name: "EQUALITY_OPERATORS"
     mtype: "<enum \'Feature\'>"
   }
   member {
     name: "LISTS"
-    mtype: "<enum \'Feature\'>"
-  }
-  member {
-    name: "LOGICAL_EXPRESSIONS"
     mtype: "<enum \'Feature\'>"
   }
   member {

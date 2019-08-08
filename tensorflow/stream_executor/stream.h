@@ -25,6 +25,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/temporary_memory_manager.h"
@@ -240,7 +240,9 @@ class Stream {
       DeviceMemory<float> *batch_var, DeviceMemory<float> *saved_mean,
       DeviceMemory<float> *saved_inv_var, bool is_training,
       std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var);
+      std::function<void()> inv_var_to_var,
+      ScratchAllocator *reserve_space_allocator,
+      ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
@@ -248,7 +250,9 @@ class Stream {
       const DeviceMemory<float> &inv_var, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
-      DeviceMemory<float> *offset_backprop);
+      DeviceMemory<float> *offset_backprop,
+      DeviceMemory<uint8> *reserve_space_data,
+      ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationForward(
       const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
@@ -261,7 +265,9 @@ class Stream {
       DeviceMemory<float> *batch_var, DeviceMemory<float> *saved_mean,
       DeviceMemory<float> *saved_inv_var, bool is_training,
       std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var);
+      std::function<void()> inv_var_to_var,
+      ScratchAllocator *reserve_space_allocator,
+      ScratchAllocator *workspace_allocator);
 
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<Eigen::half> &y_backprop,
@@ -270,8 +276,9 @@ class Stream {
       const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       DeviceMemory<Eigen::half> *x_backprop,
-      DeviceMemory<float> *scale_backprop,
-      DeviceMemory<float> *offset_backprop);
+      DeviceMemory<float> *scale_backprop, DeviceMemory<float> *offset_backprop,
+      DeviceMemory<uint8> *reserve_space_data,
+      ScratchAllocator *workspace_allocator);
 
   Stream &ThenConvolve(const dnn::BatchDescriptor &input_descriptor,
                        const DeviceMemory<float> &input_data,
@@ -1964,7 +1971,7 @@ class Stream {
   friend class ocl::CLBlas;    // for parent_.
 
   bool InErrorState() const LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock lock(mu_);
+    absl::ReaderMutexLock lock(&mu_);
     return !ok_;
   }
 
@@ -1974,7 +1981,7 @@ class Stream {
     if (operation_retcode) {
       return;
     }
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     ok_ = false;
   }
 
@@ -1998,7 +2005,7 @@ class Stream {
 
   // mutex that guards the allocation / error state flags.
   // Mutable so that it can be obtained via const reader lock.
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   // Whether Init() was successfully called to allocate this stream on the
   // underlying platform. It simply flips from 0 to 1 with a sanity check.

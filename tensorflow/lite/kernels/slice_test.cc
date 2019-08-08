@@ -166,6 +166,39 @@ TEST(SliceOpTest, SizeMinus1) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 3, 5, 5, 5}));
 }
 
+TEST(SliceOpTest, BeginNonZeroSizeMinus1Axis1) {
+  SliceOpModel<int32_t, int32_t> m({3, 3, 2, 1}, {4}, {4}, TensorType_INT32,
+                                   TensorType_INT32);
+  m.SetInput({1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9});
+  m.SetBegin({1, 1, 0, 0});
+  m.SetSize({2, -1, 1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 1, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 6, 8, 9}));
+}
+
+TEST(SliceOpTest, BeginNonZeroSizeMinus1Axis2) {
+  SliceOpModel<int32_t, int32_t> m({3, 2, 3, 1}, {4}, {4}, TensorType_INT32,
+                                   TensorType_INT32);
+  m.SetInput({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6});
+  m.SetBegin({1, 0, 1, 0});
+  m.SetSize({2, 1, -1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 2, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 5, 5}));
+}
+
+TEST(SliceOpTest, BeginNonZeroSizeMinus1Axis3) {
+  SliceOpModel<int32_t, int32_t> m({3, 1, 2, 3}, {4}, {4}, TensorType_INT32,
+                                   TensorType_INT32);
+  m.SetInput({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6});
+  m.SetBegin({1, 0, 0, 1});
+  m.SetSize({2, 1, 1, -1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 1, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 5, 5}));
+}
+
 TEST(SliceOpTest, SliceUint8) {
   SliceOpModel<uint8_t, int32_t> m({3, 2, 3, 1}, {4}, {4}, TensorType_INT32,
                                    TensorType_UINT8);
@@ -208,9 +241,3 @@ TEST(SliceOpTest, SliceString) {
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

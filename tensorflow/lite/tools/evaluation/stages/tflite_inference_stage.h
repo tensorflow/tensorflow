@@ -16,9 +16,11 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_EVALUATION_STAGES_TFLITE_INFERENCE_STAGE_H_
 
 #include <stdint.h>
+
 #include <vector>
 
 #include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -50,9 +52,13 @@ class TfliteInferenceStage : public EvaluationStage {
 
   // Call before Run().
   // This class does not take ownership of raw_input_ptrs.
-  void SetInputs(std::vector<void*>& raw_input_ptrs) {
+  void SetInputs(const std::vector<void*>& raw_input_ptrs) {
     inputs_ = &raw_input_ptrs;
   }
+
+  // Applies provided delegate to the underlying TFLite Interpreter.
+  // NOTE: TFLiteInferenceStage does not take ownership of delegate.
+  TfLiteStatus ApplyCustomDelegate(TfLiteDelegate* delegate);
 
   // Read-only view of a TfliteModelInfo. TfliteInferenceStage retains
   // ownership.
@@ -70,7 +76,7 @@ class TfliteInferenceStage : public EvaluationStage {
   std::vector<Interpreter::TfLiteDelegatePtr> delegates_;
 
   TfLiteModelInfo model_info_;
-  std::vector<void*>* inputs_ = nullptr;
+  const std::vector<void*>* inputs_ = nullptr;
   std::vector<void*> outputs_;
 
   tensorflow::Stat<int64_t> latency_stats_;

@@ -51,7 +51,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
   }
 
   testing::StopTiming();
-  string t = str_util::Uppercase(device);
+  string t = absl::AsciiStrToUpper(device);
   // Allow NewDevice to allocate a new threadpool with different number of
   // threads for each new benchmark.
   LocalDevice::set_use_global_threadpool(false);

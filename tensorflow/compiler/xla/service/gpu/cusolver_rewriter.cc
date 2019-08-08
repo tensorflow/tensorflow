@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/scratch_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -31,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/blas.h"
 
 namespace xla {
@@ -48,7 +46,6 @@ void SetFortranLayout(Shape* shape) {
 }
 
 StatusOr<HloInstruction*> CreateCholesky(CusolverContext* context,
-                                         ScratchAllocator* allocator,
                                          HloInstruction* operand,
                                          const CholeskyOptions& options,
                                          const OpMetadata& metadata) {
@@ -67,39 +64,8 @@ StatusOr<HloInstruction*> CreateCholesky(CusolverContext* context,
   se::blas::UpperLower uplo = options.lower() ? se::blas::UpperLower::kLower
                                               : se::blas::UpperLower::kUpper;
   int64 workspace_size;  // Number of elements of size a_shape.element_type()
-  switch (a_shape.element_type()) {
-    case F32: {
-      TF_ASSIGN_OR_RETURN(auto a,
-                          allocator->Allocate<float>(context->stream(), n * n));
-      TF_ASSIGN_OR_RETURN(workspace_size,
-                          context->PotrfBufferSize(uplo, n, a, n));
-      break;
-    }
-    case F64: {
-      TF_ASSIGN_OR_RETURN(
-          auto a, allocator->Allocate<double>(context->stream(), n * n));
-      TF_ASSIGN_OR_RETURN(workspace_size,
-                          context->PotrfBufferSize(uplo, n, a, n));
-      break;
-    }
-    case C64: {
-      TF_ASSIGN_OR_RETURN(auto a, allocator->Allocate<std::complex<float>>(
-                                      context->stream(), n * n));
-      TF_ASSIGN_OR_RETURN(workspace_size,
-                          context->PotrfBufferSize(uplo, n, a, n));
-      break;
-    }
-    case C128: {
-      TF_ASSIGN_OR_RETURN(auto a, allocator->Allocate<std::complex<double>>(
-                                      context->stream(), n * n));
-      TF_ASSIGN_OR_RETURN(workspace_size,
-                          context->PotrfBufferSize(uplo, n, a, n));
-      break;
-    }
-    default:
-      return InvalidArgument("Invalid type for cholesky decomposition: %s",
-                             a_shape.ToString());
-  }
+  TF_ASSIGN_OR_RETURN(workspace_size, context->PotrfBufferSize(
+                                          a_shape.element_type(), uplo, n, n));
 
   // TODO(phawkins): Ideally we would relax this constraint. What we actually
   // want is that:
@@ -131,7 +97,6 @@ StatusOr<HloInstruction*> CreateCholesky(CusolverContext* context,
 
 // Tries to rewrite a single convolution into a call to cudnn.
 StatusOr<bool> RunOnInstruction(CusolverContext* context,
-                                ScratchAllocator* allocator,
                                 HloInstruction* instruction) {
   if (instruction->opcode() != HloOpcode::kCholesky) {
     return false;
@@ -139,7 +104,7 @@ StatusOr<bool> RunOnInstruction(CusolverContext* context,
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * custom_call,
-      CreateCholesky(context, allocator, instruction->mutable_operand(0),
+      CreateCholesky(context, instruction->mutable_operand(0),
                      instruction->cholesky_options(), instruction->metadata()));
 
   VLOG(1) << "Replacing " << instruction->ToString() << " with "
@@ -167,41 +132,18 @@ StatusOr<bool> CusolverRewriter::RunOnComputation(HloComputation* computation) {
     return false;
   }
 
-  // Create a stream for us to do our work on. We don't really need to do any
-  // work, just allocate memory, but that's the cuSolver API.
-  se::Stream stream{stream_exec_};
-  stream.Init();
-  const auto device_ordinal = stream_exec_->device_ordinal();
-
-  // allocator either points to this->allocator_ or, if that's null, to a
-  // StreamExecutorMemoryAllocator for stream_exec_.
-  DeviceMemoryAllocator* allocator;
-  absl::optional<StreamExecutorMemoryAllocator> se_allocator;
-  if (allocator_ != nullptr) {
-    allocator = allocator_;
-  } else {
-    se_allocator.emplace(stream_exec_->platform(),
-                         absl::Span<se::StreamExecutor* const>({stream_exec_}));
-    allocator = &*se_allocator;
-  }
-  ScratchAllocator scratch_allocator(device_ordinal, allocator);
-
   TF_ASSIGN_OR_RETURN(CusolverContext context,
-                      CusolverContext::Create(&stream));
+                      CusolverContext::Create(/*stream=*/nullptr));
 
   bool changed = false;
   for (HloInstruction* instruction : cusolver_calls) {
-    TF_ASSIGN_OR_RETURN(
-        bool result,
-        RunOnInstruction(&context, &scratch_allocator, instruction));
+    TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(&context, instruction));
     changed |= result;
   }
   return changed;
 }
 
-CusolverRewriter::CusolverRewriter(se::StreamExecutor* stream_exec,
-                                   DeviceMemoryAllocator* allocator)
-    : stream_exec_(stream_exec), allocator_(allocator) {}
+CusolverRewriter::CusolverRewriter() = default;
 
 StatusOr<bool> CusolverRewriter::Run(HloModule* module) {
   bool changed = false;

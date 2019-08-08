@@ -314,7 +314,8 @@ TEST_P(ParameterizedInterleaveDatasetOpTest, GetNext) {
   Tensor cycle_length = test_case.cycle_length;
   Tensor block_length = test_case.block_length;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&tensor_slice_dataset_tensor, &cycle_length, &block_length});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&cycle_length),
+       TensorValue(&block_length)});
   std::unique_ptr<OpKernelContext> interleave_dataset_context;
   TF_ASSERT_OK(CreateInterleaveDatasetContext(
       interleave_dataset_kernel.get(), &inputs, &interleave_dataset_context));
@@ -365,7 +366,8 @@ TEST_F(InterleaveDatasetOpTest, InvalidCycleLength) {
   Tensor cycle_length = test_case.cycle_length;
   Tensor block_length = test_case.block_length;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&tensor_slice_dataset_tensor, &cycle_length, &block_length});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&cycle_length),
+       TensorValue(&block_length)});
   std::unique_ptr<OpKernelContext> interleave_dataset_context;
   TF_ASSERT_OK(CreateInterleaveDatasetContext(
       interleave_dataset_kernel.get(), &inputs, &interleave_dataset_context));
@@ -394,7 +396,8 @@ TEST_F(InterleaveDatasetOpTest, InvalidBlockLength) {
   Tensor cycle_length = test_case.cycle_length;
   Tensor block_length = test_case.block_length;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&tensor_slice_dataset_tensor, &cycle_length, &block_length});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&cycle_length),
+       TensorValue(&block_length)});
   std::unique_ptr<OpKernelContext> interleave_dataset_context;
   TF_ASSERT_OK(CreateInterleaveDatasetContext(
       interleave_dataset_kernel.get(), &inputs, &interleave_dataset_context));
@@ -423,7 +426,8 @@ TEST_F(InterleaveDatasetOpTest, DatasetNodeName) {
   Tensor cycle_length = test_case.cycle_length;
   Tensor block_length = test_case.block_length;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&tensor_slice_dataset_tensor, &cycle_length, &block_length});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&cycle_length),
+       TensorValue(&block_length)});
   std::unique_ptr<OpKernelContext> interleave_dataset_context;
   TF_ASSERT_OK(CreateInterleaveDatasetContext(
       interleave_dataset_kernel.get(), &inputs, &interleave_dataset_context));
@@ -454,7 +458,8 @@ TEST_F(InterleaveDatasetOpTest, DatasetTypeString) {
   Tensor cycle_length = test_case.cycle_length;
   Tensor block_length = test_case.block_length;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&tensor_slice_dataset_tensor, &cycle_length, &block_length});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&cycle_length),
+       TensorValue(&block_length)});
   std::unique_ptr<OpKernelContext> interleave_dataset_context;
   TF_ASSERT_OK(CreateInterleaveDatasetContext(
       interleave_dataset_kernel.get(), &inputs, &interleave_dataset_context));
@@ -485,7 +490,8 @@ TEST_P(ParameterizedInterleaveDatasetOpTest, DatasetOutputDtypes) {
   Tensor cycle_length = test_case.cycle_length;
   Tensor block_length = test_case.block_length;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&tensor_slice_dataset_tensor, &cycle_length, &block_length});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&cycle_length),
+       TensorValue(&block_length)});
   std::unique_ptr<OpKernelContext> interleave_dataset_context;
   TF_ASSERT_OK(CreateInterleaveDatasetContext(
       interleave_dataset_kernel.get(), &inputs, &interleave_dataset_context));
@@ -517,7 +523,8 @@ TEST_P(ParameterizedInterleaveDatasetOpTest, DatasetOutputShapes) {
   Tensor cycle_length = test_case.cycle_length;
   Tensor block_length = test_case.block_length;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&tensor_slice_dataset_tensor, &cycle_length, &block_length});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&cycle_length),
+       TensorValue(&block_length)});
   std::unique_ptr<OpKernelContext> interleave_dataset_context;
   TF_ASSERT_OK(CreateInterleaveDatasetContext(
       interleave_dataset_kernel.get(), &inputs, &interleave_dataset_context));
@@ -549,7 +556,8 @@ TEST_P(ParameterizedInterleaveDatasetOpTest, Cardinality) {
   Tensor cycle_length = test_case.cycle_length;
   Tensor block_length = test_case.block_length;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&tensor_slice_dataset_tensor, &cycle_length, &block_length});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&cycle_length),
+       TensorValue(&block_length)});
   std::unique_ptr<OpKernelContext> interleave_dataset_context;
   TF_ASSERT_OK(CreateInterleaveDatasetContext(
       interleave_dataset_kernel.get(), &inputs, &interleave_dataset_context));
@@ -580,7 +588,8 @@ TEST_P(ParameterizedInterleaveDatasetOpTest, DatasetSave) {
   Tensor cycle_length = test_case.cycle_length;
   Tensor block_length = test_case.block_length;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&tensor_slice_dataset_tensor, &cycle_length, &block_length});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&cycle_length),
+       TensorValue(&block_length)});
   std::unique_ptr<OpKernelContext> interleave_dataset_context;
   TF_ASSERT_OK(CreateInterleaveDatasetContext(
       interleave_dataset_kernel.get(), &inputs, &interleave_dataset_context));
@@ -616,7 +625,8 @@ TEST_P(ParameterizedInterleaveDatasetOpTest, IteratorOutputDtypes) {
   Tensor cycle_length = test_case.cycle_length;
   Tensor block_length = test_case.block_length;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&tensor_slice_dataset_tensor, &cycle_length, &block_length});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&cycle_length),
+       TensorValue(&block_length)});
   std::unique_ptr<OpKernelContext> interleave_dataset_context;
   TF_ASSERT_OK(CreateInterleaveDatasetContext(
       interleave_dataset_kernel.get(), &inputs, &interleave_dataset_context));
@@ -655,7 +665,8 @@ TEST_P(ParameterizedInterleaveDatasetOpTest, IteratorOutputShapes) {
   Tensor cycle_length = test_case.cycle_length;
   Tensor block_length = test_case.block_length;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&tensor_slice_dataset_tensor, &cycle_length, &block_length});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&cycle_length),
+       TensorValue(&block_length)});
   std::unique_ptr<OpKernelContext> interleave_dataset_context;
   TF_ASSERT_OK(CreateInterleaveDatasetContext(
       interleave_dataset_kernel.get(), &inputs, &interleave_dataset_context));
@@ -694,7 +705,8 @@ TEST_F(InterleaveDatasetOpTest, IteratorOutputPrefix) {
   Tensor cycle_length = test_case.cycle_length;
   Tensor block_length = test_case.block_length;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&tensor_slice_dataset_tensor, &cycle_length, &block_length});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&cycle_length),
+       TensorValue(&block_length)});
   std::unique_ptr<OpKernelContext> interleave_dataset_context;
   TF_ASSERT_OK(CreateInterleaveDatasetContext(
       interleave_dataset_kernel.get(), &inputs, &interleave_dataset_context));
@@ -732,7 +744,8 @@ TEST_P(ParameterizedInterleaveDatasetOpTest, Roundtrip) {
   Tensor cycle_length = test_case.cycle_length;
   Tensor block_length = test_case.block_length;
   gtl::InlinedVector<TensorValue, 4> inputs(
-      {&tensor_slice_dataset_tensor, &cycle_length, &block_length});
+      {TensorValue(&tensor_slice_dataset_tensor), TensorValue(&cycle_length),
+       TensorValue(&block_length)});
   std::unique_ptr<OpKernelContext> interleave_dataset_context;
   TF_ASSERT_OK(CreateInterleaveDatasetContext(
       interleave_dataset_kernel.get(), &inputs, &interleave_dataset_context));

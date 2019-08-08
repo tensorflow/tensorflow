@@ -36,6 +36,7 @@ enum class OperationType {
   ADD,
   // TODO(eignasheva): remove APPLY_MASK operation, is should be just MUL
   APPLY_MASK,
+  BATCH_TO_SPACE,
   BATCH_NORMALIZATION,
   CONCAT,
   CONST,
@@ -62,6 +63,7 @@ enum class OperationType {
   SIN,
   SLICE,
   SOFT_MAX,
+  SPACE_TO_BATCH,
   SQRT,
   SQUARE,
   SQUARED_DIFF,
@@ -79,12 +81,25 @@ struct Padding2D {
   Padding2D& operator=(const Padding2D& value);
   bool operator==(const Padding2D& value);
   bool operator!=(const Padding2D& value);
+  Padding2D& operator-(const Padding2D& value);
 
   // Padding values for every axis (if needed), where 'prepended' defines
   // padding for the beginning of each axis and 'appended' represents end part
   // of the corresponding axis.
   HW prepended = HW(-1, -1);
   HW appended = HW(-1, -1);
+};
+
+struct Crop2D : public Padding2D {};
+
+struct SpaceToBatchAttributes {
+  HW block;
+  Padding2D padding;
+};
+
+struct BatchToSpaceAttributes {
+  HW block;
+  Crop2D crop;
 };
 
 enum class PoolingType {

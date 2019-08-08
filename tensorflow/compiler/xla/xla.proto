@@ -215,6 +215,9 @@ message DebugOptions {
     // Generate a step marker at each iteration of the top level while loop,
     // which is assumed to be a training loop.
     STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP = 1;
+    // Generate a step marker at each iteration of the second level while loops,
+    // which is assumed to be a training or eval loop.
+    STEP_MARK_AT_SECOND_LEVEL_WHILE_LOOP = 3;
     // No step marker generated.
     STEP_MARK_NONE = 2;
   }

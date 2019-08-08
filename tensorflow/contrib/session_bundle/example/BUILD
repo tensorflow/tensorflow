@@ -2,9 +2,8 @@
 
 package(
     default_visibility = ["//tensorflow/contrib/session_bundle:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 

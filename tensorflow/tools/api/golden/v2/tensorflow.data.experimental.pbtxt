@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DistributeOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "INFINITE_CARDINALITY"
     mtype: "<type \'int\'>"
   }
@@ -38,6 +42,10 @@ tf_module {
   }
   member {
     name: "OptionalStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RaggedTensorStructure"
     mtype: "<type \'type\'>"
   }
   member {

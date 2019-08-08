@@ -30,7 +30,9 @@ import six
 from tensorflow.python import keras
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.variables import Variable
@@ -121,6 +123,21 @@ class MemoryTest(test.TestCase):
       del tape
 
     self.assertNotIncreasingMemory(f)
+
+  def testMemoryLeakInFunction(self):
+    if memory_profiler is None:
+      self.skipTest("memory_profiler required to run this test")
+
+    def f():
+
+      @def_function.function
+      def graph(x):
+        return x * x + x
+
+      graph(constant_op.constant(42))
+
+    self.assertNotIncreasingMemory(
+        f, num_iters=1000, increase_threshold_absolute_mb=20)
 
 
 if __name__ == "__main__":

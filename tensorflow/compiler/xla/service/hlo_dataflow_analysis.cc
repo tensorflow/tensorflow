@@ -149,7 +149,7 @@ string HloDataflowAnalysis::ToString() const {
   StrAppend(&out, "  Instruction value sets:\n");
   for (const HloComputation* computation : module_.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
-      StrAppend(&out, "    ", instruction->name(), ":\n");
+      StrAppend(&out, "Instruction: \n  ", instruction->name(), ":\n");
       if (instruction->shape().IsTuple()) {
         GetInstructionValueSet(instruction)
             .ForEachElement([this, &instruction, &out](
@@ -1044,7 +1044,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     }
 
     if (fusion_can_share_buffer_ != nullptr) {
-      return fusion_can_share_buffer_(user, operand);
+      return fusion_can_share_buffer_(user, operand, user_index);
     }
 
     if (user->IsLoopFusion() || user->IsInputFusion()) {

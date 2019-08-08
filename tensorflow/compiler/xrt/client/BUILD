@@ -65,6 +65,7 @@ cc_library(
         ":xrt_tf_client",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:computation_placer",

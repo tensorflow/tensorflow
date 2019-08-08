@@ -21,8 +21,15 @@ from __future__ import print_function
 import argparse
 
 from tensorflow.tools.compatibility import ast_edits
-from tensorflow.tools.compatibility import tf_upgrade_v2
 from tensorflow.tools.compatibility import ipynb
+from tensorflow.tools.compatibility import tf_upgrade_v2
+from tensorflow.tools.compatibility import tf_upgrade_v2_safety
+# Make straightforward changes to convert to 2.0. In harder cases,
+# use compat.v1.
+_DEFAULT_MODE = "DEFAULT"
+
+# Convert to use compat.v1.
+_SAFETY_MODE = "SAFETY"
 
 
 def process_file(in_filename, out_filename, upgrader):
@@ -91,9 +98,31 @@ Simple usage:
             "stored."
             "(default: %(default)s)"),
       default="report.txt")
+  parser.add_argument(
+      "--mode",
+      dest="mode",
+      choices=[_DEFAULT_MODE, _SAFETY_MODE],
+      help=("Upgrade script mode. Supported modes:\n"
+            "%s: Perform only straightforward conversions to upgrade to "
+            "2.0. In more difficult cases, switch to use compat.v1.\n"
+            "%s: Keep 1.* code intact and import compat.v1 "
+            "module. Also disable 2.0 behavior to ensure code "
+            "that requires 1.X behavior continues to work." %
+            (_DEFAULT_MODE, _SAFETY_MODE)),
+      default=_DEFAULT_MODE)
+  parser.add_argument(
+      "--print_all",
+      dest="print_all",
+      help="Print full log to stdout instead of just printing errors",
+      action="store_true")
   args = parser.parse_args()
 
-  upgrade = ast_edits.ASTCodeUpgrader(tf_upgrade_v2.TFAPIChangeSpec())
+  if args.mode == _SAFETY_MODE:
+    change_spec = tf_upgrade_v2_safety.TFAPIChangeSpec()
+  else:
+    change_spec = tf_upgrade_v2.TFAPIChangeSpec()
+  upgrade = ast_edits.ASTCodeUpgrader(change_spec)
+
   report_text = None
   report_filename = args.report_filename
   files_processed = 0
@@ -139,14 +168,21 @@ Simple usage:
               "Converted %d files\n" % files_processed +
               "Detected %d issues that require attention" % num_errors + "\n" +
               "-" * 80 + "\n") + "".join(report)
+    detailed_report_header = "=" * 80 + "\n"
+    detailed_report_header += "Detailed log follows:\n\n"
+    detailed_report_header += "=" * 80 + "\n"
+
     with open(report_filename, "w") as report_file:
       report_file.write(report)
-      report_file.write("=" * 80 + "\n")
-      report_file.write("Detailed log follows:\n\n")
-      report_file.write("=" * 80 + "\n")
+      report_file.write(detailed_report_header)
       report_file.write(report_text)
 
-    print(report)
+    if args.print_all:
+      print(report)
+      print(detailed_report_header)
+      print(report_text)
+    else:
+      print(report)
     print("\nMake sure to read the detailed log %r\n" % report_filename)
 
 if __name__ == "__main__":

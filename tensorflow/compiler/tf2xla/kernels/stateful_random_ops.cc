@@ -36,7 +36,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-xla::BitGeneratorTy BitGenerator(Algorithm alg) {
+xla::BitGeneratorTy BitGen(Algorithm alg) {
   if (alg == RNG_ALG_PHILOX) {
     return [](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
       return xla::PhiloxBitGenerator(key, state, shape, /*scramble=*/false);
@@ -52,14 +52,14 @@ xla::RngOutput StatefulRngUniform(Algorithm alg, xla::XlaOp key,
   xla::PrimitiveType type = shape.element_type();
   switch (type) {
     case xla::F32:
-      return xla::UniformF32Distribution(key, initial_state, BitGenerator(alg),
+      return xla::UniformF32Distribution(key, initial_state, BitGen(alg),
                                          minval, maxval, shape);
     case xla::U32:
     case xla::S32:
     case xla::U64:
     case xla::S64:
-      return UniformIntDistribution(key, initial_state, BitGenerator(alg),
-                                    minval, maxval, shape);
+      return UniformIntDistribution(key, initial_state, BitGen(alg), minval,
+                                    maxval, shape);
     default:
       return {key.builder()->ReportError(xla::Unimplemented(
                   "Types other than F32, U32, S32, U64 and S64 "
@@ -74,7 +74,7 @@ xla::RngOutput StatefulRngUniformFullInt(Algorithm alg, xla::XlaOp key,
                                          xla::XlaOp initial_state,
                                          const xla::Shape& shape) {
   xla::PrimitiveType type = shape.element_type();
-  xla::RngOutput output = BitGenerator(alg)(key, initial_state, shape);
+  xla::RngOutput output = BitGen(alg)(key, initial_state, shape);
   switch (type) {
     case xla::U32:
     case xla::U64:
@@ -249,7 +249,7 @@ class StatefulStandardNormalOp : public XlaOpKernel {
       xla::Shape xla_shape;
       TF_RETURN_IF_ERROR(TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
       xla::RngOutput value_state =
-          xla::NormalF32Distribution(key, state, BitGenerator(alg), xla_shape);
+          xla::NormalF32Distribution(key, state, BitGen(alg), xla_shape);
       xla::XlaOp normal = MaybeConvertF32ToBF16(value_state.value, dtype_);
       return {{normal, value_state.state}};
     };

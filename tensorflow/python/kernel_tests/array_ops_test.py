@@ -23,6 +23,7 @@ import unittest
 
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -262,6 +263,22 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     with self.cached_session():
       with self.assertRaisesRegexp(ValueError, "incompatible"):
         array_ops.boolean_mask(tensor, mask).eval()
+
+  @test_util.run_deprecated_v1
+  def testStringMask(self):
+    # Reproduces b/111171330, where the optimized boolean_mask graph would
+    # be incorrectly placed on GPU.
+    with ops.Graph().as_default():
+      tile_placeholder = array_ops.placeholder(dtypes.int32, [2])
+      string_tensor = array_ops.tile([["hello"]], tile_placeholder)
+      bool_tensor = array_ops.tile([[True]], tile_placeholder)
+      masked_tensor = array_ops.boolean_mask(string_tensor, bool_tensor)
+      config = config_pb2.ConfigProto()
+      config.graph_options.rewrite_options.shape_optimization = 1
+      config.gpu_options.per_process_gpu_memory_fraction = 0.3
+      with session.Session(config=config) as sess:
+        result = sess.run(masked_tensor, feed_dict={tile_placeholder: [2, 2]})
+        self.assertAllEqual([b"hello", b"hello", b"hello", b"hello"], result)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1068,6 +1085,15 @@ class StridedSliceAssignChecker(object):
 
 
 class SliceAssignTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_deprecated_v1
+  def testInvalidSlice(self):
+    with self.cached_session() as sess:
+      foo = constant_op.constant([1, 2, 3])
+      with self.assertRaisesRegexp(ValueError, "Sliced assignment"
+                                   " is only supported for variables"):
+        bar = foo[:2].assign(constant_op.constant([1, 2]))
+        sess.run(bar)
 
   def doTestSliceAssign(self, use_resource):
     for dtype in STRIDED_SLICE_TYPES:

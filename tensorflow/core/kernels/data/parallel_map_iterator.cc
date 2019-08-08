@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
@@ -70,6 +71,13 @@ class ParallelMapIterator : public DatasetBaseIterator {
     while (num_calls_ > 0) {
       cond_var_->wait(l);
     }
+  }
+
+  string BuildTraceMeName() override {
+    // NOTE: We do not synchronize the following access to num_parallel_calls_
+    // to minimize the tracing overhead.
+    int64 parallelism = num_parallel_calls_->value;
+    return strings::StrCat(prefix(), "#parallelism=", parallelism, "#");
   }
 
   Status Initialize(IteratorContext* ctx) override {

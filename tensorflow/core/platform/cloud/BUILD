@@ -9,9 +9,9 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_windows",
     "tf_cc_test",
     "tf_copts",
-    "if_windows",
 )
 
 cc_library(

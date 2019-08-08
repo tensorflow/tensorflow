@@ -69,7 +69,7 @@ class TFRecordOptions(object):
     Leaving an option as `None` allows C++ to set a reasonable default.
 
     Args:
-      compression_type: `"GZIP"`, "ZLIB" or `"NONE"`.
+      compression_type: `"GZIP"`, `"ZLIB"`, or `""` (no compression).
       flush_mode: flush mode or `None`, Default: Z_NO_FLUSH.
       input_buffer_size: int or `None`.
       output_buffer_size: int or `None`.

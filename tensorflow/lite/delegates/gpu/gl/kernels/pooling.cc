@@ -107,19 +107,22 @@ Status GenerateAveragePoolingCode(const Pooling2DAttributes& attr,
       {"offset", int2(attr.padding.prepended.w, attr.padding.prepended.h)},
       {"window_h", attr.kernel.h},
       {"window_w", attr.kernel.w},
-      {"multiplier", 1.0f / static_cast<float>(attr.kernel.h * attr.kernel.w)},
   };
 
   std::string source = R"(
+  int window_size = 0;
   for (int a = 0; a < $window_h$; ++a) {
     for (int b = 0; b < $window_w$; ++b) {
       ivec2 coord = gid.xy * $stride$ - $offset$ + ivec2(b, a);
       if (coord.x >= 0 && coord.y >= 0 && coord.x < $input_data_0_w$ && coord.y < $input_data_0_h$) {
         value_0 += $input_data_0[coord.x, coord.y, gid.z]$;
+        window_size++;
       }
     }
   }
-  value_0 *= $multiplier$;
+  // If window_size==0, window covered nothing. This situation is a sign of
+  // incorrectly constructed operation. NaNs are expected as output.
+  value_0 /= float(window_size);
 )";
   *generated_code = {
       /*parameters=*/std::move(parameters),

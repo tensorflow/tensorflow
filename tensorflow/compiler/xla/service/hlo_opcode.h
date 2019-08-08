@@ -108,6 +108,7 @@ namespace xla {
   V(kOutfeed, "outfeed", 2)                                            \
   V(kPad, "pad", 2)                                                    \
   V(kParameter, "parameter", 0)                                        \
+  V(kPartitionId, "partition-id", 0)                                   \
   V(kPopulationCount, "popcnt", 1)                                     \
   V(kPower, "power", 2)                                                \
   V(kReal, "real", 1)                                                  \

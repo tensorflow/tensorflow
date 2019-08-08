@@ -38,7 +38,13 @@ working on getting your pull request submitted to our internal repository. After
 the change has been submitted internally, your pull request will be merged
 automatically on GitHub.
 
-If you want to contribute but you're not sure where to start, take a look at the
+If you want to contribute, start working through the TensorFlow codebase,
+navigate to the
+[Github "issues" tab](https://github.com/tensorflow/tensorflow/issues) and start
+looking through interesting issues. If you are not sure of where to start, then
+start by trying one of the smaller/easier issues here i.e.
+[issues with the "good first issue" label](https://github.com/tensorflow/tensorflow/labels/good%20first%20issue)
+and then take a look at the
 [issues with the "contributions welcome" label](https://github.com/tensorflow/tensorflow/labels/stat%3Acontributions%20welcome).
 These are issues that we believe are particularly well suited for outside
 contributions, often because we probably won't get to them right now. If you
@@ -157,9 +163,9 @@ There are two ways to run TensorFlow unit tests.
 1.  Using tools and libraries installed directly on your system.
 
     Refer to the
-    [CPU-only developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/Dockerfile.devel)
+    [CPU-only developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/dockerfiles/dockerfiles/devel-cpu.Dockerfile)
     and
-    [GPU developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/Dockerfile.devel-gpu)
+    [GPU developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/dockerfiles/dockerfiles/devel-gpu.Dockerfile)
     for the required packages. Alternatively, use the said
     [Docker images](https://hub.docker.com/r/tensorflow/tensorflow/tags/), e.g.,
     `tensorflow/tensorflow:nightly-devel` and

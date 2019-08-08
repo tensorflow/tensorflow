@@ -1769,5 +1769,19 @@ TEST_F(HloInstructionTest, PreserveOperandPrecisionOnCloneConv) {
       ::testing::ElementsAre(PrecisionConfig::HIGH, PrecisionConfig::DEFAULT));
 }
 
+TEST_F(HloInstructionTest, PreserveOuterDimensionPartitionsOnClone) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  ENTRY test {
+    ROOT iota = f32[100] iota(), iota_dimension=1, outer_dimension_partitions={0, 50}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(kHloString));
+  auto* iota = module->entry_computation()->root_instruction();
+
+  auto clone = iota->Clone();
+  EXPECT_THAT(clone->outer_dimension_partitions(),
+              ::testing::ElementsAre(0, 50));
+}
+
 }  // namespace
 }  // namespace xla

@@ -39,7 +39,7 @@ public final class Interpreter {
   /// - Parameters:
   ///   - modelPath: Local file path to a TensorFlow Lite model.
   ///   - options: Custom configurations for the interpreter. The default is `nil` indicating that
-  ///       interpreter will determine the configuration options.
+  ///       the interpreter will determine the configuration options.
   /// - Throws: An error if the model could not be loaded or the interpreter could not be created.
   public init(modelPath: String, options: InterpreterOptions? = nil) throws {
     guard let model = Model(filePath: modelPath) else { throw InterpreterError.failedToLoadModel }
@@ -51,23 +51,21 @@ public final class Interpreter {
       if let threadCount = options.threadCount, threadCount > 0 {
         TFL_InterpreterOptionsSetNumThreads(cOptions, Int32(threadCount))
       }
-      if options.isErrorLoggingEnabled {
-        TFL_InterpreterOptionsSetErrorReporter(
-          cOptions,
-          { (_, format, args) -> Void in
-            // Workaround for Swift optionality bug: https://bugs.swift.org/browse/SR-3429.
-            let optionalArgs: CVaListPointer? = args
-            guard let cFormat = format,
-                  let arguments = optionalArgs,
-                  let message = String(cFormat: cFormat, arguments: arguments)
-            else {
-              return
-            }
-            print(String(describing: InterpreterError.tensorFlowLiteError(message)))
-          },
-          nil
-        )
-      }
+      TFL_InterpreterOptionsSetErrorReporter(
+        cOptions,
+        { (_, format, args) -> Void in
+          // Workaround for optionality differences for x86_64 (non-optional) and arm64 (optional).
+          let optionalArgs: CVaListPointer? = args
+          guard let cFormat = format,
+            let arguments = optionalArgs,
+            let message = String(cFormat: cFormat, arguments: arguments)
+          else {
+            return
+          }
+          print(String(describing: InterpreterError.tensorFlowLiteError(message)))
+        },
+        nil
+      )
       return cOptions
     }
     defer { TFL_DeleteInterpreterOptions(cInterpreterOptions) }

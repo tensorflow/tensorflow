@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/device_info_cache.h"
+#include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
@@ -165,8 +165,24 @@ bool LogNotCompilableAndReturn(const Node& node,
   return false;
 }
 
+bool RecursiveCompilabilityChecker::OpIsInaccurate(const Node& node) {
+  // b/127344411: SelfAdjointEigV2 and Svd precision issues.
+  return node.type_string() == "SelfAdjointEigV2" ||
+         node.type_string() == "Svd";
+}
+
+bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) {
+  // b/128001705: SelfAdjointEigV2 and Svd performance issues.
+  return node.type_string() == "SelfAdjointEigV2" ||
+         node.type_string() == "Svd" || node.type_string() == "Qr";
+}
+
 bool RecursiveCompilabilityChecker::IsCompilableNode(
     const Node& node, int depth, FunctionLibraryRuntime* lib_runtime) {
+  if (node.IsSource() || node.IsSink()) {
+    return LogNotCompilableAndReturn(node, "source or sink node");
+  }
+
   // _Arg nodes in a top-level function represent feeds and _Retval nodes in a
   // top-level function represent fetches.
   if (depth == 0 &&
@@ -228,6 +244,14 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
                                      "resource variable op in called function");
   }
 
+  if (!op_filter_.allow_inaccurate_ops && OpIsInaccurate(node)) {
+    return LogNotCompilableAndReturn(node, "operation with correctness issues");
+  }
+
+  if (!op_filter_.allow_slow_ops && OpIsSlow(node)) {
+    return LogNotCompilableAndReturn(node, "slow operation");
+  }
+
   return true;
 }
 
@@ -244,6 +268,8 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
       registration.elide_assert_and_checknumerics;
   op_filter.allow_ops_producing_or_consuming_variant =
       registration.cluster_variant_ops;
+  op_filter.allow_slow_ops = registration.cluster_slow_ops;
+  op_filter.allow_inaccurate_ops = registration.cluster_inaccurate_ops;
   return op_filter;
 }
 

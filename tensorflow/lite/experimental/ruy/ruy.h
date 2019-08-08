@@ -34,8 +34,8 @@ template <Path CompiledPaths, typename LhsScalar, typename RhsScalar,
           typename DstScalar, typename Spec>
 void Mul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
          const Spec& spec, Context* context, Matrix<DstScalar>* dst) {
-  MulDispatch<CompiledPaths, LhsScalar, RhsScalar, DstScalar, Spec> dispatch;
-  dispatch.Mul(lhs, rhs, spec, context, dst);
+  DispatchMul<CompiledPaths, LhsScalar, RhsScalar, DstScalar, Spec>(
+      lhs, rhs, spec, context, dst);
 }
 
 }  // namespace ruy

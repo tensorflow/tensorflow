@@ -126,10 +126,11 @@ def _elementwise_where(condition, x, y):
   elif not condition_is_ragged:
     # Concatenate x and y, and then use `gather` to assemble the selected rows.
     condition.shape.assert_has_rank(1)
-    x_nrows = _nrows(x)
     x_and_y = ragged_concat_ops.concat([x, y], axis=0)
+    x_nrows = _nrows(x, out_type=x_and_y.row_splits.dtype)
+    y_nrows = _nrows(y, out_type=x_and_y.row_splits.dtype)
     indices = array_ops.where(condition, math_ops.range(x_nrows),
-                              x_nrows + math_ops.range(_nrows(y)))
+                              x_nrows + math_ops.range(y_nrows))
     return ragged_gather_ops.gather(x_and_y, indices)
 
   else:
@@ -159,8 +160,8 @@ def _coordinate_where(condition):
                           axis=1)
 
 
-def _nrows(rt_input):
+def _nrows(rt_input, out_type):
   if isinstance(rt_input, ragged_tensor.RaggedTensor):
-    return rt_input.nrows()
+    return rt_input.nrows(out_type=out_type)
   else:
-    return array_ops.shape(rt_input)[0]
+    return array_ops.shape(rt_input, out_type=out_type)[0]

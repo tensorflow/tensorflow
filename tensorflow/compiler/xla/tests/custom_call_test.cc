@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -64,10 +64,10 @@ void F32TupleSwap(float** out, float** in) {
 
 }  // namespace
 
-REGISTER_CUSTOM_CALL_TARGET(R0F32Add2);
-REGISTER_CUSTOM_CALL_TARGET(R2F32ReduceSum);
-REGISTER_CUSTOM_CALL_TARGET(Add1ToValues);
-REGISTER_CUSTOM_CALL_TARGET(F32TupleSwap);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R2F32ReduceSum);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(Add1ToValues);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(F32TupleSwap);
 
 namespace xla {
 namespace {

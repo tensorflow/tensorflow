@@ -188,9 +188,11 @@ TEST_F(BufRendezvousTest, UseAfterAbort) {
   prod_note.WaitForNotification();
   cons_note.WaitForNotification();
   EXPECT_FALSE(prod_status.ok());
-  EXPECT_EQ(prod_status.error_message(), "Falling sky detected");
+  EXPECT_NE(prod_status.error_message().find("Falling sky detected"),
+            string::npos);
   EXPECT_FALSE(cons_status.ok());
-  EXPECT_EQ(cons_status.error_message(), "Falling sky detected");
+  EXPECT_NE(cons_status.error_message().find("Falling sky detected"),
+            string::npos);
 }
 
 }  // namespace

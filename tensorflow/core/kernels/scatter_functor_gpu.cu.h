@@ -126,7 +126,7 @@ struct ScatterFunctor<GPUDevice, T, Index, op> {
     const Index first_dim_size = params.dimension(0);
     const Index indices_size = indices.size();
     const Index updates_size = updates.size();
-    CudaLaunchConfig config = GetCudaLaunchConfig(updates_size, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(updates_size, d);
     TF_CHECK_OK(CudaLaunchKernel(
         scatter_op_gpu::ScatterOpCustomKernel<T, Index, op>, config.block_count,
         config.thread_per_block, 0, d.stream(), params.data(), updates.data(),
@@ -147,7 +147,7 @@ struct ScatterScalarFunctor<GPUDevice, T, Index, op> {
     const Index first_dim_size = params.dimension(0);
     const Index indices_size = indices.size();
     const Index synthesized_updates_size = indices_size * params.dimension(1);
-    CudaLaunchConfig config = GetCudaLaunchConfig(synthesized_updates_size, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(synthesized_updates_size, d);
     TF_CHECK_OK(CudaLaunchKernel(
         scatter_op_gpu::ScatterScalarOpCustomKernel<T, Index, op>,
         config.block_count, config.thread_per_block, 0, d.stream(),

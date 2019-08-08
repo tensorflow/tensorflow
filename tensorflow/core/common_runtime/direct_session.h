@@ -401,6 +401,18 @@ class DirectSession : public Session {
   mutex collective_graph_key_lock_;
   int64 collective_graph_key_ GUARDED_BY(collective_graph_key_lock_) = -1;
 
+  // Run in caller's thread if RunOptions.inter_op_thread_pool is negative or
+  // all of following conditions are met:
+  // 1. This session doesn't own any thread pool.
+  // 2. RunOptions.inter_op_thread_pool is unspecified or 0.
+  // 3. This session has a single executor.
+  // 4. config.inter_op_parallelism_threads is specified to negative explicitly
+  //    or through environment variable TF_NUM_INTEROP_THREADS.
+  // 5. RunOptions.experimental.use_run_handler_pool is unspecified or false.
+  // Otherwise run in global thread pool, session owned thread pool or handler
+  // pool according to other specifications of RunOptions and ConfigProto.
+  bool run_in_caller_thread_ = false;
+
   TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
 
   // EXPERIMENTAL: debugger (tfdbg) related

@@ -82,6 +82,7 @@ enum class OperatorType : uint8 {
   kTransposeConv,
   kCast,
   kFloor,
+  kRound,
   kGather,
   kResizeBilinear,
   kSin,
@@ -222,6 +223,7 @@ enum class ArrayDataType : uint8 {
   kUint64,  // 10
   kString,
   kComplex64,
+  kFloat16,
 };
 
 // Compile-time logic to map ArrayDataType to the corresponding C++ scalar type
@@ -1127,6 +1129,7 @@ struct StridedSliceOperator : Operator {
 //
 // Inputs:
 //   inputs[0]: required: the input array
+//   inputs[1]: optional: the output tensor shape
 //
 // TensorFlow equivalent: Reshape --- except that we only support a special case
 // here, where the output shape is a matrix (2D) shape.
@@ -1713,6 +1716,16 @@ struct FloorOperator : Operator {
 // TensorFlow equivalent: Ceil
 struct CeilOperator : Operator {
   CeilOperator() : Operator(OperatorType::kCeil) {}
+};
+
+// Round operator.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Round
+struct RoundOperator : Operator {
+  RoundOperator() : Operator(OperatorType::kRound) {}
 };
 
 // Gather operator. It gathers slices from params according to indices.

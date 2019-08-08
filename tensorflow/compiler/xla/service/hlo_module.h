@@ -109,6 +109,8 @@ class HloModule {
     return entry_computation_;
   }
 
+  bool has_entry_computation() const { return entry_computation_ != nullptr; }
+
   // Returns the root instruction shape of entry computation.
   //
   // Precondition: entry_computation_ is not nullptr.

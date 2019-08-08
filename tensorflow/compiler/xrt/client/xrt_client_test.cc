@@ -292,6 +292,67 @@ TEST_F(XrtClientTest, TupleDestructuringAndDelete) {
   // constituents.
   buffer->Delete();
 
+  ASSERT_EQ(pieces.size(), 2);
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal a_out, pieces[0]->ToLiteral());
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal b_out, pieces[1]->ToLiteral());
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(a, a_out));
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(b, b_out));
+
+  // Explicitly delete one of the pieces, use RAII to delete the other.
+  pieces[1]->Delete();
+}
+
+TEST_F(XrtClientTest, EmptyTuples) {
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<XrtContext> context, MakeContext());
+
+  // Tests sending a literal to and from the device.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<XrtBuffer> buffer,
+      XrtBuffer::MakeTuple(context, /*elements=*/{}, /*xrt_device_ordinal=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::shared_ptr<XrtBuffer>> pieces,
+                          buffer->DestructureTuple());
+  EXPECT_EQ(pieces.size(), 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal out, buffer->ToLiteral());
+  ASSERT_TRUE(out.shape().IsTuple());
+  EXPECT_EQ(out.shape().tuple_shapes_size(), 0);
+}
+
+TEST_F(XrtClientTest, TupleConstructionAndDestructuring) {
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<XrtContext> context, MakeContext());
+
+  // Tests sending a literal to and from the device.
+  xla::Shape a_shape = xla::ShapeUtil::MakeShape(xla::F32, {3, 4, 5});
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal a,
+                          xla::LiteralUtil::CreateRandomLiteral<xla::F32>(
+                              a_shape,
+                              /*mean=*/7.0, /*stddev=*/13.5));
+  TF_ASSERT_OK_AND_ASSIGN(auto a_buffer, XrtBuffer::FromLiteral(context, 0, a));
+
+  xla::Shape b_shape = xla::ShapeUtil::MakeShape(xla::F64, {2, 7});
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal b,
+                          xla::LiteralUtil::CreateRandomLiteral<xla::F64>(
+                              b_shape,
+                              /*mean=*/3.15, /*stddev=*/-2.1));
+  TF_ASSERT_OK_AND_ASSIGN(auto b_buffer, XrtBuffer::FromLiteral(context, 0, b));
+
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal a_in, a_buffer->ToLiteral());
+  TF_ASSERT_OK_AND_ASSIGN(xla::Literal b_in, b_buffer->ToLiteral());
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(a, a_in));
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(b, b_in));
+
+  std::vector<std::shared_ptr<XrtBuffer>> elems = {a_buffer, b_buffer};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<XrtBuffer> buffer,
+      XrtBuffer::MakeTuple(context, elems, /*xrt_device_ordinal=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::shared_ptr<XrtBuffer>> pieces,
+                          buffer->DestructureTuple());
+
+  // Explicitly delete the tuple, which should have no effect on its
+  // constituents.
+  buffer->Delete();
+
+  ASSERT_EQ(pieces.size(), 2);
   TF_ASSERT_OK_AND_ASSIGN(xla::Literal a_out, pieces[0]->ToLiteral());
   TF_ASSERT_OK_AND_ASSIGN(xla::Literal b_out, pieces[1]->ToLiteral());
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(a, a_out));

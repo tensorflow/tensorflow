@@ -179,42 +179,50 @@ struct MatMulConvFunctor {
 
 // Shuffles a filter tensor from TensorFlow format HWIO to dst_filter_format.
 //
-// Note: Currently OIHW is the only supported destination format. Support for
-// OHWI format will be added in a follow-up change.
+// Note: Currently supports OIHW and OHWI destination formats.
 template <typename Device, typename T, typename IndexType, int NDIMS>
 struct TransformFilter {
   void operator()(const Device& d, FilterTensorFormat dst_filter_format,
                   typename TTypes<T, NDIMS, IndexType>::ConstTensor in,
                   typename TTypes<T, NDIMS, IndexType>::Tensor out) {
+    // NOTE: Source filter format is always HWIO.
+    Eigen::DSizes<IndexType, NDIMS - 2> spatial_dims;
+    for (int i = 0; i < spatial_dims.rank(); ++i) {
+      spatial_dims[i] = in.dimension(i);
+    }
+
     // Merge the spatial dimensions together to speed up the shuffle operation.
     Eigen::DSizes<IndexType, 3> merged_dims;
-    merged_dims[0] = in.dimension(0);  // spatial dimensions
-    for (int i = 1; i < NDIMS - 2; ++i) {
-      merged_dims[0] *= in.dimension(i);
-    }
-    merged_dims[1] = in.dimension(NDIMS - 2);  // input filters
-    merged_dims[2] = in.dimension(NDIMS - 1);  // output filters
+    merged_dims[0] = spatial_dims.TotalSize();  // product of spatial dims [H*W]
+    merged_dims[1] = in.dimension(NDIMS - 2);   // input filters           [I]
+    merged_dims[2] = in.dimension(NDIMS - 1);   // output filters          [O]
 
-    DCHECK(dst_filter_format == FORMAT_OIHW)
-        << "Unsupported destination filter format: "
-        << ToString(dst_filter_format);
-    // Source filter format is FORMAT_HWIO and spatial dimensions HW are merged
-    // in the beginning.
-    Eigen::DSizes<IndexType, 3> shuffling_perm =
-        Eigen::DSizes<IndexType, 3>(2, 1, 0);
-
+    // Shuffle tensor with merged spatial dimensions.
+    Eigen::DSizes<IndexType, 3> shuffling_perm;
+    // Expand shuffled tensor into final dimensions.
     Eigen::DSizes<IndexType, NDIMS> expanded_dims;
-    int out_index = 0;
-    for (int merged_dim = 0; merged_dim < merged_dims.rank(); ++merged_dim) {
-      if (shuffling_perm[merged_dim] == 0) {
-        for (int spatial_dim = 0; spatial_dim < NDIMS - 2; ++spatial_dim) {
-          expanded_dims[out_index++] = in.dimension(spatial_dim);
-        }
-      } else {
-        constexpr int kLastSpatialDim = NDIMS - 3;
-        expanded_dims[out_index++] =
-            in.dimension(kLastSpatialDim + shuffling_perm[merged_dim]);
+
+    if (dst_filter_format == FORMAT_OIHW) {
+      shuffling_perm = Eigen::DSizes<IndexType, 3>(2, 1, 0);
+
+      expanded_dims[0] = merged_dims[2];  // [O]
+      expanded_dims[1] = merged_dims[1];  // [I]
+      for (int i = 0; i < spatial_dims.rank(); ++i) {
+        expanded_dims[2 + i] = spatial_dims[i];
       }
+
+    } else if (dst_filter_format == FORMAT_OHWI) {
+      shuffling_perm = Eigen::DSizes<IndexType, 3>(2, 0, 1);
+
+      expanded_dims[0] = merged_dims[2];          // [O]
+      expanded_dims[NDIMS - 1] = merged_dims[1];  // [I]
+      for (int i = 0; i < spatial_dims.rank(); ++i) {
+        expanded_dims[1 + i] = spatial_dims[i];
+      }
+
+    } else {
+      DCHECK(false) << "Unsupported destination filter format: "
+                    << ToString(dst_filter_format);
     }
 
     out.device(d) =
@@ -335,12 +343,12 @@ struct SwapDimension0And2InTensor3 {
                   const gtl::ArraySlice<int64>& input_dims, T* out);
 };
 
-// Transforms back filter from OIHW to HWOI format to reverse effect of
+// Transforms back filter from OIHW or OHWI to HWOI format to reverse effect of
 // TransformFilter above.
-// TODO(hinsu): Support reverse transformation from filter format OHWI as well.
 template <typename Device, typename T, int NDIMS>
 struct ReverseTransformFilter {
-  void operator()(const Device& d, typename TTypes<T, NDIMS>::ConstTensor in,
+  void operator()(const Device& d, FilterTensorFormat src_filter_format,
+                  typename TTypes<T, NDIMS>::ConstTensor in,
                   typename TTypes<T, NDIMS>::Tensor out);
 };
 

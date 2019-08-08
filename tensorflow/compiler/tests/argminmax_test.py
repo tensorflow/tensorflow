@@ -40,7 +40,7 @@ class ArgMinMaxTest(xla_test.XLATestCase):
       op_input: numpy input array to use as input to 'op'.
       expected: numpy array representing the expected output of 'op'.
     """
-    with self.cached_session() as session:
+    with self.session() as session:
       with self.test_scope():
         pinp = array_ops.placeholder(
             dtypes.as_dtype(op_input.dtype), op_input.shape, name="a")

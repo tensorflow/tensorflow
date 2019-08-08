@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+#include "tensorflow/core/lib/core/refcount.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA
@@ -323,12 +324,11 @@ class StridedSliceAssignOp : public OpKernel {
       }
     } else {
       if (context->input_dtype(0) == DT_RESOURCE) {
-        Var* v;
+        core::RefCountPtr<Var> v;
         OP_REQUIRES_OK(
             context, LookupResource(context, HandleFromInput(context, 0), &v));
-        core::ScopedUnref scoped_unref(v);
         OP_REQUIRES_OK(context,
-                       EnsureSparseVariableAccess<Device, T>(context, v));
+                       EnsureSparseVariableAccess<Device, T>(context, v.get()));
         mutex_lock ml(*v->mu());
         old_lhs = v->tensor();
         OP_REQUIRES(context, old_lhs->dtype() == DataTypeToEnum<T>::value,

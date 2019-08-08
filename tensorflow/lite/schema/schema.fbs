@@ -228,7 +228,8 @@ enum BuiltinOperator : byte {
   REVERSE_SEQUENCE = 112,
   MATRIX_DIAG = 113,
   QUANTIZE = 114,
-  MATRIX_SET_DIAG = 115
+  MATRIX_SET_DIAG = 115,
+  ROUND = 116,
 }
 
 // Options for the builtin operators.
@@ -417,6 +418,11 @@ table FullyConnectedOptions {
 
   // Parameters for FullyConnected version 2 or above.
   weights_format:FullyConnectedOptionsWeightsFormat = DEFAULT;
+
+  // Parameters for FullyConnected version 5 or above.
+  // If set to true, then the number of dimension is preserved. Furthermore,
+  // all but the last dimension of the input and output shapes will be equal.
+  keep_num_dims: bool;
 }
 
 table SoftmaxOptions {
@@ -843,6 +849,13 @@ table Buffer {
   data:[ubyte] (force_align: 16);
 }
 
+table Metadata {
+  // A human readable string to uniquely identify a Metadata.
+  name:string;
+  // An index to the buffers table.
+  buffer:uint;
+}
+
 table Model {
   // Version of the schema.
   version:uint;
@@ -865,8 +878,12 @@ table Model {
   // their buffer.
   buffers:[Buffer];
 
-  // Metadata about the model.  Indirects into the existings buffers list.
+  // Metadata about the model. Indirects into the existings buffers list.
+  // Deprecated, prefer to use metadata field.
   metadata_buffer:[int];
+
+  // Metadata about the model.
+  metadata:[Metadata];
 }
 
 root_type Model;

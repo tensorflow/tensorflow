@@ -62,6 +62,10 @@ class ImagenetModelEvaluator {
     // This file is a list of image indices in a sorted order.
     std::string blacklist_file_path;
 
+    // Delegate used to perform inference (if available).
+    // Valid values: 'nnapi', 'gpu'.
+    std::string delegate;
+
     // The maximum number of images to calculate accuracy.
     // 0 means all images, a positive number means only the specified
     // number of images.
@@ -69,6 +73,9 @@ class ImagenetModelEvaluator {
 
     // Number of ranks, top K.
     int num_ranks = 10;
+
+    // Number of interpreter threads.
+    int num_interpreter_threads = 1;
   };
 
   // An evaluation observer.

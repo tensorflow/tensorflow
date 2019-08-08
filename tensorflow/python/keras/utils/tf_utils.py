@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras import backend as K
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import nest
@@ -107,7 +108,8 @@ def get_reachable_from_inputs(inputs, targets=None):
   """
   inputs = nest.flatten(inputs)
   reachable = set(inputs)
-  if targets:
+  if targets and not isinstance(targets, set):
+    targets = nest.flatten(targets)
     targets = set(targets)
   queue = inputs[:]
 
@@ -412,6 +414,16 @@ def maybe_init_scope(layer):
   if (ops.executing_eagerly_outside_functions() and
       getattr(layer, '_keras_style', True)):
     with ops.init_scope():
+      yield
+  else:
+    yield
+
+
+@tf_contextlib.contextmanager
+def graph_context_for_symbolic_tensors(*args, **kwargs):
+  """Returns graph context manager if any of the inputs is a symbolic tensor."""
+  if any(is_symbolic_tensor(v) for v in list(args) + list(kwargs.values())):
+    with K.get_graph().as_default():
       yield
   else:
     yield

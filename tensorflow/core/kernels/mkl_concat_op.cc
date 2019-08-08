@@ -274,6 +274,7 @@ class MklConcatOp : public OpKernel {
       // check that ranks of all tensors match
       // and that their shapes match except for concat_dim.
       int i = 0;
+      int num_of_empty_inputs = 0;
       bool invoke_eigen = false;
       bool are_all_mkl_inputs = true, are_all_tf_inputs = true;
       const TensorShape expected_shape = mkl_input_shapes[0].IsMklTensor()
@@ -313,10 +314,14 @@ class MklConcatOp : public OpKernel {
         else
           are_all_mkl_inputs = false;
 
-        if (s_dims != 4) invoke_eigen = true;
+        if (s_dims != 4 && s_dims != 2) invoke_eigen = true;
+
+        if (input_tensors[i].NumElements() == 0) num_of_empty_inputs++;
 
         ++i;
       }
+
+      if (num_of_empty_inputs == i) invoke_eigen = true;
 
       // All inputs are not in one format (TF or MKL). This is mixed input case.
       // We can potentially optimize this case by converting all TF inputs

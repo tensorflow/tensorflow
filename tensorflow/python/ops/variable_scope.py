@@ -2469,6 +2469,7 @@ def default_variable_creator(next_creator=None, **kwargs):
   use_resource = kwargs.get("use_resource", None)
   synchronization = kwargs.get("synchronization", None)
   aggregation = kwargs.get("aggregation", None)
+  shape = kwargs.get("shape", None)
 
   if use_resource is None:
     use_resource = get_variable_scope().use_resource
@@ -2490,7 +2491,8 @@ def default_variable_creator(next_creator=None, **kwargs):
         import_scope=import_scope,
         distribute_strategy=distribute_strategy,
         synchronization=synchronization,
-        aggregation=aggregation)
+        aggregation=aggregation,
+        shape=shape)
   else:
     return variables.RefVariable(
         initial_value=initial_value,
@@ -2505,7 +2507,8 @@ def default_variable_creator(next_creator=None, **kwargs):
         expected_shape=expected_shape,
         import_scope=import_scope,
         synchronization=synchronization,
-        aggregation=aggregation)
+        aggregation=aggregation,
+        shape=shape)
 
 
 def default_variable_creator_v2(next_creator=None, **kwargs):
@@ -2523,6 +2526,7 @@ def default_variable_creator_v2(next_creator=None, **kwargs):
   distribute_strategy = kwargs.get("distribute_strategy", None)
   synchronization = kwargs.get("synchronization", None)
   aggregation = kwargs.get("aggregation", None)
+  shape = kwargs.get("shape", None)
 
   return resource_variable_ops.ResourceVariable(
       initial_value=initial_value,
@@ -2536,7 +2540,8 @@ def default_variable_creator_v2(next_creator=None, **kwargs):
       import_scope=import_scope,
       distribute_strategy=distribute_strategy,
       synchronization=synchronization,
-      aggregation=aggregation)
+      aggregation=aggregation,
+      shape=shape)
 
 
 variables.default_variable_creator = default_variable_creator

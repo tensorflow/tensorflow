@@ -61,8 +61,8 @@ XlaPlatformInfo PlatformInfoFromContext(OpKernelConstruction* ctx) {
   DeviceType device_type = ctx->device_type();
   se::Platform::Id platform_id = nullptr;
   const XlaDevice::Metadata* xla_device_metadata = nullptr;
-  std::unique_ptr<XlaAllocator> xla_allocator;
-  xla::DeviceMemoryAllocator* device_allocator = nullptr;
+  std::unique_ptr<se::TfAllocatorAdapter> xla_allocator;
+  se::DeviceMemoryAllocator* device_allocator = nullptr;
 
   if (ctx->device_type() == DeviceType(DEVICE_CPU)) {
     platform_id = se::host::kHostPlatformId;
@@ -93,7 +93,7 @@ XlaPlatformInfo PlatformInfoFromContext(OpKernelConstruction* ctx) {
         se::MultiPlatformManager::PlatformWithId(platform_id);
     OP_REQUIRES_OK_RETURN(ctx, XlaPlatformInfo(), maybe_platform.status());
 
-    xla_allocator = absl::make_unique<XlaAllocator>(
+    xla_allocator = absl::make_unique<se::TfAllocatorAdapter>(
         maybe_platform.ValueOrDie(), ctx->device()->GetAllocator({}));
   }
 

@@ -37,7 +37,7 @@ ReductionV2 = keras_export(  # pylint: disable=invalid-name
     'keras.losses.Reduction', v1=[])(loss_reduction.ReductionV2)
 
 
-def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
+def squeeze_or_expand_dimensions(y_pred, y_true=None, sample_weight=None):
   """Squeeze or expand last dimension if needed.
 
   1. Squeezes last dim of `y_pred` or `y_true` if their rank differs by 1
@@ -59,6 +59,7 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
     Tuple of `y_pred`, `y_true` and `sample_weight`. Each of them possibly has
     the last dimension squeezed,
     `sample_weight` could be extended by one dimension.
+    If `sample_weight` is None, (y_pred, y_true) is returned.
   """
   y_pred_shape = y_pred.shape
   y_pred_rank = y_pred_shape.ndims
@@ -87,7 +88,7 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
           math_ops.equal(1, rank_diff), maybe_squeeze_dims, squeeze_dims)
 
   if sample_weight is None:
-    return y_pred, y_true, None
+    return y_pred, y_true
 
   sample_weight = ops.convert_to_tensor(sample_weight)
   weights_shape = sample_weight.shape
@@ -144,7 +145,7 @@ def _safe_mean(losses, num_present):
 
 def _num_elements(losses):
   """Computes the number of elements in `losses` tensor."""
-  with ops.name_scope(None, 'num_elements', values=[losses]) as scope:
+  with K.name_scope('num_elements') as scope:
     return math_ops.cast(array_ops.size(losses, name=scope), dtype=losses.dtype)
 
 
@@ -189,14 +190,14 @@ def compute_weighted_loss(losses,
     reduction = ReductionV2.SUM_OVER_BATCH_SIZE
   if sample_weight is None:
     sample_weight = 1.0
-  with ops.name_scope(name, 'weighted_loss', (losses, sample_weight)):
+  with K.name_scope(name or 'weighted_loss'):
     # Save the `reduction` argument for loss normalization when distributing
     # to multiple replicas. Used only for estimator + v1 optimizer flow.
     ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
 
     # Update dimensions of `sample_weight` to match with `losses` if possible.
     losses, _, sample_weight = squeeze_or_expand_dimensions(
-        losses, None, sample_weight)
+        losses, sample_weight=sample_weight)
     losses = ops.convert_to_tensor(losses)
     input_dtype = losses.dtype
     losses = math_ops.cast(losses, dtypes.float32)

@@ -22,7 +22,7 @@
 #include <utility>
 #include <vector>
 
-#include "cuda/include/cusparse.h"
+#include "third_party/gpus/cuda/include/cusparse.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"

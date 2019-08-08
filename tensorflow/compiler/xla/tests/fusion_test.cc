@@ -829,7 +829,7 @@ void BM_ParallelFusion(int num_iters) {
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
-  StreamExecutorMemoryAllocator allocator(platform, executors);
+  se::StreamExecutorMemoryAllocator allocator(platform, executors);
 
   const int64 intra_op_parallelism_threads = 24;
   xla::LocalClientOptions client_options;

@@ -70,7 +70,7 @@ TriangularSolveThunk::TriangularSolveThunk(
 
 Status TriangularSolveThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& /*run_id*/, HloExecutionProfiler* profiler) {
   VLOG(3) << "uplo=" << se::blas::UpperLowerString(uplo_)
           << " side=" << se::blas::SideString(side_)
           << " diagonal=" << se::blas::DiagonalString(unit_diagonal_)

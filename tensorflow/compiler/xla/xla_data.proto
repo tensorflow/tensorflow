@@ -610,7 +610,7 @@ message OpSharding {
 // all-to-all).
 message ReplicaGroup {
   // The ids of the replicas that belongs to the same group. The ordering of the
-  // ids matters in some op (e.g., all-to-all).
+  // ids matters in some ops (e.g., all-to-all).
   repeated int64 replica_ids = 1;
 }
 

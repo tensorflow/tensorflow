@@ -2405,7 +2405,7 @@ class Cropping2D(Layer):
   model.add(Cropping2D(cropping=((2, 2), (4, 4)),
                        input_shape=(28, 28, 3)))
   # now model.output_shape == (None, 24, 20, 3)
-  model.add(Conv2D(64, (3, 3), padding='same))
+  model.add(Conv2D(64, (3, 3), padding='same'))
   model.add(Cropping2D(cropping=((2, 2), (2, 2))))
   # now model.output_shape == (None, 20, 16. 64)
   ```
@@ -2492,7 +2492,7 @@ class Cropping3D(Layer):
   """Cropping layer for 3D data (e.g. spatial or spatio-temporal).
 
   Arguments:
-    cropping: Int, or tuple of 23ints, or tuple of 3 tuples of 2 ints.
+    cropping: Int, or tuple of 3 ints, or tuple of 3 tuples of 2 ints.
       - If int: the same symmetric cropping
         is applied to depth, height, and width.
       - If tuple of 3 ints: interpreted as two different

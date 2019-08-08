@@ -185,7 +185,7 @@ Status ParseGcsPath(StringPiece fname, bool empty_object_ok, string* bucket,
     return errors::InvalidArgument("GCS path doesn't contain a bucket name: ",
                                    fname);
   }
-  str_util::ConsumePrefix(&objectp, "/");
+  absl::ConsumePrefix(&objectp, "/");
   *object = string(objectp);
   if (!empty_object_ok && object->empty()) {
     return errors::InvalidArgument("GCS path doesn't contain an object name: ",
@@ -548,8 +548,8 @@ class GcsWritableFile : public WritableFile {
       *uploaded = 0;
     } else {
       StringPiece range_piece(received_range);
-      str_util::ConsumePrefix(&range_piece,
-                              "bytes=");  // May or may not be present.
+      absl::ConsumePrefix(&range_piece,
+                          "bytes=");  // May or may not be present.
       std::vector<int64> range_parts;
       if (!str_util::SplitAndParseAsInts(range_piece, '-', &range_parts) ||
           range_parts.size() != 2) {
@@ -639,8 +639,7 @@ bool StringPieceIdentity(StringPiece str, StringPiece* value) {
 /// unordered set, lowercasing all values.
 bool SplitByCommaToLowercaseSet(StringPiece list,
                                 std::unordered_set<string>* set) {
-  std::vector<string> vector =
-      str_util::Split(tensorflow::str_util::Lowercase(list), ",");
+  std::vector<string> vector = absl::StrSplit(absl::AsciiStrToLower(list), ',');
   *set = std::unordered_set<string>(vector.begin(), vector.end());
   return true;
 }
@@ -891,13 +890,13 @@ std::unique_ptr<FileBlockCache> GcsFileSystem::MakeFileBlockCache(
 }
 
 // A helper function to actually read the data from GCS.
-Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
+Status GcsFileSystem::LoadBufferFromGCS(const string& fname, size_t offset,
                                         size_t n, char* buffer,
                                         size_t* bytes_transferred) {
   *bytes_transferred = 0;
 
   string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(filename, false, &bucket, &object));
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
 
   std::unique_ptr<HttpRequest> request;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(CreateHttpRequest(&request),
@@ -910,7 +909,7 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
   request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.read);
 
   if (stats_ != nullptr) {
-    stats_->RecordBlockLoadRequest(filename, offset);
+    stats_->RecordBlockLoadRequest(fname, offset);
   }
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
@@ -922,7 +921,7 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
           << offset << " of size: " << bytes_read;
 
   if (stats_ != nullptr) {
-    stats_->RecordBlockRetrieved(filename, offset, bytes_read);
+    stats_->RecordBlockRetrieved(fname, offset, bytes_read);
   }
 
   throttle_.RecordResponse(bytes_read);
@@ -930,11 +929,11 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& filename, size_t offset,
   if (bytes_read < n) {
     // Check stat cache to see if we encountered an interrupted read.
     GcsFileStat stat;
-    if (stat_cache_->Lookup(filename, &stat)) {
+    if (stat_cache_->Lookup(fname, &stat)) {
       if (offset + bytes_read < stat.base.length) {
         return errors::Internal(strings::Printf(
-            "File contents are inconsistent for file: %s @ %lu.",
-            filename.c_str(), offset));
+            "File contents are inconsistent for file: %s @ %lu.", fname.c_str(),
+            offset));
       }
       VLOG(2) << "Successful integrity check for: gs://" << bucket << "/"
               << object << " @ " << offset;
@@ -1166,7 +1165,7 @@ Status GcsFileSystem::CheckBucketLocationConstraint(const string& bucket) {
   return errors::FailedPrecondition(strings::Printf(
       "Bucket '%s' is in '%s' location, allowed locations are: (%s).",
       bucket.c_str(), location.c_str(),
-      str_util::Join(allowed_locations_, ", ").c_str()));
+      absl::StrJoin(allowed_locations_, ", ").c_str()));
 }
 
 Status GcsFileSystem::GetBucketLocation(const string& bucket,
@@ -1180,7 +1179,7 @@ Status GcsFileSystem::GetBucketLocation(const string& bucket,
     TF_RETURN_IF_ERROR(
         GetStringValue(result, kBucketMetadataLocationKey, &bucket_location));
     // Lowercase the GCS location to be case insensitive for allowed locations.
-    *location = tensorflow::str_util::Lowercase(bucket_location);
+    *location = absl::AsciiStrToLower(bucket_location);
     return Status::OK();
   };
 
@@ -1338,7 +1337,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
         // 'object_prefix', which is part of 'dirname', should be removed from
         // the beginning of 'name'.
         StringPiece relative_path(name);
-        if (!str_util::ConsumePrefix(&relative_path, object_prefix)) {
+        if (!absl::ConsumePrefix(&relative_path, object_prefix)) {
           return errors::Internal(strings::StrCat(
               "Unexpected response: the returned file name ", name,
               " doesn't match the prefix ", object_prefix));
@@ -1367,7 +1366,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
         }
         const string& prefix_str = prefix.asString();
         StringPiece relative_path(prefix_str);
-        if (!str_util::ConsumePrefix(&relative_path, object_prefix)) {
+        if (!absl::ConsumePrefix(&relative_path, object_prefix)) {
           return errors::Internal(
               "Unexpected response: the returned folder name ", prefix_str,
               " doesn't match the prefix ", object_prefix);

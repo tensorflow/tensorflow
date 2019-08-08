@@ -375,8 +375,10 @@ class ReturnStatementsTransformer(converter.Base):
       if self.default_to_null_return:
         template = """
           do_return_var_name = False
-          retval_var_name = None
+          retval_var_name = ag__.UndefinedReturnValue()
           body
+          if ag__.is_undefined_return(retval_var_name):
+            retval_var_name = None
           return retval_var_name
         """
       else:

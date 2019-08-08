@@ -219,7 +219,7 @@ def multi_gpu_model(model, gpus, cpu_merge=True, cpu_relocation=False):
   # each getting a slice of the inputs.
   for i, gpu_id in enumerate(target_gpu_ids):
     with ops.device('/gpu:%d' % gpu_id):
-      with ops.name_scope('replica_%d' % gpu_id):
+      with K.name_scope('replica_%d' % gpu_id):
         inputs = []
         # Retrieve a slice of the input.
         for x in model.inputs:

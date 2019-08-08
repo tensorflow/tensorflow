@@ -45,9 +45,10 @@ class VirtualCluster : public Cluster {
 
   Status Provision() override;
   Status Initialize(const GrapplerItem& item) override;
-  Status Run(const GraphDef& item,
+  Status Run(const GraphDef& graph,
              const std::vector<std::pair<string, Tensor>>& feed,
              const std::vector<string>& fetch, RunMetadata* metadata) override;
+  Status Run(const GrapplerItem& item, RunMetadata* metadata) override;
   const DeviceSet* GetDeviceSet() const override { return device_set_; }
 
  private:

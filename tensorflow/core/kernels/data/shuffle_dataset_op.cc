@@ -364,7 +364,7 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 buffer_size;
+    int64 buffer_size = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
     OP_REQUIRES(
@@ -637,7 +637,7 @@ class ShuffleAndRepeatDatasetOp : public ShuffleDatasetOpBase {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 buffer_size;
+    int64 buffer_size = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
     OP_REQUIRES(

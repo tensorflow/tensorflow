@@ -41,7 +41,7 @@ class InfeedThunk : public Thunk {
   InfeedThunk& operator=(const InfeedThunk&) = delete;
 
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
+                         se::Stream* stream, const RunId& run_id,
                          HloExecutionProfiler* profiler) override;
 
  private:

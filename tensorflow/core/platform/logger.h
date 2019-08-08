@@ -27,7 +27,7 @@ namespace tensorflow {
 class Logger {
  public:
   // The singleton is supposed to be used in the following steps:
-  // * At program start time, REGISTER_MOUDLE_INITIALIZER calls
+  // * At program start time, REGISTER_MODULE_INITIALIZER calls
   //   SetSingletonFactory.
   // * At some point in the program execution, Singleton() is called for the
   //   first time, initializing the logger.

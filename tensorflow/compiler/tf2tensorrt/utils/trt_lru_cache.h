@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
+#include "third_party/tensorrt/NvInfer.h"
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {

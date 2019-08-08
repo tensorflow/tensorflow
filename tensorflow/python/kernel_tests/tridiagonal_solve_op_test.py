@@ -21,14 +21,17 @@ from __future__ import print_function
 import itertools
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl
 from tensorflow.python.platform import benchmark
@@ -349,6 +352,128 @@ class TridiagonalSolveOpTest(test.TestCase):
         expected=np.array([_sample_result, -2 * _sample_result]),
         transpose_rhs=True)
 
+  # Gradient tests
+
+  def _gradientTest(
+      self,
+      diags,
+      rhs,
+      y,  # output = reduce_sum(y * tridiag_solve(diags, rhs))
+      expected_grad_diags,  # expected gradient of output w.r.t. diags
+      expected_grad_rhs,  # expected gradient of output w.r.t. rhs
+      diags_format="compact",
+      transpose_rhs=False,
+      conjugate_rhs=False,
+      feed_dict=None):
+    expected_grad_diags = _tfconst(expected_grad_diags)
+    expected_grad_rhs = _tfconst(expected_grad_rhs)
+    with backprop.GradientTape() as tape_diags:
+      with backprop.GradientTape() as tape_rhs:
+        tape_diags.watch(diags)
+        tape_rhs.watch(rhs)
+        x = linalg_impl.tridiagonal_solve(
+            diags,
+            rhs,
+            diagonals_format=diags_format,
+            transpose_rhs=transpose_rhs,
+            conjugate_rhs=conjugate_rhs)
+        res = math_ops.reduce_sum(x * y)
+    with self.cached_session(use_gpu=True) as sess:
+      actual_grad_diags = sess.run(
+          tape_diags.gradient(res, diags), feed_dict=feed_dict)
+      actual_rhs_diags = sess.run(
+          tape_rhs.gradient(res, rhs), feed_dict=feed_dict)
+    self.assertAllClose(expected_grad_diags, actual_grad_diags)
+    self.assertAllClose(expected_grad_rhs, actual_rhs_diags)
+
+  def _gradientTestWithLists(self,
+                             diags,
+                             rhs,
+                             y,
+                             expected_grad_diags,
+                             expected_grad_rhs,
+                             diags_format="compact",
+                             transpose_rhs=False,
+                             conjugate_rhs=False):
+    self._gradientTest(
+        _tfconst(diags), _tfconst(rhs), _tfconst(y), expected_grad_diags,
+        expected_grad_rhs, diags_format, transpose_rhs, conjugate_rhs)
+
+  def testGradientSimple(self):
+    self._gradientTestWithLists(
+        diags=_sample_diags,
+        rhs=_sample_rhs,
+        y=[1, 3, 2, 4],
+        expected_grad_diags=[[-5, 0, 4, 0], [9, 0, -4, -16], [0, 0, 5, 16]],
+        expected_grad_rhs=[1, 0, -1, 4])
+
+  def testGradientWithMultipleRhs(self):
+    self._gradientTestWithLists(
+        diags=_sample_diags,
+        rhs=[[1, 2], [2, 4], [3, 6], [4, 8]],
+        y=[[1, 5], [2, 6], [3, 7], [4, 8]],
+        expected_grad_diags=([[-20, 28, -60, 0], [36, -35, 60, 80],
+                              [0, 63, -75, -80]]),
+        expected_grad_rhs=[[0, 2], [1, 3], [1, 7], [0, -10]])
+
+  def _makeDataForGradientWithBatching(self):
+    y = np.array([1, 3, 2, 4])
+    grad_diags = np.array([[-5, 0, 4, 0], [9, 0, -4, -16], [0, 0, 5, 16]])
+    grad_rhs = np.array([1, 0, -1, 4])
+
+    diags_batched = np.array(
+        [[_sample_diags, 2 * _sample_diags, 3 * _sample_diags],
+         [4 * _sample_diags, 5 * _sample_diags, 6 * _sample_diags]])
+    rhs_batched = np.array([[_sample_rhs, -_sample_rhs, _sample_rhs],
+                            [-_sample_rhs, _sample_rhs, -_sample_rhs]])
+    y_batched = np.array([[y, y, y], [y, y, y]])
+    expected_grad_diags_batched = np.array(
+        [[grad_diags, -grad_diags / 4, grad_diags / 9],
+         [-grad_diags / 16, grad_diags / 25, -grad_diags / 36]])
+    expected_grad_rhs_batched = np.array(
+        [[grad_rhs, grad_rhs / 2, grad_rhs / 3],
+         [grad_rhs / 4, grad_rhs / 5, grad_rhs / 6]])
+
+    return (y_batched, diags_batched, rhs_batched, expected_grad_diags_batched,
+            expected_grad_rhs_batched)
+
+  def testGradientWithBatchDims(self):
+    y, diags, rhs, expected_grad_diags, expected_grad_rhs = \
+      self._makeDataForGradientWithBatching()
+
+    self._gradientTestWithLists(
+        diags=diags,
+        rhs=rhs,
+        y=y,
+        expected_grad_diags=expected_grad_diags,
+        expected_grad_rhs=expected_grad_rhs)
+
+  @test_util.run_deprecated_v1
+  def testGradientWithUnknownShapes(self):
+
+    def placeholder(rank):
+      return array_ops.placeholder(
+          dtypes.float64, shape=(None for _ in range(rank)))
+
+    y, diags, rhs, expected_grad_diags, expected_grad_rhs = \
+      self._makeDataForGradientWithBatching()
+
+    diags_placeholder = placeholder(rank=4)
+    rhs_placeholder = placeholder(rank=3)
+    y_placeholder = placeholder(rank=3)
+
+    self._gradientTest(
+        diags=diags_placeholder,
+        rhs=rhs_placeholder,
+        y=y_placeholder,
+        expected_grad_diags=expected_grad_diags,
+        expected_grad_rhs=expected_grad_rhs,
+        feed_dict={
+            diags_placeholder: diags,
+            rhs_placeholder: rhs,
+            y_placeholder: y
+        })
+
   # Invalid input shapes
 
   @flags(FLAG_NO_PARAMETERIZATION)
@@ -405,6 +530,7 @@ class TridiagonalSolveOpTest(test.TestCase):
       result = sess.run(x, feed_dict={diags: diags_feed, rhs: rhs_feed})
       self.assertAllClose(result, expected)
 
+  @test_util.run_deprecated_v1
   def testCompactFormatAllDimsUnknown(self):
     self._testWithPlaceholders(
         diags_shape=[None, None],
@@ -413,6 +539,7 @@ class TridiagonalSolveOpTest(test.TestCase):
         rhs_feed=_sample_rhs,
         expected=_sample_result)
 
+  @test_util.run_deprecated_v1
   def testCompactFormatUnknownMatrixSize(self):
     self._testWithPlaceholders(
         diags_shape=[3, None],
@@ -421,6 +548,7 @@ class TridiagonalSolveOpTest(test.TestCase):
         rhs_feed=_sample_rhs,
         expected=_sample_result)
 
+  @test_util.run_deprecated_v1
   def testCompactFormatUnknownRhsCount(self):
     self._testWithPlaceholders(
         diags_shape=[3, 4],
@@ -429,6 +557,7 @@ class TridiagonalSolveOpTest(test.TestCase):
         rhs_feed=np.transpose([_sample_rhs, 2 * _sample_rhs]),
         expected=np.transpose([_sample_result, 2 * _sample_result]))
 
+  @test_util.run_deprecated_v1
   def testCompactFormatUnknownBatchSize(self):
     self._testWithPlaceholders(
         diags_shape=[None, 3, 4],
@@ -437,6 +566,7 @@ class TridiagonalSolveOpTest(test.TestCase):
         rhs_feed=np.array([_sample_rhs, 2 * _sample_rhs]),
         expected=np.array([_sample_result, -2 * _sample_result]))
 
+  @test_util.run_deprecated_v1
   def testMatrixFormatWithUnknownDims(self):
     if context.executing_eagerly():
       return
@@ -460,6 +590,7 @@ class TridiagonalSolveOpTest(test.TestCase):
     with self.assertRaises(ValueError):
       test_with_matrix_shapes(matrix_shape=[None, None])
 
+  @test_util.run_deprecated_v1
   def testSequenceFormatWithUnknownDims(self):
     if context.executing_eagerly():
       return

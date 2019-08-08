@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 
-#include "grpcpp/grpcpp.h"
-
 #include <cstdio>
 #include <ctime>
 #include <vector>
 
+#include "grpcpp/grpcpp.h"
+#include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -64,7 +65,7 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
   ProfileRequest request;
   request.set_duration_ms(duration_ms);
   request.set_max_events(kMaxEvents);
-  if (tensorflow::str_util::StartsWith(repository_root, "gs://")) {
+  if (absl::StartsWith(repository_root, "gs://")) {
     // For backward compatibilities, only generate tracetable etc when the
     // user provide a GCS path for model directory.
     request.set_repository_root(repository_root);
@@ -156,7 +157,7 @@ Status NewSession(const string& service_addr,
       stub->NewSession(&context, new_session_request, &new_session_response)));
 
   std::cout << "Profile session succeed for host(s):"
-            << str_util::Join(hostnames, ",") << std::endl;
+            << absl::StrJoin(hostnames, ",") << std::endl;
   if (new_session_response.empty_trace()) {
     return Status(tensorflow::error::Code::UNAVAILABLE,
                   "No trace event is collected");

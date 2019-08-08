@@ -51,6 +51,13 @@ class MarkForCompilationPass : public GraphOptimizationPass {
 // function is compilable iff every operator in the function body is
 // compilable.
 bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef);
+
+namespace testing {
+// DO NOT USE IN PRODUCTION.
+//
+// Resets some internal state to let us write reliable unit tests.
+void ResetClusterSequenceNumber();
+}  // namespace testing
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_MARK_FOR_COMPILATION_PASS_H_

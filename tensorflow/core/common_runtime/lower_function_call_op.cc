@@ -60,6 +60,7 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
     // Tensorflow 2.0 Eager mode, and it has control outputs to represent
     // side-effects that must always execute (see `control_ret` in FunctionDef).
     inline_options.override_device = false;
+    inline_options.initialize_empty_device = true;
     inline_options.output_control_src = OutputControlSrc::kControlOutputs;
   } else {
     // Native function call (node.type_string() is the function name). These

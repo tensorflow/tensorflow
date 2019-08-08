@@ -43,18 +43,17 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
   void Shutdown() override;
 
  private:
-#define HANDLER(method)                                                        \
-  void method##Handler(EagerCall<method##Request, method##Response>* call) {   \
-    env_->compute_pool->Schedule([this, call]() {                              \
-      call->SendResponse(                                                      \
-          ToGrpcStatus(local_impl_.method(&call->request, &call->response)));  \
-    });                                                                        \
-    Call<GrpcEagerServiceImpl,                                                 \
-         tensorflow::eager::grpc::EagerService::AsyncService, method##Request, \
-         method##Response>::                                                   \
-        EnqueueRequest(&service_, cq_.get(),                                   \
-                       &grpc::EagerService::AsyncService::Request##method,     \
-                       &GrpcEagerServiceImpl::method##Handler, false);         \
+#define HANDLER(method)                                                       \
+  void method##Handler(EagerCall<method##Request, method##Response>* call) {  \
+    env_->compute_pool->Schedule([this, call]() {                             \
+      call->SendResponse(                                                     \
+          ToGrpcStatus(local_impl_.method(&call->request, &call->response))); \
+    });                                                                       \
+    Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,              \
+         method##Request, method##Response>::                                 \
+        EnqueueRequest(&service_, cq_.get(),                                  \
+                       &grpc::EagerService::AsyncService::Request##method,    \
+                       &GrpcEagerServiceImpl::method##Handler, false);        \
   }
   HANDLER(CreateContext);
   HANDLER(Enqueue);
@@ -71,7 +70,7 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
   std::unique_ptr<::grpc::Alarm> shutdown_alarm_;
 
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
-  tensorflow::eager::grpc::EagerService::AsyncService service_;
+  grpc::EagerService::AsyncService service_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcEagerServiceImpl);
 };

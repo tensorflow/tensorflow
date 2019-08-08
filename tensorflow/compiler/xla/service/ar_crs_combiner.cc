@@ -68,29 +68,31 @@ absl::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
            Match(c->root_instruction(), m::Add(m::Parameter(), m::Parameter()));
   };
 
-  if (!instruction->IsCrossModuleAllReduce() ||
-      !computation_is_addition(instruction->called_computations()[0]) ||
-      instruction->user_count() != 1) {
-    return absl::nullopt;
-  }
-  auto next = instruction->users()[0];
-  int64 distance = 1;
-  while (!next->IsCrossReplicaAllReduce()) {
-    if (can_ar_move_past_instruction(next)) {
-      next = next->users()[0];
-    } else {
-      return absl::nullopt;
+  // We only support combining cross-partition all-reduce where each replica
+  // belongs to its own group, since the later cross-replica all-reduce combines
+  // along the replica dimension.
+  if (instruction->IsCrossModuleAllReduce() &&
+      instruction->replica_groups().size() == num_replicas_ &&
+      computation_is_addition(instruction->called_computations()[0]) &&
+      instruction->user_count() == 1) {
+    auto next = instruction->users()[0];
+    int64 distance = 1;
+    while (!next->IsCrossReplicaAllReduce()) {
+      if (can_ar_move_past_instruction(next)) {
+        next = next->users()[0];
+      } else {
+        return absl::nullopt;
+      }
+      ++distance;
     }
-    ++distance;
+    if (!Cast<HloAllReduceInstruction>(next)->IsNoop() &&
+        computation_is_addition(next->called_computations()[0])) {
+      ArCrsPair pair(instruction, next, distance);
+      VLOG(2) << "ArCrsPair matching pattern: " << pair.ToString();
+      return pair;
+    }
   }
-  if (!Cast<HloAllReduceInstruction>(next)->IsNoop() &&
-      computation_is_addition(next->called_computations()[0])) {
-    ArCrsPair pair(instruction, next, distance);
-    VLOG(2) << "ArCrsPair matching pattern: " << pair.ToString();
-    return pair;
-  } else {
-    return absl::nullopt;
-  }
+  return absl::nullopt;
 }
 
 absl::optional<HloInstruction*> ArCrsCombiner::WhileFromBodyParameter(
@@ -107,54 +109,124 @@ absl::optional<HloInstruction*> ArCrsCombiner::WhileFromBodyParameter(
   return absl::nullopt;
 }
 
-std::vector<HloInstruction*> ArCrsCombiner::GetAllTuples(
+absl::optional<HloInstruction*> ArCrsCombiner::ConditionalFromBodyParameter(
     HloInstruction* instruction) {
-  if (instruction->opcode() == HloOpcode::kTuple) {
-    return {instruction};
-  }
-  if (instruction->opcode() == HloOpcode::kDomain) {
-    return GetAllTuples(instruction->operands()[0]);
-  }
-  if (instruction->opcode() == HloOpcode::kParameter) {
-    auto maybe_while = WhileFromBodyParameter(instruction);
-    if (!maybe_while) {
-      return {};
+  CHECK_EQ(HloOpcode::kParameter, instruction->opcode());
+  HloComputation* computation = instruction->parent();
+  auto caller_instructions = call_graph_->GetComputationCallers(computation);
+  if (caller_instructions.size() == 1) {
+    auto caller_instruction = caller_instructions[0];
+    if (caller_instruction->opcode() == HloOpcode::kConditional) {
+      return caller_instruction;
     }
-    auto while_instr = *maybe_while;
-    auto init_tuples = GetAllTuples(while_instr->while_init());
-    auto body_tuples =
-        GetAllTuples(while_instr->while_body()->root_instruction());
-    if (init_tuples.empty() || body_tuples.empty()) {
-      return {};
-    }
-    init_tuples.insert(init_tuples.end(), body_tuples.begin(),
-                       body_tuples.end());
-    return init_tuples;
   }
-  if (instruction->opcode() == HloOpcode::kGetTupleElement) {
-    std::vector<HloInstruction*> result_tuples;
-    for (auto tuple : GetAllTuples(instruction->operands()[0])) {
-      auto tmp_tuples =
-          GetAllTuples(tuple->mutable_operand(instruction->tuple_index()));
-      if (tmp_tuples.empty()) {
-        return {};
+  return absl::nullopt;
+}
+
+absl::optional<std::vector<HloInstruction*>> ArCrsCombiner::GetAllTuples(
+    HloInstruction* instruction,
+    absl::flat_hash_set<HloInstruction*>* visited) {
+  if (visited->find(instruction) != visited->end()) {
+    return std::vector<HloInstruction*>();
+  }
+  visited->insert(instruction);
+
+  switch (instruction->opcode()) {
+    case HloOpcode::kTuple: {
+      return std::vector<HloInstruction*>({instruction});
+    }
+    case HloOpcode::kDomain: {
+      return GetAllTuples(instruction->operands()[0], visited);
+    }
+    case HloOpcode::kParameter: {
+      auto maybe_while = WhileFromBodyParameter(instruction);
+      if (maybe_while) {
+        auto while_instr = *maybe_while;
+        auto init_tuples = GetAllTuples(while_instr->while_init(), visited);
+        auto body_tuples = GetAllTuples(
+            while_instr->while_body()->root_instruction(), visited);
+        if (!init_tuples || !body_tuples) {
+          return absl::nullopt;
+        }
+        auto result = *init_tuples;
+        result.insert(result.end(), body_tuples->begin(), body_tuples->end());
+        return result;
       }
-      result_tuples.insert(result_tuples.end(), tmp_tuples.begin(),
-                           tmp_tuples.end());
+      auto maybe_conditional = ConditionalFromBodyParameter(instruction);
+      if (maybe_conditional) {
+        auto cond_instr = *maybe_conditional;
+        std::vector<HloInstruction*> tuples;
+        for (int64 i = 0; i < cond_instr->branch_computations().size(); ++i) {
+          if (cond_instr->branch_computation(i)->parameter_instruction(0) ==
+              instruction) {
+            // If the same computation is used for more than one branch of the
+            // conditional, we collect the arguments that flow to the
+            // computation from all branches.
+            auto branch_tuples =
+                GetAllTuples(cond_instr->mutable_operand(i + 1), visited);
+            if (!branch_tuples) {
+              return absl::nullopt;
+            }
+            tuples.insert(tuples.end(), branch_tuples->begin(),
+                          branch_tuples->end());
+          }
+        }
+        return tuples;
+      }
+      return absl::nullopt;
     }
-    return result_tuples;
+    case HloOpcode::kGetTupleElement: {
+      std::vector<HloInstruction*> result_tuples;
+      auto tuples = GetAllTuples(instruction->operands()[0], visited);
+      if (!tuples) {
+        return absl::nullopt;
+      }
+      for (auto tuple : *tuples) {
+        auto tmp_tuples = GetAllTuples(
+            tuple->mutable_operand(instruction->tuple_index()), visited);
+        if (!tmp_tuples) {
+          return absl::nullopt;
+        }
+        result_tuples.insert(result_tuples.end(), tmp_tuples->begin(),
+                             tmp_tuples->end());
+      }
+      return result_tuples;
+    }
+    case HloOpcode::kConditional: {
+      std::vector<HloInstruction*> result_tuples;
+      for (HloComputation* body : instruction->branch_computations()) {
+        if (body->root_instruction()->opcode() != HloOpcode::kTuple) {
+          return absl::nullopt;
+        }
+        result_tuples.push_back(body->root_instruction());
+      }
+      return result_tuples;
+    }
+    case HloOpcode::kWhile: {
+      auto init_tuples = GetAllTuples(instruction->while_init(), visited);
+      auto body_tuples =
+          GetAllTuples(instruction->while_body()->root_instruction(), visited);
+      if (!init_tuples || !body_tuples) {
+        return absl::nullopt;
+      }
+      auto result = *init_tuples;
+      result.insert(result.end(), body_tuples->begin(), body_tuples->end());
+      return result;
+    }
+    default:
+      return absl::nullopt;
   }
-  return {};
 }
 
 bool ArCrsCombiner::TupleElementsComputeSameValue(
     HloInstruction* tuple_shaped_instruction, int64 i1, int64 i2,
     absl::flat_hash_map<int64, int64>* visited_pairs) {
-  auto tuples = GetAllTuples(tuple_shaped_instruction);
-  if (tuples.empty()) {
+  absl::flat_hash_set<HloInstruction*> visited;
+  auto tuples = GetAllTuples(tuple_shaped_instruction, &visited);
+  if (!tuples) {
     return false;
   }
-  for (auto tuple : tuples) {
+  for (auto tuple : *tuples) {
     CHECK_EQ(tuple->opcode(), HloOpcode::kTuple);
     if (!InstructionsComputeSameValue(tuple->mutable_operand(i1),
                                       tuple->mutable_operand(i2),
@@ -168,7 +240,7 @@ bool ArCrsCombiner::TupleElementsComputeSameValue(
 /* static */
 bool ArCrsCombiner::TestInstructionsComputeSameValue(HloInstruction* i1,
                                                      HloInstruction* i2) {
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/1);
   auto module = i1->parent()->parent();
   CHECK_EQ(module, i2->parent()->parent());
   combiner.call_graph_ = CallGraph::Build(module);

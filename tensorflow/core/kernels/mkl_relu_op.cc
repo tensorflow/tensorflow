@@ -466,6 +466,18 @@ class MklReluOpBase : public OpKernel {
         return;
       }
 
+      MklDnnShape dnn_shape_dst;
+      TensorShape tf_shape_dst;
+      Tensor* dst_tensor = nullptr;
+      // Nothing to compute, return.
+      if (src_tensor.shape().num_elements() == 0) {
+        dnn_shape_dst.SetMklTensor(false);
+        tf_shape_dst = MklGetInput(context, src_index).shape();
+        AllocateOutputSetMklShape(context, dst_index, &dst_tensor, tf_shape_dst,
+                                  dnn_shape_dst);
+        return;
+      }
+
       // Set DNN primitive - src
       MklDnnData<T> src(&cpu_engine);
       memory::dims src_dims;
@@ -502,8 +514,6 @@ class MklReluOpBase : public OpKernel {
       // allocate dst tensor, always set it as MKL-DNN layout
       std::shared_ptr<mkldnn::eltwise_forward::primitive_desc> eltwise_fwd_pd =
           eltwise_fwd->GetEltwiseFwdPd();
-      MklDnnShape dnn_shape_dst;
-      TensorShape tf_shape_dst;
       if (dnn_shape_src.IsMklTensor()) {
         dnn_shape_dst.SetMklTensor(true);
         auto dst_pd = eltwise_fwd_pd->dst_primitive_desc();
@@ -518,7 +528,6 @@ class MklReluOpBase : public OpKernel {
         tf_shape_dst = src_tensor.shape();
       }
 
-      Tensor* dst_tensor = nullptr;
       OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                   {static_cast<const int>(src_index)},
                                   static_cast<const int>(dst_index),
@@ -579,6 +588,17 @@ class MklReluGradOpBase : public OpKernel {
       int src_dims_size = src_tensor.dims();
       if (src_dims_size == 0) {
         Compute_Scalar(context);
+        return;
+      }
+
+      TensorShape tf_shape_diff_src;
+      MklDnnShape dnn_shape_diff_src;
+      // Nothing to compute, return.
+      if (src_tensor.shape().num_elements() == 0) {
+        dnn_shape_diff_src.SetMklTensor(false);
+        tf_shape_diff_src = MklGetInput(context, diff_src_index).shape();
+        AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
+                                  tf_shape_diff_src, dnn_shape_diff_src);
         return;
       }
 
@@ -664,8 +684,6 @@ class MklReluGradOpBase : public OpKernel {
       }
 
       // allocate diff_src tensor
-      MklDnnShape dnn_shape_diff_src;
-      TensorShape tf_shape_diff_src;
       if (dnn_shape_src.IsMklTensor() || dnn_shape_diff_dst.IsMklTensor()) {
         auto diff_src_pd = eltwise_bwd_pd->diff_src_primitive_desc();
         dnn_shape_diff_src.SetMklTensor(true);

@@ -35,20 +35,18 @@ limitations under the License.
 
 namespace {
 
+using tflite::evaluation::TfliteInferenceParams;
+
 constexpr char kNumImagesFlag[] = "num_images";
 constexpr char kModelOutputLabelsFlag[] = "model_output_labels";
 constexpr char kGroundTruthImagesPathFlag[] = "ground_truth_images_path";
 constexpr char kGroundTruthLabelsFlag[] = "ground_truth_labels";
 constexpr char kBlacklistFilePathFlag[] = "blacklist_file_path";
 constexpr char kModelFileFlag[] = "model_file";
-
-std::string StripTrailingSlashes(const std::string& path) {
-  int end = path.size();
-  while (end > 0 && path[end - 1] == '/') {
-    end--;
-  }
-  return path.substr(0, end);
-}
+constexpr char kInterpreterThreadsFlag[] = "num_interpreter_threads";
+constexpr char kDelegateFlag[] = "delegate";
+constexpr char kNnapiDelegate[] = "nnapi";
+constexpr char kGpuDelegate[] = "gpu";
 
 template <typename T>
 std::vector<T> GetFirstN(const std::vector<T>& v, int n) {
@@ -140,7 +138,14 @@ class CompositeObserver : public ImagenetModelEvaluator::Observer {
           "integer that is "
           "equal to index number of blacklisted image."),
       tflite::Flag::CreateFlag(kModelFileFlag, &params.model_file_path,
-                               "Path to test tflite model file.")};
+                               "Path to test tflite model file."),
+      tflite::Flag::CreateFlag(
+          kInterpreterThreadsFlag, &params.num_interpreter_threads,
+          "Number of interpreter threads to use for inference."),
+      tflite::Flag::CreateFlag(kDelegateFlag, &params.delegate,
+                               "Delegate to use for inference, if available. "
+                               "Must be one of {'nnapi', 'gpu'}"),
+  };
   tflite::Flags::Parse(&argc, const_cast<const char**>(argv), flag_list);
 
   if (params.number_of_images < 0) {
@@ -170,6 +175,12 @@ TfLiteStatus EvaluateModelForShard(const uint64_t shard_id,
                                     ->mutable_image_classification_params();
   auto* inference_params = classification_params->mutable_inference_params();
   inference_params->set_model_file_path(params.model_file_path);
+  inference_params->set_num_threads(params.num_interpreter_threads);
+  if (params.delegate == kNnapiDelegate) {
+    inference_params->set_delegate(TfliteInferenceParams::NNAPI);
+  } else if (params.delegate == kGpuDelegate) {
+    inference_params->set_delegate(TfliteInferenceParams::GPU);
+  }
   classification_params->mutable_topk_accuracy_eval_params()->set_k(num_ranks);
 
   tflite::evaluation::ImageClassificationStage eval(eval_config);
@@ -232,35 +243,13 @@ TfLiteStatus FilterBlackListedImages(const std::string& blacklist_file_path,
   return kTfLiteOk;
 }
 
-// TODO(b/130823599): Move to tools/evaluation/utils.
-TfLiteStatus GetSortedFileNames(const std::string dir_path,
-                                std::vector<std::string>* result) {
-  DIR* dir;
-  struct dirent* ent;
-  if (result == nullptr) {
-    LOG(ERROR) << "result cannot be nullptr";
-    return kTfLiteError;
-  }
-  if ((dir = opendir(dir_path.c_str())) != nullptr) {
-    while ((ent = readdir(dir)) != nullptr) {
-      std::string filename(std::string(ent->d_name));
-      if (filename.size() <= 2) continue;
-      result->emplace_back(dir_path + "/" + filename);
-    }
-    closedir(dir);
-  } else {
-    LOG(ERROR) << "Could not open dir: " << dir_path;
-    return kTfLiteError;
-  }
-  std::sort(result->begin(), result->end());
-  return kTfLiteOk;
-}
-
 TfLiteStatus ImagenetModelEvaluator::EvaluateModel() const {
-  const std::string data_path =
-      StripTrailingSlashes(params_.ground_truth_images_path) + "/";
+  const std::string data_path = tflite::evaluation::StripTrailingSlashes(
+                                    params_.ground_truth_images_path) +
+                                "/";
   std::vector<std::string> image_files;
-  TF_LITE_ENSURE_STATUS(GetSortedFileNames(data_path, &image_files));
+  TF_LITE_ENSURE_STATUS(
+      tflite::evaluation::GetSortedFileNames(data_path, &image_files));
   std::vector<string> ground_truth_image_labels;
   if (!tflite::evaluation::ReadFileLines(params_.ground_truth_labels_path,
                                          &ground_truth_image_labels))

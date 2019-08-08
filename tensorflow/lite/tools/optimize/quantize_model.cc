@@ -260,8 +260,7 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
 // outpus must have the same scale and zero point. The other ones with
 // constraints(averagepool, maxpool, gather, softmax, tanh etc) are handled in
 // QuantizeWeightsAndInput.
-TfLiteStatus ApplyConstraints(flatbuffers::FlatBufferBuilder* builder,
-                              ModelT* model, ErrorReporter* error_reporter) {
+TfLiteStatus ApplyConstraints(ModelT* model, ErrorReporter* error_reporter) {
   for (int subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
@@ -371,9 +370,6 @@ TfLiteStatus QuantizeOpInput(ModelT* model, int32_t subgraph_idx,
   OperatorT* op = subgraph->operators[*op_idx].get();
   const BuiltinOperator op_code =
       model->operator_codes[op->opcode_index]->builtin_code;
-  const int32_t tensor_idx = op->inputs[input_idx];
-  TensorT* tensor = subgraph->tensors[tensor_idx].get();
-  const bool is_input_quantized = utils::IsQuantized(subgraph, tensor_idx);
   if (input_idx >= op->inputs.size()) {
     error_reporter->Report(
         "Required input index %d is larger than the input length of op "
@@ -382,6 +378,9 @@ TfLiteStatus QuantizeOpInput(ModelT* model, int32_t subgraph_idx,
         subgraph_idx);
     return kTfLiteError;
   }
+  const int32_t tensor_idx = op->inputs[input_idx];
+  TensorT* tensor = subgraph->tensors[tensor_idx].get();
+  const bool is_input_quantized = utils::IsQuantized(subgraph, tensor_idx);
   if (property.quantizable && !is_input_quantized) {
     // The operation is quantizable, but the input isn't yet quantized.
     if (utils::HasBuffer(model, subgraph, tensor_idx)) {
@@ -419,8 +418,7 @@ TfLiteStatus QuantizeOpInput(ModelT* model, int32_t subgraph_idx,
     } else {
       error_reporter->Report(
           "Unable to find buffer or min/max value for input activation "
-          "%d "
-          "in %s in subgraph %d, node: %d",
+          "%d in %s in subgraph %d, node: %d",
           input_idx, EnumNameBuiltinOperator(op_code), subgraph_idx, *op_idx);
       return kTfLiteError;
     }
@@ -540,8 +538,7 @@ TfLiteStatus QuantizeOpOutput(ModelT* model, int32_t subgraph_idx,
 
 // Quantize inputs and weights.
 // Because of ops such as lstm, still need to do per op, instead of weights.
-TfLiteStatus QuantizeWeightsInputOutput(flatbuffers::FlatBufferBuilder* builder,
-                                        ModelT* model, bool allow_float,
+TfLiteStatus QuantizeWeightsInputOutput(ModelT* model, bool allow_float,
                                         ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
@@ -576,8 +573,7 @@ TfLiteStatus QuantizeWeightsInputOutput(flatbuffers::FlatBufferBuilder* builder,
 }
 
 // Quantize bias.
-TfLiteStatus QuantizeBiases(flatbuffers::FlatBufferBuilder* builder,
-                            ModelT* model, ErrorReporter* error_reporter) {
+TfLiteStatus QuantizeBiases(ModelT* model, ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
@@ -636,9 +632,9 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            const TensorType& output_type, bool allow_float,
                            ErrorReporter* error_reporter) {
   TF_LITE_ENSURE_STATUS(
-      QuantizeWeightsInputOutput(builder, model, allow_float, error_reporter));
-  TF_LITE_ENSURE_STATUS(ApplyConstraints(builder, model, error_reporter));
-  TF_LITE_ENSURE_STATUS(QuantizeBiases(builder, model, error_reporter));
+      QuantizeWeightsInputOutput(model, allow_float, error_reporter));
+  TF_LITE_ENSURE_STATUS(ApplyConstraints(model, error_reporter));
+  TF_LITE_ENSURE_STATUS(QuantizeBiases(model, error_reporter));
   utils::SetOperatorCodeVersion(model);
   TF_LITE_ENSURE_STATUS(
       SetInputAndOutputTypes(model, input_type, output_type, error_reporter));

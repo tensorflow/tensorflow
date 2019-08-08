@@ -257,12 +257,12 @@ def getfullargspec(obj):
   return _getfullargspec(target)
 
 
-def getcallargs(func, *positional, **named):
+def getcallargs(*func_and_positional, **named):
   """TFDecorator-aware replacement for inspect.getcallargs.
 
   Args:
-    func: A callable, possibly decorated
-    *positional: The positional arguments that would be passed to `func`.
+    *func_and_positional: A callable, possibly decorated, followed by any
+      positional arguments that would be passed to `func`.
     **named: The named argument dictionary that would be passed to `func`.
 
   Returns:
@@ -273,6 +273,8 @@ def getcallargs(func, *positional, **named):
   it. If no attached decorators modify argspec, the final unwrapped target's
   argspec will be used.
   """
+  func = func_and_positional[0]
+  positional = func_and_positional[1:]
   argspec = getfullargspec(func)
   call_args = named.copy()
   this = getattr(func, 'im_self', None) or getattr(func, '__self__', None)
@@ -285,6 +287,10 @@ def getcallargs(func, *positional, **named):
     for arg, value in zip(argspec.args[-default_count:], argspec.defaults):
       if arg not in call_args:
         call_args[arg] = value
+  if argspec.kwonlydefaults is not None:
+    for k, v in argspec.kwonlydefaults.items():
+      if k not in call_args:
+        call_args[k] = v
   return call_args
 
 

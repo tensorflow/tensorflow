@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -34,6 +35,8 @@ from tensorflow.python.platform import test
 
 _TEST_TYPES = (dtypes.int64, dtypes.float32,
                dtypes.complex64, dtypes.complex128)
+
+# TODO(virimia): Add a benchmark for gather_v2, with batch_dims and axis set.
 
 
 class GatherTest(test.TestCase, parameterized.TestCase):
@@ -340,6 +343,12 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     result = array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
     self.assertAllEqual(expected, result)
 
+    with compat.forward_compatibility_horizon(2019, 6, 11):
+      result = array_ops.gather(
+          params, indices, axis=axis, batch_dims=batch_dims)
+
+    self.assertAllEqual(expected, result)
+
   @parameterized.parameters([
       dict(
           params_shape=[2, 3, 4, 5, 6, 7],
@@ -434,6 +443,13 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(output_shape, result.shape.as_list())
     self.assertAllEqual(expected, result)
 
+    with compat.forward_compatibility_horizon(2019, 6, 11):
+      result = array_ops.gather(
+          params, indices, axis=axis, batch_dims=batch_dims)
+
+    self.assertAllEqual(output_shape, result.shape.as_list())
+    self.assertAllEqual(expected, result)
+
   def _batchNumpyGather(self, params, indices, axis, batch_dims):
     """Performs a batch gather by making recursive calls to np.take().
 
@@ -456,40 +472,6 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         self._batchNumpyGather(params[i], indices[i], axis, batch_dims - 1)
         for i in range(params.shape[0])
     ])
-
-  def testSkipEagerErrors(self):
-    if context.executing_eagerly():
-      return
-    with self.assertRaisesRegexp(ValueError, r"tf\.gather does not allow.*"):
-      array_ops.gather(
-          params=[1, 2],
-          batch_dims=1,
-          indices=array_ops.placeholder(dtypes.int32))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testErrors(self):
-
-    with self.assertRaisesRegexp(
-        ValueError, r"batch_dims = 2 must be less than rank\(indices\) = 2"):
-      array_ops.gather(
-          params=[[1, 2], [3, 4]], indices=[[1, 2], [3, 4]], batch_dims=2)
-
-    with self.assertRaisesRegexp(
-        ValueError, r"batch_dims = 1 must be less than rank\(params\) = 1"):
-      array_ops.gather(
-          params=[1, 2, 3, 4], indices=[[1, 2], [3, 4]], batch_dims=1)
-
-    with self.assertRaisesRegexp(
-        ValueError, r"batch_dims = 1 must be less than or equal to axis = 0"):
-      array_ops.gather(
-          params=[[1, 2], [3, 4]],
-          indices=[[1, 2], [3, 4]],
-          batch_dims=1,
-          axis=0)
-
-    one = array_ops.ones((), dtypes.int32)
-    with self.assertRaisesRegexp(TypeError, "batch_dims must be an int"):
-      array_ops.gather(params=[[1]], indices=[[1]], batch_dims=one)
 
   @test_util.run_v1_only("RefVariable is not supported in v2")
   def testGatherRefVariable(self):

@@ -283,12 +283,18 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     values.validate_colocate(colocate_with_variable, self)
 
   def _experimental_distribute_dataset(self, dataset):
-    return input_lib.get_distributed_dataset(dataset, self._input_workers,
-                                             self._num_replicas_in_sync)
+    return input_lib.get_distributed_dataset(
+        dataset,
+        self._input_workers,
+        self._container_strategy(),
+        split_batch_by=self._num_replicas_in_sync)
 
   def _make_dataset_iterator(self, dataset):
-    return input_lib.DatasetIterator(dataset, self._input_workers,
-                                     self._num_replicas_in_sync)
+    return input_lib.DatasetIterator(
+        dataset,
+        self._input_workers,
+        self._container_strategy(),
+        split_batch_by=self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -308,11 +314,33 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         input_pipeline_id=input_pipeline_id,
         num_replicas_in_sync=self._num_replicas_in_sync)
     return input_lib.InputFunctionIterator(input_fn, self._input_workers,
-                                           [input_context])
+                                           [input_context],
+                                           self._container_strategy())
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._input_host_device, session)
+
+  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+    if self._cluster_spec:
+      input_pipeline_id = multi_worker_util.id_in_cluster(
+          self._cluster_spec, self._task_type, self._task_id)
+      num_input_pipelines = multi_worker_util.worker_count(
+          self._cluster_spec, self._task_type)
+    else:
+      input_pipeline_id = 0
+      num_input_pipelines = 1
+
+    input_context = distribute_lib.InputContext(
+        num_input_pipelines=num_input_pipelines,
+        input_pipeline_id=input_pipeline_id,
+        num_replicas_in_sync=self._num_replicas_in_sync)
+
+    return input_lib.DistributedDatasetsFromFunction(
+        dataset_fn,
+        self._input_workers,
+        [input_context],
+        self._container_strategy())
 
   def _broadcast_to(self, tensor, destinations):
     # This is both a fast path for Python constants, and a way to delay

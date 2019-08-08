@@ -178,7 +178,8 @@ void TransferManager::TransferArrayFromDevice(
     se::Stream* stream, const Shape& shape, const se::DeviceMemoryBase& source,
     const MutableBorrowingLiteral& literal, std::function<void(Status)> done,
     const TransferMetadata* transfer_metadata) {
-  if (!ShapeUtil::Equal(HostShapeToDeviceShape(shape), shape)) {
+  if (!Shape::Equal().MinorToMajorOnlyInLayout()(HostShapeToDeviceShape(shape),
+                                                 shape)) {
     auto error = StrCat("Shape ", ShapeUtil::HumanString(shape),
                         " has a differently shaped representation on-device: ",
                         ShapeUtil::HumanString(HostShapeToDeviceShape(shape)));
@@ -307,7 +308,7 @@ Status TransferManager::TransferBufferToDevice(
 }
 
 StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
-    const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
+    const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
     int device_ordinal) {
   if (!LayoutUtil::HasLayout(on_host_shape)) {
     return InvalidArgument("Shape must have a layout: %s",
@@ -330,7 +331,7 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
                         allocator->Allocate(shaped_buffer.device_ordinal(),
                                             GetByteSizeRequirement(subshape)));
     // Move the allocated buffer into the ScopedShapedBuffer, which owns it.
-    memory_base = memory.Forget();
+    memory_base = memory.Release();
   }
 
   return std::move(shaped_buffer);

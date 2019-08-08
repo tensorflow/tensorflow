@@ -217,11 +217,16 @@ def while_loop(cond,
 
     with ops.control_dependencies(
         list(cond_graph.control_captures) + list(body_graph.control_captures)):
+      output_shapes = [t.shape for t in body_graph.outputs]
+      orig_loop_vars_range = slice(first_loop_var_index,
+                                   first_loop_var_index + num_flattened_outputs)
+      output_shapes[orig_loop_vars_range] = nest.flatten(
+          shape_invariants, expand_composites=True)[orig_loop_vars_range]
       outputs = gen_functional_ops._while(
           flattened_loop_vars,
           util.create_new_tf_function(cond_graph),
           util.create_new_tf_function(body_graph),
-          output_shapes=[t.shape for t in body_graph.outputs],
+          output_shapes=output_shapes,
           parallel_iterations=parallel_iterations,
           name=scope)
 

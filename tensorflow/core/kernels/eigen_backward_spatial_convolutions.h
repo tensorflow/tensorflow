@@ -366,8 +366,8 @@ SpatialConvolutionBackwardKernel(
                       YOU_MADE_A_PROGRAMMING_MISTAKE);
 
   // stride and in_stride cannot both be larger than 1
-  eigen_assert(!(row_stride > 1 && row_in_stride > 1) &&
-               !(col_stride > 1 && col_in_stride > 1));
+  eigen_assert(!(row_stride > 1 && row_in_stride > 1));
+  eigen_assert(!(col_stride > 1 && col_in_stride > 1));
 
   static const bool isColMajor = (internal::traits<Input>::Layout == ColMajor);
 

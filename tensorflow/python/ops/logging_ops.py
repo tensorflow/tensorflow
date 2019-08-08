@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import pprint
 import random
 import sys
@@ -25,6 +26,7 @@ import sys
 import six
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -219,6 +221,9 @@ def print_v2(*inputs, **kwargs):
       recursively printed per Tensor. If None, then the first 3 and last 3
       elements of each dimension are printed for each tensor. If set to -1, it
       will print all elements of every tensor.
+    sep: The string to use to separate the inputs. Defaults to " ".
+    end: End character that is appended at the end the printed string.
+      Defaults to the newline character.
     name: A name for the operation (optional).
 
   Returns:
@@ -235,6 +240,8 @@ def print_v2(*inputs, **kwargs):
   output_stream = kwargs.pop("output_stream", sys.stderr)
   name = kwargs.pop("name", None)
   summarize = kwargs.pop("summarize", 3)
+  sep = kwargs.pop("sep", " ")
+  end = kwargs.pop("end", os.linesep)
   if kwargs:
     raise ValueError("Unrecognized keyword arguments for tf.print: %s" % kwargs)
   format_name = None
@@ -329,7 +336,7 @@ def print_v2(*inputs, **kwargs):
     # the formatted/printed output will not contain quotes around tensors.
     # (example of where these quotes might appear: if we have added a
     # placeholder string into a list, then pretty-formatted that list)
-    template = " ".join(templates)
+    template = sep.join(templates)
     template = template.replace("'" + placeholder + "'", placeholder)
     formatted_string = string_ops.string_format(
         inputs=tensors,
@@ -338,9 +345,15 @@ def print_v2(*inputs, **kwargs):
         summarize=summarize,
         name=format_name)
 
-  return gen_logging_ops.print_v2(
-      formatted_string, output_stream=output_stream_string, name=name)
-
+  if compat.forward_compatible(2019, 5, 27):
+    return gen_logging_ops.print_v2(
+        formatted_string, output_stream=output_stream_string, name=name,
+        end=end)
+  else:
+    if end == os.linesep:
+      end = ""
+    return gen_logging_ops.print_v2(
+        formatted_string + end, output_stream=output_stream_string, name=name)
 
 # pylint: enable=g-doc-args
 

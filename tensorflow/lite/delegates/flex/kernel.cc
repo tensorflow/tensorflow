@@ -24,10 +24,10 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/string.h"
 
 // Note: this is part of TF Lite's Flex delegation code which is to be
@@ -529,8 +529,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   // Execute the TensorFlow Ops sequentially.
   for (auto& node_data : op_data->nodes) {
-    SCOPED_TAGGED_OPERATOR_PROFILE(
-        reinterpret_cast<profiling::Profiler*>(context->profiler),
+    TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(
+        reinterpret_cast<Profiler*>(context->profiler),
         node_data->name().c_str(), node_data->index());
 
     auto status = ExecuteFlexOp(context, buffer_map, node_data.get());

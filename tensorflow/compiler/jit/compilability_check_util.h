@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/device_info_cache.h"
+#include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
@@ -54,7 +54,7 @@ namespace tensorflow {
 class RecursiveCompilabilityChecker {
  public:
   // Aggregates information about what kinds of ops are allowed.
-  struct OperationFilter {
+  struct OperationFilter {  // TODO(lzr): Add AllowEverything() helper.
     // Whether resource variable ops are allowed are allowed in callees.  We do
     // not allow resource variable ops in called functions (either as direct TF
     // calls or as higher order control flow ops) because we do not yet model
@@ -96,6 +96,13 @@ class RecursiveCompilabilityChecker {
     // don't auto-cluster these ops because we don't yet support live-in or
     // live-out DT_VARIANT values.
     bool allow_ops_producing_or_consuming_variant;
+
+    // Whether ops known to be slow on XLA-GPU should be considered compilable..
+    bool allow_slow_ops;
+
+    // Whether ops known to have numerical accuracy issues should be considered
+    // compilable..
+    bool allow_inaccurate_ops;
   };
 
   RecursiveCompilabilityChecker(const OperationFilter* op_filter,
@@ -113,6 +120,11 @@ class RecursiveCompilabilityChecker {
                         FunctionLibraryRuntime* lib_runtime) {
     return IsCompilableCall(call_def, /*depth=*/0, lib_runtime);
   }
+
+  // Returns true if XLA supports this Op, but we don't want to cluster it (ie:
+  // due to performance or correctness concerns).
+  bool OpIsInaccurate(const Node& node);
+  bool OpIsSlow(const Node& node);
 
  private:
   bool IsCompilableNode(const Node& node, int depth,

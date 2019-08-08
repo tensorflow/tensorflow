@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <vector>
 
+// clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/platform/platform.h"  // NO_LINT
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
 
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -28,7 +30,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -40,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -334,7 +339,11 @@ Status AddInputDevicesToCacheKey(const EagerContext* ctx,
   Device* cpu_device = ctx->HostCPU();
   for (TensorHandle* tensor_handle : op->Inputs()) {
     string device_name;
-    if (tensor_handle->dtype == DT_RESOURCE) {
+    if (tensor_handle->IsRemote()) {
+      Device* device = tensor_handle->device();
+      device_name = device != nullptr ? device->name() : cpu_device->name();
+      input_dev_ptrs->push_back(device == nullptr ? cpu_device : device);
+    } else if (tensor_handle->dtype == DT_RESOURCE) {
       // Use the resource's actual device because it is the device that will
       // influence partitioning the multi-device function.
       const Tensor* tensor;
@@ -530,6 +539,22 @@ Status EagerLocalExecute(EagerOperation* op,
   std::unordered_map<int, std::pair<DataType, TensorShape>>
       input_resource_variable_dtypes_and_shapes;
   if (is_multi_device_function) {
+    // All inputs need to be on local devices.
+    // TODO(nareshmodi): This is a limitation of the current code base (but
+    // should be possible to get around).
+    // Code changes will need to be made to pass input objects to the
+    // function library runtime instead of just "Tensor"s.
+    // Once that is the case, we will be able to write a thin wrapper layer over
+    // the EagerService that behaves similar to the current
+    // ClusterFunctionLibraryRuntime/DistributedFunctionLibraryRuntime.
+    for (int i = 0; i < op->Inputs().size(); i++) {
+      TensorHandle* input = op->Inputs()[i];
+      if (input->IsRemote()) {
+        TF_RETURN_IF_ERROR(EagerCopyToDevice(
+            input, ctx, device == nullptr ? "" : device->name().c_str(),
+            &(*op->MutableInputs())[i]));
+      }
+    }
     TF_RETURN_IF_ERROR(
         AddInputDevicesToCacheKey(ctx, op, &input_dev_ptrs, &cache_key));
     TF_RETURN_IF_ERROR(AddInputTensorShapesToCacheKey(
@@ -538,7 +563,7 @@ Status EagerLocalExecute(EagerOperation* op,
         ctx, op, &input_resource_variable_dtypes_and_shapes, &cache_key));
   }
 
-  KernelAndDevice* kernel = ctx->GetCachedKernel(cache_key);
+  core::RefCountPtr<KernelAndDevice> kernel = ctx->GetCachedKernel(cache_key);
   if (kernel == nullptr) {
     VLOG(2) << "Creating new kernel for " << op->Name() << " on device "
             << maybe_unspecified_device_name;
@@ -563,10 +588,12 @@ Status EagerLocalExecute(EagerOperation* op,
     }
     const string& device_name =
         device == nullptr ? unspecified_device_name : device->name();
-    if (ctx->LogDevicePlacement()) {
-      LOG(INFO) << "Executing op " << ndef.op() << " in device " << device_name;
-    } else {
-      VLOG(1) << "Executing op " << ndef.op() << " in device " << device_name;
+    if (ctx->LogDevicePlacement() || VLOG_IS_ON(1)) {
+      string msg = strings::StrCat("Executing op ", ndef.op(), " in device ",
+                                   device_name);
+      if (!logging::LogToListeners(msg)) {
+        LOG(INFO) << msg;
+      }
     }
 
     FunctionLibraryRuntime* flr =
@@ -594,27 +621,29 @@ Status EagerLocalExecute(EagerOperation* op,
       VLOG(2) << "Running " << ndef.op() << " using multi-device function. "
               << "compile_with_xla=" << compile_with_xla
               << ". Full node_def=" << ndef.DebugString();
-      kernel = new KernelAndDeviceFunc(
+      kernel.reset(new KernelAndDeviceFunc(
           flr, ctx->pflr(), std::move(input_dev_ptrs),
           std::move(input_tensor_shapes),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
-          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU());
+          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU(), op->Name(),
+          [ctx](const int64 step_id) {
+            return ctx->CreateRendezvous(step_id);
+          }));
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << "compile_with_xla=" << compile_with_xla
               << ". Full node_def=" << ndef.DebugString();
-      kernel = new KernelAndDeviceOp(
+      kernel.reset(new KernelAndDeviceOp(
           ctx->GetRendezvous(), ctx->LogMemory(), flr, runner,
-          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU());
+          ctx->GetCollectiveExecutorHandle(), ctx->HostCPU()));
     }
 
     status = kernel->Init(ndef, graph_collector);
     if (!status.ok()) {
-      delete kernel;
       return status;
     }
 
-    ctx->AddKernelToCache(cache_key, kernel);
+    ctx->AddKernelToCache(cache_key, kernel.get());
   }
   const DataTypeVector& output_dtypes = kernel->output_dtypes();
   const int output_dtypes_size = static_cast<int>(output_dtypes.size());
@@ -628,7 +657,7 @@ Status EagerLocalExecute(EagerOperation* op,
                                   ? unspecified_device_name
                                   : kernel->device()->name();
   status = ValidateInputTypeAndPlacement(
-      ctx, device_name, op, kernel,
+      ctx, device_name, op, kernel.get(),
       ctx->ShouldStoreStepStats() ? ctx->RunMetadataProto() : nullptr);
   if (!status.ok()) return status;
   std::unique_ptr<NodeExecStats> maybe_stats;
@@ -664,18 +693,17 @@ Status EagerLocalExecute(EagerOperation* op,
           /* resource_device= */ kernel->OutputResourceDevice(i),
           output_dtypes[i], ctx);
     }
-    EagerNode* node = new ExecuteNode(id, ctx, op->Inputs(), kernel,
+    EagerNode* node = new ExecuteNode(id, ctx, op->Inputs(), std::move(kernel),
                                       maybe_stats.release(), maybe_step_stats,
                                       graph_collector, output_dtypes, *retvals);
     ctx->ExecutorAdd(node);
   } else {
     // Execute checks if retvals[i] is nullptr or not to figure if it needs to
     // allocate it.
-    status = EagerKernelExecute(ctx, op->Inputs(), kernel, maybe_stats.get(),
-                                maybe_step_stats, graph_collector,
-                                retvals->data(), *num_retvals);
+    status = EagerKernelExecute(ctx, op->Inputs(), kernel.get(),
+                                maybe_stats.get(), maybe_step_stats,
+                                graph_collector, retvals->data(), *num_retvals);
   }
-
   return status;
 }
 
@@ -683,7 +711,10 @@ Status EagerLocalExecute(EagerOperation* op,
 std::function<void()> GetRemoteTensorDestructor(
     EagerContext* ctx, eager::EagerClient* eager_client, uint64 context_id,
     uint64 op_id, int output_num) {
+  ctx->Ref();
   return [ctx, eager_client, context_id, op_id, output_num]() {
+    auto cleanup = gtl::MakeCleanup([ctx]() { ctx->Unref(); });
+
     if (!ctx->HasActiveRemoteContext(context_id)) {
       // This means that this tensor was pointing to a remote device, which
       // has been changed out from under us. Simply return since there is
@@ -732,7 +763,7 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
 #if defined(IS_MOBILE_PLATFORM)
   return errors::Unimplemented(
       "Eager's remote execution is not available on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
   eager::EagerClient* eager_client;
   uint64 context_id;
   TF_RETURN_IF_ERROR(
@@ -797,7 +828,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 #if defined(IS_MOBILE_PLATFORM)
   return errors::Unimplemented(
       "Eager's remote execution is not available on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
   EagerContext* ctx = op->EagerContext();
 
   eager::EagerClient* eager_client;
@@ -865,6 +896,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   if (is_async) {
     remote_node_id = op->EagerContext()->NextId();
   }
+  VLOG(4) << "Execute remote eager op: " << op->Name()
+          << " (is async?: " << is_async << ").";
 
   const tensorflow::uint64 id = remote_op->id();
   for (int i = 0; i < *num_retvals; i++) {
@@ -963,7 +996,8 @@ bool IsPinnableOp(const string& op_type) {
 // (int32/int64). This can be disabled by setting the environment variable
 // "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING" to "0" or "false".
 Status MaybeUpdateOpDevice(EagerOperation* op) {
-  if (op->is_function()) {
+  auto exempt_ops = InputColocationExemptionRegistry::Global()->Get();
+  if (op->is_function() || exempt_ops.find(op->Name()) != exempt_ops.end()) {
     // Don't update the device of direct function calls.
     // Particularly, if the user did not explicitly request any device for this
     // function, picking a device would result in this device being the default
@@ -1056,9 +1090,12 @@ Status EagerExecute(EagerOperation* op,
     return EagerLocalExecute(op, retvals, num_retvals);
   }
 
-  if (op->EagerContext()->LogDevicePlacement()) {
-    LOG(INFO) << "Executing op " << op->Name() << " in device "
-              << op->Device()->name();
+  if (op->EagerContext()->LogDevicePlacement() || VLOG_IS_ON(1)) {
+    string msg = strings::StrCat("Executing op ", op->Name(), " in device ",
+                                 op->Device()->name());
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
   }
 
   return EagerRemoteExecute(op, retvals->data(), num_retvals);

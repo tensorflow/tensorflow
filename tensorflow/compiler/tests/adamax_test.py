@@ -49,7 +49,7 @@ class AdaMaxOptimizerTest(xla_test.XLATestCase):
 
   def testBasic(self):
     for i, dtype in enumerate(self.float_types):
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         variable_scope.get_variable_scope().set_use_resource(True)
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
@@ -103,7 +103,7 @@ class AdaMaxOptimizerTest(xla_test.XLATestCase):
 
   def testTensorLearningRate(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         variable_scope.get_variable_scope().set_use_resource(True)
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0

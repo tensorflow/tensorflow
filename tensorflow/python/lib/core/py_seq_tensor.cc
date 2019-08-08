@@ -316,6 +316,31 @@ const char* ConvertOneInt64(PyObject* v, int64* out) {
 
 DEFINE_HELPER(ConvertInt64, int64, DT_INT64, ConvertOneInt64);
 
+const char* ConvertOneUint64(PyObject* v, uint64* out) {
+#if PY_MAJOR_VERSION < 3
+  if (TF_PREDICT_TRUE(PyInt_Check(v))) {
+    *out = PyInt_AsUnsignedLongLongMask(v);
+    return nullptr;
+  }
+#endif
+  if (TF_PREDICT_TRUE(PyLong_Check(v) || IsPyDimension(v))) {
+    *out = PyLong_AsUnsignedLongLong(v);
+    return nullptr;
+  }
+  if (PyIsInstance(v, &PyIntegerArrType_Type)) {  // NumPy integers
+#if PY_MAJOR_VERSION < 3
+    Safe_PyObjectPtr as_int = make_safe(PyNumber_Int(v));
+#else
+    Safe_PyObjectPtr as_int = make_safe(PyNumber_Long(v));
+#endif
+    return ConvertOneUint64(as_int.get(), out);
+  }
+  if (IsPyFloat(v)) return ErrorFoundFloat;
+  return ErrorMixedTypes;
+}
+
+DEFINE_HELPER(ConvertUint64, uint64, DT_UINT64, ConvertOneUint64);
+
 const char* ConvertOneInt32(PyObject* v, int32* out) {
   int64 i;
 #if PY_MAJOR_VERSION < 3
@@ -520,6 +545,10 @@ Status PySeqToTensor(PyObject* obj, DataType dtype, Tensor* ret) {
 
     case DT_INT32:
       if (ConvertInt32(obj, shape, ret) == nullptr) return Status::OK();
+      break;
+
+    case DT_UINT64:
+      if (ConvertUint64(obj, shape, ret) == nullptr) return Status::OK();
       break;
 
     case DT_COMPLEX128:

@@ -55,7 +55,7 @@ REGISTER_OP("RaggedTensorFromVariant")
     .Input("encoded_ragged: variant")
     .Output("output_nested_splits: output_ragged_rank * Tsplits")
     .Output("output_dense_values: Tvalues")
-    .Attr("input_ragged_rank: int >= 0")
+    .Attr("input_ragged_rank: int >= -1")
     .Attr("output_ragged_rank: int >= 1")
     .Attr("Tvalues: type")
     .Attr("Tsplits: {int32, int64}")
@@ -124,7 +124,7 @@ Status RaggedTensorFromVariantShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(
       c->GetAttr<int64>("output_ragged_rank", &output_ragged_rank));
   shape_inference::ShapeHandle encoded_ragged = c->input(0);
-  if (c->RankKnown(encoded_ragged)) {
+  if (c->RankKnown(encoded_ragged) && input_ragged_rank >= 0) {
     shape_inference::ShapeHandle unused;
     TF_RETURN_IF_ERROR(c->WithRank(
         encoded_ragged, output_ragged_rank - input_ragged_rank, &unused));

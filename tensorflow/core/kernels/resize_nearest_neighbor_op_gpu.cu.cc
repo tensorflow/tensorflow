@@ -172,7 +172,7 @@ struct ResizeNearestNeighbor<GPUDevice, T, half_pixel_centers, align_corners> {
     const int output_size = batch_size * out_height * out_width * channels;
     if (output_size == 0) return true;
 
-    CudaLaunchConfig config = GetCudaLaunchConfig(output_size, d);
+    GpuLaunchConfig config = GetCudaLaunchConfig(output_size, d);
     if (half_pixel_centers) {
       TF_CHECK_OK(CudaLaunchKernel(
           ResizeNearestNeighborNHWC<T>, config.block_count,
@@ -218,7 +218,7 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, half_pixel_centers,
 
     const int output_size = batch_size * channels * out_height * out_width;
 
-    CudaLaunchConfig output_config = GetCudaLaunchConfig(output_size, d);
+    GpuLaunchConfig output_config = GetCudaLaunchConfig(output_size, d);
     TF_CHECK_OK(CudaLaunchKernel(SetZero<T>, output_config.block_count,
                                  output_config.thread_per_block, 0, d.stream(),
                                  output_size, output.data()));
@@ -227,7 +227,7 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, half_pixel_centers,
     const int input_size = batch_size * channels * in_height * in_width;
     if (input_size == 0) return true;
 
-    CudaLaunchConfig input_config = GetCudaLaunchConfig(input_size, d);
+    GpuLaunchConfig input_config = GetCudaLaunchConfig(input_size, d);
     if (half_pixel_centers) {
       TF_CHECK_OK(CudaLaunchKernel(
           ResizeNearestNeighborBackwardNHWC<T>, input_config.block_count,

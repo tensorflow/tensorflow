@@ -1,11 +1,10 @@
 # TODO(hyey): describe this package.
 
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = [
         "//tensorflow/tools/tensorflow_builder:__subpackages__",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 filegroup(

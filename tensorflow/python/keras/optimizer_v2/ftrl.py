@@ -54,7 +54,7 @@ class Ftrl(optimizer_v2.OptimizerV2):
   """
 
   def __init__(self,
-               learning_rate,
+               learning_rate=0.001,
                learning_rate_power=-0.5,
                initial_accumulator_value=0.1,
                l1_regularization_strength=0.0,
@@ -225,9 +225,9 @@ class Ftrl(optimizer_v2.OptimizerV2):
         'learning_rate_power':
             self._serialize_hyperparameter('learning_rate_power'),
         'l1_regularization_strength':
-            self._serializer_hyperparameter('l1_regularization_strength'),
+            self._serialize_hyperparameter('l1_regularization_strength'),
         'l2_regularization_strength':
-            self._serializer_hyperparameter('l2_regularization_strength'),
+            self._serialize_hyperparameter('l2_regularization_strength'),
         'l2_shrinkage_regularization_strength':
             self._l2_shrinkage_regularization_strength,
     })

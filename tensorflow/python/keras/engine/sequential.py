@@ -190,7 +190,7 @@ class Sequential(training.Model):
       # If the model is being built continuously on top of an input layer:
       # refresh its output.
       output_tensor = layer(self.outputs[0])
-      if isinstance(output_tensor, list):
+      if len(nest.flatten(output_tensor)) != 1:
         raise TypeError('All layers in a Sequential model '
                         'should have a single output tensor. '
                         'For multi-output layers, '

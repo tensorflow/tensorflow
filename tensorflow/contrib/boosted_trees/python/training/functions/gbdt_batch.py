@@ -590,10 +590,14 @@ class GradientBoostedDecisionTreeModel(object):
               stamp_token=ensemble_stamp,
               tree_ensemble_config=serialized_model), ensemble_stamp
 
-      refresh_local_ensemble, ensemble_stamp = control_flow_ops.cond(
-          math_ops.not_equal(ensemble_stamp,
-                             local_stamp), _refresh_local_ensemble_fn,
-          lambda: (control_flow_ops.no_op(), ensemble_stamp))
+      with ops.device(local_ensemble_handle.device):
+        # Need to colocate stamps for cond.
+        colocated_ensemble_stamp = array_ops.identity(ensemble_stamp)
+
+        refresh_local_ensemble, ensemble_stamp = control_flow_ops.cond(
+            math_ops.not_equal(colocated_ensemble_stamp,
+                               local_stamp), _refresh_local_ensemble_fn,
+            lambda: (control_flow_ops.no_op(), colocated_ensemble_stamp))
 
       # Once updated, use the local model for prediction.
       with ops.control_dependencies([refresh_local_ensemble]):

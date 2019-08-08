@@ -715,7 +715,7 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
                      std::pair<NodeDef*, NodeDef*>* swap_pair) {
   string task, device;
   if (!DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) ||
-      !str_util::StrContains(device, DEVICE_GPU)) {
+      !absl::StrContains(device, DEVICE_GPU)) {
     return errors::InvalidArgument("Can't swap input ", input_to_swap,
                                    " of node ", node->name(),
                                    " since it is not on GPU");
@@ -1238,10 +1238,10 @@ bool CrossesTaskOrCpuGpuBoundary(const NodeDef& node1, const NodeDef& node2) {
   string device2;
   DeviceNameUtils::SplitDeviceName(node2.device(), &task2, &device2);
   return task1 != task2 ||
-         (str_util::StrContains(device1, DEVICE_CPU) &&
-          str_util::StrContains(device2, DEVICE_GPU)) ||
-         (str_util::StrContains(device1, DEVICE_GPU) &&
-          str_util::StrContains(device2, DEVICE_CPU));
+         (absl::StrContains(device1, DEVICE_CPU) &&
+          absl::StrContains(device2, DEVICE_GPU)) ||
+         (absl::StrContains(device1, DEVICE_GPU) &&
+          absl::StrContains(device2, DEVICE_CPU));
 }
 
 // TODO(rmlarsen): Add distributed TF test.

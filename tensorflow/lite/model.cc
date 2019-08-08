@@ -25,9 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/model.h"
-#ifndef TFLITE_MCU
-#include "tensorflow/lite/nnapi_delegate.h"
-#endif
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -69,9 +66,6 @@ std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
                                                   bool use_nnapi) {
   std::unique_ptr<Allocation> allocation;
   if (mmap_file && MMAPAllocation::IsSupported()) {
-    if (use_nnapi && NNAPIDelegate::IsSupported())
-      allocation.reset(new NNAPIAllocation(filename, error_reporter));
-    else
       allocation.reset(new MMAPAllocation(filename, error_reporter));
   } else {
     allocation.reset(new FileCopyAllocation(filename, error_reporter));

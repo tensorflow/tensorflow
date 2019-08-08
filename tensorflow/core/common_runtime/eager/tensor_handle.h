@@ -122,7 +122,7 @@ class TensorHandle : public core::RefCounted {
   bool OnHostCPU() {
     mutex_lock ml(ctx_mutex_);
     return device_ == nullptr ||
-           (ctx_ == nullptr || ctx_->HostCPU() == device_);
+           (ctx_ != nullptr && ctx_->HostCPU() == device_);
   }
 
   bool IsRemote();

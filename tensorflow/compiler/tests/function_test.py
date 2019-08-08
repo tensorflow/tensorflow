@@ -40,7 +40,7 @@ class FunctionTest(xla_test.XLATestCase):
     bval = np.array([5, 6, 7, 8]).reshape([2, 2]).astype(np.float32)
     expected = APlus2B(aval, bval)
 
-    with self.cached_session():
+    with self.session():
 
       @function.Defun(dtypes.float32, dtypes.float32)
       def Foo(a, b):
@@ -66,7 +66,7 @@ class FunctionTest(xla_test.XLATestCase):
     bval = np.array([4, 3, 2, 1]).reshape([2, 2]).astype(np.float32)
     expected = APlus2B(aval, bval)
 
-    with self.cached_session():
+    with self.session():
 
       @function.Defun(dtypes.float32, dtypes.float32)
       def Foo(a, b):
@@ -90,7 +90,7 @@ class FunctionTest(xla_test.XLATestCase):
     bval = np.array([5, 6, 7, 8]).reshape([2, 2]).astype(np.float32)
     expected = Func(aval, bval)
 
-    with self.cached_session():
+    with self.session():
 
       @function.Defun(dtypes.float32, dtypes.float32)
       def Foo(a, b):
@@ -105,7 +105,7 @@ class FunctionTest(xla_test.XLATestCase):
 
   def testCompileTimeConstantsInDefun(self):
     """Tests that XLA handles compile-time constants in defuns."""
-    with self.cached_session() as sess:
+    with self.session() as sess:
 
       @function.Defun(dtypes.float32, dtypes.int32, dtypes.int32)
       def Foo(a, c, d):
@@ -140,7 +140,7 @@ class FunctionTest(xla_test.XLATestCase):
     bval = np.array([4, 3, 2, 1]).reshape([2, 2]).astype(np.float32)
     expected = aval + bval * 2
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       with self.test_scope():
         a = array_ops.placeholder(dtypes.float32, name="a")
         b = array_ops.placeholder(dtypes.float32, name="b")

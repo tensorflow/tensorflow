@@ -106,8 +106,8 @@ TEST(TrtCandidateSelector, Basics) {
     ExpectStatus(
         selector.IsTensorRTCandidate(incompatible_matmul.operation.node()),
         error::INVALID_ARGUMENT,
-        "transpose_a is not supported for TensorRT FullyConnected "
-        "(op: MatMul), at: incompatible_matmul");
+        "Cannot transpose first input if it is a tensor with fewer than 2 "
+        "non-batch dimensions.");
     ExpectStatus(selector.IsTensorRTCandidate(unsupported_op.operation.node()),
                  error::UNIMPLEMENTED, "Op type Erf is not supported");
     ExpectStatus(
@@ -239,7 +239,7 @@ class ConvertAfterShapesTest : public ::testing::Test {
     params.output_names = &output_names;
     params.max_workspace_size_bytes = 8 << 20;
     params.output_graph_def = output_graph_def;
-    params.minimum_segment_size = 2;
+    params.minimum_segment_size = 1;
     params.graph_properties = &graph_properties;
     params.use_calibration = false;
 

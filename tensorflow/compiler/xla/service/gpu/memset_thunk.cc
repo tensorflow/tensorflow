@@ -23,7 +23,7 @@ namespace gpu {
 
 Status MemzeroThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& /*run_id*/, HloExecutionProfiler* profiler) {
   se::DeviceMemoryBase dest_data = buffer_allocations.GetDeviceAddress(dest_);
   auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   stream->ThenMemZero(&dest_data, dest_data.size());
@@ -32,7 +32,7 @@ Status MemzeroThunk::ExecuteOnStream(
 
 Status Memset32BitValueThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+    const RunId& /*run_id*/, HloExecutionProfiler* profiler) {
   se::DeviceMemoryBase dest_data = buffer_allocations.GetDeviceAddress(dest_);
   auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   stream->ThenMemset32(&dest_data, value_, dest_data.size());

@@ -56,7 +56,7 @@ TEST(RuyTest, TestSquareMuls) {
   };
 
   for (int size : sizes) {
-    TestPackedLinearRCC<TestSetType>(size, size, size);
+    TestRCC<TestSetType>(size, size, size);
     TestLinearAllOrders<TestSetType>(size, size, size);
   }
 }
@@ -73,7 +73,7 @@ TEST(RuyTest, TestMiscMuls) {
 }
 
 TEST(RuyTest, TestDeepMuls) {
-  TestPackedLinearRCC<TestSetType>(1, 50001, 1);
+  TestRCC<TestSetType>(1, 50001, 1);
   TestLinearAllOrders<TestSetType>(5, 5001, 4);
   TestLinearAllOrders<TestSetType>(9, 1025, 10);
 }
@@ -94,10 +94,4 @@ TEST(RuyTest, TestNarrowMuls) {
   }
 }
 
-TEST(RuyTest, TestNonLinear) {
-  TestNonLinearAllOrders<TestSetType>(10, 11, 12, 2, 1, 4);
-  TestNonLinearAllOrders<TestSetType>(10, 12, 11, 2, 4, 1);
-  TestNonLinearAllOrders<TestSetType>(8, 2, 4, 8, 2, 4);
-  TestNonLinearAllOrders<TestSetType>(24, 32, 16, 8, 16, 4);
-}
 }  // namespace ruy

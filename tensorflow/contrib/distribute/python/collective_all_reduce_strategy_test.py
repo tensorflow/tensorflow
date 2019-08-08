@@ -498,8 +498,13 @@ class DistributedCollectiveAllReduceStrategyTest(
       self.assertEqual('grpc', server_def.protocol)
       mock_called[0] = True
 
+    def mock_configure_collective_ops(*args, **kwargs):
+      del args, kwargs
+
     with test.mock.patch.object(context.context(), 'enable_collective_ops',
-                                mock_enable_collective_ops):
+                                mock_enable_collective_ops), \
+         test.mock.patch.object(context.context(), 'configure_collective_ops',
+                                mock_configure_collective_ops):
       strategy, _, _ = self._get_test_object(
           task_type='worker', task_id=1, num_gpus=2, use_core_strategy=True)
     self.assertTrue(strategy.extended._std_server_started)

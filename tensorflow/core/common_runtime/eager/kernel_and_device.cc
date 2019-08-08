@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
@@ -131,6 +132,8 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
     // and current function implementation does not prune stateful and dataset
     // ops, we rely on Grappler to do the correct graph pruning.
     optimization_options.allow_pruning_stateful_and_dataset_ops = true;
+
+    optimization_options.is_eager_mode = true;
 
     // All the nested function calls will be executed and optimized via
     // PartitionedCallOp, there is no need to optimize functions now.
@@ -325,10 +328,11 @@ Status KernelAndDeviceFunc::Run(
     std::vector<Tensor>* outputs, NodeExecStats* stats, StepStats* step_stats,
     GraphCollector* graph_collector) {
   FunctionLibraryRuntime::Options opts;
+
   // We don't pass rendezvous from eager context because we can get tensor
   // name collisions in send/recv ops when running multiple instances
   // of the same multi-device function concurrently.
-  Rendezvous* rendezvous = new IntraProcessRendezvous(pflr_->device_mgr());
+  Rendezvous* rendezvous = rendezvous_creator_(opts.step_id);
   opts.rendezvous = rendezvous;
   opts.create_rendezvous = false;
 

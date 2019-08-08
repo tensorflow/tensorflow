@@ -61,7 +61,13 @@ public final class InterpreterTest {
   @Test
   public void testInterpreterWithOptions() throws Exception {
     Interpreter interpreter =
-        new Interpreter(MODEL_FILE, new Interpreter.Options().setNumThreads(2).setUseNNAPI(true));
+        new Interpreter(
+            MODEL_FILE,
+            new Interpreter.Options()
+                .setNumThreads(2)
+                .setUseNNAPI(true)
+                .setAllowFp16PrecisionForFp32(false)
+                .setAllowBufferHandleOutput(false));
     assertThat(interpreter).isNotNull();
     assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
     assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);

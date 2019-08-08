@@ -359,7 +359,10 @@ ENTRY entry {
   get-tuple-element.5 = (f32[], f32[]) get-tuple-element(param), index=1
   get-tuple-element.6 = (f32[], f32[]) get-tuple-element(param), index=2
   replica-id = u32[] replica-id()
-  ROOT conditional = (f32[], f32[]) conditional(replica-id, get-tuple-element.4, get-tuple-element.5, get-tuple-element.6), branch_computations={Negate, Identity, Floor}
+  id = s32[] bitcast-convert(replica-id)
+  ROOT conditional = (f32[], f32[]) conditional(id, get-tuple-element.4,
+    get-tuple-element.5, get-tuple-element.6),
+    branch_computations={Negate, Identity, Floor}
 }
 )";
 

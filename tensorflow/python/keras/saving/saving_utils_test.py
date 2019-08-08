@@ -26,17 +26,21 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -58,7 +62,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
       self.assertAllClose(expected, actual)
 
   @keras_parameterized.run_with_all_model_types
-  @keras_parameterized.run_all_keras_modes
+  @test_util.run_in_graph_and_eager_modes
   def test_trace_model_outputs(self):
     input_dim = 5 if testing_utils.get_model_type() == 'functional' else None
     model = testing_utils.get_small_mlp(10, 3, input_dim)
@@ -81,7 +85,8 @@ class TraceModelCallTest(keras_parameterized.TestCase):
   def test_trace_model_outputs_after_fitting(self):
     input_dim = 5 if testing_utils.get_model_type() == 'functional' else None
     model = testing_utils.get_small_mlp(10, 3, input_dim)
-    model.compile(optimizer='sgd', loss='mse')
+    model.compile(optimizer='sgd', loss='mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x=np.random.random((8, 5)),
               y=np.random.random((8, 3)), epochs=2)
 
@@ -118,7 +123,8 @@ class TraceModelCallTest(keras_parameterized.TestCase):
                                    'input shapes have not been set'):
         saving_utils.trace_model_call(model)
 
-    model.compile(optimizer='sgd', loss='mse')
+    model.compile(optimizer='sgd', loss='mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x=[np.random.random((8, input_dim)).astype(np.float32),
                  np.random.random((8, input_dim)).astype(np.float32)],
               y=[np.random.random((8, num_classes)).astype(np.float32),
@@ -133,7 +139,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
 
     self._assert_all_close(expected_outputs, signature_outputs)
 
-  @keras_parameterized.run_all_keras_modes
+  @test_util.run_in_graph_and_eager_modes
   def test_trace_features_layer(self):
     columns = [feature_column_v2.numeric_column('x')]
     model = sequential.Sequential(
@@ -154,7 +160,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
     self.assertAllClose({'output_1': [[1., 2.]]},
                         fn({'x': [[1.]], 'y': [[2.]]}))
 
-  @keras_parameterized.run_all_keras_modes
+  @test_util.run_in_graph_and_eager_modes
   def test_specify_input_signature(self):
     model = testing_utils.get_small_sequential_mlp(10, 3, None)
     inputs = array_ops.ones((8, 5))
@@ -168,7 +174,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
     expected_outputs = {model.output_names[0]: model(inputs)}
     self._assert_all_close(expected_outputs, signature_outputs)
 
-  @keras_parameterized.run_all_keras_modes
+  @test_util.run_in_graph_and_eager_modes
   def test_subclassed_model_with_input_signature(self):
 
     class Model(keras.Model):
@@ -191,6 +197,36 @@ class TraceModelCallTest(keras_parameterized.TestCase):
     expected_outputs = {'output_1': model([x, y])}
     signature_outputs = fn([x, y])
     self._assert_all_close(expected_outputs, signature_outputs)
+
+  @keras_parameterized.run_with_all_model_types
+  @test_util.run_in_graph_and_eager_modes
+  def test_model_with_fixed_input_dim(self):
+    """Ensure that the batch_dim is removed when saving.
+
+    When serving or retraining, it is important to reset the batch dim.
+    This can be an issue inside of tf.function. See b/132783590 for context.
+    """
+    model = testing_utils.get_small_mlp(10, 3, 5)
+
+    loss_object = keras.losses.MeanSquaredError()
+    optimizer = gradient_descent.SGD()
+
+    @def_function.function
+    def train_step(data, labels):
+      with backprop.GradientTape() as tape:
+        predictions = model(data)
+        loss = loss_object(labels, predictions)
+      gradients = tape.gradient(loss, model.trainable_variables)
+      optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+
+    x = np.random.random((8, 5))
+    y = np.random.random((8, 3))
+
+    train_step(x, y)
+
+    fn = saving_utils.trace_model_call(model)
+    self.assertEqual(fn.input_signature[0].shape.as_list(),
+                     tensor_shape.TensorShape([None, 5]).as_list())
 
 
 def _import_and_infer(save_dir, inputs):
@@ -215,7 +251,7 @@ def _import_and_infer(save_dir, inputs):
 class ModelSaveTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  @test_util.run_v2_only
   def test_model_save(self):
     input_dim = 5
     model = testing_utils.get_small_mlp(10, 3, input_dim)
@@ -232,8 +268,9 @@ class ModelSaveTest(keras_parameterized.TestCase):
         _import_and_infer(save_dir, {model.input_names[0]: np.ones((8, 5))}))
 
 
-class ExtractModelMetricsTest(test.TestCase):
+class ExtractModelMetricsTest(keras_parameterized.TestCase):
 
+  @keras_parameterized.run_all_keras_modes
   def test_extract_model_metrics(self):
     a = keras.layers.Input(shape=(3,), name='input_a')
     b = keras.layers.Input(shape=(3,), name='input_b')
@@ -266,7 +303,7 @@ class ExtractModelMetricsTest(test.TestCase):
             keras.metrics.mean_squared_error
         ],
         optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01),
-        run_eagerly=None)
+        run_eagerly=testing_utils.should_run_eagerly())
     extract_metrics = saving_utils.extract_model_metrics(model)
     self.assertEqual(set(model_metric_names), set(model.metrics_names))
     self.assertEqual(set(extract_metric_names), set(extract_metrics.keys()))

@@ -257,7 +257,8 @@ class TruncatedNormalTest(test.TestCase):
       self.assertAllEqual(rnd1, rnd2)
 
 
-@test_util.disable_all_xla("This never passed on XLA")
+@test_util.for_all_test_methods(test_util.disable_xla,
+                                "This never passed on XLA")
 class RandomUniformTest(RandomOpTestCommon):
 
   def _Sampler(self, num, minv, maxv, dtype, use_gpu, seed=None):

@@ -817,17 +817,18 @@ def collapse_repeated(labels, seq_length, name=None):
   """Merge repeated labels into single labels.
 
   Args:
-    labels: Tensor of shape (batch, max value in seq_length)
-    seq_length: Tensor of shape (batch), sequence length of each batch element.
+    labels: Tensor of shape [batch, max value in seq_length]
+    seq_length: Tensor of shape [batch], sequence length of each batch element.
     name: A name for this `Op`. Defaults to "collapse_repeated_labels".
 
   Returns:
-    tuple of Tensor of shape (batch, max_seq_length) with repeated labels
-    collapsed and padded to max_seq_length, eg:
-        [[A, A, B, B, A],
-         [A, B, C, D, E]] => [[A, B, A, 0, 0],
-                              [A, B, C, D, E]]
-    and int tensor of shape [batch] with new sequence lengths.
+    A tuple `(collapsed_labels, new_seq_length)` where
+
+    collapsed_labels: Tensor of shape [batch, max_seq_length] with repeated
+    labels collapsed and padded to max_seq_length, eg:
+    `[[A, A, B, B, A], [A, B, C, D, E]] => [[A, B, A, 0, 0], [A, B, C, D, E]]`
+
+    new_seq_length: int tensor of shape [batch] with new sequence lengths.
   """
 
   with ops.name_scope(name, "collapse_repeated_labels", [labels, seq_length]):

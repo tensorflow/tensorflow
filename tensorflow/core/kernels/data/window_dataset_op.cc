@@ -298,7 +298,7 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
           input_impl_.reset();
         }
         // Restore buffer.
-        int64 buffer_size;
+        int64 buffer_size = 0;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(strings::StrCat("buffer_size"), &buffer_size));
         buffer_.resize(buffer_size);

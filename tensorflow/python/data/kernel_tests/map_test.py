@@ -50,6 +50,9 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_concat_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -758,6 +761,34 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset,
         expected_output=[list(range(i)) for i in range(10)])
+
+  def testRagged(self):
+
+    def _ragged(i):
+      return ragged_tensor.RaggedTensor.from_tensor(i * [[1]])
+
+    dataset = dataset_ops.Dataset.range(5).map(_ragged)
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[ragged_factory_ops.constant([[i]]) for i in range(5)])
+
+  def testRaggedChain(self):
+
+    def _ragged(i):
+      return ragged_tensor.RaggedTensor.from_tensor(i * [[1]])
+
+    def _concat(i):
+      self.assertTrue(ragged_tensor.is_ragged(i))
+      return ragged_concat_ops.concat([i, i], 0)
+
+    dataset = dataset_ops.Dataset.range(10).map(_ragged).map(_concat)
+
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[
+            self.evaluate(_concat(ragged_factory_ops.constant([[i]])))
+            for i in range(10)
+        ])
 
   @test_util.run_v1_only("b/123904513")
   def testParallelMapOutOfRangeError(self):

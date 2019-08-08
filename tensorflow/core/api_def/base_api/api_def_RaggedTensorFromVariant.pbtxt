@@ -23,14 +23,15 @@ END
   attr {
     name: "input_ragged_rank"
     description: <<END
-The ragged rank of each encoded `RaggedTensor` component in the input.
+The ragged rank of each encoded `RaggedTensor` component in the input. If set to
+-1, this is inferred as `output_ragged_rank` - `rank(encoded_ragged)`
 END
   }
   attr {
     name: "output_ragged_rank"
     description: <<END
 The expected ragged rank of the output `RaggedTensor`. The following must hold:
-`rank(encoded_ragged) = output_ragged_rank - input_ragged_rank`.
+`output_ragged_rank = rank(encoded_ragged) + input_ragged_rank`.
 END
   }
   summary: <<END
@@ -39,14 +40,15 @@ END
   description: <<END
 Decodes the given `variant` Tensor and returns a `RaggedTensor`. The input
 could be a scalar, meaning it encodes a single `RaggedTensor` with ragged_rank
-`input_ragged_rank`. It could also have an arbitrary rank, in which case each
+`output_ragged_rank`. It could also have an arbitrary rank, in which case each
 element is decoded into a `RaggedTensor` with ragged_rank `input_ragged_rank`
 and these are then stacked according to the input shape to output a single
 `RaggedTensor` with ragged_rank `output_ragged_rank`. Each `variant` element in
 the input Tensor is decoded by retrieving from the element a 1-D `variant`
 Tensor with `input_ragged_rank + 1` Tensors, corresponding to the splits and
-values of the decoded `RaggedTensor`. See `RaggedTensorToVariant` for the
-corresponding encoding logic.
+values of the decoded `RaggedTensor`. If `input_ragged_rank` is -1, then it is
+inferred as `output_ragged_rank` - `rank(encoded_ragged)`. See
+`RaggedTensorToVariant` for the corresponding encoding logic.
 
 END
 }

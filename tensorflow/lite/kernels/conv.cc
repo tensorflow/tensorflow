@@ -26,7 +26,10 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/cpu_backend_support.h"
 #include "tensorflow/lite/kernels/eigen_support.h"
+// b/131835803 forces us to include multithreaded_conv.h before optimized_ops.h
+#ifndef TFLITE_WITH_RUY
 #include "tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h"
+#endif
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
@@ -481,19 +484,6 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                              TfLiteTensor* input, TfLiteTensor* filter,
                              TfLiteTensor* bias, TfLiteTensor* output,
                              TfLiteTensor* im2col) {
-  KernelType effective_kernel_type;
-  effective_kernel_type = kernel_type;
-
-// If not running on NEON we force a fallback to the reference kernels, until
-// we have optimized support on other platforms.
-#ifdef GEMMLOWP_NEON
-#define TFLITE_SUPPORT_OPTIMIZED_PERCHANNEL
-#endif
-
-#ifndef TFLITE_SUPPORT_OPTIMIZED_PERCHANNEL
-  effective_kernel_type = kReference;
-#endif
-
   ConvParams op_params;
   op_params.input_offset = -input->params.zero_point;
   op_params.output_offset = output->params.zero_point;
@@ -504,7 +494,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.padding_values.height = data->padding.height;
   op_params.padding_values.width = data->padding.width;
 
-  switch (effective_kernel_type) {
+  switch (kernel_type) {
     case kReference: {
       reference_integer_ops::ConvPerChannel(
           op_params, data->per_channel_output_multiplier.data(),
@@ -518,7 +508,6 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     case kGenericOptimized:
     case kMultithreadOptimized:
     case kCblasOptimized: {
-#ifdef TFLITE_SUPPORT_OPTIMIZED_PERCHANNEL
       optimized_integer_ops::ConvPerChannel(
           op_params, data->per_channel_output_multiplier.data(),
           data->per_channel_output_shift.data(), GetTensorShape(input),
@@ -528,7 +517,6 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
           GetTensorData<int8>(output), GetTensorShape(im2col),
           GetTensorData<int8>(im2col),
           cpu_backend_support::GetFromContext(context));
-#endif
       break;
     }
   }
@@ -580,6 +568,12 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
       break;
     }
     case kMultithreadOptimized: {
+#ifdef TFLITE_WITH_RUY
+      // See Register_CONV_2D: we should never be here when tflite_with_ruy
+      // was enabled. We #if out this code in order to get the corresponding
+      // binary size benefits.
+      TFLITE_DCHECK(false);
+#else
       const float* filter_data;
       if (data->need_hwcn_weights) {
         filter_data = GetTensorData<float>(hwcn_weights);
@@ -594,6 +588,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
           GetTensorData<float>(output), GetTensorShape(im2col),
           GetTensorData<float>(im2col));
       break;
+#endif
     }
   }
 }
@@ -755,8 +750,11 @@ TfLiteRegistration* Register_CONVOLUTION_CBLAS_OPT() {
 }
 
 TfLiteRegistration* Register_CONV_2D() {
-#ifdef TFLITE_USE_APPLE_ACCELERATE_FOR_CONV
+#if defined TFLITE_USE_APPLE_ACCELERATE_FOR_CONV
   return Register_CONVOLUTION_CBLAS_OPT();
+#elif defined TFLITE_WITH_RUY
+  // tflite_with_ruy optimizes the generic kernel type.
+  return Register_CONVOLUTION_GENERIC_OPT();
 #else
   return Register_CONVOLUTION_MULTITHREADED_OPT();
 #endif

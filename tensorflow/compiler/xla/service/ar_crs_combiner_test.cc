@@ -326,6 +326,55 @@ ENTRY %WhileLoop () -> (f32[2,2], f32[2,2]) {
   EXPECT_FALSE(ArCrsCombiner::TestInstructionsComputeSameValue(i1, i2));
 }
 
+TEST_F(ArCrsCombinerTest, SameValueTestNestedWhile) {
+  const char* module_str = R"(
+HloModule foobar
+
+%condition (x: (f32[2,2], f32[2,2])) -> pred[] {
+  %x = (f32[2,2], f32[2,2]) parameter(0)
+  ROOT %t = pred[] constant(true)
+}
+
+%body_inner (x: (f32[2,2], f32[2,2])) -> (f32[2,2], f32[2,2]) {
+  %x = (f32[2,2], f32[2,2]) parameter(0)
+  %constant.f32 = f32[2,2] constant({{1, 2}, {3, 4}})
+  %gte.1 = f32[2,2] get-tuple-element(%x), index=0
+  %gte.2 = f32[2,2] get-tuple-element(%x), index=1
+  %add.1 = f32[2,2] add(%gte.1, %constant.f32)
+  %add.2 = f32[2,2] add(%gte.2, %constant.f32)
+  ROOT %tuple = (f32[2,2], f32[2,2]) tuple(%add.1, %add.2)
+}
+
+%body_outer (x: (f32[2,2], f32[2,2])) -> (f32[2,2], f32[2,2]) {
+  %x = (f32[2,2], f32[2,2]) parameter(0)
+  %gte.1 = f32[2,2] get-tuple-element(%x), index=0
+  %gte.2 = f32[2,2] get-tuple-element(%x), index=1
+  %init = (f32[2,2], f32[2,2]) tuple(%gte.1, %gte.2)
+  ROOT %while.1 = (f32[2,2], f32[2,2]) while(%init), condition=%condition,
+    body=%body_inner
+}
+
+ENTRY %WhileLoop () -> (f32[2,2], f32[2,2]) {
+  %constant.f32 = f32[2,2] constant({{3, 4}, {5, 6}})
+  %init.tuple = (f32[2,2], f32[2,2]) tuple(%constant.f32, %constant.f32)
+  ROOT %while = (f32[2,2], f32[2,2]) while(%init.tuple), condition=%condition,
+    body=%body_outer
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  auto root_while = module->entry_computation()->root_instruction();
+  auto inner_while = root_while->while_body()->root_instruction();
+  auto i1 = inner_while->while_body()->root_instruction()->operands()[0];
+  auto i2 = inner_while->while_body()->root_instruction()->operands()[1];
+  // They are the same because the same constant {{3, 4}, {5, 6}} flows to both,
+  // and we add the same number {{1, 2}, {3, 4}} to both in each iteration
+  // of the inner while.
+  EXPECT_TRUE(ArCrsCombiner::TestInstructionsComputeSameValue(i1, i2));
+}
+
 void CompareReplicaGroups(const std::vector<ReplicaGroup>& groups_before,
                           const std::vector<ReplicaGroup>& groups_after) {
   ASSERT_EQ(groups_before.size(), groups_after.size());
@@ -403,7 +452,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -471,7 +520,7 @@ ENTRY %entrycomp (p: f32[2,1]) -> (f32[2], f32[2]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -538,7 +587,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
@@ -619,7 +668,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
@@ -701,7 +750,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_str));
-  ArCrsCombiner combiner(2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_FALSE(changed);
 }
@@ -761,7 +810,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -835,7 +884,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -908,7 +957,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
@@ -998,7 +1047,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1090,7 +1139,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
@@ -1168,7 +1217,81 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_str));
-  ArCrsCombiner combiner(2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
+  auto changed = combiner.Run(module.get()).ValueOrDie();
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(ArCrsCombinerTest, SameValueTestConditional) {
+  const char* module_str = R"(
+HloModule foobar
+
+branch_true {
+  pt = (f32[2,4], f32[2,4]) parameter(0)
+  gte.0 = f32[2,4] get-tuple-element(pt), index=0
+  gte.1 = f32[2,4] get-tuple-element(pt), index=1
+  ROOT tuple.t = (f32[2,4], f32[2,4]) tuple(gte.1, gte.0)
+}
+
+branch_false {
+  pf = (f32[2,4], f32[2,4]) parameter(0)
+  gte.0 = f32[2,4] get-tuple-element(pf), index=0
+  gte.1 = f32[2,4] get-tuple-element(pf), index=1
+  add = f32[2,4] add(gte.1, gte.1)
+  ROOT tuple.f = (f32[2,4], f32[2,4]) tuple(gte.0, add)
+}
+
+ENTRY Parameters1.v4 {
+  constant = pred[] constant(true)
+  p = f32[2,4] parameter(0)
+  tuple = (f32[2,4], f32[2,4]) tuple(p, p)
+  ROOT conditional = (f32[2,4], f32[2,4]) conditional(constant, tuple, tuple), true_computation=branch_true, false_computation=branch_false
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto cond = module->entry_computation()->root_instruction();
+
+  auto branch_true = cond->branch_computation(0)->root_instruction();
+  auto t0 = branch_true->mutable_operand(0);
+  auto t1 = branch_true->mutable_operand(1);
+  EXPECT_TRUE(ArCrsCombiner::TestInstructionsComputeSameValue(t0, t1));
+
+  auto branch_false = cond->branch_computation(1)->root_instruction();
+  auto f0 = branch_false->mutable_operand(0);
+  auto f1 = branch_false->mutable_operand(1);
+  EXPECT_FALSE(ArCrsCombiner::TestInstructionsComputeSameValue(f0, f1));
+}
+
+TEST_F(ArCrsCombinerTest, AllReduceWithReplicas) {
+  const char* module_str = R"(
+HloModule foobar
+
+%sum.f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
+  %p = bf16[] parameter(0)
+  %all-reduce.0 = f32[] all-reduce(%p), all_reduce_id=1, replica_groups={{0,1}},
+    to_apply=%sum.f32, sharding={maximal device=0}
+  %all-reduce.1 = f32[] all-reduce(%p), all_reduce_id=1, replica_groups={{0,1}},
+    to_apply=%sum.f32, sharding={maximal device=1}
+  %all-reduce.2 = f32[] all-reduce(%all-reduce.0), replica_groups={{0,1}},
+    to_apply=%sum.f32, sharding={maximal device=0}
+  %all-reduce.3 = f32[] all-reduce(%all-reduce.1), replica_groups={{0,1}},
+    to_apply=%sum.f32, sharding={maximal device=1}
+  ROOT %tuple = (f32[], f32[]) tuple(%all-reduce.2, %all-reduce.3),
+      sharding={{maximal device=0}, {maximal device=1}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_FALSE(changed);
 }

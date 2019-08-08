@@ -40,9 +40,9 @@ void ComputeInterOpSchedulingRanges(int num_active_requests, int num_threads,
     // `min_threads_per_request` constraint.
     // Note: We subtract a small epsilon (0.00001) to prevent ceil(..) from
     // rounding weights like 4.0 to 5.
-    int demand =
-        std::max(min_threads_per_request,
-                 static_cast<int>(ceil(weight * demand_factor - 0.00001f)));
+    int demand = std::max(
+        min_threads_per_request,
+        static_cast<int>(std::ceil(weight * demand_factor - 0.00001f)));
     // For the quantized range [start, end); compute the floor of real start,
     // and expand downwards from there with length `demand` and adjust for
     // boundary conditions.

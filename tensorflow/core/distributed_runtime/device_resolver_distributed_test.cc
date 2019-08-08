@@ -192,7 +192,7 @@ TEST_F(DeviceResDistTest, Workers3Devices4) {
         Status status;
         DeviceLocality locality;
         dres->GetLocalityAsync(dev_name, task_name, &locality,
-                               [this, &note, &status](const Status& s) {
+                               [&note, &status](const Status& s) {
                                  status = s;
                                  note.Notify();
                                });

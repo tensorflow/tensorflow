@@ -32,7 +32,8 @@ class DatasetToGraphOp : public OpKernel {
     DatasetBase* dataset;
     OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
     GraphDef graph_def;
-    OP_REQUIRES_OK(ctx, AsGraphDef(ctx, dataset, &graph_def));
+    OP_REQUIRES_OK(
+        ctx, AsGraphDef(ctx, dataset, SerializationContext({}), &graph_def));
     Tensor* result;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
     result->scalar<string>()() = graph_def.SerializeAsString();

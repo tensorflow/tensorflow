@@ -1,9 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_kernel_library")
 
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = ["//tensorflow/compiler/tf2xla:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_kernel_library(
@@ -195,6 +194,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:training_ops",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -254,6 +254,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -310,6 +311,7 @@ tf_kernel_library(
     srcs = ["case_op.cc"],
     hdrs = ["case_op.h"],
     deps = [
+        ":if_while_utils",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -366,7 +368,7 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
@@ -379,7 +381,7 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
+        "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],

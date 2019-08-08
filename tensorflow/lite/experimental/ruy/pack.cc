@@ -1145,11 +1145,19 @@ void PackFloatNeonOutOfOrder(const float* src_ptr0, const float* src_ptr1,
           "trn1 v21.2d, v17.2d, v19.2d\n"
           "trn2 v23.2d, v17.2d, v19.2d\n"
 
-          "str q20, [%[packed_ptr], #0]\n"
-          "str q21, [%[packed_ptr], #32]\n"
-          "str q22, [%[packed_ptr], #64]\n"
-          "str q23, [%[packed_ptr], #96]\n"
-          "add %[packed_ptr], %[packed_ptr], #128\n"
+          "mov x1, #32\n"
+
+#define RUY_STORE_ONE_ROW(ROW, REGISTER)                  \
+          "cmp w2, #" #ROW "\n"                           \
+          "beq 4f\n"                                      \
+          "st1 {" #REGISTER ".4s}, [%[packed_ptr]], x1\n"
+
+          RUY_STORE_ONE_ROW(0, v20)
+          RUY_STORE_ONE_ROW(1, v21)
+          RUY_STORE_ONE_ROW(2, v22)
+          RUY_STORE_ONE_ROW(3, v23)
+
+#undef RUY_STORE_ONE_ROW
 
           "4:\n"
 
@@ -1295,11 +1303,19 @@ void PackFloatNeonInOrder(const float* src_ptr0, const float* src_ptr1,
           "trn1 v21.2d, v17.2d, v19.2d\n"
           "trn2 v23.2d, v17.2d, v19.2d\n"
 
-          "str q20, [%[packed_ptr], #0]\n"
-          "str q21, [%[packed_ptr], #32]\n"
-          "str q22, [%[packed_ptr], #64]\n"
-          "str q23, [%[packed_ptr], #96]\n"
-          "add %[packed_ptr], %[packed_ptr], #128\n"
+          "mov x1, #32\n"
+
+#define RUY_STORE_ONE_ROW(ROW, REGISTER)                  \
+          "cmp w2, #" #ROW "\n"                           \
+          "beq 4f\n"                                      \
+          "st1 {" #REGISTER ".4s}, [%[packed_ptr]], x1\n"
+
+          RUY_STORE_ONE_ROW(0, v20)
+          RUY_STORE_ONE_ROW(1, v21)
+          RUY_STORE_ONE_ROW(2, v22)
+          RUY_STORE_ONE_ROW(3, v23)
+
+#undef RUY_STORE_ONE_ROW
 
           "4:\n"
 

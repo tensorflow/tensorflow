@@ -38,8 +38,13 @@ class GraphOptimizer {
 
   // Routine called to allow an algorithm to propose a rewritten graph
   // for the graph, feeds and fetches in "item" to run more efficiently
-  // on "cluster".
+  // on "cluster". If the returned status is Status::OK() then
+  // *optimized_graph contains the rewritten graph.
   // Returns an error status if it failed to generate a solution.
+  //
+  // A return value of error::Aborted() can be used signal early termination of
+  // the optimizer, e.g. if the optimization turned out to be a no-op. In this
+  // case the content of *optimized_graph is undefined.
   virtual Status Optimize(Cluster* cluster, const GrapplerItem& item,
                           GraphDef* optimized_graph) = 0;
 

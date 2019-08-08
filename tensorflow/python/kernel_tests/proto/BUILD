@@ -11,8 +11,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-
-# Google-internal targets go here (must be at the end).
+# Placeholder for Google-internal load statements.
 
 tf_py_test(
     name = "decode_proto_op_test",

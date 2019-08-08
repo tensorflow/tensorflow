@@ -71,6 +71,7 @@ enum ConvolutionKind {
   FORWARD = 1;
   BACKWARD_FILTER = 2;
   BACKWARD_DATA = 3;
+  FORWARD_BIAS_ACTIVATION = 4;
 }
 
 // Generic tensor representation.

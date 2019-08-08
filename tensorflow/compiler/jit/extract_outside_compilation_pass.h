@@ -101,7 +101,8 @@ Status ExtractOutsideCompilation(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name,
     const std::unordered_map<string, XlaClusterInfo>& clusters, Graph* g,
-    FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld);
+    FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld,
+    bool* modified);
 
 }  // namespace tensorflow
 

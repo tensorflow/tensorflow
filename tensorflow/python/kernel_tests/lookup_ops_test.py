@@ -28,6 +28,7 @@ from tensorflow.python.data.experimental.ops import counter
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -254,9 +255,8 @@ class StaticHashTableTest(BaseLookupTableTest):
       table = self.getHashTable()(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
       self.initialize_table(table)
-
-      with self.assertRaisesOpError("Table already initialized"):
-        self.initialize_table(table)
+      # Make sure that initializing twice doesn't throw any errors.
+      self.initialize_table(table)
 
   def testInitializationWithInvalidDimensions(self):
     default_val = -1
@@ -298,6 +298,27 @@ class StaticHashTableTest(BaseLookupTableTest):
     with session2:
       table.initializer.run()
       self.assertAllEqual(3, self.evaluate(table.size()))
+
+  @test_util.run_v2_only
+  def testImportedHashTable(self):
+    g = ops.Graph()
+    with g.as_default():
+      t = lookup_ops.StaticHashTable(
+          lookup_ops.KeyValueTensorInitializer(["a"], [1]),
+          2)
+      init_op = t._init_op
+      op = t.lookup(ops.convert_to_tensor(["a"]))
+      meta_graph = saver.export_meta_graph()
+
+    def f():
+      saver.import_meta_graph(meta_graph)
+      return ops.get_default_graph().get_tensor_by_name(op.name)
+
+    wrapped = wrap_function.wrap_function(f, [])
+    pruned_init_fn = wrapped.prune(
+        (), [wrapped.graph.get_operation_by_name(init_op.name)])
+    self.evaluate(pruned_init_fn())
+    self.assertAllEqual([1], wrapped())
 
   def testStaticHashTableInt32String(self):
     default_val = "n/a"

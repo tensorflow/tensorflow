@@ -18,16 +18,32 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/context.h"
 
 namespace tflite {
 namespace evaluation {
 namespace {
 
-constexpr char kFilePath[] =
+constexpr char kLabelsPath[] =
     "tensorflow/lite/tools/evaluation/testdata/labels.txt";
+constexpr char kDirPath[] =
+    "tensorflow/lite/tools/evaluation/testdata";
+constexpr char kEmptyFilePath[] =
+    "tensorflow/lite/tools/evaluation/testdata/empty.txt";
+
+TEST(UtilsTest, StripTrailingSlashesTest) {
+  std::string path = "/usr/local/folder/";
+  EXPECT_EQ(StripTrailingSlashes(path), "/usr/local/folder");
+
+  path = "/usr/local/folder";
+  EXPECT_EQ(StripTrailingSlashes(path), path);
+
+  path = "folder";
+  EXPECT_EQ(StripTrailingSlashes(path), path);
+}
 
 TEST(UtilsTest, ReadFileErrors) {
-  std::string correct_path(kFilePath);
+  std::string correct_path(kLabelsPath);
   std::string wrong_path("xyz.txt");
   std::vector<std::string> lines;
   EXPECT_FALSE(ReadFileLines(correct_path, nullptr));
@@ -35,13 +51,24 @@ TEST(UtilsTest, ReadFileErrors) {
 }
 
 TEST(UtilsTest, ReadFileCorrectly) {
-  std::string file_path(kFilePath);
+  std::string file_path(kLabelsPath);
   std::vector<std::string> lines;
   EXPECT_TRUE(ReadFileLines(file_path, &lines));
 
   EXPECT_EQ(lines.size(), 2);
   EXPECT_EQ(lines[0], "label1");
   EXPECT_EQ(lines[1], "label2");
+}
+
+TEST(UtilsTest, SortedFilenamesTest) {
+  std::vector<std::string> files;
+  EXPECT_EQ(GetSortedFileNames(kDirPath, &files), kTfLiteOk);
+
+  EXPECT_EQ(files.size(), 2);
+  EXPECT_EQ(files[0], kEmptyFilePath);
+  EXPECT_EQ(files[1], kLabelsPath);
+
+  EXPECT_EQ(GetSortedFileNames("wrong_path", &files), kTfLiteError);
 }
 
 }  // namespace

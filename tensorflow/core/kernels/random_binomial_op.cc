@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
@@ -371,10 +372,9 @@ class RandomBinomialOp : public OpKernel {
               "Input probs should have length 1 or shape[0], got shape: ",
               probs_tensor.shape().DebugString()));
     }
-    Var* var = nullptr;
+    core::RefCountPtr<Var> var;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &var));
 
-    ScopedUnlockUnrefVar var_guard(var);
     Tensor* var_tensor = var->tensor();
     OP_REQUIRES(
         ctx, var_tensor->dtype() == STATE_ELEMENT_DTYPE,
@@ -404,7 +404,6 @@ class RandomBinomialOp : public OpKernel {
     auto philox = GetPhiloxRandomFromMem(var_data);
     UpdateMemWithPhiloxRandom(
         philox, num_batches * 2 * 100 * (samples_per_batch + 3) / 4, var_data);
-    var_guard.Release();
 
     auto binomial_functor = functor::RandomBinomialFunctor<Device, T, U>();
     binomial_functor(ctx, ctx->eigen_device<Device>(), num_batches,

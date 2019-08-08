@@ -312,17 +312,55 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
        arguments_ptr});
 }
 
+// Helper function to emit call to AMDGPU shfl_down function.
+llvm::Value* EmitAMDGPUShflDown(llvm::Value* value, llvm::Value* offset,
+                                llvm::IRBuilder<>* b) {
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+  CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
+  auto* i32_ty = b->getInt32Ty();
+  llvm::FunctionCallee shfl_fn = module->getOrInsertFunction(
+      llvm_ir::AsStringRef("__ockl_readuplane_i32"),
+      llvm::FunctionType::get(/*Result=*/i32_ty, {i32_ty, i32_ty},
+                              /*isVarArg=*/false));
+  // AMDGPU device function requires first argument as i32.
+  llvm::Value* result =
+      b->CreateCall(shfl_fn, {b->CreateBitCast(value, i32_ty), offset});
+  // AMDGPU device function always returns an i32 type.
+  return b->CreateBitCast(result, value->getType());
+}
+
+// Helper function to emit call to NVPTX shfl_down intrinsic.
+llvm::Value* EmitNVPTXShflDown(llvm::Value* value, llvm::Value* offset,
+                               llvm::IRBuilder<>* b) {
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+  llvm::Intrinsic::ID llvm_intrinsic_id;
+  CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
+  if (value->getType()->isFloatTy()) {
+    llvm_intrinsic_id = llvm::Intrinsic::nvvm_shfl_sync_down_f32;
+  } else {
+    llvm_intrinsic_id = llvm::Intrinsic::nvvm_shfl_sync_down_i32;
+  }
+  llvm::Function* intrinsic =
+      llvm::Intrinsic::getDeclaration(module, llvm_intrinsic_id, {});
+  return b->CreateCall(
+      intrinsic, {b->getInt32(-1), value, offset, b->getInt32(kWarpSize - 1)});
+}
+
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
                                      llvm::IRBuilder<>* builder) {
   int bit_width = value->getType()->getPrimitiveSizeInBits();
-  llvm::Value* all_warps_mask = builder->getInt32(-1);
+  llvm::Module* module = builder->GetInsertBlock()->getModule();
+  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
 
   // Special case for efficiency
   if (value->getType()->isFloatTy() && bit_width == 32) {
-    return EmitCallToTargetIntrinsic(
-        TargetIntrinsicID::kShflDownF32,
-        {all_warps_mask, value, offset, builder->getInt32(kWarpSize - 1)}, {},
-        builder);
+    if (target_triple.isNVPTX()) {
+      return EmitNVPTXShflDown(value, offset, builder);
+    } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+      return EmitAMDGPUShflDown(value, offset, builder);
+    } else {
+      LOG(FATAL) << "Invalid triple " << target_triple.str();
+    }
   }
 
   // We must split values wider than 32 bits as the "shfl" instruction operates
@@ -334,14 +372,17 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
           builder->getIntNTy(32 * num_segments)),
       llvm::VectorType::get(builder->getInt32Ty(), num_segments));
   for (int i = 0; i < num_segments; ++i) {
-    x = builder->CreateInsertElement(
-        x,
-        EmitCallToTargetIntrinsic(
-            TargetIntrinsicID::kShflDownI32,
-            {all_warps_mask, builder->CreateExtractElement(x, i), offset,
-             builder->getInt32(kWarpSize - 1)},
-            {}, builder),
-        i);
+    llvm::Value* insert_val;
+    if (target_triple.isNVPTX()) {
+      insert_val = EmitNVPTXShflDown(builder->CreateExtractElement(x, i),
+                                     offset, builder);
+    } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
+      insert_val = EmitAMDGPUShflDown(builder->CreateExtractElement(x, i),
+                                      offset, builder);
+    } else {
+      LOG(FATAL) << "Invalid triple " << target_triple.str();
+    }
+    x = builder->CreateInsertElement(x, insert_val, i);
   }
   return builder->CreateBitCast(
       builder->CreateTrunc(

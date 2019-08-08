@@ -78,7 +78,7 @@ __global__ void MoveValuesKernel(const int32* keys, const int32* values,
 template <typename T>
 void RangeInit(const GPUDevice& d, const T start, const T delta,
                const int32 size, typename TTypes<T>::Flat out) {
-  CudaLaunchConfig config = GetCudaLaunchConfig(size, d);
+  GpuLaunchConfig config = GetCudaLaunchConfig(size, d);
   TF_CHECK_OK(CudaLaunchKernel(RangeInitKernel<T>, config.block_count,
                                config.thread_per_block, 0, d.stream(), start,
                                delta, size, out.data()));
@@ -93,7 +93,7 @@ void MoveValues(const GPUDevice& d, int32* keys, int32* values, int32* num_runs,
   // This is valid for correct inputs, because then out_size >= *num_runs.
   // For wrong inputs, we may have out_size < *num_runs. In this case we will
   // only handle the first out_size values.
-  CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
+  GpuLaunchConfig config = GetCudaLaunchConfig(out_size, d);
   TF_CHECK_OK(CudaLaunchKernel(MoveValuesKernel, config.block_count,
                                config.thread_per_block, 0, d.stream(), keys,
                                values, num_runs, out_size, out));
@@ -103,7 +103,7 @@ template <typename T>
 void CallGatherKernel(const GPUDevice& d, const T* params, const int32* indices,
                       T* out, int64 gather_dim_size, int64 indices_size,
                       int64 slice_size, int64 out_size) {
-  CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
+  GpuLaunchConfig config = GetCudaLaunchConfig(out_size, d);
   TF_CHECK_OK(CudaLaunchKernel(
       GatherOpKernel<T, int32, true>, config.block_count,
       config.thread_per_block, 0, d.stream(), params, indices, out,

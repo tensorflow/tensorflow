@@ -2,9 +2,8 @@
 
 package(
     default_visibility = ["//tensorflow/tools/api:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow/core:platform/default/build_config.bzl",

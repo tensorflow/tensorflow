@@ -12,14 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/framework/stats_aggregator.h"
-
 #include <memory>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
+#include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/kernels/summary_interface.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
@@ -258,10 +258,9 @@ class StatsAggregatorSummaryOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(resource_handle_t.shape()),
                 errors::InvalidArgument("resource_handle must be a scalar"));
 
-    StatsAggregatorResource* resource;
+    core::RefCountPtr<StatsAggregatorResource> resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
-    core::ScopedUnref unref_iterator(resource);
 
     Tensor* summary_t;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &summary_t));
@@ -281,21 +280,19 @@ class StatsAggregatorSetSummaryWriterOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(resource_handle_t.shape()),
                 errors::InvalidArgument("resource_handle must be a scalar"));
 
-    StatsAggregatorResource* resource;
+    core::RefCountPtr<StatsAggregatorResource> resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
-    core::ScopedUnref unref_iterator(resource);
 
     const Tensor& summary_resource_handle_t = ctx->input(1);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(summary_resource_handle_t.shape()),
                 errors::InvalidArgument("resource_handle must be a scalar"));
-    SummaryWriterInterface* sumamry_resource;
+    core::RefCountPtr<SummaryWriterInterface> sumamry_resource;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &sumamry_resource));
-    core::ScopedUnref unref_sumamry_resource(sumamry_resource);
     TF_CHECK_OK(
-        resource->stats_aggregator()->SetSummaryWriter(sumamry_resource));
+        resource->stats_aggregator()->SetSummaryWriter(sumamry_resource.get()));
   }
 };
 

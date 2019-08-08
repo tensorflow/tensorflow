@@ -23,12 +23,17 @@ from __future__ import division
 from __future__ import print_function
 
 
-# Whether mixed precision has been enabled or not with
+# Whether the mixed precision graph rewrite has been enabled or not with
 # `enable_mixed_precision_graph_rewrite`. Used to turn on auto_mixed_precision
 # in ConfigProtos passed to Sessions.
-mixed_precision_is_enabled = False
+mixed_precision_graph_rewrite_is_enabled = False
 
-# True if a Session has been created without mixed precision being enabled. Used
-# to give a warning if mixed precision is enabled after a Session has already
-# been created.
+# True if a Session has been created without the mixed precision graph rewrite
+# being enabled. Used to give a warning if mixed precision is enabled after a
+# Session has already been created.
 non_mixed_precision_session_created = False
+
+# Whether the default tf.keras.mixed_precision.experimental.Policy is in effect.
+# Used to raise an error message if both a non-default Policy and the graph
+# rewrite are used at the same time.
+using_default_mixed_precision_policy = True

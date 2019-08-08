@@ -83,9 +83,7 @@ def has_deprecation_decorator(symbol):
 class DeprecationWrapper(types.ModuleType):
   """Wrapper for TensorFlow modules to support deprecation messages."""
 
-  # TODO(annarev): remove unused_depr_to_canonical once estimator stops
-  # passing it in the next nightly build.
-  def __init__(self, wrapped, module_name, unused_depr_to_canonical=None):  # pylint: disable=super-on-old-class
+  def __init__(self, wrapped, module_name):  # pylint: disable=super-on-old-class
     # Prefix all local attributes with _dw_ so that we can
     # handle them differently in attribute access methods.
     self._dw_wrapped_module = wrapped
@@ -113,7 +111,8 @@ class DeprecationWrapper(types.ModuleType):
       rename = get_rename_v2(full_name)
       if rename and not has_deprecation_decorator(attr):
         call_location = _call_location()
-        if not call_location.startswith('<'):  # skip locations in Python source
+        # skip locations in Python source
+        if not call_location.startswith('<'):
           logging.warning(
               'From %s: The name %s is deprecated. Please use %s instead.\n',
               _call_location(), full_name, rename)

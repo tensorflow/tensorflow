@@ -20,10 +20,12 @@ limitations under the License.
 #include <deque>
 #include <mutex>  // NOLINT
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -112,15 +114,14 @@ class InferenceContextWithBatchImpl : public InferenceContext {
         return InvalidArgumentError(absl::StrCat(
             "Object ", id, " does not match expected byte size: ", byte_size));
       }
-      size_t b = buffer->bytes_size() / byte_size;
+
+      const size_t b = buffer->bytes_size() / byte_size;
       if (num_batches == 0) {
         num_batches = b;
-      } else {
-        if (num_batches != b) {
-          return InvalidArgumentError(absl::StrCat(
-              "Object ", id, " size does not match expected batch size: ", b,
-              " vs ", num_batches));
-        }
+      } else if (num_batches != b) {
+        return InvalidArgumentError(absl::StrCat(
+            "Object ", id, " size does not match expected batch size: ", b,
+            " vs ", num_batches));
       }
     }
 
@@ -258,7 +259,7 @@ class CompiledModelImpl
       }
     }
     auto runtime = absl::make_unique<Runtime>(options, gpu_info_, command_queue,
-                                              (refs ? refs.get() : objects));
+                                              refs ? refs.get() : objects);
     for (auto& c : programs_) {
       RETURN_IF_ERROR(runtime->AddProgram(shaders_[c.shader_idx], c.parameters,
                                           c.objects, c.num_workgroups));
@@ -370,7 +371,7 @@ class CompiledModelImpl
 
 // @return true if all tensors have same batch value.
 bool IsBatchMatchesForAllValues(const GraphFloat32& model) {
-  int32_t b = model.values()[0]->tensor.shape.b;
+  const int32_t b = model.values()[0]->tensor.shape.b;
   for (auto value : model.values()) {
     if (value->tensor.shape.b != b) {
       return false;
@@ -382,6 +383,7 @@ bool IsBatchMatchesForAllValues(const GraphFloat32& model) {
 }  // namespace
 
 Status Compile(const CompilationOptions& options, const GraphFloat32& model,
+               const std::unordered_set<int>& tflite_graph_io,
                const NodeShader& node_shader,
                const WorkgroupsCalculator& workgroup_calculator,
                std::unique_ptr<CompiledModel>* compiled_model) {
@@ -393,9 +395,10 @@ Status Compile(const CompilationOptions& options, const GraphFloat32& model,
   auto compiled_model_impl = absl::make_unique<CompiledModelImpl>(gpu_info);
   compiled_model_impl->set_dynamic_batch(options.dynamic_batch);
   auto compiler = NewCompiler(&node_shader, &gpu_info, options);
-  RETURN_IF_ERROR(compiler->Compile(model, [&](ShaderCode code) -> Status {
-    return compiled_model_impl->Add(workgroup_calculator, std::move(code));
-  }));
+  RETURN_IF_ERROR(
+      compiler->Compile(model, tflite_graph_io, [&](ShaderCode code) -> Status {
+        return compiled_model_impl->Add(workgroup_calculator, std::move(code));
+      }));
   *compiled_model = std::move(compiled_model_impl);
   return OkStatus();
 }

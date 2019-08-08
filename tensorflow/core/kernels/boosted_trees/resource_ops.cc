@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/boosted_trees/resources.h"
+#include "tensorflow/core/lib/core/refcount.h"
 
 namespace tensorflow {
 
@@ -78,11 +79,10 @@ class BoostedTreesGetEnsembleStatesOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     // Looks up the resource.
-    BoostedTreesEnsembleResource* tree_ensemble_resource;
+    core::RefCountPtr<BoostedTreesEnsembleResource> tree_ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &tree_ensemble_resource));
     tf_shared_lock l(*tree_ensemble_resource->get_mutex());
-    core::ScopedUnref unref_me(tree_ensemble_resource);
 
     // Sets the outputs.
     const int num_trees = tree_ensemble_resource->num_trees();
@@ -141,11 +141,10 @@ class BoostedTreesSerializeEnsembleOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    BoostedTreesEnsembleResource* tree_ensemble_resource;
+    core::RefCountPtr<BoostedTreesEnsembleResource> tree_ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &tree_ensemble_resource));
     tf_shared_lock l(*tree_ensemble_resource->get_mutex());
-    core::ScopedUnref unref_me(tree_ensemble_resource);
     Tensor* output_stamp_token_t = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, TensorShape(),
                                                      &output_stamp_token_t));
@@ -169,11 +168,10 @@ class BoostedTreesDeserializeEnsembleOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    BoostedTreesEnsembleResource* tree_ensemble_resource;
+    core::RefCountPtr<BoostedTreesEnsembleResource> tree_ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &tree_ensemble_resource));
     mutex_lock l(*tree_ensemble_resource->get_mutex());
-    core::ScopedUnref unref_me(tree_ensemble_resource);
 
     // Get the stamp token.
     const Tensor* stamp_token_t;

@@ -1,8 +1,9 @@
-licenses(["notice"])  # Apache 2.0 License
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0 License
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//visibility:public"])
 
 load(
     "//tensorflow:tensorflow.bzl",

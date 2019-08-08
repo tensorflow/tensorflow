@@ -24,7 +24,6 @@ import sys
 import six
 
 from tensorflow.python.autograph.operators import control_flow
-from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
@@ -32,6 +31,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -39,44 +39,104 @@ from tensorflow.python.platform import test
 
 class ForLoopTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_tensor(self):
-    s = control_flow.for_stmt(
-        constant_op.constant([1, 2, 3, 4]),
-        extra_test=lambda s: True,
-        body=lambda i, s: (s + i,),
-        init_state=(0,))
-    with self.cached_session():
-      self.assertEqual((10,), self.evaluate(s))
+    with ops.Graph().as_default():
+      s = control_flow.for_stmt(
+          constant_op.constant([1, 2, 3, 4]),
+          extra_test=lambda s: True,
+          body=lambda i, s: (s * 10 + i,),
+          init_state=(0,))
+      self.assertEqual(self.evaluate(s), (1234,))
 
   def test_python(self):
     s = control_flow.for_stmt(
         range(5),
         extra_test=lambda s: True,
-        body=lambda i, s: (s + i,),
+        body=lambda i, s: (s * 10 + i,),
         init_state=(0,))
-    self.assertEqual((10,), s)
+    self.assertEqual(s, (1234,))
 
-  def test_dataset(self):
+  def test_tf_dataset(self):
+    with ops.Graph().as_default():
+      s = control_flow.for_stmt(
+          dataset_ops.Dataset.range(5),
+          extra_test=None,
+          body=lambda i, s: (s * 10 + i,),
+          init_state=(constant_op.constant(0, dtype=dtypes.int64),))
+      self.assertEqual(self.evaluate(s), (1234,))
+
+  def test_dataset_with_extra_test(self):
     s = control_flow.for_stmt(
         dataset_ops.Dataset.range(5),
-        extra_test=None,
+        extra_test=lambda s: s < 3,
         body=lambda i, s: (s + i,),
         init_state=(constant_op.constant(0, dtype=dtypes.int64),))
-    self.assertEqual(self.evaluate(s), (10,))
+    self.assertEqual(self.evaluate(s), (3,))
 
-  @test_util.run_v2_only
-  def test_dataset_no_state(self):
-    v = variables.Variable(0, dtype=dtypes.int64)
-    def stateless_with_side_effects(i):
-      v.assign(v.read_value() + i)
+  def test_dataset_with_extra_test_no_extra_iterations(self):
+
+    def guarded_body(i, s):
+      with ops.control_dependencies((control_flow_ops.Assert(i < 3, (i,)),)):
+        return s + i,
+
     s = control_flow.for_stmt(
         dataset_ops.Dataset.range(5),
-        extra_test=None,
-        body=stateless_with_side_effects,
-        init_state=())
-    self.evaluate(s)
-    self.assertEqual(self.evaluate(v.read_value()), 10)
+        extra_test=lambda s: s < 3,
+        body=guarded_body,
+        init_state=(constant_op.constant(0, dtype=dtypes.int64),))
+    self.assertEqual(self.evaluate(s), (3,))
+
+  @test_util.run_v2_only
+  def test_tf_dataset_no_state(self):
+    v = variables.Variable(0, dtype=dtypes.int64)
+    self.evaluate(v.initializer)
+
+    def stateless_with_side_effects(i):
+      v.assign(v.read_value() * 10 + i)
+
+    # function is important here, because ops test for its presence.
+    @def_function.function(autograph=False)
+    def test_fn():
+      control_flow.for_stmt(
+          dataset_ops.Dataset.range(5),
+          extra_test=None,
+          body=stateless_with_side_effects,
+          init_state=())
+
+    test_fn()
+    self.assertEqual(self.evaluate(v.read_value()), 1234)
+
+  def test_tf_iterator(self):
+    # graph-mode iterators are only supported inside tf.function.
+    @def_function.function(autograph=False)
+    def test_fn():
+      itr = iter(dataset_ops.Dataset.range(5))
+      return control_flow.for_stmt(
+          itr,
+          extra_test=None,
+          body=lambda i, s: (s * 10 + i,),
+          init_state=(constant_op.constant(0, dtype=dtypes.int64),))
+    s, = test_fn()
+    self.assertAllEqual(s, 1234)
+
+  @test_util.run_v2_only
+  def test_tf_iterator_no_state(self):
+    v = variables.Variable(0, dtype=dtypes.int64)
+
+    def stateless_with_side_effects(i):
+      v.assign(v.read_value() * 10 + i)
+
+    # graph-mode iterators are only supported inside tf.function.
+    @def_function.function(autograph=False)
+    def test_fn():
+      control_flow.for_stmt(
+          iter(dataset_ops.Dataset.range(5)),
+          extra_test=None,
+          body=stateless_with_side_effects,
+          init_state=())
+
+    test_fn()
+    self.assertEqual(self.evaluate(v.read_value()), 1234)
 
 
 class WhileLoopTest(test.TestCase):
@@ -99,7 +159,7 @@ class WhileLoopTest(test.TestCase):
       v.assign(v.read_value() + 1)
       return v.read_value()
 
-    # function is important here, for its automatic control deps.
+    # function is important here, because ops test for its presence.
     @def_function.function(autograph=False)
     def test_fn():
       return control_flow.while_stmt(
@@ -134,8 +194,8 @@ class WhileLoopTest(test.TestCase):
 
   def test_python_infinite_loop(self):
     if __debug__:
-      with test.mock.patch.object(control_flow, 'PYTHON_MAX_ITERATIONS', 1000):
-        with self.assertRaisesRegexp(errors.ExecutionError, 'iteration limit'):
+      with test.mock.patch.object(control_flow, 'PYTHON_MAX_ITERATIONS', 100):
+        with self.assertRaisesRegexp(ValueError, 'iteration limit'):
           control_flow.while_stmt(
               test=lambda _: True,
               body=lambda i: (i + 1,),
@@ -143,17 +203,20 @@ class WhileLoopTest(test.TestCase):
 
   def test_python_long_loop_unroll_warning(self):
     if __debug__:
-      with ops.Graph().as_default():
-        out_capturer = six.StringIO()
-        with test.mock.patch.object(sys, 'stdout', out_capturer):
-          ag_logging.echo_log_to_stdout = True
-          sys.stdout = out_capturer
-          control_flow.while_stmt(
-              test=lambda i, _: i < 10000,
-              body=lambda i, _: (i + 1, gen_math_ops.add(i, 1),),
-              init_state=(0, None))
-        self.assertTrue(re.match(
-            r'.*ops.*loop.*large.*iterations.*Add.*', out_capturer.getvalue()))
+      with test.mock.patch.object(
+          control_flow, 'INEFFICIENT_UNROLL_MIN_ITERATIONS', 10):
+        with ops.Graph().as_default():
+          out_capturer = six.StringIO()
+          with test.mock.patch.object(sys, 'stdout', out_capturer):
+            ag_logging.echo_log_to_stdout = True
+            sys.stdout = out_capturer
+            control_flow.while_stmt(
+                test=lambda i, _: i < 100,
+                body=lambda i, _: (i + 1, gen_math_ops.add(i, 1),),
+                init_state=(0, None))
+          self.assertTrue(re.match(
+              r'.*ops.*loop.*large.*iterations.*Add.*',
+              out_capturer.getvalue()))
 
 
 class IfStmtTest(test.TestCase):

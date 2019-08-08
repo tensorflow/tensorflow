@@ -42,6 +42,7 @@ py_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.py"],
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":losses",

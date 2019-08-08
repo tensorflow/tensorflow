@@ -64,6 +64,9 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
 // of the tensor.
 TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor);
 
+// Quantizes tensor to float16.
+TfLiteStatus QuantizeTensorFloat16(ModelT* model, TensorT* tensor);
+
 // Add quantization parameters.
 TfLiteStatus AddQuantizationParams(const std::vector<float>& scales,
                                    const std::vector<int64_t>& zero_point,

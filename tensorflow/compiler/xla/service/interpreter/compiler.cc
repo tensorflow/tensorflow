@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -52,8 +52,8 @@ namespace {
 StatusOr<Literal> HandleEvaluatorCustomCall(
     HloInstruction* custom_call, absl::Span<const Literal*> operands) {
   // Find the target C function in the global registry.
-  auto* registry = xla::cpu::CustomCallTargetRegistry::Global();
-  void* target_fn = registry->Lookup(custom_call->custom_call_target());
+  auto* registry = CustomCallTargetRegistry::Global();
+  void* target_fn = registry->Lookup(custom_call->custom_call_target(), "Host");
   if (!target_fn) {
     return NotFound("Custom call target '%s' was not registered",
                     custom_call->custom_call_target());
@@ -96,7 +96,7 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
 
 StatusOr<std::unique_ptr<HloModule>> InterpreterCompiler::RunHloPasses(
     std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* /*stream_exec*/,
-    DeviceMemoryAllocator* /*device_allocator*/) {
+    se::DeviceMemoryAllocator* /*device_allocator*/) {
   VLOG(1) << "Run hlo passes on graph " << hlo_module->name();
   TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
   return std::move(hlo_module);
@@ -105,13 +105,13 @@ StatusOr<std::unique_ptr<HloModule>> InterpreterCompiler::RunHloPasses(
 Status InterpreterCompiler::RunHloPassesOnModuleGroup(
     HloModuleGroup* module_group,
     absl::Span<se::StreamExecutor* const> executors,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   return Unimplemented("Module group compilation not supported on Interpreter");
 }
 
 StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
     std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* stream_exec,
-    DeviceMemoryAllocator* /*device_allocator*/) {
+    se::DeviceMemoryAllocator* /*device_allocator*/) {
   TF_RET_CHECK(stream_exec != nullptr);
 
   VLOG(1) << "Run backend " << hlo_module->name();
@@ -137,7 +137,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>>
 InterpreterCompiler::RunBackendOnModuleGroup(
     std::unique_ptr<HloModuleGroup> module_group,
     std::vector<std::vector<se::StreamExecutor*>> stream_exec,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   return Unimplemented(
       "Module group compilation is not supported on Interpreter.");
 }
@@ -145,7 +145,7 @@ InterpreterCompiler::RunBackendOnModuleGroup(
 StatusOr<std::vector<std::unique_ptr<Executable>>> InterpreterCompiler::Compile(
     std::unique_ptr<HloModuleGroup> module_group,
     std::vector<std::vector<se::StreamExecutor*>> stream_exec,
-    DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator) {
   if (module_group->empty()) {
     return std::vector<std::unique_ptr<Executable>>();
   }

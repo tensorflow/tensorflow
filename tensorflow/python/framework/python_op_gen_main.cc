@@ -96,7 +96,7 @@ string InferSourceFileName(const char* argv_zero) {
   // operators defined in <op type>_ops.cc
   const char* kExecPrefix = "gen_";
   const char* kExecSuffix = "_py_wrappers_cc";
-  if (str_util::ConsumePrefix(&command_str, kExecPrefix) &&
+  if (absl::ConsumePrefix(&command_str, kExecPrefix) &&
       str_util::EndsWith(command_str, kExecSuffix)) {
     command_str.remove_suffix(strlen(kExecSuffix));
     return strings::StrCat(command_str, ".cc");

@@ -28,10 +28,10 @@ TEST(PySharedDeviceBufferTest, MakeArray) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
 
   Shape shape = ShapeUtil::MakeShape(F32, {3, 101, 4});
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer,
-                          PySharedDeviceBuffer::MakeArray(
-                              shape, client->backend().transfer_manager(),
-                              client->backend().memory_allocator(), 0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer, PySharedDeviceBuffer::MakeArray(
+                       shape, client->backend().transfer_manager(),
+                       client->backend().memory_allocator(), 0, nullptr));
   EXPECT_EQ(
       buffer->on_device_shape(),
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape));
@@ -48,19 +48,19 @@ TEST(PySharedDeviceBufferTest, MakeTuple) {
   Shape a_shape = ShapeUtil::MakeShape(F32, {3, 101, 4});
   Shape b_shape = ShapeUtil::MakeShape(S8, {77});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({a_shape, b_shape});
-  TF_ASSERT_OK_AND_ASSIGN(auto a_buffer,
-                          PySharedDeviceBuffer::MakeArray(
-                              a_shape, client->backend().transfer_manager(),
-                              client->backend().memory_allocator(), 0));
-  TF_ASSERT_OK_AND_ASSIGN(auto b_buffer,
-                          PySharedDeviceBuffer::MakeArray(
-                              b_shape, client->backend().transfer_manager(),
-                              client->backend().memory_allocator(), 0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto a_buffer, PySharedDeviceBuffer::MakeArray(
+                         a_shape, client->backend().transfer_manager(),
+                         client->backend().memory_allocator(), 0, nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto b_buffer, PySharedDeviceBuffer::MakeArray(
+                         b_shape, client->backend().transfer_manager(),
+                         client->backend().memory_allocator(), 0, nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       auto tuple_buffer,
-      PySharedDeviceBuffer::MakeTuple({a_buffer, b_buffer},
-                                      client->backend().transfer_manager(),
-                                      client->backend().memory_allocator(), 0));
+      PySharedDeviceBuffer::MakeTuple(
+          {a_buffer, b_buffer}, client->backend().transfer_manager(),
+          client->backend().memory_allocator(), 0, nullptr));
   EXPECT_EQ(tuple_buffer->on_device_shape(),
             client->backend().transfer_manager()->HostShapeToDeviceShape(
                 tuple_shape));
@@ -81,28 +81,28 @@ TEST(PySharedDeviceBufferTest, AsShapedBuffer) {
   Shape ab_tuple_shape = ShapeUtil::MakeTupleShape({a_shape, b_shape});
   Shape c_shape = ShapeUtil::MakeShape(S64, {});
   Shape abc_tuple_shape = ShapeUtil::MakeTupleShape({c_shape, ab_tuple_shape});
-  TF_ASSERT_OK_AND_ASSIGN(auto a_buffer,
-                          PySharedDeviceBuffer::MakeArray(
-                              a_shape, client->backend().transfer_manager(),
-                              client->backend().memory_allocator(), 0));
-  TF_ASSERT_OK_AND_ASSIGN(auto b_buffer,
-                          PySharedDeviceBuffer::MakeArray(
-                              b_shape, client->backend().transfer_manager(),
-                              client->backend().memory_allocator(), 0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto a_buffer, PySharedDeviceBuffer::MakeArray(
+                         a_shape, client->backend().transfer_manager(),
+                         client->backend().memory_allocator(), 0, nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto b_buffer, PySharedDeviceBuffer::MakeArray(
+                         b_shape, client->backend().transfer_manager(),
+                         client->backend().memory_allocator(), 0, nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       auto ab_tuple_buffer,
-      PySharedDeviceBuffer::MakeTuple({a_buffer, b_buffer},
-                                      client->backend().transfer_manager(),
-                                      client->backend().memory_allocator(), 0));
-  TF_ASSERT_OK_AND_ASSIGN(auto c_buffer,
-                          PySharedDeviceBuffer::MakeArray(
-                              c_shape, client->backend().transfer_manager(),
-                              client->backend().memory_allocator(), 0));
+      PySharedDeviceBuffer::MakeTuple(
+          {a_buffer, b_buffer}, client->backend().transfer_manager(),
+          client->backend().memory_allocator(), 0, nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto c_buffer, PySharedDeviceBuffer::MakeArray(
+                         c_shape, client->backend().transfer_manager(),
+                         client->backend().memory_allocator(), 0, nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
       auto abc_tuple_buffer,
-      PySharedDeviceBuffer::MakeTuple({c_buffer, ab_tuple_buffer},
-                                      client->backend().transfer_manager(),
-                                      client->backend().memory_allocator(), 0));
+      PySharedDeviceBuffer::MakeTuple(
+          {c_buffer, ab_tuple_buffer}, client->backend().transfer_manager(),
+          client->backend().memory_allocator(), 0, nullptr));
   EXPECT_EQ(abc_tuple_buffer->on_device_shape(),
             client->backend().transfer_manager()->HostShapeToDeviceShape(
                 abc_tuple_shape));
@@ -114,11 +114,9 @@ TEST(PySharedDeviceBufferTest, AsShapedBuffer) {
             abc_tuple_buffer->on_device_shape());
 
   std::vector<se::DeviceMemoryBase> expected_buffer_sequence = {
-      abc_tuple_buffer->device_memory().AsDeviceMemoryBase(),
-      c_buffer->device_memory().AsDeviceMemoryBase(),
-      ab_tuple_buffer->device_memory().AsDeviceMemoryBase(),
-      a_buffer->device_memory().AsDeviceMemoryBase(),
-      b_buffer->device_memory().AsDeviceMemoryBase(),
+      *abc_tuple_buffer->device_memory(), *c_buffer->device_memory(),
+      *ab_tuple_buffer->device_memory(),  *a_buffer->device_memory(),
+      *b_buffer->device_memory(),
   };
   auto it = shaped_buffer.buffers().begin();
   auto expected_it = expected_buffer_sequence.begin();
@@ -142,7 +140,8 @@ TEST(PySharedDeviceBufferTest, FromScopedShapedBuffer) {
       ScopedShapedBuffer shaped_buffer,
       client->LiteralToShapedBuffer(literal, /*device_ordinal=*/0));
   std::shared_ptr<PySharedDeviceBuffer> device_buffer =
-      PySharedDeviceBuffer::FromScopedShapedBuffer(std::move(shaped_buffer));
+      PySharedDeviceBuffer::FromScopedShapedBuffer(std::move(shaped_buffer),
+                                                   nullptr);
 
   EXPECT_EQ(device_buffer->on_device_shape(),
             client->backend().transfer_manager()->HostShapeToDeviceShape(

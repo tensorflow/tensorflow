@@ -99,6 +99,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 import re
 import threading
 
@@ -439,7 +440,19 @@ class BaseDebugWrapperSession(session.SessionInterface):
           "but are used simultaneously.")
 
     self.increment_run_call_count()
-    empty_fetches = not nest.flatten(fetches)
+
+    def is_empty(x):
+      """Check whether a possibly nested structure is empty."""
+      if not nest.is_nested(x):
+        return False
+      if isinstance(x, collections.Mapping):
+        return is_empty(list(x.values()))
+      for item in x:
+        if not is_empty(item):
+          return False
+      return True
+
+    empty_fetches = is_empty(fetches)
     if empty_fetches:
       tf_logging.info(
           "Due to empty fetches, tfdbg Session wrapper is letting a "

@@ -1,7 +1,9 @@
 # Description:
 # Experimental C APIs for TensorFlow.
 
-licenses(["notice"])  # Apache 2.0
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load(
     "//tensorflow:tensorflow.bzl",

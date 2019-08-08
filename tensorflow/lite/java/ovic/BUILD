@@ -54,7 +54,6 @@ android_library(
         "src/main/java/org/tensorflow/ovic/OvicClassifier.java",
         "src/main/java/org/tensorflow/ovic/OvicClassifierBenchmarker.java",
     ],
-    manifest = "//tensorflow/lite/java:AndroidManifest.xml",
     tags = ["no_oss"],
     deps = [
         "//tensorflow/lite/java:tensorflowlite",

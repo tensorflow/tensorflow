@@ -84,7 +84,7 @@ XLA_TEST_P(SelectAndScatterTest, ParamTest) {
                    GetParam().window_strides, GetParam().padding_type, source,
                    ConstantR0<float>(&builder_, 0.0f), add_f32_);
 
-  ComputeAndCompare(&builder_, {}, ErrorSpec(1e-5));
+  ComputeAndCompare(&builder_, {}, ErrorSpec(1e-4));
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -199,7 +199,10 @@ INSTANTIATE_TEST_CASE_P(
         SelectAndScatterTestParam{
             {1, 5, 5}, {1, 5, 5}, Padding::kSame, {3, 1, 1}, {3, 1, 1}},
         SelectAndScatterTestParam{
-            {7, 8, 256}, {4, 8, 256}, Padding::kSame, {2, 1, 1}, {2, 1, 1}}));
+            {7, 8, 256}, {4, 8, 256}, Padding::kSame, {2, 1, 1}, {2, 1, 1}},
+        SelectAndScatterTestParam{{1104}, {551}, Padding::kValid, {3}, {2}},
+        SelectAndScatterTestParam{
+            {1300}, {1171}, Padding::kValid, {130}, {1}}));
 
 // Test for F32 1D array, with a zero-element input.
 XLA_TEST_F(SelectAndScatterTest, R1S0F32) {

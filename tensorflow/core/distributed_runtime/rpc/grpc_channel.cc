@@ -306,7 +306,7 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
       task_strings.emplace_back(
           strings::StrCat(id_host_port.first, " -> ", id_host_port.second));
     }
-    return strings::StrCat(job_id_, " -> {", str_util::Join(task_strings, ", "),
+    return strings::StrCat(job_id_, " -> {", absl::StrJoin(task_strings, ", "),
                            "}");
   }
 

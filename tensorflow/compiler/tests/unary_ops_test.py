@@ -65,7 +65,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
       rtol: relative tolerance for equality test.
       atol: absolute tolerance for equality test.
     """
-    with self.cached_session() as session:
+    with self.session() as session:
       with self.test_scope():
         pinp = array_ops.placeholder(
             dtypes.as_dtype(inp.dtype), inp.shape, name="a")
@@ -200,7 +200,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
       # Disable float16 testing for now
       if dtype != np.float16:
         x = np.arange(-10, 10, 1).astype(dtype)
-        with self.cached_session() as session:
+        with self.session() as session:
           erf_x = session.run(math_ops.erf(x))
           erfc_x = session.run(math_ops.erfc(x))
 

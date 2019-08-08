@@ -115,7 +115,7 @@ $(PRJDIR)$(2)/arduino/src/%.cpp: %.cc
 	python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
         --third_party_headers="$(4)" < $$< > $$@
 
-$(PRJDIR)$(2)/arduino/src/%: %
+$(PRJDIR)$(2)/arduino/src/%: % third_party_downloads
 	@mkdir -p $$(dir $$@)
 	python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
         --third_party_headers="$(4)" < $$< > $$@
@@ -125,13 +125,13 @@ $(PRJDIR)$(2)/arduino/src/third_party/%: tensorflow/lite/experimental/micro/tool
 	python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
         --third_party_headers="$(4)" < $$< > $$@
 
-$(PRJDIR)$(2)/arduino/src/third_party/flatbuffers/include/flatbuffers/base.h: tensorflow/lite/experimental/micro/tools/make/downloads/flatbuffers/include/flatbuffers/base.h
+$(PRJDIR)$(2)/arduino/src/third_party/flatbuffers/include/flatbuffers/base.h: tensorflow/lite/experimental/micro/tools/make/downloads/flatbuffers/include/flatbuffers/base.h third_party_downloads
 	@mkdir -p $$(dir $$@)
 	python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
         --third_party_headers="$(4)" < $$< | \
         sed -E 's/utility\.h/utility/g' > $$@
 
-$(PRJDIR)$(2)/arduino/src/third_party/kissfft/kiss_fft.h: tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/kiss_fft.h
+$(PRJDIR)$(2)/arduino/src/third_party/kissfft/kiss_fft.h: tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/kiss_fft.h third_party_downloads
 	@mkdir -p $$(dir $$@)
 	python tensorflow/lite/experimental/micro/tools/make/transform_arduino_source.py \
         --third_party_headers="$(4)" < $$< | \
@@ -155,7 +155,10 @@ $(PRJDIR)$(2)/arduino/src/TensorFlowLite.h: tensorflow/lite/experimental/micro/t
 
 generate_$(2)_arduino_project: $(addprefix $(PRJDIR)$(2)/arduino/src/,$(ARDUINO_SRCS) $(ARDUINO_HDRS)) $(addprefix $(PRJDIR)$(2)/arduino/,$(1)) $(PRJDIR)$(2)/arduino/examples/$(2)/$(2).ino $(PRJDIR)$(2)/arduino/src/TensorFlowLite.h
 
-ALL_PROJECT_TARGETS += generate_$(2)_arduino_project
+generate_$(2)_arduino_library_zip: generate_$(2)_arduino_project
+	cd $(PRJDIR)$(2) && cp -r arduino $(2) && zip -r $(2).zip $(2)
+
+ALL_PROJECT_TARGETS += generate_$(2)_arduino_library_zip
 endef
 
 # Specialized version of generate_project for TF Lite Micro test targets that

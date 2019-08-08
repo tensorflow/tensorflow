@@ -129,7 +129,7 @@ Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
 }  // namespace
 
 void ReadVariableOp::Compute(OpKernelContext* ctx) {
-  Var* variable = nullptr;
+  core::RefCountPtr<Var> variable;
   const ResourceHandle& handle = HandleFromInput(ctx, 0);
   const auto status = LookupResource(ctx, handle, &variable);
   OP_REQUIRES(ctx, status.ok(),
@@ -139,21 +139,28 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
                   ". This could mean that the variable was uninitialized. ",
                   status.ToString()));
 
-  core::ScopedUnref s(variable);
-  // We're acquiring a reference to the underlying buffer while
-  // holding a shared lock to guarantee ordering of reads and
-  // writes.
-  tf_shared_lock ml(*variable->mu());
-  const Tensor* t = variable->tensor();
-  OP_REQUIRES(ctx, dtype_ == t->dtype(),
-              errors::InvalidArgument(
-                  "Trying to read variable with wrong dtype. Expected ",
-                  DataTypeString(dtype_), " got ", DataTypeString(t->dtype())));
-  if (variable->copy_on_read_mode.load()) {
-    OP_REQUIRES_OK(ctx, CopyVariable(0, ctx, t));
-  } else {
-    ctx->set_output(0, *t);
+  {
+    tf_shared_lock ml(*variable->mu());
+    // We're acquiring a reference to the underlying buffer while
+    // holding a shared lock to guarantee ordering of reads and
+    // writes when in copy-on-write mode.
+    if (!variable->copy_on_read_mode.load()) {
+      const Tensor* t = variable->tensor();
+      OP_REQUIRES(
+          ctx, dtype_ == t->dtype(),
+          errors::InvalidArgument(
+              "Trying to read variable with wrong dtype. Expected ",
+              DataTypeString(dtype_), " got ", DataTypeString(t->dtype())));
+      ctx->set_output(0, *t);
+      return;
+    }
   }
+  // Note: no need to check copy_on_read_mode again here as it only changes from
+  // false to true, never the other way around. We here do the copy under an
+  // exclusive lock to avoid racing writes.
+  mutex_lock ml(*variable->mu());
+  const Tensor* t = variable->tensor();
+  OP_REQUIRES_OK(ctx, CopyVariable(0, ctx, t));
 }
 
 ReadVariablesOp::ReadVariablesOp(OpKernelConstruction* c) : OpKernel(c) {
@@ -167,8 +174,7 @@ ReadVariablesOp::ReadVariablesOp(OpKernelConstruction* c) : OpKernel(c) {
 }
 
 void ReadVariablesOp::Compute(OpKernelContext* ctx) {
-  std::vector<std::unique_ptr<Var, core::RefCountDeleter>> variables(
-      dtypes_.size());
+  std::vector<core::RefCountPtr<Var>> variables(dtypes_.size());
   std::vector<const ResourceHandle*> handles(dtypes_.size());
   for (size_t i = 0; i < dtypes_.size(); ++i) {
     handles[i] = &HandleFromInput(ctx, i);
@@ -257,10 +263,9 @@ class VariableShapeOp : public OpKernel {
   explicit VariableShapeOp(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* ctx) override {
-    Var* variable = nullptr;
+    core::RefCountPtr<Var> variable;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &variable));
-    core::ScopedUnref s(variable);
     variable->mu()->lock_shared();
     TensorShape shape = variable->tensor()->shape();
     variable->mu()->unlock_shared();
@@ -335,7 +340,7 @@ class AssignVariableOp : public OpKernel {
                     "Variable and value dtypes don't match; respectively, ",
                     DataTypeString(dtype_), " and ",
                     DataTypeString(context->input(1).dtype())));
-    Var* variable = nullptr;
+    core::RefCountPtr<Var> variable;
     const Tensor& value = context->input(1);
     // Note: every resource-variable-manipulating op assumes copy-on-write
     // semantics, and creates a copy of the variable's Tensor if its refcount is
@@ -353,7 +358,6 @@ class AssignVariableOp : public OpKernel {
                                   (*ptr)->is_initialized = true;
                                   return Status::OK();
                                 }));
-    core::ScopedUnref s(variable);
     mutex_lock ml(*variable->mu());
     OP_REQUIRES(context, variable->tensor()->dtype() == dtype_,
                 errors::InvalidArgument(
@@ -396,7 +400,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& value = context->input(1);
-    Var* variable = nullptr;
+    core::RefCountPtr<Var> variable;
     OP_REQUIRES_OK(context, LookupOrCreateResource<Var>(
                                 context, HandleFromInput(context, 0), &variable,
                                 [](Var** ptr) {
@@ -404,7 +408,6 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                                   *ptr = new Var(DT_VARIANT);
                                   return Status::OK();
                                 }));
-    core::ScopedUnref s(variable);
 
     // For purposes of forwarding DT_VARIANT, we want the least
     // restrictive attr; we already know the input is on host.
@@ -492,10 +495,9 @@ class AssignUpdateVariableOp : public OpKernel {
   explicit AssignUpdateVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* context) override {
-    Var* variable = nullptr;
+    core::RefCountPtr<Var> variable;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &variable));
-    core::ScopedUnref s(variable);
 
     const Tensor& value = context->input(1);
     // TODO(apassos): We could possibly avoid the copy done by
@@ -560,13 +562,12 @@ class VarIsInitializedOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output));
     auto output_tensor = output->tensor<bool, 0>();
-    Var* variable = nullptr;
+    core::RefCountPtr<Var> variable;
     Status s = LookupResource(context, HandleFromInput(context, 0), &variable);
     if (!s.ok()) {
       output_tensor() = false;
       return;
     }
-    core::ScopedUnref su(variable);
     mutex_lock ml(*variable->mu());
     output_tensor() = variable->is_initialized;
   }
@@ -615,10 +616,9 @@ class ResourceGatherOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* c) override {
-    Var* v = nullptr;
+    core::RefCountPtr<Var> v;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
-    core::ScopedUnref su(v);
-    OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v));
+    OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
     // NOTE: We hold the lock for the whole gather operation instead
     // of increasing the reference count of v->tensor() to avoid a
     // situation where a write to the same variable will see a
@@ -757,10 +757,9 @@ class ResourceGatherNdOp : public OpKernel {
   explicit ResourceGatherNdOp(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* c) override {
-    Var* v = nullptr;
+    core::RefCountPtr<Var> v;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
-    core::ScopedUnref su(v);
-    OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v));
+    OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
     // NOTE: We hold the lock for the whole gather operation instead
     // of increasing the reference count of v->tensor() to avoid a
     // situation where a write to the same variable will see a
@@ -813,10 +812,9 @@ class ResourceScatterUpdateOp : public OpKernel {
   explicit ResourceScatterUpdateOp(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* c) override {
-    Var* v = nullptr;
+    core::RefCountPtr<Var> v;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
-    core::ScopedUnref unref_v(v);
-    OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v));
+    OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
     tf_shared_lock ml(*v->mu());
     Tensor* params = v->tensor();
     const Tensor& indices = c->input(1);

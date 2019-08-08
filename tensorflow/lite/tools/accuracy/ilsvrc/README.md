@@ -39,14 +39,32 @@ The binary takes the following parameters:
 and the following optional parameters:
 
 *   `blacklist_file_path`: `string` \
-    Path to blacklist file. This file contains the indices of images that are blacklisted for evaluation. 1762 images are blacklisted in ILSVRC dataset. For details please refer to readme.txt of ILSVRC2014 devkit.
+    Path to blacklist file. This file contains the indices of images that are
+    blacklisted for evaluation. 1762 images are blacklisted in ILSVRC dataset.
+    For details please refer to readme.txt of ILSVRC2014 devkit.
 
 *   `num_images`: `int` (default=0) \
-    The number of images to process, if 0, all images in the directory are processed otherwise only num_images will be processed.
+    The number of images to process, if 0, all images in the directory are
+    processed otherwise only num_images will be processed.
 
 *   `num_threads`: `int` (default=4) \
-    The number of threads to use for evaluation.
+    The number of threads to use for evaluation. Note: This does not change the
+    number of TFLite Interpreter threads, but shards the dataset to speed up
+    evaluation.
 
+*   `proto_output_file_path`: `string` \
+    Optionally, the computed accuracies can be output to a file as a
+    string-serialized instance of tflite::evaluation::TopkAccuracyEvalMetrics.
+
+The following optional parameters can be used to modify the inference runtime:
+
+*   `num_interpreter_threads`: `int` (default=1) \
+    This modifies the number of threads used by the TFLite Interpreter for
+    inference.
+
+*   `delegate`: `string` \
+    If provided, tries to use the specified delegate for accuracy evaluation.
+    Valid values: "nnapi", "gpu".
 
 ## Downloading ILSVRC
 In order to use this tool to run evaluation on the full 50K ImageNet dataset,
@@ -62,7 +80,7 @@ category labels. The `validation_ground_truth.txt` can be converted by the follo
 ILSVRC_2012_DEVKIT_DIR=[set to path to ILSVRC 2012 devkit]
 VALIDATION_LABELS=[set to  path to output]
 
-python generate_validation_labels.py -- \
+python generate_validation_labels.py \
 --ilsvrc_devkit_dir=${ILSVRC_2012_DEVKIT_DIR} \
 --validation_labels_output=${VALIDATION_LABELS}
 ```
@@ -78,7 +96,6 @@ python generate_validation_labels.py -- \
 ```
 bazel build -c opt \
   --config=android_arm \
-  --config=monolithic \
   --cxxopt='--std=c++11' \
   --copt=-D__ANDROID_TYPES_FULL__ \
   --copt=-DSUPPORT_SELECTIVE_REGISTRATION \

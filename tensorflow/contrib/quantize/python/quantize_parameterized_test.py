@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.quantize.python import fold_batch_norms
 from tensorflow.contrib.quantize.python import quantize
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -484,7 +485,9 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     self._AssertIdempotent(graph)
 
   def testQuantize_Conv2dWithBatchNorm(self):
-    self._RunBatchNormTestOverParameters(self._TestQuantize_Conv2dWithBatchNorm)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunBatchNormTestOverParameters(
+          self._TestQuantize_Conv2dWithBatchNorm)
 
   def _TestQuantize_Conv2dWithBatchNorm(self, activation, activation_op_name,
                                         with_bypass, delay, fused_batch_norm,
@@ -541,7 +544,8 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           use_resource)
 
   def testQuantize_FCWithBatchNorm(self):
-    self._RunBatchNormTestOverParameters(self._TestQuantize_FCWithBatchNorm)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunBatchNormTestOverParameters(self._TestQuantize_FCWithBatchNorm)
 
   def _TestQuantize_FCWithBatchNorm(self, activation, activation_op_name,
                                     with_bypass, delay, fused_batch_norm,
@@ -596,8 +600,9 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         use_resource)
 
   def testQuantize_DepthwiseConv2dWithBatchNorm(self):
-    self._RunBatchNormTestOverParameters(
-        self._TestQuantize_DepthwiseConv2dWithBatchNorm)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunBatchNormTestOverParameters(
+          self._TestQuantize_DepthwiseConv2dWithBatchNorm)
 
   def _TestQuantize_DepthwiseConv2dWithBatchNorm(
       self, activation, activation_op_name, with_bypass, delay,
@@ -654,8 +659,9 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           with_bypass, delay, use_resource)
 
   def testQuantize_AtrousConvWithBatchNorm(self):
-    self._RunBatchNormTestOverParameters(
-        self._TestQuantize_AtrousConvWithBatchNorm)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunBatchNormTestOverParameters(
+          self._TestQuantize_AtrousConvWithBatchNorm)
 
   def _TestQuantize_AtrousConvWithBatchNorm(
       self, activation, activation_op_name, with_bypass, delay,
@@ -723,18 +729,19 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     self.assertEqual(graph_def_before, graph_def_after)
 
   def testBatchNormForcedUpdates(self):
-    parameter_list = [
-        # (activation, activation_op_name, fused_batch_norm)
-        (nn_ops.relu6, 'Relu6', False),
-        (nn_ops.relu, 'Relu', False),
-        (array_ops.identity, 'Identity', False),
-        (nn_ops.relu6, 'Relu6', True),
-        (nn_ops.relu, 'Relu', True),
-        (array_ops.identity, 'Identity', True),
-    ]
-    for params in parameter_list:
-      self._TestBatchNormForcedUpdates(params[0], params[1], params[2], False)
-      self._TestBatchNormForcedUpdates(params[0], params[1], params[2], True)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      parameter_list = [
+          # (activation, activation_op_name, fused_batch_norm)
+          (nn_ops.relu6, 'Relu6', False),
+          (nn_ops.relu, 'Relu', False),
+          (array_ops.identity, 'Identity', False),
+          (nn_ops.relu6, 'Relu6', True),
+          (nn_ops.relu, 'Relu', True),
+          (array_ops.identity, 'Identity', True),
+      ]
+      for params in parameter_list:
+        self._TestBatchNormForcedUpdates(params[0], params[1], params[2], False)
+        self._TestBatchNormForcedUpdates(params[0], params[1], params[2], True)
 
   def _TestBatchNormForcedUpdates(self, activation, activation_op_name,
                                   fused_batch_norm, use_resource):

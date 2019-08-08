@@ -62,6 +62,20 @@ extern "C" {
 TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
                                                    unsigned char enable);
 
+// Set XLA's internal BuildXlaOpsPassFlags.tf_xla_enable_lazy_compilation to the
+// value of 'enabled'. Also returns the original value of that flag.
+//
+// Use in tests to allow XLA to fallback to TF classic. This has global effect.
+TF_CAPI_EXPORT unsigned char TF_SetXlaEnableLazyCompilation(
+    unsigned char enable);
+
+// Sets XLA's auto jit mode according to the specified string, which is parsed
+// as if passed in XLA_FLAGS. This has global effect.
+TF_CAPI_EXPORT void TF_SetXLaAutoJitMode(const char* mode);
+
+// Sets XLA's minimum cluster size. This has global effect.
+TF_CAPI_EXPORT void TF_SetXlaMinClusterSize(int size);
+
 // Create a serialized tensorflow.ConfigProto proto, where:
 //
 // a) ConfigProto.optimizer_options.global_jit_level is set to to ON_1 if
@@ -193,6 +207,34 @@ TF_CAPI_EXPORT extern void TFE_ExecuteOpNotificationWaitAndDelete(
 
 TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
                                                       const char* errMsg);
+
+// TF_NewCheckpointReader() return the CheckpointReader that can be use to
+// investigate or load the variable from the checkpoint file
+typedef struct TF_CheckpointReader TF_CheckpointReader;
+TF_CAPI_EXPORT extern TF_CheckpointReader* TF_NewCheckpointReader(
+    const char* filename, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_DeleteCheckpointReader(
+    TF_CheckpointReader* reader);
+TF_CAPI_EXPORT extern int TF_CheckpointReaderHasTensor(
+    TF_CheckpointReader* reader, const char* name);
+// Get the variable name at the given index
+TF_CAPI_EXPORT extern const char* TF_CheckpointReaderGetVariable(
+    TF_CheckpointReader* reader, int index);
+// Get the number of variable in the checkpoint
+TF_CAPI_EXPORT extern int TF_CheckpointReaderSize(TF_CheckpointReader* reader);
+// Get the DataType of a variable
+TF_CAPI_EXPORT extern TF_DataType TF_CheckpointReaderGetVariableDataType(
+    TF_CheckpointReader* reader, const char* name);
+// Read the shape of a variable and write to `dims`
+TF_CAPI_EXPORT extern void TF_CheckpointReaderGetVariableShape(
+    TF_CheckpointReader* reader, const char* name, int64_t* dims, int num_dims,
+    TF_Status* status);
+// Get the number of dimension of a variable
+TF_CAPI_EXPORT extern int TF_CheckpointReaderGetVariableNumDims(
+    TF_CheckpointReader* reader, const char* name);
+// Load the weight of a variable
+TF_CAPI_EXPORT extern TF_Tensor* TF_CheckpointReaderGetTensor(
+    TF_CheckpointReader* reader, const char* name, TF_Status* status);
 
 // TF_NewAttrBuilder() returns an object that you can set attributes on as
 // though it were an op. This allows querying properties of that op for

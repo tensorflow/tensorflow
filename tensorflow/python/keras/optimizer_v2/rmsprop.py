@@ -103,8 +103,6 @@ class RMSprop(optimizer_v2.OptimizerV2):
         allow time inverse decay of learning rate. `lr` is included for backward
         compatibility, recommended to use `learning_rate` instead.
     """
-    if epsilon is None:
-      epsilon = backend_config.epsilon()
     super(RMSprop, self).__init__(name, **kwargs)
     self._set_hyper("learning_rate", kwargs.get("lr", learning_rate))
     self._set_hyper("decay", self._initial_decay)
@@ -117,7 +115,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
       raise ValueError("`momentum` must be between [0, 1].")
     self._set_hyper("momentum", momentum)
 
-    self._set_hyper("epsilon", epsilon)
+    self.epsilon = epsilon or backend_config.epsilon()
     self.centered = centered
 
   def _create_slots(self, var_list):
@@ -136,7 +134,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
     rms = self.get_slot(var, "rms")
     rho = self._get_hyper("rho", var_dtype)
     momentum = self._get_hyper("momentum", var_dtype)
-    epsilon = self._get_hyper("epsilon", var_dtype)
+    epsilon_t = ops.convert_to_tensor(self.epsilon, var_dtype)
     if self._momentum:
       mom = self.get_slot(var, "momentum")
       if self.centered:
@@ -149,7 +147,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
             lr_t,
             rho,
             momentum,
-            epsilon,
+            epsilon_t,
             grad,
             use_locking=self._use_locking)
       else:
@@ -160,7 +158,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
             lr_t,
             rho,
             momentum,
-            epsilon,
+            epsilon_t,
             grad,
             use_locking=self._use_locking)
     else:
@@ -172,7 +170,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
         mg_t = rho * mg + (1. - rho) * grad
         mg_t = state_ops.assign(mg, mg_t, use_locking=self._use_locking)
         denom_t = rms_t - math_ops.square(mg_t)
-      var_t = var - lr_t * grad / (math_ops.sqrt(denom_t) + epsilon)
+      var_t = var - lr_t * grad / (math_ops.sqrt(denom_t) + epsilon_t)
       return state_ops.assign(var, var_t, use_locking=self._use_locking).op
 
   def _resource_apply_sparse(self, grad, var, indices):
@@ -181,7 +179,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
     rms = self.get_slot(var, "rms")
     rho = self._get_hyper("rho", var_dtype)
     momentum = self._get_hyper("momentum", var_dtype)
-    epsilon = self._get_hyper("epsilon", var_dtype)
+    epsilon_t = ops.convert_to_tensor(self.epsilon, var_dtype)
     if self._momentum:
       mom = self.get_slot(var, "momentum")
       if self.centered:
@@ -194,7 +192,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
             lr_t,
             rho,
             momentum,
-            epsilon,
+            epsilon_t,
             grad,
             indices,
             use_locking=self._use_locking)
@@ -206,7 +204,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
             lr_t,
             rho,
             momentum,
-            epsilon,
+            epsilon_t,
             grad,
             indices,
             use_locking=self._use_locking)
@@ -226,7 +224,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
           mg_slice = array_ops.gather(mg_t, indices)
           denom_slice = rms_slice - math_ops.square(mg_slice)
       var_update = self._resource_scatter_add(
-          var, indices, -lr_t * grad / (math_ops.sqrt(denom_slice) + epsilon))
+          var, indices, -lr_t * grad / (math_ops.sqrt(denom_slice) + epsilon_t))
       if self.centered:
         return control_flow_ops.group(*[var_update, rms_t, mg_t])
       return control_flow_ops.group(*[var_update, rms_t])
@@ -247,7 +245,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
         "decay": self._serialize_hyperparameter("decay"),
         "rho": self._serialize_hyperparameter("rho"),
         "momentum": self._serialize_hyperparameter("momentum"),
-        "epsilon": self._serialize_hyperparameter("epsilon"),
+        "epsilon": self.epsilon,
         "centered": self.centered,
     })
     return config

@@ -40,7 +40,9 @@ def _as_operation(op_or_tensor):
 
 class UnliftableError(Exception):
   """Raised if a Tensor cannot be lifted from the graph."""
-  pass
+
+  # Prevent autograph from rewriting this error.
+  ag_pass_through = True
 
 
 def _constant_inputs(op_or_tensor):

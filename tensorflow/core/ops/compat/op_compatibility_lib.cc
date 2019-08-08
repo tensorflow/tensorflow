@@ -74,7 +74,7 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
     }
     if (!removed.empty()) {
       return errors::InvalidArgument("Error, stable op(s) removed: ",
-                                     str_util::Join(removed, ", "));
+                                     absl::StrJoin(removed, ", "));
     }
   }
 

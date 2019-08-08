@@ -36,7 +36,6 @@ BUILD_BLACKLIST = [
     "tensorflow/lite/delegates/gpu",
     "tensorflow/lite/delegates/gpu/metal",
     "tensorflow/lite/delegates/gpu/metal/kernels",
-    "tensorflow/lite/examples/android",
     "tensorflow/lite/experimental/objc",
     "tensorflow/lite/experimental/swift",
 ]
@@ -89,10 +88,10 @@ DEPENDENCY_BLACKLIST = [
     "//tensorflow/core:image_testdata",
     "//tensorflow/core:lmdb_testdata",
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
+    "//tensorflow/python/debug:grpc_tensorflow_server.par",
     "//tensorflow/python/feature_column:vocabulary_testdata",
     "//tensorflow/python:framework/test_file_system.so",
     "//tensorflow/python:util_nest_test_main_lib",
-    "//tensorflow/python/keras/distribute:multi_worker_test_main_lib",
     # lite
     "//tensorflow/lite/experimental/examples/lstm:rnn_cell",
     "//tensorflow/lite/experimental/examples/lstm:rnn_cell.py",
@@ -160,7 +159,9 @@ def main():
 
   missing_dependencies = []
   # File extensions and endings to ignore
-  ignore_extensions = ["_test", "_test.py", "_test_gpu", "_test_gpu.py"]
+  ignore_extensions = [
+      "_test", "_test.py", "_test_gpu", "_test_gpu.py", "_test_lib"
+  ]
 
   ignored_files_count = 0
   blacklisted_dependencies_count = len(DEPENDENCY_BLACKLIST)

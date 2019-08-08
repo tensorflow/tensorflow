@@ -4,9 +4,10 @@
 #   APIs are meant to change while upgrading TRT.
 #   add init_py into pip package BUILD dependency to install it.
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load(
     "//tensorflow:tensorflow.bzl",

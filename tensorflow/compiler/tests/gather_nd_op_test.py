@@ -29,7 +29,7 @@ from tensorflow.python.platform import test
 class GatherNdTest(xla_test.XLATestCase):
 
   def _runGather(self, params, indices):
-    with self.cached_session():
+    with self.session():
       paramsp = array_ops.placeholder(params.dtype)
       indicesp = array_ops.placeholder(indices.dtype)
       with self.test_scope():
@@ -46,7 +46,7 @@ class GatherNdTest(xla_test.XLATestCase):
               np.array([[4], [4], [0]], np.int32)))
 
   def testEmptyIndicesAndParamsOKButJustEmptyParamsFails(self):
-    with self.cached_session():
+    with self.session():
       params = np.ones((3, 3), dtype=np.float32)
 
       indices_empty = np.empty((0, 2), dtype=np.int32)

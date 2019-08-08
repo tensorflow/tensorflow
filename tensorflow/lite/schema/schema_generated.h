@@ -365,6 +365,7 @@ inline const char * const *EnumNamesTensorType() {
 }
 
 inline const char *EnumNameTensorType(TensorType e) {
+  if (e < TensorType_FLOAT32 || e > TensorType_INT8) return "";
   const size_t index = static_cast<int>(e);
   return EnumNamesTensorType()[index];
 }
@@ -394,6 +395,7 @@ inline const char * const *EnumNamesQuantizationDetails() {
 }
 
 inline const char *EnumNameQuantizationDetails(QuantizationDetails e) {
+  if (e < QuantizationDetails_NONE || e > QuantizationDetails_CustomQuantization) return "";
   const size_t index = static_cast<int>(e);
   return EnumNamesQuantizationDetails()[index];
 }
@@ -566,11 +568,12 @@ enum BuiltinOperator {
   BuiltinOperator_MATRIX_DIAG = 113,
   BuiltinOperator_QUANTIZE = 114,
   BuiltinOperator_MATRIX_SET_DIAG = 115,
+  BuiltinOperator_ROUND = 116,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_MATRIX_SET_DIAG
+  BuiltinOperator_MAX = BuiltinOperator_ROUND
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[115] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[116] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -686,7 +689,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[115] {
     BuiltinOperator_REVERSE_SEQUENCE,
     BuiltinOperator_MATRIX_DIAG,
     BuiltinOperator_QUANTIZE,
-    BuiltinOperator_MATRIX_SET_DIAG
+    BuiltinOperator_MATRIX_SET_DIAG,
+    BuiltinOperator_ROUND
   };
   return values;
 }
@@ -809,12 +813,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "MATRIX_DIAG",
     "QUANTIZE",
     "MATRIX_SET_DIAG",
+    "ROUND",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
+  if (e < BuiltinOperator_ADD || e > BuiltinOperator_MATRIX_SET_DIAG) return "";
   const size_t index = static_cast<int>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1111,6 +1117,7 @@ inline const char * const *EnumNamesBuiltinOptions() {
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
+  if (e < BuiltinOptions_NONE || e > BuiltinOptions_MatrixSetDiagOptions) return "";
   const size_t index = static_cast<int>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -2260,6 +2267,7 @@ inline const char * const *EnumNamesPadding() {
 }
 
 inline const char *EnumNamePadding(Padding e) {
+  if (e < Padding_SAME || e > Padding_VALID) return "";
   const size_t index = static_cast<int>(e);
   return EnumNamesPadding()[index];
 }
@@ -2301,6 +2309,7 @@ inline const char * const *EnumNamesActivationFunctionType() {
 }
 
 inline const char *EnumNameActivationFunctionType(ActivationFunctionType e) {
+  if (e < ActivationFunctionType_NONE || e > ActivationFunctionType_SIGN_BIT) return "";
   const size_t index = static_cast<int>(e);
   return EnumNamesActivationFunctionType()[index];
 }
@@ -2333,6 +2342,7 @@ inline const char * const *EnumNamesLSHProjectionType() {
 }
 
 inline const char *EnumNameLSHProjectionType(LSHProjectionType e) {
+  if (e < LSHProjectionType_UNKNOWN || e > LSHProjectionType_DENSE) return "";
   const size_t index = static_cast<int>(e);
   return EnumNamesLSHProjectionType()[index];
 }
@@ -2362,6 +2372,7 @@ inline const char * const *EnumNamesFullyConnectedOptionsWeightsFormat() {
 }
 
 inline const char *EnumNameFullyConnectedOptionsWeightsFormat(FullyConnectedOptionsWeightsFormat e) {
+  if (e < FullyConnectedOptionsWeightsFormat_DEFAULT || e > FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8) return "";
   const size_t index = static_cast<int>(e);
   return EnumNamesFullyConnectedOptionsWeightsFormat()[index];
 }
@@ -2391,6 +2402,7 @@ inline const char * const *EnumNamesLSTMKernelType() {
 }
 
 inline const char *EnumNameLSTMKernelType(LSTMKernelType e) {
+  if (e < LSTMKernelType_FULL || e > LSTMKernelType_BASIC) return "";
   const size_t index = static_cast<int>(e);
   return EnumNamesLSTMKernelType()[index];
 }
@@ -2423,6 +2435,7 @@ inline const char * const *EnumNamesCombinerType() {
 }
 
 inline const char *EnumNameCombinerType(CombinerType e) {
+  if (e < CombinerType_SUM || e > CombinerType_SQRTN) return "";
   const size_t index = static_cast<int>(e);
   return EnumNamesCombinerType()[index];
 }
@@ -2452,6 +2465,7 @@ inline const char * const *EnumNamesMirrorPadMode() {
 }
 
 inline const char *EnumNameMirrorPadMode(MirrorPadMode e) {
+  if (e < MirrorPadMode_REFLECT || e > MirrorPadMode_SYMMETRIC) return "";
   const size_t index = static_cast<int>(e);
   return EnumNamesMirrorPadMode()[index];
 }
@@ -2478,6 +2492,7 @@ inline const char * const *EnumNamesCustomOptionsFormat() {
 }
 
 inline const char *EnumNameCustomOptionsFormat(CustomOptionsFormat e) {
+  if (e < CustomOptionsFormat_FLEXBUFFERS || e > CustomOptionsFormat_FLEXBUFFERS) return "";
   const size_t index = static_cast<int>(e);
   return EnumNamesCustomOptionsFormat()[index];
 }
@@ -2491,7 +2506,7 @@ struct CustomQuantizationT : public flatbuffers::NativeTable {
 
 struct CustomQuantization FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef CustomQuantizationT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_CUSTOM = 4
   };
   const flatbuffers::Vector<uint8_t> *custom() const {
@@ -2559,7 +2574,7 @@ struct QuantizationParametersT : public flatbuffers::NativeTable {
 
 struct QuantizationParameters FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef QuantizationParametersT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_MIN = 4,
     VT_MAX = 6,
     VT_SCALE = 8,
@@ -2713,7 +2728,7 @@ struct TensorT : public flatbuffers::NativeTable {
 
 struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef TensorT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_SHAPE = 4,
     VT_TYPE = 6,
     VT_BUFFER = 8,
@@ -2848,7 +2863,7 @@ struct Conv2DOptionsT : public flatbuffers::NativeTable {
 
 struct Conv2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef Conv2DOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_PADDING = 4,
     VT_STRIDE_W = 6,
     VT_STRIDE_H = 8,
@@ -2962,7 +2977,7 @@ struct Pool2DOptionsT : public flatbuffers::NativeTable {
 
 struct Pool2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef Pool2DOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_PADDING = 4,
     VT_STRIDE_W = 6,
     VT_STRIDE_H = 8,
@@ -3078,7 +3093,7 @@ struct DepthwiseConv2DOptionsT : public flatbuffers::NativeTable {
 
 struct DepthwiseConv2DOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef DepthwiseConv2DOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_PADDING = 4,
     VT_STRIDE_W = 6,
     VT_STRIDE_H = 8,
@@ -3194,7 +3209,7 @@ struct ConcatEmbeddingsOptionsT : public flatbuffers::NativeTable {
 
 struct ConcatEmbeddingsOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ConcatEmbeddingsOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NUM_CHANNELS = 4,
     VT_NUM_COLUMNS_PER_CHANNEL = 6,
     VT_EMBEDDING_DIM_PER_CHANNEL = 8
@@ -3282,7 +3297,7 @@ struct LSHProjectionOptionsT : public flatbuffers::NativeTable {
 
 struct LSHProjectionOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef LSHProjectionOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_TYPE = 4
   };
   LSHProjectionType type() const {
@@ -3338,7 +3353,7 @@ struct SVDFOptionsT : public flatbuffers::NativeTable {
 
 struct SVDFOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SVDFOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_RANK = 4,
     VT_FUSED_ACTIVATION_FUNCTION = 6
   };
@@ -3402,7 +3417,7 @@ struct RNNOptionsT : public flatbuffers::NativeTable {
 
 struct RNNOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef RNNOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_FUSED_ACTIVATION_FUNCTION = 4
   };
   ActivationFunctionType fused_activation_function() const {
@@ -3458,7 +3473,7 @@ struct SequenceRNNOptionsT : public flatbuffers::NativeTable {
 
 struct SequenceRNNOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SequenceRNNOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_TIME_MAJOR = 4,
     VT_FUSED_ACTIVATION_FUNCTION = 6
   };
@@ -3526,7 +3541,7 @@ struct BidirectionalSequenceRNNOptionsT : public flatbuffers::NativeTable {
 
 struct BidirectionalSequenceRNNOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef BidirectionalSequenceRNNOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_TIME_MAJOR = 4,
     VT_FUSED_ACTIVATION_FUNCTION = 6,
     VT_MERGE_OUTPUTS = 8
@@ -3594,17 +3609,20 @@ struct FullyConnectedOptionsT : public flatbuffers::NativeTable {
   typedef FullyConnectedOptions TableType;
   ActivationFunctionType fused_activation_function;
   FullyConnectedOptionsWeightsFormat weights_format;
+  bool keep_num_dims;
   FullyConnectedOptionsT()
       : fused_activation_function(ActivationFunctionType_NONE),
-        weights_format(FullyConnectedOptionsWeightsFormat_DEFAULT) {
+        weights_format(FullyConnectedOptionsWeightsFormat_DEFAULT),
+        keep_num_dims(false) {
   }
 };
 
 struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef FullyConnectedOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_FUSED_ACTIVATION_FUNCTION = 4,
-    VT_WEIGHTS_FORMAT = 6
+    VT_WEIGHTS_FORMAT = 6,
+    VT_KEEP_NUM_DIMS = 8
   };
   ActivationFunctionType fused_activation_function() const {
     return static_cast<ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
@@ -3612,10 +3630,14 @@ struct FullyConnectedOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
   FullyConnectedOptionsWeightsFormat weights_format() const {
     return static_cast<FullyConnectedOptionsWeightsFormat>(GetField<int8_t>(VT_WEIGHTS_FORMAT, 0));
   }
+  bool keep_num_dims() const {
+    return GetField<uint8_t>(VT_KEEP_NUM_DIMS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
            VerifyField<int8_t>(verifier, VT_WEIGHTS_FORMAT) &&
+           VerifyField<uint8_t>(verifier, VT_KEEP_NUM_DIMS) &&
            verifier.EndTable();
   }
   FullyConnectedOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -3632,6 +3654,9 @@ struct FullyConnectedOptionsBuilder {
   void add_weights_format(FullyConnectedOptionsWeightsFormat weights_format) {
     fbb_.AddElement<int8_t>(FullyConnectedOptions::VT_WEIGHTS_FORMAT, static_cast<int8_t>(weights_format), 0);
   }
+  void add_keep_num_dims(bool keep_num_dims) {
+    fbb_.AddElement<uint8_t>(FullyConnectedOptions::VT_KEEP_NUM_DIMS, static_cast<uint8_t>(keep_num_dims), 0);
+  }
   explicit FullyConnectedOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -3647,8 +3672,10 @@ struct FullyConnectedOptionsBuilder {
 inline flatbuffers::Offset<FullyConnectedOptions> CreateFullyConnectedOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
     ActivationFunctionType fused_activation_function = ActivationFunctionType_NONE,
-    FullyConnectedOptionsWeightsFormat weights_format = FullyConnectedOptionsWeightsFormat_DEFAULT) {
+    FullyConnectedOptionsWeightsFormat weights_format = FullyConnectedOptionsWeightsFormat_DEFAULT,
+    bool keep_num_dims = false) {
   FullyConnectedOptionsBuilder builder_(_fbb);
+  builder_.add_keep_num_dims(keep_num_dims);
   builder_.add_weights_format(weights_format);
   builder_.add_fused_activation_function(fused_activation_function);
   return builder_.Finish();
@@ -3666,7 +3693,7 @@ struct SoftmaxOptionsT : public flatbuffers::NativeTable {
 
 struct SoftmaxOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SoftmaxOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_BETA = 4
   };
   float beta() const {
@@ -3722,7 +3749,7 @@ struct ConcatenationOptionsT : public flatbuffers::NativeTable {
 
 struct ConcatenationOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ConcatenationOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_AXIS = 4,
     VT_FUSED_ACTIVATION_FUNCTION = 6
   };
@@ -3786,7 +3813,7 @@ struct AddOptionsT : public flatbuffers::NativeTable {
 
 struct AddOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef AddOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_FUSED_ACTIVATION_FUNCTION = 4
   };
   ActivationFunctionType fused_activation_function() const {
@@ -3840,7 +3867,7 @@ struct MulOptionsT : public flatbuffers::NativeTable {
 
 struct MulOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef MulOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_FUSED_ACTIVATION_FUNCTION = 4
   };
   ActivationFunctionType fused_activation_function() const {
@@ -3894,7 +3921,7 @@ struct L2NormOptionsT : public flatbuffers::NativeTable {
 
 struct L2NormOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef L2NormOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_FUSED_ACTIVATION_FUNCTION = 4
   };
   ActivationFunctionType fused_activation_function() const {
@@ -3954,7 +3981,7 @@ struct LocalResponseNormalizationOptionsT : public flatbuffers::NativeTable {
 
 struct LocalResponseNormalizationOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef LocalResponseNormalizationOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_RADIUS = 4,
     VT_BIAS = 6,
     VT_ALPHA = 8,
@@ -4044,7 +4071,7 @@ struct LSTMOptionsT : public flatbuffers::NativeTable {
 
 struct LSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef LSTMOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_FUSED_ACTIVATION_FUNCTION = 4,
     VT_CELL_CLIP = 6,
     VT_PROJ_CLIP = 8,
@@ -4134,7 +4161,7 @@ struct UnidirectionalSequenceLSTMOptionsT : public flatbuffers::NativeTable {
 
 struct UnidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef UnidirectionalSequenceLSTMOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_FUSED_ACTIVATION_FUNCTION = 4,
     VT_CELL_CLIP = 6,
     VT_PROJ_CLIP = 8,
@@ -4226,7 +4253,7 @@ struct BidirectionalSequenceLSTMOptionsT : public flatbuffers::NativeTable {
 
 struct BidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef BidirectionalSequenceLSTMOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_FUSED_ACTIVATION_FUNCTION = 4,
     VT_CELL_CLIP = 6,
     VT_PROJ_CLIP = 8,
@@ -4320,7 +4347,7 @@ struct ResizeBilinearOptionsT : public flatbuffers::NativeTable {
 
 struct ResizeBilinearOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ResizeBilinearOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_ALIGN_CORNERS = 8
   };
   bool align_corners() const {
@@ -4374,7 +4401,7 @@ struct ResizeNearestNeighborOptionsT : public flatbuffers::NativeTable {
 
 struct ResizeNearestNeighborOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ResizeNearestNeighborOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_ALIGN_CORNERS = 4
   };
   bool align_corners() const {
@@ -4428,7 +4455,7 @@ struct CallOptionsT : public flatbuffers::NativeTable {
 
 struct CallOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef CallOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_SUBGRAPH = 4
   };
   uint32_t subgraph() const {
@@ -4561,7 +4588,7 @@ struct ReshapeOptionsT : public flatbuffers::NativeTable {
 
 struct ReshapeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ReshapeOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NEW_SHAPE = 4
   };
   const flatbuffers::Vector<int32_t> *new_shape() const {
@@ -4708,7 +4735,7 @@ struct SkipGramOptionsT : public flatbuffers::NativeTable {
 
 struct SkipGramOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SkipGramOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NGRAM_SIZE = 4,
     VT_MAX_SKIP_SIZE = 6,
     VT_INCLUDE_ALL_NGRAMS = 8
@@ -4782,7 +4809,7 @@ struct SpaceToDepthOptionsT : public flatbuffers::NativeTable {
 
 struct SpaceToDepthOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SpaceToDepthOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_BLOCK_SIZE = 4
   };
   int32_t block_size() const {
@@ -4836,7 +4863,7 @@ struct SubOptionsT : public flatbuffers::NativeTable {
 
 struct SubOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SubOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_FUSED_ACTIVATION_FUNCTION = 4
   };
   ActivationFunctionType fused_activation_function() const {
@@ -4890,7 +4917,7 @@ struct DivOptionsT : public flatbuffers::NativeTable {
 
 struct DivOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef DivOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_FUSED_ACTIVATION_FUNCTION = 4
   };
   ActivationFunctionType fused_activation_function() const {
@@ -4984,7 +5011,7 @@ struct EmbeddingLookupSparseOptionsT : public flatbuffers::NativeTable {
 
 struct EmbeddingLookupSparseOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef EmbeddingLookupSparseOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_COMBINER = 4
   };
   CombinerType combiner() const {
@@ -5038,7 +5065,7 @@ struct GatherOptionsT : public flatbuffers::NativeTable {
 
 struct GatherOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef GatherOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_AXIS = 4
   };
   int32_t axis() const {
@@ -5212,7 +5239,7 @@ struct ReducerOptionsT : public flatbuffers::NativeTable {
 
 struct ReducerOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ReducerOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_KEEP_DIMS = 4
   };
   bool keep_dims() const {
@@ -5265,7 +5292,7 @@ struct SqueezeOptionsT : public flatbuffers::NativeTable {
 
 struct SqueezeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SqueezeOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_SQUEEZE_DIMS = 4
   };
   const flatbuffers::Vector<int32_t> *squeeze_dims() const {
@@ -5328,7 +5355,7 @@ struct SplitOptionsT : public flatbuffers::NativeTable {
 
 struct SplitOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SplitOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NUM_SPLITS = 4
   };
   int32_t num_splits() const {
@@ -5382,7 +5409,7 @@ struct SplitVOptionsT : public flatbuffers::NativeTable {
 
 struct SplitVOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SplitVOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NUM_SPLITS = 4
   };
   int32_t num_splits() const {
@@ -5444,7 +5471,7 @@ struct StridedSliceOptionsT : public flatbuffers::NativeTable {
 
 struct StridedSliceOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef StridedSliceOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_BEGIN_MASK = 4,
     VT_END_MASK = 6,
     VT_ELLIPSIS_MASK = 8,
@@ -5580,7 +5607,7 @@ struct CastOptionsT : public flatbuffers::NativeTable {
 
 struct CastOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef CastOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_IN_DATA_TYPE = 4,
     VT_OUT_DATA_TYPE = 6
   };
@@ -5764,7 +5791,7 @@ struct ArgMaxOptionsT : public flatbuffers::NativeTable {
 
 struct ArgMaxOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ArgMaxOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_OUTPUT_TYPE = 4
   };
   TensorType output_type() const {
@@ -5818,7 +5845,7 @@ struct ArgMinOptionsT : public flatbuffers::NativeTable {
 
 struct ArgMinOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ArgMinOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_OUTPUT_TYPE = 4
   };
   TensorType output_type() const {
@@ -6156,7 +6183,7 @@ struct TransposeConvOptionsT : public flatbuffers::NativeTable {
 
 struct TransposeConvOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef TransposeConvOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_PADDING = 4,
     VT_STRIDE_W = 6,
     VT_STRIDE_H = 8
@@ -6270,7 +6297,7 @@ struct SparseToDenseOptionsT : public flatbuffers::NativeTable {
 
 struct SparseToDenseOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SparseToDenseOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_VALIDATE_INDICES = 4
   };
   bool validate_indices() const {
@@ -6404,7 +6431,7 @@ struct ShapeOptionsT : public flatbuffers::NativeTable {
 
 struct ShapeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ShapeOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_OUT_TYPE = 4
   };
   TensorType out_type() const {
@@ -6544,7 +6571,7 @@ struct FakeQuantOptionsT : public flatbuffers::NativeTable {
 
 struct FakeQuantOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef FakeQuantOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_MIN = 4,
     VT_MAX = 6,
     VT_NUM_BITS = 8,
@@ -6630,7 +6657,7 @@ struct PackOptionsT : public flatbuffers::NativeTable {
 
 struct PackOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef PackOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_VALUES_COUNT = 4,
     VT_AXIS = 6
   };
@@ -6734,7 +6761,7 @@ struct OneHotOptionsT : public flatbuffers::NativeTable {
 
 struct OneHotOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef OneHotOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_AXIS = 4
   };
   int32_t axis() const {
@@ -6910,7 +6937,7 @@ struct UnpackOptionsT : public flatbuffers::NativeTable {
 
 struct UnpackOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef UnpackOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NUM = 4,
     VT_AXIS = 6
   };
@@ -7214,7 +7241,7 @@ struct LeakyReluOptionsT : public flatbuffers::NativeTable {
 
 struct LeakyReluOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef LeakyReluOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_ALPHA = 4
   };
   float alpha() const {
@@ -7308,7 +7335,7 @@ struct MirrorPadOptionsT : public flatbuffers::NativeTable {
 
 struct MirrorPadOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef MirrorPadOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_MODE = 4
   };
   MirrorPadMode mode() const {
@@ -7362,7 +7389,7 @@ struct UniqueOptionsT : public flatbuffers::NativeTable {
 
 struct UniqueOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef UniqueOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_IDX_OUT_TYPE = 4
   };
   TensorType idx_out_type() const {
@@ -7578,7 +7605,7 @@ struct ReverseSequenceOptionsT : public flatbuffers::NativeTable {
 
 struct ReverseSequenceOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ReverseSequenceOptionsT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_SEQ_DIM = 4,
     VT_BATCH_DIM = 6
   };
@@ -7765,7 +7792,7 @@ struct OperatorCodeT : public flatbuffers::NativeTable {
 
 struct OperatorCode FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef OperatorCodeT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_BUILTIN_CODE = 4,
     VT_CUSTOM_CODE = 6,
     VT_VERSION = 8
@@ -7859,7 +7886,7 @@ struct OperatorT : public flatbuffers::NativeTable {
 
 struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef OperatorT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_OPCODE_INDEX = 4,
     VT_INPUTS = 6,
     VT_OUTPUTS = 8,
@@ -8644,7 +8671,7 @@ struct SubGraphT : public flatbuffers::NativeTable {
 
 struct SubGraph FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SubGraphT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_TENSORS = 4,
     VT_INPUTS = 6,
     VT_OUTPUTS = 8,
@@ -8760,7 +8787,7 @@ struct BufferT : public flatbuffers::NativeTable {
 
 struct Buffer FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef BufferT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_DATA = 4
   };
   const flatbuffers::Vector<uint8_t> *data() const {
@@ -8828,7 +8855,7 @@ struct ModelT : public flatbuffers::NativeTable {
 
 struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ModelT NativeTableType;
-  enum {
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_VERSION = 4,
     VT_OPERATOR_CODES = 6,
     VT_SUBGRAPHS = 8,
@@ -9370,6 +9397,7 @@ inline void FullyConnectedOptions::UnPackTo(FullyConnectedOptionsT *_o, const fl
   (void)_resolver;
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; };
   { auto _e = weights_format(); _o->weights_format = _e; };
+  { auto _e = keep_num_dims(); _o->keep_num_dims = _e; };
 }
 
 inline flatbuffers::Offset<FullyConnectedOptions> FullyConnectedOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const FullyConnectedOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -9382,10 +9410,12 @@ inline flatbuffers::Offset<FullyConnectedOptions> CreateFullyConnectedOptions(fl
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const FullyConnectedOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _fused_activation_function = _o->fused_activation_function;
   auto _weights_format = _o->weights_format;
+  auto _keep_num_dims = _o->keep_num_dims;
   return tflite::CreateFullyConnectedOptions(
       _fbb,
       _fused_activation_function,
-      _weights_format);
+      _weights_format,
+      _keep_num_dims);
 }
 
 inline SoftmaxOptionsT *SoftmaxOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

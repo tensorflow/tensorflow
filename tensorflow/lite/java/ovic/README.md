@@ -23,7 +23,7 @@ Note: all commands should be called from your tensorflow installation folder (un
 * Download the [testdata package](https://storage.googleapis.com/download.tensorflow.org/data/ovic_2018_10_23.zip):
 
 ```sh
-curl -L https://storage.googleapis.com/download.tensorflow.org/data/ovic_2018_10_23.zip -o /tmp/ovic.zip
+curl -L https://storage.googleapis.com/download.tensorflow.org/data/ovic_2019_04_30.zip -o /tmp/ovic.zip
 ```
 
 * Unzip the package into the testdata folder:
@@ -184,7 +184,8 @@ Note: the benchmarking results can be quite different depending on the backgroun
 | Detection Model      | Pixel 2 latency (ms)  |
 | -------------------- |:---------------------:|
 |  detect.lite         | 331                   |
-| quantized_detect.lite| 95                    |
+| quantized_detect.lite | 95                    |
+| quantized_fpnlite.lite | 119   |
 
 
 Since Pixel 2 has excellent support for 8-bit quantized models, we strongly recommend you to check out the [quantization training tutorial](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/quantize).

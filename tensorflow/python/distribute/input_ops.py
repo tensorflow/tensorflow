@@ -42,10 +42,13 @@ def auto_shard_dataset(dataset, num_shards, index):
     files. The input dataset will be returned if we cannot automatically
     determine a good way to shard the input dataset.
   """
-  if isinstance(dataset, dataset_ops.DatasetV1):
-    return distribute._AutoShardDatasetV1(dataset, num_shards, index)
+  if dataset.options().experimental_distribute.auto_shard:
+    if isinstance(dataset, dataset_ops.DatasetV1):
+      return distribute._AutoShardDatasetV1(dataset, num_shards, index)
+    else:
+      return distribute._AutoShardDataset(dataset, num_shards, index)
   else:
-    return distribute._AutoShardDataset(dataset, num_shards, index)
+    return dataset
 
 
 def _clone_dataset(dataset):

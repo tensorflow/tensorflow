@@ -80,6 +80,13 @@ class FixedLossScaleTest(test.TestCase):
     self.assertTrue(should_apply)
     self.assertEqual(loss_scale_value, self.evaluate(loss_scale()))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_serialization(self):
+    loss_scale = loss_scale_module.get(123)
+    config = loss_scale.get_config()
+    loss_scale = loss_scale_module.FixedLossScale.from_config(config)
+    self.assertEqual(self.evaluate(loss_scale()), 123.)
+
 
 def _get_example_iter(inputs):
   dataset = dataset_ops.Dataset.from_tensor_slices(inputs)
@@ -251,6 +258,17 @@ class DynamicLossScaleTest(test.TestCase, parameterized.TestCase):
       ]
       expected_outputs = [2, 2, 4, 4, 2, 2, 1, 1, 2, 2, 1]
       self._test_helper(inputs, expected_outputs, init_loss_scale)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_serialization(self):
+    loss_scale = loss_scale_module.DynamicLossScale(
+        initial_loss_scale=1, increment_period=2, multiplier=3)
+    config = loss_scale.get_config()
+    loss_scale = loss_scale_module.DynamicLossScale.from_config(config)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertEqual(self.evaluate(loss_scale()), 1)
+    self.assertEqual(loss_scale.increment_period, 2)
+    self.assertEqual(loss_scale.multiplier, 3)
 
   @test_util.run_in_graph_and_eager_modes
   def test_update_with_none_gradients(self):

@@ -488,6 +488,14 @@ class LinalgTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
+  def test_log_matrix_determinant(self):
+    x = random_ops.random_normal([3, 4, 2, 2])
+
+    def loop_fn(i):
+      return linalg_ops.log_matrix_determinant(array_ops.gather(x, i))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+
   def test_matrix_triangular_solve(self):
     for lower in (True, False):
       for adjoint in (True, False):

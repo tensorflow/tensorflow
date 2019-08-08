@@ -21,7 +21,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
-#include "tensorflow/c/c_api.h"
+#include "tensorflow/c/tf_attrtype.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"

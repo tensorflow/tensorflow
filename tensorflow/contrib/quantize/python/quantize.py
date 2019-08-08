@@ -577,7 +577,7 @@ def _IsSkipLayer(activation_op):
   if activation_op.type == 'Identity' and len(activation_op.outputs) == 1:
     if len(activation_op.outputs[0].consumers()) == 1:
       consumer = activation_op.outputs[0].consumers()[0]
-      if consumer.type == 'FusedBatchNorm':
+      if consumer.type in ['FusedBatchNorm', 'FusedBatchNormV3']:
         skip_layer = True
         logging.info(
             'Skipping quantizing %s, because it is the output of a conv/fc '

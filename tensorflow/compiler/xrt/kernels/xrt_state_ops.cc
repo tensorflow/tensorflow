@@ -147,4 +147,9 @@ REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllAllocations").Device(DEVICE_XLA_GPU),
 REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllAllocations").Device(DEVICE_XLA_CPU),
                         XRTReleaseAllAllocationsOp<XRTGenericDeviceAccessor>);
 
+REGISTER_KERNEL_BUILDER(Name("XRTCompactAllocations").Device(DEVICE_XLA_GPU),
+                        XRTCompactAllocationsOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTCompactAllocations").Device(DEVICE_XLA_CPU),
+                        XRTCompactAllocationsOp<XRTGenericDeviceAccessor>);
+
 }  // namespace tensorflow

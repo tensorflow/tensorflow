@@ -16,10 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 
 #include <limits>
-#include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/service/backend.h"
+
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/stream_executor/device_memory.h"
 
 namespace xla {
 namespace gpu {
@@ -28,11 +29,9 @@ namespace {
 class BufferComparatorTest : public testing::Test {
  protected:
   BufferComparatorTest()
-      : backend_(Backend::CreateDefaultBackend().ConsumeValueOrDie()),
-        stream_exec_(backend_->default_stream_executor()),
-        allocator_(stream_exec_->platform(), {stream_exec_}),
-        compiler_(Compiler::GetForPlatform(stream_exec_->platform())
-                      .ConsumeValueOrDie()) {}
+      : platform_(
+            se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie()),
+        stream_exec_(platform_->ExecutorForDevice(0).ValueOrDie()) {}
 
   // Take floats only for convenience. Still uses ElementType internally.
   template <typename ElementType>
@@ -43,49 +42,26 @@ class BufferComparatorTest : public testing::Test {
     se::Stream stream(stream_exec_);
     stream.Init();
 
-    auto owning_lhs_buffer = allocator_
-                                 .Allocate(stream_exec_->device_ordinal(),
-                                           lhs.size() * sizeof(ElementType))
-                                 .ConsumeValueOrDie();
+    se::ScopedDeviceMemory<ElementType> lhs_buffer =
+        stream_exec_->AllocateOwnedArray<ElementType>(lhs.size());
+    se::ScopedDeviceMemory<ElementType> rhs_buffer =
+        stream_exec_->AllocateOwnedArray<ElementType>(lhs.size());
 
-    auto owning_rhs_buffer = allocator_
-                                 .Allocate(stream_exec_->device_ordinal(),
-                                           rhs.size() * sizeof(ElementType))
-                                 .ConsumeValueOrDie();
-
-    auto lhs_buffer =
-        se::DeviceMemory<ElementType>(owning_lhs_buffer.AsDeviceMemoryBase());
-    auto rhs_buffer =
-        se::DeviceMemory<ElementType>(owning_rhs_buffer.AsDeviceMemoryBase());
-
-    stream.ThenMemcpy(&lhs_buffer, lhs.data(), lhs_buffer.size());
-    stream.ThenMemcpy(&rhs_buffer, rhs.data(), rhs_buffer.size());
-
+    stream.ThenMemcpy(lhs_buffer.ptr(), lhs.data(), lhs_buffer->size());
+    stream.ThenMemcpy(rhs_buffer.ptr(), rhs.data(), rhs_buffer->size());
     TF_CHECK_OK(stream.BlockHostUntilDone());
 
-    static auto* cmp_cache =
-        new absl::flat_hash_map<std::pair<PrimitiveType, int64>,
-                                std::unique_ptr<BufferComparator>>();
-    auto key =
-        std::make_pair(primitive_util::NativeToPrimitiveType<ElementType>(),
-                       static_cast<int64>(lhs_buffer.ElementCount()));
-    std::unique_ptr<BufferComparator>& comparator = (*cmp_cache)[key];
-    if (!comparator) {
-      comparator.reset(new BufferComparator(
-          BufferComparator::Create(
-              ShapeUtil::MakeShape(key.first, {key.second}), stream.parent(),
-              compiler_)
-              .ConsumeValueOrDie()));
-    }
-    return comparator
-        ->CompareEqual(&stream, &allocator_, lhs_buffer, rhs_buffer)
+    BufferComparator comparator(
+        ShapeUtil::MakeShape(
+            primitive_util::NativeToPrimitiveType<ElementType>(),
+            {static_cast<int64>(lhs_buffer->ElementCount())}),
+        HloModuleConfig());
+    return comparator.CompareEqual(&stream, *lhs_buffer, *rhs_buffer)
         .ConsumeValueOrDie();
   }
 
-  std::unique_ptr<Backend> backend_;
+  se::Platform* platform_;
   se::StreamExecutor* stream_exec_;
-  StreamExecutorMemoryAllocator allocator_;
-  Compiler* compiler_;
 };
 
 TEST_F(BufferComparatorTest, TestNaNs) {

@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <array>
-
 #include "tensorflow/lite/experimental/c/c_api.h"
+
+#include <array>
+#include <fstream>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_internal.h"
@@ -186,6 +188,38 @@ TEST(CApiSimple, ErrorReporter) {
   EXPECT_EQ(reporter.num_calls(), 1);
 
   TFL_DeleteInterpreter(interpreter);
+}
+
+TEST(CApiSimple, ValidModel) {
+  std::ifstream model_file("tensorflow/lite/testdata/add.bin");
+
+  model_file.seekg(0, std::ios_base::end);
+  std::vector<char> model_buffer(model_file.tellg());
+
+  model_file.seekg(0, std::ios_base::beg);
+  model_file.read(model_buffer.data(), model_buffer.size());
+
+  TFL_Model* model = TFL_NewModel(model_buffer.data(), model_buffer.size());
+  ASSERT_NE(model, nullptr);
+  TFL_DeleteModel(model);
+}
+
+TEST(CApiSimple, ValidModelFromFile) {
+  TFL_Model* model =
+      TFL_NewModelFromFile("tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+  TFL_DeleteModel(model);
+}
+
+TEST(CApiSimple, InvalidModel) {
+  std::vector<char> invalid_model(20, 'c');
+  TFL_Model* model = TFL_NewModel(invalid_model.data(), invalid_model.size());
+  ASSERT_EQ(model, nullptr);
+}
+
+TEST(CApiSimple, InvalidModelFromFile) {
+  TFL_Model* model = TFL_NewModelFromFile("invalid/path/foo.tflite");
+  ASSERT_EQ(model, nullptr);
 }
 
 }  // namespace

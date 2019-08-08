@@ -13,19 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/java/src/main/native/gpu_delegate_jni.h"
+#include <jni.h>
 
 #include "tensorflow/lite/delegates/gpu/gl_delegate.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
+
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
-    JNIEnv* env, jclass clazz) {
-  // Auto-choosing the best performing config for closed release.
+    JNIEnv* env, jclass clazz, jboolean precision_loss_allowed,
+    jboolean dynamic_batch_enabled, jint preferred_gl_object_type) {
   TfLiteGpuDelegateOptions options;
   options.metadata = nullptr;
-  options.compile_options.precision_loss_allowed = 1;
+  options.compile_options.precision_loss_allowed =
+      precision_loss_allowed == JNI_TRUE ? 1 : 0;
   options.compile_options.preferred_gl_object_type =
-      TFLITE_GL_OBJECT_TYPE_FASTEST;
-  options.compile_options.dynamic_batch_enabled = 0;
+      static_cast<int32_t>(preferred_gl_object_type);
+  options.compile_options.dynamic_batch_enabled =
+      dynamic_batch_enabled == JNI_TRUE ? 1 : 0;
   return reinterpret_cast<jlong>(TfLiteGpuDelegateCreate(&options));
 }
 
@@ -43,3 +49,7 @@ Java_org_tensorflow_lite_gpu_GpuDelegate_bindGlBufferToTensor(
              ? JNI_TRUE
              : JNI_FALSE;
 }
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus

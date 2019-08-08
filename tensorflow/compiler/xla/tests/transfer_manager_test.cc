@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/stream_pool.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 namespace {
@@ -98,6 +98,28 @@ XLA_TEST_F(TransferManagerTest, TransferR1F32) {
 
   LiteralTestUtil::ExpectR1Equal<float>({1.25f, 2.5f, -17.0f, -20.125f},
                                         result);
+}
+
+XLA_TEST_F(TransferManagerTest, TransferR1F32AwkwardSizes) {
+  // Test transferring R1s from 0 to kMaxR1Size. The goal is to find bugs
+  // related to "awkwardly" sized R1s.
+  constexpr int kMaxR1Size = (1 << 11);
+  for (int i = 0; i < kMaxR1Size; ++i) {
+    std::vector<float> inputs(i);
+    std::iota(inputs.begin(), inputs.end(), 0);
+    Literal literal = LiteralUtil::CreateR1<float>(inputs);
+    const Shape& shape = literal.shape();
+    auto device_buffer = AllocateDeviceBuffer(shape);
+
+    // Round trip literal through device.
+    ASSERT_IS_OK(transfer_manager_->TransferLiteralToDevice(stream_, literal,
+                                                            device_buffer));
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal result,
+        transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
+
+    LiteralTestUtil::ExpectR1Equal<float>(inputs, result);
+  }
 }
 
 XLA_TEST_F(TransferManagerTest, TransferR1LargeF32) {
@@ -276,8 +298,8 @@ XLA_TEST_F(TransferManagerTest, TransferComplexValueInTuple) {
 }
 
 XLA_TEST_F(TransferManagerTest, TransferTokenFromDevice) {
-  // "Copy" a token from the device. The token has no physical representation so
-  // no copying is actually performed, but it shouldn't fail.
+  // "Copy" a token from the device. The token has no physical representation
+  // so no copying is actually performed, but it shouldn't fail.
   // TODO(b/110532604): Add transferring the token to device when this is
   // supported.
   auto device_buffer = AllocateDeviceBuffer(ShapeUtil::MakeTokenShape());

@@ -48,7 +48,7 @@ Status WhileThunk::Initialize(const GpuExecutable& executable,
 }
 
 Status WhileThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                   se::Stream* stream,
+                                   se::Stream* stream, const RunId& run_id,
                                    HloExecutionProfiler* profiler) {
   se::DeviceMemoryBase condition_result_data =
       buffer_allocations.GetDeviceAddress(condition_result_buffer_index_);
@@ -59,7 +59,7 @@ Status WhileThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     profiler->StartHloComputation();
     VLOG(3) << "Executing condition computation";
     TF_RETURN_IF_ERROR(condition_thunk_sequence_->ExecuteOnStream(
-        buffer_allocations, stream, profiler));
+        buffer_allocations, stream, run_id, profiler));
     profiler->FinishHloComputation(hlo_instruction()->while_condition());
 
     // Copy the result of condition computation and break the loop if 'false'.
@@ -83,8 +83,8 @@ Status WhileThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     VLOG(3) << "Executing body computation";
     // Invoke thunk sequence for while 'body' computation, and pass on
     // 'profiler' to measure the timing of the thunks in 'body_thunk_sequence_'.
-    TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(buffer_allocations,
-                                                             stream, profiler));
+    TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(
+        buffer_allocations, stream, run_id, profiler));
     profiler->FinishHloComputation(hlo_instruction()->while_body());
   }
   return Status::OK();

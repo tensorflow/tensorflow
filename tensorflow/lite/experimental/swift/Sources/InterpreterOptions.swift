@@ -12,15 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// Custom configuration options for a TensorFlow Lite interpreter.
+/// Custom configuration options for a TensorFlow Lite `Interpreter`.
 public struct InterpreterOptions: Equatable {
 
   /// Maximum number of CPU threads that the interpreter should run on. Default is `nil` which
   /// indicates that the `Interpreter` will decide the number of threads to use.
   public var threadCount: Int? = nil
-
-  /// Whether error logging to the console is enabled. The default is `false`.
-  public var isErrorLoggingEnabled = false
 
   /// Creates a new instance of interpreter options.
   public init() {}

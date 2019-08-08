@@ -34,7 +34,20 @@ class CpuBackendContext final {
     return gemmlowp_context_.get();
   }
 
+  // Sets the maximum-number-of-threads-to-use parameter.
+  // This is only a means of passing around this information.
+  // cpu_backend_threadpool::Execute creates as many threads as it's
+  // asked to, regardless of this. Typically a call site would query
+  // cpu_backend_context->max_num_threads() and used that to determine
+  // the number of tasks to create and to give to
+  // cpu_backend_threadpool::Execute.
+  //
+  // This value also gets propagated to back-ends, where it plays the same
+  // information-only role.
   void set_max_num_threads(int max_num_threads);
+
+  // See set_max_num_threads.
+  int max_num_threads() const { return max_num_threads_; }
 
  private:
   // To enable a smooth transition from the current direct usage
@@ -45,6 +58,9 @@ class CpuBackendContext final {
   // elide what can be elided based on TFLITE_WITH_RUY.
   const std::unique_ptr<ruy::Context> ruy_context_;
   const std::unique_ptr<gemmlowp::GemmContext> gemmlowp_context_;
+
+  // See set_max_num_threads.
+  int max_num_threads_;
 
   CpuBackendContext(const CpuBackendContext&) = delete;
 };

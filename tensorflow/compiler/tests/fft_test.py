@@ -70,7 +70,7 @@ class FFTTest(xla_test.XLATestCase):
       data = np.reshape(data.astype(np.float32).view(np.complex64), shape)
       data = to_32bit(complex_to_input(data))
       expected = to_32bit(input_to_expected(data))
-      with self.cached_session() as sess:
+      with self.session() as sess:
         with self.test_scope():
           ph = array_ops.placeholder(
               dtypes.as_dtype(data.dtype), shape=data.shape)
@@ -92,7 +92,7 @@ class FFTTest(xla_test.XLATestCase):
         data, nperseg=ws, noverlap=ws - hs, boundary=None, window=window)[2]
     expected = np.swapaxes(expected, -1, -2)
     expected *= window.sum()  # scipy divides by window sum
-    with self.cached_session() as sess:
+    with self.session() as sess:
       with self.test_scope():
         ph = array_ops.placeholder(
             dtypes.as_dtype(data.dtype), shape=data.shape)

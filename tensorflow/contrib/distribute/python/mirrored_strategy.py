@@ -158,7 +158,8 @@ class MirroredExtended(CoreMirroredExtended):
     Returns:
       An `InputIterator` which returns inputs for each step of the computation.
     """
-    return input_lib.DatasetIterator(dataset, self._input_workers)
+    return input_lib.DatasetIterator(dataset, self._input_workers,
+                                     self._container_strategy())
 
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property

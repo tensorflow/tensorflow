@@ -86,8 +86,8 @@ Status HostTracer::Stop() {
 constexpr char kUserMetadataMarker = '#';
 
 Status HostTracer::CollectData(RunMetadata* run_metadata) {
-  if (events_.empty() && recording_) {
-    events_ = TraceMeRecorder::Collect();
+  if (recording_) {
+    return Status(error::INTERNAL, "TraceMeRecorder not stopped");
   }
   // Pair up start and end events, and add complete events to trace_entries.
   absl::flat_hash_map<uint64, uint64> end_times;

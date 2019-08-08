@@ -335,7 +335,7 @@ class AutomaticControlDependencies(object):
 
     # Ensure all ops which must run do run
     self.ops_which_must_run.update(ops_which_must_run)
-    for r in self._returned_tensors:
+    for r in nest.flatten(list(self._returned_tensors), expand_composites=True):
       if self.ops_which_must_run:
         r.op._add_control_inputs(  # pylint: disable=protected-access
             [o for o in self.ops_which_must_run

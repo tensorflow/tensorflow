@@ -173,10 +173,10 @@ def _test_sequential_model_type(f, test_or_class, *args, **kwargs):
     f(test_or_class, *args, **kwargs)
 
 
-def run_all_keras_modes(
-    test_or_class=None,
-    config=None,
-    always_skip_v1=False):
+def run_all_keras_modes(test_or_class=None,
+                        config=None,
+                        always_skip_v1=False,
+                        always_skip_eager=False):
   """Execute the decorated test with all keras execution modes.
 
   This decorator is intended to be applied either to individual test methods in
@@ -231,6 +231,8 @@ def run_all_keras_modes(
       session when executing graphs.
     always_skip_v1: If True, does not try running the legacy graph mode even
       when Tensorflow v2 behavior is not enabled.
+    always_skip_eager: If True, does not execute the decorated test
+      with eager execution modes.
 
   Returns:
     Returns a decorator that will run the decorated test method multiple times.
@@ -239,8 +241,10 @@ def run_all_keras_modes(
     ImportError: If abseil parameterized is not installed or not included as
       a target dependency.
   """
-  params = [('_v2_eager', 'v2_eager'),
-            ('_v2_function', 'v2_function')]
+
+  params = [('_v2_function', 'v2_function')]
+  if not always_skip_eager:
+    params.append(('_v2_eager', 'v2_eager'))
   if not (always_skip_v1 or tf2.enabled()):
     params.append(('_v1_graph', 'v1_graph'))
 

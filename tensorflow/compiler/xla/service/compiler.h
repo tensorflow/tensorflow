@@ -75,8 +75,10 @@ class AotCompilationOptions {
 
   // Optional allocator that may be used for allocating temp space on the device
   // during compilation.
-  DeviceMemoryAllocator* device_allocator() const { return device_allocator_; }
-  void set_device_allocator(DeviceMemoryAllocator* device_allocator) {
+  se::DeviceMemoryAllocator* device_allocator() const {
+    return device_allocator_;
+  }
+  void set_device_allocator(se::DeviceMemoryAllocator* device_allocator) {
     device_allocator_ = device_allocator;
   }
 
@@ -98,7 +100,7 @@ class AotCompilationOptions {
   AotCompilationOptions();
 
  private:
-  DeviceMemoryAllocator* device_allocator_ = nullptr;
+  se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   DebugOptions debug_options_;
   absl::optional<DeviceAssignment> static_device_assignment_;
 };
@@ -147,14 +149,14 @@ class Compiler {
   // allocated should be deallocated before this function returns.
   virtual StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
-      DeviceMemoryAllocator* device_allocator) = 0;
+      se::DeviceMemoryAllocator* device_allocator) = 0;
 
   // Optimizes a HLO module group, a set of module which runs concurrently on
   // multiple devices potentially communicating data between the modules.
   virtual Status RunHloPassesOnModuleGroup(
       HloModuleGroup* module_group,
       absl::Span<se::StreamExecutor* const> executors,
-      DeviceMemoryAllocator* device_allocator) = 0;
+      se::DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles the HLO module for execution on a device given by the executor,
   // and returns an executable object or an error status. No HLO passes are
@@ -168,7 +170,7 @@ class Compiler {
   // device_allocator is optional; see RunHloPasses.
   virtual StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
-      DeviceMemoryAllocator* device_allocator) = 0;
+      se::DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles a set of HLO modules that can run in parallel, potentially
   // communicating data between the modules.
@@ -176,7 +178,7 @@ class Compiler {
   RunBackendOnModuleGroup(
       std::unique_ptr<HloModuleGroup> module_group,
       std::vector<std::vector<se::StreamExecutor*>> stream_exec,
-      DeviceMemoryAllocator* device_allocator) = 0;
+      se::DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles a set of HLO modules that can run in parallel, potentially
   // communicating data between the modules, and returns a corresponding
@@ -189,7 +191,7 @@ class Compiler {
   virtual StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::unique_ptr<HloModuleGroup> module_group,
       std::vector<std::vector<se::StreamExecutor*>> stream_exec,
-      DeviceMemoryAllocator* device_allocator) = 0;
+      se::DeviceMemoryAllocator* device_allocator) = 0;
 
   // Returns the backend configurations that the backend will consider for the
   // given HLO. Returns no configurations if the backend does not support

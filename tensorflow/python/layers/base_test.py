@@ -210,7 +210,6 @@ class BaseLayerTest(test.TestCase):
     layer_copy = copy.deepcopy(layer)
     self.assertEqual(layer_copy.name, layer.name)
     self.assertEqual(layer_copy._scope.name, layer._scope.name)
-    self.assertEqual(layer_copy._graph, layer._graph)
     self.assertEqual(layer_copy._private_tensor, layer._private_tensor)
 
   @test_util.run_in_graph_and_eager_modes
@@ -638,17 +637,6 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(len(layer.get_losses_for([inputs])), 1)
     self.assertEqual(len(layer.get_losses_for([intermediate_inputs])), 1)
     self.assertEqual(len(layer.get_losses_for([outputs])), 0)
-
-  def testLayerGraphSetInFirstApply(self):
-    with ops.Graph().as_default():
-      # Graph at construction time is ignored
-      layer = core_layers.Dense(1)
-    with ops.Graph().as_default():
-      layer.apply(constant_op.constant([[1.]]))
-      # layer is now bound to second Graph
-    with ops.Graph().as_default(), self.assertRaisesRegexp(
-        ValueError, 'Input graph and Layer graph are not the same'):
-      layer.apply(constant_op.constant([[1.]]))
 
 if __name__ == '__main__':
   test.main()

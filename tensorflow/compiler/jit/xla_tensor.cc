@@ -59,11 +59,11 @@ Status XlaTensor::AllocateShapedBuffer(DataType dtype,
         xla::ShapeUtil::GetSubshape(on_device_shape, index_to_buffer.first);
     uint64 size =
         client->backend().transfer_manager()->GetByteSizeRequirement(subshape);
-    TF_ASSIGN_OR_RETURN(xla::OwningDeviceMemory buffer,
+    TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory buffer,
                         client->backend().memory_allocator()->Allocate(
                             device_ordinal, size, /*retry_on_failure=*/false));
     // Move our buffer into shaped_buffer, which takes ownership of it.
-    index_to_buffer.second = buffer.Forget();
+    index_to_buffer.second = buffer.Release();
   }
 
   VLOG(4) << shaped_buffer.ToString();

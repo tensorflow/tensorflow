@@ -33,6 +33,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.feature_column import feature_column as fc_old
 from tensorflow.python.feature_column import feature_column_v2 as fc
+from tensorflow.python.feature_column import serialization
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -8374,11 +8375,11 @@ class SerializationTest(test.TestCase):
       pass
 
     with self.assertRaisesRegexp(ValueError, 'is not a FeatureColumn'):
-      fc.serialize_feature_column(NotAFeatureColumn())
+      serialization.serialize_feature_column(NotAFeatureColumn())
 
   def test_deserialize_invalid_config(self):
     with self.assertRaisesRegexp(ValueError, 'Improper config format: {}'):
-      fc.deserialize_feature_column({})
+      serialization.deserialize_feature_column({})
 
   def test_deserialize_config_missing_key(self):
     config_missing_key = {
@@ -8393,12 +8394,12 @@ class SerializationTest(test.TestCase):
         'class_name': 'NumericColumn'
     }
     with self.assertRaisesRegexp(ValueError, 'Invalid config:'):
-      fc.deserialize_feature_column(config_missing_key)
+      serialization.deserialize_feature_column(config_missing_key)
 
   def test_deserialize_invalid_class(self):
     with self.assertRaisesRegexp(
         ValueError, 'Unknown feature_column_v2: NotExistingFeatureColumnClass'):
-      fc.deserialize_feature_column({
+      serialization.deserialize_feature_column({
           'class_name': 'NotExistingFeatureColumnClass',
           'config': {}
       })
@@ -8407,9 +8408,10 @@ class SerializationTest(test.TestCase):
     price = fc.numeric_column('price')
     bucketized_price = fc.bucketized_column(price, boundaries=[0, 1])
 
-    configs = fc.serialize_feature_columns([price, bucketized_price])
+    configs = serialization.serialize_feature_columns([price, bucketized_price])
 
-    deserialized_feature_columns = fc.deserialize_feature_columns(configs)
+    deserialized_feature_columns = serialization.deserialize_feature_columns(
+        configs)
     self.assertEqual(2, len(deserialized_feature_columns))
     new_price = deserialized_feature_columns[0]
     new_bucketized_price = deserialized_feature_columns[1]
@@ -8432,9 +8434,10 @@ class SerializationTest(test.TestCase):
 
     price = fc.numeric_column('price', normalizer_fn=_custom_fn)
 
-    configs = fc.serialize_feature_columns([price])
+    configs = serialization.serialize_feature_columns([price])
 
-    deserialized_feature_columns = fc.deserialize_feature_columns(configs)
+    deserialized_feature_columns = serialization.deserialize_feature_columns(
+        configs)
 
     self.assertEqual(1, len(deserialized_feature_columns))
     new_price = deserialized_feature_columns[0]

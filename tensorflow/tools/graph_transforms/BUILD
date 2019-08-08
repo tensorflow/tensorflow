@@ -1,18 +1,19 @@
 # Description:
 #   Utilities that perform useful transformations on graphs
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_not_v2",
     "if_not_windows",
-    "tf_copts",
     "tf_cc_binary",
     "tf_cc_test",
+    "tf_copts",
     "tf_py_test",
-    "if_not_v2",
 )
 
 exports_files(["LICENSE"])
@@ -98,7 +99,6 @@ cc_library(
         "fold_old_batch_norms.cc",
         "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
-        "fuse_quantized_convolution.cc",
         "insert_logging.cc",
         "obfuscate_names.cc",
         "quantize_nodes.cc",

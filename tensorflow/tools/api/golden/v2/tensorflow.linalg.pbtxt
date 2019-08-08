@@ -65,6 +65,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearOperatorToeplitz"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearOperatorZeros"
     mtype: "<type \'type\'>"
   }
@@ -207,6 +211,10 @@ tf_module {
   member_method {
     name: "triangular_solve"
     argspec: "args=[\'matrix\', \'rhs\', \'lower\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "tridiagonal_matmul"
+    argspec: "args=[\'diagonals\', \'rhs\', \'diagonals_format\', \'name\'], varargs=None, keywords=None, defaults=[\'compact\', \'None\'], "
   }
   member_method {
     name: "tridiagonal_solve"

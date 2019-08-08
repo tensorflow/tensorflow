@@ -18,13 +18,33 @@ load(
 _TENSORRT_INSTALL_PATH = "TENSORRT_INSTALL_PATH"
 _TF_TENSORRT_CONFIG_REPO = "TF_TENSORRT_CONFIG_REPO"
 _TF_TENSORRT_VERSION = "TF_TENSORRT_VERSION"
+_TF_NEED_TENSORRT = "TF_NEED_TENSORRT"
 
 _TF_TENSORRT_LIBS = ["nvinfer", "nvinfer_plugin"]
 _TF_TENSORRT_HEADERS = ["NvInfer.h", "NvUtils.h", "NvInferPlugin.h"]
+_TF_TENSORRT_HEADERS_V6 = [
+    "NvInfer.h",
+    "NvUtils.h",
+    "NvInferPlugin.h",
+    "NvInferVersion.h",
+    "NvInferRTSafe.h",
+    "NvInferRTExt.h",
+    "NvInferPluginUtils.h",
+]
 
 _DEFINE_TENSORRT_SONAME_MAJOR = "#define NV_TENSORRT_SONAME_MAJOR"
 _DEFINE_TENSORRT_SONAME_MINOR = "#define NV_TENSORRT_SONAME_MINOR"
 _DEFINE_TENSORRT_SONAME_PATCH = "#define NV_TENSORRT_SONAME_PATCH"
+
+def _at_least_version(actual_version, required_version):
+    actual = [int(v) for v in actual_version.split(".")]
+    required = [int(v) for v in required_version.split(".")]
+    return actual >= required
+
+def _get_tensorrt_headers(tensorrt_version):
+    if _at_least_version(tensorrt_version, "6"):
+        return _TF_TENSORRT_HEADERS_V6
+    return _TF_TENSORRT_HEADERS
 
 def _tpl(repository_ctx, tpl, substitutions):
     repository_ctx.template(
@@ -36,12 +56,15 @@ def _tpl(repository_ctx, tpl, substitutions):
 def _create_dummy_repository(repository_ctx):
     """Create a dummy TensorRT repository."""
     _tpl(repository_ctx, "build_defs.bzl", {"%{if_tensorrt}": "if_false"})
-
     _tpl(repository_ctx, "BUILD", {
-        "%{tensorrt_genrules}": "",
-        "%{tensorrt_headers}": "[]",
-        "%{tensorrt_libs}": "[]",
+        "%{copy_rules}": "",
+        "\":tensorrt_include\"": "",
+        "\":tensorrt_lib\"": "",
     })
+
+def enable_tensorrt(repository_ctx):
+    """Returns whether to build with TensorRT support."""
+    return int(repository_ctx.os.environ.get(_TF_NEED_TENSORRT, False))
 
 def _tensorrt_configure_impl(repository_ctx):
     """Implementation of the tensorrt_configure repository rule."""
@@ -56,7 +79,7 @@ def _tensorrt_configure_impl(repository_ctx):
         )
         return
 
-    if _TF_TENSORRT_VERSION not in repository_ctx.os.environ:
+    if not enable_tensorrt(repository_ctx):
         _create_dummy_repository(repository_ctx)
         return
 
@@ -67,7 +90,7 @@ def _tensorrt_configure_impl(repository_ctx):
     # Copy the library and header files.
     libraries = [lib_name(lib, cpu_value, trt_version) for lib in _TF_TENSORRT_LIBS]
     library_dir = config["tensorrt_library_dir"] + "/"
-    headers = _TF_TENSORRT_HEADERS
+    headers = _get_tensorrt_headers(trt_version)
     include_dir = config["tensorrt_include_dir"] + "/"
     copy_rules = [
         make_copy_files_rule(
@@ -90,7 +113,6 @@ def _tensorrt_configure_impl(repository_ctx):
     # Set up BUILD file.
     _tpl(repository_ctx, "BUILD", {
         "%{copy_rules}": "\n".join(copy_rules),
-        "%{tensorrt_libs}": str(libraries),
     })
 
 tensorrt_configure = repository_rule(
@@ -99,6 +121,7 @@ tensorrt_configure = repository_rule(
         _TENSORRT_INSTALL_PATH,
         _TF_TENSORRT_VERSION,
         _TF_TENSORRT_CONFIG_REPO,
+        _TF_NEED_TENSORRT,
         "TF_CUDA_PATHS",
     ],
 )

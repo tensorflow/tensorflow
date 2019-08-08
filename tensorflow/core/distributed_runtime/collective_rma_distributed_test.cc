@@ -97,8 +97,7 @@ class FakeWorker : public TestWorkerInterface {
     });
     buf_rendezvous_.ConsumeBuf(
         request->buf_rendezvous_key(),
-        [this, opts, request, response, done](const Status& s,
-                                              BufRendezvous::Hook* h) {
+        [opts, response, done](const Status& s, BufRendezvous::Hook* h) {
           if (s.ok()) {
             opts->ClearCancelCallback();
             // Since this is not really RDMA into pre-allocated memory send the
@@ -266,7 +265,7 @@ TEST_F(CollRMADistTest, ProdFirstOK) {
   wi->buf_rendezvous()->ProvideBuf(
       kBufKey, nullptr /*device*/, nullptr /*dev_ctx*/, &expected_value_,
       AllocatorAttributes(),
-      [this, &producer_note, &producer_status](const Status& s) {
+      [&producer_note, &producer_status](const Status& s) {
         producer_status.Update(s);
         producer_note.Notify();
       });
@@ -280,7 +279,7 @@ TEST_F(CollRMADistTest, ProdFirstOK) {
       false,                                              // peer_is_local
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
-      [this, &consumer_status, &consumer_note](const Status& s) {
+      [&consumer_status, &consumer_note](const Status& s) {
         consumer_status = s;
         consumer_note.Notify();
       });
@@ -308,14 +307,14 @@ TEST_F(CollRMADistTest, ConsFirstOK) {
       false,                                              // peer_is_local
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
-      [this, &consumer_status, &consumer_note](const Status& s) {
+      [&consumer_status, &consumer_note](const Status& s) {
         consumer_status = s;
         consumer_note.Notify();
       });
   wi->buf_rendezvous()->ProvideBuf(
       kBufKey, nullptr /*device*/, nullptr /*dev_ctx*/, &expected_value_,
       AllocatorAttributes(),
-      [this, &producer_note, &producer_status](const Status& s) {
+      [&producer_note, &producer_status](const Status& s) {
         producer_status.Update(s);
         producer_note.Notify();
       });
@@ -340,7 +339,7 @@ TEST_F(CollRMADistTest, ConsFirstAbort) {
       false,                                              // peer_is_local
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
-      [this, &consumer_status, &consumer_note](const Status& s) {
+      [&consumer_status, &consumer_note](const Status& s) {
         consumer_status = s;
         consumer_note.Notify();
       });

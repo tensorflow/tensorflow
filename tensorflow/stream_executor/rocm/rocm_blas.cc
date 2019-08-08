@@ -382,7 +382,7 @@ template <typename FuncT, typename... Args>
 bool ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
                                   bool pointer_mode_host, bool err_on_failure,
                                   Args... args) {
-  mutex_lock lock{mu_};
+  absl::MutexLock lock{&mu_};
 
   CHECK(blas_ != nullptr);
   if (!SetStream(stream)) {

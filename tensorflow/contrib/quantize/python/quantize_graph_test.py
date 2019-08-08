@@ -23,6 +23,7 @@ import functools
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.quantize.python import quantize_graph
 from tensorflow.python import training
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -275,7 +276,8 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
       self.assertEqual(graph_def_before, graph_def_after)
 
   def testIdentityNode(self):
-    self._RunTestOverAllRewrites(self._TestIdentityNode)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunTestOverAllRewrites(self._TestIdentityNode)
 
   def _TestIdentityNode(self, rewrite_fn):
     graph = ops.Graph()
@@ -293,10 +295,11 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
 
     conv_out_identity = graph.get_operation_by_name('test/conv_out')
     self._AssertOutputGoesToOps(conv_out_identity, graph,
-                                ['test/BatchNorm/FusedBatchNorm'])
+                                ['test/BatchNorm/FusedBatchNormV3'])
 
   def testActivationQuantization(self):
-    self._RunTestOverAllRewrites(self._TestActivationQuantization)
+    with compat.forward_compatibility_horizon(2019, 6, 7):
+      self._RunTestOverAllRewrites(self._TestActivationQuantization)
 
   def _TestActivationQuantization(self, rewrite_fn):
     graph = ops.Graph()

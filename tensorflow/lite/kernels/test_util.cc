@@ -14,13 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/test_util.h"
 
-#include "tensorflow/lite/version.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/version.h"
 
 namespace tflite {
 
 using ::testing::FloatNear;
 using ::testing::Matcher;
+
+namespace {
+
+// Whether to enable (global) use of NNAPI. Note that this will typically
+// be set via a command-line flag.
+static bool force_use_nnapi = false;
+
+}  // namespace
 
 std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
                                            float max_abs_error) {
@@ -138,6 +147,11 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
       << "Cannot allocate tensors";
   interpreter_->ResetVariableTensors();
 
+  if (force_use_nnapi) {
+    // TODO(b/124505407): Check the result and fail accordingly.
+    interpreter_->ModifyGraphWithDelegate(NnApiDelegate());
+  }
+
   // Modify delegate with function.
   if (apply_delegate_fn_) {
     apply_delegate_fn_(interpreter_.get());
@@ -145,6 +159,11 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
 }
 
 void SingleOpModel::Invoke() { CHECK(interpreter_->Invoke() == kTfLiteOk); }
+
+// static
+void SingleOpModel::SetForceUseNnapi(bool use_nnapi) {
+  force_use_nnapi = use_nnapi;
+}
 
 int32_t SingleOpModel::GetTensorSize(int index) const {
   TfLiteTensor* t = interpreter_->tensor(index);

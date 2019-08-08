@@ -73,7 +73,7 @@ string RegexFromStringSet(const std::vector<string>& strs) {
   if (uniq.size() == 1) {
     return *uniq.begin();
   }
-  return str_util::Join(uniq, "|");
+  return absl::StrJoin(uniq, "|");
 }
 
 }  // namespace tensorflow

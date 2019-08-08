@@ -35,6 +35,7 @@ from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator_algebra
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperator"]
@@ -207,12 +208,13 @@ class LinearOperator(object):
     self._name = name or type(self).__name__
 
   @contextlib.contextmanager
-  def _name_scope(self, name=None, values=None):
+  def _name_scope(self, name=None):
     """Helper function to standardize op scope."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(
-          name, values=((values or []) + self._graph_parents)) as scope:
-        yield scope
+    full_name = self.name
+    if name is not None:
+      full_name += "/" + name
+    with ops.name_scope(full_name) as scope:
+      yield scope
 
   @property
   def dtype(self):
@@ -610,7 +612,7 @@ class LinearOperator(object):
       with self._name_scope(name):
         return linear_operator_algebra.matmul(left_operator, right_operator)
 
-    with self._name_scope(name, values=[x]):
+    with self._name_scope(name):
       x = ops.convert_to_tensor(x, name="x")
       self._check_input_dtype(x)
 
@@ -654,7 +656,7 @@ class LinearOperator(object):
     Returns:
       A `Tensor` with shape `[..., M]` and same `dtype` as `self`.
     """
-    with self._name_scope(name, values=[x]):
+    with self._name_scope(name):
       x = ops.convert_to_tensor(x, name="x")
       self._check_input_dtype(x)
       self_dim = -2 if adjoint else -1
@@ -796,7 +798,7 @@ class LinearOperator(object):
       with self._name_scope(name):
         return linear_operator_algebra.solve(left_operator, right_operator)
 
-    with self._name_scope(name, values=[rhs]):
+    with self._name_scope(name):
       rhs = ops.convert_to_tensor(rhs, name="rhs")
       self._check_input_dtype(rhs)
 
@@ -853,7 +855,7 @@ class LinearOperator(object):
     Raises:
       NotImplementedError:  If `self.is_non_singular` or `is_square` is False.
     """
-    with self._name_scope(name, values=[rhs]):
+    with self._name_scope(name):
       rhs = ops.convert_to_tensor(rhs, name="rhs")
       self._check_input_dtype(rhs)
       self_dim = -1 if adjoint else -2
@@ -1019,10 +1021,97 @@ class LinearOperator(object):
     Returns:
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
-    with self._name_scope(name, values=[x]):
+    with self._name_scope(name):
       x = ops.convert_to_tensor(x, name="x")
       self._check_input_dtype(x)
       return self._add_to_tensor(x)
 
   def _can_use_cholesky(self):
     return self.is_self_adjoint and self.is_positive_definite
+
+
+# Overrides for tf.linalg functions. This allows a LinearOperator to be used in
+# place of a Tensor.
+# For instance tf.trace(linop) and linop.trace() both work.
+
+
+@dispatch.dispatch_for_types(linalg.adjoint, LinearOperator)
+def _adjoint(matrix, name=None):
+  return matrix.adjoint(name)
+
+
+@dispatch.dispatch_for_types(linalg.cholesky, LinearOperator)
+def _cholesky(input, name=None):   # pylint:disable=redefined-builtin
+  return input.cholesky(name)
+
+
+@dispatch.dispatch_for_types(linalg.diag_part, LinearOperator)
+def _diag_part(input, name=None):   # pylint:disable=redefined-builtin
+  return input.diag_part(name)
+
+
+@dispatch.dispatch_for_types(linalg.det, LinearOperator)
+def _det(input, name=None):  # pylint:disable=redefined-builtin
+  return input.determinant(name)
+
+
+@dispatch.dispatch_for_types(linalg.inv, LinearOperator)
+def _inverse(input, adjoint=False, name=None):   # pylint:disable=redefined-builtin
+  inv = input.inverse(name)
+  if adjoint:
+    inv = inv.adjoint()
+  return inv
+
+
+@dispatch.dispatch_for_types(linalg.logdet, LinearOperator)
+def _logdet(matrix, name=None):
+  if matrix.is_positive_definite and matrix.is_self_adjoint:
+    return matrix.log_abs_determinant(name)
+  raise ValueError("Expected matrix to be self-adjoint positive definite.")
+
+
+@dispatch.dispatch_for_types(math_ops.matmul, LinearOperator)
+def _matmul(  # pylint:disable=missing-docstring
+    a,
+    b,
+    transpose_a=False,
+    transpose_b=False,
+    adjoint_a=False,
+    adjoint_b=False,
+    a_is_sparse=False,
+    b_is_sparse=False,
+    name=None):
+  if transpose_a or transpose_b:
+    raise ValueError("Transposing not supported at this time.")
+  if a_is_sparse or b_is_sparse:
+    raise ValueError("Sparse methods not supported at this time.")
+  if not isinstance(a, LinearOperator):
+    # We use the identity (B^HA^H)^H =  AB
+    adjoint_matmul = b.matmul(
+        a,
+        adjoint=(not adjoint_b),
+        adjoint_arg=(not adjoint_a),
+        name=name)
+    return linalg.adjoint(adjoint_matmul)
+  return a.matmul(
+      b, adjoint=adjoint_a, adjoint_arg=adjoint_b, name=name)
+
+
+@dispatch.dispatch_for_types(linalg.solve, LinearOperator)
+def _solve(
+    matrix,
+    rhs,
+    adjoint=False,
+    name=None):
+  if not isinstance(matrix, LinearOperator):
+    raise ValueError("Passing in `matrix` as a Tensor and `rhs` as a "
+                     "LinearOperator is not supported.")
+  return matrix.solve(rhs, adjoint=adjoint, name=name)
+
+
+@dispatch.dispatch_for_types(linalg.trace, LinearOperator)
+def _trace(x, name=None):
+  return x.trace(name)
+
+
+

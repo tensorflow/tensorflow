@@ -69,6 +69,12 @@ constexpr char kFusedBatchNorm[] = "FusedBatchNorm";
 constexpr char kFusedBatchNormGrad[] = "FusedBatchNormGrad";
 constexpr char kQuantizedMatMul[] = "QuantizedMatMul";
 constexpr char kQuantizedMatMulV2[] = "QuantizedMatMulV2";
+// Dynamic control flow ops.
+constexpr char kSwitch[] = "Switch";
+constexpr char kMerge[] = "Merge";
+constexpr char kEnter[] = "Enter";
+constexpr char kExit[] = "Exit";
+constexpr char kNextIteration[] = "NextIteration";
 // Persistent ops.
 constexpr char kConst[] = "Const";
 constexpr char kVariable[] = "Variable";
@@ -281,6 +287,11 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kSqueeze, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kRecv, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kSend, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kSwitch, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kMerge, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kEnter, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kExit, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kNextIteration, wrap(&OpLevelCostEstimator::PredictIdentity)},
 
       {kRank, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kShape, wrap(&OpLevelCostEstimator::PredictMetadata)},

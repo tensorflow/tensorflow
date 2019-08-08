@@ -54,9 +54,9 @@ class ContinueCanonicalizationTest(converter_testing.TestCase):
       v = []
       while x > 0:
         x -= 1
-        if x > 2:
-          continue
         if x > 1:
+          continue
+        if x > 2:
           continue
         v.append(x)
       return v
@@ -65,6 +65,26 @@ class ContinueCanonicalizationTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 1)
     self.assertTransformedEquivalent(test_fn, 3)
     self.assertTransformedEquivalent(test_fn, 4)
+
+  def test_multiple_continues_in_nested_scope(self):
+
+    def test_fn(a):
+      v = []
+      for x in a:
+        x -= 1
+        if x > 100:
+          continue
+        try:
+          raise ValueError('intentional')
+        except ValueError:
+          continue
+        v.append(x)
+      return v
+
+    self.assertTransformedEquivalent(test_fn, [])
+    self.assertTransformedEquivalent(test_fn, [1])
+    self.assertTransformedEquivalent(test_fn, [2])
+    self.assertTransformedEquivalent(test_fn, [1, 2, 3])
 
   def test_for_loop(self):
 

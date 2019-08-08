@@ -31,6 +31,7 @@ $(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3
     -DAM_PART_APOLLO3 \
     -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
     -DTF_LITE_STATIC_MEMORY \
+    -DNDEBUG \
     -DTF_LITE_MCU_DEBUG_LOG \
     -D __FPU_PRESENT=1 \
     -DARM_MATH_CM4 \
@@ -109,6 +110,11 @@ $(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3
     $(APOLLO3_SDK)/utils/am_util_faultisr.c \
     $(APOLLO3_SDK)/utils/am_util_id.c \
     $(APOLLO3_SDK)/utils/am_util_stdio.c
+
+  ifeq ($(TARGET), apollo3evb)
+    MICROLITE_CC_SRCS += \
+      $(APOLLO3_SDK)/devices/am_devices_led.c
+  endif
 
   CMSIS_SRC_DIR := tensorflow/lite/experimental/micro/tools/make/downloads/cmsis/CMSIS/DSP/Source
   CMSIS_SRCS := \

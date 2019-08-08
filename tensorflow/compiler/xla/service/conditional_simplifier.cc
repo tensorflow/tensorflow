@@ -46,7 +46,7 @@ StatusOr<bool> TryRemoveConditional(HloInstruction* conditional) {
   CHECK_EQ(conditional->opcode(), HloOpcode::kConditional);
   // Do not remove conditionals that contain side-effecting instructions or
   // have control predecessors/successors in either true/false computation.
-  if (!conditional->parent()->IsRemovable(conditional) ||
+  if (!conditional->parent()->IsSafelyRemovable(conditional) ||
       conditional->HasSideEffect()) {
     VLOG(2) << "Not attempting to remove conditional as it is not removable or "
                "has side effect: "
@@ -188,7 +188,7 @@ StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
   // instructions as we iterate.
   std::vector<HloInstruction*> conditional_ops;
   for (auto* comp : module->computations()) {
-    for (auto* instr : comp->instructions()) {
+    for (auto* instr : comp->MakeInstructionPostOrder()) {
       if (instr->opcode() == HloOpcode::kConditional) {
         conditional_ops.push_back(instr);
       }

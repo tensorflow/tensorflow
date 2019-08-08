@@ -46,9 +46,11 @@ class _Block(object):
       continue statement.
     create_guard: bool, whether a guard should be created because a continue
       statement has just been encountered.
+    is_loop_type: bool, whether this block is the body of a loop.
   """
 
   def __init__(self):
+    self.is_loop_type = False
     self.reset_guard_state()
 
   def reset_guard_state(self):
@@ -61,7 +63,13 @@ class ContinueCanonicalizationTransformer(converter.Base):
 
   def visit_Continue(self, node):
     self.state[_Continue].used = True
-    self.state[_Block].reset_guard_state()
+    for block in reversed(self.state[_Block].stack):
+      block.reset_guard_state()
+      # See ContinueCanonicalizationTest.test_multiple_continues for an example
+      # it's necessary to reset the state of all enclosing affected blocks, not
+      # just that of the current block.
+      if block.is_loop_type:
+        break
     template = """
       var_name = True
     """
@@ -112,6 +120,7 @@ class ContinueCanonicalizationTransformer(converter.Base):
   def _visit_loop_body(self, node, nodes):
     self.state[_Continue].enter()
     self.state[_Block].enter()
+    self.state[_Block].is_loop_type = True
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
     continue_var = self.ctx.namer.new_symbol('continue_', scope.referenced)
     self.state[_Continue].control_var_name = continue_var

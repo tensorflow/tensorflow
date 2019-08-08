@@ -14,6 +14,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/trt_optimization_pass.h"
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
@@ -32,9 +34,9 @@ namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 // TODO(sami): Remove VLOG messages once the code matures
+using absl::AsciiStrToUpper;
 using absl::StrAppend;
 using absl::StrCat;
-using str_util::Uppercase;
 
 Status TRTOptimizationPass::Init(
     const RewriterConfig_CustomGraphOptimizer* config) {
@@ -67,7 +69,7 @@ Status TRTOptimizationPass::Init(
   }
   if (params.count("precision_mode")) {
     TF_RETURN_IF_ERROR(TrtPrecisionModeFromName(
-        Uppercase(params.at("precision_mode").s()), &precision_mode_));
+        AsciiStrToUpper(params.at("precision_mode").s()), &precision_mode_));
   }
   if (params.count("use_calibration")) {
     use_calibration_ = params.at("use_calibration").b();

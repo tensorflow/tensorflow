@@ -33,8 +33,9 @@ def ignore_errors():
   ```python
   dataset = tf.data.Dataset.from_tensor_slices([1., 2., 0., 4.])
 
-  # Computing `tf.check_numerics(1. / 0.)` will raise an InvalidArgumentError.
-  dataset = dataset.map(lambda x: tf.check_numerics(1. / x, "error"))
+  # Computing `tf.debugging.check_numerics(1. / 0.)` will raise an
+  InvalidArgumentError.
+  dataset = dataset.map(lambda x: tf.debugging.check_numerics(1. / x, "error"))
 
   # Using `ignore_errors()` will drop the element that causes an error.
   dataset =

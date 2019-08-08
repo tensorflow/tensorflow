@@ -76,19 +76,6 @@ struct ConversionParams {
   bool use_function_backup = true;
 };
 
-// - max_batch_size: maximum batch size which can be used for inference for
-//   optimization targets inference run with max batch size.
-// - max_workspace_size_bytes: The upper bound of memory allowance for engine
-//   building.
-Status ConvertGraphDefToTensorRT(
-    const GraphDef& graph_def, const std::vector<string>& output_names,
-    size_t max_batch_size, size_t max_workspace_size_bytes,
-    GraphDef* new_graph_def,
-    TrtPrecisionMode precision_mode = TrtPrecisionMode::FP32,
-    int minimum_segment_size = 3, bool is_dyn_op = false,
-    int max_cached_engines = 1, std::vector<int> cached_engine_batches = {},
-    bool use_calibration = true);
-
 // Method to call from optimization pass
 Status ConvertAfterShapes(const ConversionParams& params);
 

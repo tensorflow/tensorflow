@@ -212,39 +212,28 @@ def _get_defining_frame_from_op(op):
   frame_index = _find_index_of_defining_frame_for_op(op)
   return op.traceback[frame_index]
 
-def compute_useful_stack(op):
-  """Return a list of line name and lineno pairs, which form a 'useful' stack.
+def compute_useful_frames(op, num):
+  """Return a list of frames, which form a 'useful' stack.
 
   Starting from the defining frame to the outermost one, this method computes
-  the contiguous portion of the 'useful' stack trace and returns each line as
-  a line name and lineno pair.
+  the contiguous portion of the 'useful' stack trace and returns the selected
+  frames.
 
   Args:
     op: op.Operation object having a _traceback member.
+    num: total number of frames to return.
 
   Returns:
-    A list of line name and lineno pairs. Below is an example of returned list:
-    [("tool_utils.py", "124", "func1", "a={}"), ("tool_utils.py", "21", "func2",
-    "for i in range(10):"), ....]
+    A list of frames.
   """
   defining_frame_index = _find_index_of_defining_frame_for_op(op)
-  stack_trace = []
-  # The stack trace is collected from the defining (included) to the outermost.
-  # Include `frame_num` frames at most.
-  # Two lines from the TensorFlow library are included to show the node
-  # definition.
-  frame_num = 10
+  # The stack trace is collected from two lines before the defining frame in the
+  # model file to the outermost with `num` frames at most. These two extra lines
+  # are included from the TensorFlow library to give the context which node is
+  # defined.
   innermost_excluded = min(defining_frame_index + 2 + 1, len(op.traceback))
-  outermost_included = max(innermost_excluded - frame_num, 0)
-  for index in reversed(range(outermost_included, innermost_excluded)):
-    frame = op.traceback[index]
-    filename = frame[tf_stack.TB_FILENAME]
-    lineno = frame[tf_stack.TB_LINENO]
-    func = frame[tf_stack.TB_FUNCNAME]
-    code = frame[tf_stack.TB_CODEDICT]
-    stack_trace.append((filename, lineno, func, code))
-  return stack_trace
-
+  outermost_included = max(innermost_excluded - num, 0)
+  return op.traceback[outermost_included:innermost_excluded]
 
 def compute_field_dict(op, strip_file_prefix=""):
   """Return a dictionary mapping interpolation tokens to values.

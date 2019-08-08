@@ -109,6 +109,7 @@ RUN apt-get update && apt-get install -y \
     git \
     openjdk-8-jdk \
     ${PYTHON}-dev \
+    virtualenv \
     swig
 
 RUN ${PIP} --no-cache-dir install \
@@ -122,6 +123,7 @@ RUN ${PIP} --no-cache-dir install \
     scipy \
     sklearn \
     pandas \
+    portpicker \
     && test "${USE_PYTHON_3_NOT_2}" -eq 1 && true || ${PIP} --no-cache-dir install \
     enum34
 
