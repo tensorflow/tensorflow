@@ -146,6 +146,8 @@ def DimOp : Linalg_Op<"dim", [NoSideEffect]>,
     }
     ViewType getViewType() { return getOperand()->getType().cast<ViewType>(); }
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
