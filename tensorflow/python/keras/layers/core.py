@@ -591,11 +591,21 @@ class Flatten(Layer):
       else:
         shape_dtype = dtypes.int32
       outputs = array_ops.reshape(
-          inputs, constant_op.constant((-1, flattened_dim), shape_dtype))
+          inputs, constant_op.constant((-1, flattened_dim), dtype=shape_dtype))
     else:
-      outputs = array_ops.reshape(
-          inputs, (tensor_shape.dimension_value(inputs.shape[0]) or
-                   array_ops.shape(inputs)[0], -1))
+      batch_size = tensor_shape.dimension_value(inputs.shape[0])
+      if batch_size:
+        # Temporary fix for integer overflow issue.
+        if batch_size > np.iinfo(np.int32).max:
+          shape_dtype = dtypes.int64
+        else:
+          shape_dtype = dtypes.int32
+        outputs = array_ops.reshape(
+            inputs, constant_op.constant(
+                (tensor_shape.dimension_value(inputs.shape[0]), -1),
+                dtype=shape_dtype))
+      else:
+        outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
       outputs.set_shape(self.compute_output_shape(inputs.shape))
     return outputs
