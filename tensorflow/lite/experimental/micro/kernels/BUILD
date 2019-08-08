@@ -24,6 +24,7 @@ cc_library(
         "maximum_minimum.cc",
         "pooling.cc",
         "prelu.cc",
+        "reshape.cc",
         "softmax.cc",
     ],
     hdrs = [
@@ -70,6 +71,7 @@ cc_library(
         "pooling.cc",
         "portable_optimized/depthwise_conv.cc",
         "prelu.cc",
+        "reshape.cc",
         "softmax.cc",
     ],
     hdrs = [
@@ -261,4 +263,17 @@ tflite_micro_cc_test(
 cc_library(
     name = "micro_utils",
     hdrs = ["micro_utils.h"],
+)
+
+tflite_micro_cc_test(
+    name = "reshape_test",
+    srcs = [
+        "reshape_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
 )

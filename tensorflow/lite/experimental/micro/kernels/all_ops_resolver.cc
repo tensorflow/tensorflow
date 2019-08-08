@@ -32,6 +32,8 @@ TfLiteRegistration* Register_ARG_MIN();
 TfLiteRegistration* Register_LOGICAL_OR();
 TfLiteRegistration* Register_LOGICAL_AND();
 TfLiteRegistration* Register_LOGICAL_NOT();
+TfLiteRegistration* Register_RESHAPE();
+
 AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D());
   AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED(),
@@ -51,6 +53,7 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_LOGICAL_OR, Register_LOGICAL_OR());
   AddBuiltin(BuiltinOperator_LOGICAL_AND, Register_LOGICAL_AND());
   AddBuiltin(BuiltinOperator_LOGICAL_NOT, Register_LOGICAL_NOT());
+  AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
 }
 
 }  // namespace micro
