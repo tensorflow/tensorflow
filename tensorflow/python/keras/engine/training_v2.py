@@ -229,7 +229,10 @@ class Loop(training_utils.TrainingLoop):
       # is infinite.
       # TODO(scottzhu): This check should probably happen in the adapter
       training_utils.infer_steps_for_dataset(
-          training_dataset, steps_per_epoch, steps_name='steps_per_epoch',
+          model,
+          training_dataset,
+          steps_per_epoch,
+          steps_name='steps_per_epoch',
           epochs=0)
 
       training_dataset = strategy.experimental_distribute_dataset(
@@ -257,7 +260,10 @@ class Loop(training_utils.TrainingLoop):
         # dataset is infinite.
         # TODO(scottzhu): This check should probably happen in the adapter
         training_utils.infer_steps_for_dataset(
-            validation_dataset, validation_steps, steps_name='validation_steps',
+            model,
+            validation_dataset,
+            validation_steps,
+            steps_name='validation_steps',
             epochs=0)
         validation_dataset = strategy.experimental_distribute_dataset(
             validation_dataset)
@@ -378,7 +384,7 @@ class Loop(training_utils.TrainingLoop):
       # is infinite.
       # TODO(scottzhu): This check should probably happen in the adapter
       training_utils.infer_steps_for_dataset(
-          dataset, steps, steps_name='steps', epochs=0)
+          model, dataset, steps, steps_name='steps', epochs=0)
       dataset = strategy.experimental_distribute_dataset(dataset)
 
       execution_function = training_v2_utils._get_or_make_execution_function(

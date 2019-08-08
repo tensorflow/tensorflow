@@ -37,7 +37,6 @@ from tensorflow.python.client import session as session_module
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
@@ -5782,7 +5781,7 @@ def configure_and_create_distributed_session(distribution_strategy):
 
     set_session(session)
 
-  if multi_worker_util.in_multi_worker_mode():
+  if distribution_strategy._in_multi_worker_mode():
     dc.run_distribute_coordinator(
         _create_session,
         distribution_strategy,

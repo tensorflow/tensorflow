@@ -901,8 +901,8 @@ class ModelCheckpoint(Callback):
       self.save_weights_only = True
 
   def on_train_begin(self, logs=None):
-    if multi_worker_util.in_multi_worker_mode():
-      # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    if self.model._in_multi_worker_mode():
       # MultiWorkerTrainingState is used to manage the training state needed
       # for preemption-recovery of a worker in multi-worker training.
       self.model._training_state = (
@@ -917,8 +917,8 @@ class ModelCheckpoint(Callback):
     # If this is not multi worker training, restoring is not needed, or
     # restoring failed, check if it should load weights on restart.
     if self.load_weights_on_restart:
-      if (not multi_worker_util.in_multi_worker_mode()
-          or multi_worker_util.should_load_checkpoint()):
+      if (not self.model._in_multi_worker_mode() or
+          multi_worker_util.should_load_checkpoint()):
         filepath_to_load = (
             self._get_most_recently_modified_file_matching_pattern(
                 self.filepath))
@@ -934,7 +934,8 @@ class ModelCheckpoint(Callback):
                 filepath_to_load, e))
 
   def on_train_end(self, logs=None):
-    if multi_worker_util.in_multi_worker_mode():
+    # pylint: disable=protected-access
+    if self.model._in_multi_worker_mode():
       # In multi-worker training, on successful exit of training, delete the
       # training state backup file that was saved for the purpose of worker
       # recovery.
@@ -957,14 +958,15 @@ class ModelCheckpoint(Callback):
 
   def on_epoch_end(self, epoch, logs=None):
     self.epochs_since_last_save += 1
+    # pylint: disable=protected-access
     if self.save_freq == 'epoch':
-      if multi_worker_util.in_multi_worker_mode():
+      if self.model._in_multi_worker_mode():
         # Exclude training state variables in user-requested checkpoint file.
         with self._training_state.untrack_vars():
           self._save_model(epoch=epoch, logs=logs)
       else:
         self._save_model(epoch=epoch, logs=logs)
-    if multi_worker_util.in_multi_worker_mode():
+    if self.model._in_multi_worker_mode():
       # For multi-worker training, back up the weights and current training
       # state for possible future recovery.
       # TODO(rchao): Call `back_up` at finer period such as N steps.
@@ -1016,7 +1018,8 @@ class ModelCheckpoint(Callback):
 
   def _get_file_path(self, epoch, logs):
     """Returns the file path for checkpoint."""
-    if not multi_worker_util.in_multi_worker_mode(
+    # pylint: disable=protected-access
+    if not self.model._in_multi_worker_mode(
     ) or multi_worker_util.should_save_checkpoint():
       return self.filepath.format(epoch=epoch + 1, **logs)
     else:
@@ -1034,8 +1037,9 @@ class ModelCheckpoint(Callback):
     # Remove the checkpoint directory in multi-worker training where this worker
     # should not checkpoint. It is a dummy directory previously saved for sync
     # distributed training.
-    if multi_worker_util.in_multi_worker_mode(
-    ) and not multi_worker_util.should_save_checkpoint():
+
+    if (self.model._in_multi_worker_mode() and  # pylint: disable=protected-access
+        not multi_worker_util.should_save_checkpoint()):
       file_io.delete_recursively(self._temp_file_dir)
       del self._temp_file_dir
 

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import csv
+import json
 import os
 import re
 import shutil
@@ -526,7 +527,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         mode=mode,
         save_freq=3)
 
-  def _run_load_weights_on_restart_test_common_iterations(self):
+  def _get_dummy_resource_for_model_checkpoint_testing(self):
 
     def get_input_datasets():
       # Simple training input.
@@ -552,12 +553,19 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     temp_dir = self.get_temp_dir()
     filepath = os.path.join(temp_dir, 'checkpoint.epoch{epoch:02d}.h5')
-    initial_epochs = 3
 
     # The filepath shouldn't exist at the beginning.
     self.assertFalse(os.path.exists(filepath))
     callback = keras.callbacks.ModelCheckpoint(
         filepath=filepath, save_weights_only=True)
+
+    return model, train_ds, callback, filepath
+
+  def _run_load_weights_on_restart_test_common_iterations(self):
+
+    (model, train_ds, callback,
+     filepath) = self._get_dummy_resource_for_model_checkpoint_testing()
+    initial_epochs = 3
     model.fit(train_ds, epochs=initial_epochs, callbacks=[callback])
 
     # The files should exist after fitting with callback.
@@ -677,6 +685,23 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     self.assertNotAllClose(weights_before_additional_fit,
                            weights_after_additional_fit)
+
+  def test_fit_with_ModelCheckpoint_with_tf_config(self):
+    (model, train_ds, callback,
+     _) = self._get_dummy_resource_for_model_checkpoint_testing()
+
+    os.environ['TF_CONFIG'] = json.dumps({
+        'cluster': {
+            'worker': ['localhost:23333']
+        },
+        'task': {
+            'type': 'worker',
+            'index': 0
+        }
+    })
+
+    # `model.fit()` should work regardless of the presence of `TF_CONFIG`.
+    model.fit(train_ds, epochs=1, callbacks=[callback])
 
   def test_EarlyStopping(self):
     with self.cached_session():
