@@ -25,10 +25,10 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import random_ops
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
@@ -836,13 +836,13 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertLen(while_op.outputs, 3)
 
       gradients_impl.gradients(output, x)
-      # while_op should have been rewritten to output 2.0 intermediate.
-      # outputs = [loop_counter, max_iters, x, 2.0_accumulator, x_accumulator]
-      self.assertLen(while_op.outputs, 5)
+      # while_op should have been rewritten to output intermediates.
+      # outputs = [loop_counter, max_iters, x, x_accumulator]
+      self.assertLen(while_op.outputs, 4)
 
       gradients_impl.gradients(output, x)
       # Computing the gradient again shouldn't rewrite while_op again.
-      self.assertLen(while_op.outputs, 5)
+      self.assertLen(while_op.outputs, 4)
 
   @test_util.run_deprecated_v1
   def testRandomUniformShape(self):
@@ -894,6 +894,28 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     grad = gradients_impl.gradients(ret, [v0])[0]
     self.assertAllEqual(ret, 16.)
     self.assertAllEqual(grad, 32.)
+
+  @test_util.run_deprecated_v1
+  def testDoNotAccumulateConstNodes(self):
+
+    def Body(v):
+      return v * 2.0
+
+    v0 = constant_op.constant(2.)
+    ret = while_loop_v2(lambda v: v < 8., Body, [v0])[0]
+    # Gradients computation has the side-effect of updating the forward op
+    # which is what we want to test.
+    unused_grad = gradients_impl.gradients(ret, [v0])[0]
+    # ret is separated from the `While` op by an `Identity` so we skip over
+    # that.
+    forward_while_op = ret.op.inputs[0].op
+    body_graph = while_v2._get_graph(forward_while_op, "body")
+    push_back_nodes = [
+        o for o in body_graph.get_operations() if o.type == "TensorListPushBack"
+    ]
+    # Gradient of `Mul` requires accumulating both its inputs. But since one
+    # of those is a Const (2.0), we should have just one accumulator.
+    self.assertLen(push_back_nodes, 1)
 
 
 def ScalarShape():
