@@ -672,7 +672,7 @@ void TFE_OpAddInputList(TFE_Op* op, TFE_TensorHandle** inputs, int num_inputs,
 
 TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
                               unsigned char* is_list, TF_Status* status) {
-  TF_AttrType ret;
+  TF_AttrType ret = TF_ATTR_INT;
   status->status = tensorflow::AttrTypeByName(*op->operation.AttrTypes(),
                                               attr_name, &ret, is_list);
   return ret;

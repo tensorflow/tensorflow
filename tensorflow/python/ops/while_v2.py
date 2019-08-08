@@ -340,7 +340,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   parallel_iterations = op.get_attr("parallel_iterations")
 
   try:
-    num_original_outputs = op.get_attr("_num_original_outputs")
+    num_original_outputs = while_op.get_attr("_num_original_outputs")
   except:  # pylint: disable=bare-except
     num_original_outputs = len(while_op.outputs)
 
