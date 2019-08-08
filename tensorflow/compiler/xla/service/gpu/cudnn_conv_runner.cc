@@ -190,6 +190,8 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
   const Shape* output_shape;
 
   // The third field is scratch size stored from conv_algorithm_picker
+  // The operand is added to the shape field of the conv instruction
+  // in GpuConvAlgorithmPicker::RunOnInstruction() call.
   params.algorithm = se::dnn::AlgorithmConfig(
       se::dnn::AlgorithmDesc(backend_config.algorithm(),
                              backend_config.tensor_ops_enabled()),
