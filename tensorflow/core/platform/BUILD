@@ -169,6 +169,16 @@ cc_library(
 )
 
 cc_library(
+    name = "stringprintf",
+    srcs = ["stringprintf.cc"],
+    hdrs = ["stringprintf.h"],
+    deps = [
+        ":macros",
+        ":types",
+    ],
+)
+
+cc_library(
     name = "tstring",
     hdrs = ["tstring.h"],
 )
@@ -218,6 +228,7 @@ filegroup(
             "cpu_info.cc",
             "platform_strings.cc",
             "protobuf.cc",
+            "stringprintf.cc",
         ],
     ),
     visibility = ["//tensorflow/core:__pkg__"],
@@ -277,6 +288,7 @@ filegroup(
             "gif.h",
             "jpeg.h",
             "png.h",
+            "stringprintf.h",
             "**/cuda.h",
             "**/rocm.h",
             "**/stream_executor.h",
@@ -306,6 +318,7 @@ filegroup(
             "cpu_info.cc",
             "platform_strings.cc",
             "protobuf.cc",
+            "stringprintf.cc",
         ],
     ),
     visibility = ["//tensorflow/core:__pkg__"],
