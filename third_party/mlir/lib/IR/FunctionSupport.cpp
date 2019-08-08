@@ -22,9 +22,11 @@
 using namespace mlir;
 
 static ParseResult
-parseArgumentList(OpAsmParser *parser, SmallVectorImpl<Type> &argTypes,
+parseArgumentList(OpAsmParser *parser, bool allowVariadic,
+                  SmallVectorImpl<Type> &argTypes,
                   SmallVectorImpl<OpAsmParser::OperandType> &argNames,
-                  SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs) {
+                  SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs,
+                  bool &isVariadic) {
   if (parser->parseLParen())
     return failure();
 
@@ -47,6 +49,9 @@ parseArgumentList(OpAsmParser *parser, SmallVectorImpl<Type> &argTypes,
 
       if (parser->parseColonType(argumentType))
         return failure();
+    } else if (allowVariadic && succeeded(parser->parseOptionalEllipsis())) {
+      isVariadic = true;
+      return success();
     } else if (!argNames.empty()) {
       // Reject this if the preceding argument had a name.
       return parser->emitError(loc, "expected SSA identifier");
@@ -68,8 +73,15 @@ parseArgumentList(OpAsmParser *parser, SmallVectorImpl<Type> &argTypes,
   // Parse the function arguments.
   if (parser->parseOptionalRParen()) {
     do {
+      unsigned numTypedArguments = argTypes.size();
       if (parseArgument())
         return failure();
+
+      llvm::SMLoc loc = parser->getCurrentLocation();
+      if (argTypes.size() == numTypedArguments &&
+          succeeded(parser->parseOptionalComma()))
+        return parser->emitError(
+            loc, "variadic arguments must be in the end of the argument list");
     } while (succeeded(parser->parseOptionalComma()));
     parser->parseRParen();
   }
@@ -80,11 +92,13 @@ parseArgumentList(OpAsmParser *parser, SmallVectorImpl<Type> &argTypes,
 /// Parse a function signature, starting with a name and including the
 /// parameter list.
 static ParseResult parseFunctionSignature(
-    OpAsmParser *parser, SmallVectorImpl<OpAsmParser::OperandType> &argNames,
+    OpAsmParser *parser, bool allowVariadic,
+    SmallVectorImpl<OpAsmParser::OperandType> &argNames,
     SmallVectorImpl<Type> &argTypes,
-    SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs,
+    SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs, bool &isVariadic,
     SmallVectorImpl<Type> &results) {
-  if (parseArgumentList(parser, argTypes, argNames, argAttrs))
+  if (parseArgumentList(parser, allowVariadic, argTypes, argNames, argAttrs,
+                        isVariadic))
     return failure();
   // Parse the return types if present.
   return parser->parseOptionalArrowTypeList(results);
@@ -94,6 +108,7 @@ static ParseResult parseFunctionSignature(
 /// to construct the custom function type given lists of input and output types.
 ParseResult
 mlir::impl::parseFunctionLikeOp(OpAsmParser *parser, OperationState *result,
+                                bool allowVariadic,
                                 mlir::impl::FuncTypeBuilder funcTypeBuilder) {
   SmallVector<OpAsmParser::OperandType, 4> entryArgs;
   SmallVector<SmallVector<NamedAttribute, 2>, 4> argAttrs;
@@ -111,11 +126,14 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser *parser, OperationState *result,
 
   // Parse the function signature.
   auto signatureLocation = parser->getCurrentLocation();
-  if (parseFunctionSignature(parser, entryArgs, argTypes, argAttrs, results))
+  bool isVariadic = false;
+  if (parseFunctionSignature(parser, allowVariadic, entryArgs, argTypes,
+                             argAttrs, isVariadic, results))
     return failure();
 
   std::string errorMessage;
-  if (auto type = funcTypeBuilder(builder, argTypes, results, errorMessage))
+  if (auto type =
+          funcTypeBuilder(builder, argTypes, results, isVariadic, errorMessage))
     result->addAttribute(getTypeAttrName(), builder.getTypeAttr(type));
   else
     return parser->emitError(signatureLocation)
@@ -147,7 +165,8 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser *parser, OperationState *result,
 /// Print the signature of the function-like operation `op`.  Assumes `op` has
 /// the FunctionLike trait and passed the verification.
 static void printSignature(OpAsmPrinter *p, Operation *op,
-                           ArrayRef<Type> argTypes, ArrayRef<Type> results) {
+                           ArrayRef<Type> argTypes, bool isVariadic,
+                           ArrayRef<Type> results) {
   Region &body = op->getRegion(0);
   bool isExternal = body.empty();
 
@@ -165,6 +184,12 @@ static void printSignature(OpAsmPrinter *p, Operation *op,
     p->printOptionalAttrDict(::mlir::impl::getArgAttrs(op, i));
   }
 
+  if (isVariadic) {
+    if (!argTypes.empty())
+      *p << ", ";
+    *p << "...";
+  }
+
   *p << ')';
   p->printOptionalArrowTypeList(results);
 }
@@ -172,7 +197,7 @@ static void printSignature(OpAsmPrinter *p, Operation *op,
 /// Printer implementation for function-like operations.  Accepts lists of
 /// argument and result types to use while printing.
 void mlir::impl::printFunctionLikeOp(OpAsmPrinter *p, Operation *op,
-                                     ArrayRef<Type> argTypes,
+                                     ArrayRef<Type> argTypes, bool isVariadic,
                                      ArrayRef<Type> results) {
   // Print the operation and the function name.
   auto funcName =
@@ -181,7 +206,7 @@ void mlir::impl::printFunctionLikeOp(OpAsmPrinter *p, Operation *op,
   *p << op->getName() << " @" << funcName;
 
   // Print the signature.
-  printSignature(p, op, argTypes, results);
+  printSignature(p, op, argTypes, isVariadic, results);
 
   // Print out function attributes, if present.
   SmallVector<StringRef, 2> ignoredAttrs = {
