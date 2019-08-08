@@ -601,9 +601,7 @@ class Flatten(Layer):
         else:
           shape_dtype = dtypes.int32
         outputs = array_ops.reshape(
-            inputs, constant_op.constant(
-                (tensor_shape.dimension_value(inputs.shape[0]), -1),
-                dtype=shape_dtype))
+            inputs, constant_op.constant((batch_size, -1), dtype=shape_dtype))
       else:
         outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
