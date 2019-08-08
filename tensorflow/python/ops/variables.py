@@ -1082,7 +1082,8 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
 
   def __hash__(self):
     if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
-      raise TypeError("Variable is unhashable if Tensor equality is enabled.")
+      raise TypeError("Variable is unhashable if Tensor equality is enabled. "
+                      "Instead, use tensor.experimental_ref() as the key.")
     else:
       return id(self)
 

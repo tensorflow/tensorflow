@@ -708,7 +708,8 @@ class Tensor(_TensorLike):
 
   def __hash__(self):
     if Tensor._USE_EQUALITY and executing_eagerly_outside_functions():
-      raise TypeError("Tensor is unhashable if Tensor equality is enabled.")
+      raise TypeError("Tensor is unhashable if Tensor equality is enabled. "
+                      "Instead, use tensor.experimental_ref() as the key.")
     else:
       return id(self)
 
