@@ -85,6 +85,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/eager:eager_pip",
+    "//tensorflow/python/keras:model_subclassing_test_util",
     "//tensorflow/python/keras:preprocessing_test_utils",
     "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
