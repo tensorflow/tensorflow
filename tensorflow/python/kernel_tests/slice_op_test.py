@@ -28,6 +28,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
 
@@ -145,6 +146,18 @@ class SliceTest(test.TestCase):
         slice_t = a[lo:hi]
         slice_val = self.evaluate(slice_t)
         self.assertAllEqual(slice_val, inp[lo:hi])
+
+  def test3Dimension(self):
+    with self.session() as sess:
+      input_shape = [1, 8, 8, 8, 3]
+      inp = np.random.rand(*input_shape).astype("f")
+      a = constant_op.constant(inp, shape=input_shape, dtype=dtypes.float32)
+
+      filter_shape = [2, 2, 2, 3, 3]
+      filters = np.random.rand(*filter_shape).astype("f") 
+      conv_t = nn_ops.conv3d(a, filter=filters, strides=[1, 1, 1, 1, 1], padding="SAME")
+      slice_t = array_ops.slice(conv_t, [0, 0, 0, 0, 0], [1, 2, 1, 2, 1])
+      result = self.evaluate(slice_t)
 
   @test_util.run_deprecated_v1
   def testScalarInput(self):
