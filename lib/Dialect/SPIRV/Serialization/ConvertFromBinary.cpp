@@ -40,8 +40,7 @@ Block *createOneBlockFunction(Builder builder, ModuleOp module) {
   auto fn = FuncOp::create(builder.getUnknownLoc(), "spirv_module", fnType);
   module.push_back(fn);
 
-  fn.addEntryBlock();
-  auto *block = &fn.front();
+  auto *block = fn.addEntryBlock();
   OpBuilder(block).create<ReturnOp>(builder.getUnknownLoc());
 
   return block;

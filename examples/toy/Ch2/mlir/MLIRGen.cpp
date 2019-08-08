@@ -162,9 +162,7 @@ private:
     // Let's start the body of the function now!
     // In MLIR the entry block of the function is special: it must have the same
     // argument list as the function itself.
-    function.addEntryBlock();
-
-    auto &entryBlock = function.front();
+    auto &entryBlock = *function.addEntryBlock();
     auto &protoArgs = funcAST.getProto()->getArgs();
     // Declare all the function arguments in the symbol table.
     for (const auto &name_value :
