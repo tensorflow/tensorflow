@@ -600,9 +600,7 @@ static void getLLVMLibraryCallDefinition(FuncOp fn,
   auto implFn = getLLVMLibraryCallImplDefinition(fn);
 
   // Generate the function body.
-  fn.addEntryBlock();
-
-  OpBuilder builder(fn.getBody());
+  OpBuilder builder(fn.addEntryBlock());
   edsc::ScopedContext scope(builder, fn.getLoc());
   SmallVector<Value *, 4> implFnArgs;
 
