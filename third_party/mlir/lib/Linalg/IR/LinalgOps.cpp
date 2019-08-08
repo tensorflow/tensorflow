@@ -28,6 +28,7 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Linalg/IR/LinalgTypes.h"
 #include "mlir/Linalg/Utils/Utils.h"
@@ -41,6 +42,81 @@ using namespace mlir;
 using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
+
+namespace {
+/// Fold constant dimensions into an alloc operation.
+struct SimplifyDimOp : public OpRewritePattern<linalg::DimOp> {
+  using OpRewritePattern<linalg::DimOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(linalg::DimOp dimOp,
+                                     PatternRewriter &rewriter) const override;
+};
+} // end namespace
+
+PatternMatchResult
+SimplifyDimOp::matchAndRewrite(linalg::DimOp dimOp,
+                               PatternRewriter &rewriter) const {
+  auto *viewProducingOp = dimOp.view()->getDefiningOp();
+  auto subView = dyn_cast_or_null<SubViewOp>(viewProducingOp);
+  auto slice = dyn_cast_or_null<SliceOp>(viewProducingOp);
+  auto view = dyn_cast_or_null<ViewOp>(viewProducingOp);
+  if (!subView && !slice && !view)
+    return matchFailure();
+
+  unsigned dim = dimOp.getIndex();
+  Value *min, *max, *step;
+  if (view) {
+    // Cannot traverse block arguments, fail.
+    if (isa<BlockArgument>(view.getIndexing(dim)))
+      return matchFailure();
+    // Record min, max, step for further processing.
+    auto range = cast<RangeOp>(view.getIndexing(dim)->getDefiningOp());
+    std::tie(min, max, step) =
+        std::make_tuple(range.min(), range.max(), range.step());
+  } else if (subView) {
+    // Record min, max, step for further processing.
+    auto range = subView.getRange(dim);
+    std::tie(min, max, step) =
+        std::make_tuple(range.min, range.max, range.step);
+  } else {
+    // Taking the dim of a slice must take a range (since other dims have been
+    // rank-reduced).
+    auto *rangeValue = slice.getRanges()[dim];
+    // Cannot traverse block arguments, fail.
+    if (isa<BlockArgument>(rangeValue))
+      return matchFailure();
+    auto range = cast<RangeOp>(rangeValue->getDefiningOp());
+    // Record min, max, step for further processing.
+    std::tie(min, max, step) =
+        std::make_tuple(range.min(), range.max(), range.step());
+  }
+
+  // Only support constant steps of 1 atm.
+  auto constant = dyn_cast_or_null<ConstantIndexOp>(step->getDefiningOp());
+  if (!constant || constant.getValue() != 1)
+    return matchFailure();
+
+  // Circumvent affine constraints:
+  //   emit an affine_apply when possible, otherwise emit a `subi`.
+  bool validAffineMin = isValidDim(min) || isValidSymbol(min) ||
+                        isa_and_nonnull<ConstantIndexOp>(min->getDefiningOp());
+  bool validAffineMax = isValidDim(max) || isValidSymbol(max) ||
+                        isa_and_nonnull<ConstantIndexOp>(max->getDefiningOp());
+
+  OpBuilder b(dimOp);
+  ScopedContext scope(b, dimOp.getLoc());
+  // Emit `subi`.
+  if (!validAffineMin || !validAffineMax) {
+    rewriter.replaceOp(dimOp, {subi(max, min)}, {dimOp.view()});
+    return matchSuccess();
+  }
+
+  // Emit affine_apply.
+  using edsc::op::operator-;
+  rewriter.replaceOp(dimOp, {ValueHandle(max) - ValueHandle(min)},
+                     {dimOp.view()});
+  return matchSuccess();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // LoadOp.
@@ -499,6 +575,14 @@ static ParseResult parseBufferSizeOp(OpAsmParser *parser,
                  parser->resolveOperand(op, type, result->operands) ||
                  parser->addTypeToList(parser->getBuilder().getIndexType(),
                                        result->types));
+}
+
+//===----------------------------------------------------------------------===//
+// DimOp
+//===----------------------------------------------------------------------===//
+void mlir::linalg::DimOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<SimplifyDimOp>(context);
 }
 
 static void print(OpAsmPrinter *p, linalg::DimOp op) {
