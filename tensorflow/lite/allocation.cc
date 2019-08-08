@@ -87,6 +87,22 @@ bool FileCopyAllocation::valid() const { return copied_buffer_ != nullptr; }
 MemoryAllocation::MemoryAllocation(const void* ptr, size_t num_bytes,
                                    ErrorReporter* error_reporter)
     : Allocation(error_reporter, Allocation::Type::kMemory) {
+#ifdef __arm__
+  if ((reinterpret_cast<uintptr_t>(ptr) % 16) != 0) {
+    // The flat buffer schema has alignment requirements of up to 16 bytes to
+    // guarantee that data can be correctly accesses on 32-bit arm. The buffer
+    // we get must also be 16-byte aligned, otherwise the guarantee will not
+    // hold (potentially resulting in a SIGBUS)..
+    //
+    // Note that 64-bit ARM may also suffer a performance impact, but no crash -
+    // that case is not checked.
+    error_reporter->Report("The supplied buffer is not 16-byte aligned");
+    buffer_ = nullptr;
+    buffer_size_bytes_ = 0;
+    return;
+  }
+#endif  // __arm__
+
   buffer_ = ptr;
   buffer_size_bytes_ = num_bytes;
 }
