@@ -658,12 +658,12 @@ cc_library(
         "//tensorflow/core/platform:protobuf.cc",
     ],
     hdrs = [
-        "lib/bfloat16/bfloat16.h",
         "lib/core/errors.h",
         "lib/core/status.h",
         "lib/core/stringpiece.h",
         "lib/strings/numbers.h",
         "lib/strings/strcat.h",
+        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/platform:init_main.h",
         "//tensorflow/core/platform:legacy_proto_hdrs",
         "//tensorflow/core/platform:logging.h",
@@ -679,6 +679,7 @@ cc_library(
         ":platform_base",
         "@com_google_absl//absl/strings",
         "@double_conversion//:double-conversion",
+        "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/platform:cpu_info",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
@@ -706,7 +707,6 @@ cc_library(
 cc_library(
     name = "lib",
     hdrs = [
-        "lib/bfloat16/bfloat16.h",
         "lib/core/arena.h",
         "lib/core/bitmap.h",
         "lib/core/bits.h",
@@ -762,6 +762,7 @@ cc_library(
         ":platform_other_hdrs",
         ":platform_port_hdrs",
         ":platform_protobuf_hdrs",
+        "//tensorflow/core/lib/bfloat16:bfloat16.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -1130,7 +1131,7 @@ cc_library(
         "framework/numeric_types.h",
         "framework/tensor_types.h",
         "framework/type_traits.h",
-        "lib/bfloat16/bfloat16.h",
+        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/platform:byte_order.h",
         "//tensorflow/core/platform:default/dynamic_annotations.h",
         "//tensorflow/core/platform:default/integral_types.h",
@@ -1154,6 +1155,7 @@ cc_library(
             "@nsync//:nsync_cpp",
         ] + [
             "//third_party/eigen3",
+            "//tensorflow/core/lib/bfloat16",
             "//tensorflow/core/platform/default/build_config:minimal",
             "//tensorflow/core/platform:types",
         ],
@@ -1776,6 +1778,8 @@ filegroup(
         "//tensorflow/core/util/ctc:android_srcs",
         "//tensorflow/core/platform:legacy_srcs_no_runtime",
         "//tensorflow/core/profiler:mobile_srcs",
+        "//tensorflow/core/lib/bfloat16:bfloat16.h",
+        "//tensorflow/core/lib/bfloat16:bfloat16.cc",
     ] + glob(
         [
             "client/**/*.cc",
@@ -2351,6 +2355,7 @@ tf_proto_library_cc(
 LIB_INTERNAL_PRIVATE_HEADERS = [
     "framework/resource_handle.h",
     "//tensorflow/core/platform:legacy_lib_internal_headers",
+    "//tensorflow/core/lib/bfloat16:bfloat16.h",
 ] + glob(
     [
         "lib/**/*.h",
@@ -2489,6 +2494,7 @@ cc_library(
                "@com_google_absl//absl/memory",
                "@com_google_absl//absl/strings",
                "//third_party/eigen3",
+               "//tensorflow/core/lib/bfloat16",
                "//tensorflow/core/platform:abi",
                "//tensorflow/core/platform:cpu_info",
                "//tensorflow/core/platform/default/build_config:platformlib",
@@ -2556,9 +2562,9 @@ cc_library(
     name = "png_internal",
     srcs = ["lib/png/png_io.cc"],
     hdrs = [
-        "lib/bfloat16/bfloat16.h",
         "lib/core/stringpiece.h",
         "lib/png/png_io.h",
+        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/platform:byte_order.h",
         "//tensorflow/core/platform:cpu_info.h",
         "//tensorflow/core/platform:default/integral_types.h",
@@ -2589,7 +2595,7 @@ cc_library(
 cc_library(
     name = "tflite_portable_logging",
     hdrs = [
-        "lib/bfloat16/bfloat16.h",
+        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/platform:default/integral_types.h",
         "//tensorflow/core/platform:default/logging.h",
         "//tensorflow/core/platform:logging.h",
@@ -2614,10 +2620,10 @@ cc_library(
         "//tensorflow/core/platform:jpeg.h",
     ]),
     hdrs = [
-        "lib/bfloat16/bfloat16.h",
         "lib/core/stringpiece.h",
         "lib/jpeg/jpeg_handle.h",
         "lib/jpeg/jpeg_mem.h",
+        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/platform:default/dynamic_annotations.h",
         "//tensorflow/core/platform:default/integral_types.h",
         "//tensorflow/core/platform:default/logging.h",
@@ -2651,10 +2657,10 @@ cc_library(
         "lib/strings/numbers.h",
     ]),
     hdrs = [
-        "lib/bfloat16/bfloat16.h",
         "lib/core/stringpiece.h",
         "lib/gif/gif_io.h",
         "lib/gtl/cleanup.h",
+        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/platform:default/dynamic_annotations.h",
         "//tensorflow/core/platform:default/integral_types.h",
         "//tensorflow/core/platform:default/logging.h",
@@ -2683,9 +2689,9 @@ cc_library(
         "//tensorflow/core/platform:png.h",
     ]),
     hdrs = [
-        "lib/bfloat16/bfloat16.h",
         "lib/core/stringpiece.h",
         "lib/png/png_io.h",
+        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/platform:byte_order.h",
         "//tensorflow/core/platform:cpu_info.h",
         "//tensorflow/core/platform:default/integral_types.h",
