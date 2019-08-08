@@ -1101,8 +1101,8 @@ inline memory::dims TFShapeToMklDnnDimsInNCDHW(const TensorShape& shape,
   return memory::dims({n, c, d, h, w});
 }
 
-/// Overloaded version of function above. Input parameters are
-/// self-explanatory.
+/// Overloaded version of function TFShapeToMklDnnDimsInNCHW above.
+/// Input parameters are self-explanatory.
 inline memory::dims MklDnnDimsInNCHW(const memory::dims& in_dims,
                                      TensorFormat format) {
   // Validate format.
@@ -1115,6 +1115,24 @@ inline memory::dims MklDnnDimsInNCHW(const memory::dims& in_dims,
 
   // MKL-DNN requires dimensions in NCHW format.
   return memory::dims({n, c, h, w});
+}
+
+/// Overloaded version of function TFShapeToMklDnnDimsInNCDHW above.
+/// Input parameters are self-explanatory.
+inline memory::dims MklDnnDimsInNCDHW(const memory::dims& in_dims,
+                                      TensorFormat format) {
+  // Check validity of format.
+  CHECK_NE(TFDataFormatToMklDnnDataFormat(format),
+           memory::format::format_undef);
+
+  int n = in_dims[GetTensorDimIndex<3>(format, 'N')];
+  int c = in_dims[GetTensorDimIndex<3>(format, 'C')];
+  int d = in_dims[GetTensorDimIndex<3>(format, '0')];
+  int h = in_dims[GetTensorDimIndex<3>(format, '1')];
+  int w = in_dims[GetTensorDimIndex<3>(format, '2')];
+
+  // MKL-DNN requires dimensions in NCDHW format.
+  return memory::dims({n, c, d, h, w});
 }
 
 /// Map MklDnn memory::dims object into TensorShape object.
