@@ -1,4 +1,4 @@
-package(default_visibility = ["//tensorflow/lite:__subpackages__"])
+package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
