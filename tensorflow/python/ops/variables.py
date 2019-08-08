@@ -41,6 +41,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import compat
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
@@ -1212,6 +1213,59 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
 
   def _get_save_slice_info(self):
     return self._save_slice_info
+
+  def experimental_ref(self):
+    # tf.Tensor also has the same experimental_ref() API.  If you update the
+    # documenation here, please update tf.Tensor.experimental_ref() as well.
+    """Returns a hashable reference object to this Variable.
+
+    Warning: Experimental API that could be changed or removed.
+
+    The primary usecase for this API is to put variables in a set/dictionary.
+    We can't put variables in a set/dictionary as `variable.__hash__()` is no
+    longer available starting Tensorflow 2.0.
+
+    ```python
+    import tensorflow as tf
+
+    x = tf.Variable(5)
+    y = tf.Variable(10)
+    z = tf.Variable(10)
+
+    # The followings will raise an exception starting 2.0
+    # TypeError: Variable is unhashable if Variable equality is enabled.
+    variable_set = {x, y, z}
+    variable_dict = {x: 'five', y: 'ten'}
+    ```
+
+    Instead, we can use `variable.experimental_ref()`.
+
+    ```python
+    variable_set = {x.experimental_ref(),
+                    y.experimental_ref(),
+                    z.experimental_ref()}
+
+    print(x.experimental_ref() in variable_set)
+    ==> True
+
+    variable_dict = {x.experimental_ref(): 'five',
+                     y.experimental_ref(): 'ten',
+                     z.experimental_ref(): 'ten'}
+
+    print(variable_dict[y.experimental_ref()])
+    ==> ten
+    ```
+
+    Also, the reference object provides `.deref()` function that returns the
+    original Variable.
+
+    ```python
+    x = tf.Variable(5)
+    print(x.experimental_ref().deref())
+    ==> <tf.Variable 'Variable:0' shape=() dtype=int32, numpy=5>
+    ```
+    """
+    return object_identity.Reference(self)
 
   class SaveSliceInfo(object):
     """Information on how to save this Variable as a slice.
