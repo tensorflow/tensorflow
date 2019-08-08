@@ -794,6 +794,59 @@ class Tensor(_TensorLike):
     """
     return _eval_using_default_session(self, feed_dict, self.graph, session)
 
+  def experimental_ref(self):
+    # tf.Variable also has the same experimental_ref() API.  If you update the
+    # documenation here, please update tf.Variable.experimental_ref() as well.
+    """Returns a hashable reference object to this Tensor.
+
+    Warning: Experimental API that could be changed or removed.
+
+    The primary usecase for this API is to put tensors in a set/dictionary.
+    We can't put tensors in a set/dictionary as `tensor.__hash__()` is no longer
+    available starting Tensorflow 2.0.
+
+    ```python
+    import tensorflow as tf
+
+    x = tf.constant(5)
+    y = tf.constant(10)
+    z = tf.constant(10)
+
+    # The followings will raise an exception starting 2.0
+    # TypeError: Tensor is unhashable if Tensor equality is enabled.
+    tensor_set = {x, y, z}
+    tensor_dict = {x: 'five', y: 'ten', z: 'ten'}
+    ```
+
+    Instead, we can use `tensor.experimental_ref()`.
+
+    ```python
+    tensor_set = {x.experimental_ref(),
+                  y.experimental_ref(),
+                  z.experimental_ref()}
+
+    print(x.experimental_ref() in tensor_set)
+    ==> True
+
+    tensor_dict = {x.experimental_ref(): 'five',
+                   y.experimental_ref(): 'ten',
+                   z.experimental_ref(): 'ten'}
+
+    print(tensor_dict[y.experimental_ref()])
+    ==> ten
+    ```
+
+    Also, the reference object provides `.deref()` function that returns the
+    original Tensor.
+
+    ```python
+    x = tf.constant(5)
+    print(x.experimental_ref().deref())
+    ==> tf.Tensor(5, shape=(), dtype=int32)
+    ```
+    """
+    return object_identity.Reference(self)
+
 
 # TODO(agarwal): consider getting rid of this.
 class _EagerTensorBase(Tensor):

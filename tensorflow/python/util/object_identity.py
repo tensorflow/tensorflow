@@ -48,6 +48,9 @@ class _ObjectIdentityWrapper(object):
     # weakref.ref(a) in _WeakObjectIdentityWrapper.
     return id(self._wrapped)
 
+  def __repr__(self):
+    return "<{} wrapping {!r}>".format(type(self).__name__, self._wrapped)
+
 
 class _WeakObjectIdentityWrapper(_ObjectIdentityWrapper):
 
@@ -57,6 +60,40 @@ class _WeakObjectIdentityWrapper(_ObjectIdentityWrapper):
   @property
   def unwrapped(self):
     return self._wrapped()
+
+
+class Reference(_ObjectIdentityWrapper):
+  """Reference that refers an object.
+
+  ```python
+  x = [1]
+  y = [1]
+
+  x_ref1 = Reference(x)
+  x_ref2 = Reference(x)
+  y_ref2 = Reference(y)
+
+  print(x_ref1 == x_ref2)
+  ==> True
+
+  print(x_ref1 == y)
+  ==> False
+  ```
+  """
+
+  # Disabling super class' unwrapped field.
+  unwrapped = property()
+
+  def deref(self):
+    """Returns the referenced object.
+
+    ```python
+    x_ref = Reference(x)
+    print(x is x_ref.deref())
+    ==> True
+    ```
+    """
+    return self._wrapped
 
 
 class ObjectIdentityDictionary(collections_abc.MutableMapping):
