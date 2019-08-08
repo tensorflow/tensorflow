@@ -128,9 +128,9 @@ class KafkaDatasetOp : public DatasetOpKernel {
               if (message->err() == RdKafka::ERR_NO_ERROR) {
                 // Produce the line as output.
                 Tensor line_tensor(cpu_allocator(), DT_STRING, {});
-                line_tensor.scalar<tstring>()() =
-                    std::string(static_cast<const char*>(message->payload()),
-                                message->len());
+                line_tensor.scalar<tstring>()().assign(
+                    static_cast<const char*>(message->payload()),
+                    message->len());
                 out_tensors->emplace_back(std::move(line_tensor));
                 *end_of_sequence = false;
                 // Sync offset

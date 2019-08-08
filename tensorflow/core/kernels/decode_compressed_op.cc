@@ -109,7 +109,7 @@ class DecodeCompressedOp : public OpKernel {
         string output_string;
         Status s = zlib_stream->ReadNBytes(INT_MAX, &output_string);
         OP_REQUIRES(context, (s.ok() || errors::IsOutOfRange(s)), s);
-        output_flat(i) = output_string;
+        output_flat(i) = std::move(output_string);
       }
     }
   }

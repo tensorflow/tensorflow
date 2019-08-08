@@ -184,7 +184,7 @@ class DecodeCSVOp : public OpKernel {
               output[f]->flat<tstring>()(i) =
                   record_defaults[f].flat<tstring>()(0);
             } else {
-              output[f]->flat<tstring>()(i) = fields[f];
+              output[f]->flat<tstring>()(i) = std::move(fields[f]);
             }
             break;
           }

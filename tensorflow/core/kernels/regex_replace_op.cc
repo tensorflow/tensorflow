@@ -70,7 +70,7 @@ class RegexReplaceOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(pattern_tensor->shape()),
                 errors::InvalidArgument("Pattern must be scalar, but received ",
                                         pattern_tensor->shape().DebugString()));
-    const string pattern = pattern_tensor->flat<tstring>()(0);
+    const string& pattern = pattern_tensor->scalar<tstring>()();
     const RE2 match(pattern);
     OP_REQUIRES(ctx, match.ok(),
                 errors::InvalidArgument("Invalid pattern: ", pattern,
@@ -81,7 +81,7 @@ class RegexReplaceOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(rewrite_tensor->shape()),
                 errors::InvalidArgument("Rewrite must be scalar, but received ",
                                         rewrite_tensor->shape().DebugString()));
-    const string rewrite = rewrite_tensor->flat<tstring>()(0);
+    const string& rewrite = rewrite_tensor->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, InternalCompute(match, rewrite, replace_global_, ctx));
   }
 

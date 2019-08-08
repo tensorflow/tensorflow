@@ -264,11 +264,11 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
               TF_RETURN_IF_ERROR(status);
 
               Tensor key_tensor(ctx->allocator({}), DT_STRING, {});
-              key_tensor.scalar<tstring>()() = key;
+              key_tensor.scalar<tstring>()() = std::move(key);
               out_tensors->emplace_back(std::move(key_tensor));
 
               Tensor value_tensor(ctx->allocator({}), DT_STRING, {});
-              value_tensor.scalar<tstring>()() = value;
+              value_tensor.scalar<tstring>()() = std::move(value);
               out_tensors->emplace_back(std::move(value_tensor));
 
               *end_of_sequence = false;
