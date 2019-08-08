@@ -53,13 +53,24 @@ inline ArrayRef<NamedAttribute> getArgAttrs(Operation *op, unsigned index) {
   return argDict ? argDict.getValue() : llvm::None;
 }
 
+/// A named class for passing around the variadic flag.
+class VariadicFlag {
+public:
+  explicit VariadicFlag(bool variadic) : variadic(variadic) {}
+  bool isVariadic() const { return variadic; }
+
+private:
+  /// Underlying storage.
+  bool variadic;
+};
+
 /// Callback type for `parseFunctionLikeOp`, the callback should produce the
 /// type that will be associated with a function-like operation from lists of
-/// function arguments and results, the boolean operand is true if the function
+/// function arguments and results, VariadicFlag indicates whether the function
 /// should have variadic arguments; in case of error, it may populate the last
 /// argument with a message.
 using FuncTypeBuilder = llvm::function_ref<Type(
-    Builder &, ArrayRef<Type>, ArrayRef<Type>, bool, std::string &)>;
+    Builder &, ArrayRef<Type>, ArrayRef<Type>, VariadicFlag, std::string &)>;
 
 /// Parser implementation for function-like operations.  Uses
 /// `funcTypeBuilder` to construct the custom function type given lists of

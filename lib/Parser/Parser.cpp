@@ -3260,6 +3260,11 @@ public:
     return success(parser.consumeIf(Token::comma));
   }
 
+  /// Parses a `...` if present.
+  ParseResult parseOptionalEllipsis() override {
+    return success(parser.consumeIf(Token::ellipsis));
+  }
+
   /// Parse a `=` token.
   ParseResult parseEqual() override {
     return parser.parseToken(Token::equal, "expected '='");
@@ -3317,11 +3322,6 @@ public:
   /// Parses a ']' if present.
   ParseResult parseOptionalRSquare() override {
     return success(parser.consumeIf(Token::r_square));
-  }
-
-  /// Parses a `...` if present.
-  ParseResult parseOptionalEllipsis() override {
-    return success(parser.consumeIf(Token::ellipsis));
   }
 
   //===--------------------------------------------------------------------===//

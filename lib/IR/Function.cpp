@@ -77,7 +77,8 @@ void FuncOp::build(Builder *builder, OperationState *result, StringRef name,
 
 ParseResult FuncOp::parse(OpAsmParser *parser, OperationState *result) {
   auto buildFuncType = [](Builder &builder, ArrayRef<Type> argTypes,
-                          ArrayRef<Type> results, bool, std::string &) {
+                          ArrayRef<Type> results, impl::VariadicFlag,
+                          std::string &) {
     return builder.getFunctionType(argTypes, results);
   };
 
