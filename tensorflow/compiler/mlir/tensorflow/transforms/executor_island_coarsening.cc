@@ -110,7 +110,7 @@ llvm::Optional<tf_executor::IslandOp> GetResultCandidateToMergeWith(
   // Check island control results.
   for (Operation* user : island->control()->getUsers()) {
     DCHECK_EQ(user->getParentOp(), graph_op);
-    if (!candidate || candidate->isBeforeInBlock(user)) candidate = user;
+    if (!candidate || user->isBeforeInBlock(candidate)) candidate = user;
   }
 
   // Check island data results.
