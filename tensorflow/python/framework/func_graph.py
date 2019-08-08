@@ -652,7 +652,7 @@ class FuncGraph(ops.Graph):
 
   def capture_distributed_variable(self, variable, placeholder):
     """Add given distributed variable to captures with given placeholder."""
-    self._captures[variable] = (variable, placeholder)
+    self._captures[ops.tensor_id(variable)] = (variable, placeholder)
     tape.record_operation("captured_value", [placeholder], [variable],
                           lambda x: [x])
 
