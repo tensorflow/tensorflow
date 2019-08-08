@@ -132,8 +132,8 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser *parser, OperationState *result,
     return failure();
 
   std::string errorMessage;
-  if (auto type =
-          funcTypeBuilder(builder, argTypes, results, isVariadic, errorMessage))
+  if (auto type = funcTypeBuilder(builder, argTypes, results,
+                                  impl::VariadicFlag(isVariadic), errorMessage))
     result->addAttribute(getTypeAttrName(), builder.getTypeAttr(type));
   else
     return parser->emitError(signatureLocation)

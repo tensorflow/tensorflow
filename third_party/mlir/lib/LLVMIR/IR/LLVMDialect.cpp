@@ -730,7 +730,8 @@ void LLVMFuncOp::build(Builder *builder, OperationState *result, StringRef name,
 // Returns a null type if any of the types provided are non-LLVM types, or if
 // there is more than one output type.
 static Type buildLLVMFunctionType(Builder &b, ArrayRef<Type> inputs,
-                                  ArrayRef<Type> outputs, bool isVariadic,
+                                  ArrayRef<Type> outputs,
+                                  impl::VariadicFlag variadicFlag,
                                   std::string &errorMessage) {
   if (outputs.size() > 1) {
     errorMessage = "expected zero or one function result";
@@ -761,7 +762,8 @@ static Type buildLLVMFunctionType(Builder &b, ArrayRef<Type> inputs,
     errorMessage = "expected LLVM type for function results";
     return {};
   }
-  return LLVMType::getFunctionTy(llvmOutput, llvmInputs, isVariadic);
+  return LLVMType::getFunctionTy(llvmOutput, llvmInputs,
+                                 variadicFlag.isVariadic());
 }
 
 // Print the LLVMFuncOp.  Collects argument and result types and passes them
