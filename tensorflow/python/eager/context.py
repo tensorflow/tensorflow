@@ -387,6 +387,7 @@ class Context(object):
     self._post_execution_callbacks = []
     self._seed = None
     self._initialize_lock = threading.Lock()
+    self._initialized = False
     if device_policy is None:
       device_policy = DEVICE_PLACEMENT_SILENT
     self._device_policy = device_policy
@@ -419,7 +420,6 @@ class Context(object):
     self._optimizer_experimental_options = {}
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
-
   # pylint: enable=redefined-outer-name
 
   def _set_global_seed(self, seed):
@@ -473,8 +473,10 @@ class Context(object):
 
   def ensure_initialized(self):
     """Initialize handle and devices if not already done so."""
+    if self._initialized:
+      return
     with self._initialize_lock:
-      if self._context_handle is not None:
+      if self._initialized:
         return
       assert self._context_devices is None
       opts = pywrap_tensorflow.TFE_NewContextOptions()
@@ -489,7 +491,7 @@ class Context(object):
               opts, self._mirroring_policy)
         if self._default_is_async == ASYNC:
           pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
-        self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
+        context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
       assert not (self._server_def and self._collective_ops_server_def), (
@@ -497,14 +499,16 @@ class Context(object):
           "moment. If this is important to you, please file an issue.")
       if self._server_def is not None:
         server_def_str = self._server_def.SerializeToString()
-        pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle, 600,
+        pywrap_tensorflow.TFE_ContextSetServerDef(context_handle, 600,
                                                   server_def_str)
       elif self._collective_ops_server_def is not None:
         server_def_str = self._collective_ops_server_def.SerializeToString()
-        pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
+        pywrap_tensorflow.TFE_EnableCollectiveOps(context_handle,
                                                   server_def_str)
 
+      self._context_handle = context_handle
       self._initialize_logical_devices()
+      self._initialized = True
 
   def _clear_caches(self):
     self.ones_rank_cache().flush()
