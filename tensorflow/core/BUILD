@@ -4605,7 +4605,7 @@ tf_cc_test(
     size = "small",
     srcs = ["common_runtime/constant_folding_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = [
         ":core",
         ":core_cpu",
@@ -4671,6 +4671,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["common_runtime/process_function_library_runtime_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = ["no_rocm"],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
