@@ -1593,7 +1593,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
                                   &invalidated_nodes, &nodes_to_delete));
       continue;
     }
-#endif
 
 // NOTE: We can only fuse BatchNorm into Conv2D nodes. In theory we can do
 // it for MatMul as well, but in practice this pattern does not appear in
@@ -1601,7 +1600,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
 
 // TODO(penporn):
 // Remove this once TF-MKL supports _FusedConv2D with these operations.
-#if !defined(INTEL_MKL) && !defined(TENSORFLOW_USE_ROCM)
+#ifndef INTEL_MKL
     // Remap Conv2D+Squeeze+BiasAdd into the _FusedConv2D+Squeeze.
     ContractionWithSqueezeAndBiasAdd contract_with_squeeze_and_bias;
     if (allow_non_differentiable_rewrites &&
@@ -1634,6 +1633,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 #endif  // !INTEL_MKL
+#endif  // !TENSORFLOW_USE_ROCM
 
     // Infer properties lazily in case they are not needed.
     if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {

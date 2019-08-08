@@ -212,6 +212,7 @@ class ReluOp<Device, qint8>
 REGISTER_KERNEL_BUILDER(
     Name("Relu").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     ReluOp<GPUDevice, qint8>);
+
 #endif  // GOOGLE_CUDA
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
-#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
