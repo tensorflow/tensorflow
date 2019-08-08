@@ -911,8 +911,8 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     except TypeError:  # Could come from slicing prev.
       pass
   elif (tensor.op.type == "Placeholder" and
-        tensor.op.graph.building_function
-        and hasattr(tensor.op.graph, "internal_captures")):
+        tensor.op.graph.building_function and
+        hasattr(tensor.op.graph, "internal_captures")):
     # If we are inside a FuncGraph try to lookup the constant value of the
     # corresponding external capture. Note that we only look at captures and
     # not the fed inputs because those can be fed different values in different

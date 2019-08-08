@@ -52,8 +52,17 @@ def random_gamma(shape):  # pylint: disable=invalid-name
   return random_ops.random_gamma(shape, 1.0)
 
 
+def random_gamma_with_alpha_beta(shape):  # pylint: disable=invalid-name
+  return random_ops.random_gamma(
+      shape, alpha=[[1.], [3.], [5.], [6.]], beta=[[3., 4.]])
+
+
 def random_poisson_v2(shape):  # pylint: disable=invalid-name
   return random_ops.random_poisson_v2(shape, 1.0)
+
+
+def random_poisson_v2_with_lam(shape):  # pylint: disable=invalid-name
+  return random_ops.random_poisson_v2(shape, [12.2, 3.3])
 
 
 def fill(shape):  # pylint: disable=invalid-name
@@ -857,22 +866,24 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertLen(while_op.outputs, 4)
 
   @parameterized.named_parameters(
-      ("RandomUniform", random_ops.random_uniform),
-      ("RandomNormal", random_ops.random_normal),
+      ("RandomUniform", random_ops.random_uniform, [5, 3]),
+      ("RandomNormal", random_ops.random_normal, [5, 3]),
       ("ParameterizedTruncatedNormal",
-       random_ops.parameterized_truncated_normal),
-      ("TruncatedNormal", random_ops.truncated_normal),
-      ("RandomGamma", random_gamma),
-      ("RandomPoissonV2", random_poisson_v2),
+       random_ops.parameterized_truncated_normal, [5, 3]),
+      ("TruncatedNormal", random_ops.truncated_normal, [5, 3]),
+      ("RandomGamma", random_gamma, [5, 3]),
+      ("RandomPoissonV2", random_poisson_v2, [5, 3]),
+      ("RandomGammaWithAlphaBeta", random_gamma_with_alpha_beta, [5, 3, 4, 2]),
+      ("RandomPoissonV2WithLam", random_poisson_v2_with_lam, [5, 3, 2]),
   )
   @test_util.run_deprecated_v1
-  def testRandomOpsShape(self, random_fn):
+  def testRandomOpsShape(self, random_fn, expected_shape):
     shape = constant_op.constant([3])
 
     def Body(i, u):
       shape_extended = array_ops.concat([[5], shape], axis=0)
       u = random_fn(shape_extended)
-      assert u.shape.as_list() == [5, 3], str(u.shape.as_list())
+      assert u.shape.as_list() == expected_shape, str(u.shape.as_list())
       return i + 1, u
 
     _, _ = while_loop_v2(
@@ -880,7 +891,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         body=Body,
         loop_vars=[
             0,
-            array_ops.zeros([5, 3], dtype=dtypes.float32),
+            array_ops.zeros(expected_shape, dtype=dtypes.float32),
         ])
 
   @test_util.run_deprecated_v1
