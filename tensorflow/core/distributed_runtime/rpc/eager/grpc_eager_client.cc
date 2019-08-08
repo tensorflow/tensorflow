@@ -23,15 +23,21 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace eager {
 namespace {
+
 class GrpcEagerClient : public EagerClient {
  public:
   GrpcEagerClient(const tensorflow::SharedGrpcChannelPtr& channel,
                   ::grpc::CompletionQueue* cq)
-      : stub_(channel), cq_(cq) {}
+      : stub_(channel), cq_(cq) {
+    // TODO(fishx): Remove this env variable.
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE",
+                                   true, &enable_streaming_));
+  }
   ~GrpcEagerClient() override {}
 
 #define CLIENT_METHOD(method)                                             \
@@ -89,12 +95,26 @@ class GrpcEagerClient : public EagerClient {
       it = it_and_bool.first;
     }
 
-    it->second.SendNextRequest(*request, response, std::move(done));
+    if (enable_streaming_) {
+      it->second.SendNextRequest(*request, response, std::move(done));
+    } else {
+      Notification n;
+      Status status;
+      it->second.SendNextRequest(*request, response,
+                                 [&n, &status](const Status& s) {
+                                   status.Update(s);
+                                   n.Notify();
+                                 });
+      n.WaitForNotification();
+      done(status);
+    }
   }
 
  private:
   ::grpc::GenericStub stub_;
   ::grpc::CompletionQueue* cq_;
+
+  bool enable_streaming_;
 
   mutable mutex mu_;
 
