@@ -459,7 +459,8 @@ def make_csv_dataset_v2(
 
   if column_defaults is not None:
     column_defaults = [
-        constant_op.constant([], dtype=x) if x in _ACCEPTABLE_CSV_TYPES else x
+        constant_op.constant([], dtype=x)
+        if not tensor_util.is_tensor(x) and x in _ACCEPTABLE_CSV_TYPES else x
         for x in column_defaults
     ]
   else:
@@ -663,7 +664,8 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         argument_default="",
         argument_dtype=dtypes.string)
     record_defaults = [
-        constant_op.constant([], dtype=x) if x in _ACCEPTABLE_CSV_TYPES else x
+        constant_op.constant([], dtype=x)
+        if not tensor_util.is_tensor(x) and x in _ACCEPTABLE_CSV_TYPES else x
         for x in record_defaults
     ]
     self._record_defaults = ops.convert_n_to_tensor(
