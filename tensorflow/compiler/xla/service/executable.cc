@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/stream_executor/device_description.h"
 
 namespace xla {
 
@@ -96,26 +97,35 @@ StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
 StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments) {
+  StatusOr<ScopedShapedBuffer> result =
+      ExecuteAsyncOnStreamWrapper(run_options, arguments);
+  TF_RETURN_IF_ERROR(run_options->stream()->BlockHostUntilDone());
+  return result;
+}
+
+StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStreamWrapper(
+    const ServiceExecutableRunOptions* run_options,
+    absl::Span<const ShapedBuffer* const> arguments) {
   se::Stream* stream = run_options->stream();
-  std::unique_ptr<se::Timer> timer;
+  std::shared_ptr<se::Timer> timer;
   ExecutionProfile* profile = run_options->run_options().execution_profile();
   if (profile != nullptr) {
-    timer.reset(new se::Timer(stream->parent()));
+    timer = std::make_shared<se::Timer>(stream->parent());
     stream->InitTimer(timer.get()).ThenStartTimer(timer.get());
   }
 
   VLOG(1) << "enqueueing executable on stream...";
   // If the profiling flag isn't enabled, we pass nullptr as the profile to
   // indicate profiling is not requested.
-  std::unique_ptr<HloExecutionProfile> profile_ptr =
+  std::shared_ptr<HloExecutionProfile> profile_ptr =
       module_config().debug_options().xla_hlo_profile() &&
               hlo_profiling_enabled()
-          ? absl::make_unique<HloExecutionProfile>(&hlo_profile_printer_data(),
-                                                   &hlo_profile_index_map())
+          ? std::make_shared<HloExecutionProfile>(&hlo_profile_printer_data(),
+                                                  &hlo_profile_index_map())
           : nullptr;
 
   StatusOr<ScopedShapedBuffer> return_value =
-      ExecuteOnStream(run_options, arguments, profile_ptr.get());
+      ExecuteAsyncOnStream(run_options, arguments, profile_ptr.get());
   if (!return_value.status().ok()) {
     if (profile != nullptr) {
       // Ensure the ThenStartTimer call has completed before we destroy timer.
@@ -130,25 +140,19 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
   }
 
   if (profile != nullptr) {
-    VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
+    VLOG(1) << "enqueueing 'stop timer' and profiling callback...";
     stream->ThenStopTimer(timer.get());
-    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-    VLOG(1) << "done with block-host-until-done";
 
+    // We block instead of using an async callback because reading the timer
+    // value may call back into the driver on GPU, which is not allowed.
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+
+    const int64 executable_size_in_bytes = SizeOfGeneratedCodeInBytes();
     // Merge in run-time profile information from execution_profile.
 
     // Overall execution time (in nanoseconds) from the executor timer.
-    if (stream->ok()) {
-      // Don't read timer->Nanoseconds() if the stream isn't OK -- that's
-      // illegal.
-      profile->set_compute_and_transfer_time_ns(timer->Nanoseconds());
-    }
+    profile->set_compute_and_transfer_time_ns(timer->Nanoseconds());
 
-    // TODO(b/28123297): On GPU we end up including transfer time in
-    // the compute time this way. Instead, we should get the correct
-    // value by measuring it. Setting the field here at least lets
-    // benchmarks provide *some* value for GPU computations.
-    //
     // TODO(b/28447609): The value in compute_and_transfer_time_ns is actually
     // the compute time without the transfer time, so this way we get the
     // correct compute time. We should instead have the correct value for
@@ -157,16 +161,18 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
       profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
     }
 
-    const int64 executable_size_in_bytes = SizeOfGeneratedCodeInBytes();
     if (executable_size_in_bytes != 0) {
       profile->set_executable_size_in_bytes(executable_size_in_bytes);
     }
   }
 
   if (profile_ptr != nullptr) {
-    XLA_LOG_LINES(
-        tensorflow::INFO,
-        profile_ptr->ToString(stream->parent()->GetDeviceDescription()));
+    const se::DeviceDescription* device_description =
+        &stream->parent()->GetDeviceDescription();
+    stream->ThenDoHostCallback([profile_ptr, device_description]() {
+      XLA_LOG_LINES(tensorflow::INFO,
+                    profile_ptr->ToString(*device_description));
+    });
   }
 
   return return_value;
