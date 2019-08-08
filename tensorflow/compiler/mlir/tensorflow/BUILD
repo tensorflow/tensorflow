@@ -154,11 +154,11 @@ cc_library(
     name = "convert_graphdef",
     srcs = [
         "translate/export_graphdef.cc",
-        "translate/import_graphdef.cc",
+        "translate/import_model.cc",
     ],
     hdrs = [
         "translate/export_graphdef.h",
-        "translate/import_graphdef.h",
+        "translate/import_model.h",
     ],
     deps = [
         ":convert_tensor",
