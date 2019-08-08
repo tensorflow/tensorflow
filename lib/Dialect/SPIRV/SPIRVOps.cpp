@@ -768,13 +768,14 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
   auto &body = op.getRegion(0).front();
   llvm::DenseMap<std::pair<FuncOp, spirv::ExecutionModel>, spirv::EntryPointOp>
       entryPoints;
+  SymbolTable table(moduleOp);
 
   for (auto &op : body) {
     if (op.getDialect() == dialect) {
       // For EntryPoint op, check that the function and execution model is not
       // duplicated in EntryPointOps
       if (auto entryPointOp = llvm::dyn_cast<spirv::EntryPointOp>(op)) {
-        auto funcOp = moduleOp.lookupSymbol(entryPointOp.fn());
+        auto funcOp = table.lookup<FuncOp>(entryPointOp.fn());
         if (!funcOp) {
           return entryPointOp.emitError("function '")
                  << entryPointOp.fn() << "' not found in 'spv.module'";
