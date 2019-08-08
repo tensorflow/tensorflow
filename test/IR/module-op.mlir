@@ -33,3 +33,13 @@ module {
 // CHECK-NOT: module {
 module {
 }
+
+// -----
+
+// Check that the implicit top-level module is also a name scope for SSA
+// values.  This should not crash.
+// CHECK: module {
+// CHECK: %{{.*}} = "op"
+// CHECK: }
+%0 = "op"() : () -> i32
+
