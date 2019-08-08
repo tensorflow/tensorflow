@@ -186,9 +186,6 @@ class StreamExecutor {
   //
   // Resets the internal contents of mem to be null-representative, but this
   // null-out effect should not be relied upon in client code.
-  //
-  // TODO(jlebar): Change this to accept a DeviceMemoryBase by value, see
-  // discussion in cl/195744342.
   void Deallocate(DeviceMemoryBase *mem);
 
   // Retrieves a mapping of active opaque device memory pointer to a string
@@ -495,9 +492,6 @@ class StreamExecutor {
 
   // Return an allocator which delegates to this stream executor for memory
   // allocation.
-  //
-  // Creates the allocator object on the first access, as the device ordinal
-  // of this stream_executor is not set in constructor.
   StreamExecutorMemoryAllocator *GetAllocator() { return &allocator_; }
 
  private:
@@ -511,6 +505,11 @@ class StreamExecutor {
   friend class TypedKernel;
   template <typename... Args>
   friend struct ThenBlasImpl;
+
+  // Synchronously allocates size bytes on the underlying platform and returns
+  // an opaque void* representing that allocation. In the case of failure,
+  // nullptr is returned.
+  void *Allocate(uint64 size);
 
   // Gets-or-creates (creates with memoization) a BlasSupport datatype that can
   // be used to execute BLAS routines on the current platform. This is typically
@@ -541,11 +540,6 @@ class StreamExecutor {
 
   // Without blocking the device, retrieve the current stream status.
   port::Status GetStatus(Stream *stream);
-
-  // Synchronously allocates size bytes on the underlying platform and returns
-  // an opaque void* representing that allocation. In the case of failure,
-  // nullptr is returned.
-  void *Allocate(uint64 size);
 
   // Finds and retrieves device memory for the symbol on the underlying
   // platform.
