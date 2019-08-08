@@ -191,8 +191,12 @@ TEST(SparseTensorTest, SparseTensorConstruction) {
   TF_ASSERT_OK(SparseTensor::Create(ix, vals, shape, order, &st));
   Status st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
-  EXPECT_EQ("indices[2] = [2,0,0] is out of order",
-            st_indices_valid.error_message());
+  EXPECT_EQ(
+      "indices[2] = [2,0,0] is out of order. "
+      "Many sparse ops require sorted indices.\n"
+      "    Use `tf.sparse.reorder` to create a correctly ordered copy."
+      "\n\n",
+      st_indices_valid.error_message());
 
   // Regardless of how order is updated; so long as there are no
   // duplicates, the resulting indices are valid.
