@@ -223,7 +223,11 @@ class DatasetOpsTestBase : public ::testing::Test {
     allocator_ = device_->GetAllocator(AllocatorAttributes());
   }
 
-  ~DatasetOpsTestBase() {}
+  ~DatasetOpsTestBase() {
+    if (dataset_) {
+      dataset_->Unref();
+    }
+  }
 
   // The method validates whether the two tensors have the same shape, dtype,
   // and value.
@@ -457,7 +461,7 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   std::unique_ptr<OpKernel> dataset_kernel_;
   std::unique_ptr<OpKernelContext> dataset_ctx_;
-  std::unique_ptr<DatasetBase> dataset_;
+  DatasetBase* dataset_ = nullptr;
   std::unique_ptr<IteratorContext> iterator_ctx_;
   std::unique_ptr<IteratorBase> iterator_;
 };

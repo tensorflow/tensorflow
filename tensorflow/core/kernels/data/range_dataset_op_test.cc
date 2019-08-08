@@ -35,10 +35,8 @@ class RangeDatasetOpTest : public DatasetOpsTestBaseV2<RangeDatasetParams> {
     TF_RETURN_IF_ERROR(range_dataset_params->MakeInputs(&inputs));
     TF_RETURN_IF_ERROR(
         CreateDatasetContext(dataset_kernel_.get(), &inputs, &dataset_ctx_));
-    DatasetBase* range_dataset;
-    TF_RETURN_IF_ERROR(CreateDataset(dataset_kernel_.get(), dataset_ctx_.get(),
-                                     &range_dataset));
-    dataset_.reset(range_dataset);
+    TF_RETURN_IF_ERROR(
+        CreateDataset(dataset_kernel_.get(), dataset_ctx_.get(), &dataset_));
     TF_RETURN_IF_ERROR(
         CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
     TF_RETURN_IF_ERROR(dataset_->MakeIterator(iterator_ctx_.get(),

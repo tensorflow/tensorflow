@@ -75,10 +75,8 @@ class BatchDatasetOpTest : public DatasetOpsTestBaseV2<BatchDatasetParams> {
     TF_RETURN_IF_ERROR(
         CreateDatasetContext(dataset_kernel_.get(), &inputs, &dataset_ctx_));
     // Create the dataset.
-    DatasetBase* batch_dataset;
-    TF_RETURN_IF_ERROR(CreateDataset(dataset_kernel_.get(), dataset_ctx_.get(),
-                                     &batch_dataset));
-    dataset_.reset(batch_dataset);
+    TF_RETURN_IF_ERROR(
+        CreateDataset(dataset_kernel_.get(), dataset_ctx_.get(), &dataset_));
 
     // Create the iterator context.
     TF_RETURN_IF_ERROR(
