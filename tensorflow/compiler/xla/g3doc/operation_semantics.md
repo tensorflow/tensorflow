@@ -1385,7 +1385,7 @@ as `batch_dims`.
 
 The output is an array of rank `batch_dims.size` + `offset_dims.size`.
 
-The `operand.rank` must equal the sume of `offset_dims.size` and
+The `operand.rank` must equal the sum of `offset_dims.size` and
 `collapsed_slice_dims`. Also, `slice_sizes.size` has to be equal to
 `operand.rank`.
 
