@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -399,6 +400,16 @@ def multinomial_categorical_impl(logits, num_samples, dtype, seed):
 ops.NotDifferentiable("Multinomial")
 
 
+def _maybe_set_static_shape_helper(tensor, shape, postfix_tensor):
+  if (not context.executing_eagerly() and
+      ops.get_default_graph().building_function and
+      not tensor.shape.is_fully_defined()):
+    shape = tensor_util.shape_tensor(shape)
+    const_shape = tensor_util.constant_value_as_shape(shape)
+    postfix_tensor = ops.convert_to_tensor(postfix_tensor)
+    tensor.set_shape(const_shape.concatenate(postfix_tensor.shape))
+
+
 @tf_export("random.gamma", v1=["random.gamma", "random_gamma"])
 @deprecation.deprecated_endpoints("random_gamma")
 def random_gamma(shape,
@@ -481,7 +492,7 @@ def random_gamma(shape,
         np.finfo(dtype.as_numpy_dtype).tiny,
         gen_random_ops.random_gamma(
             shape, alpha_broadcast, seed=seed1, seed2=seed2) / beta)
-    tensor_util.maybe_set_static_shape(result, shape)
+    _maybe_set_static_shape_helper(result, shape, alpha_broadcast)
     return result
 
 
@@ -566,5 +577,5 @@ def random_poisson_v2(shape, lam, dtype=dtypes.float32, seed=None, name=None):
     seed1, seed2 = random_seed.get_seed(seed)
     result = gen_random_ops.random_poisson_v2(
         shape, lam, dtype=dtype, seed=seed1, seed2=seed2)
-    tensor_util.maybe_set_static_shape(result, shape)
+    _maybe_set_static_shape_helper(result, shape, lam)
     return result
