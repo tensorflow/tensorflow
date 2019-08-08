@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/stats_calculator.h"
 #include "tensorflow/lite/profiling/time.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
@@ -92,6 +93,8 @@ BenchmarkParams BenchmarkPerformanceOptions::DefaultParams() {
                   BenchmarkParam::Create<std::string>("all"));
   params.AddParam("option_benchmark_run_delay",
                   BenchmarkParam::Create<float>(-1.0f));
+  params.AddParam("random_shuffle_benchmark_runs",
+                  BenchmarkParam::Create<bool>(true));
   return params;
 }
 
@@ -109,6 +112,10 @@ std::vector<Flag> BenchmarkPerformanceOptions::GetFlags() {
       CreateFlag<float>("option_benchmark_run_delay", &params_,
                         "The delay between two consecutive runs of "
                         "benchmarking performance options in seconds."),
+      CreateFlag<bool>(
+          "random_shuffle_benchmark_runs", &params_,
+          "Whether to perform all benchmark runs, each of which has different "
+          "performance options, in a random order. It is enabled by default."),
   };
 }
 
@@ -178,75 +185,63 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<bool>("use_nnapi", false);
 }
 
-void BenchmarkPerformanceOptions::BenchmarkCPUOptions() {
-  // Reset all performance-related options before any runs.
-  ResetPerformanceOptions();
+void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
+  TFLITE_LOG(INFO) << "The list of TFLite runtime options to be benchmarked: ["
+                   << params_.Get<std::string>("perf_options_list") << "]";
 
-  const int num_threads[] = {1, 2, 4};
-  for (int i = 0; i < sizeof(num_threads) / sizeof(int); ++i) {
-    single_option_run_params_->Set<int32_t>("num_threads", num_threads[i]);
-    util::SleepForSeconds(params_.Get<float>("option_benchmark_run_delay"));
-    single_option_run_->Run();
+  const bool benchmark_all = HasOption("all");
+
+  if (benchmark_all || HasOption("cpu")) {
+    const std::vector<int> num_threads = {1, 2, 4};
+    for (const int count : num_threads) {
+      BenchmarkParams params;
+      params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(count));
+      all_run_params_.emplace_back(std::move(params));
+    }
   }
-}
 
-void BenchmarkPerformanceOptions::BenchmarkGPUOptions() {
-  // Reset all performance-related options before any runs.
-  ResetPerformanceOptions();
+  if (benchmark_all || HasOption("gpu")) {
+    BenchmarkParams params;
+    params.AddParam("use_gpu", BenchmarkParam::Create<bool>(true));
+    all_run_params_.emplace_back(std::move(params));
+  }
 
-  single_option_run_params_->Set<bool>("use_gpu", true);
-  util::SleepForSeconds(params_.Get<float>("option_benchmark_run_delay"));
-  single_option_run_->Run();
-}
-
-void BenchmarkPerformanceOptions::BenchmarkNnapiOptions() {
-  // Reset all performance-related options before any runs.
-  ResetPerformanceOptions();
-
-  single_option_run_params_->Set<bool>("use_nnapi", true);
-  util::SleepForSeconds(params_.Get<float>("option_benchmark_run_delay"));
-  single_option_run_->Run();
+  if (benchmark_all || HasOption("nnapi")) {
+    BenchmarkParams params;
+    params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(true));
+    all_run_params_.emplace_back(std::move(params));
+  }
 }
 
 void BenchmarkPerformanceOptions::Run(int argc, char** argv) {
   // We first parse flags for single-option runs to get information like
   // parameters of the input model etc.
-  if (!single_option_run_->ParseFlags(&argc, argv)) {
-    return;
-  }
+  if (!single_option_run_->ParseFlags(&argc, argv)) return;
 
   // Now, we parse flags that are specified for this particular binary.
-  if (!ParseFlags(&argc, argv)) {
-    return;
-  }
+  if (!ParseFlags(&argc, argv)) return;
 
   // Now, the remaining are unrecognized flags and we simply print them out.
   for (int i = 1; i < argc; ++i) {
     TFLITE_LOG(WARN) << "WARNING: unrecognized commandline flag: " << argv[i];
   }
 
-  Run();
+  CreatePerformanceOptions();
+
+  if (params_.Get<bool>("random_shuffle_benchmark_runs")) {
+    std::random_shuffle(all_run_params_.begin(), all_run_params_.end());
+  }
+
+  // Now perform all runs, each with different performance-affecting parameters.
+  for (const auto& run_params : all_run_params_) {
+    // Reset all performance-related options before any runs.
+    ResetPerformanceOptions();
+    single_option_run_params_->Set(run_params);
+    util::SleepForSeconds(params_.Get<float>("option_benchmark_run_delay"));
+    single_option_run_->Run();
+  }
 
   all_run_stats_->OutputStats();
 }
-
-void BenchmarkPerformanceOptions::Run() {
-  TFLITE_LOG(INFO) << "The list of TFLite runtime options to be benchmarked: ["
-                   << params_.Get<std::string>("perf_options_list") << "]";
-
-  const bool benchmark_all = HasOption("all");
-  if (benchmark_all || HasOption("cpu")) {
-    BenchmarkCPUOptions();
-  }
-
-  if (benchmark_all || HasOption("gpu")) {
-    BenchmarkGPUOptions();
-  }
-
-  if (benchmark_all || HasOption("nnapi")) {
-    BenchmarkNnapiOptions();
-  }
-}
-
 }  // namespace benchmark
 }  // namespace tflite
