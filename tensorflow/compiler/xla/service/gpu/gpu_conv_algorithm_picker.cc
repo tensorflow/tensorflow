@@ -298,6 +298,9 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
   }
 
   StatusOr<AutotuneResult> result_or(InternalError("Unknown platform."));
+  // Check StreamExecutor on which platform it is. ROCm and Cuda implementation
+  // have diverged. Secifically, we need to make sure redzone allocator related
+  // utilities are not used in ROCm routine
   if (stream_exec_->platform_kind() == se::PlatformKind::kROCm) {
     result_or = PickBestAlgorithmNoCacheRocm(*instr, allocator, &stream);
   } else if (stream_exec_->platform_kind() == se::PlatformKind::kCuda) {
