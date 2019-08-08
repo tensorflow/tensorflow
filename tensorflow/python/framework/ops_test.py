@@ -707,6 +707,13 @@ class OperationTest(test_util.TensorFlowTestCase):
       ops.convert_to_tensor(values, dtype=dtypes.int64)
 
   @test_util.run_in_graph_and_eager_modes
+  def testConvertToLongLongTensorType(self):
+    tensor = ops.convert_to_tensor(
+        # Get a numpy array of dtype NPY_LONGLONG
+        np.prod(constant_op.constant([1])._shape_tuple()))
+    self.assertEqual(dtypes.int64, tensor.dtype)
+
+  @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorFromInvalidTensor(self):
     tensor = constant_op.constant(42.0, dtype=dtypes.float32)
     with self.assertRaises(ValueError):
