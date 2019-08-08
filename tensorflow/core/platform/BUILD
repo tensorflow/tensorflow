@@ -140,6 +140,12 @@ cc_library(
 )
 
 cc_library(
+    name = "prefetch",
+    hdrs = ["prefetch.h"],
+    deps = [":platform"],
+)
+
+cc_library(
     name = "stacktrace",
     srcs = glob(["*/stacktrace.h"]),
     hdrs = ["stacktrace.h"],
