@@ -64,6 +64,7 @@ Status Device::SynchronizeAllActivity() {
   // stopped, also block on the compute stream. If SynchronizeAllActivity is
   // fixed, we could remove the BlockHostUntilDone call.
   status.Update(compute_stream_->BlockHostUntilDone());
+  status.Update(callback_stream_->BlockHostUntilDone());
   bool ok = compute_stream_->parent()->SynchronizeAllActivity();
   if (!ok) {
     status.Update(Unknown("SynchronizeAllActivity failed."));
