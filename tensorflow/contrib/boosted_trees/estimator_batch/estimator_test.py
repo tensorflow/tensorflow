@@ -501,7 +501,7 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
             }
             nodes {
               dense_float_binary_split {
-                feature_column: 1
+                feature_column: 0
                 threshold: 0.52
                 left_id: 3
                 right_id: 4
@@ -512,7 +512,7 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
             }
             nodes {
               dense_float_binary_split {
-                feature_column: 1
+                feature_column: 0
                 threshold: 0.554
                 left_id: 5
                 right_id: 6
@@ -589,8 +589,7 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
         }
         nodes {
           dense_float_binary_split {
-            feature_column: 1
-            threshold: 0.52
+            threshold: 0.519999980927
             left_id: 3
             right_id: 4
           }
@@ -599,12 +598,18 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
         }
         nodes {
           dense_float_binary_split {
-            feature_column: 1
-            threshold: 0.554
+            threshold: 0.554000020027
             left_id: 5
             right_id: 6
           }
           node_metadata {
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
           }
         }
         nodes {
@@ -634,13 +639,6 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
         nodes {
           leaf {
             vector {
-              value: 0.0
-            }
-          }
-        }
-        nodes {
-          leaf {
-            vector {
               value: -2.0
             }
           }
@@ -665,8 +663,7 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
         }
         nodes {
           dense_float_binary_split {
-            feature_column: 1
-            threshold: 0.52
+            threshold: 0.519999980927
             left_id: 3
             right_id: 4
           }
@@ -675,12 +672,18 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
         }
         nodes {
           dense_float_binary_split {
-            feature_column: 1
-            threshold: 0.554
+            threshold: 0.554000020027
             left_id: 5
             right_id: 6
           }
           node_metadata {
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
           }
         }
         nodes {
@@ -710,13 +713,6 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
         nodes {
           leaf {
             vector {
-              value: 0.0
-            }
-          }
-        }
-        nodes {
-          leaf {
-            vector {
               value: -1.81873059273
             }
           }
@@ -741,8 +737,7 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
         }
         nodes {
           dense_float_binary_split {
-            feature_column: 1
-            threshold: 0.52
+            threshold: 0.519999980927
             left_id: 3
             right_id: 4
           }
@@ -751,8 +746,7 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
         }
         nodes {
           dense_float_binary_split {
-            feature_column: 1
-            threshold: 0.554
+            threshold: 0.554000020027
             left_id: 5
             right_id: 6
           }
