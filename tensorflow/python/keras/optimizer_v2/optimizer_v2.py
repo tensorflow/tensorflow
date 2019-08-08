@@ -139,7 +139,7 @@ class OptimizerV2(trackable.Trackable):
   vars = <list_of_variables>
   grads = tape.gradient(loss, vars)
 
-  # Do whatever you need to the gradients, for example cap them, etc.
+  # Process the gradients, for example cap them, etc.
   # capped_grads = [MyCapper(g) for g in grads]
   processed_grads = [process_gradient(g) for g in grads]
 
