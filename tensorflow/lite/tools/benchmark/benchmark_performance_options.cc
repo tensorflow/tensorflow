@@ -220,6 +220,11 @@ void BenchmarkPerformanceOptions::Run(int argc, char** argv) {
     return;
   }
 
+  // Now, the remaining are unrecognized flags and we simply print them out.
+  for (int i = 1; i < argc; ++i) {
+    TFLITE_LOG(WARN) << "WARNING: unrecognized commandline flag: " << argv[i];
+  }
+
   Run();
 
   all_run_stats_->OutputStats();
