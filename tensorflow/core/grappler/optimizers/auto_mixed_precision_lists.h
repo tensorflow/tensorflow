@@ -120,6 +120,7 @@ class AutoMixedPrecisionLists {
         "FusedBatchNormGradV2",
         "FusedBatchNormV3",
         "FusedBatchNormGradV3",
+        "_FusedBatchNormEx",
         "Inv",
         "LeakyRelu",
         "LeakyReluGrad",
