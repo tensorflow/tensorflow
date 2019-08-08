@@ -60,6 +60,7 @@ private:
   Token lexPrefixedIdentifier(const char *tokStart);
   Token lexNumber(const char *tokStart);
   Token lexString(const char *tokStart);
+  Token lexEllipsis(const char *tokStart);
 
   const llvm::SourceMgr &sourceMgr;
   MLIRContext *context;

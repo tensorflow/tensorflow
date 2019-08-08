@@ -3319,6 +3319,11 @@ public:
     return success(parser.consumeIf(Token::r_square));
   }
 
+  /// Parses a `...` if present.
+  ParseResult parseOptionalEllipsis() override {
+    return success(parser.consumeIf(Token::ellipsis));
+  }
+
   //===--------------------------------------------------------------------===//
   // Attribute Parsing
   //===--------------------------------------------------------------------===//

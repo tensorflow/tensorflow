@@ -78,6 +78,7 @@ TOK_PUNCTUATION(r_square,         "]")
 TOK_PUNCTUATION(less,             "<")
 TOK_PUNCTUATION(greater,          ">")
 TOK_PUNCTUATION(equal,            "=")
+TOK_PUNCTUATION(ellipsis,         "...")
 // TODO: More punctuation.
 
 // Operators.

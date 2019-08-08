@@ -443,6 +443,21 @@ func @return_inside_loop() {
 
 // -----
 
+// expected-error@+1 {{expected three consecutive dots for an ellipsis}}
+func @malformed_ellipsis_one(.)
+
+// -----
+
+// expected-error@+1 {{expected three consecutive dots for an ellipsis}}
+func @malformed_ellipsis_two(..)
+
+// -----
+
+// expected-error@+1 {{expected non-function type}}
+func @func_variadic(...)
+
+// -----
+
 func @redef()  // expected-note {{see existing symbol definition here}}
 func @redef()  // expected-error {{redefinition of symbol named 'redef'}}
 

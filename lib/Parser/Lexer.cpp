@@ -106,6 +106,8 @@ Token Lexer::lexToken() {
     return formToken(Token::colon, tokStart);
   case ',':
     return formToken(Token::comma, tokStart);
+  case '.':
+    return lexEllipsis(tokStart);
   case '(':
     return formToken(Token::l_paren, tokStart);
   case ')':
@@ -381,4 +383,18 @@ Token Lexer::lexString(const char *tokStart) {
       continue;
     }
   }
+}
+
+/// Lex an ellipsis.
+///
+///   ellipsis ::= '...'
+///
+Token Lexer::lexEllipsis(const char *tokStart) {
+  assert(curPtr[-1] == '.');
+
+  if (curPtr == curBuffer.end() || *curPtr != '.' || *(curPtr + 1) != '.')
+    return emitError(curPtr, "expected three consecutive dots for an ellipsis");
+
+  curPtr += 2;
+  return formToken(Token::ellipsis, tokStart);
 }

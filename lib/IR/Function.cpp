@@ -76,15 +76,19 @@ void FuncOp::build(Builder *builder, OperationState *result, StringRef name,
 /// Parsing/Printing methods.
 
 ParseResult FuncOp::parse(OpAsmParser *parser, OperationState *result) {
-  return impl::parseFunctionLikeOp(
-      parser, result,
-      [](Builder &builder, ArrayRef<Type> argTypes, ArrayRef<Type> results,
-         std::string &) { return builder.getFunctionType(argTypes, results); });
+  auto buildFuncType = [](Builder &builder, ArrayRef<Type> argTypes,
+                          ArrayRef<Type> results, bool, std::string &) {
+    return builder.getFunctionType(argTypes, results);
+  };
+
+  return impl::parseFunctionLikeOp(parser, result, /*allowVariadic=*/false,
+                                   buildFuncType);
 }
 
 void FuncOp::print(OpAsmPrinter *p) {
   FunctionType fnType = getType();
-  impl::printFunctionLikeOp(p, *this, fnType.getInputs(), fnType.getResults());
+  impl::printFunctionLikeOp(p, *this, fnType.getInputs(), /*isVariadic=*/false,
+                            fnType.getResults());
 }
 
 LogicalResult FuncOp::verify() {

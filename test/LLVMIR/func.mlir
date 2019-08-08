@@ -86,6 +86,12 @@ module {
   attributes {foo = 42 : i32} {
     llvm.return
   }
+
+  // CHECK: llvm.func @variadic(...)
+  llvm.func @variadic(...)
+
+  // CHECK: llvm.func @variadic_args(!llvm.i32, !llvm.i32, ...)
+  llvm.func @variadic_args(!llvm.i32, !llvm.i32, ...)
 }
 
 // -----
@@ -165,4 +171,20 @@ module {
 module {
   // expected-error@+1 {{failed to construct function type: expected zero or one function result}}
   llvm.func @foo() -> (!llvm.i64, !llvm.i64)
+}
+
+// -----
+
+module {
+  // expected-error@+1 {{only external functions can be variadic}}
+  llvm.func @variadic_def(...) {
+    llvm.return
+  }
+}
+
+// -----
+
+module {
+  // expected-error@+1 {{variadic arguments must be in the end of the argument list}}
+  llvm.func @variadic_inside(%arg0: !llvm.i32, ..., %arg1: !llvm.i32)
 }

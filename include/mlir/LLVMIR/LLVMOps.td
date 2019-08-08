@@ -344,7 +344,8 @@ def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
   let verifier = [{ return ::verify(*this); }];
   let printer = [{ printLLVMFuncOp(p, *this); }];
   let parser = [{
-    return impl::parseFunctionLikeOp(parser, result, buildLLVMFunctionType);
+    return impl::parseFunctionLikeOp(parser, result, /*allowVariadic=*/true,
+                                     buildLLVMFunctionType);
   }];
 }
 
