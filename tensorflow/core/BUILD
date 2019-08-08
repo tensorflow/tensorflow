@@ -670,6 +670,7 @@ cc_library(
         "//tensorflow/core/platform:macros.h",
         "//tensorflow/core/platform:platform.h",
         "//tensorflow/core/platform:protobuf.h",
+        "//tensorflow/core/platform:stringpiece.h",
         "//tensorflow/core/platform:tstring.h",
         "//tensorflow/core/platform:types.h",
         "//tensorflow/core/platform:windows/cpu_info.h",
@@ -679,11 +680,12 @@ cc_library(
         ":platform_base",
         "@com_google_absl//absl/strings",
         "@double_conversion//:double-conversion",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:platform",
-        "//tensorflow/core/platform:types",
         "//tensorflow/core/platform:cpu_info",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:platform",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -765,6 +767,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":lib_internal",
+        "//tensorflow/core/platform:stringpiece",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -810,16 +813,13 @@ cc_library(
     ],
 )
 
-# Libraries that will eventually be moved into lib/core
-# Note that stringpiece_test can't be place here yet, because we are
-# required to use tf_cc_test, and that rule will change / into _
+# DEPRECATED: use platform:stringpiece instead.
 cc_library(
     name = "core_stringpiece",
     hdrs = ["lib/core/stringpiece.h"],
     copts = tf_copts(),
     deps = [
-        ":platform_base",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/core/platform:stringpiece",
     ],
 )
 
@@ -2627,12 +2627,15 @@ cc_library(
         "//tensorflow/core/platform:macros.h",
         "//tensorflow/core/platform:mem.h",
         "//tensorflow/core/platform:platform.h",
+        "//tensorflow/core/platform:stringpiece.h",
         "//tensorflow/core/platform:tstring.h",
         "//tensorflow/core/platform:types.h",
     ],
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
+        ":core_stringpiece",
+        "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform/default/build_config:jpeg",
         "//tensorflow/core/platform/default/build_config:logging",
         "@com_google_absl//absl/base:core_headers",
@@ -3755,7 +3758,6 @@ tf_cc_tests(
         "lib/core/notification_test.cc",
         "lib/core/refcount_test.cc",
         "lib/core/status_test.cc",
-        "lib/core/stringpiece_test.cc",
         "lib/core/threadpool_test.cc",
         "lib/gtl/cleanup_test.cc",
         "lib/gtl/compactptrset_test.cc",
@@ -3805,6 +3807,7 @@ tf_cc_tests(
         "//tensorflow/core/platform:port_test.cc",
         "//tensorflow/core/platform:profile_utils/cpu_utils_test.cc",
         "//tensorflow/core/platform:stacktrace_handler_test.cc",
+        "//tensorflow/core/platform:stringpiece_test.cc",
         "//tensorflow/core/platform:subprocess_test.cc",
         "//tensorflow/core/platform:vmodule_benchmark_test.cc",
     ],
@@ -3816,6 +3819,7 @@ tf_cc_tests(
         ":protos_all_cc",
         ":test",
         ":test_main",
+        "//tensorflow/core/platform:stringpiece",
         "//third_party/eigen3",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",

@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 #include <unordered_map>
+
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

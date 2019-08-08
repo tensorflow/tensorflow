@@ -23,9 +23,15 @@ limitations under the License.
 // non-const method, all threads accessing the same StringPiece must use
 // external synchronization.
 
-#ifndef TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
-#define TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_STRINGPIECE_H_
+#define TENSORFLOW_CORE_PLATFORM_STRINGPIECE_H_
 
-#include "tensorflow/core/platform/stringpiece.h"
+#include "absl/strings/string_view.h"
 
-#endif  // TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
+namespace tensorflow {
+
+using StringPiece = absl::string_view;
+
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_PLATFORM_STRINGPIECE_H_
