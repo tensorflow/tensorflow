@@ -361,7 +361,8 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input, const TfLiteTensor* bw_input,
             input->data.f + b * input_size * max_time + s * input_size;
         const float* aux_input_ptr_batch =
             (aux_input != nullptr)
-                ? aux_input->data.f + b * input_size * max_time + s * input_size
+                ? aux_input->data.f + b * aux_input_size * max_time +
+                      s * aux_input_size
                 : nullptr;
         float* output_ptr_batch = fw_output_offset + s * fw_output_step;
 
@@ -384,7 +385,8 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input, const TfLiteTensor* bw_input,
             input->data.f + b * input_size * max_time + s * input_size;
         const float* aux_input_ptr_batch =
             (aux_input != nullptr)
-                ? aux_input->data.f + b * input_size * max_time + s * input_size
+                ? aux_input->data.f + b * aux_input_size * max_time +
+                      s * aux_input_size
                 : nullptr;
         float* output_ptr_batch = bw_output_offset + s * bw_output_step;
 
