@@ -19,31 +19,14 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
+#include "tensorflow/stream_executor/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
 namespace cuda {
 
-// Compilation options for compiling ptxas.
-struct PtxCompilationOptions {
-  bool disable_ptxas_optimizations;
-
-  // CUDA directory which would be searched first.
-  std::string preferred_cuda_dir;
-
-  explicit PtxCompilationOptions(bool disable_ptxas_optimizations = false,
-                                 absl::string_view preferred_cuda_dir = "")
-      : disable_ptxas_optimizations(disable_ptxas_optimizations),
-        preferred_cuda_dir(preferred_cuda_dir) {}
-
-  using PtxOptionsTuple = std::tuple<bool, std::string>;
-
-  PtxOptionsTuple ToTuple() {
-    return std::make_tuple(disable_ptxas_optimizations, preferred_cuda_dir);
-  }
-};
-
+using PtxCompilationOptions = GpuAsmOpts;
 // Compiles the given PTX string using ptxas and returns the resulting machine
 // code (i.e. a cubin) as a byte array.
 //

@@ -20,11 +20,10 @@ limitations under the License.
 
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/stream_executor/gpu_asm_opts.h"
 
 namespace stream_executor {
-namespace cuda {
 
 // An allocator that allocates a bit of extra memory around the beginning/end of
 // every allocation and can check that this memory is unmodified.
@@ -39,15 +38,19 @@ namespace cuda {
 // memory for cudnn convolutions.
 class RedzoneAllocator : public ScratchAllocator {
  public:
+  static const int64 kDefaultMemoryLimit = 1LL << 32;  // 4GB
+  static const int64 kDefaultRedzoneSize =
+      1LL << 23;  // 8MiB per side, 16MiB total.
+  static const uint8 kDefaultRedzonePattern = -1;
   RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,
-                   cuda::PtxCompilationOptions ptx_compilation_opts,
-                   uint64 redzone_size = 1 << 23,  // 8MiB per side, 16MiB total
-                   uint8 redzone_pattern = -1);
+                   GpuAsmOpts gpu_compilation_opts_,
+                   int64 memory_limit = kDefaultMemoryLimit,
+                   int64 redzone_size = kDefaultRedzoneSize,
+                   uint8 redzone_pattern = kDefaultRedzonePattern);
 
   // Redzones don't count towards the memory limit.
-  int64 GetMemoryLimitInBytes() override {
-    return 1LL << 32;  // 4GB.  TODO(jlebar): Tune this?
-  }
+  int64 GetMemoryLimitInBytes() override { return memory_limit_; }
+
   int64 TotalAllocatedBytesExcludingRedzones() const {
     return allocated_bytes_excluding_redzones_;
   }
@@ -97,7 +100,10 @@ class RedzoneAllocator : public ScratchAllocator {
   const int device_ordinal_;
   Stream* stream_;
 
-  // Redzone size on *one side* of allocation.
+  // Memory limit of the allocator in bytes.
+  const int64 memory_limit_;
+
+  // Redzone size on *one side* of allocation in bytes.
   //
   // Must be a multiple of kXlaAllocatedBufferAlignBytes, otherwise the buffers
   // returned to users will be misaligned.
@@ -105,7 +111,7 @@ class RedzoneAllocator : public ScratchAllocator {
 
   const uint8 redzone_pattern_;
   DeviceMemoryAllocator* memory_allocator_;
-  cuda::PtxCompilationOptions ptx_compilation_opts_;
+  GpuAsmOpts gpu_compilation_opts_;
 
   // The second element of the pair is the size of the user allocation.  This
   // isn't necessarily just first.size() - 2 * redzone_size_ because when the
@@ -116,7 +122,6 @@ class RedzoneAllocator : public ScratchAllocator {
   int64 allocated_bytes_excluding_redzones_ = 0;
 };
 
-}  // namespace cuda
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_REDZONE_ALLOCATOR_H_

@@ -35,9 +35,6 @@ struct RunConvOptions {
 
   // Use this algorithm, instead of the one from the instruction.
   absl::optional<se::dnn::AlgorithmDesc> algo_override;
-
-  // This is the first call to conv runner from the algorithm picker
-  bool first_call_from_algorithm_picker;
 };
 
 // Implementation struct exposed for debugging and log analysis.

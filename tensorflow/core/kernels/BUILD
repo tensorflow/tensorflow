@@ -516,15 +516,18 @@ tf_cuda_library(
     hdrs = ["gpu_utils.h"],
     deps = [
         ":gpu_util_hdrs",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
         "//tensorflow/core:autotuning_proto_cc",
         "//tensorflow/core:conv_autotuning_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:logger",
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/util/proto:proto_utils",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/types:span",
-    ],
+        "//tensorflow/stream_executor:redzone_allocator",
+    ] + if_cuda([
+        "//tensorflow/stream_executor/cuda:ptxas_utils",
+    ]),
 )
 
 tf_cc_test(
@@ -4229,6 +4232,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/util/proto:proto_utils",
+        "//tensorflow/stream_executor:redzone_allocator",
     ] + select({
         ":xsmm_convolutions": [
             "@libxsmm_archive//:xsmm_avx",
@@ -4238,7 +4242,6 @@ tf_kernel_library(
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
         "//tensorflow/stream_executor:tf_allocator_adapter",
-        "//tensorflow/stream_executor/cuda:redzone_allocator",
         "//tensorflow/stream_executor/cuda:ptxas_utils",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/core:stream_executor",

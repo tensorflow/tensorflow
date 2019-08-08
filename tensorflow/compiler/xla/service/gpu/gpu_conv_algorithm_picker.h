@@ -41,26 +41,25 @@ class GpuConvAlgorithmPicker : public HloModulePass {
                          se::DeviceMemoryAllocator* allocator)
       : stream_exec_(stream_exec), allocator_(allocator) {}
 
-  virtual absl::string_view name() const = 0;
+  absl::string_view name() const override {
+    return "gpu-conv-algorithm-picker";
+  }
 
   StatusOr<bool> Run(HloModule* module) override;
 
- protected:
-  string AlgorithmToString(const se::dnn::AlgorithmDesc& algo) {
-    if (algo.tensor_ops_enabled()) {
-      return absl::StrCat(algo.algo_id(), "+TC");
-    }
-    return absl::StrCat(algo.algo_id());
-  }
-
+ private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
   StatusOr<tensorflow::AutotuneResult> PickBestAlgorithm(
       const HloCustomCallInstruction* instr);
 
-  virtual StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCache(
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheCuda(
       const HloCustomCallInstruction& instr,
-      se::DeviceMemoryAllocator* allocator, se::Stream* stream) = 0;
+      se::DeviceMemoryAllocator* allocator, se::Stream* stream);
+
+  StatusOr<tensorflow::AutotuneResult> PickBestAlgorithmNoCacheRocm(
+      const HloCustomCallInstruction& instr,
+      se::DeviceMemoryAllocator* allocator, se::Stream* stream);
 
   se::StreamExecutor* stream_exec_;       // never null
   se::DeviceMemoryAllocator* allocator_;  // may be null

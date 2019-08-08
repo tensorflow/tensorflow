@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_for_tensor_cores.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
@@ -54,6 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
@@ -242,7 +242,7 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // the gte(customcall, 0) would probably already be into a fusion node.  We
   // can't simplify across HloComputation boundaries, so in this case we
   // wouldn't be able to simplify away the new_tuple bits.
-  pipeline.AddPass<CudnnConvAlgorithmPicker>(stream_exec, device_allocator);
+  pipeline.AddPass<GpuConvAlgorithmPicker>(stream_exec, device_allocator);
 
   // Find the fastest algorithm for GEMMs.
   pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
@@ -450,7 +450,7 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
       if (!ptx.empty()) {
         StatusOr<std::vector<uint8>> maybe_cubin = se::cuda::CompilePtx(
             stream_exec->device_ordinal(), cache_ptx->c_str(),
-            PtxOptsFromConfig(hlo_module_config));
+            GpuAsmOptsFromConfig(hlo_module_config));
         if (maybe_cubin.ok()) {
           cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
           VLOG(2) << "Compiled PTX size:" << ptx.size()

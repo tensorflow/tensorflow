@@ -80,15 +80,16 @@ Status RunCudnnConvImpl(const CudnnConvParams& params,
   auto output_buf = se::DeviceMemory<T>(params.output_buf);
   AlgorithmConfig algorithm = params.algorithm;
 
-  if (options.first_call_from_algorithm_picker) {
-    // in ROCm mode, the first call to run the convolution needs to trigger the
-    // code that calls miopenFind* API. That triggger is implicit, it is based
-    // on whether or not the AlgorithmConfig::algorithm is empty! So for the
-    // first call we need to ensure that the AlgorithmConfig::algorithm is
-    // empty. For all subsequent calls, we should use the value retrieved from
-    // the backend_config
+  // in ROCm mode, the first call to run the convolution needs to trigger the
+  // code that calls miopenFind* API. That triggger is implicit, it is based
+  // on whether or not the AlgorithmConfig::algorithm is empty! So for the
+  // first call we need to ensure that the AlgorithmConfig::algorithm is
+  // empty. For all subsequent calls, we should use the value retrieved from
+  // the backend_config
+  if ((options.algo_override.has_value()) &&
+      (*options.algo_override == se::dnn::AlgorithmDesc())) {
     algorithm = AlgorithmConfig();
-  } else if (options.algo_override) {
+  } else if (options.algo_override.has_value()) {
     algorithm = AlgorithmConfig(*options.algo_override);
   }
 
@@ -188,9 +189,11 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
   const Shape* filter_shape;
   const Shape* output_shape;
 
-  params.algorithm = se::dnn::AlgorithmConfig(se::dnn::AlgorithmDesc(
-      backend_config.algorithm(), backend_config.tensor_ops_enabled()),
-      backend_config.scratch_size());
+  // The third field is scratch size stored from conv_algorithm_picker
+  params.algorithm = se::dnn::AlgorithmConfig(
+      se::dnn::AlgorithmDesc(backend_config.algorithm(),
+                             backend_config.tensor_ops_enabled()),
+      conv->shape().tuple_shapes(1).dimensions(0));
   params.conv_result_scale = backend_config.conv_result_scale();
 
   switch (params.kind) {
