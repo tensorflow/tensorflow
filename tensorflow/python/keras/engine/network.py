@@ -1547,7 +1547,7 @@ class Network(base_layer.Layer):
     def _get_min_depth(node):
       """Gets the minimum depth at which node can be computed."""
       min_depth = 0
-      for layer, node_id, _, _ in node.iterate_inbound():
+      for layer, node_id, _, _ in node.iterate_inbound(include_arguments=True):
         inbound_node = layer._inbound_nodes[node_id]
         if inbound_node in node_to_depth:
           min_depth = min(min_depth, node_to_depth[inbound_node])
@@ -1720,7 +1720,8 @@ def _map_graph_network(inputs, outputs):
     nodes_in_progress.add(node)
 
     # Propagate to all previous tensors connected to this node.
-    for layer, node_index, tensor_index, tensor in node.iterate_inbound():
+    for layer, node_index, tensor_index, tensor in node.iterate_inbound(
+        include_arguments=True):
       build_map(tensor, finished_nodes, nodes_in_progress, layer, node_index,
                 tensor_index)
 
