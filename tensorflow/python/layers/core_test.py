@@ -556,6 +556,12 @@ class FlattenTest(test.TestCase):
       self.assertEqual(list(np_output.shape), [5, 6])
       self.assertEqual(y.get_shape().as_list(), [5, None])
 
+  @test_util.run_deprecated_v1
+  def testFlattenLargeDim(self):
+    x = array_ops.placeholder(shape=(None, 21316, 21316, 80), dtype='float32')
+    y = core_layers.Flatten()(x)
+    self.assertEqual(y.shape.as_list(), [None, 21316 * 21316 * 80])
+
 
 if __name__ == '__main__':
   test.main()
