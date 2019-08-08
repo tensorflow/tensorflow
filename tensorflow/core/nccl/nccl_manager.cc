@@ -16,14 +16,31 @@ limitations under the License.
 
 #include <utility>
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/cuda.h"
 #include "tensorflow/core/platform/env.h"
+#if GOOGLE_CUDA
+#include "tensorflow/core/platform/cuda.h"
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/rocm.h"
+#endif
 
 namespace tensorflow {
+
+#if GOOGLE_CUDA
+using se::cuda::ScopedActivateExecutorContext;
+#elif TENSORFLOW_USE_ROCM
+using se::rocm::ScopedActivateExecutorContext;
+// Local hipify of cuda symbols
+#define cudaError_t hipError_t
+#define cudaStream_t hipStream_t
+#define cudaGetErrorString hipGetErrorString
+#define cudaGetDevice hipGetDevice
+#define cudaSetDevice hipSetDevice
+#define cudaSuccess hipSuccess
+#endif
 
 #define NCCL_RETURN_IF_ERROR(...)                               \
   do {                                                          \
@@ -41,8 +58,6 @@ namespace tensorflow {
     }                                                           \
   } while (0)
 
-using se::cuda::ScopedActivateExecutorContext;
-
 // Contains data for a single stream used for nccl communication; this includes
 // a background thread that calls NcclManager::LoopKernelLaunches.
 struct NcclManager::NcclStream : public core::RefCounted {
@@ -54,7 +69,7 @@ struct NcclManager::NcclStream : public core::RefCounted {
 
   // The stream on which to run the nccl collective.
   // This is a different stream than the tensorflow compute stream.
-  std::unique_ptr<se::Stream> stream;
+  se::Stream* stream = nullptr;
 
   // `mu` protects access to `pending_launches_`, which is the list of
   // collectives ready but whose kernels are yet to be launched.  When the
@@ -285,6 +300,7 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
   std::vector<int> devices(collective->num_local_devices);
   for (int i = 0; i < collective->num_local_devices; ++i) {
     auto* executor = collective->participants[i]->executor;
+    auto* borrowed_nccl_stream = collective->participants[i]->nccl_stream;
 
     // Find a communication stream to use for the device.
     auto& streams = device_to_comm_streams_[executor];
@@ -298,8 +314,7 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
     if (nccl_stream == nullptr) {
       nccl_stream = new NcclStream();
       nccl_stream->executor = executor;
-      nccl_stream->stream.reset(new se::Stream(executor));
-      nccl_stream->stream->Init();
+      nccl_stream->stream = borrowed_nccl_stream;
 
       streams.emplace_back(nccl_stream);
       used_streams.insert(nccl_stream);
@@ -539,7 +554,7 @@ void NcclManager::RunCollective(Collective* collective) {
       // Wait to ensure that the kernel that produces the data in the input
       // tensor has finished running before the nccl kernel runs on the
       // communication stream.
-      nccl_stream->stream->ThenWaitFor(p->tensor_stream);
+      nccl_stream->stream->ThenWaitFor(p->input_event.get());
     }
     if (p->root) {
       if (collective->root_rank == -1) {
@@ -589,7 +604,7 @@ void NcclManager::RunCollective(Collective* collective) {
 }
 
 void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
-  se::Stream* comm_stream = nccl_stream->stream.get();
+  se::Stream* comm_stream = nccl_stream->stream;
   ScopedActivateExecutorContext scoped_context(nccl_stream->executor);
   const cudaStream_t* cu_stream = reinterpret_cast<const cudaStream_t*>(
       comm_stream->implementation()->GpuStreamMemberHack());
@@ -709,4 +724,4 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

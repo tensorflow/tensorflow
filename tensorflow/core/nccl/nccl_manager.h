@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_NCCL_NCCL_MANAGER_H_
 #define TENSORFLOW_CORE_NCCL_NCCL_MANAGER_H_
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <vector>
 
@@ -27,7 +27,13 @@ limitations under the License.
 #endif
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/memory/memory.h"
+#if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
+#endif
+#if TENSORFLOW_USE_ROCM
+#include "rocm/include/rccl/rccl.h"
+#endif
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -55,14 +61,17 @@ class NcclManager {
 
   // A participant in a Collective.
   struct Participant {
-    Participant(se::StreamExecutor* executor, se::Stream* tensor_stream,
+    Participant(se::StreamExecutor* executor,
+                se::Stream* tensor_stream, se::Stream* nccl_stream,
                 EventMgr* event_mgr, int gpu_device_id, const Tensor* input,
                 Tensor* output, int global_rank, DoneCallback done_callback)
         : executor(executor),
           tensor_stream(tensor_stream),
+          nccl_stream(nccl_stream),
           event_mgr(event_mgr),
           gpu_device_id(gpu_device_id),
           input(input),
+          input_event(nullptr),
           output(output),
           global_rank(global_rank),
           done_callback(std::move(done_callback)),
@@ -70,6 +79,12 @@ class NcclManager {
       DCHECK(executor != nullptr);
       DCHECK(event_mgr != nullptr);
       DCHECK(tensor_stream != nullptr);
+      DCHECK(nccl_stream != nullptr);
+      if (input != nullptr) {
+        input_event = absl::make_unique<se::Event>(executor);
+        input_event->Init();
+        tensor_stream->ThenRecordEvent(input_event.get());
+      }
     }
 
     // StreamExecutor for the device. Expected to be live for process lifetime.
@@ -83,6 +98,9 @@ class NcclManager {
     // `done_callback` is called.
     se::Stream* const tensor_stream;
 
+    // `nccl_stream` is the stream for all nccl operations
+    se::Stream* const nccl_stream;
+
     // EventMgr which polls on executor.
     // Owned by the caller, who must keep it live until `done_callback` is
     // called.
@@ -93,6 +111,10 @@ class NcclManager {
     // Owned by the caller, who must keep it live until `done_callback` is
     // called. Is NULL for participants that only receive data.
     const Tensor* input;
+
+    // Wait on this event rather than synchronizing on the entire stream.
+    // This allows greater concurrency between compute and nccl streams.
+    std::unique_ptr<se::Event> input_event;
 
     // Owned by the caller, who must keep it live until `done_callback` is
     // called. Is NULL for participants that only send data.
@@ -234,6 +256,6 @@ class NcclManager {
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_NCCL_NCCL_MANAGER_H_
