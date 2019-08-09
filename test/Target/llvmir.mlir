@@ -1,5 +1,14 @@
 // RUN: mlir-translate -mlir-to-llvmir %s | FileCheck %s
 
+// CHECK: @i32_global = internal global i32 42
+llvm.global @i32_global(42: i32) : !llvm.i32
+
+// CHECK: @i32_global_const = internal constant i53 52
+llvm.global constant @i32_global_const(52: i53) : !llvm.i53
+
+// CHECK: @float_global = internal global float 0.000000e+00
+llvm.global @float_global(0.0: f32) : !llvm.float
+
 //
 // Declarations of the allocation functions to be linked against.
 //

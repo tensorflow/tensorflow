@@ -289,6 +289,16 @@ bool ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
   return false;
 }
 
+// Create named global variables that correspond to llvm.global definitions.
+void ModuleTranslation::convertGlobals() {
+  for (auto op : mlirModule.getOps<LLVM::GlobalOp>()) {
+    llvm::Type *type = op.getType().getUnderlyingType();
+    new llvm::GlobalVariable(
+        *llvmModule, type, op.constant(), llvm::GlobalValue::InternalLinkage,
+        getLLVMConstant(type, op.value(), op.getLoc()), op.sym_name());
+  }
+}
+
 // Get the SSA value passed to the current block from the terminator operation
 // of its predecessor.
 static Value *getPHISourceValue(Block *current, Block *pred,

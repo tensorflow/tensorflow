@@ -54,6 +54,7 @@ public:
 
     T translator(m);
     translator.llvmModule = std::move(llvmModule);
+    translator.convertGlobals();
     if (translator.convertFunctions())
       return nullptr;
 
@@ -72,6 +73,7 @@ protected:
 
 private:
   bool convertFunctions();
+  void convertGlobals();
   bool convertOneFunction(FuncOp func);
   void connectPHINodes(FuncOp func);
   bool convertBlock(Block &bb, bool ignoreArguments);
