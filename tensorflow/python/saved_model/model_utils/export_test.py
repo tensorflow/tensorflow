@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import tempfile
 import time
+import re
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -205,6 +206,14 @@ class ExportTest(test_util.TensorFlowTestCase):
 
     self.assertTrue(int(time_1) < int(time_2))
     self.assertTrue(int(time_2) < int(time_3))
+
+  def test_get_temp_export_dir(self):
+    export_dir_base = "/tmp/export/"
+    export_dir_1 = export_utils.get_timestamped_export_dir(export_dir_base)
+    temp_export_dir = export_utils.get_temp_export_dir(export_dir_1).decode("utf-8")
+    print(temp_export_dir)
+    expected_1 = re.compile(export_dir_base + "temp-[\d]{10}")
+    self.assertTrue(expected_1.match(temp_export_dir))
 
   @test_util.deprecated_graph_mode_only
   def test_build_all_signature_defs_serving_only(self):
