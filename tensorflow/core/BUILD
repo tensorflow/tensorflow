@@ -145,6 +145,7 @@ load(
     "if_dynamic_kernels",
     "if_static",
     "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
@@ -4521,6 +4522,20 @@ tf_cuda_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_cc_test_gpu(
+    name = "rocm_rocdl_path_test",
+    size = "small",
+    srcs = ["//tensorflow/core/platform:rocm_rocdl_path_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_gpu_tests_tags(),
+    deps = [
+        ":lib",
+        ":test",
+        ":test_main",
+        "//tensorflow/core/platform:rocm_rocdl_path",
     ],
 )
 
