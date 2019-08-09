@@ -69,9 +69,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                           ModuleHandle* module_handle) override;
   bool UnloadModule(ModuleHandle module_handle) override;
 
-  bool Launch(Stream* stream, const ThreadDim& thread_dims,
-              const BlockDim& block_dims, const KernelBase& k,
-              const KernelArgsArrayBase& args) override;
+  port::Status Launch(Stream* stream, const ThreadDim& thread_dims,
+                      const BlockDim& block_dims, const KernelBase& k,
+                      const KernelArgsArrayBase& args) override;
 
   // (supported on CUDA only)
   int CalculateOccupancy(const DeviceDescription& device_description,

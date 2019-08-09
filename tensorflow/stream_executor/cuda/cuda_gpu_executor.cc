@@ -293,8 +293,6 @@ port::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     }
     if (ptx == nullptr) {
       LOG(FATAL) << "Loader spec has no ptx for kernel " << *kernelname;
-      return port::InternalError(
-          absl::StrCat("Loader spec has no ptx for kernel ", *kernelname));
     }
 
     absl::MutexLock lock{&in_memory_modules_mu_};
@@ -416,9 +414,10 @@ bool GpuExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
   return true;
 }
 
-bool GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
-                         const BlockDim& block_dims, const KernelBase& kernel,
-                         const KernelArgsArrayBase& args) {
+port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
+                                 const BlockDim& block_dims,
+                                 const KernelBase& kernel,
+                                 const KernelArgsArrayBase& args) {
   CHECK_EQ(kernel.Arity(), args.number_of_arguments());
   CUstream custream = AsGpuStreamValue(stream);
   const GpuKernel* cuda_kernel = AsGpuKernel(&kernel);
@@ -444,19 +443,10 @@ bool GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
 
   void **kernel_params = const_cast<void **>(args.argument_addresses().data());
 
-  if (!GpuDriver::LaunchKernel(context_, cufunc, block_dims.x, block_dims.y,
-                               block_dims.z, thread_dims.x, thread_dims.y,
-                               thread_dims.z, args.number_of_shared_bytes(),
-                               custream, kernel_params,
-                               nullptr /* = extra */)) {
-    LOG(ERROR) << "failed to launch CUDA kernel " << kernel.name() << " with "
-               << args.number_of_arguments()
-               << " args; thread dim: " << thread_dims.ToString()
-               << "; block dim: " << block_dims.ToString();
-    return false;
-  }
-
-  return true;
+  return GpuDriver::LaunchKernel(
+      context_, cufunc, block_dims.x, block_dims.y, block_dims.z, thread_dims.x,
+      thread_dims.y, thread_dims.z, args.number_of_shared_bytes(), custream,
+      kernel_params, nullptr /* = extra */);
 }
 
 // This is a non-essential operation; if there's a failure, proceed without

@@ -181,17 +181,17 @@ class StreamExecutorInterface {
 
   virtual port::Status GetKernel(const MultiKernelLoaderSpec &spec,
                                  KernelBase *kernel) {
-    return port::InternalError("Not Implemented");
+    return port::UnimplementedError("Not Implemented");
   }
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
   virtual port::Status LoadModule(const MultiModuleLoaderSpec &spec,
                                   ModuleHandle *module_handle) {
-    return port::InternalError("Not Implemented");
+    return port::UnimplementedError("Not Implemented");
   }
-  virtual bool Launch(Stream *stream, const ThreadDim &thread_dims,
-                      const BlockDim &block_dims, const KernelBase &k,
-                      const KernelArgsArrayBase &args) {
-    return false;
+  virtual port::Status Launch(Stream *stream, const ThreadDim &thread_dims,
+                              const BlockDim &block_dims, const KernelBase &k,
+                              const KernelArgsArrayBase &args) {
+    return port::UnimplementedError("Not Implemented");
   }
 
   // Releases any state associated with the kernel.

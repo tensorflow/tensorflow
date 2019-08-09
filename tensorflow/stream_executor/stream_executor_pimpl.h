@@ -450,9 +450,9 @@ class StreamExecutor {
   //
   // This is called by Stream::Launch() to delegate to the platform's launch
   // implementation in StreamExecutorInterface::Launch().
-  bool Launch(Stream *stream, const ThreadDim &thread_dims,
-              const BlockDim &block_dims, const KernelBase &kernel,
-              const KernelArgsArrayBase &args);
+  port::Status Launch(Stream *stream, const ThreadDim &thread_dims,
+                      const BlockDim &block_dims, const KernelBase &kernel,
+                      const KernelArgsArrayBase &args);
 
   // Gets-or-creates (creates with memoization) a FftSupport datatype that can
   // be used to execute FFT routines on the current platform.
@@ -875,7 +875,8 @@ inline Stream &Stream::ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
     kernel.PackParams(&kernel_args, args...);
     DCHECK(parent_ != nullptr);
     bool ok =
-        parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args);
+        parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args)
+            .ok();
     if (!ok) {
       SetError();
       LOG(WARNING) << "parent failed to launch kernel: " << &kernel;

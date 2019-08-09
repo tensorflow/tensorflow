@@ -293,9 +293,10 @@ bool GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
   return true;
 }
 
-bool GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
-                         const BlockDim& block_dims, const KernelBase& kernel,
-                         const KernelArgsArrayBase& args) {
+port::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
+                                 const BlockDim& block_dims,
+                                 const KernelBase& kernel,
+                                 const KernelArgsArrayBase& args) {
   CHECK_EQ(kernel.Arity(), args.number_of_arguments());
   GpuStreamHandle hipstream = AsGpuStreamValue(stream);
   const GpuKernel* rocm_kernel = AsGpuKernel(&kernel);
@@ -337,18 +338,10 @@ bool GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
   void* config[] = {HIP_LAUNCH_PARAM_BUFFER_POINTER, kernargs.data(),
                     HIP_LAUNCH_PARAM_BUFFER_SIZE, &size, HIP_LAUNCH_PARAM_END};
 
-  if (!GpuDriver::LaunchKernel(
-          GetGpuContext(stream), hipfunc, block_dims.x, block_dims.y,
-          block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-          args.number_of_shared_bytes(), hipstream, nullptr, (void**)&config)) {
-    LOG(ERROR) << "failed to launch ROCM kernel with args: "
-               << args.number_of_arguments()
-               << "; thread dim: " << thread_dims.ToString()
-               << "; block dim: " << block_dims.ToString();
-    return false;
-  }
-
-  return true;
+  return GpuDriver::LaunchKernel(
+      GetGpuContext(stream), hipfunc, block_dims.x, block_dims.y, block_dims.z,
+      thread_dims.x, thread_dims.y, thread_dims.z,
+      args.number_of_shared_bytes(), hipstream, nullptr, (void**)&config);
 }
 
 int GpuExecutor::CalculateOccupancy(const DeviceDescription& device_description,

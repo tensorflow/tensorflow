@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
@@ -214,13 +215,9 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
   for (const se::DeviceMemoryBase& buf : args) {
     kernel_args->add_device_memory_argument(buf);
   }
-
-  if (!stream->parent()->Launch(stream, se::ThreadDim(threads_per_block),
-                                se::BlockDim(block_count), kernel,
-                                *kernel_args)) {
-    return InternalError("Unable to launch kernel");
-  }
-  return Status::OK();
+  return stream->parent()->Launch(stream, se::ThreadDim(threads_per_block),
+                                  se::BlockDim(block_count), kernel,
+                                  *kernel_args);
 }
 
 se::cuda::PtxCompilationOptions PtxOptsFromConfig(

@@ -539,7 +539,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::LaunchKernel(
+/* static */ port::Status GpuDriver::LaunchKernel(
     GpuContext* context, CUfunction function, unsigned int grid_dim_x,
     unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,
     unsigned int block_dim_y, unsigned int block_dim_z,
@@ -554,12 +554,12 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                 block_dim_x, block_dim_y, block_dim_z,
                                 shared_mem_bytes, stream, kernel_params, extra);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to launch CUDA kernel: " << function
-               << "; result: " << ToString(res);
-    return false;
+    return port::InternalError(absl::StrCat(
+        "Failed to launch CUDA kernel: ", reinterpret_cast<uint64>(function),
+        "; result: ", ToString(res)));
   }
   VLOG(2) << "successfully launched kernel";
-  return true;
+  return port::Status::OK();
 }
 
 /* static */ port::Status GpuDriver::LoadCubin(GpuContext* context,

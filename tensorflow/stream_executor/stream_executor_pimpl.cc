@@ -434,10 +434,11 @@ rng::RngSupport *StreamExecutor::AsRng() {
   return rng_.get();
 }
 
-bool StreamExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
-                            const BlockDim &block_dims,
-                            const KernelBase &kernel,
-                            const KernelArgsArrayBase &args) {
+port::Status StreamExecutor::Launch(Stream *stream,
+                                    const ThreadDim &thread_dims,
+                                    const BlockDim &block_dims,
+                                    const KernelBase &kernel,
+                                    const KernelArgsArrayBase &args) {
   SubmitTrace(&TraceListener::LaunchSubmit, stream, thread_dims, block_dims,
               kernel, args);
 
