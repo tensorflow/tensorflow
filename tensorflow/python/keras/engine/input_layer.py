@@ -102,6 +102,7 @@ class InputLayer(base_layer.Layer):
     super(InputLayer, self).__init__(dtype=dtype, name=name)
     self.built = True
     self.sparse = sparse
+    self.ragged = ragged
     self.batch_size = batch_size
     self.supports_masking = True
 
@@ -152,6 +153,7 @@ class InputLayer(base_layer.Layer):
         'batch_input_shape': self._batch_input_shape,
         'dtype': self.dtype,
         'sparse': self.sparse,
+        'ragged': self.ragged,
         'name': self.name
     }
     return config
