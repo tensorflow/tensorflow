@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s | FileCheck %s
+// RUN: mlir-opt %s | mlir-opt | FileCheck %s
 
 // CHECK-LABEL: func @ops(%arg0: !llvm.i32, %arg1: !llvm.float)
 func @ops(%arg0 : !llvm.i32, %arg1 : !llvm.float) {
@@ -166,4 +166,15 @@ func @casts(%arg0: !llvm.i32, %arg1: !llvm.i64, %arg2: !llvm<"<4 x i32>">,
 // CHECK-NEXT:  = llvm.trunc %arg3 : !llvm<"<4 x i64>"> to !llvm<"<4 x i56>">
   %5 = llvm.trunc %arg3 : !llvm<"<4 x i64>"> to !llvm<"<4 x i56>">
   llvm.return
+}
+
+// CHECK-LABEL: @vect
+func @vect(%arg0: !llvm<"<4 x float>">, %arg1: !llvm.i32, %arg2: !llvm.float) {
+// CHECK-NEXT:  = llvm.extractelement {{.*}} : !llvm<"<4 x float>">
+  %0 = llvm.extractelement %arg0, %arg1 : !llvm<"<4 x float>">
+// CHECK-NEXT:  = llvm.insertelement {{.*}} : !llvm<"<4 x float>">
+  %1 = llvm.insertelement %arg0, %arg2, %arg1 : !llvm<"<4 x float>">
+// CHECK-NEXT:  = llvm.shufflevector {{.*}} [0 : i32, 0 : i32, 0 : i32, 0 : i32, 7 : i32] : !llvm<"<4 x float>">, !llvm<"<4 x float>">
+  %2 = llvm.shufflevector %arg0, %arg0 [0 : i32, 0 : i32, 0 : i32, 0 : i32, 7 : i32] : !llvm<"<4 x float>">, !llvm<"<4 x float>">
+  return
 }

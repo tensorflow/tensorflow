@@ -410,6 +410,52 @@ static ParseResult parseCallOp(OpAsmParser *parser, OperationState *result) {
 }
 
 //===----------------------------------------------------------------------===//
+// Printing/parsing for LLVM::ExtractElementOp.
+//===----------------------------------------------------------------------===//
+// Expects vector to be of wrapped LLVM vector type and position to be of
+// wrapped LLVM i32 type.
+void LLVM::ExtractElementOp::build(Builder *b, OperationState *result,
+                                   Value *vector, Value *position,
+                                   ArrayRef<NamedAttribute> attrs) {
+  auto wrappedVectorType = vector->getType().cast<LLVM::LLVMType>();
+  auto llvmType = wrappedVectorType.getVectorElementType();
+  build(b, result, llvmType, vector, position);
+  result->addAttributes(attrs);
+}
+
+static void printExtractElementOp(OpAsmPrinter *p, ExtractElementOp &op) {
+  *p << op.getOperationName() << ' ' << *op.vector() << ", " << *op.position();
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.vector()->getType();
+}
+
+// <operation> ::= `llvm.extractelement` ssa-use `, ` ssa-use
+//                 attribute-dict? `:` type
+static ParseResult parseExtractElementOp(OpAsmParser *parser,
+                                         OperationState *result) {
+  llvm::SMLoc loc;
+  OpAsmParser::OperandType vector, position;
+  auto *llvmDialect = parser->getBuilder()
+                          .getContext()
+                          ->getRegisteredDialect<LLVM::LLVMDialect>();
+  Type type, i32Type = LLVMType::getInt32Ty(llvmDialect);
+  if (parser->getCurrentLocation(&loc) || parser->parseOperand(vector) ||
+      parser->parseComma() || parser->parseOperand(position) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(type) ||
+      parser->resolveOperand(vector, type, result->operands) ||
+      parser->resolveOperand(position, i32Type, result->operands))
+    return failure();
+  auto wrappedVectorType = type.dyn_cast<LLVM::LLVMType>();
+  if (!wrappedVectorType ||
+      !wrappedVectorType.getUnderlyingType()->isVectorTy())
+    return parser->emitError(
+        loc, "expected LLVM IR dialect vector type for operand #1");
+  result->addTypes(wrappedVectorType.getVectorElementType());
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // Printing/parsing for LLVM::ExtractValueOp.
 //===----------------------------------------------------------------------===//
 
@@ -498,6 +544,52 @@ static ParseResult parseExtractValueOp(OpAsmParser *parser,
 
   result->attributes = attrs;
   result->addTypes(elementType);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Printing/parsing for LLVM::InsertElementOp.
+//===----------------------------------------------------------------------===//
+
+static void printInsertElementOp(OpAsmPrinter *p, InsertElementOp &op) {
+  *p << op.getOperationName() << ' ' << *op.vector() << ", " << *op.value()
+     << ", " << *op.position();
+  p->printOptionalAttrDict(op.getAttrs());
+  *p << " : " << op.vector()->getType();
+}
+
+// <operation> ::= `llvm.insertelement` ssa-use `,` ssa-use `,` ssa-use
+//                 attribute-dict? `:` type
+static ParseResult parseInsertElementOp(OpAsmParser *parser,
+                                        OperationState *result) {
+  llvm::SMLoc loc;
+  OpAsmParser::OperandType vector, value, position;
+  auto *llvmDialect = parser->getBuilder()
+                          .getContext()
+                          ->getRegisteredDialect<LLVM::LLVMDialect>();
+  Type vectorType, i32Type = LLVMType::getInt32Ty(llvmDialect);
+  if (parser->getCurrentLocation(&loc) || parser->parseOperand(vector) ||
+      parser->parseComma() || parser->parseOperand(value) ||
+      parser->parseComma() || parser->parseOperand(position) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(vectorType))
+    return failure();
+
+  auto wrappedVectorType = vectorType.dyn_cast<LLVM::LLVMType>();
+  if (!wrappedVectorType ||
+      !wrappedVectorType.getUnderlyingType()->isVectorTy())
+    return parser->emitError(
+        loc, "expected LLVM IR dialect vector type for operand #1");
+  auto valueType = wrappedVectorType.getVectorElementType();
+  if (!valueType)
+    return failure();
+
+  if (parser->resolveOperand(vector, vectorType, result->operands) ||
+      parser->resolveOperand(value, valueType, result->operands) ||
+      parser->resolveOperand(position, i32Type, result->operands))
+    return failure();
+
+  result->addTypes(vectorType);
   return success();
 }
 
@@ -784,6 +876,60 @@ static LogicalResult verify(GlobalOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// Printing/parsing for LLVM::ShuffleVectorOp.
+//===----------------------------------------------------------------------===//
+// Expects vector to be of wrapped LLVM vector type and position to be of
+// wrapped LLVM i32 type.
+void LLVM::ShuffleVectorOp::build(Builder *b, OperationState *result, Value *v1,
+                                  Value *v2, ArrayAttr mask,
+                                  ArrayRef<NamedAttribute> attrs) {
+  auto wrappedContainerType1 = v1->getType().cast<LLVM::LLVMType>();
+  auto vType = LLVMType::getVectorTy(
+      wrappedContainerType1.getVectorElementType(), mask.size());
+  build(b, result, vType, v1, v2, mask);
+  result->addAttributes(attrs);
+}
+
+static void printShuffleVectorOp(OpAsmPrinter *p, ShuffleVectorOp &op) {
+  *p << op.getOperationName() << ' ' << *op.v1() << ", " << *op.v2() << " "
+     << op.mask();
+  p->printOptionalAttrDict(op.getAttrs(), {"mask"});
+  *p << " : " << op.v1()->getType() << ", " << op.v2()->getType();
+}
+
+// <operation> ::= `llvm.shufflevector` ssa-use `, ` ssa-use
+//                 `[` integer-literal (`,` integer-literal)* `]`
+//                 attribute-dict? `:` type
+static ParseResult parseShuffleVectorOp(OpAsmParser *parser,
+                                        OperationState *result) {
+  llvm::SMLoc loc;
+  SmallVector<NamedAttribute, 4> attrs;
+  OpAsmParser::OperandType v1, v2;
+  Attribute maskAttr;
+  Type typeV1, typeV2;
+  if (parser->getCurrentLocation(&loc) || parser->parseOperand(v1) ||
+      parser->parseComma() || parser->parseOperand(v2) ||
+      parser->parseAttribute(maskAttr, "mask", attrs) ||
+      parser->parseOptionalAttributeDict(attrs) ||
+      parser->parseColonType(typeV1) || parser->parseComma() ||
+      parser->parseType(typeV2) ||
+      parser->resolveOperand(v1, typeV1, result->operands) ||
+      parser->resolveOperand(v2, typeV2, result->operands))
+    return failure();
+  auto wrappedContainerType1 = typeV1.dyn_cast<LLVM::LLVMType>();
+  if (!wrappedContainerType1 ||
+      !wrappedContainerType1.getUnderlyingType()->isVectorTy())
+    return parser->emitError(
+        loc, "expected LLVM IR dialect vector type for operand #1");
+  auto vType =
+      LLVMType::getVectorTy(wrappedContainerType1.getVectorElementType(),
+                            maskAttr.cast<ArrayAttr>().size());
+  result->attributes = attrs;
+  result->addTypes(vType);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // Builder, printer and verifier for LLVM::LLVMFuncOp.
 //===----------------------------------------------------------------------===//
 
@@ -1053,6 +1199,11 @@ llvm::Type *LLVMType::getUnderlyingType() const {
 /// Array type utilities.
 LLVMType LLVMType::getArrayElementType() {
   return get(getContext(), getUnderlyingType()->getArrayElementType());
+}
+
+/// Vector type utilities.
+LLVMType LLVMType::getVectorElementType() {
+  return get(getContext(), getUnderlyingType()->getVectorElementType());
 }
 
 /// Function type utilities.

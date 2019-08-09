@@ -67,6 +67,9 @@ public:
   /// Array type utilities.
   LLVMType getArrayElementType();
 
+  /// Vector type utilities.
+  LLVMType getVectorElementType();
+
   /// Function type utilities.
   LLVMType getFunctionParamType(unsigned argIdx);
   unsigned getFunctionNumParams();

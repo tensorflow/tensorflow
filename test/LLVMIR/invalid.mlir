@@ -224,3 +224,27 @@ func @extractvalue_wrong_nesting() {
   // expected-error@+1 {{expected wrapped LLVM IR structure/array type}}
   llvm.extractvalue %b[0,0] : !llvm<"{i32}">
 }
+
+// -----
+
+// CHECK-LABEL: @invalid_vector_type_1
+func @invalid_vector_type_1(%arg0: !llvm<"<4 x float>">, %arg1: !llvm.i32, %arg2: !llvm.float) {
+  // expected-error@+1 {{expected LLVM IR dialect vector type for operand #1}}
+  %0 = llvm.extractelement %arg2, %arg1 : !llvm.float
+}
+
+// -----
+
+// CHECK-LABEL: @invalid_vector_type_2
+func @invalid_vector_type_2(%arg0: !llvm<"<4 x float>">, %arg1: !llvm.i32, %arg2: !llvm.float) {
+  // expected-error@+1 {{expected LLVM IR dialect vector type for operand #1}}
+  %0 = llvm.insertelement %arg2, %arg2, %arg1 : !llvm.float
+}
+
+// -----
+
+// CHECK-LABEL: @invalid_vector_type_3
+func @invalid_vector_type_3(%arg0: !llvm<"<4 x float>">, %arg1: !llvm.i32, %arg2: !llvm.float) {
+  // expected-error@+1 {{expected LLVM IR dialect vector type for operand #1}}
+  %0 = llvm.shufflevector %arg2, %arg2 [0 : i32, 0 : i32, 0 : i32, 0 : i32, 7 : i32] : !llvm.float, !llvm.float
+}
