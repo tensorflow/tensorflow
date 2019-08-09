@@ -13,17 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_GPU_INFO_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_GL_GPU_INFO_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GPU_INFO_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GPU_INFO_H_
 
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/status.h"
-
 namespace tflite {
 namespace gpu {
-namespace gl {
 
 enum class GpuType { UNKNOWN, MALI, ADRENO, POWERVR, INTEL, NVIDIA };
 enum class GpuModel {
@@ -89,12 +86,7 @@ struct GpuInfo {
 void GetGpuModelAndType(const std::string& renderer, GpuModel* gpu_model,
                         GpuType* gpu_type);
 
-// This method performs multiple GL calls, therefore, egl context needs to be
-// created upfront.
-Status RequestGpuInfo(GpuInfo* gpu_info);
-
-}  // namespace gl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_GL_GPU_INFO_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GPU_INFO_H_

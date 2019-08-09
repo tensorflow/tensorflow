@@ -13,23 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_WORKGROUPS_CALCULATOR_FROM_METADATA_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_GL_WORKGROUPS_CALCULATOR_FROM_METADATA_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_REQUEST_GPU_INFO_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_GL_REQUEST_GPU_INFO_H_
+
+#include <string>
+#include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
-#include "tensorflow/lite/delegates/gpu/gl/workgroups/calculator.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
 namespace gl {
 
-// Creates new workgroup calculator that uses extra information serialized in
-// metadata.
-std::unique_ptr<WorkgroupsCalculator> NewWorkgroupsCalculatorFromMetadata(
-    const uint8_t* metadata, const GpuInfo& gpu_info);
+// This method performs multiple GL calls, therefore, egl context needs to be
+// created upfront.
+Status RequestGpuInfo(GpuInfo* gpu_info);
 
 }  // namespace gl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_GL_WORKGROUPS_CALCULATOR_FROM_METADATA_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_GL_REQUEST_GPU_INFO_H_
