@@ -74,7 +74,7 @@ $ python
 'Hello, TensorFlow!'
 ```
 
-Learn more examples about how to do specific tasks in TensorFlow at the
+Learn more examples about how to perform specific tasks in TensorFlow at the
 [tutorials page of tensorflow.org](https://www.tensorflow.org/tutorials/).
 
 ## Contribution guidelines
