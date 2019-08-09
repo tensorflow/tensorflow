@@ -439,7 +439,7 @@ TEST_FUNC(insertion_in_block) {
   f.erase();
 }
 
-TEST_FUNC(select_op) {
+TEST_FUNC(select_op_i32) {
   using namespace edsc;
   using namespace edsc::intrinsics;
   using namespace edsc::op;
@@ -469,6 +469,81 @@ TEST_FUNC(select_op) {
   //  CHECK-DAG:     {{.*}} = affine.load
   //  CHECK-DAG:     {{.*}} = affine.load
   // CHECK-NEXT:     {{.*}} = select
+  // clang-format on
+  f.print(llvm::outs());
+  f.erase();
+}
+
+TEST_FUNC(select_op_f32) {
+  using namespace edsc;
+  using namespace edsc::intrinsics;
+  using namespace edsc::op;
+  auto f32Type = FloatType::getF32(&globalContext());
+  auto memrefType = MemRefType::get({-1, -1}, f32Type, {}, 0);
+  auto f = makeFunction("select_op", {}, {memrefType, memrefType});
+
+  OpBuilder builder(f.getBody());
+  ScopedContext scope(builder, f.getLoc());
+  // clang-format off
+  ValueHandle zero = constant_index(0), one = constant_index(1);
+  MemRefView vA(f.getArgument(0)), vB(f.getArgument(1));
+  IndexedValue A(f.getArgument(0)), B(f.getArgument(1));
+  IndexHandle i, j;
+  LoopNestBuilder({&i, &j}, {zero, zero}, {one, one}, {1, 1})([&]{
+
+    edsc::intrinsics::select(B(i, j) == B(i+one, j), *A(zero, zero), *A(i, j));
+    edsc::intrinsics::select(B(i, j) != B(i+one, j), *A(zero, zero), *A(i, j));
+    edsc::intrinsics::select(B(i, j) >= B(i+one, j), *A(zero, zero), *A(i, j));
+    edsc::intrinsics::select(B(i, j) <= B(i+one, j), *A(zero, zero), *A(i, j));
+    edsc::intrinsics::select(B(i, j) < B(i+one, j), *A(zero, zero), *A(i, j));
+    edsc::intrinsics::select(B(i, j) > B(i+one, j), *A(zero, zero), *A(i, j));
+  });
+
+  // CHECK-LABEL: @select_op
+  //      CHECK: affine.for %{{.*}} = 0 to 1 {
+  // CHECK-NEXT:   affine.for %{{.*}} = 0 to 1 {
+  //  CHECK-DAG:     cmpf "oeq"
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.apply
+  // CHECK-NEXT:     select
+  //  CHECK-DAG:     cmpf "one"
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.apply
+  // CHECK-NEXT:     select
+  //  CHECK-DAG:     cmpf "oge"
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.apply
+  // CHECK-NEXT:     select
+  //  CHECK-DAG:     cmpf "ole"
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.apply
+  // CHECK-NEXT:     select
+  //  CHECK-DAG:     cmpf "olt"
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.apply
+  // CHECK-NEXT:     select
+  //  CHECK-DAG:     cmpf "ogt"
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.load
+  //  CHECK-DAG:     affine.apply
+  // CHECK-NEXT:     select
   // clang-format on
   f.print(llvm::outs());
   f.erase();

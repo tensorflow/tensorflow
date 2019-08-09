@@ -829,3 +829,36 @@ func @noreach() {
 // CHECK:    unreachable
   llvm.unreachable
 }
+
+// CHECK-LABEL: define void @fcmp
+func @fcmp(%arg0: !llvm.float, %arg1: !llvm.float) {
+  // CHECK: fcmp oeq float %0, %1
+  // CHECK-NEXT: fcmp ogt float %0, %1
+  // CHECK-NEXT: fcmp oge float %0, %1
+  // CHECK-NEXT: fcmp olt float %0, %1
+  // CHECK-NEXT: fcmp ole float %0, %1
+  // CHECK-NEXT: fcmp one float %0, %1
+  // CHECK-NEXT: fcmp ord float %0, %1
+  // CHECK-NEXT: fcmp ueq float %0, %1
+  // CHECK-NEXT: fcmp ugt float %0, %1
+  // CHECK-NEXT: fcmp uge float %0, %1
+  // CHECK-NEXT: fcmp ult float %0, %1
+  // CHECK-NEXT: fcmp ule float %0, %1
+  // CHECK-NEXT: fcmp une float %0, %1
+  // CHECK-NEXT: fcmp uno float %0, %1
+  %0 = llvm.fcmp "oeq" %arg0, %arg1 : !llvm.float
+  %1 = llvm.fcmp "ogt" %arg0, %arg1 : !llvm.float
+  %2 = llvm.fcmp "oge" %arg0, %arg1 : !llvm.float
+  %3 = llvm.fcmp "olt" %arg0, %arg1 : !llvm.float
+  %4 = llvm.fcmp "ole" %arg0, %arg1 : !llvm.float
+  %5 = llvm.fcmp "one" %arg0, %arg1 : !llvm.float
+  %6 = llvm.fcmp "ord" %arg0, %arg1 : !llvm.float
+  %7 = llvm.fcmp "ueq" %arg0, %arg1 : !llvm.float
+  %8 = llvm.fcmp "ugt" %arg0, %arg1 : !llvm.float
+  %9 = llvm.fcmp "uge" %arg0, %arg1 : !llvm.float
+  %10 = llvm.fcmp "ult" %arg0, %arg1 : !llvm.float
+  %11 = llvm.fcmp "ule" %arg0, %arg1 : !llvm.float
+  %12 = llvm.fcmp "une" %arg0, %arg1 : !llvm.float
+  %13 = llvm.fcmp "uno" %arg0, %arg1 : !llvm.float
+  llvm.return
+}

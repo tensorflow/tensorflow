@@ -140,6 +140,45 @@ static llvm::CmpInst::Predicate getLLVMCmpPredicate(ICmpPredicate p) {
   }
 }
 
+static llvm::CmpInst::Predicate getLLVMCmpPredicate(FCmpPredicate p) {
+  switch (p) {
+  case LLVM::FCmpPredicate::_false:
+    return llvm::CmpInst::Predicate::FCMP_FALSE;
+  case LLVM::FCmpPredicate::oeq:
+    return llvm::CmpInst::Predicate::FCMP_OEQ;
+  case LLVM::FCmpPredicate::ogt:
+    return llvm::CmpInst::Predicate::FCMP_OGT;
+  case LLVM::FCmpPredicate::oge:
+    return llvm::CmpInst::Predicate::FCMP_OGE;
+  case LLVM::FCmpPredicate::olt:
+    return llvm::CmpInst::Predicate::FCMP_OLT;
+  case LLVM::FCmpPredicate::ole:
+    return llvm::CmpInst::Predicate::FCMP_OLE;
+  case LLVM::FCmpPredicate::one:
+    return llvm::CmpInst::Predicate::FCMP_ONE;
+  case LLVM::FCmpPredicate::ord:
+    return llvm::CmpInst::Predicate::FCMP_ORD;
+  case LLVM::FCmpPredicate::ueq:
+    return llvm::CmpInst::Predicate::FCMP_UEQ;
+  case LLVM::FCmpPredicate::ugt:
+    return llvm::CmpInst::Predicate::FCMP_UGT;
+  case LLVM::FCmpPredicate::uge:
+    return llvm::CmpInst::Predicate::FCMP_UGE;
+  case LLVM::FCmpPredicate::ult:
+    return llvm::CmpInst::Predicate::FCMP_ULT;
+  case LLVM::FCmpPredicate::ule:
+    return llvm::CmpInst::Predicate::FCMP_ULE;
+  case LLVM::FCmpPredicate::une:
+    return llvm::CmpInst::Predicate::FCMP_UNE;
+  case LLVM::FCmpPredicate::uno:
+    return llvm::CmpInst::Predicate::FCMP_UNO;
+  case LLVM::FCmpPredicate::_true:
+    return llvm::CmpInst::Predicate::FCMP_TRUE;
+  default:
+    llvm_unreachable("incorrect comparison predicate");
+  }
+}
+
 // A helper to look up remapped operands in the value remapping table.
 template <typename Range>
 SmallVector<llvm::Value *, 8> ModuleTranslation::lookupValues(Range &&values) {
