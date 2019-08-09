@@ -1223,7 +1223,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "dense_layer_test",
-    size = "small",
+    size = "medium",
     srcs = ["dense_layer_test.py"],
     additional_deps = [
         ":test_utils",
