@@ -58,9 +58,11 @@ def ExtractElementOp :
     Takes an n-D vector and a k-D position and extracts the (n-k)-D vector at
     the proper position. Degenerates to an element type in the 0-D case.
 
-    Example:
+    Examples:
+    ```
       %1 = vector.extractelement %0[3]: vector<4x8x16xf32>
       %2 = vector.extractelement %0[3, 3, 3]: vector<4x8x16xf32>
+    ```
   }];
   let extraClassDeclaration = [{
     VectorType getVectorType() {
@@ -68,5 +70,30 @@ def ExtractElementOp :
     }
   }];
 }
+def OuterProductOp :
+  Vector_Op<"outerproduct", [NoSideEffect, SameOperandsAndResultElementType]>,
+    Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+    Results<(outs AnyVector)> {
+  let summary = "outerproduct operation";
+  let description = [{
+    Takes 2 1-D vectors and returns the 2-D vector containing the outer product.
 
+    Example:
+    ```
+      %2 = vector.extractelement %0, %1: vector<4xf32>, vector<8xf32>
+      return %2: vector<4x8xf32>
+    ```
+  }];
+  let extraClassDeclaration = [{
+    VectorType getOperandVectorTypeLHS() {
+      return lhs()->getType().cast<VectorType>();
+    }
+    VectorType getOperandVectorTypeRHS() {
+      return rhs()->getType().cast<VectorType>();
+    }
+    VectorType getVectorType() {
+      return getResult()->getType().cast<VectorType>();
+    }
+  }];
+}
 #endif // VECTOR_OPS

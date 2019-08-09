@@ -110,7 +110,51 @@ static LogicalResult verify(ExtractElementOp op) {
   }
   return success();
 }
+//===----------------------------------------------------------------------===//
+// OuterProductOp
+//===----------------------------------------------------------------------===//
 
+static void print(OpAsmPrinter *p, OuterProductOp op) {
+  *p << op.getOperationName() << " " << *op.lhs() << ", " << *op.rhs();
+  *p << " : " << op.lhs()->getType() << ", " << op.rhs()->getType();
+}
+
+static ParseResult parseOuterProductOp(OpAsmParser *parser,
+                                       OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> operandsInfo;
+  Type t0, t1;
+  if (parser->parseOperandList(operandsInfo) || parser->parseColonType(t0) ||
+      parser->parseComma() || parser->parseType(t1))
+    return failure();
+  VectorType v0 = t0.dyn_cast<VectorType>();
+  VectorType v1 = t1.dyn_cast<VectorType>();
+  if (!v0 || !v1)
+    return parser->emitError(parser->getNameLoc(), "expected 2 vector types");
+  VectorType resType = VectorType::get({v0.getDimSize(0), v1.getDimSize(0)},
+                                       v0.getElementType());
+  return failure(parser->resolveOperands(operandsInfo, {t0, t1},
+                                         parser->getCurrentLocation(),
+                                         result->operands) ||
+                 parser->addTypeToList(resType, result->types));
+}
+
+static LogicalResult verify(OuterProductOp op) {
+  VectorType v1 = op.getOperandVectorTypeLHS(),
+             v2 = op.getOperandVectorTypeRHS(), res = op.getVectorType();
+  if (v1.getRank() != 1)
+    return op.emitOpError("expected 1-d vector for operand #1");
+  if (v2.getRank() != 1)
+    return op.emitOpError("expected 1-d vector for operand #2");
+  if (res.getRank() != 2)
+    return op.emitOpError("expected 2-d vector result");
+  if (v1.getDimSize(0) != res.getDimSize(0))
+    return op.emitOpError(
+        "expected first operand dim to match first result dim");
+  if (v2.getDimSize(0) != res.getDimSize(1))
+    return op.emitOpError(
+        "expected second operand dim to match second result dim");
+  return success();
+}
 //===----------------------------------------------------------------------===//
 // VectorTransferReadOp
 //===----------------------------------------------------------------------===//
