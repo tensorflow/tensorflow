@@ -302,6 +302,13 @@ llvm.global constant @cst(42 : i32) : !llvm.i32
 
 // Non-constant values must also be initialized.
 llvm.global @variable(32.0 : f32) : !llvm.float
+
+// Strings are expected to be of wrapped LLVM i8 array type and do not
+// automatically include the trailing zero.
+llvm.global @string("abc") : !llvm<"[3 x i8]">
+
+// For strings globals, the trailing type may be omitted.
+llvm.global constant @no_trailing_type("foo bar")
 ```
 
 #### `llvm.undef`

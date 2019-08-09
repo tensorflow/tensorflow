@@ -840,29 +840,52 @@ static void printGlobalOp(OpAsmPrinter *p, GlobalOp op) {
   *p << ')';
   p->printOptionalAttrDict(op.getAttrs(), {SymbolTable::getSymbolAttrName(),
                                            "type", "constant", "value"});
+
+  // Print the trailing type unless it's a string global.
+  if (op.value().isa<StringAttr>())
+    return;
   *p << " : ";
   p->printType(op.type());
 }
 
 // <operation> ::= `llvm.global` `constant`? `@` identifier `(` attribute `)`
-//                  attribute-list? : type
+//                  attribute-list? (`:` type)?
+//
+// The type can be omitted for string attributes, in which case it will be
+// inferred from the value of the string as [strlen(value) x i8].
 static ParseResult parseGlobalOp(OpAsmParser *parser, OperationState *result) {
   if (succeeded(parser->parseOptionalKeyword("constant")))
     result->addAttribute("constant", parser->getBuilder().getUnitAttr());
 
   Attribute value;
   StringAttr name;
-  Type type;
+  SmallVector<Type, 1> types;
   if (parser->parseSymbolName(name, SymbolTable::getSymbolAttrName(),
                               result->attributes) ||
       parser->parseLParen() ||
       parser->parseAttribute(value, "value", result->attributes) ||
       parser->parseRParen() ||
       parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColonType(type))
+      parser->parseOptionalColonTypeList(types))
     return failure();
 
-  result->addAttribute("type", parser->getBuilder().getTypeAttr(type));
+  if (types.size() > 1)
+    return parser->emitError(parser->getNameLoc(), "expected zero or one type");
+
+  if (types.empty()) {
+    if (auto strAttr = value.dyn_cast<StringAttr>()) {
+      MLIRContext *context = parser->getBuilder().getContext();
+      auto *dialect = context->getRegisteredDialect<LLVMDialect>();
+      auto arrayType = LLVM::LLVMType::getArrayTy(
+          LLVM::LLVMType::getInt8Ty(dialect), strAttr.getValue().size());
+      types.push_back(arrayType);
+    } else {
+      return parser->emitError(parser->getNameLoc(),
+                               "type can only be omitted for string globals");
+    }
+  }
+
+  result->addAttribute("type", parser->getBuilder().getTypeAttr(types[0]));
   return success();
 }
 
@@ -872,6 +895,15 @@ static LogicalResult verify(GlobalOp op) {
         "expects type to be a valid element type for an LLVM pointer");
   if (op.getParentOp() && !isa<ModuleOp>(op.getParentOp()))
     return op.emitOpError("must appear at the module level");
+  if (auto strAttr = op.value().dyn_cast<StringAttr>()) {
+    auto type = op.getType();
+    if (!type.getUnderlyingType()->isArrayTy() ||
+        !type.getArrayElementType().getUnderlyingType()->isIntegerTy(8) ||
+        type.getArrayNumElements() != strAttr.getValue().size())
+      return op.emitOpError(
+          "requires an i8 array type of the length equal to that of the string "
+          "attribute");
+  }
   return success();
 }
 
@@ -1199,6 +1231,9 @@ llvm::Type *LLVMType::getUnderlyingType() const {
 /// Array type utilities.
 LLVMType LLVMType::getArrayElementType() {
   return get(getContext(), getUnderlyingType()->getArrayElementType());
+}
+unsigned LLVMType::getArrayNumElements() {
+  return getUnderlyingType()->getArrayNumElements();
 }
 
 /// Vector type utilities.

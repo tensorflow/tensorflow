@@ -9,6 +9,9 @@ llvm.global constant @i32_global_const(52: i53) : !llvm.i53
 // CHECK: @float_global = internal global float 0.000000e+00
 llvm.global @float_global(0.0: f32) : !llvm.float
 
+// CHECK: @string_const = internal constant [6 x i8] c"foobar"
+llvm.global constant @string_const("foobar") : !llvm<"[6 x i8]">
+
 //
 // Declarations of the allocation functions to be linked against.
 //

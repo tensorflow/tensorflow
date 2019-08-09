@@ -6,8 +6,11 @@ llvm.global @global(42 : i64) : !llvm.i64
 // CHECK: llvm.global constant @constant(3.700000e+01 : f64) : !llvm.float
 llvm.global constant @constant(37.0) : !llvm.float
 
-// CHECK: llvm.global constant @string("foobar") : !llvm<"[6 x i8]">
+// CHECK: llvm.global constant @string("foobar")
 llvm.global constant @string("foobar") : !llvm<"[6 x i8]">
+
+// CHECK: llvm.global @string_notype("1234567")
+llvm.global @string_notype("1234567")
 
 // -----
 
@@ -35,3 +38,19 @@ func @foo() {
   // expected-error @+1 {{must appear at the module level}}
   llvm.global @bar(42) : !llvm.i32
 }
+
+// -----
+
+// expected-error @+1 {{requires an i8 array type of the length equal to that of the string}}
+llvm.global constant @string("foobar") : !llvm<"[42 x i8]">
+
+// -----
+
+// expected-error @+1 {{type can only be omitted for string globals}}
+llvm.global @i64_needs_type(0: i64)
+
+// -----
+
+// expected-error @+1 {{expected zero or one type}}
+llvm.global @more_than_one_type(0) : !llvm.i64, !llvm.i32
+
