@@ -21,6 +21,7 @@ package_group(
     packages = [
         "//...",
         "//learning/glassbox/evaluation/compiler/...",
+        "//tensorflow/compiler/xla/service/gpu/mlir/...",
     ],
 )
 
