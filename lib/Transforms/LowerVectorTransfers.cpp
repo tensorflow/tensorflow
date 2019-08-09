@@ -84,6 +84,8 @@
 /// ```
 
 using namespace mlir;
+using vector::VectorTransferReadOp;
+using vector::VectorTransferWriteOp;
 
 #define DEBUG_TYPE "affine-lower-vector-transfers"
 
@@ -362,8 +364,9 @@ struct LowerVectorTransfersPass
   void runOnFunction() {
     OwningRewritePatternList patterns;
     auto *context = &getContext();
-    patterns.insert<VectorTransferRewriter<VectorTransferReadOp>,
-                    VectorTransferRewriter<VectorTransferWriteOp>>(context);
+    patterns.insert<VectorTransferRewriter<vector::VectorTransferReadOp>,
+                    VectorTransferRewriter<vector::VectorTransferWriteOp>>(
+        context);
     applyPatternsGreedily(getFunction(), std::move(patterns));
   }
 };
