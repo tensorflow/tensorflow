@@ -1153,6 +1153,11 @@ class ConcreteFunction(object):
     ctx = context.context()
     executing_eagerly = ctx.executing_eagerly()
 
+    # Copy saveable status of function's graph to current FuncGraph.
+    default_graph = ops.get_default_graph()
+    if default_graph.building_function and not self._func_graph.saveable:
+      default_graph.mark_as_unsaveable(self._func_graph.saving_errors)
+
     if any(isinstance(a, composite_tensor.CompositeTensor) for a in args):
       raise AssertionError("Expected all args to be Tensors or Variables; "
                            "but got CompositeTensor: %r" % args)
