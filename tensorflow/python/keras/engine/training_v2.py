@@ -35,6 +35,7 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine import training_v2_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 
 
@@ -148,11 +149,15 @@ def run_one_epoch(model,
         batch_logs['data_exhausted'] = True
         break
 
-      if not isinstance(batch_outs, list):
-        batch_outs = [batch_outs]
-      if strategy:
-        batch_outs = dist_utils._per_replica_aggregate_batch(
-            strategy, batch_outs, model, mode)
+      if mode != ModeKeys.PREDICT:
+        data_batch_size = batch_outs['batch_size']
+        batch_outs = (batch_outs['total_loss'] + batch_outs['output_losses']
+                      + batch_outs['metrics'])
+        if current_batch_size != data_batch_size:
+          batch_logs['size'] = data_batch_size
+          current_batch_size = data_batch_size
+      else:
+        batch_outs = _aggregate_predict_results(strategy, batch_outs, model)
 
       if step == 0:
         aggregator.create(batch_outs)
@@ -550,6 +555,18 @@ def _get_total_number_of_samples(adapter):
   if adapter.has_partial_batch():
     total_sample -= (adapter.batch_size() - adapter.partial_batch_size())
   return total_sample
+
+
+def _aggregate_predict_results(strategy, batch_outs, model):
+  if not isinstance(batch_outs, list):
+    batch_outs = [batch_outs]
+  total_batch_outs = []
+  for i in range(len(model.outputs)):
+    num_replicas = strategy.num_replicas_in_sync
+    nested_outs = batch_outs[i * num_replicas:i * num_replicas + num_replicas]
+    total_batch_outs.append(
+        dist_utils.concat_along_batch_dimension(nest.flatten(nested_outs)))
+  return total_batch_outs
 
 
 class TrainingContext(object):
