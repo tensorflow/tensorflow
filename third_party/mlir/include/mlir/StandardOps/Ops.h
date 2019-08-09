@@ -63,7 +63,7 @@ enum class CmpIPredicate {
 };
 
 /// The predicate indicates the type of the comparison to perform:
-/// (un)orderedness, (in)equality and signed less/greater than (or equal to) as
+/// (un)orderedness, (in)equality and less/greater than (or equal to) as
 /// well as predicates that are always true or false.
 enum class CmpFPredicate {
   FirstValidValue,

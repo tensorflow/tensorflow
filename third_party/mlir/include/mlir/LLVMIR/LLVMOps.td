@@ -164,8 +164,52 @@ def LLVM_ICmpOp : LLVM_OneResultOp<"icmp", [NoSideEffect]>,
   let llvmBuilder = [{
     $res = builder.CreateICmp(getLLVMCmpPredicate($predicate), $lhs, $rhs);
   }];
-  let parser = [{ return parseICmpOp(parser, result); }];
+  let parser = [{ return parseCmpOp<ICmpPredicate>(parser, result); }];
   let printer = [{ printICmpOp(p, *this); }];
+}
+
+// Predicate for float comparisons
+def FCmpPredicateFALSE  : I64EnumAttrCase<"_false", 0>;
+def FCmpPredicateOEQ    : I64EnumAttrCase<"oeq", 1>;
+def FCmpPredicateOGT    : I64EnumAttrCase<"ogt", 2>;
+def FCmpPredicateOGE    : I64EnumAttrCase<"oge", 3>;
+def FCmpPredicateOLT    : I64EnumAttrCase<"olt", 4>;
+def FCmpPredicateOLE    : I64EnumAttrCase<"ole", 5>;
+def FCmpPredicateONE    : I64EnumAttrCase<"one", 6>;
+def FCmpPredicateORD    : I64EnumAttrCase<"ord", 7>;
+def FCmpPredicateUEQ    : I64EnumAttrCase<"ueq", 8>;
+def FCmpPredicateUGT    : I64EnumAttrCase<"ugt", 9>;
+def FCmpPredicateUGE    : I64EnumAttrCase<"uge", 10>;
+def FCmpPredicateULT    : I64EnumAttrCase<"ult", 11>;
+def FCmpPredicateULE    : I64EnumAttrCase<"ule", 12>;
+def FCmpPredicateUNE    : I64EnumAttrCase<"une", 13>;
+def FCmpPredicateUNO    : I64EnumAttrCase<"uno", 14>;
+def FCmpPredicateTRUE   : I64EnumAttrCase<"_true", 15>;
+
+def FCmpPredicate : I64EnumAttr<
+    "FCmpPredicate",
+    "llvm.fcmp comparison predicate",
+    [FCmpPredicateFALSE, FCmpPredicateOEQ, FCmpPredicateOGT, FCmpPredicateOGE,
+     FCmpPredicateOLT, FCmpPredicateOLE, FCmpPredicateONE, FCmpPredicateORD,
+     FCmpPredicateUEQ, FCmpPredicateUGT, FCmpPredicateUGE, FCmpPredicateULT,
+     FCmpPredicateULE, FCmpPredicateUNE, FCmpPredicateUNO, FCmpPredicateTRUE 
+    ]> {
+  let cppNamespace = "mlir::LLVM";
+
+  let returnType = "FCmpPredicate";
+  let convertFromStorage =
+      "static_cast<" # returnType # ">($_self.getValue().getZExtValue())";
+}
+
+// Other integer operations.
+def LLVM_FCmpOp : LLVM_OneResultOp<"fcmp", [NoSideEffect]>,
+                  Arguments<(ins FCmpPredicate:$predicate, LLVM_Type:$lhs,
+                             LLVM_Type:$rhs)> {
+  let llvmBuilder = [{
+    $res = builder.CreateFCmp(getLLVMCmpPredicate($predicate), $lhs, $rhs);
+  }];
+  let parser = [{ return parseCmpOp<FCmpPredicate>(parser, result); }];
+  let printer = [{ printFCmpOp(p, *this); }];
 }
 
 // Floating point binary operations.
