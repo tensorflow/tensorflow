@@ -55,7 +55,7 @@ public:
     T translator(m);
     translator.llvmModule = std::move(llvmModule);
     translator.convertGlobals();
-    if (translator.convertFunctions())
+    if (failed(translator.convertFunctions()))
       return nullptr;
 
     return std::move(translator.llvmModule);
@@ -68,15 +68,16 @@ protected:
   explicit ModuleTranslation(ModuleOp module) : mlirModule(module) {}
   virtual ~ModuleTranslation() {}
 
-  virtual bool convertOperation(Operation &op, llvm::IRBuilder<> &builder);
+  virtual LogicalResult convertOperation(Operation &op,
+                                         llvm::IRBuilder<> &builder);
   static std::unique_ptr<llvm::Module> prepareLLVMModule(ModuleOp m);
 
 private:
-  bool convertFunctions();
+  LogicalResult convertFunctions();
   void convertGlobals();
-  bool convertOneFunction(FuncOp func);
+  LogicalResult convertOneFunction(FuncOp func);
   void connectPHINodes(FuncOp func);
-  bool convertBlock(Block &bb, bool ignoreArguments);
+  LogicalResult convertBlock(Block &bb, bool ignoreArguments);
 
   template <typename Range>
   SmallVector<llvm::Value *, 8> lookupValues(Range &&values);
