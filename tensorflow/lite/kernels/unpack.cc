@@ -27,6 +27,42 @@ namespace {
 
 constexpr int kInputTensor = 0;
 
+struct OpData {
+  void* all_outputs;
+  TfLiteType type;
+};
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  // This is a builtin op, so we don't use the contents in 'buffer', if any.
+  // Instead, we allocate a new object to carry information from Prepare() to
+  // Eval().
+  return new OpData();
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  auto* data = reinterpret_cast<OpData*>(buffer);
+
+  switch (data->type) {
+    case kTfLiteFloat32:
+      delete static_cast<VectorOfTensors<float>*>(data->all_outputs);
+      break;
+    case kTfLiteInt32:
+      delete static_cast<VectorOfTensors<int32_t>*>(data->all_outputs);
+      break;
+    case kTfLiteUInt8:
+      delete static_cast<VectorOfTensors<int8_t>*>(data->all_outputs);
+      break;
+    case kTfLiteInt8:
+      delete static_cast<VectorOfTensors<int8_t>*>(data->all_outputs);
+      break;
+    default:
+      context->ReportError(context, "Unexpected data type - [%s] received.",
+                           TfLiteTypeGetName(data->type));
+  }
+
+  delete data;
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteUnpackParams* data =
       reinterpret_cast<TfLiteUnpackParams*>(node->builtin_data);
@@ -74,6 +110,32 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         context, context->ResizeTensor(context, output, copied_output_shape));
   }
 
+  OpData* user_data = reinterpret_cast<OpData*>(node->user_data);
+  user_data->type = input->type;
+
+  switch (user_data->type) {
+    case kTfLiteFloat32:
+      user_data->all_outputs = reinterpret_cast<void*>(
+          new VectorOfTensors<float>(*context, *node->outputs));
+      break;
+    case kTfLiteInt32:
+      user_data->all_outputs = reinterpret_cast<void*>(
+          new VectorOfTensors<int32_t>(*context, *node->outputs));
+      break;
+    case kTfLiteUInt8:
+      user_data->all_outputs = reinterpret_cast<void*>(
+          new VectorOfTensors<uint8_t>(*context, *node->outputs));
+      break;
+    case kTfLiteInt8:
+      user_data->all_outputs = reinterpret_cast<void*>(
+          new VectorOfTensors<int8_t>(*context, *node->outputs));
+      break;
+
+    default:
+      context->ReportError(context, "Unexpected data type - [%s] received.",
+                           TfLiteTypeGetName(user_data->type));
+  }
+
   TfLiteIntArrayFree(output_shape);
   return kTfLiteOk;
 }
@@ -84,10 +146,13 @@ void UnpackImpl(TfLiteContext* context, TfLiteNode* node,
   tflite::UnpackParams op_params;
   op_params.axis = axis;
   op_params.num_split = output_count;
-  VectorOfTensors<T> all_outputs(*context, *node->outputs);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  VectorOfTensors<T>* all_outputs =
+      static_cast<VectorOfTensors<T>*>(data->all_outputs);
+  all_outputs->update(*context, *node->outputs);
   reference_ops::Unpack<T>(op_params, GetTensorShape(input),
-                           GetTensorData<T>(input), **all_outputs.shapes(),
-                           all_outputs.data());
+                           GetTensorData<T>(input), **all_outputs->shapes(),
+                           all_outputs->data());
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -125,7 +190,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace unpack
 
 TfLiteRegistration* Register_UNPACK() {
-  static TfLiteRegistration r = {nullptr, nullptr, unpack::Prepare,
+  static TfLiteRegistration r = {unpack::Init, unpack::Free, unpack::Prepare,
                                  unpack::Eval};
   return &r;
 }

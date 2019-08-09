@@ -38,6 +38,45 @@ struct OpContext {
   const TfLiteTensor* input;
 };
 
+struct OpData {
+  void* all_outputs;
+  TfLiteType type;
+};
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  // This is a builtin op, so we don't use the contents in 'buffer', if any.
+  // Instead, we allocate a new object to carry information from Prepare() to
+  // Eval().
+  return new OpData();
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  auto* data = reinterpret_cast<OpData*>(buffer);
+
+  switch (data->type) {
+    case kTfLiteFloat32:
+      delete static_cast<VectorOfTensors<float>*>(data->all_outputs);
+      break;
+    case kTfLiteInt32:
+      delete static_cast<VectorOfTensors<int32_t>*>(data->all_outputs);
+      break;
+    case kTfLiteUInt8:
+      delete static_cast<VectorOfTensors<uint8_t>*>(data->all_outputs);
+      break;
+    case kTfLiteInt8:
+      delete static_cast<VectorOfTensors<int8_t>*>(data->all_outputs);
+      break;
+    case kTfLiteInt16:
+      delete static_cast<VectorOfTensors<int16_t>*>(data->all_outputs);
+      break;
+    default:
+      context->ReportError(context, "Unexpected data type - [%s] received.",
+                           TfLiteTypeGetName(data->type));
+  }
+
+  delete data;
+}
+
 TfLiteStatus UseDynamicOutputTensors(TfLiteContext* context, TfLiteNode* node) {
   for (int i = 0; i < NumOutputs(node); ++i) {
     SetTensorToDynamic(GetOutput(context, node, i));
@@ -66,6 +105,36 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
     output_dims->data[axis_value] = slice_size;
     TfLiteTensor* output = GetOutput(context, node, i);
     TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, output, output_dims));
+  }
+
+  OpData* user_data = reinterpret_cast<OpData*>(node->user_data);
+  user_data->type = input->type;
+
+  switch (user_data->type) {
+    case kTfLiteFloat32:
+      user_data->all_outputs = reinterpret_cast<void*>(
+          new VectorOfTensors<float>(*context, *node->outputs));
+      break;
+    case kTfLiteInt32:
+      user_data->all_outputs = reinterpret_cast<void*>(
+          new VectorOfTensors<int32_t>(*context, *node->outputs));
+      break;
+    case kTfLiteUInt8:
+      user_data->all_outputs = reinterpret_cast<void*>(
+          new VectorOfTensors<uint8_t>(*context, *node->outputs));
+      break;
+    case kTfLiteInt8:
+      user_data->all_outputs = reinterpret_cast<void*>(
+          new VectorOfTensors<int8_t>(*context, *node->outputs));
+      break;
+    case kTfLiteInt16:
+      user_data->all_outputs = reinterpret_cast<void*>(
+          new VectorOfTensors<int16_t>(*context, *node->outputs));
+      break;
+
+    default:
+      context->ReportError(context, "Unexpected data type - [%s] received.",
+                           TfLiteTypeGetName(user_data->type));
   }
 
   return kTfLiteOk;
@@ -117,18 +186,20 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, axis_value >= 0);
   TF_LITE_ENSURE(context, axis_value < NumDimensions(op_context.input));
 
-  // TODO(ahentz): Our usage of VectorOfTensors could be optimized by
-  // calculating it in Prepare, unless we defer shape calculation.
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
   // TODO(ahentz): We can improve the optimized_ops version to handle other
   // cases too.
 #define TF_LITE_SPLIT(scalar)                                       \
-  VectorOfTensors<scalar> all_outputs(*context, *node->outputs);    \
+  VectorOfTensors<scalar>* all_outputs =                            \
+      static_cast<VectorOfTensors<scalar>*>(data->all_outputs);     \
+  all_outputs->update(*context, *node->outputs);                    \
   tflite::SplitParams op_params;                                    \
   op_params.num_split = NumOutputs(node);                           \
   op_params.axis = axis_value;                                      \
   reference_ops::Split(op_params, GetTensorShape(op_context.input), \
                        GetTensorData<scalar>(op_context.input),     \
-                       all_outputs.shapes(), all_outputs.data());
+                       all_outputs->shapes(), all_outputs->data());
 
   switch (op_context.input->type) {
     case kTfLiteFloat32: {
@@ -164,7 +235,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace split
 
 TfLiteRegistration* Register_SPLIT() {
-  static TfLiteRegistration r = {nullptr, nullptr, split::Prepare, split::Eval};
+  static TfLiteRegistration r = {split::Init, split::Free, split::Prepare,
+                                 split::Eval};
   return &r;
 }
 

@@ -39,6 +39,45 @@ struct OpContext {
   const TfLiteTensor* axis;
 };
 
+struct OpData {
+  void* all_outputs;
+  TfLiteType type;
+};
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  // This is a builtin op, so we don't use the contents in 'buffer', if any.
+  // Instead, we allocate a new object to carry information from Prepare() to
+  // Eval().
+  return new OpData();
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  auto* data = reinterpret_cast<OpData*>(buffer);
+
+  switch (data->type) {
+    case kTfLiteFloat32:
+      delete static_cast<VectorOfTensors<float>*>(data->all_outputs);
+      break;
+    case kTfLiteInt32:
+      delete static_cast<VectorOfTensors<int32_t>*>(data->all_outputs);
+      break;
+    case kTfLiteUInt8:
+      delete static_cast<VectorOfTensors<uint8_t>*>(data->all_outputs);
+      break;
+    case kTfLiteInt64:
+      delete static_cast<VectorOfTensors<int64_t>*>(data->all_outputs);
+      break;
+    case kTfLiteInt16:
+      delete static_cast<VectorOfTensors<int16_t>*>(data->all_outputs);
+      break;
+    default:
+      context->ReportError(context, "Unexpected data type - [%s] received.",
+                           TfLiteTypeGetName(data->type));
+  }
+
+  delete data;
+}
+
 TfLiteStatus UseDynamicOutputTensors(TfLiteContext* context, TfLiteNode* node) {
   for (int i = 0; i < NumOutputs(node); ++i) {
     SetTensorToDynamic(GetOutput(context, node, i));
@@ -113,6 +152,36 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
     TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, output, output_dims));
   }
 
+  OpData* user_data = reinterpret_cast<OpData*>(node->user_data);
+  user_data->type = input->type;
+
+  switch (user_data->type) {
+    case kTfLiteFloat32:
+      user_data->all_outputs = reinterpret_cast<void*>(
+          new VectorOfTensors<float>(*context, *node->outputs));
+      break;
+    case kTfLiteInt32:
+      user_data->all_outputs = reinterpret_cast<void*>(
+          new VectorOfTensors<int32_t>(*context, *node->outputs));
+      break;
+    case kTfLiteUInt8:
+      user_data->all_outputs = reinterpret_cast<void*>(
+          new VectorOfTensors<uint8_t>(*context, *node->outputs));
+      break;
+    case kTfLiteInt64:
+      user_data->all_outputs = reinterpret_cast<void*>(
+          new VectorOfTensors<int64_t>(*context, *node->outputs));
+      break;
+    case kTfLiteInt16:
+      user_data->all_outputs = reinterpret_cast<void*>(
+          new VectorOfTensors<int16_t>(*context, *node->outputs));
+      break;
+
+    default:
+      context->ReportError(context, "Unexpected data type - [%s] received.",
+                           TfLiteTypeGetName(user_data->type));
+  }
+
   return kTfLiteOk;
 }
 
@@ -160,16 +229,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   int axis_value = GetTensorData<int>(op_context.axis)[0];
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   // Use split function to build the outputs since they share the same logic.
 #define TF_LITE_SPLIT_V(scalar)                                     \
-  VectorOfTensors<scalar> all_outputs(*context, *node->outputs);    \
+  VectorOfTensors<scalar>* all_outputs =                            \
+      static_cast<VectorOfTensors<scalar>*>(data->all_outputs);     \
+  all_outputs->update(*context, *node->outputs);                    \
   tflite::SplitParams op_params;                                    \
   op_params.num_split = NumOutputs(node);                           \
   op_params.axis = axis_value;                                      \
   reference_ops::Split(op_params, GetTensorShape(op_context.input), \
                        GetTensorData<scalar>(op_context.input),     \
-                       all_outputs.shapes(), all_outputs.data());
+                       all_outputs->shapes(), all_outputs->data());
   switch (op_context.input->type) {
     case kTfLiteFloat32: {
       TF_LITE_SPLIT_V(float);
@@ -204,7 +276,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace split_v
 
 TfLiteRegistration* Register_SPLIT_V() {
-  static TfLiteRegistration r = {nullptr, nullptr, split_v::Prepare,
+  static TfLiteRegistration r = {split_v::Init, split_v::Free, split_v::Prepare,
                                  split_v::Eval};
   return &r;
 }
