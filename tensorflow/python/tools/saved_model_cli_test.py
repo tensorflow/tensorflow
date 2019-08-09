@@ -41,6 +41,7 @@ from tensorflow.python.tools import saved_model_cli
 from tensorflow.python.training.tracking import util
 SAVED_MODEL_PATH = ('cc/saved_model/testdata/half_plus_two/00000123')
 
+
 @contextlib.contextmanager
 def captured_output():
   new_out, new_err = StringIO(), StringIO()
@@ -144,7 +145,7 @@ signature_def['serving_default']:
         name: y:0
   Method name is: tensorflow/serving/predict"""
     # pylint: enable=line-too-long
-    self.maxDiff = None # Produce a useful error msg if the comparison fails
+    self.maxDiff = None  # Produce a useful error msg if the comparison fails
     self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
 
@@ -154,20 +155,22 @@ signature_def['serving_default']:
           and using it for test
       """
       @def_function.function
-      def func1(self, a, b, c): 
+      def func1(self, a, b, c):
         if c:
-          return a + b 
+          return a + b
         else:
-          return a * b 
+          return a * b
+
       @def_function.function(
-    		input_signature=[
-    				tensor_spec.TensorSpec(shape=(2, 2),
-    				dtype=dtypes.float32)])
-      def func2(self, x): 
-        return x + 2 
+          input_signature=[
+              tensor_spec.TensorSpec(shape=(2, 2),
+                                     dtype=dtypes.float32)])
+      def func2(self, x):
+        return x + 2
+
       @def_function.function
       def __call__(self, y, c=7):
-        return y + 2 * c 
+        return y + 2 * c
 
     temp_dir = self.get_temp_dir()
     trackable_object = DummyModel()
@@ -175,7 +178,10 @@ signature_def['serving_default']:
         constant_op.constant(5),
         constant_op.constant(9),
         True)
-    trackable_object.func1(constant_op.constant(5), constant_op.constant(9), False)
+    trackable_object.func1(
+        constant_op.constant(5),
+        constant_op.constant(9),
+        False)
     trackable_object(constant_op.constant(5))
     save.save(trackable_object, temp_dir)
     self.parser = saved_model_cli.create_parser()
@@ -192,7 +198,7 @@ signature_def['__saved_model_init_op']:
         dtype: DT_INVALID
         shape: unknown_rank
         name: NoOp
-  Method name is: 
+  Method name is:
 
 signature_def['serving_default']:
   The given SavedModel SignatureDef contains the following input(s):
@@ -242,8 +248,8 @@ Defined Functions:
       Callable with:
         Argument #1
           x: TensorSpec(shape=(2, 2), dtype=tf.float32, name='x')
-""".strip() # pylint: enable=line-too-long
-    self.maxDiff = None # Produce a useful error msg if the comparison fails
+""".strip()  # pylint: enable=line-too-long
+    self.maxDiff = None  # Produce a useful error msg if the comparison fails
     self.assertMultiLineEqual(output, exp_out)
     self.assertEqual(err.getvalue().strip(), '')
 
@@ -274,9 +280,8 @@ Defined Functions:
         '"regress_x_to_y"', '"regress_x_to_y2"', '"serving_default"'
     ]
     # Order of signatures does not matter
-    self.assertMultiLineEqual(
-        output,
-        '\n'.join([exp_header] + [exp_start + exp_key for exp_key in exp_keys]))
+    self.assertMultiLineEqual(output, '\n'.join(
+        [exp_header] + [exp_start + exp_key for exp_key in exp_keys]))
     self.assertEqual(err.getvalue().strip(), '')
 
   def testShowCommandErrorNoTagSet(self):

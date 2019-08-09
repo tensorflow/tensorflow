@@ -121,10 +121,10 @@ def _get_outputs_tensor_info_from_meta_graph_def(meta_graph_def,
 
 
 def _show_inputs_outputs(
-        saved_model_dir,
-        tag_set,
-        signature_def_key,
-        indent=0):
+    saved_model_dir,
+    tag_set,
+    signature_def_key,
+    indent=0):
   """Prints input and output TensorInfos.
 
   Prints the details of input and output TensorInfos for the SignatureDef mapped
@@ -176,7 +176,7 @@ def _show_defined_functions(saved_model_dir):
   for meta_graph_def in meta_graphs:
     has_object_graph_def |= meta_graph_def.HasField("object_graph_def")
   if not has_object_graph_def:
-    return 
+    return
   with ops_lib.Graph().as_default():
     trackable_object = load.load(saved_model_dir)
 
@@ -218,22 +218,23 @@ def _print_args(arguments, argument_type="Argument", indent=0):
     if indent == 4:
       in_print('%s #%d' % (argument_type, index))
     if isinstance(element, tensor_spec.TensorSpec):
-      print((indent + 1) * '  ' + '%s: %s'%(element.name, repr(element)))
+      print((indent + 1) * '  ' + '%s: %s' % (element.name, repr(element)))
     elif isinstance(element, collections.Iterable) and not isinstance(element, dict):
       in_print('  DType: %s' % type(element).__name__)
       in_print('  Value: [', end='')
       for value in element:
-          print('%s' %  _maybe_add_quotes(value), end=', ')
+        print('%s' % _maybe_add_quotes(value), end=', ')
       print('\b\b]')
     elif isinstance(element, dict):
       in_print('  DType: %s' % type(element).__name__)
       in_print('  Value: {', end='')
       for (key, value) in element.items():
-          print('\'%s\': %s' % (str(key), _maybe_add_quotes(value)), end=', ')
+        print('\'%s\': %s' % (str(key), _maybe_add_quotes(value)), end=', ')
       print('\b\b}')
     else:
       in_print('  DType: %s' % type(element).__name__)
       in_print('  Value: %s' % str(element))
+
 
 def _print_tensor_info(tensor_info, indent=0):
   """Prints details of the given tensor_info.
