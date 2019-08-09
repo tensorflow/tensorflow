@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/mean.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/mean.h"
@@ -289,6 +290,21 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
   if (kernel_type == kGenericOptimized) {
     // Use optimized ops if available.
     switch (op_context.input->type) {
+      case kTfLiteInt8: {
+        tflite::MeanParams op_params;
+        op_params.axis_count = num_axis;
+        ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
+        const TfLiteTensor* input = op_context.input;
+        optimized_integer_ops::Mean(
+            op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+            op_context.input->params.zero_point, op_context.input->params.scale,
+            GetTensorShape(op_context.output),
+            GetTensorData<int8_t>(op_context.output),
+            op_context.output->params.zero_point,
+            op_context.output->params.scale,
+            CpuBackendContext::GetFromContext(context));
+        return kTfLiteOk;
+      } break;
       case kTfLiteUInt8: {
         tflite::MeanParams op_params;
         op_params.axis_count = num_axis;

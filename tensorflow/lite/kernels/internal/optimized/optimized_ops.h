@@ -801,6 +801,51 @@ inline void ShuffledFullyConnected(
                                   cpu_backend_context);
 }
 
+#ifdef USE_NEON
+
+inline float32x4_t DivideSumForMeanImpl(
+    const float32x4_t sum, const float32x4_t num_elements_reverse,
+    const bool ordinary_mean, const float32x4_t scale_dup,
+    const float32x4_t zero_point_with_bias_dup) {
+  const float32x4_t val = vmulq_f32(sum, num_elements_reverse);
+  if (!ordinary_mean) {
+#ifdef ARM_FEATURE_FMA
+    return vfmaq_f32(zero_point_with_bias_dup, scale_dup, val);
+#else
+    return vmlaq_f32(zero_point_with_bias_dup, scale_dup, val);
+#endif  // ARM_FEATURE_FMA
+  }
+  return val;
+}
+
+inline int32x4_t RoundToNearest(const float32x4_t input) {
+#if !defined(__aarch64__) && !defined(__SSE4_1__)
+  static const float32x4_t zero_val_dup = vdupq_n_f32(0.0f);
+  static const float32x4_t point5_val_dup = vdupq_n_f32(0.5f);
+  static const float32x4_t minus_point5_val_dup = vdupq_n_f32(-0.5f);
+
+  const uint32x4_t mask = vcltq_f32(input, zero_val_dup);
+  const float32x4_t round =
+      vbslq_f32(mask, minus_point5_val_dup, point5_val_dup);
+  return vcvtq_s32_f32(vaddq_f32(input, round));
+#else
+  return vcvtnq_s32_f32(input);
+#endif  // !defined(__aarch64__)
+}
+
+inline uint32x4_t RoundToNearestUnsigned(const float32x4_t input) {
+#if defined(__aarch64__) && !defined(__SSE4_1__)
+  // Note that vcvtnq_u32_f32 is not available on the arm_neon_sse.h.
+  return vcvtnq_u32_f32(input);
+#else
+  static const float32x4_t point5_val_dup = vdupq_n_f32(0.5f);
+
+  return vcvtq_u32_f32(vaddq_f32(input, point5_val_dup));
+#endif  // defined(__aarch64__) && !defined(__SSE4_1__)
+}
+
+#endif  // USE_NEON
+
 inline void MeanImpl(const tflite::MeanParams& op_params,
                      const RuntimeShape& input_shape, const uint8_t* input_data,
                      int32 input_zero_point, float input_scale,
@@ -826,7 +871,7 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
 
   const bool ordinary_mean =
       (input_zero_point == output_zero_point && input_scale == output_scale);
-  float scale, bias;
+  float scale = 0.0f, bias = 0.0f;
   if (!ordinary_mean) {
     scale = input_scale / output_scale;
     bias = -input_zero_point * scale + 0.5;
@@ -835,15 +880,10 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
 #ifdef USE_NEON
   const float32x4_t num_elements_dup = vdupq_n_f32(num_elements_in_axis);
   // This is only an approximation as NEON does not offer division instruction.
+  const float32x4_t scale_dup = vdupq_n_f32(scale);
   const float32x4_t num_elements_reverse = vrecpeq_f32(num_elements_dup);
-  const float32x4_t kRounding = vdupq_n_f32(0.5);
-  float32x4_t bias_dup;
-  float32x4_t output_zero_point_dup;
-  if (!ordinary_mean) {
-    bias_dup = vdupq_n_f32(bias);
-    output_zero_point_dup = vdupq_n_f32(output_zero_point);
-  }
-#endif
+  float32x4_t zero_point_with_bias_dup = vdupq_n_f32(output_zero_point + bias);
+#endif  // USE_NEON
 
   for (int out_b = 0; out_b < output_batch; ++out_b) {
     int out_d = start_depth;
@@ -868,28 +908,16 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
         }
       }
 
-      float32x4_t mean_1 = vmulq_f32(temp_sum_1, num_elements_reverse);
-      float32x4_t mean_2 = vmulq_f32(temp_sum_2, num_elements_reverse);
+      const float32x4_t mean_1 =
+          DivideSumForMeanImpl(temp_sum_1, num_elements_reverse, ordinary_mean,
+                               scale_dup, zero_point_with_bias_dup);
+      const float32x4_t mean_2 =
+          DivideSumForMeanImpl(temp_sum_2, num_elements_reverse, ordinary_mean,
+                               scale_dup, zero_point_with_bias_dup);
 
-      if (!ordinary_mean) {
-        // maq is not supported, break down into two ops.
-        mean_1 = vmulq_n_f32(mean_1, scale);
-        mean_1 = vaddq_f32(mean_1, bias_dup);
-        mean_2 = vmulq_n_f32(mean_2, scale);
-        mean_2 = vaddq_f32(mean_2, bias_dup);
-      }
-
-      if (!ordinary_mean) {
-        mean_1 = vaddq_f32(mean_1, output_zero_point_dup);
-        mean_2 = vaddq_f32(mean_2, output_zero_point_dup);
-      }
-
-      // Rounding.
-      mean_1 = vaddq_f32(mean_1, kRounding);
-      mean_2 = vaddq_f32(mean_2, kRounding);
-      uint32x4_t casted_mean_1 = vcvtq_u32_f32(mean_1);
+      uint32x4_t casted_mean_1 = RoundToNearestUnsigned(mean_1);
       uint16x4_t narrow_range_mean_1 = vmovn_u32(casted_mean_1);
-      uint32x4_t casted_mean_2 = vcvtq_u32_f32(mean_2);
+      uint32x4_t casted_mean_2 = RoundToNearestUnsigned(mean_2);
       uint16x4_t narrow_range_mean_2 = vmovn_u32(casted_mean_2);
       uint16x8_t combined_mean =
           vcombine_u16(narrow_range_mean_2, narrow_range_mean_1);
@@ -898,7 +926,7 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
           output_data + Offset(output_shape, out_b, 0, 0, out_d);
       vst1_u8(output_data_ptr, narrowed_combined_mean);
     }
-#endif
+#endif  // USE_NEON
 
     for (; out_d < end_depth; ++out_d) {
       float temp_value = 0;
@@ -5949,23 +5977,6 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
   reference_ops::AffineQuantize(op_params, input_shape, input_data,
                                 output_shape, output_data);
 }
-
-#ifdef USE_NEON
-inline int32x4_t RoundToNearest(const float32x4_t input) {
-#if !defined(__aarch64__) && !defined(__SSE4_1__)
-  static const float32x4_t zero_val_dup = vdupq_n_f32(0.0f);
-  static const float32x4_t point5_val_dup = vdupq_n_f32(0.5f);
-  static const float32x4_t minus_point5_val_dup = vdupq_n_f32(-0.5f);
-
-  const uint32x4_t mask = vcltq_f32(input, zero_val_dup);
-  const float32x4_t round =
-      vbslq_f32(mask, minus_point5_val_dup, point5_val_dup);
-  return vcvtq_s32_f32(vaddq_f32(input, round));
-#else
-  return vcvtnq_s32_f32(input);
-#endif
-}
-#endif
 
 template <>
 inline void AffineQuantize(const tflite::QuantizationParams& op_params,
