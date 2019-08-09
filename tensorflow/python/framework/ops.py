@@ -1250,19 +1250,21 @@ def internal_convert_to_tensor(value,
                                as_ref=False,
                                preferred_dtype=None,
                                ctx=None,
-                               accept_composite_tensors=False):
+                               accepted_result_types=(Tensor,)):
   """Implementation of the public convert_to_tensor."""
+  if isinstance(value, EagerTensor):
+    if ctx is None:
+      ctx = context.context()
+    if not ctx.executing_eagerly():
+      graph = get_default_graph()
+      if not graph.building_function:
+        raise RuntimeError("Attempting to capture an EagerTensor without "
+                           "building a function.")
+      return graph.capture(value, name=name)
+
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
-  if ctx is None:
-    ctx = context.context()
-  if isinstance(value, EagerTensor) and not ctx.executing_eagerly():
-    graph = get_default_graph()
-    if not graph.building_function:
-      raise RuntimeError("Attempting to capture an EagerTensor without "
-                         "building a function.")
-    return graph.capture(value, name=name)
-  elif isinstance(value, Tensor):
+  if isinstance(value, Tensor):
     if dtype is not None and not dtype.is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
@@ -1271,7 +1273,6 @@ def internal_convert_to_tensor(value,
 
   if preferred_dtype is not None:
     preferred_dtype = dtypes.as_dtype(preferred_dtype)
-
   for base_type, conversion_func in tensor_conversion_registry.get(type(value)):
     # If dtype is None but preferred_dtype is not None, we try to
     # cast to preferred_dtype first.
@@ -1296,11 +1297,7 @@ def internal_convert_to_tensor(value,
     if ret is NotImplemented:
       continue
 
-    is_acceptable_type = (
-        isinstance(ret, Tensor) or
-        (accept_composite_tensors and
-         isinstance(ret, composite_tensor.CompositeTensor)))
-    if not is_acceptable_type:
+    if not isinstance(ret, accepted_result_types):
       raise RuntimeError(
           "%sConversion function %r for type %s returned non-Tensor: %r" %
           (_error_prefix(name), conversion_func, base_type, ret))
@@ -1454,7 +1451,7 @@ def internal_convert_to_tensor_or_composite(value,
         dtype=dtype,
         name=name,
         as_ref=as_ref,
-        accept_composite_tensors=True)
+        accepted_result_types=(Tensor, composite_tensor.CompositeTensor))
 
 
 def internal_convert_n_to_tensor_or_composite(values,
