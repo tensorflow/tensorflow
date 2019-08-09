@@ -16,12 +16,9 @@
 
 set -e
 
-# We don't apt-get install so that we can install a newer version of pip.
-# Only needed for Ubuntu 14.04 and 16.04; not needed for 18.04 and Debian 8,9?
-# Run easy_install after easy_install3, so that the default pip points to pip2,
-# to match the default python version of 2.7.
-easy_install3 -U pip==18.1
-easy_install -U pip==18.1
+# Get the latest version of pip so it recognize manylinux2010
+pip2 install --upgrade pip
+pip3 install --upgrade pip
 
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
