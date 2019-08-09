@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+""" label_image script modeled after the C one. """
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,6 +25,8 @@ import tensorflow as tf
 
 
 def load_graph(model_file):
+  """import a graph_def from a model file"""
+
   graph = tf.Graph()
   graph_def = tf.compat.v1.GraphDef()
 
@@ -40,25 +43,25 @@ def read_tensor_from_image_file(file_name,
                                 input_width=299,
                                 input_mean=0,
                                 input_std=255):
+  """read an image file, crop it, and convert to tensors"""
+
   graph = tf.Graph()
-  graph_def = tf.compat.v1.GraphDef()
 
   input_name = "file_reader"
-  output_name = "normalized"
 
   with graph.as_default():
     file_reader = tf.io.read_file(file_name, input_name)
     if file_name.endswith(".png"):
       image_reader = tf.image.decode_png(
-        file_reader, channels=3, name="png_reader")
+          file_reader, channels=3, name="png_reader")
     elif file_name.endswith(".gif"):
       image_reader = tf.squeeze(
-        tf.image.decode_gif(file_reader, name="gif_reader"))
+          tf.image.decode_gif(file_reader, name="gif_reader"))
     elif file_name.endswith(".bmp"):
       image_reader = tf.image.decode_bmp(file_reader, name="bmp_reader")
     else:
       image_reader = tf.image.decode_jpeg(
-        file_reader, channels=3, name="jpeg_reader")
+          file_reader, channels=3, name="jpeg_reader")
     float_caster = tf.cast(image_reader, tf.float32)
     dims_expander = tf.expand_dims(float_caster, 0)
     resized = tf.image.resize(dims_expander, [input_height, input_width],
