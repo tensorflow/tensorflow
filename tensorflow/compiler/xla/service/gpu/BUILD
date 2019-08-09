@@ -1133,8 +1133,7 @@ cc_library(
 cc_library(
     name = "amdgpu_compiler",
     srcs = [
-        # TODO(whchung@gmail.com): Enable in the subsequent PR.
-        # "amdgpu_compiler_registration.cc",
+         "amdgpu_compiler_registration.cc",
     ],
     deps = [
         ":amdgpu_compiler_impl",
@@ -1145,18 +1144,14 @@ cc_library(
 cc_library(
     name = "amdgpu_compiler_impl",
     srcs = [
-        # TODO(whchung@gmail.com) : enable in the subsequent PR.
-        #"amdgpu_compiler.cc",
+        "amdgpu_compiler.cc",
     ],
     hdrs = [
-        # TODO(whchung@gmail.com): enable in the subsequent PR.
-        #"amdgpu_compiler.h"
+        "amdgpu_compiler.h"
     ],
     deps = [
-        # TODO(whchung@gmail.com): Enable these after pending PRs get merged.
-        #":gpu_compiler_impl",
-        #":miopen_conv_algorithm_picker",
-        #"//tensorflow/core:rocm_rocdl_path",
+        ":gpu_compiler_impl",
+        "//tensorflow/core/platform:rocm_rocdl_path",
     ],
 )
 
