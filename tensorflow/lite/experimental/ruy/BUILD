@@ -7,6 +7,25 @@ load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
 load(":ruy_test.bzl", "ruy_benchmark", "ruy_benchmark_opt_sets", "ruy_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
+# 1. Enable -mfpu=neon unconditionally on ARM32. If it turns out that we need to support
+#    ARM32 without NEON then we'll implement runtime detection and dispatch at that point.
+# 2. Explicitly pass -O3 on mobile configs where just "-c opt" means "optimize for code size".
+#    We would want to only do that when compilation_mode is "opt", but limitations of
+#    the "select" keyword (no nested selects, no AND boolean) seem to make that difficult
+#    at the moment. For debugging purposes, this can be overridded on the command line, e.g.
+#      bazel build -c dbg --copt=-O0 ...
+RUY_COPTS = select({
+    "//tensorflow:android_arm64": [
+        "-O3",
+    ],
+    "//tensorflow:android_arm": [
+        "-O3",
+        "-mfpu=neon",
+    ],
+    "//conditions:default": [
+    ],
+})
+
 package(
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],  # Apache 2.0
@@ -15,28 +34,33 @@ package(
 cc_library(
     name = "platform",
     hdrs = ["platform.h"],
+    copts = RUY_COPTS,
 )
 
 cc_library(
     name = "check_macros",
     hdrs = ["check_macros.h"],
+    copts = RUY_COPTS,
     deps = ["//tensorflow/lite/kernels/internal:compatibility"],
 )
 
 cc_library(
     name = "opt_set",
     hdrs = ["opt_set.h"],
+    copts = RUY_COPTS,
 )
 
 cc_library(
     name = "time",
     hdrs = ["time.h"],
+    copts = RUY_COPTS,
 )
 
 cc_library(
     name = "wait",
     srcs = ["wait.cc"],
     hdrs = ["wait.h"],
+    copts = RUY_COPTS,
     deps = [":time"],
 )
 
@@ -52,6 +76,7 @@ cc_test(
 cc_library(
     name = "size_util",
     hdrs = ["size_util.h"],
+    copts = RUY_COPTS,
     deps = [":check_macros"],
 )
 
@@ -63,6 +88,7 @@ cc_library(
     hdrs = [
         "tune.h",
     ],
+    copts = RUY_COPTS,
     deps = [
         ":opt_set",
         ":platform",
@@ -95,6 +121,7 @@ cc_library(
     hdrs = [
         "allocator.h",
     ],
+    copts = RUY_COPTS,
     deps = [
         ":check_macros",
         ":size_util",
@@ -113,6 +140,7 @@ cc_test(
 cc_library(
     name = "side_pair",
     hdrs = ["side_pair.h"],
+    copts = RUY_COPTS,
     deps = [":check_macros"],
 )
 
@@ -124,6 +152,7 @@ cc_library(
     hdrs = [
         "block_map.h",
     ],
+    copts = RUY_COPTS,
     deps = [
         ":check_macros",
         ":opt_set",
@@ -141,6 +170,7 @@ cc_library(
     hdrs = [
         "blocking_counter.h",
     ],
+    copts = RUY_COPTS,
     deps = [
         ":check_macros",
         ":wait",
@@ -155,6 +185,7 @@ cc_library(
     hdrs = [
         "thread_pool.h",
     ],
+    copts = RUY_COPTS,
     visibility = ruy_visibility(),
     deps = [
         ":blocking_counter",
@@ -171,12 +202,14 @@ cc_library(
     hdrs = [
         "detect_dotprod.h",
     ],
+    copts = RUY_COPTS,
     visibility = ruy_visibility(),
 )
 
 cc_library(
     name = "path",
     hdrs = ["path.h"],
+    copts = RUY_COPTS,
     visibility = ruy_visibility(),
     deps = [
         ":platform",
@@ -192,6 +225,7 @@ cc_library(
     hdrs = [
         "trace.h",
     ],
+    copts = RUY_COPTS,
     deps = [
         ":block_map",
         ":check_macros",
@@ -208,6 +242,7 @@ cc_library(
     hdrs = [
         "context.h",
     ],
+    copts = RUY_COPTS,
     visibility = ruy_visibility(),
     deps = [
         ":allocator",
@@ -223,6 +258,7 @@ cc_library(
 cc_library(
     name = "matrix",
     hdrs = ["matrix.h"],
+    copts = RUY_COPTS,
     visibility = ruy_visibility(),
     deps = [":check_macros"],
 )
@@ -230,6 +266,7 @@ cc_library(
 cc_library(
     name = "spec",
     hdrs = ["spec.h"],
+    copts = RUY_COPTS,
     visibility = ruy_visibility(),
     deps = [":matrix"],
 )
@@ -237,6 +274,7 @@ cc_library(
 cc_library(
     name = "internal_matrix",
     hdrs = ["internal_matrix.h"],
+    copts = RUY_COPTS,
     deps = [
         ":check_macros",
         ":common",
@@ -250,6 +288,7 @@ cc_library(
     hdrs = [
         "common.h",
     ],
+    copts = RUY_COPTS,
     deps = [
         ":check_macros",
         ":matrix",
@@ -272,6 +311,7 @@ cc_library(
         "kernel_common.h",
         "kernel_x86.h",
     ],
+    copts = RUY_COPTS,
     deps = [
         ":check_macros",
         ":common",
@@ -301,6 +341,7 @@ cc_library(
         "pack_common.h",
         "pack_x86.h",
     ],
+    copts = RUY_COPTS,
     deps = [
         ":check_macros",
         ":common",
@@ -317,6 +358,7 @@ cc_library(
 cc_library(
     name = "trmul_params",
     hdrs = ["trmul_params.h"],
+    copts = RUY_COPTS,
     deps = [
         ":internal_matrix",
         ":side_pair",
@@ -328,6 +370,7 @@ cc_library(
     name = "trmul",
     srcs = ["trmul.cc"],
     hdrs = ["trmul.h"],
+    copts = RUY_COPTS,
     deps = [
         ":allocator",
         ":block_map",
@@ -359,6 +402,7 @@ cc_library(
         "ruy.h",
         "ruy_advanced.h",
     ],
+    copts = RUY_COPTS,
     visibility = ruy_visibility(),
     deps = [
         ":check_macros",
@@ -414,6 +458,7 @@ cc_library(
     testonly = True,
     srcs = ["pmu.cc"],
     hdrs = ["pmu.h"],
+    copts = RUY_COPTS,
     deps = [":check_macros"],
 )
 
@@ -422,6 +467,7 @@ cc_library(
     name = "test_lib",
     testonly = True,
     hdrs = ["test.h"],
+    copts = RUY_COPTS,
     # need defines, not copts, because it's controlling a header, test.h
     defines = ruy_test_ext_defines(),
     linkopts = select({
@@ -442,6 +488,7 @@ cc_library(
 ruy_benchmark(
     name = "benchmark",
     srcs = ["benchmark.cc"],
+    copts = RUY_COPTS,
     lhs_rhs_accum_dst = [
         ("f32", "f32", "f32", "f32"),
         ("u8", "u8", "i32", "u8"),
@@ -455,6 +502,7 @@ ruy_benchmark(
 ruy_test(
     name = "test_fast",
     srcs = ["test_fast.cc"],
+    copts = RUY_COPTS,
     lhs_rhs_accum_dst = [
         ("f32", "f32", "f32", "f32"),
         ("f64", "f32", "f64", "f32"),
@@ -470,6 +518,7 @@ ruy_test(
 ruy_test(
     name = "test_slow",
     srcs = ["test_slow.cc"],
+    copts = RUY_COPTS,
     lhs_rhs_accum_dst = [
         ("f32", "f32", "f32", "f32"),
         ("u8", "u8", "i32", "u8"),
@@ -483,6 +532,7 @@ ruy_test(
 ruy_test(
     name = "test_special_specs",
     srcs = ["test_special_specs.cc"],
+    copts = RUY_COPTS,
     lhs_rhs_accum_dst = [
         ("f32", "f32", "f32", "f32"),
         ("u8", "u8", "i32", "u8"),
@@ -493,6 +543,7 @@ ruy_test(
 ruy_benchmark_opt_sets(
     name = "benchmark_opt_set",
     srcs = ["benchmark.cc"],
+    copts = RUY_COPTS,
     lhs_rhs_accum_dst = [
         ("f32", "f32", "f32", "f32"),
         ("u8", "u8", "i32", "u8"),

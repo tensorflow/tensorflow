@@ -6,12 +6,12 @@ corresponding to tuples of types for LHS, RHS, accumulator
 and destination.
 """
 
-def ruy_test(name, srcs, lhs_rhs_accum_dst, tags = []):
+def ruy_test(name, srcs, lhs_rhs_accum_dst, copts, tags = []):
     for (lhs, rhs, accum, dst) in lhs_rhs_accum_dst:
         native.cc_test(
             name = "%s_%s_%s_%s_%s" % (name, lhs, rhs, accum, dst),
             srcs = srcs,
-            copts = [
+            copts = copts + [
                 "-DRUY_TEST_LHSSCALAR=%s" % lhs,
                 "-DRUY_TEST_RHSSCALAR=%s" % rhs,
                 "-DRUY_TEST_ACCUMSCALAR=%s" % accum,
@@ -24,14 +24,14 @@ def ruy_test(name, srcs, lhs_rhs_accum_dst, tags = []):
             tags = tags,
         )
 
-def ruy_benchmark(name, srcs, lhs_rhs_accum_dst):
+def ruy_benchmark(name, srcs, lhs_rhs_accum_dst, copts):
     tags = ["req_dep=@gemmlowp//:profiler"]
     for (lhs, rhs, accum, dst) in lhs_rhs_accum_dst:
         native.cc_binary(
             name = "%s_%s_%s_%s_%s" % (name, lhs, rhs, accum, dst),
             testonly = True,
             srcs = srcs,
-            copts = [
+            copts = copts + [
                 "-DRUY_TEST_LHSSCALAR=%s" % lhs,
                 "-DRUY_TEST_RHSSCALAR=%s" % rhs,
                 "-DRUY_TEST_ACCUMSCALAR=%s" % accum,
@@ -44,7 +44,7 @@ def ruy_benchmark(name, srcs, lhs_rhs_accum_dst):
             tags = tags,
         )
 
-def ruy_benchmark_opt_sets(name, opt_sets, srcs, lhs_rhs_accum_dst):
+def ruy_benchmark_opt_sets(name, opt_sets, srcs, lhs_rhs_accum_dst, copts):
     tags = ["req_dep=@gemmlowp//:profiler"]
     for opt_set in opt_sets:
         for (lhs, rhs, accum, dst) in lhs_rhs_accum_dst:
@@ -52,7 +52,7 @@ def ruy_benchmark_opt_sets(name, opt_sets, srcs, lhs_rhs_accum_dst):
                 name = "%s_%s_%s_%s_%s_%s" % (name, opt_set, lhs, rhs, accum, dst),
                 testonly = True,
                 srcs = srcs,
-                copts = [
+                copts = copts + [
                     "-DRUY_TEST_LHSSCALAR=%s" % lhs,
                     "-DRUY_TEST_RHSSCALAR=%s" % rhs,
                     "-DRUY_TEST_ACCUMSCALAR=%s" % accum,
