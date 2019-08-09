@@ -282,6 +282,18 @@ def LLVM_CallOp : LLVM_Op<"call">,
   let parser = [{ return parseCallOp(parser, result); }];
   let printer = [{ printCallOp(p, *this); }];
 }
+def LLVM_ExtractElementOp : LLVM_OneResultOp<"extractelement", [NoSideEffect]>,
+                          Arguments<(ins LLVM_Type:$vector,
+                                     LLVM_Type:$position)> {
+  string llvmBuilder = [{
+    $res = builder.CreateExtractElement($vector, $position);
+  }];
+  let builders = [OpBuilder<
+    "Builder *b, OperationState *result, Value *vector, Value *position,"
+    "ArrayRef<NamedAttribute> attrs = {}">];
+  let parser = [{ return parseExtractElementOp(parser, result); }];
+  let printer = [{ printExtractElementOp(p, *this); }];
+}
 def LLVM_ExtractValueOp : LLVM_OneResultOp<"extractvalue", [NoSideEffect]>,
                           Arguments<(ins LLVM_Type:$container,
                                      ArrayAttr:$position)> {
@@ -290,6 +302,15 @@ def LLVM_ExtractValueOp : LLVM_OneResultOp<"extractvalue", [NoSideEffect]>,
   }];
   let parser = [{ return parseExtractValueOp(parser, result); }];
   let printer = [{ printExtractValueOp(p, *this); }];
+}
+def LLVM_InsertElementOp : LLVM_OneResultOp<"insertelement", [NoSideEffect]>,
+                         Arguments<(ins LLVM_Type:$vector, LLVM_Type:$value,
+                                    LLVM_Type:$position)> {
+  string llvmBuilder = [{
+    $res = builder.CreateInsertElement($vector, $value, $position);
+  }];
+  let parser = [{ return parseInsertElementOp(parser, result); }];
+  let printer = [{ printInsertElementOp(p, *this); }];
 }
 def LLVM_InsertValueOp : LLVM_OneResultOp<"insertvalue", [NoSideEffect]>,
                          Arguments<(ins LLVM_Type:$container, LLVM_Type:$value,
@@ -300,6 +321,27 @@ def LLVM_InsertValueOp : LLVM_OneResultOp<"insertvalue", [NoSideEffect]>,
   }];
   let parser = [{ return parseInsertValueOp(parser, result); }];
   let printer = [{ printInsertValueOp(p, *this); }];
+}
+def LLVM_ShuffleVectorOp
+    : LLVM_OneResultOp<"shufflevector", [NoSideEffect]>,
+      Arguments<(ins LLVM_Type:$v1, LLVM_Type:$v2, I32ArrayAttr:$mask)>,
+      LLVM_Builder<
+      "$res = builder.CreateShuffleVector($v1, $v2, extractPosition($mask));"> {
+  let builders = [OpBuilder<
+    "Builder *b, OperationState *result, Value *v1, Value *v2, "
+    "ArrayAttr mask, ArrayRef<NamedAttribute> attrs = {}">];
+  let verifier = [{
+    auto wrappedVectorType1 = v1()->getType().cast<LLVM::LLVMType>();
+    auto wrappedVectorType2 = v2()->getType().cast<LLVM::LLVMType>();
+    if (!wrappedVectorType2.getUnderlyingType()->isVectorTy())
+      return emitOpError("expected LLVM IR Dialect vector type for operand #2");
+    if (wrappedVectorType1.getVectorElementType() !=
+        wrappedVectorType2.getVectorElementType())
+      return emitOpError("expected matching LLVM IR Dialect element types");
+    return success();
+  }];
+  let parser = [{ return parseShuffleVectorOp(parser, result); }];
+  let printer = [{ printShuffleVectorOp(p, *this); }];
 }
 
 // Misc operations.
