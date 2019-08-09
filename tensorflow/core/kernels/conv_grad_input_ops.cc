@@ -1091,6 +1091,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         common_padding_cols}},             // padding_cols
       dtype,                               // tensor data type
       device_id,                           // device_id
+      conv_desc.group_count()              // group_count
   };
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(

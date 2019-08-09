@@ -425,6 +425,7 @@ struct LaunchConvOp<GPUDevice, T> {
         {{pad_planes, pad_rows, pad_cols}},
         dtype,
         device_id,
+        conv_desc.group_count()
     };
 
     using se::dnn::AlgorithmConfig;

@@ -581,6 +581,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
               common_padding_cols}},       // padding_cols
             dtype,                         // tensor datatype
             device_id,                     // device_id
+            conv_desc.group_count()
         },
         dnn_activation_mode  // activation_mode
     };

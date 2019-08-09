@@ -97,7 +97,7 @@ class ConvParameters {
                  TensorFormat data_format, int64 out_depths,
                  const SpatialArray& filter, const SpatialArray& dilation,
                  const SpatialArray& stride, const SpatialArray& padding,
-                 DataType dtype, int device_id)
+                 DataType dtype, int device_id, int group_count = 1)
       : batch_(batch),
         in_depths_(in_depths),
         out_depths_(out_depths),
@@ -108,7 +108,8 @@ class ConvParameters {
         stride_(CheckSpatialArraySize(stride)),
         padding_(CheckSpatialArraySize(padding)),
         dtype_(dtype),
-        device_id_(device_id) {
+        device_id_(device_id),
+        group_count_(group_count) {
     hash_code_ = batch;
     hash_code_ = Hash64Combine(hash_code_, in_depths);
     for (int64 val : in) hash_code_ = Hash64Combine(hash_code_, val);
@@ -120,7 +121,9 @@ class ConvParameters {
     for (int64 val : padding) hash_code_ = Hash64Combine(hash_code_, val);
     hash_code_ = Hash64Combine(hash_code_, dtype);
     hash_code_ = Hash64Combine(hash_code_, device_id);
+    hash_code_ = Hash64Combine(hash_code_, group_count);
   }
+
   bool operator==(const ConvParameters& other) const {
     return this->get_data_as_tuple() == other.get_data_as_tuple();
   }
@@ -142,7 +145,8 @@ class ConvParameters {
         "(", str_util::Join(stride_, ", "), "), ",
         "(", str_util::Join(padding_, ", "), "), ",
         dtype_, ", ",
-        device_id_);
+        device_id_,
+        group_count_);
     // clang-format on
   }
 
@@ -166,12 +170,12 @@ class ConvParameters {
  protected:
   using ParameterDataType =
       std::tuple<int64, int64, SpatialArray, TensorFormat, int64, SpatialArray,
-                 SpatialArray, SpatialArray, SpatialArray, DataType, int>;
+                 SpatialArray, SpatialArray, SpatialArray, DataType, int, int>;
 
   ParameterDataType get_data_as_tuple() const {
     return std::make_tuple(batch_, in_depths_, in_, data_format_, out_depths_,
                            filter_, dilation_, stride_, padding_, dtype_,
-                           device_id_);
+                           device_id_, group_count_);
   }
 
   uint64 hash_code_;
@@ -208,6 +212,7 @@ class ConvParameters {
   SpatialArray padding_;
   DataType dtype_;
   int device_id_;
+  int group_count_;
 };
 
 typedef Eigen::GpuDevice GPUDevice;

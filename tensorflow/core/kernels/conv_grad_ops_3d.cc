@@ -1352,6 +1352,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         {{padding_planes, padding_rows, padding_cols}},
         dtype,
         device_id,
+        conv_desc.group_count()
     };
 
     using se::dnn::AlgorithmConfig;
@@ -1777,6 +1778,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         {{padding_planes, padding_rows, padding_cols}},
         dtype,
         device_id,
+        conv_desc.group_count()
     };
 
     using se::dnn::AlgorithmConfig;

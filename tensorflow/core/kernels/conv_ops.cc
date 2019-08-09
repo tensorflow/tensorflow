@@ -984,6 +984,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         common_padding_cols}},  // padding_cols
       dtype,                    // tensor datatype
       device_id,                // device_id
+      conv_desc.group_count()
   };
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune &&
