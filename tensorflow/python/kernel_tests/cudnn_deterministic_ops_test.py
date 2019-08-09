@@ -12,16 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Functional tests for BiasAdd."""
+"""Tests for TF_DETERMINISTIC_OPS=1."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.kernel_tests import bias_op_base
+import os
+
+from tensorflow.python.kernel_tests import cudnn_deterministic_base
 from tensorflow.python.platform import test
 
-BiasAddTest = bias_op_base.BiasAddTestBase
+ConvolutionTest = cudnn_deterministic_base.ConvolutionTest
 
 if __name__ == "__main__":
+  # Note that the effect of setting the following environment variable to
+  # 'true' is not tested. Unless we can find a simpler pattern for testing these
+  # environment variables, it would require another test file to be added.
+  os.environ['TF_DETERMINISTIC_OPS'] = '1'
   test.main()

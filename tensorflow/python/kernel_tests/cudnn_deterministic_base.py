@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for TF_CUDNN_DETERMINISTIC=true."""
+"""Tests for deterministic cuDNN functionality."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import collections
-import os
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -28,12 +27,14 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
-# The TF_CUDNN_DETERMINISTIC flag disables autotuning of cuDNN algorithms and
-# causes deterministic cuDNN algorithms to be selected when both deterministic
-# and non-deterministic algorithms are available. These tests are intended to
-# confirm that deterministic algorithms are chosen when
-# TF_CUDNN_DETERMINISTIC=true. The configurations tested were confirmed to
-# produce non-deterministic results without setting TF_CUDNN_DETERMINISTIC=true
+# Setting either of the two environment variables TF_CUDNN_DETERMINISTIC or
+# TF_DETERMINISTIC_OPS to "true" or "1" will disable autotuning of cuDNN
+# algorithms and cause deterministic cuDNN algorithms to be selected when both
+# deterministic and non-deterministic algorithms are available. These tests are
+# intended to confirm that deterministic algorithms are chosen when either
+# environment variable is set to "true" or "1". The tested configurations were
+# first confirmed to produce non-deterministic results when the environment
+# variables are not set.
 
 _PADDING = 'SAME'
 _STRIDES = [1, 1, 1, 1]
@@ -96,8 +97,3 @@ class ConvolutionTest(test.TestCase):
   # TODO(duncanriach): (1) add test to confirm that forward autotuning is
   #   disabled for cuDNN convolution; (2) add test for deterministic cuDNN
   #   max-pooling
-
-
-if __name__ == '__main__':
-  os.environ['TF_CUDNN_DETERMINISTIC'] = 'true'
-  test.main()
