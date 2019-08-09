@@ -215,6 +215,51 @@ def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
   }];
 }
 
+def ViewOp : Linalg_Op<"view", [NoSideEffect]>,
+    Arguments<(ins Buffer:$buffer, Variadic<Range>:$ranges)>,
+    Results<(outs View)> {
+  let summary = "view operation";
+  let description = [{
+    The "linalg.view" op produces a linalg.view which is a multi-dimensional
+    range abstraction on top of an underlying linalg.buffer. This gives an
+    indexing structure to an otherwise non-indexable linalg.buffer.
+
+    A "linalg.view" takes a buffer and a variadic number of ranges and produces
+    a `view` of rank the number of ranges. The elemental type may not match the
+    buffer element type:
+
+    Examples:
+    ```
+       %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
+       %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
+       %3 = linalg.view %1[%2, %2] : !linalg.view<?x?xvector<4xf32>>
+    ```
+  }];
+
+  let builders = [OpBuilder<
+    "Builder *b, OperationState *result, Value *buffer, "
+    "ArrayRef<Value *> ranges, Type resultType = Type(), "
+    "ArrayRef<NamedAttribute> attrs = {}">];
+
+  let verifier = [{
+    if (getViewType().getRank() != llvm::size(ranges()))
+      return emitOpError("the view rank must be the number of its ranges");
+    return success();
+  }];
+
+  let extraClassDeclaration = [{
+    enum { FirstIndexingOperand = 1 };
+    unsigned getRank() { return getViewType().getRank(); }
+    Type getElementType() { return getViewType().getElementType(); }
+    ViewType getViewType() { return getType().cast<ViewType>(); }
+    /// Get the underlying indexing at a given rank.
+    Value *getRange(unsigned rank) {
+      assert(rank < getRank() && "rank overflow");
+      return *(ranges().begin() + rank);
+    }
+  }];
+}
+
 def YieldOp : Linalg_Op<"yield", [NativeOpTrait<"IsTerminator">]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Linalg yield operation";
