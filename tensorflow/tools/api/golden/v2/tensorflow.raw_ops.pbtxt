@@ -2873,6 +2873,10 @@ tf_module {
     argspec: "args=[\'rt_nested_splits\', \'rt_dense_values\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "RaggedTensorToTensor"
+    argspec: "args=[\'shape\', \'values\', \'default_value\', \'row_partition_tensors\', \'row_partition_types\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "RaggedTensorToVariant"
     argspec: "args=[\'rt_nested_splits\', \'rt_dense_values\', \'batched_input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
