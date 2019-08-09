@@ -299,7 +299,7 @@ const std::vector<Operation>& Scope::control_deps() const {
   return impl()->control_deps_;
 }
 
-void Scope::UpdateStatus(const Status s) const {
+void Scope::UpdateStatus(const Status& s) const {
   impl()->status_->Update(s);
   if (impl()->exit_on_error_ && !ok()) {
     LOG(FATAL) << *impl()->status_;
