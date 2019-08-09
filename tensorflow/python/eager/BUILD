@@ -720,6 +720,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/training/tracking:base",
     ],
 )

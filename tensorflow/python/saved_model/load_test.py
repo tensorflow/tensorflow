@@ -1709,7 +1709,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported = cycle(root, cycles)
     self.assertAllClose(2., imported.f(constant_op.constant(1.)))
 
-  def test_ragged_no_signature(self, cycles):
+  def test_ragged(self, cycles):
 
     @def_function.function(input_signature=[
         ragged_tensor.RaggedTensorSpec(shape=[None, None], dtype=dtypes.int32)
@@ -1720,10 +1720,13 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     obj = tracking.AutoTrackable()
     obj.f = f
 
-    imported = cycle(obj, cycles, signatures={})
+    imported1 = cycle(obj, cycles, signatures={})
     rt = ragged_factory_ops.constant([[1, 2], [3]])
-    self.assertAllEqual(imported.f(rt), [[2, 3], [4]])
+    self.assertAllEqual(imported1.f(rt), [[2, 3], [4]])
 
+    imported2 = cycle(obj, cycles)
+    rt = ragged_factory_ops.constant([[1, 2], [3]])
+    self.assertAllEqual(imported2.f(rt), [[2, 3], [4]])
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 @parameterized.named_parameters(

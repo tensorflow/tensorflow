@@ -17,8 +17,8 @@
 set -e
 
 # Get the latest version of pip so it recognize manylinux2010
-pip2 install --upgrade pip
-pip3 install --upgrade pip
+easy_install3 -U pip
+easy_install -U pip
 
 # update pip binary locations
 cp -rp /usr/local/bin/pip* /usr/bin/
