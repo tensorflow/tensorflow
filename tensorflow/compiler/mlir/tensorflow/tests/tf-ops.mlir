@@ -666,6 +666,24 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
 }
 
 // -----
+func @testWhileUndefinedCond(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32> {
+  // expected-error @+1 {{cond refers to an undefined function : undefined_func}}
+  %0 = "tf.While"(%arg0, %arg1) {cond = @undefined_func, body = @body, is_stateless = false} : (tensor<i1>, tensor<f32>) -> (tensor<f32>)
+  return %0 : tensor<f32>
+}
+
+func @body(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32>
+
+// -----
+func @testWhileUndefinedBody(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<f32> {
+  // expected-error @+1 {{body refers to an undefined function : undefined_func}}
+  %0 = "tf.While"(%arg0, %arg1) {cond = @cond, body = @undefined_func, is_stateless = false} : (tensor<i1>, tensor<f32>) -> (tensor<f32>)
+  return %0 : tensor<f32>
+}
+
+func @cond(%arg0: tensor<i1>, %arg1: tensor<f32>) -> tensor<i1>
+
+// -----
 
 func @testWhileCond(tensor<*xf32>) -> ()
 func @testWhileBody(tensor<*xf32>) -> (tensor<*xf32>)
@@ -887,3 +905,4 @@ func @testConcatV2(%arg: tensor<8x16xf32>, %axis: tensor<1xi32>) -> tensor<?xf32
   %0 = "tf.ConcatV2"(%arg, %axis) {N = 1: i64} : (tensor<8x16xf32>, tensor<1xi32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
+

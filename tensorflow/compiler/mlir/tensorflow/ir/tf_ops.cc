@@ -787,14 +787,22 @@ void TruncateDivOp::getCanonicalizationPatterns(
 static LogicalResult Verify(WhileOp op) {
   auto module = op.getParentOfType<ModuleOp>();
   auto condFn = module.lookupSymbol<FuncOp>(op.cond());
+  auto bodyFn = module.lookupSymbol<FuncOp>(op.body());
+  if (!condFn) {
+    return op.emitOpError("cond refers to an undefined function : ")
+           << op.cond();
+  }
+  if (!bodyFn) {
+    return op.emitOpError("body refers to an undefined function : ")
+           << op.body();
+  }
+
   auto condFuncType = condFn.getType();
+  auto bodyFuncType = bodyFn.getType();
 
   // Verify that the cond function has exactly one result.
   if (condFuncType.getNumResults() != 1)
     return op.emitOpError("requires cond function to have exactly one result");
-
-  auto bodyFn = module.lookupSymbol<FuncOp>(op.body());
-  auto bodyFuncType = bodyFn.getType();
 
   SmallVector<Type, 4> operands(op.getOperandTypes());
   SmallVector<Type, 4> results(op.getResultTypes());
