@@ -403,13 +403,7 @@ void LSTMBlockCellBpropWithCUDA(
 
 }  // namespace
 
-#define DEFINE_GPU_SPECS(T)                                                    \
-  template struct TensorZero<GPUDevice, T>;                                    \
-  template struct TensorUnalignedZero<GPUDevice, T>;                           \
-  template struct TensorCopy<GPUDevice, T>;                                    \
-  template struct TensorCopyUnaligned<GPUDevice, T>;                           \
-  template struct TensorCopyToUnaligned<GPUDevice, T>;                         \
-  template struct TensorAdd<GPUDevice, T>;                                     \
+#define DECLARE_GPU_FBPROP(T)                                                  \
   template <>                                                                  \
   void LSTMBlockCellFprop<GPUDevice, T, true /* USE_CUBLAS */>::operator()(    \
       OpKernelContext* ctx, const GPUDevice& d, const float forget_bias,       \
@@ -458,11 +452,20 @@ void LSTMBlockCellBpropWithCUDA(
   template struct LSTMBlockCellBprop<GPUDevice, T, true /* USE_CUBLAS */>;     \
   template struct BlockLSTMBprop<GPUDevice, T, true /* USE_CUBLAS */>;
 
-DEFINE_GPU_SPECS(float);
-DEFINE_GPU_SPECS(Eigen::half);
-// DEFINE_GPU_SPECS(double);
-#undef DEFINE_GPU_SPECS
+#define DECLARE_GPU_SPECS(T)                           \
+  template struct TensorZero<GPUDevice, T>;            \
+  template struct TensorUnalignedZero<GPUDevice, T>;   \
+  template struct TensorCopy<GPUDevice, T>;            \
+  template struct TensorCopyUnaligned<GPUDevice, T>;   \
+  template struct TensorCopyToUnaligned<GPUDevice, T>; \
+  template struct TensorAdd<GPUDevice, T>;             \
+                                                       \
+  DECLARE_GPU_FBPROP(T);
 
+DECLARE_GPU_SPECS(float);
+DECLARE_GPU_SPECS(Eigen::half);
+#undef DECLARE_GPU_SPECS
+#undef DECLARE_GPU_FBPROP
 }  // end namespace functor
 }  // end namespace tensorflow
 #endif  // GOOGLE_CUDA
