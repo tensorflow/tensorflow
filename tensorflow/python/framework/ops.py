@@ -707,7 +707,9 @@ class Tensor(_TensorLike):
                                                    self._dtype.name)
 
   def __hash__(self):
-    if Tensor._USE_EQUALITY and executing_eagerly_outside_functions():
+    g = getattr(self, "graph", None)
+    if (Tensor._USE_EQUALITY and executing_eagerly_outside_functions() and
+        (g is None or g._building_function)):  # pylint: disable=protected-access
       raise TypeError("Tensor is unhashable if Tensor equality is enabled. "
                       "Instead, use tensor.experimental_ref() as the key.")
     else:
