@@ -211,7 +211,6 @@ class ExportTest(test_util.TensorFlowTestCase):
     export_dir_base = "/tmp/export/"
     export_dir_1 = export_utils.get_timestamped_export_dir(export_dir_base)
     temp_export_dir = export_utils.get_temp_export_dir(export_dir_1).decode("utf-8")
-    print(temp_export_dir)
     expected_1 = re.compile(export_dir_base + "temp-[\d]{10}")
     self.assertTrue(expected_1.match(temp_export_dir))
 
