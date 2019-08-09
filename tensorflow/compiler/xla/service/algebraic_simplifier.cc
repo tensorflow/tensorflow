@@ -172,6 +172,10 @@ bool IsUnstridedSlice(const HloInstruction* hlo) {
 // more general case a worklist based approach would be needed.
 class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
  public:
+  explicit AlgebraicSimplifierVisitor(const AlgebraicSimplifierOptions& options,
+                                      AlgebraicSimplifier* simplifier)
+      : options_(options), simplifier_(simplifier) {}
+
   Status HandleAdd(HloInstruction* add) override;
 
   Status HandleAnd(HloInstruction* logical_and) override;
@@ -230,7 +234,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleReshape(HloInstruction* reshape) override;
 
-  Status HandleReduce(HloInstruction* reduce) override;
+  Status HandleReduce(HloInstruction* hlo) override;
 
   Status HandleReduceWindow(HloInstruction* reduce_window) override;
 
@@ -252,16 +256,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   Status HandleMap(HloInstruction* map) override;
 
   // Runs the visitor on a computation.
-  static bool Run(HloComputation* computation,
-                  const AlgebraicSimplifierOptions& options,
-                  AlgebraicSimplifier* simplifier);
+  bool Run(HloComputation* computation,
+           const AlgebraicSimplifierOptions& options,
+           AlgebraicSimplifier* simplifier);
 
  private:
-  explicit AlgebraicSimplifierVisitor(HloComputation* computation,
-                                      const AlgebraicSimplifierOptions& options,
-                                      AlgebraicSimplifier* simplifier)
-      : computation_(computation), options_(options), simplifier_(simplifier) {}
-
   // Removes degenerate dimension from dot.
   StatusOr<bool> RemoveDegenerateDimensionFromDot(HloInstruction* dot);
 
@@ -391,6 +390,9 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Tries to convert slice(reshape(X)) into reshape(slice(X))
   StatusOr<bool> TryToReorderSliceAndReshape(HloInstruction* slice);
 
+  // Useful when we want to use the same visitor over multiple computations.
+  void ResetState(HloComputation* computation);
+
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
   HloComputation* computation_;
@@ -409,12 +411,18 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
+void AlgebraicSimplifierVisitor::ResetState(HloComputation* computation) {
+  changed_ = false;
+  ResetVisitStates();
+  computation_ = computation;
+}
+
 bool AlgebraicSimplifierVisitor::Run(HloComputation* computation,
                                      const AlgebraicSimplifierOptions& options,
                                      AlgebraicSimplifier* simplifier) {
-  AlgebraicSimplifierVisitor visitor(computation, options, simplifier);
-  TF_CHECK_OK(computation->Accept(&visitor));
-  return visitor.changed_ || visitor.changed();
+  ResetState(computation);
+  TF_CHECK_OK(computation->Accept(this));
+  return changed_ || changed();
 }
 
 bool AlgebraicSimplifierVisitor::SameShape(const HloInstruction* lhs,
@@ -4045,8 +4053,9 @@ StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
   XLA_VLOG_LINES(2,
                  "AlgebraicSimplifier::Run(), before:\n" + module->ToString());
   bool changed = false;
+  AlgebraicSimplifierVisitor visitor(options_, this);
   for (auto* comp : module->MakeNonfusionComputations()) {
-    if (AlgebraicSimplifierVisitor::Run(comp, options_, this)) {
+    if (visitor.Run(comp, options_, this)) {
       changed = true;
     }
   }
