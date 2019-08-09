@@ -110,10 +110,6 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
     int32_t* output_activation_min, int32_t* output_activation_max,
     int32_t* per_channel_multiplier, int* per_channel_shift);
 
-// QuantizedMultiplier with the guard that shift will not be smaller than -31.
-void GuardedQuantizeMultiplier(double effective_output_scale,
-                               int32_t* significand, int* shift);
-
 // Calculates the multiplication factor for a quantized convolution (or
 // quantized depthwise convolution) involving the given tensors. Returns an
 // error if the scales of the tensors are not compatible.
