@@ -3,24 +3,18 @@
 // RUN: mlir-opt %s -linalg-lower-to-llvm-dialect | mlir-cpu-runner -e matmul -entry-point-result=f32 -shared-libs=%linalg_test_lib_dir/libcblas%shlibext,%linalg_test_lib_dir/libcblas_interface%shlibext | FileCheck %s
 // RUN: mlir-opt %s -linalg-lower-to-loops -linalg-lower-to-llvm-dialect | mlir-cpu-runner -e matmul -entry-point-result=f32 -shared-libs=%linalg_test_lib_dir/libcblas%shlibext,%linalg_test_lib_dir/libcblas_interface%shlibext | FileCheck %s
 
-func @fill_f32(%arg0 : !linalg.buffer<?xf32>, %f : f32) {
+// Creates and returns a 1-D buffer of size %s filled with the value %f
+func @alloc_filled_f32(%s : index, %f : f32) -> !linalg.buffer<?xf32> {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
-  %s = linalg.buffer_size %arg0 : !linalg.buffer<?xf32>
+  %buf = linalg.buffer_alloc %s : !linalg.buffer<?xf32>
   %R = linalg.range %c0:%s:%c1 : !linalg.range
-  %V = linalg.view %arg0[%R] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
-  loop.for %i0 = %c0 to %s step %c1 {
-    linalg.store %f, %V[%i0] : !linalg.view<?xf32>
-  }
-  return
+  %V = linalg.view %buf[%R] : !linalg.buffer<?xf32> -> !linalg.view<?xf32>
+  linalg.fill(%V, %f) : !linalg.view<?xf32>, f32
+  return %buf : !linalg.buffer<?xf32>
 }
 
-func @alloc_filled_f32(%s : index, %f : f32) -> !linalg.buffer<?xf32> {
-  %A = linalg.buffer_alloc %s : !linalg.buffer<?xf32>
-  call @fill_f32(%A, %f) : (!linalg.buffer<?xf32>, f32) -> ()
-  return %A : !linalg.buffer<?xf32>
-}
-
+// Test for linalg.dot.
 func @dot() -> f32 {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
@@ -48,6 +42,7 @@ func @dot() -> f32 {
   return %res : f32
 }
 
+// Test for linalg.matmul.
 func @matmul() -> f32 {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
@@ -81,7 +76,6 @@ func @matmul() -> f32 {
 
   return %res : f32
 }
-
 
 // All tests return this value
 // CHECK: 4.2{{0+}}e+01
