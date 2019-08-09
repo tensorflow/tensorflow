@@ -1,4 +1,4 @@
-// Copyright 2018 Google Inc. All rights reserved.
+// Copyright 2019 Google Inc. All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// Custom configuration options for a TensorFlow Lite `Interpreter`.
-public struct InterpreterOptions: Equatable {
-  /// Maximum number of CPU threads that the interpreter should run on. Default is `nil` indicating
-  /// that the `Interpreter` will decide the number of threads to use.
-  public var threadCount: Int? = nil
+import TensorFlowLiteC
 
-  /// Creates a new instance of interpreter options.
-  public init() {}
+/// A delegate that the `Interpreter` uses to perform TensorFlow Lite model computations.
+public protocol Delegate: class {
+  /// `TFL_Delegate` C pointer type.
+  typealias CDelegate = OpaquePointer
+
+  /// Delegate that performs model computations.
+  var cDelegate: CDelegate? { get }
 }
