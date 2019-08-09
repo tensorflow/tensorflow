@@ -264,7 +264,7 @@ def numpy_text(tensor, is_repr=False):
     text = "\n" + text
   return text
 
-
+@tf_export(v1=["enable_tensor_equality"])
 def enable_tensor_equality():
   """Compare Tensors with element-wise comparison and thus be unhashable.
 
@@ -275,7 +275,7 @@ def enable_tensor_equality():
   """
   Tensor._USE_EQUALITY = True  # pylint: disable=protected-access
 
-
+@tf_export(v1=["disable_tensor_equality"])
 def disable_tensor_equality():
   """Compare Tensors by their id and be hashable.
 
