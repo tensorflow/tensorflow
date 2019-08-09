@@ -724,6 +724,66 @@ static ParseResult parseConstantOp(OpAsmParser *parser,
 }
 
 //===----------------------------------------------------------------------===//
+// Builder, printer and verifier for LLVM::GlobalOp.
+//===----------------------------------------------------------------------===//
+
+void GlobalOp::build(Builder *builder, OperationState *result, LLVMType type,
+                     bool isConstant, StringRef name, Attribute value,
+                     ArrayRef<NamedAttribute> attrs) {
+  result->addAttribute(SymbolTable::getSymbolAttrName(),
+                       builder->getStringAttr(name));
+  result->addAttribute("type", builder->getTypeAttr(type));
+  if (isConstant)
+    result->addAttribute("constant", builder->getUnitAttr());
+  result->addAttribute("value", value);
+  result->attributes.append(attrs.begin(), attrs.end());
+}
+
+static void printGlobalOp(OpAsmPrinter *p, GlobalOp op) {
+  *p << op.getOperationName() << ' ';
+  if (op.constant())
+    *p << "constant ";
+  *p << '@' << op.sym_name() << '(';
+  p->printAttribute(op.value());
+  *p << ')';
+  p->printOptionalAttrDict(op.getAttrs(), {SymbolTable::getSymbolAttrName(),
+                                           "type", "constant", "value"});
+  *p << " : ";
+  p->printType(op.type());
+}
+
+// <operation> ::= `llvm.global` `constant`? `@` identifier `(` attribute `)`
+//                  attribute-list? : type
+static ParseResult parseGlobalOp(OpAsmParser *parser, OperationState *result) {
+  if (succeeded(parser->parseOptionalKeyword("constant")))
+    result->addAttribute("constant", parser->getBuilder().getUnitAttr());
+
+  Attribute value;
+  StringAttr name;
+  Type type;
+  if (parser->parseSymbolName(name, SymbolTable::getSymbolAttrName(),
+                              result->attributes) ||
+      parser->parseLParen() ||
+      parser->parseAttribute(value, "value", result->attributes) ||
+      parser->parseRParen() ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonType(type))
+    return failure();
+
+  result->addAttribute("type", parser->getBuilder().getTypeAttr(type));
+  return success();
+}
+
+static LogicalResult verify(GlobalOp op) {
+  if (!llvm::PointerType::isValidElementType(op.getType().getUnderlyingType()))
+    return op.emitOpError(
+        "expects type to be a valid element type for an LLVM pointer");
+  if (op.getParentOp() && !isa<ModuleOp>(op.getParentOp()))
+    return op.emitOpError("must appear at the module level");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // Builder, printer and verifier for LLVM::LLVMFuncOp.
 //===----------------------------------------------------------------------===//
 

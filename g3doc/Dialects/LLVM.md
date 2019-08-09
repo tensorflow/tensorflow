@@ -283,6 +283,27 @@ Examples:
 %3 = llvm.constant(splat<vector<4xf32>, 1.0>) : !llvm<"<4 x float>">
 ```
 
+#### `llvm.global`
+
+Since MLIR allows for arbitrary operations to be present at the top level,
+global variables are defined using the `llvm.global` operation. Both global
+constants and variables can be defined, and the value must be initialized in
+both cases. The initialization and type syntax is similar to `llvm.constant` and
+may use two types: one for MLIR attribute and another for the LLVM value. These
+types must be compatible. `llvm.global` must appear at top-level of the
+enclosing module. It uses an @-identifier for its value, which will be uniqued
+by the module with respect to other @-identifiers in it.
+
+Examples:
+
+```mlir {.mlir}
+// Global values use @-identifiers.
+llvm.global constant @cst(42 : i32) : !llvm.i32
+
+// Non-constant values must also be initialized.
+llvm.global @variable(32.0 : f32) : !llvm.float
+```
+
 #### `llvm.undef`
 
 Unlike LLVM IR, MLIR does not have first-class undefined values. Such values

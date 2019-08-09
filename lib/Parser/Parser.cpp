@@ -3350,6 +3350,22 @@ public:
   }
 
   //===--------------------------------------------------------------------===//
+  // Identifier Parsing
+  //===--------------------------------------------------------------------===//
+
+  /// Parse an @-identifier and store it (without the '@' symbol) in a string
+  /// attribute named 'attrName'.
+  ParseResult parseSymbolName(StringAttr &result, StringRef attrName,
+                              SmallVectorImpl<NamedAttribute> &attrs) override {
+    if (parser.getToken().isNot(Token::at_identifier))
+      return failure();
+    result = getBuilder().getStringAttr(parser.getTokenSpelling().drop_front());
+    attrs.push_back(getBuilder().getNamedAttr(attrName, result));
+    parser.consumeToken();
+    return success();
+  }
+
+  //===--------------------------------------------------------------------===//
   // Operand Parsing
   //===--------------------------------------------------------------------===//
 

@@ -305,6 +305,14 @@ public:
   parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result) = 0;
 
   //===--------------------------------------------------------------------===//
+  // Identifier Parsing
+  //===--------------------------------------------------------------------===//
+
+  virtual ParseResult
+  parseSymbolName(StringAttr &result, StringRef attrName,
+                  SmallVectorImpl<NamedAttribute> &attrs) = 0;
+
+  //===--------------------------------------------------------------------===//
   // Operand Parsing
   //===--------------------------------------------------------------------===//
 
