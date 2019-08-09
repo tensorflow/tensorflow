@@ -37,6 +37,7 @@
 #include "mlir/Transforms/FoldUtils.h"
 
 #include "llvm/ADT/StringSet.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 using namespace mlir::edsc;
@@ -1084,4 +1085,36 @@ SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
     return res;
   }
   llvm_unreachable("Missing loopToOperandRangesMaps for op");
+}
+
+static void appendMangledType(llvm::raw_string_ostream &ss, Type t) {
+  if (auto view = t.dyn_cast<ViewType>()) {
+    ss << "view";
+    for (unsigned i = 0, e = view.getRank(); i < e; ++i)
+      ss << "x";
+    appendMangledType(ss, view.getElementType());
+  } else if (auto vec = t.dyn_cast<VectorType>()) {
+    ss << "vector";
+    interleave(
+        vec.getShape(), [&](int64_t i) { ss << i; }, [&]() { ss << "x"; });
+    appendMangledType(ss, vec.getElementType());
+  } else if (t.isIntOrIndexOrFloat()) {
+    ss << t;
+  } else {
+    llvm_unreachable("Invalid type for linalg library name mangling");
+  }
+}
+
+std::string mlir::linalg::generateLibraryCallName(Operation *op) {
+  assert(isa<LinalgOp>(op));
+  std::string name(op->getName().getStringRef().str());
+  name.reserve(128);
+  std::replace(name.begin(), name.end(), '.', '_');
+  llvm::raw_string_ostream ss(name);
+  ss << "_";
+  auto types = op->getOperandTypes();
+  interleave(
+      types.begin(), types.end(), [&](Type t) { appendMangledType(ss, t); },
+      [&]() { ss << "_"; });
+  return ss.str();
 }

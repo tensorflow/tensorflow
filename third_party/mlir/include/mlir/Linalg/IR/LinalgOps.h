@@ -186,6 +186,28 @@ public:
   }
 };
 
+/// Returns the name mangled library call name to disambiguate between different
+/// overloads at the C level. The name mangling scheme is basic and uses MLIR
+/// type names:
+///   1. form a string which is the concatenation of the linalg op name with all
+///      the operand type names, separate by underscores;
+///   2. drop the `linalg.` prefix, and the `<`, `>`, `?` symbols from the type.
+/// Assumes `op` is a LinalgOp.
+///
+/// Examples:
+///
+/// 1. linalg.fill(%A, %f) : !linalg.view<f32>, f32
+///   name mangles into `linalg_fill_viewf32_f32_impl`
+///
+/// 2. linalg.dot(%A, %B, %C) :
+///      !linalg.view<?xf32>, !linalg.view<?xf32>, !linalg.view<f32>
+///   name mangles into `linalg_dot_viewxf32_viewxf32_viewf32_impl`
+///
+/// 3. linalg.matmul(...) :
+///      !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
+///   name mangles into `linalg_matmul_viewxxf32_viewxxf32_viewxxf32_impl`
+std::string generateLibraryCallName(Operation *op);
+
 #define GET_OP_CLASSES
 #include "mlir/Linalg/IR/LinalgOps.h.inc"
 

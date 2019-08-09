@@ -80,10 +80,9 @@ class LinalgLibraryBase_Op<string mnemonic, list<OpTrait> props>
 
 class LinalgLibrary_Op<string mnemonic, list<OpTrait> props>
   : LinalgLibraryBase_Op<mnemonic, props> {
-
-  code classDeclaration = [{
-    StringRef getLibraryCallName() {
-      return "linalg_}] # mnemonic # [{";
+  code libraryCallName = [{
+    std::string getLibraryCallName() {
+      return generateLibraryCallName(getOperation());
     }
   }];
 }
@@ -138,7 +137,7 @@ def CopyOp : LinalgLibrary_Op<"copy", [NInputsAndOutputs<1, 1>]> {
     return build(
       builder, result, input, output, AffineMapAttr(), AffineMapAttr());
   }]>];
-  let extraClassDeclaration = classDeclaration # [{
+  let extraClassDeclaration = libraryCallName # [{
     unsigned getNumParallelLoops() {
       auto *view = *(getOperands().begin());
       return view->getType().cast<ViewType>().getRank();
@@ -151,7 +150,7 @@ def CopyOp : LinalgLibrary_Op<"copy", [NInputsAndOutputs<1, 1>]> {
 
 def FillOp : LinalgLibrary_Op<"fill", [NInputsAndOutputs<0, 1>]> {
   let arguments = (ins View, AnyTypeOf<[AnyFloat, AnyInteger, AnyVector]>);
-  let extraClassDeclaration = classDeclaration # [{
+  let extraClassDeclaration = libraryCallName # [{
     unsigned getNumParallelLoops() {
       auto *view = *(getOperands().begin());
       return view->getType().cast<ViewType>().getRank();
@@ -170,7 +169,7 @@ def DotOp : LinalgLibrary_Op<"dot",
                              NLoopTypes<0, 1, 0>,
                              ViewRanks<[1, 1, 0]>]> {
   let arguments = (ins View, View, View);
-  let extraClassDeclaration = classDeclaration;
+  let extraClassDeclaration = libraryCallName;
 }
 
 def MatvecOp : LinalgLibrary_Op<"matvec",
@@ -178,7 +177,7 @@ def MatvecOp : LinalgLibrary_Op<"matvec",
                                    NLoopTypes<1, 1, 0>,
                                    ViewRanks<[2, 1, 1]>]> {
   let arguments = (ins View, View, View);
-  let extraClassDeclaration = classDeclaration;
+  let extraClassDeclaration = libraryCallName;
 }
 
 def MatmulOp : LinalgLibrary_Op<"matmul",
@@ -186,7 +185,7 @@ def MatmulOp : LinalgLibrary_Op<"matmul",
                                    NLoopTypes<2, 1, 0>,
                                    ViewRanks<[2, 2, 2]>]> {
   let arguments = (ins View, View, View);
-  let extraClassDeclaration = classDeclaration;
+  let extraClassDeclaration = libraryCallName;
 }
 
 def ConvOp : LinalgLibrary_Op<"conv", [NInputsAndOutputs<2, 1>]> {
@@ -211,7 +210,7 @@ def ConvOp : LinalgLibrary_Op<"conv", [NInputsAndOutputs<2, 1>]> {
   let arguments = (ins View:$filter, View:$input, View:$output,
                    OptionalAttr<I64ArrayAttr>:$strides,
                    OptionalAttr<I64ArrayAttr>:$dilations);
-  let extraClassDeclaration = classDeclaration # [{
+  let extraClassDeclaration = libraryCallName # [{
     // TODO(ntv) extend to support more than 1 dimensions and potentially
     // grouping too.
     unsigned getNumBatchDimensions() { return 1; }

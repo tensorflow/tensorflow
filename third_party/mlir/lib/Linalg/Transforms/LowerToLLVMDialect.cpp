@@ -39,6 +39,8 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/LowerAffine.h"
 #include "mlir/Transforms/Passes.h"
+
+#include "llvm/ADT/SetVector.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
@@ -545,7 +547,7 @@ static FuncOp getLLVMLibraryCallImplDefinition(FuncOp libFn) {
   }
   SmallVector<Type, 4> fnArgTypes;
   for (auto t : libFn.getType().getInputs()) {
-    assert(t.isa<LLVMType>() &&
+    assert(t && t.isa<LLVMType>() &&
            "Expected LLVM Type for argument while generating library Call "
            "Implementation Definition");
     fnArgTypes.push_back(t.cast<LLVMType>().getPointerTo());
@@ -577,12 +579,8 @@ getLLVMLibraryCallDeclaration(Operation *op, LLVMTypeConverter &lowering,
 
   // Get the Function type consistent with LLVM Lowering.
   SmallVector<Type, 4> inputTypes;
-  for (auto operand : op->getOperands()) {
-    // TODO(ravishankarm): convertLinalgType handles only a subset of Linalg
-    // types. Handle other types (as well as non-Linalg types) either here or in
-    // convertLinalgType.
-    inputTypes.push_back(convertLinalgType(operand->getType(), lowering));
-  }
+  for (auto operand : op->getOperands())
+    inputTypes.push_back(lowering.convertType(operand->getType()));
   assert(op->getNumResults() == 0 &&
          "Library call for linalg operation can be generated only for ops that "
          "have void return types");
@@ -632,15 +630,15 @@ public:
     return convertLinalgType(t, *this);
   }
 
-  void addLibraryFnDeclaration(FuncOp fn) {
-    libraryFnDeclarations.push_back(fn);
-  }
+  void addLibraryFnDeclaration(FuncOp fn) { libraryFnDeclarations.insert(fn); }
 
-  ArrayRef<FuncOp> getLibraryFnDeclarations() { return libraryFnDeclarations; }
+  ArrayRef<FuncOp> getLibraryFnDeclarations() {
+    return libraryFnDeclarations.getArrayRef();
+  }
 
 private:
   /// List of library functions declarations needed during dialect conversion
-  SmallVector<FuncOp, 2> libraryFnDeclarations;
+  llvm::SetVector<FuncOp> libraryFnDeclarations;
 };
 } // end anonymous namespace
 
@@ -676,11 +674,13 @@ static void
 populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
                                        OwningRewritePatternList &patterns,
                                        MLIRContext *ctx) {
-  patterns.insert<BufferAllocOpConversion, BufferDeallocOpConversion,
-                  BufferSizeOpConversion, DimOpConversion,
-                  LinalgOpConversion<DotOp>, LinalgOpConversion<MatmulOp>,
-                  LoadOpConversion, RangeOpConversion, SliceOpConversion,
-                  StoreOpConversion, ViewOpConversion>(ctx, converter);
+  patterns
+      .insert<BufferAllocOpConversion, BufferDeallocOpConversion,
+              BufferSizeOpConversion, DimOpConversion,
+              LinalgOpConversion<DotOp>, LinalgOpConversion<FillOp>,
+              LinalgOpConversion<MatmulOp>, LoadOpConversion, RangeOpConversion,
+              SliceOpConversion, StoreOpConversion, ViewOpConversion>(
+          ctx, converter);
 }
 
 namespace {
