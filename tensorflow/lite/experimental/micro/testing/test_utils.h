@@ -190,6 +190,29 @@ inline TfLiteTensor CreateQuantized32Tensor(std::initializer_list<int32_t> data,
   return CreateQuantized32Tensor(data.begin(), dims, name, min, max);
 }
 
+template <typename input_type = int32_t,
+          TfLiteType tensor_input_type = kTfLiteInt32>
+inline TfLiteTensor CreateTensor(const input_type* data, TfLiteIntArray* dims,
+                                 const char* name) {
+  TfLiteTensor result;
+  result.type = tensor_input_type;
+  result.data.raw = reinterpret_cast<char*>(const_cast<input_type*>(data));
+  result.dims = dims;
+  result.allocation_type = kTfLiteMemNone;
+  result.bytes = ElementCount(*dims) * sizeof(input_type);
+  result.allocation = nullptr;
+  result.name = name;
+  result.is_variable = true;
+  return result;
+}
+
+template <typename input_type = int32_t,
+          TfLiteType tensor_input_type = kTfLiteInt32>
+inline TfLiteTensor CreateTensor(std::initializer_list<input_type> data,
+                                 TfLiteIntArray* dims, const char* name) {
+  return CreateTensor<input_type, tensor_input_type>(data.begin(), dims, name);
+}
+
 // Do a simple string comparison for testing purposes, without requiring the
 // standard C library.
 inline int TestStrcmp(const char* a, const char* b) {
