@@ -49,9 +49,9 @@ class tstring {
   std::string str_;
 
  public:
-  tstring() : str_() {}
+  tstring() = default;
 
-  tstring(const tstring& str) = default;
+  tstring(const tstring&) = default;
 
   tstring(const std::string& str) : str_(str) {}
 
@@ -63,7 +63,9 @@ class tstring {
                             std::is_same<T, absl::string_view>::value, T>>
   explicit tstring(const T& str) : str_(str.data(), str.size()) {}
 
-  ~tstring() {}
+  tstring(tstring&&) noexcept = default;
+
+  ~tstring() = default;
 
   tstring& operator=(const tstring& str) = default;
 
@@ -86,6 +88,8 @@ class tstring {
 
     return *this;
   }
+
+  tstring& operator=(tstring&&) noexcept = default;
 
   bool operator<(const tstring& o) const { return str_ < o.str_; }
 
