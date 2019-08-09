@@ -249,6 +249,12 @@ class FuncGraph(ops.Graph):
     else:
       self._collections = collections
 
+    # Keep track of whether this FuncGraph is exportable to SavedModel. Use
+    # `graph.mark_as_unsaveable(reason)` to mark this FuncGraph and any
+    # dependent functions as unsaveable.
+    self._saveable = True
+    self._saving_errors = set()
+
   def __str__(self):
     return "FuncGraph(name=%s, id=%s)" % (self.name, id(self))
 
@@ -700,6 +706,31 @@ class FuncGraph(ops.Graph):
         for v in self.variables
         if ops.tensor_id(v.handle) in self._captures
     }
+
+  def mark_as_unsaveable(self, error_message):
+    """Marks this FuncGraph as unsaveable.
+
+    Any attempts to export this FuncGraph will raise an error with the specified
+    message.
+
+    Args:
+      error_message: List or string containing the error message to be raised
+        when saving this FuncGraph to SavedModel.
+    """
+    self._saveable = False
+    if isinstance(error_message, str):
+      error_message = [error_message]
+    self._saving_errors.update(error_message)
+
+  @property
+  def saveable(self):
+    """Returns whether this FuncGraph is saveable."""
+    return self._saveable
+
+  @property
+  def saving_errors(self):
+    """Returns set of errors preventing this FuncGraph from being saved."""
+    return self._saving_errors
 
 
 def func_graph_from_py_func(name,

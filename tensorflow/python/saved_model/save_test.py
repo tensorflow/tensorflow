@@ -141,6 +141,22 @@ class SaveTest(test.TestCase):
       save.save(root, os.path.join(self.get_temp_dir(), "saved_model"),
                 signatures=root.f)
 
+  def test_unsaveable_func_graph(self):
+    root = module.Module()
+
+    @def_function.function(input_signature=[])
+    def nested_f():
+      ops.get_default_graph().mark_as_unsaveable("ERROR MSG")
+      return 1
+
+    @def_function.function(input_signature=[])
+    def f():
+      return nested_f()
+
+    root.f = f
+    with self.assertRaisesRegexp(ValueError, "ERROR MSG"):
+      save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
+
   def test_version_information_included(self):
     root = tracking.AutoTrackable()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
