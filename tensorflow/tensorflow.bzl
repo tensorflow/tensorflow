@@ -2526,7 +2526,7 @@ def if_mlir(if_true, if_false = []):
 
 # TODO(b/138724071): Remove when build is stable.
 def if_mlir_tflite(if_true, if_false = []):
-    return if_mlir(if_true, if_false)
+    return if_true  # Internally we always build with MLIR.
 
 def tfcompile_extra_flags():
     return ""
