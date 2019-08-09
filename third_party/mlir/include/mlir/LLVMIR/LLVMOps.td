@@ -352,6 +352,29 @@ def LLVM_UnreachableOp : LLVM_TerminatorOp<"unreachable", []> {
 
 // Pseudo-operations (do not appear in LLVM IR but necessary for the dialect to
 // work correctly).
+def LLVM_GlobalOp
+    : LLVM_ZeroResultOp<"global">,
+      Arguments<(ins TypeAttr:$type, UnitAttr:$constant, StrAttr:$sym_name,
+                 AnyAttr:$value)> {
+
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState *result, LLVMType type, "
+              "bool isConstant, StringRef name, Attribute value, "
+              "ArrayRef<NamedAttribute> attrs = {}">
+  ];
+
+  let extraClassDeclaration = [{
+    /// Return the LLVM type of the global.
+    LLVMType getType() {
+      return type().cast<LLVMType>();
+    }
+  }];
+
+  let printer = "printGlobalOp(p, *this);";
+  let parser = "return parseGlobalOp(parser, result);";
+  let verifier = "return ::verify(*this);";
+}
+
 def LLVM_LLVMFuncOp : LLVM_ZeroResultOp<"func",
       [NativeOpTrait<"IsIsolatedFromAbove">, NativeOpTrait<"FunctionLike">]> {
   let summary = "LLVM dialect function, has wrapped LLVM IR function type";
