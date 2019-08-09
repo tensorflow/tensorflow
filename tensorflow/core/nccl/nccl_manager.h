@@ -55,11 +55,13 @@ class NcclManager {
 
   // A participant in a Collective.
   struct Participant {
-    Participant(se::StreamExecutor* executor, se::Stream* tensor_stream,
+    Participant(se::StreamExecutor* executor,
+                se::Stream* tensor_stream, se::Stream* nccl_stream,
                 EventMgr* event_mgr, int gpu_device_id, const Tensor* input,
                 Tensor* output, int global_rank, DoneCallback done_callback)
         : executor(executor),
           tensor_stream(tensor_stream),
+          nccl_stream(nccl_stream),
           event_mgr(event_mgr),
           gpu_device_id(gpu_device_id),
           input(input),
@@ -70,6 +72,7 @@ class NcclManager {
       DCHECK(executor != nullptr);
       DCHECK(event_mgr != nullptr);
       DCHECK(tensor_stream != nullptr);
+      DCHECK(nccl_stream != nullptr);
     }
 
     // StreamExecutor for the device. Expected to be live for process lifetime.
@@ -82,6 +85,9 @@ class NcclManager {
     // would see the data. Owned by the caller, who must keep it live until
     // `done_callback` is called.
     se::Stream* const tensor_stream;
+
+    // `nccl_stream` is the stream for all nccl operations
+    se::Stream* const nccl_stream;
 
     // EventMgr which polls on executor.
     // Owned by the caller, who must keep it live until `done_callback` is

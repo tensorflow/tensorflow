@@ -17,6 +17,7 @@ limitations under the License.
 #ifdef GOOGLE_CUDA
 
 #include "tensorflow/core/common_runtime/collective_util.h"
+#include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -25,6 +26,9 @@ namespace tensorflow {
 
 void NcclBroadcaster::Run(StatusCallback done) {
   auto* compute_stream = col_ctx_->op_ctx->op_device_context()->stream();
+  auto* nccl_stream =
+      static_cast<GPUDeviceContext*>(col_ctx_->op_ctx->op_device_context())
+          ->nccl_stream();
   auto* gpu_info = col_ctx_->op_ctx->device()->tensorflow_gpu_device_info();
   const int num_global_devices = col_params_->group.group_size;
   const int num_local_devices = col_params_->instance.num_devices_per_task.at(
@@ -32,8 +36,8 @@ void NcclBroadcaster::Run(StatusCallback done) {
   string nccl_collective_key =
       NcclCollectiveKey(col_ctx_->exec_key, col_ctx_->step_id);
   auto participant = absl::make_unique<NcclManager::Participant>(
-      compute_stream->parent(), compute_stream, gpu_info->event_mgr,
-      gpu_info->gpu_id, col_ctx_->input, col_ctx_->output,
+      compute_stream->parent(), compute_stream, nccl_stream,
+      gpu_info->event_mgr, gpu_info->gpu_id, col_ctx_->input, col_ctx_->output,
       col_params_->default_rank, std::move(done));
   VLOG(1)
       << "NcclBroadcast calling NcclManager::AddBroadcastSend/Recv num_tasks "
