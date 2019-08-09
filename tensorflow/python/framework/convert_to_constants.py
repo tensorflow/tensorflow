@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.util import object_identity
 from tensorflow.python.training.saver import export_meta_graph
 
 
@@ -177,10 +178,12 @@ def _get_tensor_data(func):
     Dict
   """
   tensor_data = {}
-  map_index_to_variable = {
-      func.captured_inputs.index(var.handle): var
-      for var in func.graph.variables
-  }
+  map_index_to_variable = {}
+  for var in func.graph.variables:
+    for idx, captured_input in enumerate(func.captured_inputs):
+      if var.handle is captured_input:  # pylint: disable=protected-access
+        map_index_to_variable[idx] = var
+        break
 
   # Iterates through all captures which are represented as Placeholders.
   for idx, (val_tensor, name_tensor) in enumerate(func.graph.captures):
@@ -353,9 +356,10 @@ def _construct_concrete_function(func, output_graph_def,
   """
   # Create a ConcreteFunction from the new GraphDef.
   input_tensors = func.graph.internal_captures
-  converted_inputs = set(
+  converted_inputs = object_identity.ObjectIdentitySet(
       [input_tensors[index] for index in converted_input_indices])
-  not_converted_inputs = set(func.inputs).difference(converted_inputs)
+  not_converted_inputs = object_identity.ObjectIdentitySet(
+      func.inputs).difference(converted_inputs)
   not_converted_inputs_map = {
       tensor.name: tensor for tensor in not_converted_inputs
   }
