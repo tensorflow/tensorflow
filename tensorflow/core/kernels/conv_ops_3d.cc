@@ -404,10 +404,6 @@ struct LaunchConvOp<GPUDevice, T> {
                                  {{out_planes, out_rows, out_cols}}, out_depth),
                  &transformed_output));
 
-    se::TfAllocatorAdapter tf_allocator_adapter(
-        stream->parent()->platform(), ctx->device()->GetAllocator({}));
-    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                            se::cuda::PtxCompilationOptions());
     auto input_ptr = AsDeviceMemory(input.template flat<T>().data(),
                                     input.template flat<T>().size());
     auto filter_ptr =
@@ -416,8 +412,6 @@ struct LaunchConvOp<GPUDevice, T> {
     auto output_ptr =
         AsDeviceMemory(transformed_output.template flat<T>().data(),
                        transformed_output.template flat<T>().size());
-    se::DeviceMemory<T> output_ptr_rz(
-        WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
     static int64 ConvolveScratchSize = GetDnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
@@ -447,6 +441,12 @@ struct LaunchConvOp<GPUDevice, T> {
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
+      se::TfAllocatorAdapter tf_allocator_adapter(
+          stream->parent()->platform(), ctx->device()->GetAllocator({}));
+      se::cuda::RedzoneAllocator rz_allocator(
+          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions());
+      se::DeviceMemory<T> output_ptr_rz(
+          WrapRedzoneBestEffort(&rz_allocator, output_ptr));
       std::vector<AlgorithmDesc> algorithms;
       OP_REQUIRES(ctx,
                   stream->parent()->GetConvolveAlgorithms(
