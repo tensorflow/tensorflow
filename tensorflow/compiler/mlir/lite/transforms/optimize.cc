@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace TFL {
@@ -44,6 +46,7 @@ namespace TFL {
 namespace {
 
 using ::llvm::cast;
+using ::llvm::isa;
 
 // Optimize TFLite operations in functions.
 struct Optimize : public FunctionPass<Optimize> {
@@ -178,9 +181,7 @@ struct FuseFullyConnectedAndMul : public RewritePattern {
     auto mul_op = cast<MulOp>(op);
     DenseElementsAttr cst;
     Value *constant_val = mul_op.rhs();
-    if (!matchPattern(constant_val, m_Constant(&cst))) {
-      return matchFailure();
-    }
+    if (!matchPattern(constant_val, m_Constant(&cst))) return matchFailure();
 
     // Fully Connected.
     auto fc_op =
@@ -188,6 +189,11 @@ struct FuseFullyConnectedAndMul : public RewritePattern {
     if (!fc_op) return matchFailure();
     Value *filter = fc_op.filter();
     Value *bias = fc_op.bias();
+    ElementsAttr cst_tmp;
+    if (!matchPattern(filter, m_Constant(&cst_tmp))) return matchFailure();
+    if (!bias->getType().isa<NoneType>() &&
+        !matchPattern(bias, m_Constant(&cst_tmp)))
+      return matchFailure();
     if (fc_op.fused_activation_function().equals("None")) return matchFailure();
 
     // Broadcast the constant operand of Mul if it isn't compatible to the
@@ -210,20 +216,21 @@ struct FuseFullyConnectedAndMul : public RewritePattern {
       new_const_val = new_op.getResult();
     }
 
-    // Rewrite.
+    // Rewrite. Since the folder of TFL::MulOp couldn't broadcast the operands,
+    // TF::MulOp is used to fold the constant.
+    // TODO(b/139192933): switch to the TFL constant folding
     Location loc = fc_op.getLoc();
-    auto af_none = rewriter.getStringAttr(fc_op.fused_activation_function());
     auto new_filter =
-        rewriter.create<MulOp>(loc, filter, new_const_val, af_none);
+        rewriter.create<TF::MulOp>(loc, filter, new_const_val).z();
     // If bias isn't None, it needs to be multiplied as well.
     if (!bias->getType().isa<NoneType>()) {
-      bias = rewriter.create<MulOp>(loc, bias, constant_val, af_none).output();
+      bias = rewriter.create<TF::MulOp>(loc, bias, constant_val).z();
     }
 
     rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
         mul_op, mul_op.getType(),
         /*input=*/fc_op.input(),
-        /*filter=*/new_filter.output(),
+        /*filter=*/new_filter,
         /*bias=*/bias,
         /*fused_activation_function=*/
         rewriter.getStringAttr(mul_op.fused_activation_function()),

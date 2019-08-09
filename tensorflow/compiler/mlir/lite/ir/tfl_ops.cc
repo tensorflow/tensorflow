@@ -126,7 +126,7 @@ Attribute ConstFoldBinaryOpDenseSplat(Type result_type, Attribute operand1,
                                       const CalculationT &calculate) {
   auto lhs = operand1.cast<DenseElementsAttr>();
 
-  // TODO: Support broadcast behavior
+  // TODO(b/139192933): Support broadcast behavior
   if (lhs.getType() != result_type || operand2.getType() != result_type)
     return {};
 

@@ -249,6 +249,7 @@ cc_library(
     deps = [
         ":tensorflow_lite",
         ":validators",
+        "//tensorflow/compiler/mlir/tensorflow",
         "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:IR",
