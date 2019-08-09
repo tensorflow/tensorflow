@@ -48,16 +48,18 @@ apt-get install -y --no-install-recommends \
     ffmpeg \
     git \
     libcurl4-openssl-dev \
-    libtool \
     libssl-dev \
+    libtool \
     mlocate \
     openjdk-8-jdk \
     openjdk-8-jre-headless \
     pkg-config \
     python-dev \
+    python-pip \
     python-setuptools \
     python-virtualenv \
     python3-dev \
+    python3-pip \
     python3-setuptools \
     rsync \
     sudo \

@@ -20,6 +20,9 @@ set -e
 pip2 install --upgrade pip
 pip3 install --upgrade pip
 
+# update pip binary locations
+cp -rp /usr/local/bin/pip* /usr/bin/
+
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
 
