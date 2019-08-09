@@ -271,12 +271,12 @@ class GpuExecutor : public internal::StreamExecutorInterface {
                          const BlockDim& block_dims);
 
   // (supported on CUDA only)
-  bool LoadModuleFromCuBin(const char* cubin, GpuModuleHandle* module)
+  port::Status LoadModuleFromCuBin(const char* cubin, GpuModuleHandle* module)
       EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // Loads the PTX text `ptx` as a CUDA module.  `ptx` must be null terminated.
   // (supported on CUDA only)
-  bool LoadModuleFromPtx(const char* ptx, GpuModuleHandle* module)
+  port::Status LoadModuleFromPtx(const char* ptx, GpuModuleHandle* module)
       EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // (supported on ROCm only)

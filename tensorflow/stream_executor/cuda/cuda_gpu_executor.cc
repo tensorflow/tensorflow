@@ -217,16 +217,13 @@ static string GetBinaryDir(bool strip_exe) {
   return exe_path;
 }
 
-bool GpuExecutor::LoadModuleFromCuBin(const char* cubin, CUmodule* module) {
+port::Status GpuExecutor::LoadModuleFromCuBin(const char* cubin,
+                                              CUmodule* module) {
   uint64_t module_refcount;
   std::tie(*module, module_refcount) = gpu_binary_to_module_[cubin];
 
   if (*module == nullptr) {
-    auto load_status = GpuDriver::LoadCubin(context_, cubin, module);
-    if (!load_status.ok()) {
-      LOG(ERROR) << "failed to load CUBIN: " << load_status;
-      return false;
-    }
+    TF_RETURN_IF_ERROR(GpuDriver::LoadCubin(context_, cubin, module));
     module_refcount = 1;
     VLOG(3) << "Loaded CUBIN " << static_cast<const void *>(cubin)
             << " as module " << *module;
@@ -236,17 +233,15 @@ bool GpuExecutor::LoadModuleFromCuBin(const char* cubin, CUmodule* module) {
             << " is already loaded as module " << *module;
   }
   gpu_binary_to_module_[cubin] = {*module, module_refcount};
-  return true;
+  return port::Status::OK();
 }
 
-bool GpuExecutor::LoadModuleFromPtx(const char* ptx, CUmodule* module) {
+port::Status GpuExecutor::LoadModuleFromPtx(const char* ptx, CUmodule* module) {
   uint64_t module_refcount;
   std::tie(*module, module_refcount) = gpu_binary_to_module_[ptx];
 
   if (*module == nullptr) {
-    if (!GpuDriver::LoadPtx(context_, ptx, module)) {
-      return false;
-    }
+    TF_RETURN_IF_ERROR(GpuDriver::LoadPtx(context_, ptx, module));
     VLOG(3) << "Loaded PTX " << static_cast<const void *>(ptx) << " as module "
             << *module;
     module_refcount = 1;
@@ -256,7 +251,7 @@ bool GpuExecutor::LoadModuleFromPtx(const char* ptx, CUmodule* module) {
             << " is already loaded as module " << module;
   }
   gpu_binary_to_module_[ptx] = {*module, module_refcount};
-  return true;
+  return port::Status::OK();
 }
 
 bool GpuExecutor::LoadModuleFromHsaco(const char* hsaco, CUmodule* module) {
@@ -276,9 +271,7 @@ port::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     absl::MutexLock lock{&in_memory_modules_mu_};
     kernelname = &spec.cuda_cubin_in_memory().kernelname();
     const char *cubin = spec.cuda_cubin_in_memory().bytes();
-    if (!LoadModuleFromCuBin(cubin, &module)) {
-      return port::InternalError("Failed loading module from cubin");
-    }
+    TF_RETURN_IF_ERROR(LoadModuleFromCuBin(cubin, &module));
     kernel_to_gpu_binary_[kernel] = cubin;
   } else if (spec.has_cuda_ptx_in_memory()) {
     kernelname = &spec.cuda_ptx_in_memory().kernelname();
@@ -296,9 +289,7 @@ port::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     }
 
     absl::MutexLock lock{&in_memory_modules_mu_};
-    if (!LoadModuleFromPtx(ptx, &module)) {
-      return port::InternalError("Failed loading module from PTX");
-    }
+    TF_RETURN_IF_ERROR(LoadModuleFromPtx(ptx, &module));
     kernel_to_gpu_binary_[kernel] = ptx;
   } else {
     return port::InternalError("No method of loading CUDA kernel provided");
@@ -362,11 +353,9 @@ port::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
   CUmodule cu_module;
   if (spec.has_cuda_cubin_in_memory()) {
     absl::MutexLock lock{&in_memory_modules_mu_};
-    if (!LoadModuleFromCuBin(
-            reinterpret_cast<const char *>(spec.cuda_cubin_in_memory().data()),
-            &cu_module)) {
-      return port::InternalError("Failed loading module from cuBIN");
-    }
+    TF_RETURN_IF_ERROR(LoadModuleFromCuBin(
+        reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()),
+        &cu_module));
     *module_handle = ModuleHandle(const_cast<void *>(
         static_cast<const void *>(spec.cuda_cubin_in_memory().data())));
     return port::Status::OK();
@@ -380,9 +369,8 @@ port::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
     }
 
     absl::MutexLock lock{&in_memory_modules_mu_};
-    if (!LoadModuleFromPtx(spec.cuda_ptx_in_memory(), &cu_module)) {
-      return port::InternalError("Failed loading module from PTX");
-    }
+    TF_RETURN_IF_ERROR(
+        LoadModuleFromPtx(spec.cuda_ptx_in_memory(), &cu_module));
     *module_handle = ModuleHandle(const_cast<void *>(
         static_cast<const void *>(spec.cuda_ptx_in_memory())));
     return port::Status::OK();

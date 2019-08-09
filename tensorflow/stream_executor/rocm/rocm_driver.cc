@@ -441,11 +441,11 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::LoadPtx(GpuContext* context,
-                                     const char* ptx_contents,
-                                     hipModule_t* module) {
+/* static */ port::Status GpuDriver::LoadPtx(GpuContext* context,
+                                             const char* ptx_contents,
+                                             hipModule_t* module) {
   LOG(ERROR) << "Feature not supported on ROCm platform (LoadPtx)";
-  return false;
+  return port::InternalError("Not Implemented");
 }
 
 /* static */ port::Status GpuDriver::LoadCubin(GpuContext* context,

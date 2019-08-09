@@ -384,14 +384,14 @@ port::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
   }
 }
 
-bool GpuExecutor::LoadModuleFromCuBin(const char* cubin, hipModule_t* module) {
+port::Status GpuExecutor::LoadModuleFromCuBin(const char* cubin,
+                                              hipModule_t* module) {
   LOG(FATAL) << "Feature not supported on ROCM platform (LoadModuleFromCuBin)";
-  return false;
 }
 
-bool GpuExecutor::LoadModuleFromPtx(const char* ptx, hipModule_t* module) {
+port::Status GpuExecutor::LoadModuleFromPtx(const char* ptx,
+                                            hipModule_t* module) {
   LOG(FATAL) << "Feature not supported on ROCM platform (LoadModuleFromPtx)";
-  return false;
 }
 
 bool GpuExecutor::LoadModuleFromHsaco(const char* hsaco, hipModule_t* module) {
