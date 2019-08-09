@@ -1441,6 +1441,12 @@ class MklQuantizedConv2DOp
     bool is_filter_const;
     OP_REQUIRES_OK(context,
                    context->GetAttr("is_filter_const", &is_filter_const));
+
+    if (bias_enabled) {
+      OP_REQUIRES_OK(context,
+                   context->GetAttr("is_bias_const", &is_bias_const_));
+    }
+
     OP_REQUIRES(context, is_filter_const,
                 errors::InvalidArgument("Filter must be a constant"));
   }
@@ -1571,13 +1577,17 @@ class MklQuantizedConv2DOp
     const float* min_filter = min_filter_vector.flat<float>().data();
     const float* max_filter = max_filter_vector.flat<float>().data();
 
+    std::vector<mkldnn::primitive> net;
     if (bias_enabled) {
       if (std::is_same<Tbias, qint32>::value) {
         return static_cast<Tbias*>(
             const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
       }
 
-      if (IsBiasCacheEmpty(context)) {
+      // Re-scale bias if either of following 2 conditions met:
+      // 1. Bias is not const;
+      // 2. Bias is const, but bias cache is empty (first iteration).
+      if (!is_bias_const_ || IsBiasCacheEmpty(context)) {
         size_t depth = min_filter_vector.NumElements();
         std::vector<float> scales(depth);
         for (size_t i = 0; i < depth; ++i) {
@@ -1609,6 +1619,8 @@ class MklQuantizedConv2DOp
         stream(stream::kind::eager).submit(net).wait();
         Tbias *bias_data = reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
 
+        if (!is_bias_const_) return bias_data;
+
         CacheBias(context, conv_fwd_pd, bias_data, scaled_bias_);
       }
       return GetCachedBias(context);
@@ -1617,6 +1629,7 @@ class MklQuantizedConv2DOp
     }
   }
 
+  bool is_bias_const_;
   PersistentTensor cached_bias_data_ptensor_ GUARDED_BY(mu_);
 
   memory* input_bias_ = nullptr;

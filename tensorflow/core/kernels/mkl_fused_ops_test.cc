@@ -624,6 +624,7 @@ public:
                      .Attr("data_format", "NHWC")
                      .Attr("strides", {1, stride, stride, 1})
                      .Attr("is_filter_const", is_filter_const)
+                     .Attr("is_filter_const", true)
                      .Attr("padding", "VALID")
                      .Attr("_kernel", "QuantizedMklOp")
                      .Finalize(node_def()));
