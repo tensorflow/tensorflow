@@ -475,8 +475,6 @@ class VarianceScaling(Initializer):
       scale_shape = partition_info.full_shape
     fan_in, fan_out = map(math_ops.to_float, _compute_fans(scale_shape))
     if self.mode == "fan_in":
-      #scale = constant_op.constant(scale, dtype=dtypes.int32)
-      #scale /= fan_in
       scale /= gen_math_ops.maximum(1., fan_in)
     elif self.mode == "fan_out":
       scale /= gen_math_ops.maximum(1., fan_out)
