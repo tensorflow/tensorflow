@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PASSES_H_
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
 
 namespace mlir {
 class FunctionPassBase;
