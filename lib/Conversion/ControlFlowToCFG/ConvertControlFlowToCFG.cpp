@@ -266,8 +266,7 @@ void ControlFlowToCFGPass::runOnFunction() {
   populateLoopToStdConversionPatterns(patterns, &getContext());
   ConversionTarget target(getContext());
   target.addLegalDialect<StandardOpsDialect>();
-  if (failed(
-          applyPartialConversion(getFunction(), target, std::move(patterns))))
+  if (failed(applyPartialConversion(getFunction(), target, patterns)))
     signalPassFailure();
 }
 

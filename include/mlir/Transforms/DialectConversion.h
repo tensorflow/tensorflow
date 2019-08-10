@@ -471,10 +471,10 @@ private:
 /// regions are also converted.
 LLVM_NODISCARD LogicalResult applyPartialConversion(
     ArrayRef<Operation *> ops, ConversionTarget &target,
-    OwningRewritePatternList &&patterns, TypeConverter *converter = nullptr);
+    OwningRewritePatternList &patterns, TypeConverter *converter = nullptr);
 LLVM_NODISCARD LogicalResult applyPartialConversion(
-    Operation *op, ConversionTarget &target,
-    OwningRewritePatternList &&patterns, TypeConverter *converter = nullptr);
+    Operation *op, ConversionTarget &target, OwningRewritePatternList &patterns,
+    TypeConverter *converter = nullptr);
 
 /// Apply a complete conversion on the given operations, and all nested
 /// operations. This method returns failure if the conversion of any operation
@@ -483,10 +483,10 @@ LLVM_NODISCARD LogicalResult applyPartialConversion(
 /// regions are also converted.
 LLVM_NODISCARD LogicalResult applyFullConversion(
     ArrayRef<Operation *> ops, ConversionTarget &target,
-    OwningRewritePatternList &&patterns, TypeConverter *converter = nullptr);
+    OwningRewritePatternList &patterns, TypeConverter *converter = nullptr);
 LLVM_NODISCARD LogicalResult applyFullConversion(
-    Operation *op, ConversionTarget &target,
-    OwningRewritePatternList &&patterns, TypeConverter *converter = nullptr);
+    Operation *op, ConversionTarget &target, OwningRewritePatternList &patterns,
+    TypeConverter *converter = nullptr);
 
 /// Apply an analysis conversion on the given operations, and all nested
 /// operations. This method analyzes which operations would be successfully
@@ -500,12 +500,11 @@ LLVM_NODISCARD LogicalResult applyFullConversion(
 /// considered for conversion.
 LLVM_NODISCARD LogicalResult applyAnalysisConversion(
     ArrayRef<Operation *> ops, ConversionTarget &target,
-    OwningRewritePatternList &&patterns, DenseSet<Operation *> &convertedOps,
+    OwningRewritePatternList &patterns, DenseSet<Operation *> &convertedOps,
     TypeConverter *converter = nullptr);
 LLVM_NODISCARD LogicalResult applyAnalysisConversion(
-    Operation *op, ConversionTarget &target,
-    OwningRewritePatternList &&patterns, DenseSet<Operation *> &convertedOps,
-    TypeConverter *converter = nullptr);
+    Operation *op, ConversionTarget &target, OwningRewritePatternList &patterns,
+    DenseSet<Operation *> &convertedOps, TypeConverter *converter = nullptr);
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_DIALECTCONVERSION_H_

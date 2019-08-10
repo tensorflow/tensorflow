@@ -367,7 +367,7 @@ struct LowerVectorTransfersPass
     patterns.insert<VectorTransferRewriter<vector::VectorTransferReadOp>,
                     VectorTransferRewriter<vector::VectorTransferWriteOp>>(
         context);
-    applyPatternsGreedily(getFunction(), std::move(patterns));
+    applyPatternsGreedily(getFunction(), patterns);
   }
 };
 

@@ -1116,8 +1116,7 @@ struct LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       return typeConverter->isSignatureLegal(op.getType());
     });
-    if (failed(applyPartialConversion(m, target, std::move(patterns),
-                                      typeConverter.get())))
+    if (failed(applyPartialConversion(m, target, patterns, &*typeConverter)))
       signalPassFailure();
   }
 

@@ -263,7 +263,7 @@ struct LowerLinalgLoadStorePass
     auto *context = &getContext();
     patterns.insert<Rewriter<linalg::LoadOp>, Rewriter<linalg::StoreOp>>(
         context);
-    applyPatternsGreedily(getFunction(), std::move(patterns));
+    applyPatternsGreedily(getFunction(), patterns);
   }
 };
 

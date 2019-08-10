@@ -428,7 +428,7 @@ LogicalResult linalg::convertToLLVM(mlir::ModuleOp module) {
   target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
   target.addDynamicallyLegalOp<FuncOp>(
       [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
-  return applyFullConversion(module, target, std::move(patterns), &converter);
+  return applyFullConversion(module, target, patterns, &converter);
 }
 
 namespace {

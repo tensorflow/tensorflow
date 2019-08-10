@@ -366,8 +366,8 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       return typeConverter.isSignatureLegal(op.getType());
     });
-    if (failed(applyPartialConversion(
-            getModule(), target, std::move(toyPatterns), &typeConverter))) {
+    if (failed(applyPartialConversion(getModule(), target, toyPatterns,
+                                      &typeConverter))) {
       emitError(UnknownLoc::get(getModule().getContext()),
                 "Error lowering Toy\n");
       signalPassFailure();

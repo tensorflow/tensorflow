@@ -43,7 +43,7 @@ void ConvertStandardToSPIRVPass::runOnModule() {
   target.addLegalDialect<spirv::SPIRVDialect>();
   target.addLegalOp<FuncOp>();
 
-  if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+  if (failed(applyPartialConversion(module, target, patterns))) {
     return signalPassFailure();
   }
 }

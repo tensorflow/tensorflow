@@ -164,8 +164,7 @@ LogicalResult linalg::convertLinalg3ToLLVM(ModuleOp module) {
   target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
   target.addDynamicallyLegalOp<FuncOp>(
       [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
-  if (failed(
-          applyFullConversion(module, target, std::move(patterns), &converter)))
+  if (failed(applyFullConversion(module, target, patterns, &converter)))
     return failure();
 
   return success();

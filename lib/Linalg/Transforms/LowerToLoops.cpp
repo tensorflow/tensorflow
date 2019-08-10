@@ -385,8 +385,7 @@ void LowerLinalgToLoopsPass::runOnFunction() {
   target.addLegalDialect<AffineOpsDialect>();
   target.addLegalDialect<loop::LoopOpsDialect>();
   target.addLegalDialect<StandardOpsDialect>();
-  if (failed(
-          applyPartialConversion(getFunction(), target, std::move(patterns)))) {
+  if (failed(applyPartialConversion(getFunction(), target, patterns))) {
     signalPassFailure();
   }
 }
