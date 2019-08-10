@@ -836,10 +836,39 @@ class NNAPIOpBuilder {
               nn_model_, ann_tensor_index, &ann_perchannel_params));
     }
     if (tensor->allocation_type == kTfLiteMmapRo) {
+      if (IsQuantized(tensor_type) && need_int8_conversion) {
+        // We need to to add a tensor and convert the weights into uint8.
+        // Currently this is only needed for fully_connected. The new_tensor is
+        // needed for lifetime management for the converted weights.
+        int new_tensor_index = -1;
+        TF_LITE_ENSURE_OK(context_,
+                          context_->AddTensors(context_, 1, &new_tensor_index));
+        TfLiteTensor* new_tensor = &context_->tensors[new_tensor_index];
+        new_tensor->type = kTfLiteUInt8;
+        new_tensor->allocation_type = kTfLiteDynamic;
+        new_tensor->params.scale = scale;
+        new_tensor->params.zero_point = zeroPoint;
+        // Not removing the new tensor in case of resizing errors since it will
+        // be cleared by the context
+        TF_LITE_ENSURE_OK(
+            context_, context_->ResizeTensor(context_, new_tensor,
+                                             // Resize Tensor takes ownership of
+                                             // the dims array passed as param
+                                             TfLiteIntArrayCopy(tensor->dims)));
+        // Convert the int8 value into corresponding uint8 value;
+        const auto num_elements = NumElements(tensor);
+        for (int i = 0; i < num_elements; ++i) {
+          new_tensor->data.uint8[i] = static_cast<const uint8_t>(
+              static_cast<int32_t>(tensor->data.int8[i]) + 128);
+        }
+        RETURN_TFLITE_ERROR_IF_NN_ERROR(
+            context_, nnapi_->ANeuralNetworksModel_setOperandValue(
+                          nn_model_, ann_tensor_index, new_tensor->data.raw,
+                          new_tensor->bytes));
 #ifdef TFLITE_NNAPI_ALLOW_MMAP_SHARING
-      if (tensor->allocation &&
-          static_cast<const Allocation*>(tensor->allocation)->type() ==
-              Allocation::Type::kMMap) {
+      } else if (tensor->allocation &&
+                 static_cast<const Allocation*>(tensor->allocation)->type() ==
+                     Allocation::Type::kMMap) {
         const MMAPAllocation* mmap_alloc =
             static_cast<const MMAPAllocation*>(tensor->allocation);
         if (allocation_memory_mapping_->count(mmap_alloc) == 0) {
@@ -859,15 +888,13 @@ class NNAPIOpBuilder {
             context_, nnapi_->ANeuralNetworksModel_setOperandValueFromMemory(
                           nn_model_, ann_tensor_index, ann_memory_handle,
                           offset, tensor->bytes));
-      } else {
 #endif
+      } else {
         RETURN_TFLITE_ERROR_IF_NN_ERROR(
             context_,
             nnapi_->ANeuralNetworksModel_setOperandValue(
                 nn_model_, ann_tensor_index, tensor->data.raw, tensor->bytes));
-#ifdef TFLITE_NNAPI_ALLOW_MMAP_SHARING
       }
-#endif
     }
 
     indices->push_back(ann_tensor_index);
@@ -2815,7 +2842,8 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
       // Explicitly convert uint8 values to int8 values.
       uint8_t* output_ptr = reinterpret_cast<uint8_t*>(
           nn_output_memory_->get_data_ptr() + output_offset);
-      for (int i = 0; i < NumElements(tensor); ++i) {
+      const auto num_elements = NumElements(tensor);
+      for (int i = 0; i < num_elements; ++i) {
         output_ptr[i] =
             static_cast<uint8_t>(static_cast<int32_t>(output_ptr[i]) - 128);
       }
