@@ -84,14 +84,13 @@ class SingleWorkerTest(test.TestCase):
         cm.exception.message)
 
   def testMultiDeviceFunctionAmbiguousDevice(self):
-    self.skipTest('b/139212497')
 
     @def_function.function
     def ambiguous_device(i):
       with ops.device('cpu:0'):
         return i + constant_op.constant([2])
 
-    with self.assertRaises(ValueError) as cm:
+    with self.assertRaises(errors.InvalidArgumentError) as cm:
       with ops.device('/job:worker/replica:0/task:0/cpu:0'):
         ambiguous_device(constant_op.constant([2])).numpy()
 
