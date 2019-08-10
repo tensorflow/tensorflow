@@ -98,8 +98,8 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
     if (dtype != DT_STRING) {
       return errors::Internal("Unexpected data type");
     }
-    string* to_strings =
-        reinterpret_cast<string*>(const_cast<char*>(to_data.data()));
+    tstring* to_strings =
+        reinterpret_cast<tstring*>(const_cast<char*>(to_data.data()));
 
     int64 offset = 0;
     for (const Tensor& tensor : tensors) {
@@ -163,7 +163,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
       shape.set_dim(0, size);
       result->emplace_back(tensor.dtype(), shape);
       Tensor& split = (*result)[result->size() - 1];
-      string* to_strings = reinterpret_cast<string*>(
+      tstring* to_strings = reinterpret_cast<tstring*>(
           const_cast<char*>(split.tensor_data().data()));
 
       CHECK_LE(offset + split.NumElements(), tensor.NumElements());
