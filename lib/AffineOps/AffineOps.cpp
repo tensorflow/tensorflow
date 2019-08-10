@@ -47,7 +47,7 @@ AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
 
 /// A utility function to check if a given region is attached to a function.
 static bool isFunctionRegion(Region *region) {
-  return llvm::isa<FuncOp>(region->getContainingOp());
+  return llvm::isa<FuncOp>(region->getParentOp());
 }
 
 /// A utility function to check if a value is defined at the top level of a
@@ -55,7 +55,7 @@ static bool isFunctionRegion(Region *region) {
 bool mlir::isTopLevelSymbol(Value *value) {
   if (auto *arg = dyn_cast<BlockArgument>(value))
     return isFunctionRegion(arg->getOwner()->getParent());
-  return isFunctionRegion(value->getDefiningOp()->getContainingRegion());
+  return isFunctionRegion(value->getDefiningOp()->getParentRegion());
 }
 
 // Value can be used as a dimension id if it is valid as a symbol, or
@@ -68,7 +68,7 @@ bool mlir::isValidDim(Value *value) {
 
   if (auto *op = value->getDefiningOp()) {
     // Top level operation or constant operation is ok.
-    if (isFunctionRegion(op->getContainingRegion()) || isa<ConstantOp>(op))
+    if (isFunctionRegion(op->getParentRegion()) || isa<ConstantOp>(op))
       return true;
     // Affine apply operation is ok if all of its operands are ok.
     if (auto applyOp = dyn_cast<AffineApplyOp>(op))
@@ -93,7 +93,7 @@ bool mlir::isValidSymbol(Value *value) {
 
   if (auto *op = value->getDefiningOp()) {
     // Top level operation or constant operation is ok.
-    if (isFunctionRegion(op->getContainingRegion()) || isa<ConstantOp>(op))
+    if (isFunctionRegion(op->getParentRegion()) || isa<ConstantOp>(op))
       return true;
     // Affine apply operation is ok if all of its operands are ok.
     if (auto applyOp = dyn_cast<AffineApplyOp>(op))
@@ -1447,7 +1447,7 @@ AffineForOp mlir::getForInductionVarOwner(Value *val) {
   auto *ivArg = dyn_cast<BlockArgument>(val);
   if (!ivArg || !ivArg->getOwner())
     return AffineForOp();
-  auto *containingInst = ivArg->getOwner()->getParent()->getContainingOp();
+  auto *containingInst = ivArg->getOwner()->getParent()->getParentOp();
   return dyn_cast<AffineForOp>(containingInst);
 }
 

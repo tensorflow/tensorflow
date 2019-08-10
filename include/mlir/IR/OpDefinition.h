@@ -890,10 +890,8 @@ public:
   /// Return the dialect that this refers to.
   Dialect *getDialect() { return getOperation()->getDialect(); }
 
-  /// Return the Region enclosing this Op.
-  Region *getContainingRegion() {
-    return getOperation()->getContainingRegion();
-  }
+  /// Return the parent Region of this operation.
+  Region *getParentRegion() { return getOperation()->getParentRegion(); }
 
   /// Return true if this "op class" can match against the specified operation.
   /// This hook can be overridden with a more specific implementation in

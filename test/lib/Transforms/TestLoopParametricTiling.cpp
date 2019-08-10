@@ -45,7 +45,7 @@ public:
     FuncOp func = getFunction();
     func.walk<loop::ForOp>([this](loop::ForOp op) {
       // Ignore nested loops.
-      if (op.getContainingRegion()->getParentOfType<loop::ForOp>())
+      if (op.getParentRegion()->getParentOfType<loop::ForOp>())
         return;
       extractFixedOuterLoops(op, sizes);
     });

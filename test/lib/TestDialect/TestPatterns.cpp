@@ -66,7 +66,7 @@ struct TestRegionRewriteBlockMovement : public ConversionPattern {
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const final {
     // Inline this region into the parent region.
-    auto &parentRegion = *op->getContainingRegion();
+    auto &parentRegion = *op->getParentRegion();
     rewriter.inlineRegionBefore(op->getRegion(0), parentRegion,
                                 parentRegion.end());
 

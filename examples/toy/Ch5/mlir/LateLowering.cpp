@@ -443,7 +443,7 @@ struct LateLoweringPass : public ModulePass<LateLoweringPass> {
 
     // Insert a `dealloc` operation right before the `return` operations, unless
     // it is returned itself in which case the caller is responsible for it.
-    alloc.getContainingRegion()->walk([&](Operation *op) {
+    alloc.getParentRegion()->walk([&](Operation *op) {
       auto returnOp = dyn_cast<ReturnOp>(op);
       if (!returnOp)
         return;

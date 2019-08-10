@@ -42,18 +42,18 @@ Location Region::getLoc() {
   return container->getLoc();
 }
 
-Region *Region::getContainingRegion() {
+Region *Region::getParentRegion() {
   assert(container && "region is not attached to a container");
-  return container->getContainingRegion();
+  return container->getParentRegion();
 }
 
-Operation *Region::getContainingOp() { return container; }
+Operation *Region::getParentOp() { return container; }
 
 bool Region::isProperAncestor(Region *other) {
   if (this == other)
     return false;
 
-  while ((other = other->getContainingRegion())) {
+  while ((other = other->getParentRegion())) {
     if (this == other)
       return true;
   }
@@ -64,7 +64,7 @@ bool Region::isProperAncestor(Region *other) {
 unsigned Region::getRegionNumber() {
   // Regions are always stored consecutively, so use pointer subtraction to
   // figure out what number this is.
-  return this - &getContainingOp()->getRegions()[0];
+  return this - &getParentOp()->getRegions()[0];
 }
 
 /// Clone the internal blocks from this region into `dest`. Any
@@ -145,7 +145,7 @@ static bool isIsolatedAbove(Region &region, Region &limit,
         for (Value *operand : op.getOperands()) {
           // Check that any value that is used by an operation is defined in the
           // same region as either an operation result or a block argument.
-          if (operand->getContainingRegion()->isProperAncestor(&limit)) {
+          if (operand->getParentRegion()->isProperAncestor(&limit)) {
             if (noteLoc) {
               op.emitOpError("using value defined outside the region")
                       .attachNote(noteLoc)
@@ -175,7 +175,7 @@ void Region::walk(llvm::function_ref<void(Operation *)> callback) {
     block.walk(callback);
 }
 
-Region *llvm::ilist_traits<::mlir::Block>::getContainingRegion() {
+Region *llvm::ilist_traits<::mlir::Block>::getParentRegion() {
   size_t Offset(
       size_t(&((Region *)nullptr->*Region::getSublistAccess(nullptr))));
   iplist<Block> *Anchor(static_cast<iplist<Block> *>(this));
@@ -186,7 +186,7 @@ Region *llvm::ilist_traits<::mlir::Block>::getContainingRegion() {
 /// We keep the region pointer up to date.
 void llvm::ilist_traits<::mlir::Block>::addNodeToList(Block *block) {
   assert(!block->getParent() && "already in a region!");
-  block->parentValidInstOrderPair.setPointer(getContainingRegion());
+  block->parentValidInstOrderPair.setPointer(getParentRegion());
 }
 
 /// This is a trait method invoked when an operation is removed from a
@@ -202,8 +202,8 @@ void llvm::ilist_traits<::mlir::Block>::transferNodesFromList(
     ilist_traits<Block> &otherList, block_iterator first, block_iterator last) {
   // If we are transferring operations within the same function, the parent
   // pointer doesn't need to be updated.
-  auto *curParent = getContainingRegion();
-  if (curParent == otherList.getContainingRegion())
+  auto *curParent = getParentRegion();
+  if (curParent == otherList.getParentRegion())
     return;
 
   // Update the 'parent' member of each Block.

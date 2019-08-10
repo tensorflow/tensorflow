@@ -1713,14 +1713,14 @@ void Operation::print(raw_ostream &os) {
     return;
   }
 
-  auto region = getContainingRegion();
+  auto region = getParentRegion();
   if (!region) {
     os << "<<UNLINKED INSTRUCTION>>\n";
     return;
   }
 
   // Get the top-level region.
-  while (auto *nextRegion = region->getContainingRegion())
+  while (auto *nextRegion = region->getParentRegion())
     region = nextRegion;
 
   ModuleState state(getContext());
@@ -1741,7 +1741,7 @@ void Block::print(raw_ostream &os) {
   }
 
   // Get the top-level region.
-  while (auto *nextRegion = region->getContainingRegion())
+  while (auto *nextRegion = region->getParentRegion())
     region = nextRegion;
 
   ModuleState state(region->getContext());
@@ -1760,7 +1760,7 @@ void Block::printAsOperand(raw_ostream &os, bool printType) {
   }
 
   // Get the top-level region.
-  while (auto *nextRegion = region->getContainingRegion())
+  while (auto *nextRegion = region->getParentRegion())
     region = nextRegion;
 
   ModuleState state(region->getContext());
