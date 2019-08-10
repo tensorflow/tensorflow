@@ -53,7 +53,7 @@ FunctionPassBase *CreatePostQuantizePass(bool emit_quant_adaptor_ops);
 // Creates an instance of the TensorFlow Lite dialect PruneUnexportedFunctions
 // pass.
 ModulePassBase *CreateTrimFunctionsPass(
-    const llvm::ArrayRef<std::string> &trim_funcs_whitelist);
+    llvm::ArrayRef<std::string> trim_funcs_whitelist);
 
 }  // namespace TFL
 

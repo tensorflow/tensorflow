@@ -47,8 +47,7 @@ namespace {
 class TrimFunctionsPass : public mlir::ModulePass<TrimFunctionsPass> {
  public:
   explicit TrimFunctionsPass() : trim_funcs_whitelist_(trim_funcs_whitelist) {}
-  explicit TrimFunctionsPass(
-      const llvm::ArrayRef<std::string> &trim_funcs_whitelist)
+  explicit TrimFunctionsPass(llvm::ArrayRef<std::string> trim_funcs_whitelist)
       : trim_funcs_whitelist_(trim_funcs_whitelist) {}
 
  private:
@@ -121,7 +120,7 @@ void TrimFunctionsPass::Verify() {
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 /// pass.
 ModulePassBase *CreateTrimFunctionsPass(
-    const llvm::ArrayRef<std::string> &trim_funcs_whitelist) {
+    llvm::ArrayRef<std::string> trim_funcs_whitelist) {
   return new TrimFunctionsPass(trim_funcs_whitelist);
 }
 
