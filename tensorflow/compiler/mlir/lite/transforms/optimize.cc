@@ -274,12 +274,12 @@ struct PadStridedSliceDims : public RewritePattern {
 
     // Insert a new reshape op.
     Value *original_input = strided_slice.input();
-    const RankedTensorType &original_input_type =
-        original_input->getType().template cast<RankedTensorType>();
+    RankedTensorType original_input_type =
+        original_input->getType().cast<RankedTensorType>();
     const ArrayRef<int64_t> &original_input_shape =
         original_input_type.getShape();
-    const RankedTensorType &begin_type =
-        strided_slice.begin()->getType().template cast<RankedTensorType>();
+    RankedTensorType begin_type =
+        strided_slice.begin()->getType().cast<RankedTensorType>();
     const int dim_size = begin_type.getShape()[0];
     SmallVector<int64_t, 4> new_shape;
     int mask = 1;
