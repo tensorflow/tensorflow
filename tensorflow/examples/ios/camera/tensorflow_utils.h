@@ -18,8 +18,8 @@
 #include <memory>
 #include <vector>
 
-#include "third_party/tensorflow/core/public/session.h"
-#include "third_party/tensorflow/core/util/memmapped_file_system.h"
+#include "tensorflow/core/public/session.h"
+#include "tensorflow/core/util/memmapped_file_system.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 // Reads a serialized GraphDef protobuf file from the bundle, typically
