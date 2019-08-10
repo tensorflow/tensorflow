@@ -116,10 +116,9 @@ public:
   /// Set the source location the operation was defined or derived from.
   void setLoc(Location loc) { location = loc; }
 
-  /// Returns the region to which the instruction belongs, which can be a
-  /// function body region or a region that belongs to another operation.
-  /// Returns nullptr if the instruction is unlinked.
-  Region *getContainingRegion() const;
+  /// Returns the region to which the instruction belongs. Returns nullptr if
+  /// the instruction is unlinked.
+  Region *getParentRegion();
 
   /// Returns the closest surrounding operation that contains this operation
   /// or nullptr if this is a top-level operation.

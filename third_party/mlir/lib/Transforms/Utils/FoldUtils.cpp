@@ -32,11 +32,11 @@ using namespace mlir;
 /// Given an operation, find the parent region that folded constants should be
 /// inserted into.
 static Region *getInsertionRegion(Operation *op) {
-  while (Region *region = op->getContainingRegion()) {
+  while (Region *region = op->getParentRegion()) {
     // Insert in this region for any of the following scenarios:
     //  * The parent is unregistered, or is known to be isolated from above.
     //  * The parent is a top-level operation.
-    auto *parentOp = region->getContainingOp();
+    auto *parentOp = region->getParentOp();
     if (!parentOp->isRegistered() || parentOp->isKnownIsolatedFromAbove() ||
         !parentOp->getBlock())
       return region;

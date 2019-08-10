@@ -249,7 +249,7 @@ static bool getFullMemRefAsRegion(Operation *opInst, unsigned numParamLoopIVs,
 
 static InFlightDiagnostic LLVM_ATTRIBUTE_UNUSED
 emitRemarkForBlock(Block &block) {
-  return block.getContainingOp()->emitRemark();
+  return block.getParentOp()->emitRemark();
 }
 
 /// Generates a point-wise copy from/to `memref' to/from `fastMemRef' and
@@ -872,7 +872,7 @@ uint64_t AffineDataCopyGeneration::runOnBlock(Block::iterator begin,
   if (totalCopyBuffersSizeInBytes > fastMemCapacityBytes) {
     StringRef str = "Total size of all copy buffers' for this block "
                     "exceeds fast memory capacity\n";
-    block->getContainingOp()->emitError(str);
+    block->getParentOp()->emitError(str);
   }
 
   return totalCopyBuffersSizeInBytes;
