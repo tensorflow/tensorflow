@@ -37,6 +37,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -435,6 +436,33 @@ class VarianceScaling(Initializer):
     else:
       limit = math.sqrt(3.0 * scale)
       return self._random_generator.random_uniform(shape, -limit, limit, dtype)
+
+
+  def __call__(self, shape, dtype=None, partition_info=None):
+    partition_info = None  # Keeps logic so can be readded later if necessary
+    dtype = _assert_float_dtype(dtype)
+    scale = constant_op.constant(self.scale)
+    scale_shape = shape
+    if partition_info is not None:
+      scale_shape = partition_info.full_shape
+    fan_in, fan_out = map(math_ops.to_float, _compute_fans(scale_shape))
+    if self.mode == "fan_in":
+      scale /= gen_math_ops.maximum(1., fan_in)
+    elif self.mode == "fan_out":
+      scale /= gen_math_ops.maximum(1., fan_out)
+    else:
+      scale /= gen_math_ops.maximum(1., (fan_in + fan_out) / 2.)
+    if self.distribution == "truncated_normal":
+      # constant from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
+      stddev = gen_math_ops.sqrt(scale) / .87962566103423978
+      return self._random_generator.truncated_normal(shape, 0.0, stddev, dtype)
+    elif self.distribution == "untruncated_normal":
+      stddev = gen_math_ops.sqrt(scale)
+      return self._random_generator.random_normal(shape, 0.0, stddev, dtype)
+    else:
+      limit = gen_math_ops.sqrt(3.0 * scale)
+      return self._random_generator.random_uniform(shape, -limit, limit, dtype)
+
 
   def get_config(self):
     return {

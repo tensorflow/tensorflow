@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape as tensor_shape_lib
 from tensorflow.python.framework import test_util
@@ -68,7 +69,8 @@ class InitializersTest(test.TestCase):
   def test_normal(self):
     shape = (8, 12, 99)
     with self.cached_session():
-      for tensor_shape in [shape, tensor_shape_lib.TensorShape(shape)]:
+      for tensor_shape in [shape, tensor_shape_lib.TensorShape(shape),
+        constant_op.constant(shape)]:
         self._runner(
             init_ops.RandomNormal(mean=0, stddev=1, seed=153),
             tensor_shape,
@@ -78,7 +80,8 @@ class InitializersTest(test.TestCase):
   def test_truncated_normal(self):
     shape = (12, 99, 7)
     with self.cached_session():
-      for tensor_shape in [shape, tensor_shape_lib.TensorShape(shape)]:
+      for tensor_shape in [shape, tensor_shape_lib.TensorShape(shape),
+        constant_op.constant(shape)]:
         self._runner(
             init_ops.TruncatedNormal(mean=0, stddev=1, seed=126),
             tensor_shape,

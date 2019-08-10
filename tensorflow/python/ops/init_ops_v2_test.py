@@ -255,21 +255,31 @@ class TruncatedNormalInitializerTest(InitializersTest):
 
 class VarianceScalingInitializerTest(InitializersTest):
 
-  @test_util.run_in_graph_and_eager_modes
-  def testTruncatedNormalDistribution(self):
+  def _testTruncatedNormalDistribution(self, tensor_input=False):
     shape = [100, 100]
     expect_mean = 0.
     expect_var = 1. / shape[0]
+
     init = init_ops_v2.VarianceScaling(distribution="truncated_normal")
 
     with test_util.use_gpu(), test.mock.patch.object(
         random_ops, "truncated_normal",
         wraps=random_ops.truncated_normal) as mock_truncated_normal:
+      if tensor_input:
+        shape = constant_op.constant(shape)
       x = self.evaluate(init(shape))
       self.assertTrue(mock_truncated_normal.called)
 
     self.assertNear(np.mean(x), expect_mean, err=1e-2)
     self.assertNear(np.var(x), expect_var, err=1e-2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTruncatedNormalDistribution(self):
+    self._testTruncatedNormalDistribution()
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorShape(self):
+    self._testTruncatedNormalDistribution(tensor_input=True)
 
   @test_util.run_in_graph_and_eager_modes
   def testNormalDistribution(self):
