@@ -643,6 +643,7 @@ cc_library(
         ":platform_protobuf",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:abi",
+        "//tensorflow/core/platform:annotation",
         "//tensorflow/core/platform:stacktrace",
         "//tensorflow/core/platform/default/build_config:other",
         "//tensorflow/core/platform/default/build_config:platformlib",
@@ -2420,7 +2421,6 @@ LIB_INTERNAL_PUBLIC_HEADERS = [
     "lib/strings/proto_serialization.h",
     "lib/strings/scanner.h",
     "lib/wav/wav_io.h",
-    "//tensorflow/core/platform:annotation.h",
     "//tensorflow/core/platform:demangle.h",
     "//tensorflow/core/platform:denormal.h",
     "//tensorflow/core/platform:host_info.h",
@@ -2435,20 +2435,6 @@ LIB_INTERNAL_PUBLIC_HEADERS = [
     "//tensorflow/core/platform:legacy_platform_lib_hdrs",
     "util/env_var.h",
 ]
-
-cc_library(
-    name = "annotation",
-    srcs = [],
-    hdrs = [
-        "//tensorflow/core/platform:annotation.h",
-    ],
-    copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core/platform:macros",
-        "@com_google_absl//absl/strings",
-    ],
-)
 
 # Replicated for lib_internal and lib_internal_impl.
 LIB_INTERNAL_DEFINES = (
@@ -2476,6 +2462,7 @@ cc_library(
         ],
     }),
     deps = tf_additional_lib_deps() + [
+        "//tensorflow/core/platform:annotation",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
@@ -2517,6 +2504,7 @@ cc_library(
                "//third_party/eigen3",
                "//tensorflow/core/lib/bfloat16",
                "//tensorflow/core/platform:abi",
+               "//tensorflow/core/platform:annotation",
                "//tensorflow/core/platform:cpu_info",
                "//tensorflow/core/platform:stringprintf",
                "//tensorflow/core/platform/default/build_config:platformlib",

@@ -46,7 +46,12 @@ cc_library(
 
 cc_library(
     name = "annotation",
+    srcs = ["annotation.cc"],
     hdrs = ["annotation.h"],
+    visibility = [
+        "//perftools/accelerators/xprof:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
     deps = [
         ":macros",
         "@com_google_absl//absl/strings",
@@ -306,6 +311,7 @@ filegroup(
             "profile_utils/**/*.h",
         ],
         exclude = [
+            "annotation.h",
             "gif.h",
             "jpeg.h",
             "png.h",
@@ -337,6 +343,7 @@ filegroup(
             "**/human_readable_json.cc",
             "**/rocm_rocdl_path.cc",
             "abi.cc",
+            "annotation.cc",
             "cpu_info.cc",
             "platform_strings.cc",
             "protobuf.cc",
