@@ -84,6 +84,7 @@ class SingleWorkerTest(test.TestCase):
         cm.exception.message)
 
   def testMultiDeviceFunctionAmbiguousDevice(self):
+    self.skipTest('b/139212497')
 
     @def_function.function
     def ambiguous_device(i):

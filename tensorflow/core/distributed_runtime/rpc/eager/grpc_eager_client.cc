@@ -28,16 +28,19 @@ limitations under the License.
 namespace tensorflow {
 namespace eager {
 namespace {
+bool EnableStreaming() {
+  bool result;
+  // TODO(b/139210648): Turn on this flag by default.
+  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE",
+                                 false, &result));
+  return result;
+}
 
 class GrpcEagerClient : public EagerClient {
  public:
   GrpcEagerClient(const tensorflow::SharedGrpcChannelPtr& channel,
                   ::grpc::CompletionQueue* cq)
-      : stub_(channel), cq_(cq) {
-    // TODO(fishx): Remove this env variable.
-    TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE",
-                                   true, &enable_streaming_));
-  }
+      : stub_(channel), cq_(cq) {}
   ~GrpcEagerClient() override {}
 
 #define CLIENT_METHOD(method)                                             \
@@ -83,28 +86,27 @@ class GrpcEagerClient : public EagerClient {
   void StreamingEnqueueAsync(const EnqueueRequest* request,
                              EnqueueResponse* response,
                              StatusCallback done) override {
-    tf_shared_lock l(mu_);
-    auto it = enqueue_dispatchers_.find(request->context_id());
-    if (enqueue_dispatchers_.find(request->context_id()) ==
-        enqueue_dispatchers_.end()) {
-      auto it_and_bool = enqueue_dispatchers_.emplace(
-          std::piecewise_construct,
-          std::forward_as_tuple(request->context_id()),
-          std::forward_as_tuple(
-              &stub_, cq_, "/tensorflow.eager.EagerService/StreamingEnqueue"));
-      it = it_and_bool.first;
-    }
-
-    if (enable_streaming_) {
+    if (EnableStreaming()) {
+      tf_shared_lock l(mu_);
+      auto it = enqueue_dispatchers_.find(request->context_id());
+      if (enqueue_dispatchers_.find(request->context_id()) ==
+          enqueue_dispatchers_.end()) {
+        auto it_and_bool = enqueue_dispatchers_.emplace(
+            std::piecewise_construct,
+            std::forward_as_tuple(request->context_id()),
+            std::forward_as_tuple(
+                &stub_, cq_,
+                "/tensorflow.eager.EagerService/StreamingEnqueue"));
+        it = it_and_bool.first;
+      }
       it->second.SendNextRequest(*request, response, std::move(done));
     } else {
       Notification n;
       Status status;
-      it->second.SendNextRequest(*request, response,
-                                 [&n, &status](const Status& s) {
-                                   status.Update(s);
-                                   n.Notify();
-                                 });
+      EnqueueAsync(request, response, [&n, &status](const Status& s) {
+        status.Update(s);
+        n.Notify();
+      });
       n.WaitForNotification();
       done(status);
     }
@@ -113,8 +115,6 @@ class GrpcEagerClient : public EagerClient {
  private:
   ::grpc::GenericStub stub_;
   ::grpc::CompletionQueue* cq_;
-
-  bool enable_streaming_;
 
   mutable mutex mu_;
 
