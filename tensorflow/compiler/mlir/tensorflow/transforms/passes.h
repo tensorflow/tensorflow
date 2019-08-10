@@ -36,11 +36,11 @@ FunctionPassBase* CreateRaiseTFControlFlowPass();
 
 }  // namespace TFControlFlow
 
-namespace TFExecutor {
+namespace tf_executor {
 // Create a pass to merge IslandOps from TFExecutor dialect.
 FunctionPassBase* CreateTFExecutorIslandCoarseningPass();
 
-}  // namespace TFExecutor
+}  // namespace tf_executor
 
 namespace TFDevice {
 // Creates a pass that outlines regions of tf_device.launch operations.
