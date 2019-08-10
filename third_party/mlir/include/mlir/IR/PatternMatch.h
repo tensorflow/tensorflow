@@ -402,6 +402,7 @@ public:
   PatternListT::iterator end() { return patterns.end(); }
   PatternListT::const_iterator begin() const { return patterns.begin(); }
   PatternListT::const_iterator end() const { return patterns.end(); }
+  void clear() { patterns.clear(); }
 
   //===--------------------------------------------------------------------===//
   // Pattern Insertion
@@ -456,7 +457,7 @@ private:
 /// the result operation regions.
 /// Note: This does not apply patterns to the top-level operation itself.
 ///
-bool applyPatternsGreedily(Operation *op, OwningRewritePatternList &&patterns);
+bool applyPatternsGreedily(Operation *op, OwningRewritePatternList &patterns);
 
 } // end namespace mlir
 

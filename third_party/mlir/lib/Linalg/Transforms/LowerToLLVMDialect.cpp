@@ -731,8 +731,7 @@ void LowerLinalgToLLVMPass::runOnModule() {
   target.addLegalDialect<LLVM::LLVMDialect>();
   target.addDynamicallyLegalOp<FuncOp>(
       [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
-  if (failed(applyPartialConversion(module, target, std::move(patterns),
-                                    &converter))) {
+  if (failed(applyPartialConversion(module, target, patterns, &converter))) {
     signalPassFailure();
   }
 

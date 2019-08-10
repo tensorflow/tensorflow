@@ -142,7 +142,7 @@ void LegalizeTF::runOnFunction() {
 
   // Add the generated patterns to the list.
   XLA::populateWithGenerated(func.getContext(), &patterns);
-  applyPatternsGreedily(func, std::move(patterns));
+  applyPatternsGreedily(func, patterns);
 }
 
 static PassRegistration<LegalizeTF> pass(

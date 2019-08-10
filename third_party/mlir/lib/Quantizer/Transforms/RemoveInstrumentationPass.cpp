@@ -63,7 +63,7 @@ void RemoveInstrumentationPass::runOnFunction() {
   patterns.insert<RemoveIdentityOpRewrite<StatisticsOp>,
                   RemoveIdentityOpRewrite<StatisticsRefOp>,
                   RemoveIdentityOpRewrite<CoupledRefOp>>(context);
-  applyPatternsGreedily(func, std::move(patterns));
+  applyPatternsGreedily(func, patterns);
 }
 
 FunctionPassBase *mlir::quantizer::createRemoveInstrumentationPass() {

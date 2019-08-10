@@ -135,7 +135,7 @@ void LegalizeToStandard::runOnFunction() {
   mlir::XLA::populateWithGenerated(func.getContext(), &patterns);
   patterns.insert<mlir::XLA::CompareFConvert, mlir::XLA::CompareIConvert>(
       &getContext());
-  applyPatternsGreedily(func, std::move(patterns));
+  applyPatternsGreedily(func, patterns);
 }
 
 static PassRegistration<LegalizeToStandard> legalize_pass(

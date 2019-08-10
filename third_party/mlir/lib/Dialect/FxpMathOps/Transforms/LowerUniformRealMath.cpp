@@ -369,7 +369,7 @@ void LowerUniformRealMathPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto *context = &getContext();
   patterns.insert<UniformRealAddEwPattern, UniformRealMulEwPattern>(context);
-  applyPatternsGreedily(fn, std::move(patterns));
+  applyPatternsGreedily(fn, patterns);
 }
 
 FunctionPassBase *mlir::fxpmath::createLowerUniformRealMathPass() {
@@ -389,7 +389,7 @@ void LowerUniformCastsPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto *context = &getContext();
   patterns.insert<UniformDequantizePattern>(context);
-  applyPatternsGreedily(fn, std::move(patterns));
+  applyPatternsGreedily(fn, patterns);
 }
 
 FunctionPassBase *mlir::fxpmath::createLowerUniformCastsPass() {

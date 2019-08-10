@@ -1336,17 +1336,17 @@ void ConversionTarget::setLegalityCallback(
 /// possible, ignoring operations that failed to legalize.
 LogicalResult mlir::applyPartialConversion(ArrayRef<Operation *> ops,
                                            ConversionTarget &target,
-                                           OwningRewritePatternList &&patterns,
+                                           OwningRewritePatternList &patterns,
                                            TypeConverter *converter) {
   OperationConverter opConverter(target, patterns, OpConversionMode::Partial);
   return opConverter.convertOperations(ops, converter);
 }
 LogicalResult mlir::applyPartialConversion(Operation *op,
                                            ConversionTarget &target,
-                                           OwningRewritePatternList &&patterns,
+                                           OwningRewritePatternList &patterns,
                                            TypeConverter *converter) {
-  return applyPartialConversion(llvm::makeArrayRef(op), target,
-                                std::move(patterns), converter);
+  return applyPartialConversion(llvm::makeArrayRef(op), target, patterns,
+                                converter);
 }
 
 /// Apply a complete conversion on the given operations, and all nested
@@ -1354,16 +1354,16 @@ LogicalResult mlir::applyPartialConversion(Operation *op,
 /// operation fails.
 LogicalResult mlir::applyFullConversion(ArrayRef<Operation *> ops,
                                         ConversionTarget &target,
-                                        OwningRewritePatternList &&patterns,
+                                        OwningRewritePatternList &patterns,
                                         TypeConverter *converter) {
   OperationConverter opConverter(target, patterns, OpConversionMode::Full);
   return opConverter.convertOperations(ops, converter);
 }
 LogicalResult mlir::applyFullConversion(Operation *op, ConversionTarget &target,
-                                        OwningRewritePatternList &&patterns,
+                                        OwningRewritePatternList &patterns,
                                         TypeConverter *converter) {
-  return applyFullConversion(llvm::makeArrayRef(op), target,
-                             std::move(patterns), converter);
+  return applyFullConversion(llvm::makeArrayRef(op), target, patterns,
+                             converter);
 }
 
 /// Apply an analysis conversion on the given operations, and all nested
@@ -1374,7 +1374,7 @@ LogicalResult mlir::applyFullConversion(Operation *op, ConversionTarget &target,
 /// operations on success and only pre-existing operations are added to the set.
 LogicalResult mlir::applyAnalysisConversion(ArrayRef<Operation *> ops,
                                             ConversionTarget &target,
-                                            OwningRewritePatternList &&patterns,
+                                            OwningRewritePatternList &patterns,
                                             DenseSet<Operation *> &convertedOps,
                                             TypeConverter *converter) {
   OperationConverter opConverter(target, patterns, OpConversionMode::Analysis,
@@ -1383,9 +1383,9 @@ LogicalResult mlir::applyAnalysisConversion(ArrayRef<Operation *> ops,
 }
 LogicalResult mlir::applyAnalysisConversion(Operation *op,
                                             ConversionTarget &target,
-                                            OwningRewritePatternList &&patterns,
+                                            OwningRewritePatternList &patterns,
                                             DenseSet<Operation *> &convertedOps,
                                             TypeConverter *converter) {
-  return applyAnalysisConversion(llvm::makeArrayRef(op), target,
-                                 std::move(patterns), convertedOps, converter);
+  return applyAnalysisConversion(llvm::makeArrayRef(op), target, patterns,
+                                 convertedOps, converter);
 }

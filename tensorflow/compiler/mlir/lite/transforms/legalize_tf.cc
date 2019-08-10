@@ -207,7 +207,7 @@ void LegalizeTF::runOnFunction() {
   patterns.insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
                   ConvertTFPackOp, ConvertTFSplitOp, ConvertTFSplitVOp,
                   ConvertTFUnpackOp>(ctx);
-  applyPatternsGreedily(func, std::move(patterns));
+  applyPatternsGreedily(func, patterns);
 }
 
 }  // namespace

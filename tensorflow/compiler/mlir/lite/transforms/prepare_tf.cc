@@ -400,14 +400,15 @@ void PrepareTFPass::runOnFunction() {
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
   // and any expanded from FusedBatchNorm. We need to do this
   // before converting TF_Conv to TFL_Conv
-  applyPatternsGreedily(func, std::move(patterns));
+  applyPatternsGreedily(func, patterns);
 
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
+  patterns.clear();
   TFL::populateWithGenerated(&getContext(), &patterns);
   patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
       &getContext());
-  applyPatternsGreedily(func, std::move(patterns));
+  applyPatternsGreedily(func, patterns);
 }
 
 }  // namespace

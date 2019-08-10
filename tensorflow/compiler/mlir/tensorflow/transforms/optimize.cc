@@ -35,7 +35,7 @@ struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
     OwningRewritePatternList patterns;
     auto func = getFunction();
     populateWithGenerated(&getContext(), &patterns);
-    applyPatternsGreedily(func, std::move(patterns));
+    applyPatternsGreedily(func, patterns);
   }
 };
 

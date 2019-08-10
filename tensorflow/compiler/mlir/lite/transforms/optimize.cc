@@ -331,7 +331,7 @@ void Optimize::runOnFunction() {
   TFL::populateWithGenerated(ctx, &patterns);
   patterns.insert<FuseFullyConnectedAndAdd, FuseFullyConnectedAndRelu,
                   FuseFullyConnectedAndMul, PadStridedSliceDims>(ctx);
-  applyPatternsGreedily(func, std::move(patterns));
+  applyPatternsGreedily(func, patterns);
 }
 
 }  // namespace

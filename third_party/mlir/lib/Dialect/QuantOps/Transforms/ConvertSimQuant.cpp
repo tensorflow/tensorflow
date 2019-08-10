@@ -98,7 +98,7 @@ void ConvertSimulatedQuantPass::runOnFunction() {
   auto func = getFunction();
   auto *context = &getContext();
   patterns.insert<ConstFakeQuantRewrite>(context, &hadFailure);
-  applyPatternsGreedily(func, std::move(patterns));
+  applyPatternsGreedily(func, patterns);
   if (hadFailure)
     signalPassFailure();
 }

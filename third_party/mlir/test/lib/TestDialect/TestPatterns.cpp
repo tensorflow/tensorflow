@@ -43,7 +43,7 @@ struct TestPatternDriver : public FunctionPass<TestPatternDriver> {
     // Verify named pattern is generated with expected name.
     patterns.insert<TestNamedPatternRule>(&getContext());
 
-    applyPatternsGreedily(getFunction(), std::move(patterns));
+    applyPatternsGreedily(getFunction(), patterns);
   }
 };
 } // end anonymous namespace
@@ -213,8 +213,7 @@ struct TestLegalizePatternDriver
 
     // Handle a partial conversion.
     if (mode == ConversionMode::Partial) {
-      (void)applyPartialConversion(getModule(), target, std::move(patterns),
-                                   &converter);
+      (void)applyPartialConversion(getModule(), target, patterns, &converter);
       return;
     }
 
@@ -223,7 +222,7 @@ struct TestLegalizePatternDriver
 
     // Analyze the convertible operations.
     DenseSet<Operation *> legalizedOps;
-    if (failed(applyAnalysisConversion(getModule(), target, std::move(patterns),
+    if (failed(applyAnalysisConversion(getModule(), target, patterns,
                                        legalizedOps, &converter)))
       return signalPassFailure();
 
