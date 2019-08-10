@@ -48,7 +48,6 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
                                            rhs_shape.DebugString()));
     return;
   }
-  TensorShape bcast_shape = BCast::ToShape(bcast.output_shape());
 
   // Fetch the expressions containing the input tensors.
   auto lhs_handle = ctx->Input(0);

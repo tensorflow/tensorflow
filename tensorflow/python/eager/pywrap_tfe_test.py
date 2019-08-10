@@ -22,14 +22,17 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python import keras
 
 
 class Tests(test.TestCase):
@@ -44,6 +47,7 @@ class Tests(test.TestCase):
     b_100_by_784 = random_ops.random_uniform((100, 784))
 
     ctx = context.context()
+    ctx.ensure_initialized()
 
     self.assertAllClose(
         math_ops.matmul(a_2_by_2, b_2_by_2),
@@ -60,6 +64,8 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testFastpathExecute_ResourceVariableMatMulCorrectResponse(self):
     ctx = context.context()
+    ctx.ensure_initialized()
+
     a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
     m = resource_variable_ops.ResourceVariable(a_2_by_2)
     x = pywrap_tensorflow.TFE_Py_FastPathExecute(
@@ -73,27 +79,10 @@ class Tests(test.TestCase):
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
-  def testFastpathExecute_MixedPrecisionVariableMatMulCorrectResponse(self):
-    ctx = context.context()
-    a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
-    a_2_by_2_fp16 = math_ops.cast(a_2_by_2, dtype=dtypes.float16)
-    m = resource_variable_ops.ResourceVariable(a_2_by_2)
-    m = resource_variable_ops._MixedPrecisionVariable(
-        m, read_dtype=dtypes.float16)
-    x = pywrap_tensorflow.TFE_Py_FastPathExecute(
-        ctx._handle, ctx.device_name, "MatMul", None, None, m, m, "transpose_a",
-        False, "transpose_b", False)
-    y = pywrap_tensorflow.TFE_Py_FastPathExecute(
-        ctx._handle, ctx.device_name, "MatMul", None, None, a_2_by_2_fp16,
-        a_2_by_2_fp16, "transpose_a", False, "transpose_b", False)
-
-    self.assertEqual(x.dtype, dtypes.float16)
-    self.assertAllEqual(x, y)
-
-  @test_util.assert_no_new_tensors
-  @test_util.assert_no_garbage_created
   def testFastpathExecute_TapeWrite(self):
     ctx = context.context()
+    ctx.ensure_initialized()
+
     with backprop.GradientTape(persistent=True) as tape:
       a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
       tape.watch(a_2_by_2)
@@ -108,6 +97,8 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testFastpathExecute_ResourceVariableTapeWrite(self):
     ctx = context.context()
+    ctx.ensure_initialized()
+
     with backprop.GradientTape(persistent=True) as tape:
       a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
       m = resource_variable_ops.ResourceVariable(a_2_by_2)
@@ -119,34 +110,13 @@ class Tests(test.TestCase):
     self.assertAllEqual(dz_dy.numpy(),
                         constant_op.constant(4.0, shape=[2, 2]).numpy())
 
-  @test_util.assert_no_new_tensors
-  @test_util.assert_no_garbage_created
-  def testFastpathExecute_MixedPrecisionVariableTapeWrite(self):
-    ctx = context.context()
-    with backprop.GradientTape(persistent=True) as tape:
-      a_2_by_2 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]],
-                                      dtype=dtypes.float32)
-      a_2_by_2_fp16 = math_ops.cast(a_2_by_2, dtype=dtypes.float16)
-      m1 = resource_variable_ops.ResourceVariable(a_2_by_2)
-      m2 = resource_variable_ops._MixedPrecisionVariable(
-          m1, read_dtype=dtypes.float16)
-      tape.watch(m2)
-      z = pywrap_tensorflow.TFE_Py_FastPathExecute(
-          ctx._handle, ctx.device_name, "MatMul", None, None, a_2_by_2_fp16, m2,
-          "transpose_a", False, "transpose_b", False)
-    dz_dy = tape.gradient(z, [m2])[0]
-    self.assertEqual(dz_dy.dtype, dtypes.float16)
-
-    expected_grads = math_ops.matmul(
-        array_ops.transpose(a_2_by_2_fp16),
-        constant_op.constant(1., shape=[2, 2], dtype=dtypes.float16)).numpy()
-    self.assertAllEqual(dz_dy.numpy(), expected_grads)
-
   # Tests homogeneous list op
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
   def testFastpathExecute_AddNCorrectResponse(self):
     ctx = context.context()
+    ctx.ensure_initialized()
+
     a_2_by_2 = random_ops.random_uniform((2, 2))
     b_2_by_2 = random_ops.random_uniform((2, 2))
 
@@ -161,6 +131,8 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testFastpathExecute_AddNTapeWrite(self):
     ctx = context.context()
+    ctx.ensure_initialized()
+
     a_2_by_2 = random_ops.random_uniform((2, 2))
     b_2_by_2 = random_ops.random_uniform((2, 2))
 
@@ -180,6 +152,8 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testFastpathExecute_IdentityNCorrectResponse(self):
     ctx = context.context()
+    ctx.ensure_initialized()
+
     a_2_by_2 = random_ops.random_uniform((2, 2))
     b_2_by_2 = random_ops.random_uniform((2, 2))
 
@@ -194,6 +168,8 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testFastpathExecute_IdentityNTapeWrite(self):
     ctx = context.context()
+    ctx.ensure_initialized()
+
     a_2_by_2 = random_ops.random_uniform((2, 2))
     b_2_by_2 = random_ops.random_uniform((2, 2))
 
@@ -213,6 +189,8 @@ class Tests(test.TestCase):
   def testFastpathExecute_InvalidInputs(self):
     a_2_by_2 = random_ops.random_uniform((2, 2))
     ctx = context.context()
+    ctx.ensure_initialized()
+
     assert ctx.executing_eagerly(
     ), "The prototype doesn't contain C code for graph construction"
     ctx_handle = ctx._handle  # pylint: disable=protected-access
@@ -240,6 +218,8 @@ class Tests(test.TestCase):
     split_dim = constant_op.constant(0, dtype=dtypes.int32)
     value = constant_op.constant([0, 1, 2, 3], dtype=dtypes.float32)
     ctx = context.context()
+    ctx.ensure_initialized()
+
     ctx_handle = ctx._handle
     with self.assertRaises(core._FallbackException):
       pywrap_tensorflow.TFE_Py_FastPathExecute(ctx_handle, ctx.device_name,
@@ -253,6 +233,40 @@ class Tests(test.TestCase):
         Exception,
         "Value for attr 'num_split' of -1 must be at least minimum 1"):
       array_ops.split(value=[1, 2, 3], num_or_size_splits=-1)
+
+    with self.assertRaisesRegexp(
+        Exception,
+        "Value for attr 'num_split' of 0 must be at least minimum 1"):
+      array_ops.split(value=[1, 2, 3], num_or_size_splits=0)
+
+  def testIsFunction(self):
+    ctx = context.context()
+    self.assertFalse(ctx.has_function("not_a_function"))
+
+    @def_function.function
+    def f():
+      return 1.
+
+    self.assertTrue(ctx.has_function(f.get_concrete_function().name))
+
+  def testEagerExecute_InvalidType(self):
+    # Test case for GitHub issue 26879.
+    value = keras.layers.Input((128, 128, 1), dtype="float32")
+    with self.assertRaisesRegexp(TypeError,
+                                 "Expected list for 'values' argument"):
+      _ = array_ops.stack(value, axis=1)
+
+  def testGraphResourceVariableRaisesFallback(self):
+    with ops.Graph().as_default():
+      a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
+      m = resource_variable_ops.ResourceVariable(a_2_by_2)
+    ctx = context.context()
+    ctx.ensure_initialized()
+    with self.assertRaises(core._FallbackException):
+      pywrap_tensorflow.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                               "MatMul", None, None, m, m,
+                                               "transpose_a", False,
+                                               "transpose_b", False)
 
 
 if __name__ == "__main__":

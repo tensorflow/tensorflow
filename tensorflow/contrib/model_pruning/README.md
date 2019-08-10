@@ -50,10 +50,10 @@ The pruning library allows for specification of the following hyper parameters:
 | name | string | model_pruning | Name of the pruning specification. Used for adding summaries and ops under a common tensorflow name_scope |
 | begin_pruning_step | integer | 0 | The global step at which to begin pruning |
 | end_pruning_step   | integer | -1 | The global step at which to terminate pruning. Defaults to -1 implying that pruning continues till  the training stops |
-| weight_sparsity_map | list of strings | [""] | list of weight variable name (or layer name):target sparsity pairs. Eg. [conv1:0.9,conv2/kernel:0.8]. For layers/weights not in this list, sparsity as specified by the target_sparsity hyperparameter is used. |
-| threshold_decay | float | 0.9 | The decay factor to use for exponential decay of the thresholds |
+| weight_sparsity_map | list of strings | [""] | list of weight variable name regex (or layer name regex):target sparsity pairs. Eg. [conv1:0.9,conv.*/kernel:0.8]. For layers/weights not in this list, sparsity as specified by the target_sparsity hyperparameter is used. |
+| block_dims_map | list of strings | [""] | list of weight variable name regex (or layer name regex):block_heightxblock_width pairs. Eg. [dense1:4x4,dense2:1x16,dense3:1x1].  For layers/weights not in this list, block dims are specified by the block_height, block_width hyperparameters are used. |
+| threshold_decay | float | 0.0 | The decay factor to use for exponential decay of the thresholds |
 | pruning_frequency | integer | 10 | How often should the masks be updated? (in # of global_steps) |
-| nbins | integer | 256 | Number of bins to use for histogram computation. Note: When running on TPUs, a large (>1024) value for `nbins` may adversely affect the training time. |
 | block_height|integer | 1 | Number of rows in a block for block sparse matrices|
 | block_width |integer | 1 | Number of cols in a block for block sparse matrices|
 | block_pooling_function| string | AVG | The function to use to pool weight values in a block: average (AVG) or max (MAX)|
@@ -66,7 +66,7 @@ The pruning library allows for specification of the following hyper parameters:
 
 The sparsity $$s_t$$ at global step $$t$$ is given by:
 
-$$ s_{t}=s_{f}+\left(s_{i}-s_{f}\right)\left(1-\frac{t-t_{0}}{n\Delta t}\right)^{3} $$
+$$s_{t}=s_{f}+\left(s_{i}-s_{f}\right)\left(1-\frac{t-t_{0}}{n\Delta t}\right)^{3}$$
 
 The interval between sparsity_function_begin_step and sparsity_function_end_step
 is divided into $$n$$ intervals of size equal to the pruning_frequency ($$\Delta
@@ -134,9 +134,10 @@ For now, it is assumed that the underlying hardware platform will provide mechan
 
 ## Example: Pruning and training deep CNNs on the cifar10 dataset <a name="example"></a>
 
-Please see https://www.tensorflow.org/tutorials/deep_cnn for details on neural
-network architecture, setting up inputs etc. The additional changes needed to
-incorporate pruning are captured in the following:
+Please see
+[Advanced Convolutional Neural Networks](https://www.tensorflow.org/tutorials/images/deep_cnn)
+for details on neural network architecture, setting up inputs etc. The
+additional changes needed to incorporate pruning are captured in the following:
 
 *   [cifar10_pruning.py](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/model_pruning/examples/cifar10/cifar10_pruning.py)
     creates a deep CNN with the same architecture, but adds mask and threshold

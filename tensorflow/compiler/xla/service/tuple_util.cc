@@ -21,7 +21,7 @@ namespace xla {
 
 /*static*/ HloInstruction* TupleUtil::ExtractPrefix(HloInstruction* input_tuple,
                                                     int64 elements) {
-  CHECK(ShapeUtil::IsTuple(input_tuple->shape()));
+  CHECK(input_tuple->shape().IsTuple());
 
   HloComputation* computation = input_tuple->parent();
   const Shape& input_shape = input_tuple->shape();
@@ -41,7 +41,7 @@ namespace xla {
 /*static*/ HloInstruction* TupleUtil::AppendSuffix(
     HloInstruction* input_tuple,
     absl::Span<HloInstruction* const> trailing_values) {
-  CHECK(ShapeUtil::IsTuple(input_tuple->shape()));
+  CHECK(input_tuple->shape().IsTuple());
 
   HloComputation* computation = input_tuple->parent();
   const Shape& input_shape = input_tuple->shape();

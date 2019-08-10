@@ -28,7 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
-HloProfileIndexMap::HloProfileIndexMap(const HloModule& module) {
+HloProfileIndexMap::HloProfileIndexMap(const HloModule& module,
+                                       absl::Span<const string> extra_metrics) {
   size_t current_profile_index = 0;
   for (xla::HloComputation* computation : module.MakeComputationPostOrder()) {
     InsertOrDie(&computation_to_profile_idx_, computation,
@@ -40,11 +41,15 @@ HloProfileIndexMap::HloProfileIndexMap(const HloModule& module) {
                   current_profile_index++);
     }
   }
+  for (const string& key : extra_metrics) {
+    InsertOrDie(&extra_metric_to_profile_idx_, key, current_profile_index++);
+  }
 }
 
 std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
     const HloProfileIndexMap& hlo_profile_index_map,
-    const HloCostAnalysis& cost_analysis) {
+    const HloCostAnalysis& cost_analysis,
+    const string& entry_computation_name) {
   using HloComputationInfo = HloProfilePrinterData::HloComputationInfo;
   using HloInstructionInfo = HloProfilePrinterData::HloInstructionInfo;
 
@@ -104,6 +109,14 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
           hlo_profile_index_map.GetProfileIndexFor(*hlo));
     }
   }
+
+  // Add extra metrics if any.
+  for (const auto& pair : hlo_profile_index_map.extra_metric_to_profile_idx()) {
+    profile_printer_data->mutable_extra_metrics()->insert(
+        {pair.first, pair.second});
+  }
+
+  profile_printer_data->set_entry_computation(entry_computation_name);
 
   return profile_printer_data;
 }

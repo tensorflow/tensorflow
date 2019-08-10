@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <mutex>
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
@@ -97,7 +96,15 @@ struct ExampleStore {
       AddExample(&serialized_example, 10, 512, 1);
       AddExample(&serialized_example, 100, 512, 1);
       AddExample(&serialized_example, 1000, 512, 1);
+      AddExample(&serialized_example, 1, 1, 10);
+      AddExample(&serialized_example, 1, 1, 100);
+      AddExample(&serialized_example, 1, 1, 1000);
+      AddExample(&serialized_example, 1, 1, 10000);
+      AddExample(&serialized_example, 1, 1, 100000);
       AddExample(&serialized_example, 1, 1, 1000000);
+      AddExample(&serialized_example, 10, 1, 100000);
+      AddExample(&serialized_example, 100, 1, 10000);
+      AddExample(&serialized_example, 1000, 1, 1000);
     });
     return serialized_example;
   }
@@ -107,7 +114,7 @@ struct ExampleStore {
     Example example;
     Filler fill;
     Tensor record_string(DT_STRING, TensorShape({batch_size}));
-    auto string_t = record_string.vec<string>();
+    auto string_t = record_string.vec<tstring>();
     example.Clear();
     for (int b = 0; b < batch_size; ++b) {
       for (int k = 0; k < num_keys; ++k) {
@@ -128,9 +135,9 @@ ExampleTensorMap ExampleStore<T>::serialized_example;
 template <typename T>
 std::once_flag ExampleStore<T>::flags_init;
 
-template class ExampleStore<BytesFiller>;
-template class ExampleStore<Int64Filler>;
-template class ExampleStore<FloatFiller>;
+template struct ExampleStore<BytesFiller>;
+template struct ExampleStore<Int64Filler>;
+template struct ExampleStore<FloatFiller>;
 
 enum BenchmarkType { kDense, kSparse, kVarLenDense };
 
@@ -156,7 +163,7 @@ static Graph* ParseExample(int batch_size, int num_keys, int feature_size) {
   Options opt;
   for (int i = 0; i < num_keys; ++i) {
     Tensor key(DT_STRING, TensorShape());
-    key.scalar<string>()() = strings::Printf("feature_%d", i);
+    key.scalar<tstring>()() = strings::Printf("feature_%d", i);
     switch (opt.benchmark_type) {
       case kDense:
         dense_keys.emplace_back(test::graph::Constant(g, key));
@@ -198,7 +205,7 @@ static Graph* ParseSingleExample(int num_keys, int feature_size) {
       Options::Store::GetSerializedExample()[std::make_tuple(1, num_keys,
                                                              feature_size)];
   Tensor serialized(DT_STRING, TensorShape());
-  serialized.scalar<string>()() = serialized_batch_1.vec<string>()(0);
+  serialized.scalar<tstring>()() = serialized_batch_1.vec<tstring>()(0);
 
   std::vector<string> sparse_keys;
   std::vector<string> dense_keys;
@@ -299,11 +306,19 @@ BM_AllParseExample(VarLenDenseFloat);
   }                                                                      \
   BENCHMARK(BM_ParseSingleExample##_##TYPE##_1_##K##_##F);
 
-#define BM_AllParseSingleExample(Type)  \
-  BM_ParseSingleExample(Type, 10, 1);   \
-  BM_ParseSingleExample(Type, 100, 1);  \
-  BM_ParseSingleExample(Type, 1000, 1); \
-  BM_ParseSingleExample(Type, 1, 1000000);
+#define BM_AllParseSingleExample(Type)     \
+  BM_ParseSingleExample(Type, 10, 1);      \
+  BM_ParseSingleExample(Type, 100, 1);     \
+  BM_ParseSingleExample(Type, 1000, 1);    \
+  BM_ParseSingleExample(Type, 1, 10);      \
+  BM_ParseSingleExample(Type, 1, 100);     \
+  BM_ParseSingleExample(Type, 1, 1000);    \
+  BM_ParseSingleExample(Type, 1, 10000);   \
+  BM_ParseSingleExample(Type, 1, 100000);  \
+  BM_ParseSingleExample(Type, 1, 1000000); \
+  BM_ParseSingleExample(Type, 10, 100000); \
+  BM_ParseSingleExample(Type, 100, 10000); \
+  BM_ParseSingleExample(Type, 1000, 1000);
 
 BM_AllParseSingleExample(SparseString);
 BM_AllParseSingleExample(DenseString);

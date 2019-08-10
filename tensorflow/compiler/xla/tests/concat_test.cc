@@ -492,6 +492,32 @@ XLA_TEST_F(ConcatTest, ConcatR3WeirdDims) {
   ComputeAndCompareR3<float>(&builder, expected, {p0.get(), p1.get()});
 }
 
+XLA_TEST_F(ConcatTest, ConcatDeeplyNested) {
+  XlaBuilder builder(TestName());
+  auto a_literal = LiteralUtil::CreateR1<float>({256.0});
+  auto a = Parameter(&builder, 0, a_literal.shape(), "x");
+  auto b = ConcatInDim(&builder, {a, a}, 0);
+  auto c = ConcatInDim(&builder, {b, b}, 0);
+  auto d = ConcatInDim(&builder, {c, c}, 0);
+  auto e = ConcatInDim(&builder, {d, d}, 0);
+  auto f = ConcatInDim(&builder, {e, e}, 0);
+  auto g = ConcatInDim(&builder, {f, f}, 0);
+  auto h = ConcatInDim(&builder, {g, g}, 0);
+  auto i = ConcatInDim(&builder, {h, h}, 0);
+  auto j = ConcatInDim(&builder, {i, i}, 0);
+  auto k = ConcatInDim(&builder, {j, j}, 0);
+  auto l = ConcatInDim(&builder, {k, k}, 0);
+  auto m = ConcatInDim(&builder, {l, l}, 0);
+  auto n = ConcatInDim(&builder, {m, m}, 0);
+  auto o = ConcatInDim(&builder, {n, n}, 0);
+  auto p = ConcatInDim(&builder, {o, o}, 0);
+  auto q = ConcatInDim(&builder, {p, p}, 0);
+  ConcatInDim(&builder, {q, q}, 0);
+  std::vector<float> expected(131072, 256.0);
+  auto a_data = client_->TransferToServer(a_literal).ConsumeValueOrDie();
+  ComputeAndCompareR1<float>(&builder, expected, {a_data.get()});
+}
+
 // Describes a binary rank-2 concatenation test.
 struct R2BinarySpec {
   int64 lhs_dim0;

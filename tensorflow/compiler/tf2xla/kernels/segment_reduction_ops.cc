@@ -105,7 +105,7 @@ class UnsortedSegmentSum : public UnsortedSegmentReduce {
 };
 
 REGISTER_XLA_OP(
-    Name("UnsortedSegmentSum").CompileTimeConstInput("num_segments"),
+    Name("UnsortedSegmentSum").CompileTimeConstantInput("num_segments"),
     UnsortedSegmentSum);
 
 class UnsortedSegmentProd : public UnsortedSegmentReduce {
@@ -120,7 +120,7 @@ class UnsortedSegmentProd : public UnsortedSegmentReduce {
 };
 
 REGISTER_XLA_OP(
-    Name("UnsortedSegmentProd").CompileTimeConstInput("num_segments"),
+    Name("UnsortedSegmentProd").CompileTimeConstantInput("num_segments"),
     UnsortedSegmentProd);
 
 class UnsortedSegmentMin : public UnsortedSegmentReduce {
@@ -137,7 +137,7 @@ class UnsortedSegmentMin : public UnsortedSegmentReduce {
 };
 
 REGISTER_XLA_OP(
-    Name("UnsortedSegmentMin").CompileTimeConstInput("num_segments"),
+    Name("UnsortedSegmentMin").CompileTimeConstantInput("num_segments"),
     UnsortedSegmentMin);
 
 class UnsortedSegmentMax : public UnsortedSegmentReduce {
@@ -154,7 +154,7 @@ class UnsortedSegmentMax : public UnsortedSegmentReduce {
 };
 
 REGISTER_XLA_OP(
-    Name("UnsortedSegmentMax").CompileTimeConstInput("num_segments"),
+    Name("UnsortedSegmentMax").CompileTimeConstantInput("num_segments"),
     UnsortedSegmentMax);
 
 }  // namespace

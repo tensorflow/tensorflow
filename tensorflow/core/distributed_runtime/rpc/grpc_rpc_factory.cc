@@ -159,7 +159,7 @@ GrpcRPCFactory::ChannelPtr GrpcRPCFactory::CreateChannelForAddress(
 
   // Set a standard backoff timeout of 1s instead of the
   // (sometimes default) 20s.
-  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
+  args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
   return ::grpc::CreateCustomChannel(
       /*target=*/address, ::grpc::InsecureChannelCredentials(), args);
 }
@@ -187,8 +187,8 @@ void GrpcRPCFactory::CreateCall(const Tensor& request_t, const bool try_rpc,
 
 void GrpcRPCFactory::StartCall(const Tensor& address_t, const Tensor& method_t,
                                GrpcCall* call) {
-  auto address = address_t.flat<string>();
-  auto method = method_t.flat<string>();
+  auto address = address_t.flat<tstring>();
+  auto method = method_t.flat<tstring>();
   // Stubs are maintained by the GrpcRPCFactory class and will be
   // deleted when the class is destroyed.
   ::grpc::GenericStub* singleton_stub = nullptr;
@@ -206,11 +206,11 @@ void GrpcRPCFactory::StartCall(const Tensor& address_t, const Tensor& method_t,
 
   int index = call->index();
   // This object will delete itself when done.
-  new RPCState<string>(get_stub(index), &completion_queue_,
-                       *get_method_ptr(index), call->request(),
-                       call->response(),
-                       /*done=*/[call](const Status& s) { call->Done(s); },
-                       call->call_opts(), fail_fast_, timeout_in_ms_);
+  new RPCState<string>(
+      get_stub(index), &completion_queue_, *get_method_ptr(index),
+      call->request(), call->response(),
+      /*done=*/[call](const Status& s) { call->Done(s); }, call->call_opts(),
+      nullptr /*threadpool*/, fail_fast_, timeout_in_ms_, 0 /* max_retries */);
 }
 
 }  // namespace tensorflow

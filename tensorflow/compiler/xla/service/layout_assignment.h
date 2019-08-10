@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -243,7 +244,7 @@ class ChannelLayoutConstraints {
 
   // Returns true if channel_id has a layout constraint.
   bool IsChannelConstrained(int64 channel_id) const {
-    return constraints_.count(channel_id) > 0;
+    return constraints_.contains(channel_id);
   }
 
   // Given `shape`, apply the layout for `channel_id`. `channel_id` must already
@@ -276,7 +277,7 @@ class ChannelLayoutConstraints {
   }
 
  private:
-  std::unordered_map<int64, Layout> constraints_;
+  absl::flat_hash_map<int64, Layout> constraints_;
 };
 
 // HLO pass which assigns layouts to all instructions in the HLO module while
@@ -314,6 +315,10 @@ class LayoutAssignment : public HloModulePass {
   // being able to change layout means that it requires operands with the same
   // rank as the output to have the same layout as the output.
   static bool InstructionCanChangeLayout(const HloInstruction* instruction);
+
+  // In case of an array shape returns true iff it is at most rank 1. In case of
+  // a tuple shape returns true iff all leaf shapes are at most rank 1.
+  static bool IsAtMostRank1(const Shape& shape);
 
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
@@ -355,14 +360,14 @@ class LayoutAssignment : public HloModulePass {
   // the cost of `instruction`. `output_layout` is the layout of `instruction`.
   // Returns null if it can't decide the best layout.
   // Precondition: `instruction` and the operand are array-shaped.
-  std::unique_ptr<Layout> ChooseOperandLayoutFromOutputLayout(
+  virtual std::unique_ptr<Layout> ChooseOperandLayoutFromOutputLayout(
       const Layout& output_layout, const HloInstruction* instruction,
       int64 operand_no);
   // Given the layout of `user`'s `operand_no`-th operand, chooses a layout of
   // `user` that minimizes its cost on that operand.  Returns null if it can't
   // decide the best layout.
   // Precondition: `user` and the operand are array-shaped.
-  std::unique_ptr<Layout> ChooseOutputLayoutFromOperandLayout(
+  virtual std::unique_ptr<Layout> ChooseOutputLayoutFromOperandLayout(
       const Layout& operand_layout, const HloInstruction* user,
       int64 operand_no);
 
@@ -392,7 +397,6 @@ class LayoutAssignment : public HloModulePass {
   // Layouts constraints are added, then propagated until all LogicalBuffers in
   // the computation are constrained.
   Status RunOnComputation(ComputationLayout* computation_layout,
-                          const TuplePointsToAnalysis& points_to_analysis,
                           HloComputation* computation,
                           ChannelLayoutConstraints* channel_constraints);
 
@@ -407,6 +411,10 @@ class LayoutAssignment : public HloModulePass {
   // minimize the local cost of the computation. This propagation is *not*
   // required for correctness.
   Status PropagateConstraints(LayoutConstraints* constraints);
+
+  Status PropagateBufferConstraintToOperands(
+      const BufferLayoutConstraint& buffer_constraint,
+      LayoutConstraints* constraints);
 
   // Check that all layouts in the module have been set and satisfy all
   // necessary conditions.
@@ -458,9 +466,9 @@ class LayoutAssignment : public HloModulePass {
   // Creates a copy of the given operand if the operand's layout does not match
   // the given layout. This copy replaces the use in the given instruction.
   // Tuple operands will be deep-copied.
-  Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
-                                    HloInstruction* instruction,
-                                    int64 operand_no);
+  virtual Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
+                                            HloInstruction* instruction,
+                                            int64 operand_no);
 
   // Registers a copy instruction added by the layout assignment pass.
   void RegisterAddedCopy(HloInstruction* copy) {
@@ -496,6 +504,9 @@ class LayoutAssignment : public HloModulePass {
   // instructions can be set to match the computation.
   std::map<HloComputation*, ComputationLayout> computation_layouts_;
 
+  // Map from branch computations to the result layout they shuould apply.
+  std::map<HloComputation*, ComputationLayout> conditional_mismatch_;
+
   // Every copy added to the module by the layout assignment pass is registered
   // here.
   absl::flat_hash_set<HloInstruction*> added_copies_;
@@ -513,12 +524,18 @@ class LayoutAssignment : public HloModulePass {
   // host.
   ChannelLayoutConstraints host_channel_constraints_;
 
+  // Module points to analysis that can be updated for cloned computations.
+  std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
+
   // The set of HLO instructions which lacked any layout constraint, thus
   // receiving propagated default layouts.
   absl::flat_hash_set<const HloInstruction*> unconstrained_layout_instructions_;
 
   std::function<bool(const HloInstruction*)>
       instruction_can_change_layout_func_;
+
+  // CallGraph of the module, used to track callsites of each computation.
+  std::unique_ptr<CallGraph> call_graph_;
 };
 
 }  // namespace xla

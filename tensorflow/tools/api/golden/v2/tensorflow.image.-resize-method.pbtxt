@@ -4,19 +4,35 @@ tf_class {
   is_instance: "<type \'object\'>"
   member {
     name: "AREA"
-    mtype: "<type \'int\'>"
+    mtype: "<type \'str\'>"
   }
   member {
     name: "BICUBIC"
-    mtype: "<type \'int\'>"
+    mtype: "<type \'str\'>"
   }
   member {
     name: "BILINEAR"
-    mtype: "<type \'int\'>"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "GAUSSIAN"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "LANCZOS3"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "LANCZOS5"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "MITCHELLCUBIC"
+    mtype: "<type \'str\'>"
   }
   member {
     name: "NEAREST_NEIGHBOR"
-    mtype: "<type \'int\'>"
+    mtype: "<type \'str\'>"
   }
   member_method {
     name: "__init__"

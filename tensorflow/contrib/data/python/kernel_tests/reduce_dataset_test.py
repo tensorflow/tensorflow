@@ -24,11 +24,11 @@ from tensorflow.contrib.data.python.ops import get_single_element
 from tensorflow.contrib.data.python.ops import grouping
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class ReduceDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.named_parameters(
@@ -49,13 +49,10 @@ class ReduceDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     sum_reducer = grouping.Reducer(init_fn, reduce_fn, finalize_fn)
 
-    stop_t = array_ops.placeholder(dtypes.int64, shape=[])
-    dataset = dataset_ops.Dataset.range(stop_t)
+    dataset = dataset_ops.Dataset.range(stop)
     element = get_single_element.reduce_dataset(dataset, sum_reducer)
 
-    with self.cached_session() as sess:
-      value = sess.run(element, feed_dict={stop_t: stop})
-      self.assertEqual(stop * (stop - 1) / 2, value)
+    self.assertEqual(stop * (stop - 1) / 2, self.evaluate(element))
 
 
 if __name__ == "__main__":

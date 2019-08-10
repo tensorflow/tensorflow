@@ -22,10 +22,10 @@ limitations under the License.
 
 #include <atomic>
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/gather_nd_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
@@ -101,37 +101,21 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
                    typename TTypes<Index>::ConstMatrix Tindices,
                    typename TTypes<T>::Matrix Tout) {
     std::atomic<Index> error_loc(-1);
-
-    const Eigen::DenseIndex batch_size = Tindices.dimension(0);
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::Tensor<Eigen::DenseIndex, 1>::Dimensions reshape_dims{{ 1 }};
-    Eigen::array<Eigen::DenseIndex, 1> broadcast_dims{{ batch_size }};
-#else
-    Eigen::IndexList<Eigen::type2index<1> > reshape_dims;
-    Eigen::IndexList<Eigen::DenseIndex> broadcast_dims;
-    broadcast_dims.set(0, batch_size);
-#endif
+    const Eigen::Index batch_size = Tindices.dimension(0);
     generator::GatherNdSliceGenerator<T, Index, IXDIM> gather_nd_generator(
         slice_size, Tindices, Tparams, Tout, &error_loc);
 
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
-// Eigen implementation below is not highly performant. gather_nd_generator
-// does not seem to be called in parallel, leading to very poor performance.
-// Additionally, since it uses scalar (Tscratch) to invoke 'generate', it
-// needs to go through redundant operations like 'reshape', 'broadcast' and
-// 'sum'. OpenMP loop below essentially does same thing as Eigen code, but
-// is considerably more efficient.
-#pragma omp parallel for
-    for (Eigen::DenseIndex i = 0; i < batch_size; i++) {
-      const Eigen::array<Eigen::DenseIndex, 1> loc{i};
-      gather_nd_generator(loc);
-    }
-#else   // INTEL_MKL && ENABLE_MKL
-    Tscratch.device(d) = Tscratch.reshape(reshape_dims)
-                             .broadcast(broadcast_dims)
-                             .generate(gather_nd_generator)
-                             .sum();
-#endif  // INTEL_MKL && ENABLE_MKL
+    auto compute_shard = [&](Eigen::Index begin, Eigen::Index end) {
+      for (Eigen::Index i = begin; i < end; ++i) {
+        const Eigen::array<Eigen::Index, 1> loc{i};
+        gather_nd_generator(loc);
+      }
+    };
+    Eigen::Index bytes_moved = sizeof(T) * (slice_size + IXDIM);
+    auto cost = Eigen::TensorOpCost(bytes_moved /* bytes loaded */,
+                                    bytes_moved /* bytes stored */,
+                                    slice_size + IXDIM /* compute cycles */);
+    d.parallelFor(batch_size, cost, compute_shard);
 
     // error_loc() returns -1 if there's no out-of-bounds index,
     // otherwise it returns the location of an OOB index in Tindices.
@@ -152,6 +136,7 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
   REGISTER_GATHER_ND_FULL(type, int64)
 
 TF_CALL_ALL_TYPES(REGISTER_GATHER_ND_CPU);
+TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_ND_CPU);
 
 }  // namespace functor
 

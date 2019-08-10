@@ -34,12 +34,12 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
                                                    llvm::Type* index_type) {
   CHECK_NE(index_type, nullptr);
 
-  CHECK(!ShapeUtil::IsTuple(shape_));
+  CHECK(!shape_.IsTuple());
   CHECK(!ShapeUtil::IsScalar(shape_));
 
   llvm_ir::ForLoopNest loop_nest(loop_name, b_);
   const int64 num_dims = shape_.dimensions_size();
-  llvm_ir::IrArray::Index array_index(index_type, num_dims);
+  std::vector<llvm::Value*> array_multi_index(num_dims);
 
   // Add loops from outer-most to inner-most dimensions.
   for (int i = LayoutUtil::MinorToMajor(shape_).size() - 1; i >= 0; --i) {
@@ -54,14 +54,14 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
       std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
           /*suffix=*/absl::StrFormat("dim.%d", dimension), start_index,
           end_index);
-      array_index[dimension] = loop->GetIndVarValue();
+      array_multi_index[dimension] = loop->GetIndVarValue();
     } else {
       // Emit static loop bounds for this dimension.
       std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
           /*start_index=*/0,
           /*end_index=*/shape_.dimensions(dimension),
           /*suffix=*/absl::StrFormat("dim.%d", dimension));
-      array_index[dimension] = loop->GetIndVarValue();
+      array_multi_index[dimension] = loop->GetIndVarValue();
     }
   }
   // Point IR builder at inner loop BB.
@@ -71,6 +71,7 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   exit_bb_ = loop_nest.GetOuterLoopExitBasicBlock();
   CHECK(exit_bb_ != nullptr);
 
+  llvm_ir::IrArray::Index array_index(array_multi_index, shape_, index_type);
   return {array_index};
 }
 

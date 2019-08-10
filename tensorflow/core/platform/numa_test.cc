@@ -44,7 +44,7 @@ TEST(Numa, Malloc) {
 
 TEST(Numa, SetNodeAffinity) {
   // NOTE(tucker): This test is not reliable when executed under tap because
-  // the virtual machine may not have access to all of the availble NUMA
+  // the virtual machine may not have access to all of the available NUMA
   // nodes.  Not sure what to do about that.
   EXPECT_EQ(-1, port::NUMAGetThreadNodeAffinity());
   if (port::NUMAEnabled()) {

@@ -131,7 +131,7 @@ class LookupInterface : public ResourceBase {
   // - the default_value tensor shape matches the table's value shape.
   Status CheckFindArguments(const Tensor& keys, const Tensor& default_value);
 
-  string DebugString() override {
+  string DebugString() const override {
     return strings::StrCat("A lookup table of size: ", size());
   }
 

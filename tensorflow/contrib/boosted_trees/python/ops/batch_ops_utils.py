@@ -20,17 +20,17 @@ from __future__ import print_function
 import abc
 import collections
 
+import six
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 
 
+@six.add_metaclass(abc.ABCMeta)
 class ScheduledOp(object):
   """Represents a scheduled remote operation."""
-
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
   def batching_key(self):
@@ -64,7 +64,7 @@ def _move_tensors(tensors, device):
   # logic.
   zero = constant_op.constant(0, dtype=dtypes.int32)
   with ops.device(None):
-    if all(tensor.shape == tensor_shape.scalar() for tensor in tensors):
+    if all(tensor.shape.rank == 0 for tensor in tensors):
       with ops.device(tensors[0].device):
         values = array_ops.stack(tensors)
       with ops.device(device):

@@ -56,17 +56,23 @@ Status CompileXla(xla::CompileOnlyClient* client,
     return errors::Unknown("Couldn't get XLA program shape: ",
                            pshape_or.status().error_message());
   }
-  compile_result->program_shape = *pshape_or.ValueOrDie();
-  xla::ProgramShape* pshape = &compile_result->program_shape;
-  std::vector<const xla::Shape*> arg_layouts;
-  arg_layouts.reserve(pshape->parameters_size());
+  compile_result->program_shape = pshape_or.ValueOrDie()->ToProto();
+  xla::ProgramShapeProto* pshape = &compile_result->program_shape;
+
+  // AotXlaComputationInstance::argument_layouts is a vector of Shape
+  // pointers. Accumulate the Shape objects themselves in a separate vector
+  // while building the vector of pointers.
+  std::vector<const xla::Shape*> arg_layout_ptrs(pshape->parameters_size());
+  std::vector<xla::Shape> arg_layouts(pshape->parameters_size());
   for (int i = 0; i < pshape->parameters_size(); ++i) {
-    arg_layouts.push_back(pshape->mutable_parameters(i));
+    arg_layouts[i] = xla::Shape(*pshape->mutable_parameters(i));
+    arg_layout_ptrs[i] = &arg_layouts[i];
   }
   xla::CompileOnlyClient::AotXlaComputationInstance instance;
   instance.computation = &computation;
-  instance.argument_layouts = std::move(arg_layouts);
-  instance.result_layout = &pshape->result();
+  instance.argument_layouts = std::move(arg_layout_ptrs);
+  xla::Shape result_shape(pshape->result());
+  instance.result_layout = &result_shape;
   xla::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
       aot_or = client->CompileAheadOfTime({instance}, aot_opts);
   if (!aot_or.ok()) {
@@ -102,10 +108,13 @@ Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
                         computation.Snapshot());
     // Serialize the HloSnapshot deterministically so that all the outputs of a
     // tf_library genrule are deterministic.
-    string proto;
-    TF_RET_CHECK(SerializeToStringDeterministic(*module, &proto));
+    const size_t size = module->ByteSizeLong();
+    auto serialized = absl::make_unique<char[]>(size);
+    TF_RET_CHECK(
+        SerializeToBufferDeterministic(*module, serialized.get(), size));
     TF_RETURN_IF_ERROR(
-        WriteStringToFile(Env::Default(), flags.out_session_module, proto));
+        WriteStringToFile(Env::Default(), flags.out_session_module,
+                          absl::string_view(serialized.get(), size)));
   }
   xla::cpu::CpuAotCompilationOptions aot_opts(
       flags.target_triple, flags.target_cpu, flags.target_features,

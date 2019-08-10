@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <unordered_map>
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -62,11 +61,11 @@ class TrackingAllocator : public Allocator {
   void* AllocateRaw(size_t alignment, size_t num_bytes,
                     const AllocationAttributes& allocation_attr) override;
   void DeallocateRaw(void* ptr) override;
-  bool TracksAllocationSizes() override;
-  size_t RequestedSize(const void* ptr) override;
-  size_t AllocatedSize(const void* ptr) override;
-  int64 AllocationId(const void* ptr) override;
-  void GetStats(AllocatorStats* stats) override;
+  bool TracksAllocationSizes() const override;
+  size_t RequestedSize(const void* ptr) const override;
+  size_t AllocatedSize(const void* ptr) const override;
+  int64 AllocationId(const void* ptr) const override;
+  absl::optional<AllocatorStats> GetStats() override;
   void ClearStats() override;
 
   // If the underlying allocator tracks allocation sizes, this returns
@@ -95,7 +94,7 @@ class TrackingAllocator : public Allocator {
   bool UnRef() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Allocator* allocator_;  // not owned.
-  mutex mu_;
+  mutable mutex mu_;
   // the number of calls to AllocateRaw that have not yet been matched
   // by a corresponding call to DeAllocateRaw, plus 1 if the Executor
   // has not yet read out the high watermark.

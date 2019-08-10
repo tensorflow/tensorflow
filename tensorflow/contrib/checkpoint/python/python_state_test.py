@@ -26,7 +26,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
-from tensorflow.python.training.checkpointable import util
+from tensorflow.python.training.tracking import util
 
 
 class NumpyStateTests(test.TestCase):

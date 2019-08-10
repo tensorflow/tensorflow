@@ -1,4 +1,9 @@
 op {
   graph_op_name: "Square"
-  visibility: HIDDEN
+  endpoint {
+    name: "math.square"
+  }
+  endpoint {
+    name: "square"
+  }
 }

@@ -4,7 +4,7 @@ op {
   in_arg {
     name: "float_values"
     description: <<END
-float; List of Rank 2 Tensor each containing float values for a single feature.
+float; List of Rank 1 Tensor each containing float values for a single feature.
 END
   }
   in_arg {
@@ -17,7 +17,7 @@ END
   out_arg {
     name: "buckets"
     description: <<END
-int; List of Rank 2 Tensors each containing the bucketized values for a single feature.
+int; List of Rank 1 Tensors each containing the bucketized values for a single feature.
 END
   }
   attr {

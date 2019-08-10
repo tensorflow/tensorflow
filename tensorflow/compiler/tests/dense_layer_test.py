@@ -42,7 +42,7 @@ def GetRunMetadataLabels(run_metadata):
 
 def InLabels(labels, substr):
   """Returns true iff one of the labels contains substr."""
-  return any([substr in x for x in labels])
+  return any(substr in x for x in labels)
 
 
 class DenseLayerTest(test.TestCase):
@@ -72,7 +72,7 @@ class DenseLayerTest(test.TestCase):
       x = array_ops.placeholder(shape=[None, None, 3], dtype=np.float32)
       y = layers.dense(x, 3)
 
-      sess.run(variables.initialize_all_variables())
+      self.evaluate(variables.global_variables_initializer())
       run_metadata = config_pb2.RunMetadata()
       test_utils.RunWithWarmup(
           sess,
@@ -92,12 +92,12 @@ class DenseLayerTest(test.TestCase):
     XlaCompile/XlaRun op pair by XLA.
     """
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       x = array_ops.placeholder(shape=[2, 2, 3], dtype=np.float32)
       with jit_scope():
         y = layers.dense(x, 3)
 
-      sess.run(variables.initialize_all_variables())
+      self.evaluate(variables.global_variables_initializer())
       run_metadata = config_pb2.RunMetadata()
       test_utils.RunWithWarmup(
           sess,
@@ -113,20 +113,14 @@ class DenseLayerTest(test.TestCase):
 
   def testDenseLayerJitScopeUndefinedShape(self):
     """Tests that the dense layer node is properly compiled in jit scope.
-
-    Dense layer uses shape op to get shape of input tensor if its shape is not
-    fully defined. XLA does not cluster shape op with other operators. But in
-    experimental_jit_scope, XLA is forced to compile shape op into its own
-    cluster, causing dense layer to be split into TWO XlaCompile/XlaRun op
-    pairs.
     """
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       x = array_ops.placeholder(shape=[None, None, 3], dtype=np.float32)
       with jit_scope():
         y = layers.dense(x, 3)
 
-      sess.run(variables.initialize_all_variables())
+      self.evaluate(variables.global_variables_initializer())
       run_metadata = config_pb2.RunMetadata()
       test_utils.RunWithWarmup(
           sess,
@@ -136,7 +130,7 @@ class DenseLayerTest(test.TestCase):
               trace_level=config_pb2.RunOptions.FULL_TRACE))
 
     labels = GetRunMetadataLabels(run_metadata)
-    self.assertEqual(2, self.countXlaOps(labels))
+    self.assertEqual(1, self.countXlaOps(labels))
     self.assertFalse(InLabels(labels, "MatMult"))
 
 

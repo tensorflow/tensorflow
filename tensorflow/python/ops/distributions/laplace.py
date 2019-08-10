@@ -43,7 +43,7 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.Laplace")
+@tf_export(v1=["distributions.Laplace"])
 class Laplace(distribution.Distribution):
   """The Laplace distribution with location `loc` and `scale` parameters.
 
@@ -153,7 +153,7 @@ class Laplace(distribution.Distribution):
     return constant_op.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   def _sample_n(self, n, seed=None):
     shape = array_ops.concat([[n], self.batch_shape_tensor()], 0)

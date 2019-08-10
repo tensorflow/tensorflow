@@ -3,18 +3,21 @@
 
 `nccl_configure` depends on the following environment variables:
 
-  * `TF_NCCL_VERSION`: The NCCL version.
-  * `NCCL_INSTALL_PATH`: The installation path of the NCCL library.
-  * `NCCL_HDR_PATH`: The installation path of the NCCL header files.
+  * `TF_NCCL_VERSION`: Installed NCCL version or empty to build from source.
+  * `NCCL_INSTALL_PATH` (deprecated): The installation path of the NCCL library.
+  * `NCCL_HDR_PATH` (deprecated): The installation path of the NCCL header 
+    files.
+  * `TF_CUDA_PATHS`: The base paths to look for CUDA and cuDNN. Default is
+    `/usr/local/cuda,usr/`.
+
 """
 
 load(
     "//third_party/gpus:cuda_configure.bzl",
-    "auto_configure_fail",
     "compute_capabilities",
-    "cuda_toolkit_path",
-    "find_cuda_define",
-    "matches_version",
+    "enable_cuda",
+    "find_cuda_config",
+    "get_cpu_value",
 )
 
 _CUDA_TOOLKIT_PATH = "CUDA_TOOLKIT_PATH"
@@ -22,7 +25,7 @@ _NCCL_HDR_PATH = "NCCL_HDR_PATH"
 _NCCL_INSTALL_PATH = "NCCL_INSTALL_PATH"
 _TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 _TF_NCCL_VERSION = "TF_NCCL_VERSION"
-_TF_NCCL_CONFIG_REPO = "TF_NCCL_CONFIG_REPO"
+_TF_NEED_CUDA = "TF_NEED_CUDA"
 
 _DEFINE_NCCL_MAJOR = "#define NCCL_MAJOR"
 _DEFINE_NCCL_MINOR = "#define NCCL_MINOR"
@@ -41,12 +44,6 @@ cc_library(
 """
 
 _NCCL_ARCHIVE_BUILD_CONTENT = """
-exports_files([
-    "cuda/bin/crt/link.stub",
-    "cuda/bin/fatbinary",
-    "nvlink",
-])
-
 filegroup(
   name = "LICENSE",
   data = ["@nccl_archive//:LICENSE.txt"],
@@ -63,78 +60,19 @@ alias(
 def _label(file):
     return Label("//third_party/nccl:{}".format(file))
 
-def _find_nccl_header(repository_ctx, nccl_install_path):
-    """Finds the NCCL header on the system.
-
-    Args:
-      repository_ctx: The repository context.
-      nccl_install_path: The NCCL library install directory.
-
-    Returns:
-      The path to the NCCL header.
-    """
-    header_path = repository_ctx.path("%s/include/nccl.h" % nccl_install_path)
-    if not header_path.exists:
-        auto_configure_fail("Cannot find %s" % str(header_path))
-    return header_path
-
-def _check_nccl_version(repository_ctx, nccl_install_path, nccl_hdr_path, nccl_version):
-    """Checks whether the header file matches the specified version of NCCL.
-
-    Args:
-      repository_ctx: The repository context.
-      nccl_install_path: The NCCL library install directory.
-      nccl_hdr_path: The NCCL header path.
-      nccl_version: The expected NCCL version.
-
-    Returns:
-      A string containing the library version of NCCL.
-    """
-    header_path = repository_ctx.path("%s/nccl.h" % nccl_hdr_path)
-    if not header_path.exists:
-        header_path = _find_nccl_header(repository_ctx, nccl_install_path)
-    header_dir = str(header_path.realpath.dirname)
-    major_version = find_cuda_define(
-        repository_ctx,
-        header_dir,
-        "nccl.h",
-        _DEFINE_NCCL_MAJOR,
-    )
-    minor_version = find_cuda_define(
-        repository_ctx,
-        header_dir,
-        "nccl.h",
-        _DEFINE_NCCL_MINOR,
-    )
-    patch_version = find_cuda_define(
-        repository_ctx,
-        header_dir,
-        "nccl.h",
-        _DEFINE_NCCL_PATCH,
-    )
-    header_version = "%s.%s.%s" % (major_version, minor_version, patch_version)
-    if not matches_version(nccl_version, header_version):
-        auto_configure_fail(
-            ("NCCL library version detected from %s/nccl.h (%s) does not match " +
-             "TF_NCCL_VERSION (%s). To fix this rerun configure again.") %
-            (header_dir, header_version, nccl_version),
-        )
-
 def _nccl_configure_impl(repository_ctx):
     """Implementation of the nccl_configure repository rule."""
-    if _TF_NCCL_VERSION not in repository_ctx.os.environ:
+    if (not enable_cuda(repository_ctx) or
+        get_cpu_value(repository_ctx) not in ("Linux", "FreeBSD")):
         # Add a dummy build file to make bazel query happy.
         repository_ctx.file("BUILD", _NCCL_DUMMY_BUILD_CONTENT)
         return
 
-    if _TF_NCCL_CONFIG_REPO in repository_ctx.os.environ:
-        # Forward to the pre-configured remote repository.
-        repository_ctx.template("BUILD", _label("remote.BUILD.tpl"), {
-            "%{target}": repository_ctx.os.environ[_TF_NCCL_CONFIG_REPO],
-        })
-        return
+    nccl_version = ""
+    if _TF_NCCL_VERSION in repository_ctx.os.environ:
+        nccl_version = repository_ctx.os.environ[_TF_NCCL_VERSION].strip()
+        nccl_version = nccl_version.split(".")[0]
 
-    nccl_version = repository_ctx.os.environ[_TF_NCCL_VERSION].strip()
     if nccl_version == "":
         # Alias to open source build from @nccl_archive.
         repository_ctx.file("BUILD", _NCCL_ARCHIVE_BUILD_CONTENT)
@@ -150,25 +88,15 @@ def _nccl_configure_impl(repository_ctx):
         repository_ctx.template("build_defs.bzl", _label("build_defs.bzl.tpl"), {
             "%{gpu_architectures}": str(gpu_architectures),
         })
-
-        repository_ctx.symlink(cuda_toolkit_path(repository_ctx), "cuda")
-
-        # Temporary work-around for setups which symlink ptxas to a newer
-        # version. The versions of nvlink and ptxas need to agree, so we find
-        # nvlink next to the real location of ptxas. This is only temporary and
-        # will be removed again soon.
-        nvlink_dir = repository_ctx.path("cuda/bin/ptxas").realpath.dirname
-        repository_ctx.symlink(nvlink_dir.get_child("nvlink"), "nvlink")
     else:
         # Create target for locally installed NCCL.
-        nccl_install_path = repository_ctx.os.environ[_NCCL_INSTALL_PATH].strip()
-        nccl_hdr_path = repository_ctx.os.environ[_NCCL_HDR_PATH].strip()
-        _check_nccl_version(repository_ctx, nccl_install_path, nccl_hdr_path, nccl_version)
-        repository_ctx.template("BUILD", _label("system.BUILD.tpl"), {
-            "%{version}": nccl_version,
-            "%{install_path}": nccl_install_path,
-            "%{hdr_path}": nccl_hdr_path,
-        })
+        config = find_cuda_config(repository_ctx, ["nccl"])
+        config_wrap = {
+            "%{nccl_version}": config["nccl_version"],
+            "%{nccl_header_dir}": config["nccl_include_dir"],
+            "%{nccl_library_dir}": config["nccl_library_dir"],
+        }
+        repository_ctx.template("BUILD", _label("system.BUILD.tpl"), config_wrap)
 
 nccl_configure = repository_rule(
     implementation = _nccl_configure_impl,
@@ -178,7 +106,8 @@ nccl_configure = repository_rule(
         _NCCL_INSTALL_PATH,
         _TF_NCCL_VERSION,
         _TF_CUDA_COMPUTE_CAPABILITIES,
-        _TF_NCCL_CONFIG_REPO,
+        _TF_NEED_CUDA,
+        "TF_CUDA_PATHS",
     ],
 )
 """Detects and configures the NCCL configuration.

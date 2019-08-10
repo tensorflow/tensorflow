@@ -244,7 +244,7 @@ int main(int argc, char* argv[]) {
   std::vector<std::pair<string, int64>> all_found_words;
   tensorflow::StreamingAccuracyStats previous_stats;
 
-  const int64 audio_data_end = (sample_count - clip_duration_ms);
+  const int64 audio_data_end = (sample_count - clip_duration_samples);
   for (int64 audio_data_offset = 0; audio_data_offset < audio_data_end;
        audio_data_offset += clip_stride_samples) {
     const float* input_start = &(audio_data[audio_data_offset]);

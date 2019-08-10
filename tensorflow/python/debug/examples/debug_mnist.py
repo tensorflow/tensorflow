@@ -26,6 +26,7 @@ from __future__ import print_function
 
 import argparse
 import sys
+import tempfile
 
 import tensorflow as tf
 
@@ -125,7 +126,12 @@ def main(_):
         "The --debug and --tensorboard_debug_address flags are mutually "
         "exclusive.")
   if FLAGS.debug:
-    sess = tf_debug.LocalCLIDebugWrapperSession(sess, ui_type=FLAGS.ui_type)
+    config_file_path = (tempfile.mktemp(".tfdbg_config")
+                        if FLAGS.use_random_config_path else None)
+    sess = tf_debug.LocalCLIDebugWrapperSession(
+        sess,
+        ui_type=FLAGS.ui_type,
+        config_file_path=config_file_path)
   elif FLAGS.tensorboard_debug_address:
     sess = tf_debug.TensorBoardDebugWrapperSession(
         sess, FLAGS.tensorboard_debug_address)
@@ -189,5 +195,14 @@ if __name__ == "__main__":
       help="Connect to the TensorBoard Debugger Plugin backend specified by "
       "the gRPC address (e.g., localhost:1234). Mutually exclusive with the "
       "--debug flag.")
+  parser.add_argument(
+      "--use_random_config_path",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="""If set, set config file path to a random file in the temporary
+      directory.""")
   FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  with tf.Graph().as_default():
+    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

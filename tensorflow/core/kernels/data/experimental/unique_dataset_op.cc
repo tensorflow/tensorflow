@@ -19,10 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class UniqueDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -58,8 +56,8 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Unique")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Unique")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -72,6 +70,10 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override {
       return strings::StrCat("UniqueDatasetOp::Dataset");
+    }
+
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
     }
 
    protected:
@@ -114,6 +116,11 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeUnknownRatioNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_) {
@@ -166,7 +173,7 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
             return Hash64(t.tensor_data().data(), t.tensor_data().size());
           } else {
             DCHECK_EQ(DT_STRING, t.dtype());
-            auto flat_t = t.flat<string>();
+            auto flat_t = t.flat<tstring>();
             uint64 hash = 0;
             for (int64 i = 0; i < t.NumElements(); ++i) {
               hash = Hash64Combine(hash, Hash64(flat_t(i)));
@@ -216,9 +223,12 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("UniqueDataset").Device(DEVICE_CPU),
+                        UniqueDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalUniqueDataset").Device(DEVICE_CPU),
                         UniqueDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

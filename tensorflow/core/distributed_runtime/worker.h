@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 #include "tensorflow/core/distributed_runtime/partial_run_mgr.h"
+#include "tensorflow/core/distributed_runtime/recent_request_ids.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 
@@ -109,6 +110,7 @@ class Worker : public WorkerInterface {
 
  protected:
   WorkerEnv* const env_;  // Not owned.
+  RecentRequestIds recent_request_ids_;
 
   Status PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
                            Device** src_dev);

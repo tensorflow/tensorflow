@@ -41,7 +41,7 @@ void CheckFeatureOrDie(CPUFeature feature, const string& feature_name) {
   }
 }
 
-// Check if CPU feature is inclued in the TensorFlow binary.
+// Check if CPU feature is included in the TensorFlow binary.
 void CheckIfFeatureUnused(CPUFeature feature, const string& feature_name,
                           string& missing_instructions) {
   if (TestCPUFeature(feature)) {
@@ -138,8 +138,16 @@ void InfoAboutUnusedCPUFeatures() {
 #endif  // __FMA__
 #endif  // else of if defined(_MSC_VER) && !defined(__clang__)
     if (!missing_instructions.empty()) {
+#ifndef INTEL_MKL
       LOG(INFO) << "Your CPU supports instructions that this TensorFlow "
                 << "binary was not compiled to use:" << missing_instructions;
+#else
+      LOG(INFO) << "This TensorFlow binary is optimized with Intel(R) MKL-DNN "
+                << "to use the following CPU instructions in performance "
+                << "critical operations: " << missing_instructions << std::endl
+                << "To enable them in non-MKL-DNN operations, rebuild "
+                << "TensorFlow with the appropriate compiler flags.";
+#endif
     }
   });
 }

@@ -36,9 +36,9 @@ def get_empty_tensors(gradient_shape, hessian_shape):
   empty_hess_shape = [1] + hessian_shape.as_list()
   empty_grad_shape = [1] + gradient_shape.as_list()
 
-  empty_gradients = constant_op.constant(
+  empty_gradients = constant_op.constant_v1(
       [], dtype=dtypes.float32, shape=empty_grad_shape)
-  empty_hessians = constant_op.constant(
+  empty_hessians = constant_op.constant_v1(
       [], dtype=dtypes.float32, shape=empty_hess_shape)
 
   return empty_gradients, empty_hessians
@@ -60,8 +60,8 @@ class EqualitySplitHandlerTest(test_util.TensorFlowTestCase):
       indices = [[0, 0], [0, 1], [2, 0], [3, 0]]
       values = array_ops.constant([1, 2, 2, 1], dtype=dtypes.int64)
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = categorical_split_handler.EqualitySplitHandler(
@@ -183,8 +183,8 @@ class EqualitySplitHandlerTest(test_util.TensorFlowTestCase):
       indices = [[0, 0], [1, 0], [2, 0], [3, 0]]
       values = array_ops.constant([1, 2, 1, 2], dtype=dtypes.int64)
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = categorical_split_handler.EqualitySplitHandler(
@@ -294,8 +294,8 @@ class EqualitySplitHandlerTest(test_util.TensorFlowTestCase):
       indices = [[0, 0], [0, 1], [2, 0], [3, 0]]
       values = array_ops.constant([1, 2, 2, 1], dtype=dtypes.int64)
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = categorical_split_handler.EqualitySplitHandler(
@@ -486,11 +486,11 @@ class EqualitySplitHandlerTest(test_util.TensorFlowTestCase):
       gradients = array_ops.constant([0.2, -0.5, 1.2, 4.0])
       hessians = array_ops.constant([0.12, 0.07, 0.2, 0.13])
       partition_ids = [0, 0, 0, 1]
-      indices = array_ops.constant([], dtype=dtypes.int64, shape=[0, 2])
-      values = array_ops.constant([], dtype=dtypes.int64)
+      indices = constant_op.constant_v1([], dtype=dtypes.int64, shape=[0, 2])
+      values = constant_op.constant_v1([], dtype=dtypes.int64)
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = categorical_split_handler.EqualitySplitHandler(
@@ -537,8 +537,8 @@ class EqualitySplitHandlerTest(test_util.TensorFlowTestCase):
       indices = [[0, 0], [0, 1], [2, 0], [3, 0]]
       values = array_ops.constant([1, 2, 2, 1], dtype=dtypes.int64)
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = categorical_split_handler.EqualitySplitHandler(
@@ -591,8 +591,8 @@ class EqualitySplitHandlerTest(test_util.TensorFlowTestCase):
       indices = [[0, 0], [0, 1], [2, 0]]
       values = array_ops.constant([1, 2, 2], dtype=dtypes.int64)
 
-      gradient_shape = tensor_shape.scalar()
-      hessian_shape = tensor_shape.scalar()
+      gradient_shape = tensor_shape.TensorShape([])
+      hessian_shape = tensor_shape.TensorShape([])
       class_id = -1
 
       split_handler = categorical_split_handler.EqualitySplitHandler(

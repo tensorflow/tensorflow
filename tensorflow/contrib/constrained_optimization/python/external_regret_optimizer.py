@@ -15,7 +15,8 @@
 """Defines `AdditiveExternalRegretOptimizer`.
 
 This optimizer minimizes a `ConstrainedMinimizationProblem` by introducing
-Lagrange multipliers, and using `tf.train.Optimizer`s to jointly optimize over
+Lagrange multipliers, and using `tf.compat.v1.train.Optimizer`s to jointly
+optimize over
 the model parameters and Lagrange multipliers.
 
 For the purposes of constrained optimization, at least in theory,
@@ -33,8 +34,8 @@ The formulation used by the AdditiveExternalRegretOptimizer--which is simply the
 usual Lagrangian formulation--can be found in Definition 1, and is discussed in
 Section 3. This optimizer is most similar to Algorithm 3 in Appendix C.3, with
 the two differences being that it uses proxy constraints (if they're provided)
-in the update of the model parameters, and uses `tf.train.Optimizer`s, instead
-of SGD, for the "inner" updates.
+in the update of the model parameters, and uses `tf.compat.v1.train.Optimizer`s,
+instead of SGD, for the "inner" updates.
 """
 
 from __future__ import absolute_import
@@ -82,7 +83,7 @@ def _project_multipliers_wrt_euclidean_norm(multipliers, radius):
     raise ValueError(
         "multipliers must be one dimensional (instead is %d-dimensional)" %
         multipliers_shape.ndims)
-  dimension = multipliers_shape[0].value
+  dimension = multipliers_shape.dims[0].value
   if dimension is None:
     raise ValueError("multipliers must have fully-known shape")
 
@@ -99,9 +100,8 @@ def _project_multipliers_wrt_euclidean_norm(multipliers, radius):
     del old_inactive  # Needed by the condition, but not the body.
     iteration += 1
     scale = standard_ops.minimum(
-        0.0,
-        (radius - standard_ops.reduce_sum(multipliers)) / standard_ops.maximum(
-            1.0, standard_ops.reduce_sum(inactive)))
+        0.0, (radius - standard_ops.reduce_sum(multipliers)) /
+        standard_ops.maximum(1.0, standard_ops.reduce_sum(inactive)))
     multipliers = multipliers + (scale * inactive)
     new_inactive = standard_ops.cast(multipliers > 0, multipliers.dtype)
     multipliers = multipliers * new_inactive
@@ -157,12 +157,12 @@ class _ExternalRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
     `constraint_optimizer` is provided, then `optimizer` is used for both.
 
     Args:
-      optimizer: tf.train.Optimizer, used to optimize the objective and
-        proxy_constraints portion of the ConstrainedMinimizationProblem. If
+      optimizer: tf.compat.v1.train.Optimizer, used to optimize the objective
+        and proxy_constraints portion of the ConstrainedMinimizationProblem. If
         constraint_optimizer is not provided, this will also be used to optimize
         the Lagrange multipliers.
-      constraint_optimizer: optional tf.train.Optimizer, used to optimize the
-        Lagrange multipliers.
+      constraint_optimizer: optional tf.compat.v1.train.Optimizer, used to
+        optimize the Lagrange multipliers.
 
     Returns:
       A new `_ExternalRegretOptimizer`.
@@ -172,7 +172,7 @@ class _ExternalRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
 
   @property
   def constraint_optimizer(self):
-    """Returns the `tf.train.Optimizer` used for the Lagrange multipliers."""
+    """Returns the `tf.compat.v1.train.Optimizer` used for the Lagrange multipliers."""
     return self._constraint_optimizer
 
   @abc.abstractmethod
@@ -209,14 +209,15 @@ class _ExternalRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
     Args:
       minimization_problem: ConstrainedMinimizationProblem, the problem to
         optimize.
-      global_step: as in `tf.train.Optimizer`'s `minimize` method.
-      var_list: as in `tf.train.Optimizer`'s `minimize` method.
-      gate_gradients: as in `tf.train.Optimizer`'s `minimize` method.
-      aggregation_method: as in `tf.train.Optimizer`'s `minimize` method.
-      colocate_gradients_with_ops: as in `tf.train.Optimizer`'s `minimize`
+      global_step: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      var_list: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      gate_gradients: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      aggregation_method: as in `tf.compat.v1.train.Optimizer`'s `minimize`
         method.
-      name: as in `tf.train.Optimizer`'s `minimize` method.
-      grad_loss: as in `tf.train.Optimizer`'s `minimize` method.
+      colocate_gradients_with_ops: as in `tf.compat.v1.train.Optimizer`'s
+        `minimize` method.
+      name: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
+      grad_loss: as in `tf.compat.v1.train.Optimizer`'s `minimize` method.
 
     Raises:
       ValueError: If the minimization_problem tensors have different dtypes.
@@ -318,10 +319,10 @@ class _ExternalRegretOptimizer(constrained_optimizer.ConstrainedOptimizer):
 class AdditiveExternalRegretOptimizer(_ExternalRegretOptimizer):
   """A `ConstrainedOptimizer` based on external-regret minimization.
 
-  This `ConstrainedOptimizer` uses the given `tf.train.Optimizer`s to jointly
-  minimize over the model parameters, and maximize over Lagrange multipliers,
-  with the latter maximization using additive updates and an algorithm that
-  minimizes external regret.
+  This `ConstrainedOptimizer` uses the given `tf.compat.v1.train.Optimizer`s to
+  jointly minimize over the model parameters, and maximize over Lagrange
+  multipliers, with the latter maximization using additive updates and an
+  algorithm that minimizes external regret.
 
   For more specifics, please refer to:
 
@@ -333,8 +334,8 @@ class AdditiveExternalRegretOptimizer(_ExternalRegretOptimizer):
   formulation--can be found in Definition 1, and is discussed in Section 3. It
   is most similar to Algorithm 3 in Appendix C.3, with the two differences being
   that it uses proxy constraints (if they're provided) in the update of the
-  model parameters, and uses `tf.train.Optimizer`s, instead of SGD, for the
-  "inner" updates.
+  model parameters, and uses `tf.compat.v1.train.Optimizer`s, instead of SGD,
+  for the "inner" updates.
   """
 
   def __init__(self,
@@ -344,12 +345,12 @@ class AdditiveExternalRegretOptimizer(_ExternalRegretOptimizer):
     """Constructs a new `AdditiveExternalRegretOptimizer`.
 
     Args:
-      optimizer: tf.train.Optimizer, used to optimize the objective and
-        proxy_constraints portion of ConstrainedMinimizationProblem. If
+      optimizer: tf.compat.v1.train.Optimizer, used to optimize the objective
+        and proxy_constraints portion of ConstrainedMinimizationProblem. If
         constraint_optimizer is not provided, this will also be used to optimize
         the Lagrange multipliers.
-      constraint_optimizer: optional tf.train.Optimizer, used to optimize the
-        Lagrange multipliers.
+      constraint_optimizer: optional tf.compat.v1.train.Optimizer, used to
+        optimize the Lagrange multipliers.
       maximum_multiplier_radius: float, an optional upper bound to impose on the
         sum of the Lagrange multipliers.
 
@@ -379,7 +380,7 @@ class AdditiveExternalRegretOptimizer(_ExternalRegretOptimizer):
     return state
 
   def _constraint_grad_and_var(self, state, gradient):
-    # TODO(acotter): tf.colocate_with(), if colocate_gradients_with_ops is True?
+    # TODO(acotter): v1.colocate_with(), if colocate_gradients_with_ops is True?
     return (-gradient, state)
 
   def _projection_op(self, state, name=None):

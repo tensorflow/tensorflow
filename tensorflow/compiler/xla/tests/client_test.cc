@@ -50,7 +50,8 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
       ExecutionOptions execution_options = execution_options_;
       *execution_options.mutable_shape_with_output_layout() =
           ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
-                                         execute_layout);
+                                         execute_layout)
+              .ToProto();
       TF_ASSERT_OK_AND_ASSIGN(
           std::unique_ptr<GlobalData> data,
           client_->Execute(computation, {}, &execution_options));
@@ -84,7 +85,8 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
           {ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
                                           /*minor_to_major=*/{0, 1}),
            ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
-                                          /*minor_to_major=*/{1, 0})});
+                                          /*minor_to_major=*/{1, 0})})
+          .ToProto();
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result,
@@ -94,7 +96,7 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
   LiteralTestUtil::ExpectR2Equal<int32>({{10, 20}, {30, 40}},
                                         LiteralSlice(result, {1}));
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result.shape()));
+  EXPECT_TRUE(result.shape().IsTuple());
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result.shape()));
 
   EXPECT_TRUE(ShapeUtil::Equal(
@@ -107,7 +109,10 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
                                      /*minor_to_major=*/{1, 0})));
 }
 
-XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
+// Disabled for interpreter since ExecuteAsyncOnStream is not implemented on
+// interpreter backend.
+XLA_TEST_F(ClientTest,
+           DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(ExecuteParallel))) {
   XlaComputation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
   Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
 

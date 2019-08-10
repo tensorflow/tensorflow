@@ -32,13 +32,13 @@ std::vector<int64> TensorShapeAsVector(TFE_TensorHandle* handle,
                                        TF_Status* status) {
   std::vector<int64> shape;
   int rank = TFE_TensorHandleNumDims(handle, status);
-  if (!status->status.ok()) {
+  if (TF_GetCode(status) != TF_OK) {
     return shape;
   }
   shape.reserve(rank);
   for (int i = 0; i < rank; ++i) {
     shape.push_back(TFE_TensorHandleDim(handle, i, status));
-    if (!status->status.ok()) {
+    if (TF_GetCode(status) != TF_OK) {
       return shape;
     }
   }
@@ -53,17 +53,13 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
     TFE_TensorHandle* handle, TF_Status* status) {
   const tensorflow::Tensor* tensor;
   status->status = handle->handle->Tensor(&tensor);
-  if (!status->status.ok()) {
-    return nullptr;
-  }
-
-  tensorflow::Device* device;
-  status->status = handle->handle->Device(&device);
-  if (!status->status.ok()) {
+  if (TF_GetCode(status) != TF_OK) {
     return nullptr;
   }
 
 #ifdef TENSORFLOW_EAGER_USE_XLA
+  tensorflow::Device* device = handle->handle->device();
+
   // If tensor resides on an XLA device, use XLA device's PaddedShapeFn.
   tensorflow::XlaDevice* xla_device =
       dynamic_cast<tensorflow::XlaDevice*>(device);
@@ -82,12 +78,12 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
         status->status = tensorflow::Status::OK();
       } else {
         VLOG(3) << "Fully padded shape of ["
-                << tensorflow::str_util::Join(shape_to_log, ", ") << "] is "
+                << absl::StrJoin(shape_to_log, ", ") << "] is "
                 << padded_shape.DebugString();
       }
     }
 
-    if (xla::ShapeUtil::IsTuple(padded_shape)) {
+    if (padded_shape.IsTuple()) {
       if (xla::ShapeUtil::TupleElementCount(padded_shape) != 2) {
         // Currently, the only case of XlaTensor containing a tuple shape is to
         // represent 64 bit ints, doubles, and complex numbers (we don't support
@@ -103,7 +99,7 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
       xla::Shape shape0 = xla::ShapeUtil::GetTupleElementShape(padded_shape, 0);
       const xla::Shape& shape1 =
           xla::ShapeUtil::GetTupleElementShape(padded_shape, 1);
-      if (xla::ShapeUtil::IsTuple(shape0) || xla::ShapeUtil::IsTuple(shape1)) {
+      if (shape0.IsTuple() || shape1.IsTuple()) {
         status->status = tensorflow::errors::InvalidArgument(
             "XlaTensors should not contain nested tuples. Shape: ",
             padded_shape.DebugString());
@@ -143,7 +139,7 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
   // If the tensor is not an XLA tensor, the device shape is
   // the same as regular tensor shape.
   std::vector<int64> dev_dims = TensorShapeAsVector(handle, status);
-  if (!status->status.ok()) {
+  if (TF_GetCode(status) != TF_OK) {
     return nullptr;
   }
   return new TFE_TensorDebugInfo(dev_dims);

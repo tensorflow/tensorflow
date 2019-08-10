@@ -9,5 +9,4 @@ message RemoteMemoryRegion {
   uint64 addr = 3;
   uint32 rkey = 4;
   uint32 tensor_key = 5;
-  uint64 checksum = 6;
 }

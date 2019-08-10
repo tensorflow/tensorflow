@@ -18,12 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import defaultdict
+import collections
 
 import numpy as np
 import six
-from tensorflow.python.util.tf_export import tf_export
-
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
+from tensorflow.python.util.tf_export import keras_export
 
 try:
   import h5py
@@ -31,7 +32,7 @@ except ImportError:
   h5py = None
 
 
-@tf_export('keras.utils.HDF5Matrix')
+@keras_export('keras.utils.HDF5Matrix')
 class HDF5Matrix(object):
   """Representation of HDF5 dataset to be used instead of a Numpy array.
 
@@ -58,7 +59,7 @@ class HDF5Matrix(object):
   Returns:
       An array-like HDF5 dataset.
   """
-  refs = defaultdict(int)
+  refs = collections.defaultdict(int)
 
   def __init__(self, datapath, dataset, start=0, end=None, normalizer=None):
     if h5py is None:
@@ -148,6 +149,25 @@ class HDF5Matrix(object):
         An integer denoting the number of elements in the dataset.
     """
     return np.prod(self.shape)
+
+  @staticmethod
+  def _to_type_spec(value):
+    """Gets the Tensorflow TypeSpec corresponding to the passed dataset.
+
+    Args:
+      value: A HDF5Matrix object.
+
+    Returns:
+      A tf.TensorSpec.
+    """
+    if not isinstance(value, HDF5Matrix):
+      raise TypeError('Expected value to be a HDF5Matrix, but saw: {}'.format(
+          type(value)))
+    return tensor_spec.TensorSpec(shape=value.shape, dtype=value.dtype)
+
+
+type_spec.register_type_spec_from_value_converter(HDF5Matrix,
+                                                  HDF5Matrix._to_type_spec)  # pylint: disable=protected-access
 
 
 def ask_to_proceed_with_overwrite(filepath):

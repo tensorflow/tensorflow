@@ -101,7 +101,7 @@ void CreateTensorsFromInputInfo(
         if (!input.initialization_values.empty()) {
           LOG(FATAL) << "Initialization values are not supported for strings";
         }
-        auto type_tensor = input_tensor.flat<string>();
+        auto type_tensor = input_tensor.flat<tstring>();
         type_tensor = type_tensor.constant("");
         break;
       }
@@ -254,6 +254,7 @@ Status InitializeSession(int num_threads, const string& graph,
   tensorflow::ConfigProto& config = options.config;
   if (num_threads > 0) {
     config.set_intra_op_parallelism_threads(num_threads);
+    config.set_inter_op_parallelism_threads(num_threads);
   }
   LOG(INFO) << "Got config, " << config.device_count_size() << " devices";
 

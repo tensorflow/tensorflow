@@ -29,7 +29,7 @@ from tensorflow.python.platform import test
 
 def _GetExampleIter(inputs):
   dataset = dataset_ops.Dataset.from_tensor_slices(inputs)
-  return dataset.make_one_shot_iterator()
+  return dataset_ops.make_one_shot_iterator(dataset)
 
 
 class FixedLossScaleManagerTest(test.TestCase):

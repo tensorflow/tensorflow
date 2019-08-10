@@ -29,9 +29,7 @@ from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util.tf_export import tf_export
 
-__all__ = [
-    "LinearOperatorBlockDiag",
-]
+__all__ = ["LinearOperatorBlockDiag"]
 
 
 @tf_export("linalg.LinearOperatorBlockDiag")
@@ -85,18 +83,18 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
   ==> tf.concat([operator_1.matmul(x1), operator_2.matmul(x2)])
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
-  matrix_44 = tf.random_normal(shape=[2, 3, 4, 4])
+  matrix_44 = tf.random.normal(shape=[2, 3, 4, 4])
   operator_44 = LinearOperatorFullMatrix(matrix)
 
   # Create a [1, 3] batch of 5 x 5 linear operators.
-  matrix_55 = tf.random_normal(shape=[1, 3, 5, 5])
+  matrix_55 = tf.random.normal(shape=[1, 3, 5, 5])
   operator_55 = LinearOperatorFullMatrix(matrix_55)
 
   # Combine to create a [2, 3] batch of 9 x 9 operators.
   operator_99 = LinearOperatorBlockDiag([operator_44, operator_55])
 
   # Create a shape [2, 3, 9] vector.
-  x = tf.random_normal(shape=[2, 3, 9])
+  x = tf.random.normal(shape=[2, 3, 9])
   operator_99.matmul(x)
   ==> Shape [2, 3, 9] Tensor
   ```

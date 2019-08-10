@@ -26,11 +26,13 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_v1_only("deprecated API, no eager or V2 test coverage")
 class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.named_parameters(
@@ -63,13 +65,13 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
     # RepeatDataset(count) ->
     # _SlideDataset(window_size, window_shift, window_stride).
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
         .repeat(count).apply(
             sliding.sliding_window_batch(
                 window_size=window_size_t,
                 window_shift=window_shift_t,
-                window_stride=window_stride_t)).make_initializable_iterator())
+                window_stride=window_stride_t)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -127,13 +129,13 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
     # RepeatDataset(count) -> _SlideDataset(window_size, stride, window_stride).
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
         .repeat(count).apply(
             sliding.sliding_window_batch(
                 window_size=window_size_t,
                 stride=stride_t,
-                window_stride=window_stride_t)).make_initializable_iterator())
+                window_stride=window_stride_t)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -173,12 +175,12 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     window_shift_t = array_ops.placeholder(dtypes.int64, shape=[])
     window_stride_t = array_ops.placeholder(dtypes.int64, shape=[])
 
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.range(10).map(lambda x: x).repeat(count_t).apply(
             sliding.sliding_window_batch(
                 window_size=window_size_t,
                 window_shift=window_shift_t,
-                window_stride=window_stride_t)).make_initializable_iterator())
+                window_stride=window_stride_t)))
     init_op = iterator.initializer
 
     with self.cached_session() as sess:
@@ -204,9 +206,9 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       return sparse_tensor.SparseTensorValue(
           indices=[[0]], values=(i * [1]), dense_shape=[1])
 
-    iterator = dataset_ops.Dataset.range(10).map(_sparse).apply(
-        sliding.sliding_window_batch(
-            window_size=5, window_shift=3)).make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.range(10).map(_sparse).apply(
+            sliding.sliding_window_batch(window_size=5, window_shift=3)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -220,7 +222,7 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
             values=[i * 3, i * 3 + 1, i * 3 + 2, i * 3 + 3, i * 3 + 4],
             dense_shape=[5, 1])
         self.assertTrue(sparse_tensor.is_sparse(actual))
-        self.assertSparseValuesEqual(actual, expected)
+        self.assertValuesEqual(actual, expected)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -230,12 +232,12 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       return sparse_tensor.SparseTensorValue(
           indices=array_ops.expand_dims(
               math_ops.range(i, dtype=dtypes.int64), 1),
-          values=array_ops.fill([math_ops.to_int32(i)], i),
+          values=array_ops.fill([math_ops.cast(i, dtypes.int32)], i),
           dense_shape=[i])
 
-    iterator = dataset_ops.Dataset.range(10).map(_sparse).apply(
-        sliding.sliding_window_batch(
-            window_size=5, window_shift=3)).make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.range(10).map(_sparse).apply(
+            sliding.sliding_window_batch(window_size=5, window_shift=3)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -255,7 +257,7 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
             values=expected_values,
             dense_shape=[5, i * 3 + 5 - 1])
         self.assertTrue(sparse_tensor.is_sparse(actual))
-        self.assertSparseValuesEqual(actual, expected)
+        self.assertValuesEqual(actual, expected)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -265,11 +267,10 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       return sparse_tensor.SparseTensorValue(
           indices=[[0]], values=(i * [1]), dense_shape=[1])
 
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.range(10).map(_sparse).apply(
             sliding.sliding_window_batch(window_size=4, window_shift=2)).apply(
-                sliding.sliding_window_batch(window_size=3, window_shift=1))
-        .make_initializable_iterator())
+                sliding.sliding_window_batch(window_size=3, window_shift=1)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -284,7 +285,7 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           values=[0, 1, 2, 3, 2, 3, 4, 5, 4, 5, 6, 7],
           dense_shape=[3, 4, 1])
       self.assertTrue(sparse_tensor.is_sparse(actual))
-      self.assertSparseValuesEqual(actual, expected)
+      self.assertValuesEqual(actual, expected)
       # Slide: 2nd batch.
       actual = sess.run(get_next)
       expected = sparse_tensor.SparseTensorValue(
@@ -294,7 +295,7 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           values=[2, 3, 4, 5, 4, 5, 6, 7, 6, 7, 8, 9],
           dense_shape=[3, 4, 1])
       self.assertTrue(sparse_tensor.is_sparse(actual))
-      self.assertSparseValuesEqual(actual, expected)
+      self.assertValuesEqual(actual, expected)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -305,11 +306,10 @@ class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       yield [4.0, 5.0, 6.0]
       yield [7.0, 8.0, 9.0, 10.0]
 
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_generator(
             generator, dtypes.float32, output_shapes=[None]).apply(
-                sliding.sliding_window_batch(window_size=3, window_shift=1))
-        .make_initializable_iterator())
+                sliding.sliding_window_batch(window_size=3, window_shift=1)))
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:

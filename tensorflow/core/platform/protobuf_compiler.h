@@ -16,10 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_PROTOBUF_COMPILER_H_
 #define TENSORFLOW_PLATFORM_PROTOBUF_COMPILER_H_
 
-#if defined(PLATFORM_GOOGLE) && !defined(USE_DEFAULT_PROTOBUF)
-#include "tensorflow/core/platform/google/protobuf_compiler.h"
-#else
-#include "tensorflow/core/platform/default/protobuf_compiler.h"
-#endif
+#include "google/protobuf/compiler/importer.h"
 
 #endif  // TENSORFLOW_PLATFORM_PROTOBUF_COMPILER_H_

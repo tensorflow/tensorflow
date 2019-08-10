@@ -30,9 +30,9 @@ TEST(LatencyAllEdgesTest, AddLatenciesAfterTensorMapPrefetch) {
   using test::function::NDef;
   GrapplerItem item;
   NodeDef component_node =
-      NDef("component_nodes", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}});
+      NDef("component_node", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}});
   NodeDef from_tensor_node =
-      NDef("from_tensor_nodes", "TensorDataset", {"component_nodes"},
+      NDef("from_tensor_node", "TensorDataset", {"component_node"},
            {{"Toutput_types", {}}, {"output_shapes", {}}});
 
   NodeDef captured_input_node = NDef("captured_input_node", "Const", {},

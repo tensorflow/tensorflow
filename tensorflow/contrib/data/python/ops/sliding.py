@@ -17,12 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util import deprecation
 
 
@@ -31,7 +31,6 @@ class _SlideDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, window_size, window_shift, window_stride):
     """See `sliding_window_batch` for details."""
-    super(_SlideDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._window_size = ops.convert_to_tensor(
         window_size, dtype=dtypes.int64, name="window_stride")
@@ -40,36 +39,35 @@ class _SlideDataset(dataset_ops.UnaryDataset):
     self._window_shift = ops.convert_to_tensor(
         window_shift, dtype=dtypes.int64, name="window_shift")
 
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.slide_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        window_size=self._window_size,
-        window_shift=self._window_shift,
-        window_stride=self._window_stride,
-        **dataset_ops.flat_structure(self))
+    input_structure = dataset_ops.get_structure(input_dataset)
+    self._element_spec = nest.map_structure(
+        lambda component_spec: component_spec._batch(None), input_structure)  # pylint: disable=protected-access
+    if compat.forward_compatible(2019, 8, 3):
+      variant_tensor = ged_ops.sliding_window_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          window_size=self._window_size,
+          window_shift=self._window_shift,
+          window_stride=self._window_stride,
+          **self._flat_structure)
+    else:
+      variant_tensor = ged_ops.experimental_sliding_window_dataset(
+          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+          window_size=self._window_size,
+          window_shift=self._window_shift,
+          window_stride=self._window_stride,
+          **self._flat_structure)
+    super(_SlideDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
-  @property
-  def output_shapes(self):
-    input_shapes = self._input_dataset.output_shapes
-    return nest.pack_sequence_as(input_shapes, [
-        tensor_shape.vector(None).concatenate(s)
-        for s in nest.flatten(self._input_dataset.output_shapes)
-    ])
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
+  def element_spec(self):
+    return self._element_spec
 
 
 @deprecation.deprecated_args(
     None, "stride is deprecated, use window_shift instead", "stride")
 @deprecation.deprecated(
     None, "Use `tf.data.Dataset.window(size=window_size, shift=window_shift, "
-    "stride=window_stride).flat_map(lambda x: x.batch(window.size))` "
+    "stride=window_stride).flat_map(lambda x: x.batch(window_size))` "
     "instead.")
 def sliding_window_batch(window_size,
                          stride=None,

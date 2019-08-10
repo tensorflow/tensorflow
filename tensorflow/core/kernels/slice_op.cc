@@ -17,9 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/slice_op.h"
 
@@ -267,7 +267,7 @@ TF_CALL_POD_STRING_TYPES(REGISTER_SLICE);
 TF_CALL_QUANTIZED_TYPES(REGISTER_SLICE);
 #undef REGISTER_SLICE
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T, NDIM)                                  \
@@ -292,25 +292,30 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N);
 TF_CALL_complex64(DECLARE_FOR_N);
 TF_CALL_complex128(DECLARE_FOR_N);
 TF_CALL_bfloat16(DECLARE_FOR_N);
+TF_CALL_bool(DECLARE_FOR_N);
+TF_CALL_int8(DECLARE_FOR_N);
+TF_CALL_int64(DECLARE_FOR_N);
 DECLARE_FOR_N(int32);
 
 #undef DECLARE_FOR_N
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
-#define REGISTER_GPU(type)                                     \
-  REGISTER_KERNEL_BUILDER(Name("Slice")                        \
-                              .Device(DEVICE_GPU)              \
-                              .TypeConstraint<type>("T")       \
-                              .HostMemory("begin")             \
-                              .HostMemory("size")              \
-                              .TypeConstraint<int32>("Index"), \
+#define REGISTER_GPU(type)                               \
+  REGISTER_KERNEL_BUILDER(Name("Slice")                  \
+                              .Device(DEVICE_GPU)        \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("begin")       \
+                              .HostMemory("size"),       \
                           SliceOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_bfloat16(REGISTER_GPU);
+TF_CALL_bool(REGISTER_GPU);
+TF_CALL_int8(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -318,7 +323,6 @@ TF_CALL_bfloat16(REGISTER_GPU);
 REGISTER_KERNEL_BUILDER(Name("Slice")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Index")
                             .HostMemory("input")
                             .HostMemory("begin")
                             .HostMemory("size")
@@ -327,7 +331,7 @@ REGISTER_KERNEL_BUILDER(Name("Slice")
 
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 // Forward declarations of the functor specializations for SYCL.

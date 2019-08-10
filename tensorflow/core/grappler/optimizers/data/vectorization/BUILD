@@ -1,11 +1,10 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:default/build_config.bzl", "tf_protos_all")
+
 package(
     default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_all")
 
 VECTORIZER_DEPS = [
     ":vectorizer_registry",
@@ -33,6 +32,7 @@ cc_library(
     deps = [
         ":wrapped_tensor",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/cc:ops",
         "//tensorflow/core:lib",
     ] + tf_protos_all(),
 )
@@ -45,6 +45,7 @@ cc_library(
         ":vectorizer",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -60,17 +61,8 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "add_vectorizer",
-    srcs = [
-        "add_vectorizer.cc",
-    ],
-    deps = VECTORIZER_DEPS,
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "cast_vectorizer",
-    srcs = ["cast_vectorizer.cc"],
+    name = "cwise_op_vectorizer",
+    srcs = ["cwise_op_vectorizer.cc"],
     deps = VECTORIZER_DEPS,
     alwayslink = 1,
 )
@@ -97,6 +89,18 @@ cc_library(
 )
 
 cc_library(
+    name = "transpose_vectorizer",
+    srcs = ["transpose_vectorizer.cc"],
+    deps = VECTORIZER_DEPS + [
+        ":vectorizer",
+        ":wrapped_tensor",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "unpack_vectorizer",
     srcs = ["unpack_vectorizer.cc"],
     deps = VECTORIZER_DEPS,
@@ -108,13 +112,14 @@ cc_library(
     hdrs = ["vectorizer_registry.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":add_vectorizer",
-        ":cast_vectorizer",
+        ":cwise_op_vectorizer",
         ":decode_csv_vectorizer",
         ":parse_single_example_vectorizer",
         ":reshape_vectorizer",
+        ":transpose_vectorizer",
         ":unpack_vectorizer",
         ":vectorizer",
         ":vectorizer_registry",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

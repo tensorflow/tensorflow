@@ -24,7 +24,7 @@ from tensorflow.python.lib.io import tf_record
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('train.summary_iterator')
+@tf_export(v1=['train.summary_iterator'])
 def summary_iterator(path):
   # pylint: disable=line-too-long
   """An iterator for reading `Event` protocol buffers from an event file.
@@ -35,7 +35,7 @@ def summary_iterator(path):
   Example: Print the contents of an events file.
 
   ```python
-  for e in tf.train.summary_iterator(path to events file):
+  for e in tf.compat.v1.train.summary_iterator(path to events file):
       print(e)
   ```
 
@@ -45,8 +45,8 @@ def summary_iterator(path):
   # This example supposes that the events file contains summaries with a
   # summary value tag 'loss'.  These could have been added by calling
   # `add_summary()`, passing the output of a scalar summary op created with
-  # with: `tf.summary.scalar('loss', loss_tensor)`.
-  for e in tf.train.summary_iterator(path to events file):
+  # with: `tf.compat.v1.summary.scalar('loss', loss_tensor)`.
+  for e in tf.compat.v1.train.summary_iterator(path to events file):
       for v in e.summary.value:
           if v.tag == 'loss':
               print(v.simple_value)

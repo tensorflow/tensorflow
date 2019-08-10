@@ -303,7 +303,7 @@ Status WriteVarLenField(const FieldDescriptor& field_desc, const Tensor& input,
 // code it ourselves.
 Status WriteGroup(const FieldDescriptor& field_desc, const Tensor& input,
                   int message_index, int size, CodedOutputStream* output) {
-  auto input_t = input.flat_inner_dims<string>();
+  auto input_t = input.flat_inner_dims<tstring>();
   for (int64 i = 0; i < size; i++) {
     const string& value = input_t(static_cast<int64>(message_index), i);
     WireFormatLite::WriteTag(field_desc.number(),
@@ -516,7 +516,7 @@ class EncodeProtoOp : public OpKernel {
 
     // Check the arguments for consistency.
     TensorShape common_prefix;
-    int message_count;
+    int message_count = 0;
     for (int i = 0; i < field_descs_.size(); i++) {
       const Tensor& v = values[i];
 
@@ -525,10 +525,15 @@ class EncodeProtoOp : public OpKernel {
           ctx,
           proto_utils::IsCompatibleType(field_descs_[i]->type(), v.dtype()),
           errors::InvalidArgument(
-              "Incompatible type for field " + field_names_[i] +
-                  ".  Saw dtype: ",
-              DataTypeString(v.dtype()),
+              "Incompatible type for field ", field_names_[i],
+              ".  Saw dtype: ", DataTypeString(v.dtype()),
               " but field type is: ", field_descs_[i]->type_name()));
+
+      OP_REQUIRES(
+          ctx, TensorShapeUtils::IsMatrixOrHigher(v.shape()),
+          errors::InvalidArgument("Invalid shape for field ", field_names_[i],
+                                  ".  Saw shape ", v.shape().DebugString(),
+                                  " but it should be at least a matrix."));
 
       // All value tensors must have the same shape prefix (i.e. batch size).
       TensorShape shape_prefix = v.shape();
@@ -582,7 +587,7 @@ class EncodeProtoOp : public OpKernel {
     Tensor* output_tensor;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, common_prefix, &output_tensor));
 
-    auto bufs = output_tensor->flat<string>();
+    auto bufs = output_tensor->flat<tstring>();
     for (int message_index = 0; message_index < message_count;
          message_index++) {
       // TODO(nix): possibly optimize allocation here by calling

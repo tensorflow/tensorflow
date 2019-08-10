@@ -10,10 +10,16 @@ load(
 cc_library(
     name = "ngraph_tf",
     srcs = [
+        "logging/ngraph_log.cc",
+        "logging/ngraph_log.h",
+        "logging/tf_graph_writer.cc",
+        "logging/tf_graph_writer.h",
         "src/ngraph_api.cc",
         "src/ngraph_api.h",
         "src/ngraph_assign_clusters.cc",
         "src/ngraph_assign_clusters.h",
+        "src/ngraph_backend_manager.cc",
+        "src/ngraph_backend_manager.h",
         "src/ngraph_builder.cc",
         "src/ngraph_builder.h",
         "src/ngraph_capture_variables.cc",
@@ -41,24 +47,23 @@ cc_library(
         "src/tf_deadness_analysis.h",
         "src/tf_graphcycles.cc",
         "src/tf_graphcycles.h",
-        "logging/ngraph_log.h",
-        "logging/ngraph_log.cc",
-        "logging/tf_graph_writer.h",
-        "logging/tf_graph_writer.cc",
-    ],
-    deps = [
-        "@org_tensorflow//tensorflow/core:protos_all_proto_text",
-        "@org_tensorflow//tensorflow/core:framework_headers_lib",
-        "@org_tensorflow//tensorflow/core:core_cpu_headers_lib",
-        "@ngraph//:ngraph_core",
     ],
     copts = [
         "-I external/ngraph_tf/src",
         "-I external/ngraph_tf/logging",
         "-I external/ngraph/src",
     ],
-    alwayslink = 1,
     visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/container:container_memory",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:variant",
+        "@ngraph//:ngraph_core",
+        "@org_tensorflow//tensorflow/core:core_cpu_headers_lib",
+        "@org_tensorflow//tensorflow/core:framework_headers_lib",
+        "@org_tensorflow//tensorflow/core:protos_all_proto_text",
+    ],
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -79,17 +84,17 @@ tf_cc_test(
         "test/test_utilities.h",
         "test/tf_exec.cpp",
     ],
+    extra_copts = [
+        "-fexceptions ",
+        "-I external/ngraph_tf/src",
+        "-I external/ngraph_tf/logging",
+        "-I external/ngraph/src",
+    ],
     deps = [
         ":ngraph_tf",
         "@com_google_googletest//:gtest",
         "@org_tensorflow//tensorflow/cc:cc_ops",
         "@org_tensorflow//tensorflow/cc:client_session",
         "@org_tensorflow//tensorflow/core:tensorflow",
-    ],
-    extra_copts = [
-        "-fexceptions ",
-        "-I external/ngraph_tf/src",
-        "-I external/ngraph_tf/logging",
-        "-I external/ngraph/src",
     ],
 )

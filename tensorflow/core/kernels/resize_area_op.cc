@@ -144,7 +144,11 @@ class ResizeAreaOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    ImageResizerState st(align_corners_);
+    // The op always did the correct thing with regard to pixel centers, so we
+    // always pass false here for half_pixel_centers since ImageResizerState
+    // enforces that if align_corners_ is true, half_pixel_centers must be
+    // false.
+    ImageResizerState st(align_corners_, /*unused half_pixel_centers=*/false);
     st.ValidateAndCreateOutput(context, input);
 
     if (!context->status().ok()) return;
@@ -161,14 +165,14 @@ class ResizeAreaOp : public OpKernel {
       const float in_x1 = (x + 1) * st.width_scale;
       // The start and end width indices of all the cells that could
       // contribute to the target cell.
-      int64 v = floor(in_x);
+      int64 v = std::floor(in_x);
       x_interp.start = v;
       // TODO(cwhipkey): simplify this logic.
       x_interp.start_scale =
           v < in_x ? (v + 1 > in_x1 ? st.width_scale : v + 1 - in_x)
                    : (v + 1 > in_x1 ? in_x1 - v : 1.0);
 
-      v = ceil(in_x1);
+      v = std::ceil(in_x1);
       x_interp.end = v;
       v = x_interp.end - 1;
       x_interp.end_minus_one_scale =
@@ -222,8 +226,8 @@ class ResizeAreaOp : public OpKernel {
         const float in_y1 = (y + 1) * st.height_scale;
         // The start and end height indices of all the cells that could
         // contribute to the target cell.
-        const int64 y_start = floor(in_y);
-        const int64 y_end = ceil(in_y1);
+        const int64 y_start = std::floor(in_y);
+        const int64 y_end = std::ceil(in_y1);
         y_scales.clear();
         y_ptrs.clear();
         for (int64 i = y_start; i < y_end; ++i) {

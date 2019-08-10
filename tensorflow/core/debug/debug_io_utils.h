@@ -78,14 +78,14 @@ class DebugIO {
   static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
-                                   const gtl::ArraySlice<string>& debug_urls,
+                                   const gtl::ArraySlice<string> debug_urls,
                                    const bool gated_grpc);
 
   // Convenience overload of the method above for no gated_grpc by default.
   static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
-                                   const gtl::ArraySlice<string>& debug_urls);
+                                   const gtl::ArraySlice<string> debug_urls);
 
   // Publishes a graph to a set of debug URLs.
   //
@@ -211,7 +211,7 @@ class DebugFileIO {
   // Reset the disk byte usage to zero.
   static void resetDiskByteUsage();
 
-  static uint64 globalDiskBytesLimit;
+  static uint64 global_disk_bytes_limit_;
 
  private:
   // Encapsulates the Tensor in an Event protobuf and write it to file.
@@ -226,11 +226,11 @@ class DebugFileIO {
   static Status RecursiveCreateDir(Env* env, const string& dir);
 
   // Tracks how much disk has been used so far.
-  static uint64 diskBytesUsed;
-  // Mutex for thread-safe access to diskBytesUsed.
-  static mutex bytes_mu;
+  static uint64 disk_bytes_used_;
+  // Mutex for thread-safe access to disk_bytes_used_.
+  static mutex bytes_mu_;
   // Default limit for the disk space.
-  static const uint64 defaultGlobalDiskBytesLimit;
+  static const uint64 kDefaultGlobalDiskBytesLimit;
 
   friend class DiskUsageLimitTest;
 };
@@ -253,6 +253,7 @@ struct hash<::tensorflow::DebugNodeKey> {
 // TODO(cais): Support grpc:// debug URLs in open source once Python grpc
 //   genrule becomes available. See b/23796275.
 #ifndef PLATFORM_WINDOWS
+#include "grpcpp/channel.h"
 #include "tensorflow/core/debug/debug_service.grpc.pb.h"
 
 namespace tensorflow {
@@ -265,7 +266,7 @@ class DebugGrpcChannel {
   //   server_stream_addr: Address (host name and port) of the debug stream
   //     server implementing the EventListener service (see
   //     debug_service.proto). E.g., "127.0.0.1:12345".
-  DebugGrpcChannel(const string& server_stream_addr);
+  explicit DebugGrpcChannel(const string& server_stream_addr);
 
   virtual ~DebugGrpcChannel() {}
 
@@ -417,8 +418,8 @@ class DebugGrpcIO {
   // Clear enabled debug op state from all debug URLs (if any).
   static void ClearEnabledWatchKeys();
 
-  static mutex streams_mu;
-  static int64 channel_connection_timeout_micros;
+  static mutex streams_mu_;
+  static int64 channel_connection_timeout_micros_;
 
   friend class GrpcDebugTest;
   friend class DebugNumericSummaryOpTest;

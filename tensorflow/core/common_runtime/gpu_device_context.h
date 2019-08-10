@@ -50,12 +50,16 @@ class GPUDeviceContext : public DeviceContext {
   int stream_id() const { return stream_id_; }
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
-                             Tensor* device_tensor,
-                             StatusCallback done) const override;
+                             Tensor* device_tensor, StatusCallback done,
+                             bool sync_dst_compute) const override;
 
   void CopyDeviceTensorToCPU(const Tensor* device_tensor, StringPiece edge_name,
                              Device* device, Tensor* cpu_tensor,
                              StatusCallback done) override;
+
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
+                              Tensor* output_tensor,
+                              StatusCallback done) const override;
 
   void MaintainLifetimeOnStream(const Tensor* t,
                                 se::Stream* stream) const override {}

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "MatMul"
+  endpoint {
+    name: "linalg.MatMul"
+  }
+}

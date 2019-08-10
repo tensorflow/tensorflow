@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/blas.h"
 
-#include "tensorflow/stream_executor/lib/strcat.h"
+#include "absl/strings/str_cat.h"
 
 namespace stream_executor {
 namespace blas {
@@ -68,7 +68,7 @@ string SideString(Side s) {
 
 // -- AlgorithmConfig
 
-string AlgorithmConfig::ToString() const { return port::StrCat(algorithm_); }
+string AlgorithmConfig::ToString() const { return absl::StrCat(algorithm_); }
 
 string ComputationTypeString(ComputationType ty) {
   switch (ty) {

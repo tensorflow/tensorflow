@@ -34,6 +34,10 @@ message ApiDef {
   // that should be logged when this op is used.
   // The message should indicate alternative op to use, if any.
   string deprecation_message = 12;
+  // Major version when the op will be deleted. For e.g. set this
+  // value to 2 if op API should be removed in TensorFlow 2.0 and
+  // deprecated in versions before that.
+  int32 deprecation_version = 13;
 
   enum Visibility {
     // Normally this is "VISIBLE" unless you are inheriting a
@@ -64,6 +68,11 @@ message ApiDef {
     // to use a non-deprecated endpoint instead will be printed. If all
     // endpoints are deprecated, set deprecation_message in ApiDef instead.
     bool deprecated = 3;
+
+    // Major version when an endpoint will be deleted. For e.g. set this
+    // value to 2 if endpoint should be removed in TensorFlow 2.0 and
+    // deprecated in versions before that.
+    int32 deprecation_version = 4;
   }
   repeated Endpoint endpoint = 3;
 

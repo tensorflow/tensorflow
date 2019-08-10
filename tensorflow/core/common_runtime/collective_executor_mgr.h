@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 
 namespace tensorflow {
 class ConfigProto;
@@ -62,8 +63,11 @@ class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
   const DeviceMgr* dev_mgr_;
   std::unique_ptr<DeviceResolverInterface> dev_resolver_;
   std::unique_ptr<ParamResolverInterface> param_resolver_;
-  CollectiveRemoteAccess* remote_access_;
-  string task_name_;
+  string gpu_ring_order_;
+  // Unbounded work queue for scheduling potentially-blocking work during
+  // collective op execution.  Ownership is shared between `this` and
+  // `CollectiveRemoteAccessLocal`.
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
 
  private:
   mutex exec_mu_;

@@ -17,12 +17,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import test
+
+
+class SaveTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRelativePath(self):
+    os.chdir(self.get_temp_dir())
+    self.evaluate(io_ops.save_v2(
+        "ckpt", ["x"], [""], [constant_op.constant(100.)]))
+    self.assertAllEqual([100.],
+                        self.evaluate(io_ops.restore_v2(
+                            "ckpt", ["x"], [""], [dtypes.float32])))
 
 
 class ShardedFileOpsTest(test.TestCase):
@@ -39,6 +55,7 @@ class ShardedFileOpsTest(test.TestCase):
 
 class ShapeInferenceTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testRestoreV2WithSliceInput(self):
     op = io_ops.restore_v2("model", ["var1", "var2"], ["", "3 4 0,1:-"],
                            [dtypes.float32, dtypes.float32])
@@ -46,11 +63,13 @@ class ShapeInferenceTest(test.TestCase):
     self.assertFalse(op[0].get_shape().is_fully_defined())
     self.assertEqual([1, 4], op[1].get_shape())
 
+  @test_util.run_deprecated_v1
   def testRestoreV2NumSlicesNotMatch(self):
     with self.assertRaises(ValueError):
       io_ops.restore_v2("model", ["var1", "var2", "var3"], ["", "3 4 0,1:-"],
                         [dtypes.float32, dtypes.float32])
 
+  @test_util.run_deprecated_v1
   def testRestoreSlice(self):
     op = gen_io_ops.restore_slice("model", "var", "3 4 0,1:-", dtypes.float32)
     self.assertEqual([1, 4], op.get_shape())

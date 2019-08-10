@@ -1,4 +1,12 @@
 op {
   graph_op_name: "Tanh"
-  visibility: HIDDEN
+  endpoint {
+    name: "math.tanh"
+  }
+  endpoint {
+    name: "nn.tanh"
+  }
+  endpoint {
+    name: "tanh"
+  }
 }

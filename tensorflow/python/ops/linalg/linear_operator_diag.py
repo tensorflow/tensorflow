@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -63,13 +62,13 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
-  diag = tf.random_normal(shape=[2, 3, 4])
+  diag = tf.random.normal(shape=[2, 3, 4])
   operator = LinearOperatorDiag(diag)
 
   # Create a shape [2, 1, 4, 2] vector.  Note that this shape is compatible
   # since the batch dimensions, [2, 1], are broadcast to
   # operator.batch_shape = [2, 3].
-  y = tf.random_normal(shape=[2, 1, 4, 2])
+  y = tf.random.normal(shape=[2, 1, 4, 2])
   x = operator.solve(y)
   ==> operator.matmul(x) = y
   ```
@@ -142,7 +141,8 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     """
 
     with ops.name_scope(name, values=[diag]):
-      self._diag = ops.convert_to_tensor(diag, name="diag")
+      self._diag = linear_operator_util.convert_nonref_to_tensor(
+          diag, name="diag")
       self._check_diag(self._diag)
 
       # Check and auto-set hints.
@@ -167,20 +167,6 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
 
   def _check_diag(self, diag):
     """Static check of diag."""
-    allowed_dtypes = [
-        dtypes.float16,
-        dtypes.float32,
-        dtypes.float64,
-        dtypes.complex64,
-        dtypes.complex128,
-    ]
-
-    dtype = diag.dtype
-    if dtype not in allowed_dtypes:
-      raise TypeError(
-          "Argument diag must have dtype in %s.  Found: %s"
-          % (allowed_dtypes, dtype))
-
     if diag.get_shape().ndims is not None and diag.get_shape().ndims < 1:
       raise ValueError("Argument diag must have at least 1 dimension.  "
                        "Found: %s" % diag)
@@ -227,12 +213,16 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     diag_mat = array_ops.expand_dims(diag_term, -1)
     return diag_mat * x
 
+  def _matvec(self, x, adjoint=False):
+    diag_term = math_ops.conj(self._diag) if adjoint else self._diag
+    return diag_term * x
+
   def _determinant(self):
-    return math_ops.reduce_prod(self._diag, reduction_indices=[-1])
+    return math_ops.reduce_prod(self._diag, axis=[-1])
 
   def _log_abs_determinant(self):
     log_det = math_ops.reduce_sum(
-        math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
+        math_ops.log(math_ops.abs(self._diag)), axis=[-1])
     if self.dtype.is_complex:
       log_det = math_ops.cast(log_det, dtype=self.dtype)
     return log_det

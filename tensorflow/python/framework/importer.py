@@ -21,12 +21,14 @@ import contextlib
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python import tf2
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
@@ -154,7 +156,10 @@ def _RemoveDefaultAttrs(op_dict, producer_op_list, graph_def):
   producer_op_dict = {op.name: op for op in producer_op_list.op}
   for node in graph_def.node:
     # Remove any default attr values that aren't in op_def.
-    if node.op in producer_op_dict:
+    if (node.op in producer_op_dict
+        # Some custom op registrations won't show up here. That's OK, attribute
+        # stripping just won't be available.
+        and node.op in op_dict):
       op_def = op_dict[node.op]
       producer_op_def = producer_op_dict[node.op]
       # We make a copy of node.attr to iterate through since we may modify
@@ -197,7 +202,8 @@ def _ConvertInputMapValues(name, input_map):
 
 
 def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
-                                     return_elements):
+                                     return_elements,
+                                     validate_colocation_constraints):
   """Populates the TF_ImportGraphDefOptions `options`."""
   c_api.TF_ImportGraphDefOptionsSetPrefix(options, prefix)
   c_api.TF_ImportGraphDefOptionsSetUniquifyNames(options, True)
@@ -223,6 +229,9 @@ def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
     else:
       c_api.TF_ImportGraphDefOptionsAddReturnOperation(options,
                                                        compat.as_str(name))
+
+  c_api.TF_ImportGraphDefOptionsSetValidateColocationConstraints(
+      options, validate_colocation_constraints)
 
 
 def _ProcessNewOps(graph):
@@ -253,7 +262,9 @@ def _ProcessNewOps(graph):
     # Find any device in the list of colocated ops that have a device, if it
     # exists.  We assume that if multiple ops have devices, they refer to the
     # same device.  Otherwise, a runtime error will occur since the colocation
-    # property cannot be guaranteed.
+    # property cannot be guaranteed.  Note in TF2 colocations have been removed
+    # from the public API and will be considered a hint, so there is no runtime
+    # error.
     #
     # One possible improvement is to try to check for compatibility of all
     # devices in this list at import time here, which would require
@@ -262,6 +273,10 @@ def _ProcessNewOps(graph):
       try:
         coloc_op = graph._get_operation_by_name_unsafe(coloc_op_name)  # pylint: disable=protected-access
       except KeyError:
+        # Do not error in TF2 if the colocation cannot be guaranteed
+        if tf2.enabled() or control_flow_util.EnableControlFlowV2(graph):
+          continue
+
         raise ValueError('Specified colocation to an op that '
                          'does not exist during import: %s in %s' %
                          (coloc_op_name, op.name))
@@ -381,6 +396,73 @@ def import_graph_def(graph_def,
       do not appear in `graph_def`, or `graph_def` is not well-formed (e.g.
       it refers to an unknown tensor).
   """
+  return _import_graph_def_internal(
+      graph_def,
+      input_map=input_map,
+      return_elements=return_elements,
+      name=name,
+      op_dict=op_dict,
+      producer_op_list=producer_op_list)
+
+
+def import_graph_def_for_function(  # pylint: disable=invalid-name
+    graph_def, name=None):
+  """Like import_graph_def but does not validate colocation constraints."""
+  return _import_graph_def_internal(
+      graph_def, validate_colocation_constraints=False, name=name)
+
+
+def _import_graph_def_internal(  # pylint: disable=invalid-name
+    graph_def,
+    input_map=None,
+    return_elements=None,
+    validate_colocation_constraints=True,
+    name=None,
+    op_dict=None,
+    producer_op_list=None):
+  """Imports the graph from `graph_def` into the current default `Graph`.
+
+  This function provides a way to import a serialized TensorFlow
+  [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+  protocol buffer, and extract individual objects in the `GraphDef` as
+  `tf.Tensor` and `tf.Operation` objects. Once extracted,
+  these objects are placed into the current default `Graph`. See
+  `tf.Graph.as_graph_def` for a way to create a `GraphDef`
+  proto.
+
+  Args:
+    graph_def: A `GraphDef` proto containing operations to be imported into the
+      default graph.
+    input_map: A dictionary mapping input names (as strings) in `graph_def` to
+      `Tensor` objects. The values of the named input tensors in the imported
+      graph will be re-mapped to the respective `Tensor` values.
+    return_elements: A list of strings containing operation names in `graph_def`
+      that will be returned as `Operation` objects; and/or tensor names in
+      `graph_def` that will be returned as `Tensor` objects.
+    validate_colocation_constraints: Whether to validate colocation constraints.
+    name: (Optional.) A prefix that will be prepended to the names in
+      `graph_def`. Note that this does not apply to imported function names.
+      Defaults to `"import"`.
+    op_dict: (Optional.) Deprecated, do not use.
+    producer_op_list: (Optional.) An `OpList` proto with the (possibly stripped)
+      list of `OpDef`s used by the producer of the graph. If provided,
+      unrecognized attrs for ops in `graph_def` that have their default value
+      according to `producer_op_list` will be removed. This will allow some more
+      `GraphDef`s produced by later binaries to be accepted by earlier binaries.
+
+  Returns:
+    A list of `Operation` and/or `Tensor` objects from the imported graph,
+    corresponding to the names in `return_elements`,
+    and None if `returns_elements` is None.
+
+  Raises:
+    TypeError: If `graph_def` is not a `GraphDef` proto,
+      `input_map` is not a dictionary mapping strings to `Tensor` objects,
+      or `return_elements` is not a list of strings.
+    ValueError: If `input_map`, or `return_elements` contains names that
+      do not appear in `graph_def`, or `graph_def` is not well-formed (e.g.
+      it refers to an unknown tensor).
+  """
   op_dict = op_def_registry.get_registered_ops()
 
   graph_def = _ProcessGraphDefParam(graph_def, op_dict)
@@ -405,8 +487,8 @@ def import_graph_def(graph_def,
 
   scoped_options = c_api_util.ScopedTFImportGraphDefOptions()
   options = scoped_options.options
-  _PopulateTFImportGraphDefOptions(options, prefix, input_map,
-                                   return_elements)
+  _PopulateTFImportGraphDefOptions(options, prefix, input_map, return_elements,
+                                   validate_colocation_constraints)
 
   # _ProcessNewOps mutates the new operations. _mutation_lock ensures a
   # Session.run call cannot occur between creating the TF_Operations in the
@@ -431,16 +513,13 @@ def import_graph_def(graph_def,
     #
     # TODO(skyewm): fetch the TF_Functions directly from the TF_Graph
     # TODO(skyewm): avoid sending serialized FunctionDefs back to the TF_Graph
-    # TODO(b/74620627): move this after _ProcessNewOps outside the lock once
-    # _USE_C_SHAPES is removed.
-    if graph_def.library and graph_def.library.function:
-      # pylint: disable=protected-access
-      functions = function._from_library(graph_def.library)
-      for f in functions:
-        f.add_to_graph(graph)
-      # pylint: enable=protected-access
 
     _ProcessNewOps(graph)
+
+  if graph_def.library and graph_def.library.function:
+    functions = function.from_library(graph_def.library)
+    for f in functions:
+      f.add_to_graph(graph)
 
   # Treat input mappings that don't appear in the graph as an error, because
   # they are likely to be due to a typo.

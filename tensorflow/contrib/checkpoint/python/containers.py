@@ -1,4 +1,4 @@
-"""Checkpointable data structures."""
+"""Trackable data structures."""
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,12 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.training.checkpointable import base as checkpointable_lib
-from tensorflow.python.training.checkpointable import data_structures
+from tensorflow.python.training.tracking import base as trackable_lib
+from tensorflow.python.training.tracking import data_structures
 
 
-class UniqueNameTracker(data_structures.CheckpointableDataStructure):
-  """Adds dependencies on checkpointable objects with name hints.
+class UniqueNameTracker(data_structures.TrackableDataStructure):
+  """Adds dependencies on trackable objects with name hints.
 
   Useful for creating dependencies with locally unique names.
 
@@ -43,26 +43,30 @@ class UniqueNameTracker(data_structures.CheckpointableDataStructure):
 
   def __init__(self):
     super(UniqueNameTracker, self).__init__()
-    self._maybe_initialize_checkpointable()
+    self._maybe_initialize_trackable()
     self._name_counts = {}
 
-  def track(self, checkpointable, base_name):
-    """Add a dependency on `checkpointable`.
+  @property
+  def _values(self):
+    return [dep.ref for dep in self._checkpoint_dependencies]
+
+  def track(self, trackable, base_name):
+    """Add a dependency on `trackable`.
 
     Args:
-      checkpointable: An object to add a checkpoint dependency on.
+      trackable: An object to add a checkpoint dependency on.
       base_name: A name hint, which is uniquified to determine the dependency
         name.
     Returns:
-      `checkpointable`, for chaining.
+      `trackable`, for chaining.
     Raises:
-      ValueError: If `checkpointable` is not a checkpointable object.
+      ValueError: If `trackable` is not a trackable object.
     """
 
-    if not isinstance(checkpointable, checkpointable_lib.CheckpointableBase):
+    if not isinstance(trackable, trackable_lib.Trackable):
       raise ValueError(
-          ("Expected a checkpointable value, got %s which does not inherit "
-           "from CheckpointableBase.") % (checkpointable,))
+          ("Expected a trackable value, got %s which does not inherit "
+           "from tf.track.Trackable.") % (trackable,))
 
     def _format_name(prefix, number):
       if number > 0:
@@ -76,5 +80,5 @@ class UniqueNameTracker(data_structures.CheckpointableDataStructure):
       count += 1
       candidate = _format_name(base_name, count)
     self._name_counts[base_name] = count + 1
-    self._track_value(checkpointable, name=candidate)
-    return checkpointable
+    self._track_value(trackable, name=candidate)
+    return trackable

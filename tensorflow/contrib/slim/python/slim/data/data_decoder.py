@@ -39,11 +39,12 @@ from __future__ import print_function
 
 import abc
 
+import six
 
+
+@six.add_metaclass(abc.ABCMeta)
 class DataDecoder(object):
   """An abstract class which is used to decode data for a provider."""
-
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
   def decode(self, data, items):

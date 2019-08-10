@@ -13,651 +13,663 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/device_tracer.h"
-
 #if GOOGLE_CUDA
 
 #include <stdlib.h>
+
 #include <memory>
 
+#include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/node_hash_map.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/cupti_wrapper.h"
+#include "tensorflow/core/platform/abi.h"
+#include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
-
-namespace {
-
-// Maps a MemcpyKind enum to a const string.
-const char *getMemcpyKindString(CUpti_ActivityMemcpyKind kind) {
-  switch (kind) {
-    case CUPTI_ACTIVITY_MEMCPY_KIND_HTOD:
-      return "HtoD";
-    case CUPTI_ACTIVITY_MEMCPY_KIND_DTOH:
-      return "DtoH";
-    case CUPTI_ACTIVITY_MEMCPY_KIND_HTOA:
-      return "HtoA";
-    case CUPTI_ACTIVITY_MEMCPY_KIND_ATOH:
-      return "AtoH";
-    case CUPTI_ACTIVITY_MEMCPY_KIND_ATOA:
-      return "AtoA";
-    case CUPTI_ACTIVITY_MEMCPY_KIND_ATOD:
-      return "AtoD";
-    case CUPTI_ACTIVITY_MEMCPY_KIND_DTOA:
-      return "DtoA";
-    case CUPTI_ACTIVITY_MEMCPY_KIND_DTOD:
-      return "DtoD";
-    case CUPTI_ACTIVITY_MEMCPY_KIND_HTOH:
-      return "HtoH";
-    case CUPTI_ACTIVITY_MEMCPY_KIND_PTOP:
-      return "PtoP";
-    default:
-      break;
-  }
-  return "<unknown>";
-}
-
-// Maps a MemoryKind enum to a const string.
-const char *getMemoryKindString(CUpti_ActivityMemoryKind kind) {
-  switch (kind) {
-    case CUPTI_ACTIVITY_MEMORY_KIND_UNKNOWN:
-      return "Unknown";
-    case CUPTI_ACTIVITY_MEMORY_KIND_PAGEABLE:
-      return "Pageable";
-    case CUPTI_ACTIVITY_MEMORY_KIND_PINNED:
-      return "Pinned";
-    case CUPTI_ACTIVITY_MEMORY_KIND_DEVICE:
-      return "Device";
-    case CUPTI_ACTIVITY_MEMORY_KIND_ARRAY:
-      return "Array";
-    default:
-      break;
-  }
-  return "<unknown>";
-}
-
-// Maps an OverheadKind enum to a const string.
-const char *getActivityOverheadKindString(CUpti_ActivityOverheadKind kind) {
-  switch (kind) {
-    case CUPTI_ACTIVITY_OVERHEAD_DRIVER_COMPILER:
-      return "COMPILER";
-    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_BUFFER_FLUSH:
-      return "BUFFER_FLUSH";
-    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_INSTRUMENTATION:
-      return "INSTRUMENTATION";
-    case CUPTI_ACTIVITY_OVERHEAD_CUPTI_RESOURCE:
-      return "RESOURCE";
-    default:
-      break;
-  }
-  return "<unknown>";
-}
-
-}  // namespace
+#include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
-namespace devicetracer {
-
-// Forward declaration.
-class CUPTIManager;
-
-// Returns a pointer to the CUPTIManager singleton.
-CUPTIManager *GetCUPTIManager();
-
-// Callback interface for consumers of CUPTI tracing.
-class CUPTIClient {
- public:
-  virtual ~CUPTIClient() {}
-
-  // Invoked for each CUPTI activity reported.
-  virtual void ActivityCallback(const CUpti_Activity &activity) = 0;
-};
-
-#define CUPTI_CALL(call)                                            \
-  do {                                                              \
-    CUptiResult _status = cupti_wrapper_->call;                     \
-    if (_status != CUPTI_SUCCESS) {                                 \
-      LOG(ERROR) << "cuda call " << #call << " failed " << _status; \
-    }                                                               \
-  } while (0)
-
-// Singleton class to manage registration of CUPTI callbacks.
-class CUPTIManager {
- public:
-  CUPTIManager() {
-    cupti_wrapper_.reset(new perftools::gputools::profiler::CuptiWrapper());
-    CUPTI_CALL(ActivityRegisterCallbacks(BufferRequested, BufferCompleted));
+namespace {
+Status ToStatus(CUptiResult result) {
+  if (result == CUPTI_SUCCESS) {
+    return Status::OK();
   }
-
-  // Enables tracing and delivers event callbacks to 'client'.
-  // Does not take ownership of client.  Client's lifetime must persist
-  // until tracing is disabled.
-  Status EnableTrace(CUPTIClient *client);
-
-  // Disable tracing.  No further events will be delivered to 'client'.
-  Status DisableTrace();
-
- private:
-  // Static functions which we can use as CUPTI callbacks.
-  static void BufferRequested(uint8_t **buffer, size_t *size,
-                              size_t *maxNumRecords) {
-    GetCUPTIManager()->InternalBufferRequested(buffer, size, maxNumRecords);
-  }
-  static void BufferCompleted(CUcontext ctx, uint32_t streamId, uint8_t *buffer,
-                              size_t size, size_t validSize) {
-    GetCUPTIManager()->InternalBufferCompleted(ctx, streamId, buffer, size,
-                                               validSize);
-  }
-  // These methods are called by the static stubs above.
-  void InternalBufferRequested(uint8_t **buffer, size_t *size,
-                               size_t *maxNumRecords);
-  void InternalBufferCompleted(CUcontext ctx, uint32_t streamId,
-                               uint8_t *buffer, size_t size, size_t validSize);
-
-  // Size of buffers used for CUPTI tracing.
-  static constexpr size_t kBufferSize = 32 * 1024;
-  // Required alignment of CUPTI buffers.
-  static constexpr size_t kBufferAlignment = 8;
-
-  mutex mu_;
-  CUPTIClient *client_ GUARDED_BY(mu_);
-  std::unique_ptr<perftools::gputools::profiler::CuptiWrapper> cupti_wrapper_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(CUPTIManager);
-};
-
-Status CUPTIManager::EnableTrace(CUPTIClient *client) {
-  mutex_lock l(mu_);
-  // TODO(pbar) Work out the minimal set to trace.
-  // We can currently manage without driver/runtime tracing.
-  // CUPTI_CALL(ActivityEnable(CUPTI_ACTIVITY_KIND_CONTEXT));
-  // CUPTI_CALL(ActivityEnable(CUPTI_ACTIVITY_KIND_DRIVER));
-  // CUPTI_CALL(ActivityEnable(CUPTI_ACTIVITY_KIND_RUNTIME));
-  // These might be useful for annotations but require NVTX API.
-  // CUPTI_CALL(ActivityEnable(CUPTI_ACTIVITY_KIND_NAME));
-  // CUPTI_CALL(ActivityEnable(CUPTI_ACTIVITY_KIND_MARKER));
-
-  CUPTI_CALL(ActivityEnable(CUPTI_ACTIVITY_KIND_DEVICE));
-  CUPTI_CALL(ActivityEnable(CUPTI_ACTIVITY_KIND_KERNEL));
-  CUPTI_CALL(ActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY));
-  CUPTI_CALL(ActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY2));
-  CUPTI_CALL(ActivityEnable(CUPTI_ACTIVITY_KIND_MEMSET));
-  CUPTI_CALL(ActivityEnable(CUPTI_ACTIVITY_KIND_OVERHEAD));
-  client_ = client;
-  return Status::OK();
+  const char* str = nullptr;
+  cuptiGetResultString(result, &str);
+  return errors::Unavailable("CUPTI error: ", str ? str : "<unknown>");
 }
 
-Status CUPTIManager::DisableTrace() {
-  // We turn off all tracing regardless.
-  CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_NAME));
-  CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_MARKER));
-  CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_OVERHEAD));
-  CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_CONTEXT));
-  CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_DRIVER));
-  CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_RUNTIME));
-  CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_DEVICE));
-  CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_KERNEL));
-  CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY));
-  CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY2));
-  CUPTI_CALL(ActivityDisable(CUPTI_ACTIVITY_KIND_MEMSET));
-  CUPTI_CALL(ActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED));
-  {
-    // Don't acquire this lock until Flush returns, since Flush
-    // will potentially cause callbacks into BufferCompleted.
-    mutex_lock l(mu_);
-    client_ = nullptr;
+Status ToStatus(CUresult result) {
+  if (result == CUDA_SUCCESS) {
+    return Status::OK();
   }
-  return Status::OK();
+  const char* str = nullptr;
+  cuGetErrorName(result, &str);
+  return errors::Unavailable("CUDA error: ", str ? str : "<unknown>");
 }
 
-void CUPTIManager::InternalBufferRequested(uint8_t **buffer, size_t *size,
-                                           size_t *maxNumRecords) {
-  VLOG(2) << "BufferRequested";
-  void *p = port::AlignedMalloc(kBufferSize, kBufferAlignment);
-  *size = kBufferSize;
-  *buffer = reinterpret_cast<uint8_t *>(p);
-  *maxNumRecords = 0;
+void LogIfError(const Status& status) {
+  if (status.ok()) {
+    return;
+  }
+  LOG(ERROR) << status.error_message();
 }
 
-void CUPTIManager::InternalBufferCompleted(CUcontext ctx, uint32_t streamId,
-                                           uint8_t *buffer, size_t size,
-                                           size_t validSize) {
-  VLOG(2) << "BufferCompleted";
-  CUptiResult status;
-  CUpti_Activity *record = nullptr;
-  mutex_lock l(mu_);  // Hold mu_ while using client_.
-  if (client_ && validSize > 0) {
-    do {
-      status =
-          cupti_wrapper_->ActivityGetNextRecord(buffer, validSize, &record);
-      if (status == CUPTI_SUCCESS) {
-        client_->ActivityCallback(*record);
-      } else {
-        break;
-      }
-    } while (1);
-
-    // report any records dropped from the queue
-    size_t dropped;
-    CUPTI_CALL(ActivityGetNumDroppedRecords(ctx, streamId, &dropped));
-    if (dropped != 0) {
-      LOG(WARNING) << "Dropped " << dropped << " activity records";
+bool IsAscii(string& str) {
+  for (auto& ch : str) {
+    if (!absl::ascii_isascii(ch)) {
+      return false;
     }
   }
-  port::AlignedFree(buffer);
+  return true;
 }
 
-CUPTIManager *GetCUPTIManager() {
-  static CUPTIManager *manager = new CUPTIManager();
-  return manager;
+struct KernelRecord {
+  const char* kernel_name;
+  // TODO(csigg): cuStreamGetCtx introduced in CUDA 9.2 would allow us to only
+  // record the stream and infer the context during collection.
+  CUcontext context;
+  CUstream stream;
+  CUevent start_event;
+  CUevent stop_event;
+  const std::string* annotation;
+};
+
+struct MemcpyRecord {
+  CUmemorytype src_type;
+  CUmemorytype dst_type;
+  size_t size_bytes;
+  CUcontext context;
+  CUstream stream;
+  CUevent start_event;
+  CUevent stop_event;
+  const std::string* annotation;
+};
+
+Status CreateAndRecordEvent(CUevent* event, CUstream stream) {
+  TF_RETURN_IF_ERROR(ToStatus(cuEventCreate(event, CU_EVENT_DEFAULT)));
+  return ToStatus(cuEventRecord(*event, stream));
 }
 
-#ifdef _MSC_VER
-#define __thread __declspec(thread)
-#endif
-
-// TODO(pbar) Move this to platform specific header file?
-// Static thread local variable for POD types.
-#define TF_STATIC_THREAD_LOCAL_POD(_Type_, _var_)                  \
-  static __thread _Type_ s_obj_##_var_;                            \
-  namespace {                                                      \
-  class ThreadLocal_##_var_ {                                      \
-   public:                                                         \
-    ThreadLocal_##_var_() {}                                       \
-    void Init() {}                                                 \
-    inline _Type_ *pointer() const { return &s_obj_##_var_; }      \
-    inline _Type_ *safe_pointer() const { return &s_obj_##_var_; } \
-    _Type_ &get() const { return s_obj_##_var_; }                  \
-    bool is_native_tls() const { return true; }                    \
-                                                                   \
-   private:                                                        \
-    TF_DISALLOW_COPY_AND_ASSIGN(ThreadLocal_##_var_);              \
-  } _var_;                                                         \
-  }  // namespace
-
-// Thread-local state recording the most recent annotation (if any).
-// When non-null, this points to a string in the active annotation
-// of the current thread.  The annotation is guaranteed to remain live
-// for the duration of the CUPTI API callback.
-TF_STATIC_THREAD_LOCAL_POD(const char *, tls_current_annotation);
-
-class DeviceTracerImpl : public DeviceTracer,
-                         public CUPTIClient,
-                         public tracing::TraceCollector {
+// Stores a series of kernel and memcpy records.
+class CudaEventRecorder {
  public:
-  DeviceTracerImpl();
-  ~DeviceTracerImpl() override;
-
-  // DeviceTracer interface:
-  Status Start() override;
-  Status Stop() override;
-  Status Collect(StepStatsCollector *collector) override;
-
-  // tracing::TraceCollector interface:
-  virtual std::unique_ptr<Handle> CreateAnnotationHandle(
-      StringPiece name_part1, StringPiece name_part2) const {
-    struct Impl : public tracing::TraceCollector::Handle {
-      string annotation;
-      explicit Impl(string &&name_scope) : annotation(name_scope) {
-        VLOG(2) << "CreateAnnotationHandle " << annotation;
-        // Remember the most recent ScopedAnnotation for each thread.
-        tls_current_annotation.get() = annotation.c_str();
-      }
-      ~Impl() override { tls_current_annotation.get() = nullptr; }
-    };
-    return std::unique_ptr<Handle>(
-        new Impl{ConcatenateNames(name_part1, name_part2)});
+  // Registers the start of a kernel launch. The returned index should be passed
+  // to StopKernel() after the kernel launch has completed.
+  size_t StartKernel(const char* kernel_name, CUcontext context,
+                     CUstream stream) {
+    KernelRecord record = {kernel_name, context, stream};
+    LogIfError(CreateAndRecordEvent(&record.start_event, stream));
+    mutex_lock lock(mutex_);
+    if (tracing::ScopedAnnotation::IsEnabled()) {
+      record.annotation =
+          &*annotations_.emplace(Annotation::CurrentAnnotation()).first;
+    }
+    kernel_records_.push_back(record);
+    return kernel_records_.size() - 1;
+  }
+  void StopKernel(size_t index) {
+    mutex_lock lock(mutex_);
+    auto& record = kernel_records_[index];
+    LogIfError(CreateAndRecordEvent(&record.stop_event, record.stream));
   }
 
-  virtual std::unique_ptr<Handle> CreateActivityHandle(StringPiece, StringPiece,
-                                                       bool) const {
-    // We don't do anything with 'Activities' yet.
-    return nullptr;
+  // Registers the start of a copy operation. The returned index should be
+  // passed to StopMemcpy() after the kernel launch has completed.
+  size_t StartMemcpy(CUmemorytype src_type, CUmemorytype dst_type,
+                     size_t size_bytes, CUcontext context, CUstream stream) {
+    MemcpyRecord record = {src_type, dst_type, size_bytes, context, stream};
+    LogIfError(CreateAndRecordEvent(&record.start_event, stream));
+    mutex_lock lock(mutex_);
+    if (tracing::ScopedAnnotation::IsEnabled()) {
+      record.annotation =
+          &*annotations_.emplace(Annotation::CurrentAnnotation()).first;
+    }
+    memcpy_records_.push_back(record);
+    return memcpy_records_.size() - 1;
+  }
+  void StopMemcpy(size_t index) {
+    mutex_lock lock(mutex_);
+    auto& record = memcpy_records_[index];
+    LogIfError(CreateAndRecordEvent(&record.stop_event, record.stream));
   }
 
-  bool IsEnabledForAnnotations() const override {
-    // We are always enabled for 'Annotations'.
-    return true;
+  std::vector<KernelRecord> ConsumeKernelRecords() {
+    mutex_lock lock(mutex_);
+    return std::move(kernel_records_);
   }
-
-  bool IsEnabledForActivities(bool is_expensive) const override {
-    // We don't do anything with 'Activities' so we are never 'enabled'.
-    return false;
+  std::vector<MemcpyRecord> ConsumeMemcpyRecords() {
+    mutex_lock lock(mutex_);
+    return std::move(memcpy_records_);
   }
-
- protected:
-  // This callback is used exclusively by CUPTIManager.
-  friend class CUPTIManager;
-  void ActivityCallback(const CUpti_Activity &activity) override;
 
  private:
-  // Internal struct to record kernel launches.
-  struct KernelRecord {
-    uint64_t start_timestamp;
-    uint64_t end_timestamp;
-    uint32 device_id;
-    uint32 stream_id;
-    uint32 correlation_id;
-  };
-  // Internal struct to record memcpy operations.
-  struct MemcpyRecord {
-    uint64_t start_timestamp;
-    uint64_t end_timestamp;
-    uint32 device_id;
-    uint32 stream_id;
-    uint32 correlation_id;
-    uint8 copyKind;
-    uint8 srcKind;
-    uint8 dstKind;
-    uint64 bytes;
-  };
+  mutex mutex_;
+  std::unordered_set<std::string> annotations_ GUARDED_BY(mutex_);
+  std::vector<KernelRecord> kernel_records_ GUARDED_BY(mutex_);
+  std::vector<MemcpyRecord> memcpy_records_ GUARDED_BY(mutex_);
+};
 
-  // This is the subscriber callback which is invoked directly by CUPTI.
-  // The 'userdata' argument will be a pointer to the active 'DeviceTracerImpl'.
-  static void CUPTIAPI ApiCallback(void *userdata, CUpti_CallbackDomain domain,
-                                   CUpti_CallbackId cbid, const void *cbdata);
+// Instances register callbacks with CUPTI to notify the event recorder before
+// and after kernel launches and memory copies.
+class CuptiCallbackHook {
+ public:
+  CuptiCallbackHook() : subscriber_(nullptr) {}
 
-  // Records the mapping between correlation ID and kernel name.
-  void AddCorrelationId(uint32 correlation_id, const string &name);
+  Status Enable(CudaEventRecorder* recorder) {
+    TF_RETURN_IF_ERROR(
+        ToStatus(cuptiSubscribe(&subscriber_, &CuptiCallback, recorder)));
+    for (auto cbid : {CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,
+                      CUPTI_DRIVER_TRACE_CBID_cuMemcpy,
+                      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync,
+                      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2,
+                      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2,
+                      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2,
+                      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2,
+                      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2,
+                      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2}) {
+      TF_RETURN_IF_ERROR(ToStatus(cuptiEnableCallback(
+          /*enable=*/1, subscriber_, CUPTI_CB_DOMAIN_DRIVER_API, cbid)));
+    }
+    return Status::OK();
+  }
 
-  // Returns the current system time in microseconds.
-  inline int64 NowInUsec() { return Env::Default()->NowMicros(); }
+  ~CuptiCallbackHook() { LogIfError(ToStatus(cuptiUnsubscribe(subscriber_))); }
 
-  CUPTIManager *cupti_manager_;
-  std::unique_ptr<perftools::gputools::profiler::CuptiWrapper> cupti_wrapper_;
+ private:
+  static void CUPTIAPI CuptiCallback(void* userdata,
+                                     CUpti_CallbackDomain domain,
+                                     CUpti_CallbackId cbid,
+                                     const void* cbdata) {
+    auto recorder = static_cast<CudaEventRecorder*>(userdata);
+    auto data = static_cast<const CUpti_CallbackData*>(cbdata);
+    DCHECK_EQ(domain, CUPTI_CB_DOMAIN_DRIVER_API);
+
+    if (data->callbackSite == CUPTI_API_ENTER) {
+      DriverApiEnterCallback(cbid, *data, recorder);
+    } else {
+      DriverApiExitCallback(cbid, *data, recorder);
+    }
+  }
+
+  static CUmemorytype GetMemoryType(CUdeviceptr ptr) {
+    CUmemorytype mem_type;
+    auto status =
+        cuPointerGetAttribute(&mem_type, CU_POINTER_ATTRIBUTE_MEMORY_TYPE, ptr);
+    if (status == CUDA_ERROR_INVALID_VALUE) {
+      // Pointer not registered with CUDA, must be host memory.
+      return CU_MEMORYTYPE_HOST;
+    }
+    LogIfError(ToStatus(status));
+    return mem_type;
+  }
+
+  template <typename T>
+  static void StartMemcpy(CUmemorytype src_type, CUmemorytype dst_type,
+                          const CUpti_CallbackData& cbdata,
+                          CudaEventRecorder* recorder) {
+    auto params = static_cast<const T*>(cbdata.functionParams);
+    *cbdata.correlationData = recorder->StartMemcpy(
+        src_type, dst_type, params->ByteCount, cbdata.context, nullptr);
+  }
+  template <typename T>
+  static void StartMemcpyAsync(CUmemorytype src_type, CUmemorytype dst_type,
+                               const CUpti_CallbackData& cbdata,
+                               CudaEventRecorder* recorder) {
+    auto params = static_cast<const T*>(cbdata.functionParams);
+    *cbdata.correlationData = recorder->StartMemcpy(
+        src_type, dst_type, params->ByteCount, cbdata.context, params->hStream);
+  }
+
+  static void DriverApiEnterCallback(CUpti_CallbackId cbid,
+                                     const CUpti_CallbackData& cbdata,
+                                     CudaEventRecorder* recorder) {
+    switch (cbid) {
+      case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel: {
+        DCHECK_NE(cbdata.symbolName, nullptr);
+        auto params =
+            static_cast<const cuLaunchKernel_params*>(cbdata.functionParams);
+        *cbdata.correlationData = recorder->StartKernel(
+            cbdata.symbolName, cbdata.context, params->hStream);
+        return;
+      }
+
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpy: {
+        auto params =
+            static_cast<const cuMemcpy_params*>(cbdata.functionParams);
+        return StartMemcpy<cuMemcpy_params>(GetMemoryType(params->src),
+                                            GetMemoryType(params->dst), cbdata,
+                                            recorder);
+      }
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync: {
+        auto params =
+            static_cast<const cuMemcpyAsync_params*>(cbdata.functionParams);
+        return StartMemcpyAsync<cuMemcpyAsync_params>(
+            GetMemoryType(params->src), GetMemoryType(params->dst), cbdata,
+            recorder);
+      }
+
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2:
+        return StartMemcpy<cuMemcpyHtoD_v2_params>(
+            CU_MEMORYTYPE_HOST, CU_MEMORYTYPE_DEVICE, cbdata, recorder);
+
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2:
+        return StartMemcpyAsync<cuMemcpyHtoDAsync_v2_params>(
+            CU_MEMORYTYPE_HOST, CU_MEMORYTYPE_DEVICE, cbdata, recorder);
+
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2:
+        return StartMemcpy<cuMemcpyDtoH_v2_params>(
+            CU_MEMORYTYPE_DEVICE, CU_MEMORYTYPE_HOST, cbdata, recorder);
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2:
+        return StartMemcpyAsync<cuMemcpyDtoHAsync_v2_params>(
+            CU_MEMORYTYPE_DEVICE, CU_MEMORYTYPE_HOST, cbdata, recorder);
+
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2:
+        return StartMemcpy<cuMemcpyDtoD_v2_params>(
+            CU_MEMORYTYPE_DEVICE, CU_MEMORYTYPE_DEVICE, cbdata, recorder);
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2:
+        return StartMemcpyAsync<cuMemcpyDtoDAsync_v2_params>(
+            CU_MEMORYTYPE_DEVICE, CU_MEMORYTYPE_DEVICE, cbdata, recorder);
+
+      default:
+        LOG(ERROR) << "Unexpected callback id: " << cbid;
+    }
+  }
+
+  static void DriverApiExitCallback(CUpti_CallbackId cbid,
+                                    const CUpti_CallbackData& cbdata,
+                                    CudaEventRecorder* recorder) {
+    switch (cbid) {
+      case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel:
+        recorder->StopKernel(*cbdata.correlationData);
+        break;
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpy:
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync:
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2:
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2:
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2:
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2:
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2:
+      case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2:
+        recorder->StopMemcpy(*cbdata.correlationData);
+        break;
+      default:
+        LOG(ERROR) << "Unexpected callback id: " << cbid;
+    }
+  }
+
   CUpti_SubscriberHandle subscriber_;
+};
 
-  mutex trace_mu_;
-  static constexpr size_t kMaxRecords = 1024 * 1024;
-  std::map<uint32, string> correlations_ GUARDED_BY(trace_mu_);
-  std::vector<KernelRecord> kernel_records_ GUARDED_BY(trace_mu_);
-  std::vector<MemcpyRecord> memcpy_records_ GUARDED_BY(trace_mu_);
+// 'DeviceTracer' is an interface for collecting low-level execution timings
+// of hardware accelerator (e.g. GPU) computation and DMA transfers.
+class DeviceTracer : public profiler::ProfilerInterface {
+ public:
+  DeviceTracer();
+  ~DeviceTracer() override;
+
+  // ProfilerInterface interface:
+  Status Start() override;
+  Status Stop() override;
+  // Collect trace results.  Results are added to the specified
+  // StepStatsCollector.  Does not clear any existing stats.
+  // It is an error to call 'Collect' while a trace is running.
+  Status CollectData(RunMetadata* run_metadata) override;
+
+ private:
+  std::unique_ptr<CudaEventRecorder> recorder_;
+  std::unique_ptr<CuptiCallbackHook> cupti_hook_;
 
   mutex mu_;
   bool enabled_ GUARDED_BY(mu_);
-  int64 start_walltime_us_ GUARDED_BY(mu_);
-  int64 end_walltime_us_ GUARDED_BY(mu_);
-  uint64_t start_timestamp_ GUARDED_BY(mu_);
-  uint64_t end_timestamp_ GUARDED_BY(mu_);
-
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceTracerImpl);
 };
 
-DeviceTracerImpl::DeviceTracerImpl() {
+DeviceTracer::DeviceTracer()
+    : recorder_(new CudaEventRecorder()), enabled_(false) {
   VLOG(1) << "DeviceTracer created.";
-  cupti_manager_ = GetCUPTIManager();
-  CHECK(cupti_manager_);
-  cupti_wrapper_.reset(new perftools::gputools::profiler::CuptiWrapper());
-  enabled_ = false;
 }
 
-DeviceTracerImpl::~DeviceTracerImpl() {
+DeviceTracer::~DeviceTracer() {
   // Unregister the CUPTI callbacks if needed to prevent them from accessing
   // freed memory.
   Stop().IgnoreError();
 }
 
-Status DeviceTracerImpl::Start() {
+Status DeviceTracer::Start() {
   VLOG(1) << "DeviceTracer::Start";
   mutex_lock l(mu_);
   if (enabled_) {
     return errors::FailedPrecondition("DeviceTracer is already enabled.");
   }
-  // There can only be one CUPTI subscriber.  If we can't create one then
-  // there is another trace in progress (possibly by external code).
-  CUptiResult ret;
-  ret = cupti_wrapper_->Subscribe(
-      &subscriber_, static_cast<CUpti_CallbackFunc>(ApiCallback), this);
-  if (ret == CUPTI_ERROR_MAX_LIMIT_REACHED) {
-    return errors::Unavailable("CUPTI subcriber limit reached.");
-  } else if (ret != CUPTI_SUCCESS) {
-    return errors::Internal("Failed to create CUPTI subcriber.");
-  }
+  cupti_hook_.reset(new CuptiCallbackHook());
+  TF_RETURN_IF_ERROR(cupti_hook_->Enable(recorder_.get()));
 
-  // Register as a TraceEngine to receive ScopedAnnotations.
-  tracing::SetTraceCollector(this);
+  tracing::ScopedAnnotation::Enable(true);
 
-  // Intercept launch and memcpy calls to capture the Op name annotation.
-  // TODO(pbar) Add callbacks for memcpy variants.
-  CUPTI_CALL(EnableCallback(/*enable=*/1, subscriber_,
-                            CUPTI_CB_DOMAIN_DRIVER_API,
-                            CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel));
-  CUPTI_CALL(EnableCallback(/*enable=*/1, subscriber_,
-                            CUPTI_CB_DOMAIN_RUNTIME_API,
-                            CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy_v3020));
-  CUPTI_CALL(EnableCallback(
-      /*enable=*/1, subscriber_, CUPTI_CB_DOMAIN_RUNTIME_API,
-      CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyAsync_v3020));
-
-  CUPTI_CALL(EnableCallback(/*enable=*/1, subscriber_,
-                            CUPTI_CB_DOMAIN_DRIVER_API,
-                            CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2));
-  CUPTI_CALL(EnableCallback(/*enable=*/1, subscriber_,
-                            CUPTI_CB_DOMAIN_DRIVER_API,
-                            CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2));
-  CUPTI_CALL(EnableCallback(/*enable=*/1, subscriber_,
-                            CUPTI_CB_DOMAIN_DRIVER_API,
-                            CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2));
-  CUPTI_CALL(EnableCallback(/*enable=*/1, subscriber_,
-                            CUPTI_CB_DOMAIN_DRIVER_API,
-                            CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2));
-  CUPTI_CALL(EnableCallback(/*enable=*/1, subscriber_,
-                            CUPTI_CB_DOMAIN_DRIVER_API,
-                            CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2));
-  CUPTI_CALL(EnableCallback(/*enable=*/1, subscriber_,
-                            CUPTI_CB_DOMAIN_DRIVER_API,
-                            CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2));
-
-  TF_RETURN_IF_ERROR(cupti_manager_->EnableTrace(this));
-
-  CUPTI_CALL(GetTimestamp(&start_timestamp_));
-  start_walltime_us_ = NowInUsec();
   enabled_ = true;
   return Status::OK();
 }
 
-Status DeviceTracerImpl::Stop() {
+Status DeviceTracer::Stop() {
   VLOG(1) << "DeviceTracer::Stop";
   mutex_lock l(mu_);
   if (!enabled_) {
     return Status::OK();
   }
-  CUPTI_CALL(Unsubscribe(subscriber_));
-  tracing::SetTraceCollector(nullptr);
-  TF_RETURN_IF_ERROR(cupti_manager_->DisableTrace());
-  end_walltime_us_ = NowInUsec();
-  CUPTI_CALL(GetTimestamp(&end_timestamp_));
+  cupti_hook_.reset();
+  tracing::ScopedAnnotation::Enable(false);
+
   enabled_ = false;
   return Status::OK();
 }
 
-void DeviceTracerImpl::AddCorrelationId(uint32 correlation_id,
-                                        const string &name) {
-  VLOG(2) << correlation_id << " : " << name;
-  mutex_lock l(trace_mu_);
-  if (correlations_.size() >= kMaxRecords) return;
-  correlations_.emplace(correlation_id, name);
-}
+class CudaEventCollector {
+  struct DeviceInfo {
+    int ordinal;
+    std::string name;
+    int num_contexts;
+  };
 
-/*static*/ void DeviceTracerImpl::ApiCallback(void *userdata,
-                                              CUpti_CallbackDomain domain,
-                                              CUpti_CallbackId cbid,
-                                              const void *cbdata) {
-  auto *cbInfo = reinterpret_cast<const CUpti_CallbackData *>(cbdata);
-  DeviceTracerImpl *tracer = reinterpret_cast<DeviceTracerImpl *>(userdata);
-  VLOG(2) << "ApiCallback " << domain << ":" << cbid
-          << " func: " << cbInfo->functionName;
+  struct ContextInfo {
+    int index;
+    const DeviceInfo* dev_info;
+    int num_streams;
+    CUevent end_event;
+  };
 
-  // API callbacks are invoked synchronously on the thread making the
-  // CUDA API call.  If this pointer is non-null then the ScopedAnnotation
-  // must be valid.
-  const char *tls_annotation = tls_current_annotation.get();
+  struct StreamInfo {
+    std::string name;
+    int index;  // 0 is reserved for null stream.
+    const ContextInfo* ctx_info;
+  };
 
-  if ((domain == CUPTI_CB_DOMAIN_DRIVER_API) &&
-      (cbid == CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel)) {
-    if (cbInfo->callbackSite == CUPTI_API_ENTER) {
-      auto *params = reinterpret_cast<const cuLaunchKernel_params *>(
-          cbInfo->functionParams);
-      if (VLOG_IS_ON(2)) {
-        VLOG(2) << "LAUNCH stream " << params->hStream << " correllation "
-                << cbInfo->correlationId << " kernel " << cbInfo->symbolName;
-      }
-      const string annotation =
-          tls_annotation ? tls_annotation : cbInfo->symbolName;
-      tracer->AddCorrelationId(cbInfo->correlationId, annotation);
-    }
-  } else if ((domain == CUPTI_CB_DOMAIN_RUNTIME_API) &&
-             (cbid == CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy_v3020 ||
-              cbid == CUPTI_RUNTIME_TRACE_CBID_cudaMemcpyAsync_v3020)) {
-    if (cbInfo->callbackSite == CUPTI_API_ENTER) {
-      if (VLOG_IS_ON(2)) {
-        auto *funcParams = reinterpret_cast<const cudaMemcpy_v3020_params *>(
-            cbInfo->functionParams);
-        size_t count = funcParams->count;
-        enum cudaMemcpyKind kind = funcParams->kind;
-        VLOG(2) << "MEMCPY count " << count << " kind " << kind;
-      }
-      if (tls_annotation) {
-        const string annotation = tls_annotation;
-        tracer->AddCorrelationId(cbInfo->correlationId, annotation);
-      }
-    }
-  } else if ((domain == CUPTI_CB_DOMAIN_DRIVER_API) &&
-             (cbid == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2 ||
-              cbid == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2 ||
-              cbid == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2 ||
-              cbid == CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2 ||
-              cbid == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2 ||
-              cbid == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2)) {
-    if (cbInfo->callbackSite == CUPTI_API_EXIT && tls_annotation) {
-      const string annotation = tls_annotation;
-      tracer->AddCorrelationId(cbInfo->correlationId, annotation);
-    }
-  } else {
-    VLOG(1) << "Unhandled API Callback for " << domain << " " << cbid;
+  // Include context in key to distinguish null streams.
+  using StreamKey = std::pair<CUcontext, CUstream>;
+
+  CudaEventCollector(CudaEventRecorder* recorder, StepStatsCollector* collector)
+      : recorder_(recorder), collector_(collector) {
+    DCHECK(recorder != nullptr);
+    DCHECK(collector != nullptr);
   }
-}
 
-void DeviceTracerImpl::ActivityCallback(const CUpti_Activity &record) {
-  VLOG(2) << "ActivityCallback " << record.kind;
-  mutex_lock l(trace_mu_);
-  switch (record.kind) {
-    case CUPTI_ACTIVITY_KIND_MEMCPY: {
-      if (memcpy_records_.size() >= kMaxRecords) return;
-      auto *memcpy = reinterpret_cast<const CUpti_ActivityMemcpy *>(&record);
-      memcpy_records_.push_back(MemcpyRecord{
-          memcpy->start, memcpy->end, memcpy->deviceId, memcpy->streamId,
-          memcpy->correlationId, memcpy->copyKind, memcpy->srcKind,
-          memcpy->dstKind, memcpy->bytes});
-      break;
+  // Populates device_infos_ from all devices.
+  Status InitializeDeviceInfos() {
+    int count;
+    TF_RETURN_IF_ERROR(ToStatus(cuDeviceGetCount(&count)));
+    for (int ordinal = 0; ordinal < count; ++ordinal) {
+      CUdevice device;
+      TF_RETURN_IF_ERROR(ToStatus(cuDeviceGet(&device, ordinal)));
+      char name[100];
+      TF_RETURN_IF_ERROR(ToStatus(cuDeviceGetName(name, sizeof(name), device)));
+      device_infos_[device] = {ordinal, name};
     }
-    case CUPTI_ACTIVITY_KIND_MEMCPY2: {
-      if (memcpy_records_.size() >= kMaxRecords) return;
-      auto *memcpy = reinterpret_cast<const CUpti_ActivityMemcpy2 *>(&record);
-      memcpy_records_.push_back(MemcpyRecord{
-          memcpy->start, memcpy->end, memcpy->deviceId, memcpy->streamId,
-          memcpy->correlationId, memcpy->copyKind, memcpy->srcKind,
-          memcpy->dstKind, memcpy->bytes});
-      break;
-    }
-    case CUPTI_ACTIVITY_KIND_KERNEL:
-    case CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL: {
-      if (kernel_records_.size() >= kMaxRecords) return;
-      auto *kernel = reinterpret_cast<const CUpti_ActivityKernel3 *>(&record);
-      kernel_records_.push_back(KernelRecord{kernel->start, kernel->end,
-                                             kernel->deviceId, kernel->streamId,
-                                             kernel->correlationId});
-      break;
-    }
-    default:
-      VLOG(1) << "ActivityCallback unhandled kind";
-      break;
+    return Status::OK();
   }
-}
 
-Status DeviceTracerImpl::Collect(StepStatsCollector *collector) {
+  // Returns element from context_infos_, adding it if not yet present.
+  Status GetContextInfo(CUcontext context, ContextInfo** ctx_info_ptr) {
+    auto it = context_infos_.find(context);
+
+    if (it == context_infos_.end()) {
+      TF_RETURN_IF_ERROR(ToStatus(cuCtxSetCurrent(context)));
+      CUdevice device;
+      TF_RETURN_IF_ERROR(ToStatus(cuCtxGetDevice(&device)));
+
+      auto& dev_info = device_infos_[device];
+      ContextInfo ctx_info = {dev_info.num_contexts++, &dev_info};
+      it = context_infos_.emplace(context, ctx_info).first;
+    }
+
+    *ctx_info_ptr = &it->second;
+    return Status::OK();
+  }
+
+  // Adds element to stream_infos_ if not yet present. If present, clear name
+  // if it doesn't match parameter.
+  Status AddStreamInfo(CUcontext context, CUstream stream,
+                       absl::string_view name) {
+    StreamKey key(context, stream);
+    auto it = stream_infos_.find(key);
+    if (it != stream_infos_.end()) {
+      if (it->second.name != name) {
+        it->second.name.clear();  // Stream with inconsistent names, clear it.
+      }
+      return Status::OK();
+    }
+
+    ContextInfo* ctx_info;
+    TF_RETURN_IF_ERROR(GetContextInfo(context, &ctx_info));
+    int index = stream ? ++ctx_info->num_streams : 0;
+    StreamInfo stream_info = {static_cast<std::string>(name), index, ctx_info};
+    stream_infos_.emplace(key, stream_info);
+    return Status::OK();
+  }
+
+  // Returns string describing source and destination memory types.
+  static std::string GetMemcpyName(const MemcpyRecord& record) {
+    auto get_memory_type = [](CUmemorytype mem_type) {
+      switch (mem_type) {
+        case CU_MEMORYTYPE_HOST:
+          return 'H';
+        case CU_MEMORYTYPE_DEVICE:
+          return 'D';
+        case CU_MEMORYTYPE_ARRAY:
+          return 'A';
+        case CU_MEMORYTYPE_UNIFIED:
+          return 'U';
+        default:
+          LOG(ERROR) << "Unknown memory type: " << mem_type;
+          return '?';
+      }
+    };
+    return absl::StrFormat("Memcpy%cto%c", get_memory_type(record.src_type),
+                           get_memory_type(record.dst_type));
+  }
+
+  // Returns time in microseconds between events recorded on the GPU.
+  static uint64_t GetElapsedTimeUs(CUevent start, CUevent stop) {
+    float elapsed_ms = 0.0f;
+    LogIfError(ToStatus(cuEventElapsedTime(&elapsed_ms, start, stop)));
+    return static_cast<uint64>(
+        std::llroundf(1000 * std::max(elapsed_ms, 0.0f)));
+  }
+
+  // Synchronizes all contexts.
+  Status Synchronize() const {
+    for (const auto& pair : context_infos_) {
+      TF_RETURN_IF_ERROR(ToStatus(cuCtxSetCurrent(pair.first)));
+      TF_RETURN_IF_ERROR(ToStatus(cuCtxSynchronize()));
+    }
+    return Status::OK();
+  }
+
+  // Save stats to collector;
+  Status SaveStats(std::unique_ptr<NodeExecStats> stats,
+                   const StreamInfo& stream_info) const {
+    auto ctx_info = stream_info.ctx_info;
+    auto dev_info = ctx_info->dev_info;
+    // TODO(csigg): tfprof_node.cc, run_metadata_test.py, and timeline_test.py
+    // currently require this particular formatting.
+    collector_->Save(
+        absl::StrFormat("/device:GPU:%d/stream:all", dev_info->ordinal),
+        new NodeExecStats(*stats));
+    auto name = absl::StrFormat("/gpu:%d (%s)/context#%d/", dev_info->ordinal,
+                                dev_info->name, ctx_info->index);
+    if (stream_info.index) {
+      absl::StrAppend(&name, "stream#", std::to_string(stream_info.index));
+    } else {
+      absl::StrAppend(&name, "null stream");
+    }
+    if (!stream_info.name.empty()) {
+      absl::StrAppend(&name, ":", stream_info.name);
+    }
+    collector_->Save(name, stats.release());
+    return Status::OK();
+  }
+
+  Status SaveRecord(const KernelRecord& record) const {
+    if (!record.start_event || !record.stop_event) {
+      return Status::OK();
+    }
+    const auto& stream_info =
+        stream_infos_.at(StreamKey(record.context, record.stream));
+    auto start_us =
+        GetElapsedTimeUs(record.start_event, stream_info.ctx_info->end_event);
+    auto elapsed_us = GetElapsedTimeUs(record.start_event, record.stop_event);
+
+    auto stats = absl::make_unique<NodeExecStats>();
+    std::string node_name = port::MaybeAbiDemangle(record.kernel_name);
+    // Sometimes CUPTI returns invalid characters. See b/129892466.
+    if (!IsAscii(node_name)) {
+      node_name = "<invalid_name>";
+    }
+    if (record.annotation) {
+      node_name = absl::StrCat(*record.annotation, "::", node_name);
+    }
+    stats->set_node_name(node_name);
+    // TODO(csigg): Report grid size?
+    std::string node_label;
+    stats->set_timeline_label(node_label);
+    stats->set_all_start_micros(end_walltime_us_ - start_us);
+    stats->set_op_end_rel_micros(elapsed_us);
+    stats->set_all_end_rel_micros(elapsed_us);
+    return SaveStats(std::move(stats), stream_info);
+  }
+
+  Status SaveRecord(const MemcpyRecord& record) const {
+    if (!record.start_event || !record.stop_event) {
+      return Status::OK();
+    }
+    const auto& stream_info =
+        stream_infos_.at(StreamKey(record.context, record.stream));
+    auto start_us =
+        GetElapsedTimeUs(record.start_event, stream_info.ctx_info->end_event);
+    auto elapsed_us = GetElapsedTimeUs(record.start_event, record.stop_event);
+
+    auto stats = absl::make_unique<NodeExecStats>();
+    std::string node_name = GetMemcpyName(record);
+    // Sometimes CUPTI returns invalid characters. See b/129892466.
+    if (!IsAscii(node_name)) {
+      node_name = "<invalid_name>";
+    }
+    if (record.annotation) {
+      node_name = absl::StrCat(*record.annotation, "::", node_name);
+    }
+    stats->set_node_name(node_name);
+    // TODO(csigg): Show label in Chrome trace viewer.
+    std::string node_label = absl::StrFormat("%d bytes", record.size_bytes);
+    stats->set_timeline_label(node_label);
+    stats->set_all_start_micros(end_walltime_us_ - start_us);
+    stats->set_op_end_rel_micros(elapsed_us);
+    stats->set_all_end_rel_micros(elapsed_us);
+    return SaveStats(std::move(stats), stream_info);
+  }
+
+  Status Collect() {
+    TF_RETURN_IF_ERROR(InitializeDeviceInfos());
+
+    auto kernel_records = recorder_->ConsumeKernelRecords();
+    auto memcpy_records = recorder_->ConsumeMemcpyRecords();
+    LOG(INFO) << "Collecting " << kernel_records.size() << " kernel records, "
+              << memcpy_records.size() << " memcpy records.";
+
+    // Gather all profiled streams and contexts.
+    for (const auto& record : kernel_records) {
+      TF_RETURN_IF_ERROR(
+          AddStreamInfo(record.context, record.stream, "Kernel"));
+    }
+    for (const auto& record : memcpy_records) {
+      TF_RETURN_IF_ERROR(
+          AddStreamInfo(record.context, record.stream, GetMemcpyName(record)));
+    }
+
+    // Synchronize all contexts, record end events, synchronize again.
+    TF_RETURN_IF_ERROR(Synchronize());
+    for (auto& pair : context_infos_) {
+      TF_RETURN_IF_ERROR(ToStatus(cuCtxSetCurrent(pair.first)));
+      TF_RETURN_IF_ERROR(CreateAndRecordEvent(&pair.second.end_event, nullptr));
+    }
+    TF_RETURN_IF_ERROR(Synchronize());
+    end_walltime_us_ = Env::Default()->NowMicros();
+
+    for (const auto& record : kernel_records) {
+      TF_RETURN_IF_ERROR(SaveRecord(record));
+    }
+    for (const auto& record : memcpy_records) {
+      TF_RETURN_IF_ERROR(SaveRecord(record));
+    }
+
+    return Status::OK();
+  }
+
+ public:
+  // Consumes the records in recorder and saves them to the collector.
+  static Status Collect(CudaEventRecorder* recorder,
+                        StepStatsCollector* collector) {
+    CUcontext context;
+    TF_RETURN_IF_ERROR(ToStatus(cuCtxGetCurrent(&context)));
+    auto status = CudaEventCollector(recorder, collector).Collect();
+    TF_RETURN_IF_ERROR(ToStatus(cuCtxSetCurrent(context)));
+    return status;
+  }
+
+ private:
+  CudaEventRecorder* recorder_;
+  StepStatsCollector* collector_;
+
+  absl::node_hash_map<CUdevice, DeviceInfo> device_infos_;
+  absl::node_hash_map<CUcontext, ContextInfo> context_infos_;
+  absl::flat_hash_map<StreamKey, StreamInfo, hash<StreamKey>> stream_infos_;
+  int64 end_walltime_us_;
+};
+
+Status DeviceTracer::CollectData(RunMetadata* run_metadata) {
   mutex_lock l(mu_);
   if (enabled_) {
     return errors::FailedPrecondition("DeviceTracer is still enabled.");
   }
 
-  // TODO(pbar) Handle device IDs and prefix properly.
-  const string prefix = "";
-  const int id = 0;
-  const string stream_device =
-      strings::StrCat(prefix, "/device:GPU:", id, "/stream:");
-  const string memcpy_device =
-      strings::StrCat(prefix, "/device:GPU:", id, "/memcpy");
-
-  mutex_lock l2(trace_mu_);
-  for (const auto &rec : kernel_records_) {
-    auto it = correlations_.find(rec.correlation_id);
-    const string name = (it != correlations_.cend()) ? it->second : "unknown";
-    NodeExecStats *ns = new NodeExecStats;
-    ns->set_all_start_micros(start_walltime_us_ +
-                             ((rec.start_timestamp - start_timestamp_) / 1000));
-    ns->set_op_start_rel_micros(0);
-    auto elapsed_us =
-        std::max<int64>((rec.end_timestamp - rec.start_timestamp) / 1000, 1);
-    ns->set_op_end_rel_micros(elapsed_us);
-    ns->set_all_end_rel_micros(elapsed_us);
-    ns->set_node_name(name);
-    // TODO(pbar) Generate details based on the kernel activity record.
-    // ns->set_timeline_label(details);
-    auto nscopy = new NodeExecStats;
-    *nscopy = *ns;
-    collector->Save(strings::StrCat(stream_device, "all"), ns);
-    collector->Save(strings::StrCat(stream_device, rec.stream_id), nscopy);
-  }
-  for (const auto &rec : memcpy_records_) {
-    auto it = correlations_.find(rec.correlation_id);
-    const string name = (it != correlations_.cend()) ? it->second : "unknown";
-    NodeExecStats *ns = new NodeExecStats;
-    ns->set_all_start_micros(start_walltime_us_ +
-                             ((rec.start_timestamp - start_timestamp_) / 1000));
-    ns->set_op_start_rel_micros(0);
-    auto elapsed_us =
-        std::max<int64>((rec.end_timestamp - rec.start_timestamp) / 1000, 1);
-    ns->set_op_end_rel_micros(elapsed_us);
-    ns->set_all_end_rel_micros(elapsed_us);
-    auto copyKind = static_cast<CUpti_ActivityMemcpyKind>(rec.copyKind);
-    auto srcKind = static_cast<CUpti_ActivityMemoryKind>(rec.srcKind);
-    auto dstKind = static_cast<CUpti_ActivityMemoryKind>(rec.dstKind);
-    const string details = strings::Printf(
-        "MEMCPY%s %llu bytes (%s to %s)", getMemcpyKindString(copyKind),
-        rec.bytes, getMemoryKindString(srcKind), getMemoryKindString(dstKind));
-    ns->set_node_name(
-        strings::StrCat(name, ":MEMCPY", getMemcpyKindString(copyKind)));
-    ns->set_timeline_label(details);
-    auto nscopy = new NodeExecStats;
-    *nscopy = *ns;
-    collector->Save(memcpy_device, ns);
-    collector->Save(strings::StrCat(stream_device, rec.stream_id), nscopy);
-  }
+  StepStatsCollector step_stats_collector(run_metadata->mutable_step_stats());
+  TF_RETURN_IF_ERROR(
+      CudaEventCollector::Collect(recorder_.get(), &step_stats_collector));
+  step_stats_collector.Finalize();
   return Status::OK();
 }
+}  // namespace
 
-}  // namespace devicetracer
-
-std::unique_ptr<DeviceTracer> CreateDeviceTracer() {
-  std::unique_ptr<DeviceTracer> tracer(new devicetracer::DeviceTracerImpl());
-  return tracer;
+// Not in anonymous namespace for testing purposes.
+std::unique_ptr<profiler::ProfilerInterface> CreateDeviceTracer() {
+  auto status = cuInit(0);
+  if (status != CUDA_SUCCESS) {
+    LogIfError(ToStatus(status));
+    return nullptr;
+  }
+  return absl::make_unique<DeviceTracer>();
 }
 
+auto register_device_tracer_factory = [] {
+  bool enable;
+  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_OSS_GPU_PROFILER", true, &enable));
+  if (enable) {
+    RegisterProfilerFactory(&CreateDeviceTracer);
+  }
+  return 0;
+}();
+
 }  // namespace tensorflow
-
-#else  // GOOGLE_CUDA
-
-namespace tensorflow {
-
-std::unique_ptr<DeviceTracer> CreateDeviceTracer() { return nullptr; }
-
-}  // namespace tensorflow
-
 #endif  // GOOGLE_CUDA

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Minimal runtime type checking library.
 
 This module should not be considered public API.
@@ -22,11 +21,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import re
 
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.compat import collections_abc
 
 # used for register_type_abbreviation and _type_repr below.
 _TYPE_ABBREVIATIONS = {}
@@ -54,7 +53,7 @@ class Type(object):
 
   def __repr__(self):
     args_repr = ", ".join(repr(t) for t in self._types)
-    return  "typecheck.%s(%s)" % (type(self).__name__, args_repr)
+    return "typecheck.%s(%s)" % (type(self).__name__, args_repr)
 
 
 class _SingleArgumentType(Type):
@@ -104,8 +103,8 @@ class List(_SingleArgumentType):
   """
 
   def __instancecheck__(self, instance):
-    return (isinstance(instance, list)
-            and all(isinstance(x, self._type) for x in instance))
+    return (isinstance(instance, list) and
+            all(isinstance(x, self._type) for x in instance))
 
 
 class Sequence(_SingleArgumentType):
@@ -115,8 +114,8 @@ class Sequence(_SingleArgumentType):
   """
 
   def __instancecheck__(self, instance):
-    return (isinstance(instance, collections.Sequence)
-            and all(isinstance(x, self._type) for x in instance))
+    return (isinstance(instance, collections_abc.Sequence) and
+            all(isinstance(x, self._type) for x in instance))
 
 
 class Collection(_SingleArgumentType):
@@ -131,10 +130,10 @@ class Collection(_SingleArgumentType):
   """
 
   def __instancecheck__(self, instance):
-    return (isinstance(instance, collections.Iterable)
-            and isinstance(instance, collections.Sized)
-            and isinstance(instance, collections.Container)
-            and all(isinstance(x, self._type) for x in instance))
+    return (isinstance(instance, collections_abc.Iterable) and
+            isinstance(instance, collections_abc.Sized) and
+            isinstance(instance, collections_abc.Container) and
+            all(isinstance(x, self._type) for x in instance))
 
 
 class Tuple(Type):
@@ -145,9 +144,9 @@ class Tuple(Type):
   """
 
   def __instancecheck__(self, instance):
-    return (isinstance(instance, tuple)
-            and len(instance) == len(self._types)
-            and all(isinstance(x, t) for x, t in zip(instance, self._types)))
+    return (isinstance(instance, tuple) and
+            len(instance) == len(self._types) and
+            all(isinstance(x, t) for x, t in zip(instance, self._types)))
 
 
 class Mapping(_TwoArgumentType):
@@ -158,9 +157,9 @@ class Mapping(_TwoArgumentType):
 
   def __instancecheck__(self, instance):
     key_type, value_type = self._types  # pylint: disable=unbalanced-tuple-unpacking
-    return (isinstance(instance, collections.Mapping)
-            and all(isinstance(k, key_type) for k in instance.keys())
-            and all(isinstance(k, value_type) for k in instance.values()))
+    return (isinstance(instance, collections_abc.Mapping) and
+            all(isinstance(k, key_type) for k in instance.keys()) and
+            all(isinstance(k, value_type) for k in instance.values()))
 
 
 class Dict(Mapping):
@@ -170,8 +169,8 @@ class Dict(Mapping):
   """
 
   def __instancecheck__(self, instance):
-    return (isinstance(instance, dict)
-            and super(Dict, self).__instancecheck__(instance))
+    return (isinstance(instance, dict) and
+            super(Dict, self).__instancecheck__(instance))
 
 
 def _replace_forward_references(t, context):
@@ -190,7 +189,8 @@ def register_type_abbreviation(name, alias):
   This makes otherwise very long typecheck errors much more readable.
 
   Example:
-    typecheck.register_type_abbreviation(tf.Dimension, 'tf.Dimension')
+    typecheck.register_type_abbreviation(tf.compat.v1.Dimension,
+    'tf.compat.v1.Dimension')
 
   Args:
     name: type or class to abbreviate.
@@ -240,14 +240,13 @@ def accepts(*types):
 
     if spec.defaults:
       num_defaults = len(spec.defaults)
-      for (name, a, t) in zip(spec.args[-num_defaults:],
-                              spec.defaults,
+      for (name, a, t) in zip(spec.args[-num_defaults:], spec.defaults,
                               types[-num_defaults:]):
         allowed_type = _replace_forward_references(t, f.__globals__)
         if not isinstance(a, allowed_type):
           raise Error("default argument value %r of type %r is not an instance "
-                      "of the allowed type %s for the %s argument to %r"
-                      % (a, type(a), _type_repr(allowed_type), name, f))
+                      "of the allowed type %s for the %s argument to %r" %
+                      (a, type(a), _type_repr(allowed_type), name, f))
 
     @functools.wraps(f)
     def new_f(*args, **kwds):
@@ -273,11 +272,10 @@ def returns(*types):
   https://www.python.org/dev/peps/pep-0318/
 
   Args:
-    *types: A list of Python types.
-      A list of one element corresponds to a single return value.
-      A list of several elements corresponds to several return values.
-      Note that a function with no explicit return value has an implicit
-      NoneType return and should be annotated correspondingly.
+    *types: A list of Python types. A list of one element corresponds to a
+      single return value. A list of several elements corresponds to several
+      return values. Note that a function with no explicit return value has an
+      implicit NoneType return and should be annotated correspondingly.
 
   Returns:
     A function to use as a decorator.
@@ -297,17 +295,16 @@ def returns(*types):
         # The function has a single return value.
         allowed_type = _replace_forward_references(types[0], f.__globals__)
         if not isinstance(return_value, allowed_type):
-          raise Error("%r of type %r is not an instance of the allowed type %s "
-                      "for %r"
-                      % (return_value, type(return_value),
-                         _type_repr(allowed_type), f))
+          raise Error(
+              "%r of type %r is not an instance of the allowed type %s "
+              "for %r" %
+              (return_value, type(return_value), _type_repr(allowed_type), f))
 
       else:
         if len(return_value) != len(types):
-          raise Error(
-              "Function %r has %d return values but only %d types were "
-              "provided in the annotation." %
-              (f, len(return_value), len(types)))
+          raise Error("Function %r has %d return values but only %d types were "
+                      "provided in the annotation." %
+                      (f, len(return_value), len(types)))
 
         for (r, t) in zip(return_value, types):
           allowed_type = _replace_forward_references(t, f.__globals__)

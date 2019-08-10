@@ -29,7 +29,7 @@ namespace {
 class WhileTransformerTest : public HloTestBase {
  protected:
   WhileTransformerTest()
-      : module_(CreateNewModule()),
+      : module_(CreateNewVerifiedModule()),
         induction_variable_shape_(ShapeUtil::MakeShape(S32, {})),
         data_shape_(ShapeUtil::MakeShape(F32, {8})),
         condition_result_shape_(ShapeUtil::MakeShape(PRED, {})) {}
@@ -44,9 +44,9 @@ class WhileTransformerTest : public HloTestBase {
     auto induction_variable =
         builder.AddInstruction(HloInstruction::CreateGetTupleElement(
             limit_const->shape(), loop_state, tuple_index));
-    builder.AddInstruction(
-        HloInstruction::CreateBinary(condition_result_shape_, HloOpcode::kLt,
-                                     induction_variable, limit_const));
+    builder.AddInstruction(HloInstruction::CreateCompare(
+        condition_result_shape_, induction_variable, limit_const,
+        ComparisonDirection::kLt));
     return builder.Build();
   }
 
@@ -69,8 +69,10 @@ class WhileTransformerTest : public HloTestBase {
     auto data = builder.AddInstruction(HloInstruction::CreateGetTupleElement(
         data_shape_, loop_state, data_tuple_index));
     // Use 'induction_variable' in computation with no path to output tuple.
+    auto cast = builder.AddInstruction(HloInstruction::CreateBitcastConvert(
+        ShapeUtil::MakeShape(F32, {}), induction_variable));
     auto update = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(data_shape_, induction_variable, {}));
+        HloInstruction::CreateBroadcast(data_shape_, cast, {}));
     auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
         data_shape_, HloOpcode::kAdd, data, update));
     // Create output Tuple.
@@ -104,24 +106,6 @@ class WhileTransformerTest : public HloTestBase {
     return while_hlo;
   }
 
-  void RunFusionPasses() {
-    // Run standard fusion passes.
-    TF_ASSERT_OK(gpu::GpuInstructionFusion(/*may_duplicate=*/false)
-                     .Run(module_.get())
-                     .status());
-    TF_ASSERT_OK(gpu::GpuInstructionFusion(/*may_duplicate=*/true)
-                     .Run(module_.get())
-                     .status());
-  }
-
-  void RunCopyInsertionPass() {
-    HloVerifier verifier(/*layout_sensitive=*/false,
-                         /*allow_mixed_precision=*/false);
-    TF_ASSERT_OK(verifier.Run(module_.get()).status());
-    CopyInsertion copy_insertion;
-    TF_ASSERT_OK(copy_insertion.Run(module_.get()).status());
-  }
-
   Shape GetLoopStateShape(const int64 ind_var_tuple_index) {
     if (ind_var_tuple_index == 0) {
       return ShapeUtil::MakeTupleShape(
@@ -144,10 +128,6 @@ TEST_F(WhileTransformerTest, InductionVariableAtTupleElement0) {
       module_->AddEmbeddedComputation(BuildConditionComputation(0, 10));
   auto body = module_->AddEmbeddedComputation(BuildBodyComputation(0, 1, 1));
   auto while_hlo = BuildWhileInstruction(condition, body, 0, 0);
-  // Run HLO Optimization passes.
-  RunFusionPasses();
-  RunCopyInsertionPass();
-
   auto result = ComputeWhileLoopTripCount(while_hlo);
   ASSERT_TRUE(result);
   EXPECT_EQ(10, *result);
@@ -159,10 +139,6 @@ TEST_F(WhileTransformerTest, InductionVariableAtTupleElement1) {
       module_->AddEmbeddedComputation(BuildConditionComputation(1, 10));
   auto body = module_->AddEmbeddedComputation(BuildBodyComputation(1, 0, 1));
   auto while_hlo = BuildWhileInstruction(condition, body, 1, 0);
-  // Run HLO Optimization passes.
-  RunFusionPasses();
-  RunCopyInsertionPass();
-
   auto result = ComputeWhileLoopTripCount(while_hlo);
   ASSERT_TRUE(result);
   EXPECT_EQ(10, *result);
@@ -174,10 +150,6 @@ TEST_F(WhileTransformerTest, ImpossibleLoopLimit) {
       module_->AddEmbeddedComputation(BuildConditionComputation(0, 5));
   auto body = module_->AddEmbeddedComputation(BuildBodyComputation(0, 1, 1));
   auto while_hlo = BuildWhileInstruction(condition, body, 0, 10);
-  // Run HLO Optimization passes.
-  RunFusionPasses();
-  RunCopyInsertionPass();
-
   auto result = ComputeWhileLoopTripCount(while_hlo);
   ASSERT_TRUE(result);
   EXPECT_EQ(0, *result);
@@ -189,10 +161,6 @@ TEST_F(WhileTransformerTest, InvalidLoopIncrement) {
       module_->AddEmbeddedComputation(BuildConditionComputation(0, 10));
   auto body = module_->AddEmbeddedComputation(BuildBodyComputation(0, 1, -1));
   auto while_hlo = BuildWhileInstruction(condition, body, 0, 0);
-  // Run HLO Optimization passes.
-  RunFusionPasses();
-  RunCopyInsertionPass();
-
   auto result = ComputeWhileLoopTripCount(while_hlo);
   ASSERT_FALSE(result);
 }

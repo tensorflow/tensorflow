@@ -19,11 +19,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import re
 from six import iteritems
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import array_ops as tf_array_ops
+from tensorflow.python.util.compat import collections_abc
 
 __all__ = [
     "make_list_of_op",
@@ -157,7 +157,7 @@ def transform_tree(tree, fn, iterable_type=tuple):
         res = tree.__new__(type(tree),
                            (transform_tree(child, fn) for child in tree))
       return res
-    elif isinstance(tree, collections.Sequence):
+    elif isinstance(tree, collections_abc.Sequence):
       res = tree.__new__(type(tree))
       res.__init__(transform_tree(child, fn) for child in tree)
       return res
@@ -450,18 +450,19 @@ def placeholder_name(t=None, scope=None, prefix=_DEFAULT_PLACEHOLDER_PREFIX):
 
 def make_placeholder_from_tensor(t, scope=None,
                                  prefix=_DEFAULT_PLACEHOLDER_PREFIX):
-  """Create a `tf.placeholder` for the Graph Editor.
+  """Create a `tf.compat.v1.placeholder` for the Graph Editor.
 
   Note that the correct graph scope must be set by the calling function.
 
   Args:
-    t: a `tf.Tensor` whose name will be used to create the placeholder
-      (see function placeholder_name).
-    scope: absolute scope within which to create the placeholder. None
-      means that the scope of `t` is preserved. `""` means the root scope.
+    t: a `tf.Tensor` whose name will be used to create the placeholder (see
+      function placeholder_name).
+    scope: absolute scope within which to create the placeholder. None means
+      that the scope of `t` is preserved. `""` means the root scope.
     prefix: placeholder name prefix.
+
   Returns:
-    A newly created `tf.placeholder`.
+    A newly created `tf.compat.v1.placeholder`.
   Raises:
     TypeError: if `t` is not `None` or a `tf.Tensor`.
   """
@@ -472,7 +473,7 @@ def make_placeholder_from_tensor(t, scope=None,
 
 def make_placeholder_from_dtype_and_shape(dtype, shape=None, scope=None,
                                           prefix=_DEFAULT_PLACEHOLDER_PREFIX):
-  """Create a tf.placeholder for the Graph Editor.
+  """Create a tf.compat.v1.placeholder for the Graph Editor.
 
   Note that the correct graph scope must be set by the calling function.
   The placeholder is named using the function placeholder_name (with no
@@ -481,9 +482,10 @@ def make_placeholder_from_dtype_and_shape(dtype, shape=None, scope=None,
   Args:
     dtype: the tensor type.
     shape: the tensor shape (optional).
-    scope: absolute scope within which to create the placeholder. None
-      means that the scope of t is preserved. "" means the root scope.
+    scope: absolute scope within which to create the placeholder. None means
+      that the scope of t is preserved. "" means the root scope.
     prefix: placeholder name prefix.
+
   Returns:
     A newly created tf.placeholder.
   """

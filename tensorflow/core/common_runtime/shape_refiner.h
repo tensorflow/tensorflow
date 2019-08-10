@@ -211,8 +211,8 @@ class ShapeRefiner {
   // - outer_context will contain output shapes inferred from input shapes
   // - outer_context will contain nested inferences collection, iff
   //   keep_nested_shapes is true
-  Status InferShapesForFunction(const tensorflow::FunctionDef* function_def,
-                                bool keep_nested_shapes,
+  Status InferShapesForFunction(const FunctionDef* function_def,
+                                AttrSlice attributes, bool keep_nested_shapes,
                                 ExtendedInferenceContext* outer_context);
 
   // Attempts to evaluate the 'dst_idx'-th input to 'node'. If the input edge

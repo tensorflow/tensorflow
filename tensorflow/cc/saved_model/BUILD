@@ -1,14 +1,6 @@
 # Description:
 # TensorFlow SavedModel.
 
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -17,6 +9,18 @@ load(
     "if_not_mobile",
     "tf_cc_test",
 )
+load(
+    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "if_static",
+    "if_static_and_not_mobile",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 cc_library(
     name = "constants",
@@ -78,11 +82,13 @@ cc_library(
     hdrs = ["loader.h"],
     deps = [
         ":loader_lite",
-    ] + if_not_mobile([
+    ] + if_static_and_not_mobile([
+        "//tensorflow/core:tensorflow",
+    ]) + if_not_mobile([
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
     ]) + if_android([
         "//tensorflow/core:android_tensorflow_lib",
     ]),
@@ -90,6 +96,19 @@ cc_library(
 
 cc_library(
     name = "loader_lite",
+    hdrs = ["loader.h"],
+    deps = if_static([
+        ":loader_lite_impl",
+    ]) + if_not_mobile([
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        # mobile not supported yet
+    ]),
+)
+
+cc_library(
+    name = "loader_lite_impl",
     srcs = ["loader.cc"],
     hdrs = ["loader.h"],
     deps = [
@@ -120,6 +139,7 @@ tf_cc_test(
         ":tag_constants",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -133,5 +153,6 @@ filegroup(
         "testdata/half_plus_two_pbtxt/**",
         "testdata/half_plus_two_main_op/**",
         "testdata/half_plus_two/**",
+        "testdata/half_plus_two_v2/**",
     ]),
 )

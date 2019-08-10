@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
 
 namespace tensorflow {
@@ -68,7 +70,7 @@ namespace {
 // bytes) and string bytes, and stores it into "actual_crc32c".
 Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
                         size_t offset, size_t size, string* destination,
-                        uint32* actual_crc32c) {
+                        uint32* actual_crc32c, bool need_to_swap_bytes) {
   if (size == 0) return Status::OK();
   CHECK_GT(size, 0);
 
@@ -80,14 +82,22 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
     if (string_lengths[i] <= UINT32_MAX) {
       // We need to do this because older checkpoints only used uint32s and we
       // should still support them.
-      const uint32 elem_size_uint32 = static_cast<uint32>(string_lengths[i]);
+      uint32 elem_size_uint32 = static_cast<uint32>(string_lengths[i]);
+      if (need_to_swap_bytes) {
+        // Checksum would have been computed on the source machine's byte order
+        elem_size_uint32 = BYTE_SWAP_32(elem_size_uint32);
+      }
       *actual_crc32c = crc32c::Extend(
           *actual_crc32c, reinterpret_cast<const char*>(&elem_size_uint32),
           sizeof(uint32));
     } else {
-      *actual_crc32c = crc32c::Extend(
-          *actual_crc32c, reinterpret_cast<const char*>(&string_lengths[i]),
-          sizeof(uint64));
+      uint64 length = string_lengths[i];
+      if (need_to_swap_bytes) {
+        length = BYTE_SWAP_64(length);
+      }
+      *actual_crc32c =
+          crc32c::Extend(*actual_crc32c, reinterpret_cast<const char*>(&length),
+                         sizeof(uint64));
     }
   }
   if (offset + size < buffered_file->Tell()) {
@@ -96,20 +106,23 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
   }
 
   // Reads the length-checksum.
-  uint32 length_checksum = 0;
+  uint32 raw_length_checksum = 0;  // Bytes in file
+  uint32 length_checksum = 0;      // In-memory representation
   size_t unused_bytes_read = 0;
   TF_RETURN_IF_ERROR(buffered_file->ReadNBytes(
-      sizeof(uint32), reinterpret_cast<char*>(&length_checksum),
+      sizeof(uint32), reinterpret_cast<char*>(&raw_length_checksum),
       &unused_bytes_read));
+  length_checksum = need_to_swap_bytes ? BYTE_SWAP_32(raw_length_checksum)
+                                       : raw_length_checksum;
   if (crc32c::Unmask(length_checksum) != *actual_crc32c) {
     return errors::DataLoss(
         "The length checksum does not match: expected ",
         strings::Printf("%08u", crc32c::Unmask(length_checksum)),
         " but actual is ", strings::Printf("%08u", *actual_crc32c));
   }
-  *actual_crc32c =
-      crc32c::Extend(*actual_crc32c, reinterpret_cast<char*>(&length_checksum),
-                     sizeof(uint32));
+  *actual_crc32c = crc32c::Extend(*actual_crc32c,
+                                  reinterpret_cast<char*>(&raw_length_checksum),
+                                  sizeof(uint32));
 
   // Reads the actual string bytes.
   for (size_t i = 0; i < num_elements; ++i) {
@@ -718,7 +731,8 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
       prefix_(prefix),
       metadata_(nullptr),
       table_(nullptr),
-      iter_(nullptr) {
+      iter_(nullptr),
+      need_to_swap_bytes_(false) {
   const string filename = MetaFilename(prefix_);
   uint64 file_size;
   status_ = env_->GetFileSize(filename, &file_size);
@@ -750,9 +764,7 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
   if ((header.endianness() == BundleHeaderProto::BIG && port::kLittleEndian) ||
       (header.endianness() == BundleHeaderProto::LITTLE &&
        !port::kLittleEndian)) {
-    status_ = errors::Unimplemented(
-        "Reading a bundle with different endianness from the reader");
-    return;
+    need_to_swap_bytes_ = true;
   }
   status_ = CheckVersions(header.version(), kTensorBundleVersion,
                           kTensorBundleMinProducer, "Checkpoint", "checkpoint");
@@ -785,7 +797,7 @@ Status BundleReader::GetBundleEntryProto(StringPiece key,
   TF_RETURN_IF_ERROR(
       ParseEntryProto(iter_->key(), iter_->value(), &entry_copy));
   if (!TensorShape::IsValid(entry_copy.shape())) {
-    return errors::DataLoss("Invaid tensor shape: ", key, " ",
+    return errors::DataLoss("Invalid tensor shape: ", key, " ",
                             ProtoShortDebugString(entry_copy.shape()));
   }
 
@@ -851,8 +863,20 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
       TF_RETURN_IF_ERROR(buffered_file->ReadNBytes(entry.size(), backing_buffer,
                                                    &unused_bytes_read));
     }
+    // Note that we compute the checksum *before* byte-swapping. The checksum
+    // should be on the bytes in the order they appear in the file.
     actual_crc32c = crc32c::Value(backing_buffer, entry.size());
+    if (need_to_swap_bytes_) {
+      TF_RETURN_IF_ERROR(ByteSwapTensor(ret));
+    }
   } else if (entry.dtype() == DT_VARIANT) {
+    if (need_to_swap_bytes_) {
+      return errors::Unimplemented(
+          "TensorBundle at ", prefix_,
+          "is of a different endianness than this machine's hardware, and "
+          "the bundle contains a variant (arbitrary C++ type) tensor. "
+          "Byte-swapping of variant tensors is not currently implemented.");
+    }
     // Relies on io::InputBuffer's buffering, because we issue many neighboring
     // reads for a single string tensor.
     TF_RETURN_IF_ERROR(ReadVariantTensor(buffered_file, ret, entry.offset(),
@@ -862,7 +886,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     // reads for a single string tensor.
     TF_RETURN_IF_ERROR(ReadStringTensor(
         buffered_file, ret->NumElements(), entry.offset(), entry.size(),
-        GetStringBackingBuffer(*ret), &actual_crc32c));
+        GetStringBackingBuffer(*ret), &actual_crc32c, need_to_swap_bytes_));
   }
   if (crc32c::Unmask(entry.crc32c()) != actual_crc32c) {
     return errors::DataLoss(
@@ -895,7 +919,7 @@ Status BundleReader::ReadCurrent(Tensor* val) {
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(ParseEntryProto(iter_->key(), iter_->value(), &entry));
   if (!TensorShape::IsValid(entry.shape())) {
-    return errors::DataLoss("Invaid tensor shape: ", iter_->key(), " ",
+    return errors::DataLoss("Invalid tensor shape: ", iter_->key(), " ",
                             ProtoShortDebugString(entry.shape()));
   }
 
@@ -1033,6 +1057,7 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
       HANDLE_COPY(qint32)
       HANDLE_COPY(quint8)
       HANDLE_COPY(qint8)
+      HANDLE_COPY(bfloat16)
       default:
         return errors::InvalidArgument("Dtype ", DataTypeString(common_dtype),
                                        " not supported.");

@@ -79,16 +79,17 @@ void ConstantOpTest::PersistentMemoryTrackingTest(bool on_gpu) {
   }
 
   // Remove memory leak errors.
-  for (auto allocator_pair : ctx.wrapped_allocators()) {
+  for (auto allocator_pair : ctx.ConsumeWrappedAllocators()) {
     allocator_pair.second->GetRecordsAndUnRef();
   }
 }
 
 TEST_F(ConstantOpTest, PersistentMemoryTracking) {
   PersistentMemoryTrackingTest(false);
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   PersistentMemoryTrackingTest(true);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 // Returns graph containing "num" const nodes.  If 'sequential' is

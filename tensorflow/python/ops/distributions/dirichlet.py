@@ -45,7 +45,7 @@ dtype `self.dtype` and be in the `(self.event_shape() - 1)`-simplex, i.e.,
 `self.batch_shape() + self.event_shape()`."""
 
 
-@tf_export("distributions.Dirichlet")
+@tf_export(v1=["distributions.Dirichlet"])
 class Dirichlet(distribution.Distribution):
   """Dirichlet distribution.
 
@@ -293,9 +293,8 @@ class Dirichlet(distribution.Distribution):
           array_ops.shape(mode),
           np.array(np.nan, dtype=self.dtype.as_numpy_dtype()),
           name="nan")
-      return array_ops.where(
-          math_ops.reduce_all(self.concentration > 1., axis=-1),
-          mode, nan)
+      return array_ops.where_v2(
+          math_ops.reduce_all(self.concentration > 1., axis=-1), mode, nan)
     return control_flow_ops.with_dependencies([
         check_ops.assert_less(
             array_ops.ones([], self.dtype),

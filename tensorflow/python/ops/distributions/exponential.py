@@ -37,7 +37,7 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.Exponential")
+@tf_export(v1=["distributions.Exponential"])
 class Exponential(gamma.Gamma):
   """Exponential distribution.
 

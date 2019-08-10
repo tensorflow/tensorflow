@@ -24,14 +24,20 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 
 
 class TensorSpecTest(test_util.TensorFlowTestCase):
+
+  def testDefaultDType(self):
+    desc = tensor_spec.TensorSpec([1])
+    self.assertEqual(desc.dtype, dtypes.float32)
 
   def testAcceptsNumpyDType(self):
     desc = tensor_spec.TensorSpec([1], np.float32)
@@ -45,6 +51,7 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     desc = tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)
     self.assertEqual(desc.shape, tensor_shape.TensorShape(None))
 
+  @test_util.run_deprecated_v1
   def testShapeCompatibility(self):
     unknown = array_ops.placeholder(dtypes.int64)
     partial = array_ops.placeholder(dtypes.int64, shape=[None, 1])
@@ -75,6 +82,7 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     self.assertFalse(desc_rank3.is_compatible_with(full))
     self.assertTrue(desc_rank3.is_compatible_with(rank3))
 
+  @test_util.run_deprecated_v1
   def testTypeCompatibility(self):
     floats = array_ops.placeholder(dtypes.float32, shape=[10, 10])
     ints = array_ops.placeholder(dtypes.int32, shape=[10, 10])
@@ -83,8 +91,12 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     self.assertFalse(desc.is_compatible_with(ints))
 
   def testName(self):
-    desc = tensor_spec.TensorSpec([1], dtypes.float32, name="beep")
-    self.assertEqual(desc.name, "beep")
+    # Note: "_" isn't a valid tensor name, but it is a valid python symbol
+    # name; and tf.function constructs TensorSpecs using function argument
+    # names.
+    for name in ["beep", "foo/bar:0", "a-b_c/d", "_"]:
+      desc = tensor_spec.TensorSpec([1], dtypes.float32, name=name)
+      self.assertEqual(desc.name, name)
 
   def testRepr(self):
     desc1 = tensor_spec.TensorSpec([1], dtypes.float32, name="beep")
@@ -92,15 +104,21 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
         repr(desc1),
         "TensorSpec(shape=(1,), dtype=tf.float32, name='beep')")
     desc2 = tensor_spec.TensorSpec([1, None], dtypes.int32)
-    self.assertEqual(
-        repr(desc2),
-        "TensorSpec(shape=(1, ?), dtype=tf.int32, name=None)")
+    if desc2.shape._v2_behavior:
+      self.assertEqual(
+          repr(desc2),
+          "TensorSpec(shape=(1, None), dtype=tf.int32, name=None)")
+    else:
+      self.assertEqual(
+          repr(desc2),
+          "TensorSpec(shape=(1, ?), dtype=tf.int32, name=None)")
 
   def testFromTensorSpec(self):
     spec_1 = tensor_spec.TensorSpec((1, 2), dtypes.int32)
     spec_2 = tensor_spec.TensorSpec.from_spec(spec_1)
     self.assertEqual(spec_1, spec_2)
 
+  @test_util.run_deprecated_v1
   def testFromTensor(self):
     zero = constant_op.constant(0)
     spec = tensor_spec.TensorSpec.from_tensor(zero)
@@ -108,6 +126,7 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     self.assertEqual(spec.shape, [])
     self.assertEqual(spec.name, "Const")
 
+  @test_util.run_deprecated_v1
   def testFromPlaceholder(self):
     unknown = array_ops.placeholder(dtypes.int64, name="unknown")
     partial = array_ops.placeholder(dtypes.float32,
@@ -129,25 +148,25 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     self.assertEqual(bounded_spec.dtype, spec.dtype)
     self.assertEqual(bounded_spec.name, spec.name)
 
-  def testIsDiscrete(self):
-    discrete_spec = tensor_spec.TensorSpec((1, 2), dtypes.int32)
-    continuous_spec = tensor_spec.TensorSpec((1, 2), dtypes.float32)
-    self.assertTrue(discrete_spec.is_discrete)
-    self.assertFalse(continuous_spec.is_discrete)
-
-  def testIsContinuous(self):
-    discrete_spec = tensor_spec.TensorSpec((1, 2), dtypes.int32)
-    continuous_spec = tensor_spec.TensorSpec((1, 2), dtypes.float32)
-    self.assertFalse(discrete_spec.is_continuous)
-    self.assertTrue(continuous_spec.is_continuous)
-
-  def testIsBounded(self):
-    unbounded_spec = tensor_spec.TensorSpec((1, 2), dtypes.int32)
-    self.assertFalse(unbounded_spec.is_bounded())
-
   def testSerialization(self):
     desc = tensor_spec.TensorSpec([1, 5], dtypes.float32, "test")
     self.assertEqual(pickle.loads(pickle.dumps(desc)), desc)
+
+  @test_util.deprecated_graph_mode_only
+  def testTypeSpecFromValue(self):
+    g = ops.Graph()
+    with g.as_default():
+      v1 = np.array([1, 2, 3], np.int32)
+      t1 = constant_op.constant(v1)
+
+      ops_before = g.get_operations()
+
+      expected = tensor_spec.TensorSpec([3], dtypes.int32)
+      self.assertEqual(expected, type_spec.type_spec_from_value(v1))
+      self.assertEqual(expected, type_spec.type_spec_from_value(t1))
+
+      # Check that creating TypeSpecs did not require building new Tensors.
+      self.assertLen(g.get_operations(), len(ops_before))
 
 
 class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
@@ -159,11 +178,6 @@ class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
   def testInvalidMaximum(self):
     with self.assertRaisesRegexp(ValueError, "not compatible"):
       tensor_spec.BoundedTensorSpec((3, 5), dtypes.uint8, 0, (1, 1, 1))
-
-  def testIsBounded(self):
-    bounded_spec = tensor_spec.BoundedTensorSpec(
-        (1, 2), dtypes.int32, minimum=0, maximum=1)
-    self.assertTrue(bounded_spec.is_bounded())
 
   def testMinimumMaximumAttributes(self):
     spec = tensor_spec.BoundedTensorSpec(

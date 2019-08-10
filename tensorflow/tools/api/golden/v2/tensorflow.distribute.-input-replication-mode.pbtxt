@@ -1,0 +1,8 @@
+path: "tensorflow.distribute.InputReplicationMode"
+tf_class {
+  is_instance: "<enum \'InputReplicationMode\'>"
+  member {
+    name: "PER_WORKER"
+    mtype: "<enum \'InputReplicationMode\'>"
+  }
+}

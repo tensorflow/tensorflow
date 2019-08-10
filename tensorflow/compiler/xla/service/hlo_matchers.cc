@@ -26,7 +26,11 @@ bool HloMatcher::MatchAndExplain(
     const HloInstruction* instruction,
     ::testing::MatchResultListener* listener) const {
   // These cases are self-explanatory from the printed value.
-  if (!instruction || instruction->opcode() != opcode_) {
+  if (!instruction) {
+    return false;
+  }
+  *listener << "(" << instruction->ToString() << ")";
+  if (instruction->opcode() != opcode_) {
     return false;
   }
   // Special case: no operand matchers means don't verify.
@@ -35,7 +39,7 @@ bool HloMatcher::MatchAndExplain(
   }
   const auto& operands = instruction->operands();
   if (operands.size() != operands_.size()) {
-    *listener << "has too "
+    *listener << " has too "
               << (operands.size() > operands_.size() ? "many" : "few")
               << " operands (got " << operands.size() << ", want "
               << operands_.size() << ")";
@@ -81,9 +85,25 @@ bool HloParameterMatcher::MatchAndExplain(
     return false;
   }
   if (instruction->parameter_number() != parameter_number_) {
-    *listener << "has wrong parameter number (got "
+    *listener << " has wrong parameter number (got "
               << instruction->parameter_number() << ", want "
               << parameter_number_ << ")";
+    return false;
+  }
+  return true;
+}
+
+bool HloComparisonMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (!HloMatcher::MatchAndExplain(instruction, listener)) {
+    return false;
+  }
+  if (instruction->comparison_direction() != direction_) {
+    *listener << " has wrong comparison direction (got "
+              << ComparisonDirectionToString(
+                     instruction->comparison_direction())
+              << ", want " << ComparisonDirectionToString(direction_) << ")";
     return false;
   }
   return true;
@@ -96,7 +116,7 @@ bool HloGetTupleElementMatcher::MatchAndExplain(
     return false;
   }
   if (instruction->tuple_index() != tuple_index_) {
-    *listener << "has wrong tuple index (got " << instruction->tuple_index()
+    *listener << " has wrong tuple index (got " << instruction->tuple_index()
               << ", want " << tuple_index_ << ")";
     return false;
   }
@@ -129,7 +149,7 @@ bool HloCustomCallMatcher::MatchAndExplain(
     }
     sub_listener << desc_stream.str();
   }
-  *listener << "custom-call with call target" << sub_listener.str();
+  *listener << " custom-call with call target" << sub_listener.str();
   return result;
 }
 
@@ -206,8 +226,7 @@ bool HloDotWithContractingDimsMatcher::MatchAndExplain(
   const DotDimensionNumbers& dim_nums = instruction->dot_dimension_numbers();
   if (dim_nums.lhs_contracting_dimensions_size() != 1 ||
       dim_nums.lhs_contracting_dimensions(0) != lhs_contracting_dim_) {
-    *listener << instruction->ToString()
-              << " has wrong lhs_contracting_dimensions (got {"
+    *listener << " has wrong lhs_contracting_dimensions (got {"
               << absl::StrJoin(dim_nums.lhs_contracting_dimensions(), ",")
               << "} want {" << lhs_contracting_dim_ << "})";
     return false;
@@ -215,8 +234,7 @@ bool HloDotWithContractingDimsMatcher::MatchAndExplain(
 
   if (dim_nums.rhs_contracting_dimensions_size() != 1 ||
       dim_nums.rhs_contracting_dimensions(0) != rhs_contracting_dim_) {
-    *listener << instruction->ToString()
-              << " has wrong rhs_contracting_dimensions (got {"
+    *listener << " has wrong rhs_contracting_dimensions (got {"
               << absl::StrJoin(dim_nums.rhs_contracting_dimensions(), ",")
               << "} want {" << rhs_contracting_dim_ << "})";
     return false;
@@ -231,14 +249,54 @@ void HloDotWithContractingDimsMatcher::DescribeTo(std::ostream* os) const {
       << "} and rhs_contracting_dims={" << rhs_contracting_dim_ << "}";
 }
 
+bool HloAsyncCopyMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (!HloMatcher::MatchAndExplain(instruction, listener)) {
+    return false;
+  }
+
+  const HloInstruction* copy_done = instruction;
+  if (!copy_done->shape().has_layout()) {
+    *listener << " does not have layout, expected a layout with memory space "
+              << to_space_;
+    return false;
+  }
+  if (copy_done->shape().layout().memory_space() != to_space_) {
+    *listener << " copies to memory space "
+              << copy_done->shape().layout().memory_space() << ", expected "
+              << to_space_;
+    return false;
+  }
+
+  const HloInstruction* copy_start_operand =
+      copy_done->operands()[0]->operands()[0];
+  if (!copy_start_operand->shape().has_layout()) {
+    *listener << copy_start_operand->ToString()
+              << " does not have layout, expected a layout with memory space "
+              << from_space_;
+    return false;
+  }
+  if (copy_start_operand->shape().layout().memory_space() != from_space_) {
+    *listener << " is in the memory space "
+              << copy_start_operand->shape().layout().memory_space()
+              << ", expected " << from_space_;
+    return false;
+  }
+
+  return true;
+}
+
+void HloAsyncCopyMatcher::DescribeTo(std::ostream* os) const {
+  HloMatcher::DescribeTo(os);
+  *os << " (copy from memory space " << from_space_ << " to " << to_space_
+      << ")";
+}
+
 }  // namespace testing
 
 void PrintTo(const HloInstruction* inst, ::std::ostream* os) {
   *os << (inst ? inst->ToString() : "nullptr");
-}
-
-void PrintTo(HloInstruction* inst, ::std::ostream* os) {
-  PrintTo(const_cast<const HloInstruction*>(inst), os);
 }
 
 }  // namespace xla

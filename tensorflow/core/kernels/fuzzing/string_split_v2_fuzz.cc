@@ -22,9 +22,9 @@ namespace fuzzing {
 class FuzzStringSplitV2 : public FuzzSession {
   void BuildGraph(const Scope& scope) override {
     auto input =
-        tensorflow::ops::Placeholder(scope.WithOpName("input1"), DT_STRING);
+        tensorflow::ops::Placeholder(scope.WithOpName("input"), DT_STRING);
     auto separator =
-        tensorflow::ops::Placeholder(scope.WithOpName("input2"), DT_STRING);
+        tensorflow::ops::Placeholder(scope.WithOpName("separator"), DT_STRING);
     (void)tensorflow::ops::StringSplitV2(scope.WithOpName("output"),
                                                input, separator);
   }
@@ -46,13 +46,13 @@ class FuzzStringSplitV2 : public FuzzSession {
       if (sep_len > size) {
         sep_len = size - 1;
       }
-      separator_tensor.scalar<string>()() =
+      separator_tensor.scalar<tstring>()() =
           string(reinterpret_cast<const char*>(data), sep_len);
-      input_tensor.scalar<string>()() = string(
-          reinterpret_cast<const char*>(data + sep_len), size - sep_len);
-    }
+      input_tensor.scalar<tstring>()() =
+          string(reinterpret_cast<const char*>(data + sep_len), size - sep_len);
 
-    RunTwoInputs(input_tensor, separator_tensor).IgnoreError();
+      RunInputs({{"input", input_tensor}, {"separator", separator_tensor}});
+    }
   }
 
  private:

@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/c_test_util.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/core/example/example.pb.h"
@@ -56,7 +57,7 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 namespace {
 
 static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
-  EXPECT_TRUE(str_util::StrContains(s, expected))
+  EXPECT_TRUE(absl::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
 
@@ -163,6 +164,7 @@ TEST(CAPI, AllocateTensor) {
   EXPECT_EQ(dims[0], TF_Dim(t, 0));
   EXPECT_EQ(dims[1], TF_Dim(t, 1));
   EXPECT_EQ(num_bytes, TF_TensorByteSize(t));
+  EXPECT_EQ(6, TF_TensorElementCount(t));
   TF_DeleteTensor(t);
 }
 
@@ -187,15 +189,26 @@ TEST(CAPI, LibraryLoadFunctions) {
   // tf_cuda_cc_test() bazel rule and remove the next line.
   if (!GPUDeviceName().empty()) return;
 
-  // Load the library.
-  TF_Status* status = TF_NewStatus();
-  TF_Library* lib =
-      TF_LoadLibrary("tensorflow/c/test_op.so", status);
-  TF_Code code = TF_GetCode(status);
-  string status_msg(TF_Message(status));
-  TF_DeleteStatus(status);
-  ASSERT_EQ(TF_OK, code) << status_msg;
+#if !defined(TENSORFLOW_NO_SHARED_OBJECTS)
+  {
+    // Load the library.
+    TF_Status* status = TF_NewStatus();
+    TF_Library* lib =
+        TF_LoadLibrary("tensorflow/c/test_op1.so", status);
+    TF_Code code = TF_GetCode(status);
+    string status_msg(TF_Message(status));
+    TF_DeleteStatus(status);
+    ASSERT_EQ(TF_OK, code) << status_msg;
 
+    // Test op list.
+    TF_Buffer op_list_buf = TF_GetOpList(lib);
+    tensorflow::OpList op_list;
+    EXPECT_TRUE(op_list.ParseFromArray(op_list_buf.data, op_list_buf.length));
+    ASSERT_EQ(op_list.op_size(), 1);
+    EXPECT_EQ("TestCApi1", op_list.op(0).name());
+    TF_DeleteLibraryHandle(lib);
+  }
+#endif  // !defined(TENSORFLOW_NO_SHARED_OBJECTS)
   {
     TF_Buffer* op_list_buffer = TF_GetAllOpList();
     tensorflow::OpList op_list;
@@ -210,19 +223,6 @@ TEST(CAPI, LibraryLoadFunctions) {
     EXPECT_TRUE(found);
     TF_DeleteBuffer(op_list_buffer);
   }
-
-#if !defined(TENSORFLOW_NO_SHARED_OBJECTS)
-  {
-    // Test op list.
-    TF_Buffer op_list_buf = TF_GetOpList(lib);
-    tensorflow::OpList op_list;
-    EXPECT_TRUE(op_list.ParseFromArray(op_list_buf.data, op_list_buf.length));
-    ASSERT_EQ(op_list.op_size(), 1);
-    EXPECT_EQ("TestCApi", op_list.op(0).name());
-  }
-#endif  // !defined(TENSORFLOW_NO_SHARED_OBJECTS)
-
-  TF_DeleteLibraryHandle(lib);
 }
 
 void TestEncodeDecode(int line, const std::vector<string>& data) {
@@ -234,7 +234,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
     // Create C++ Tensor
     Tensor src(tensorflow::DT_STRING, TensorShape(dims));
     for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
-      src.flat<string>()(i) = data[i];
+      src.flat<tstring>()(i) = data[i];
     }
     TF_Tensor* dst = TF_TensorFromTensor(src, status);
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -244,7 +244,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
     ASSERT_EQ(Status::OK(), TF_TensorToTensor(dst, &output)) << line;
     ASSERT_EQ(src.NumElements(), output.NumElements()) << line;
     for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
-      ASSERT_EQ(data[i], output.flat<string>()(i)) << line;
+      ASSERT_EQ(data[i], output.flat<tstring>()(i)) << line;
     }
 
     TF_DeleteTensor(dst);
@@ -1386,7 +1386,7 @@ TEST(CAPI, SavedModel) {
     tensorflow::Example example;
     auto* feature_map = example.mutable_features()->mutable_feature();
     (*feature_map)["x"].mutable_float_list()->add_value(i);
-    input.flat<string>()(i) = example.SerializeAsString();
+    input.flat<tstring>()(i) = example.SerializeAsString();
   }
 
   const tensorflow::string input_op_name(
@@ -1467,6 +1467,41 @@ TEST(CAPI, DeletingNullPointerIsSafe) {
   TF_DeleteApiDefMap(nullptr);
 
   TF_DeleteStatus(status);
+}
+
+TEST(CAPI, TestBitcastFrom_Reshape) {
+  int64_t dims[] = {2, 3};
+  TF_Tensor* a =
+      TF_AllocateTensor(TF_UINT64, dims, 2, 6 * TF_DataTypeSize(TF_UINT64));
+  TF_Tensor* b =
+      TF_AllocateTensor(TF_UINT64, nullptr, 0, TF_DataTypeSize(TF_UINT64));
+  EXPECT_NE(a, nullptr);
+  EXPECT_NE(b, nullptr);
+
+  EXPECT_EQ(6, TF_TensorElementCount(a));
+  EXPECT_EQ(1, TF_TensorElementCount(b));
+  EXPECT_EQ(6 * TF_DataTypeSize(TF_UINT64), TF_TensorByteSize(a));
+  EXPECT_EQ(TF_DataTypeSize(TF_UINT64), TF_TensorByteSize(b));
+
+  int64_t new_dims[] = {3, 2};
+  TF_Status* status = TF_NewStatus();
+  TF_TensorBitcastFrom(a, TF_UINT64, b, new_dims, 2, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status));
+  TF_DeleteStatus(status);
+
+  EXPECT_EQ(6, TF_TensorElementCount(a));
+  EXPECT_EQ(6, TF_TensorElementCount(b));
+  EXPECT_EQ(6 * TF_DataTypeSize(TF_UINT64), TF_TensorByteSize(a));
+  EXPECT_EQ(6 * TF_DataTypeSize(TF_UINT64), TF_TensorByteSize(b));
+
+  // Check that a write to one tensor shows up in the other.
+  *(static_cast<int64_t*>(TF_TensorData(a))) = 4;
+  EXPECT_EQ(4, *(static_cast<int64_t*>(TF_TensorData(b))));
+  *(static_cast<int64_t*>(TF_TensorData(b))) = 6;
+  EXPECT_EQ(6, *(static_cast<int64_t*>(TF_TensorData(a))));
+
+  TF_DeleteTensor(a);
+  TF_DeleteTensor(b);
 }
 
 REGISTER_OP("TestOpWithNoGradient")
@@ -2349,14 +2384,8 @@ TEST(TestApiDef, TestCreateApiDef) {
   // tf_cuda_cc_test() bazel rule and remove the next line.
   if (!GPUDeviceName().empty()) return;
 
-  TF_Status* status = TF_NewStatus();
-  TF_Library* lib =
-      TF_LoadLibrary("tensorflow/c/test_op.so", status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteStatus(status);
-
   TF_Buffer* op_list_buf = TF_GetAllOpList();
-  status = TF_NewStatus();
+  TF_Status* status = TF_NewStatus();
   auto* api_def_map = TF_NewApiDefMap(op_list_buf, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
@@ -2376,7 +2405,6 @@ TEST(TestApiDef, TestCreateApiDef) {
   TF_DeleteBuffer(api_def_buf);
   TF_DeleteApiDefMap(api_def_map);
   TF_DeleteBuffer(op_list_buf);
-  TF_DeleteLibraryHandle(lib);
 }
 
 TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
@@ -2384,14 +2412,8 @@ TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
   // tf_cuda_cc_test() bazel rule and remove the next line.
   if (!GPUDeviceName().empty()) return;
 
-  TF_Status* status = TF_NewStatus();
-  TF_Library* lib =
-      TF_LoadLibrary("tensorflow/c/test_op.so", status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteStatus(status);
-
   TF_Buffer* op_list_buf = TF_GetAllOpList();
-  status = TF_NewStatus();
+  TF_Status* status = TF_NewStatus();
   auto* api_def_map = TF_NewApiDefMap(op_list_buf, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
@@ -2422,7 +2444,6 @@ TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
   TF_DeleteBuffer(api_def_buf);
   TF_DeleteApiDefMap(api_def_map);
   TF_DeleteBuffer(op_list_buf);
-  TF_DeleteLibraryHandle(lib);
 }
 
 class DummyKernel : public tensorflow::OpKernel {
@@ -2477,6 +2498,38 @@ TEST(TestKernel, TestGetRegisteredKernelsForOpNoKernels) {
 }
 
 #undef EXPECT_TF_META
+
+TEST(CAPI, TestTensorAligned) {
+  int64_t dim = 7;
+  size_t tensor_size_bytes = dim * TF_DataTypeSize(TF_FLOAT);
+  TF_Tensor* a = TF_AllocateTensor(
+      /*dtype=*/TF_FLOAT, /*dims=*/&dim, /*num_dims=*/1,
+      /*len=*/tensor_size_bytes);
+  float* data = reinterpret_cast<float*>(TF_TensorData(a));
+  for (int i = 0; i < dim; ++i) {
+    data[i] = 0;
+  }
+  if (EIGEN_MAX_ALIGN_BYTES > 0) {
+    EXPECT_TRUE(TF_TensorIsAligned(a));
+  }
+  TF_DeleteTensor(a);
+}
+
+TEST(CAPI, TestTensorIsNotAligned) {
+  // Test unaligned access via a Slice.
+  Tensor x(DT_FLOAT, TensorShape({30}));
+  x.flat<float>().setConstant(0.0);
+
+  // Take an unaligned slice.
+  Tensor y = x.Slice(1, 13);
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* a = TF_TensorFromTensor(y, status);
+  if (EIGEN_MAX_ALIGN_BYTES > 0) {
+    EXPECT_FALSE(TF_TensorIsAligned(a));
+  }
+  TF_DeleteStatus(status);
+  TF_DeleteTensor(a);
+}
 
 }  // namespace
 }  // namespace tensorflow

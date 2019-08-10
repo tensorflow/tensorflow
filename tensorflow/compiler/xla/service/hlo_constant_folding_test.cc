@@ -22,22 +22,23 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/types.h"
-
-namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
 
-using HloConstantFoldingTest = HloVerifiedTestBase;
+namespace m = xla::match;
+
+using HloConstantFoldingTest = HloTestBase;
 
 TEST_F(HloConstantFoldingTest, ConvertF32ToS64) {
   HloComputation::Builder builder(TestName());
@@ -46,16 +47,17 @@ TEST_F(HloConstantFoldingTest, ConvertF32ToS64) {
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(S64, {}), input));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Convert(input));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Convert().WithOperand(0, m::Op().Is(input))));
 
   HloConstantFolding const_folder;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
   EXPECT_TRUE(result);
 
-  EXPECT_THAT(computation->root_instruction(), op::Constant());
+  EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Constant()));
   EXPECT_EQ(computation->root_instruction()->literal().GetFirstElement<int64>(),
             42);
 }
@@ -67,16 +69,17 @@ TEST_F(HloConstantFoldingTest, ConvertS64ToF32) {
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(F32, {}), input));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Convert(input));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Convert().WithOperand(0, m::Op().Is(input))));
 
   HloConstantFolding const_folder;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
   EXPECT_TRUE(result);
 
-  EXPECT_THAT(computation->root_instruction(), op::Constant());
+  EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Constant()));
   EXPECT_EQ(computation->root_instruction()->literal().GetFirstElement<float>(),
             42.0f);
 }
@@ -88,16 +91,17 @@ TEST_F(HloConstantFoldingTest, ConvertF32ArrayToS64Array) {
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(S64, {2}), input));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Convert(input));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Convert().WithOperand(0, m::Op().Is(input))));
 
   HloConstantFolding const_folder;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
   EXPECT_TRUE(result);
 
-  EXPECT_THAT(computation->root_instruction(), op::Constant());
+  EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Constant()));
   EXPECT_EQ(computation->root_instruction()->literal().Get<int64>({0}), 42);
   EXPECT_EQ(computation->root_instruction()->literal().Get<int64>({1}), 19);
 }
@@ -130,15 +134,15 @@ TEST_F(HloConstantFoldingTest, Concatenate) {
     Shape shape = ShapeUtil::MakeShape(F32, dimensions);
     builder.AddInstruction(HloInstruction::CreateConcatenate(
         shape, operands, test_config.concat_dimension));
-    auto module = CreateNewModule();
+    auto module = CreateNewVerifiedModule();
     auto computation = module->AddEntryComputation(builder.Build());
 
     HloConstantFolding const_folder;
-    TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module));
+    TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
     EXPECT_TRUE(result);
 
     HloInstruction* root = computation->root_instruction();
-    EXPECT_THAT(root, op::Constant());
+    EXPECT_THAT(root, GmockMatch(m::Constant()));
     EXPECT_TRUE(ShapeUtil::Equal(root->shape(), shape));
   }
 }
@@ -157,15 +161,15 @@ TEST_F(HloConstantFoldingTest, Slice) {
   Shape shape = ShapeUtil::MakeShape(F32, {6, 6, 3, 4, 4});
   builder.AddInstruction(HloInstruction::CreateSlice(
       shape, literal_instruction, slice_start, slice_limits, slice_strides));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   HloConstantFolding const_folder;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
   EXPECT_TRUE(result);
 
   HloInstruction* root = computation->root_instruction();
-  EXPECT_THAT(root, op::Constant());
+  EXPECT_THAT(root, GmockMatch(m::Constant()));
   EXPECT_TRUE(ShapeUtil::Equal(root->shape(), shape));
 }
 
@@ -182,15 +186,15 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   const int64 permutation[] = {1, 2, 0, 4, 3};
   builder.AddInstruction(
       HloInstruction::CreateTranspose(shape, literal_instruction, permutation));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   HloConstantFolding const_folder;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
   EXPECT_TRUE(result);
 
   HloInstruction* root = computation->root_instruction();
-  EXPECT_THAT(root, op::Constant());
+  EXPECT_THAT(root, GmockMatch(m::Constant()));
   EXPECT_TRUE(ShapeUtil::Compatible(root->shape(), shape));
 
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
@@ -219,34 +223,36 @@ const char* const kConstantFoldReduce = R"(
   })";
 
 TEST_F(HloConstantFoldingTest, ConstantFoldReduce) {
-  ParseAndVerifyModule(kConstantFoldReduce);
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnVerifiedModule(kConstantFoldReduce));
   HloConstantFolding const_folder;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(&module()));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(m.get()));
   EXPECT_TRUE(result);
 
-  EXPECT_EQ(6, module()
-                   .entry_computation()
+  EXPECT_EQ(6, m->entry_computation()
                    ->root_instruction()
                    ->literal()
                    .GetFirstElement<int32>());
 }
 
 TEST_F(HloConstantFoldingTest, ConstantFoldReduceNoLayout) {
-  ParseAndVerifyModule(kConstantFoldReduce);
-  HloInstruction* add = module().computations().begin()->root_instruction();
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnVerifiedModule(kConstantFoldReduce));
+  HloInstruction* add = m->computations().begin()->root_instruction();
   LayoutUtil::ClearLayout(add->mutable_shape());
   HloConstantFolding const_folder;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(&module()));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(m.get()));
   EXPECT_FALSE(result);
 
-  EXPECT_THAT(module().entry_computation()->root_instruction(), op::Reduce());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Reduce()));
 }
 
 const char* const kConstantFoldLargePad = R"(
   HloModule ConstantFoldLargePad
 
   ENTRY r {
-    a = f32[1,1,1] constant(f32[1,1,1]{{{7}}})
+    a = f32[1,1,1] constant({{{7}}})
     b = f32[] constant(42)
     ROOT pad = f32[2048,2048,128] pad(a, b), padding=1024_1023x1024_1023x64_63
   })";
@@ -259,7 +265,53 @@ TEST_F(HloConstantFoldingTest, DoesNotFoldLargePad) {
   EXPECT_FALSE(result);
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Pad(op::Constant(), op::Constant()));
+              GmockMatch(m::Pad(m::Constant(), m::Constant())));
+}
+
+TEST_F(HloConstantFoldingTest, DontFoldSubcomputationContainingAfterAll) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  Fn {
+    tok = token[] after-all()
+    ROOT root = f32[10] iota(), iota_dimension=0
+  }
+
+  ENTRY entry {
+    ROOT call = f32[10] call(), to_apply=Fn
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(HloConstantFoldingTest,
+       DontFoldSubcomputationTransitivelyContainingRng) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  InnerFn {
+    c0 = f32[] constant(0)
+    c1 = f32[] constant(1)
+    ROOT rng = f32[10] rng(c0, c1), distribution=rng_uniform
+  }
+
+  Fn {
+    ROOT fusion = f32[10] fusion(), kind=kLoop, calls=InnerFn
+  }
+
+  ENTRY entry {
+    ROOT call = f32[10] call(), to_apply=Fn
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
 }
 
 }  // namespace

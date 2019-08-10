@@ -45,6 +45,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "int16"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
     name: "int32"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -107,10 +111,6 @@ tf_module {
   member_method {
     name: "as_dtype"
     argspec: "args=[\'type_value\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "as_string"
-    argspec: "args=[\'input\', \'precision\', \'scientific\', \'shortest\', \'width\', \'fill\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'False\', \'False\', \'-1\', \'\', \'None\'], "
   }
   member_method {
     name: "cast"

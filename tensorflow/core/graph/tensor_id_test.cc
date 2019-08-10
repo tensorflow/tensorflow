@@ -90,5 +90,19 @@ void BM_ParseTensorName(int iters, int arg) {
 }
 BENCHMARK(BM_ParseTensorName)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4)->Arg(5);
 
+TEST(TensorIdTest, IsTensorIdControl) {
+  string input = "^foo";
+  TensorId tensor_id = ParseTensorName(input);
+  EXPECT_TRUE(IsTensorIdControl(tensor_id));
+
+  input = "foo";
+  tensor_id = ParseTensorName(input);
+  EXPECT_FALSE(IsTensorIdControl(tensor_id));
+
+  input = "foo:2";
+  tensor_id = ParseTensorName(input);
+  EXPECT_FALSE(IsTensorIdControl(tensor_id));
+}
+
 }  // namespace
 }  // namespace tensorflow

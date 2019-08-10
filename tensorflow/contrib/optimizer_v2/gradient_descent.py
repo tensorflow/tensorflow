@@ -13,22 +13,20 @@
 # limitations under the License.
 # ==============================================================================
 
-"""GradientDescent optimizer for TensorFlow."""
+"""Momentum for TensorFlow."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras.optimizer_v2 import sgd
-from tensorflow.python.util import deprecation
+from tensorflow.contrib.optimizer_v2 import optimizer_v2
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.training import training_ops
 
 
-class GradientDescentOptimizer(sgd.SGD):
+class GradientDescentOptimizer(optimizer_v2.OptimizerV2):
   """Optimizer that implements the gradient descent algorithm."""
 
-  @deprecation.deprecated_args(
-      "2018-10-01",
-      "`use_locking = True` is no longer supported and will be ignored.",
-      ("use_locking", [False]))
   def __init__(self, learning_rate, use_locking=False, name="GradientDescent"):
     """Construct a new gradient descent optimizer.
 
@@ -43,5 +41,29 @@ class GradientDescentOptimizer(sgd.SGD):
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "GradientDescent".
     """
-    super(GradientDescentOptimizer, self).__init__(
-        learning_rate=learning_rate, name=name)
+    super(GradientDescentOptimizer, self).__init__(use_locking, name)
+    self._set_hyper("learning_rate", learning_rate)
+
+  def _apply_dense(self, grad, var, state):
+    return training_ops.apply_gradient_descent(
+        var,
+        state.get_hyper("learning_rate", var.dtype.base_dtype),
+        grad,
+        use_locking=self._use_locking).op
+
+  def _resource_apply_dense(self, grad, handle, state):
+    lr = state.get_hyper("learning_rate", grad.dtype.base_dtype)
+    return training_ops.resource_apply_gradient_descent(
+        handle.handle, lr, grad, use_locking=self._use_locking)
+
+  def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices,
+                                               state):
+    lr = state.get_hyper("learning_rate", grad.dtype.base_dtype)
+    return resource_variable_ops.resource_scatter_add(handle.handle, indices,
+                                                      -grad * lr)
+
+  def _apply_sparse_duplicate_indices(self, grad, var, state):
+    delta = ops.IndexedSlices(
+        grad.values * state.get_hyper("learning_rate", var.dtype.base_dtype),
+        grad.indices, grad.dense_shape)
+    return var.scatter_sub(delta, use_locking=self._use_locking)

@@ -160,7 +160,7 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
                             DeviceNameUtils::ParsedName dst);
 
   // If aborted, aborts "call". Otherwise, adds "call" into active_.
-  void RegisterCall(BaseRecvTensorCall* call);
+  void RegisterCall(BaseRecvTensorCall* call, const Rendezvous::Args& args);
 
   // Removes "call" from active_ if "call" is in active_.
   void DeregisterCall(BaseRecvTensorCall* call);
@@ -192,10 +192,13 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   };
   std::vector<DeferredCall> deferred_calls_ GUARDED_BY(mu_);
 
-  // Active outstanding RecvTensor calls.
-  gtl::FlatSet<BaseRecvTensorCall*> active_ GUARDED_BY(mu_);
+  typedef std::function<void()> InactiveCallback;
 
-  bool is_initialized_locked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  // Active outstanding RecvTensor calls.
+  std::unordered_map<BaseRecvTensorCall*, InactiveCallback> active_
+      GUARDED_BY(mu_);
+
+  bool is_initialized_locked() SHARED_LOCKS_REQUIRED(mu_) {
     return session_ != nullptr;
   }
 

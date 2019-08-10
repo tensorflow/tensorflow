@@ -13,33 +13,30 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for contrib.seq2seq.python.seq2seq.basic_decoder."""
-# pylint: disable=unused-import,g-bad-import-order
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-# pylint: enable=unused-import
 
 import numpy as np
 
-from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.contrib.seq2seq.python.ops import basic_decoder
+from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core as layers_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell
-from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.distributions import bernoulli
-from tensorflow.python.ops.distributions import categorical
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-# pylint: enable=g-import-not-at-top
 
 
+@test_util.run_v1_only("contrib code not supported in TF2.0")
 class BasicDecoderTest(test.TestCase):
 
   def _testStepWithTrainingHelper(self, use_output_layer):
@@ -517,7 +514,7 @@ class BasicDecoderTest(test.TestCase):
         vocabulary_size)
 
     # The sample function samples categorically from the logits.
-    sample_fn = lambda x: categorical.Categorical(logits=x).sample()
+    sample_fn = lambda x: helper_py.categorical_sample(logits=x)
     # The next inputs are a one-hot encoding of the sampled labels.
     next_inputs_fn = (
         lambda x: array_ops.one_hot(x, vocabulary_size, dtype=dtypes.float32))
@@ -599,7 +596,7 @@ class BasicDecoderTest(test.TestCase):
 
     # The sample function samples independent bernoullis from the logits.
     sample_fn = (
-        lambda x: bernoulli.Bernoulli(logits=x, dtype=dtypes.bool).sample())
+        lambda x: helper_py.bernoulli_sample(logits=x, dtype=dtypes.bool))
     # The next inputs are a one-hot encoding of the sampled labels.
     next_inputs_fn = math_ops.to_float
     end_fn = lambda sample_ids: sample_ids[:, end_token]

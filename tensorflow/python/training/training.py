@@ -33,6 +33,9 @@ from tensorflow.python.training.adagrad_da import AdagradDAOptimizer
 from tensorflow.python.training.proximal_adagrad import ProximalAdagradOptimizer
 from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer
+from tensorflow.python.training.experimental.loss_scale_optimizer import MixedPrecisionLossScaleOptimizer
+from tensorflow.python.training.experimental.mixed_precision import enable_mixed_precision_graph_rewrite
+from tensorflow.python.training.experimental.mixed_precision import enable_mixed_precision_graph_rewrite_v1
 from tensorflow.python.training.momentum import MomentumOptimizer
 from tensorflow.python.training.moving_averages import ExponentialMovingAverage
 from tensorflow.python.training.optimizer import Optimizer
@@ -68,7 +71,8 @@ from tensorflow.python.training.basic_session_run_hooks import FinalOpsHook
 from tensorflow.python.training.basic_session_run_hooks import FeedFnHook
 from tensorflow.python.training.basic_session_run_hooks import ProfilerHook
 from tensorflow.python.training.basic_loops import basic_train_loop
-from tensorflow.python.training.checkpointable.util import Checkpoint
+from tensorflow.python.training.tracking.python_state import PythonState
+from tensorflow.python.training.tracking.util import Checkpoint
 from tensorflow.python.training.checkpoint_utils import init_from_checkpoint
 from tensorflow.python.training.checkpoint_utils import list_variables
 from tensorflow.python.training.checkpoint_utils import load_checkpoint
@@ -138,7 +142,7 @@ tf_export("train.FeatureLists")(FeatureLists)
 tf_export("train.FloatList")(FloatList)
 tf_export("train.Int64List")(Int64List)
 tf_export("train.JobDef")(JobDef)
-tf_export("train.SaverDef")(SaverDef)
+tf_export(v1=["train.SaverDef"])(SaverDef)
 tf_export("train.SequenceExample")(SequenceExample)
 tf_export("train.ServerDef")(ServerDef)
 # pylint: enable=undefined-variable

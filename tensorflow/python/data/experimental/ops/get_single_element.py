@@ -18,8 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
+from tensorflow.python.data.util import structure
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -29,13 +28,14 @@ def get_single_element(dataset):
   """Returns the single element in `dataset` as a nested structure of tensors.
 
   This function enables you to use a `tf.data.Dataset` in a stateless
-  "tensor-in tensor-out" expression, without creating a `tf.data.Iterator`.
+  "tensor-in tensor-out" expression, without creating a
+  `tf.compat.v1.data.Iterator`.
   This can be useful when your preprocessing transformations are expressed
   as a `Dataset`, and you want to use the transformation at serving time.
   For example:
 
   ```python
-  input_batch = tf.placeholder(tf.string, shape=[BATCH_SIZE])
+  input_batch = tf.compat.v1.placeholder(tf.string, shape=[BATCH_SIZE])
 
   def preprocessing_fn(input_str):
     # ...
@@ -60,13 +60,11 @@ def get_single_element(dataset):
     InvalidArgumentError (at runtime): if `dataset` does not contain exactly
       one element.
   """
-  if not isinstance(dataset, dataset_ops.Dataset):
+  if not isinstance(dataset, dataset_ops.DatasetV2):
     raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
 
-  nested_ret = nest.pack_sequence_as(
-      dataset.output_types, gen_dataset_ops.dataset_to_single_element(
-          dataset._as_variant_tensor(),  # pylint: disable=protected-access
-          **dataset_ops.flat_structure(dataset)))
-  return sparse.deserialize_sparse_tensors(
-      nested_ret, dataset.output_types, dataset.output_shapes,
-      dataset.output_classes)
+  # pylint: disable=protected-access
+  return structure.from_compatible_tensor_list(
+      dataset.element_spec,
+      gen_dataset_ops.dataset_to_single_element(
+          dataset._variant_tensor, **dataset._flat_structure))  # pylint: disable=protected-access

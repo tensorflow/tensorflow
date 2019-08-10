@@ -96,13 +96,13 @@ class KernelLabelOp : public OpKernel {
                    ctx->allocate_output("result", TensorShape({}), &output));
     switch (KL) {
       case DEFAULT_LABEL:
-        output->scalar<string>()() = "My label is: default";
+        output->scalar<tstring>()() = "My label is: default";
         break;
       case OVERLOAD_1_LABEL:
-        output->scalar<string>()() = "My label is: overload_1";
+        output->scalar<tstring>()() = "My label is: overload_1";
         break;
       case OVERLOAD_2_LABEL:
-        output->scalar<string>()() = "My label is: overload_2";
+        output->scalar<tstring>()() = "My label is: overload_2";
         break;
     }
   }
@@ -157,7 +157,7 @@ REGISTER_KERNEL_BUILDER(Name("Old").Device(DEVICE_CPU), OldOp);
 // Stubbed-out resource to test resource handle ops.
 class StubResource : public ResourceBase {
  public:
-  string DebugString() override { return ""; }
+  string DebugString() const override { return ""; }
 };
 
 REGISTER_RESOURCE_HANDLE_KERNEL(StubResource);
@@ -404,6 +404,10 @@ REGISTER_OP("DefaultAttrs")
 
 REGISTER_OP("FuncAttr")
     .Attr("f: func")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("FuncListAttr")
+    .Attr("f: list(func)")
     .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("Simple")
@@ -672,7 +676,7 @@ class DevicePlacementOp : public OpKernel {
     Tensor* output;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output("device", TensorShape({}), &output));
-    output->scalar<string>()() = ctx->device()->name();
+    output->scalar<tstring>()() = ctx->device()->name();
   }
 };
 

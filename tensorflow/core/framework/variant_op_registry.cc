@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/variant_op_registry.h"
+
 #include <string>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -36,57 +38,6 @@ UnaryVariantOpRegistry* UnaryVariantOpRegistry::Global() {
       new UnaryVariantOpRegistry;
   return global_unary_variant_op_registry;
 }
-
-UnaryVariantOpRegistry::VariantShapeFn* UnaryVariantOpRegistry::GetShapeFn(
-    const TypeIndex& type_index) {
-  auto found = shape_fns.find(type_index);
-  if (found == shape_fns.end()) return nullptr;
-  return &found->second;
-}
-
-void UnaryVariantOpRegistry::RegisterShapeFn(const TypeIndex& type_index,
-                                             const VariantShapeFn& shape_fn) {
-  VariantShapeFn* existing = GetShapeFn(type_index);
-  CHECK_EQ(existing, nullptr)
-      << "Unary VariantShapeFn for type_index: "
-      << port::MaybeAbiDemangle(type_index.name()) << " already registered";
-  shape_fns.insert(std::pair<TypeIndex, VariantShapeFn>(type_index, shape_fn));
-}
-
-Status GetUnaryVariantShape(const Tensor& variant_tensor, TensorShape* shape) {
-  CHECK_EQ(variant_tensor.dtype(), DT_VARIANT);
-  CHECK_EQ(variant_tensor.dims(), 0);
-  const Variant& v = variant_tensor.scalar<Variant>()();
-  UnaryVariantOpRegistry::VariantShapeFn* shape_fn =
-      UnaryVariantOpRegistry::Global()->GetShapeFn(v.TypeId());
-  if (shape_fn == nullptr) {
-    return errors::Internal(
-        "No unary variant shape function found for Variant type_index: ",
-        port::MaybeAbiDemangle(v.TypeId().name()));
-  }
-  return (*shape_fn)(v, shape);
-}
-
-// Add some basic registrations for use by others, e.g., for testing.
-namespace {
-template <typename T>
-Status ScalarShape(const T&, TensorShape* shape) {
-  *shape = TensorShape({});
-  return Status::OK();
-}
-}  // namespace
-
-#define REGISTER_VARIANT_SHAPE_TYPE(T) \
-  REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(T, ScalarShape<T>);
-
-// No encode/shape registered for std::complex<> and Eigen::half
-// objects yet.
-REGISTER_VARIANT_SHAPE_TYPE(int);
-REGISTER_VARIANT_SHAPE_TYPE(float);
-REGISTER_VARIANT_SHAPE_TYPE(bool);
-REGISTER_VARIANT_SHAPE_TYPE(double);
-
-#undef REGISTER_VARIANT_SHAPE_TYPE
 
 UnaryVariantOpRegistry::VariantDecodeFn* UnaryVariantOpRegistry::GetDecodeFn(
     StringPiece type_name) {
@@ -107,6 +58,18 @@ void UnaryVariantOpRegistry::RegisterDecodeFn(
 }
 
 bool DecodeUnaryVariant(Variant* variant) {
+  CHECK_NOTNULL(variant);
+  if (variant->TypeName().empty()) {
+    VariantTensorDataProto* t = variant->get<VariantTensorDataProto>();
+    if (t == nullptr || !t->metadata().empty() || !t->tensors().empty()) {
+      // Malformed variant.
+      return false;
+    } else {
+      // Serialization of an empty Variant.
+      variant->clear();
+      return true;
+    }
+  }
   UnaryVariantOpRegistry::VariantDecodeFn* decode_fn =
       UnaryVariantOpRegistry::Global()->GetDecodeFn(variant->TypeName());
   if (decode_fn == nullptr) {
@@ -176,6 +139,37 @@ Status VariantDeviceCopy(
   }
   return (*device_copy_fn)(from, to, copy_fn);
 }
+
+namespace {
+template <typename T>
+Status DeviceCopyPrimitiveType(
+    const T& in, T* out,
+    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copier) {
+  // Dummy copy, we don't actually bother copying to the device and back for
+  // testing.
+  *out = in;
+  return Status::OK();
+}
+}  // namespace
+
+#define REGISTER_VARIANT_DEVICE_COPY_TYPE(T)            \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
+      T, VariantDeviceCopyDirection::HOST_TO_DEVICE,    \
+      DeviceCopyPrimitiveType<T>);                      \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
+      T, VariantDeviceCopyDirection::DEVICE_TO_HOST,    \
+      DeviceCopyPrimitiveType<T>);                      \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
+      T, VariantDeviceCopyDirection::DEVICE_TO_DEVICE,  \
+      DeviceCopyPrimitiveType<T>);
+
+// No zeros_like registered for std::complex<> or Eigen::half objects yet.
+REGISTER_VARIANT_DEVICE_COPY_TYPE(int);
+REGISTER_VARIANT_DEVICE_COPY_TYPE(float);
+REGISTER_VARIANT_DEVICE_COPY_TYPE(double);
+REGISTER_VARIANT_DEVICE_COPY_TYPE(bool);
+
+#undef REGISTER_VARIANT_DEVICE_COPY_TYPE
 
 // Special casing UnaryOpFn per op and per device.
 UnaryVariantOpRegistry::VariantUnaryOpFn* UnaryVariantOpRegistry::GetUnaryOpFn(

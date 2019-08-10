@@ -32,44 +32,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuFftPlugin);
-
-namespace wrap {
-
-// This macro wraps a global identifier, given by __name, in a callable
-// structure that loads the DLL symbol out of the DSO handle in a thread-safe
-// manner on first use. This dynamic loading technique is used to avoid DSO
-// dependencies on vendor libraries which may or may not be available in the
-// deployed binary environment.
-#define STREAM_EXECUTOR_CUFFT_WRAP(__name)                       \
-  struct WrapperShim__##__name {                                 \
-    template <typename... Args>                                  \
-    cufftResult operator()(CUDAExecutor *parent, Args... args) { \
-      cuda::ScopedActivateExecutorContext sac{parent};           \
-      return ::__name(args...);                                  \
-    }                                                            \
-  } __name;
-
-#define CUFFT_ROUTINE_EACH(__macro)                                            \
-  __macro(cufftDestroy) __macro(cufftSetStream) __macro(cufftPlan1d)           \
-      __macro(cufftPlan2d) __macro(cufftPlan3d) __macro(cufftPlanMany)         \
-          __macro(cufftExecD2Z) __macro(cufftExecZ2D) __macro(cufftExecC2C)    \
-              __macro(cufftExecC2R) __macro(cufftExecZ2Z)                      \
-                  __macro(cufftExecR2C) __macro(cufftCreate)                   \
-                      __macro(cufftSetAutoAllocation)                          \
-                          __macro(cufftSetWorkArea) __macro(cufftGetSize1d)    \
-                              __macro(cufftMakePlan1d) __macro(cufftGetSize2d) \
-                                  __macro(cufftMakePlan2d)                     \
-                                      __macro(cufftGetSize3d)                  \
-                                          __macro(cufftMakePlan3d)             \
-                                              __macro(cufftGetSizeMany)        \
-                                                  __macro(cufftMakePlanMany)
-
-CUFFT_ROUTINE_EACH(STREAM_EXECUTOR_CUFFT_WRAP)
-
-}  // namespace wrap
 
 namespace {
 
@@ -96,8 +61,9 @@ cufftType CUDAFftType(fft::Type type) {
 }
 
 // Associates the given stream with the given cuFFT plan.
-bool SetStream(CUDAExecutor *parent, cufftHandle plan, Stream *stream) {
-  auto ret = wrap::cufftSetStream(parent, plan, AsCUDAStreamValue(stream));
+bool SetStream(GpuExecutor *parent, cufftHandle plan, Stream *stream) {
+  cuda::ScopedActivateExecutorContext sac(parent);
+  auto ret = cufftSetStream(plan, AsGpuStreamValue(stream));
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "failed to run cuFFT routine cufftSetStream: " << ret;
     return false;
@@ -108,7 +74,7 @@ bool SetStream(CUDAExecutor *parent, cufftHandle plan, Stream *stream) {
 }  // namespace
 
 port::Status CUDAFftPlan::Initialize(
-    CUDAExecutor *parent, Stream *stream, int rank, uint64 *elem_count,
+    GpuExecutor *parent, Stream *stream, int rank, uint64 *elem_count,
     uint64 *input_embed, uint64 input_stride, uint64 input_distance,
     uint64 *output_embed, uint64 output_stride, uint64 output_distance,
     fft::Type type, int batch_count, ScratchAllocator *scratch_allocator) {
@@ -116,6 +82,7 @@ port::Status CUDAFftPlan::Initialize(
     LOG(FATAL) << "Try to repeatedly initialize.";
   }
   is_initialized_ = true;
+  cuda::ScopedActivateExecutorContext sac(parent);
   int elem_count_[3], input_embed_[3], output_embed_[3];
   for (int i = 0; i < rank; ++i) {
     elem_count_[i] = elem_count[i];
@@ -134,8 +101,8 @@ port::Status CUDAFftPlan::Initialize(
       switch (rank) {
         case 1:
           // cufftPlan1d
-          ret = wrap::cufftPlan1d(parent, &plan_, elem_count_[0],
-                                  CUDAFftType(type), 1 /* = batch */);
+          ret = cufftPlan1d(&plan_, elem_count_[0], CUDAFftType(type),
+                            1 /* = batch */);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to create cuFFT 1d plan:" << ret;
             return port::Status(port::error::INTERNAL,
@@ -144,8 +111,8 @@ port::Status CUDAFftPlan::Initialize(
           return port::Status::OK();
         case 2:
           // cufftPlan2d
-          ret = wrap::cufftPlan2d(parent, &plan_, elem_count_[0],
-                                  elem_count_[1], CUDAFftType(type));
+          ret = cufftPlan2d(&plan_, elem_count_[0], elem_count_[1],
+                            CUDAFftType(type));
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to create cuFFT 2d plan:" << ret;
             return port::Status(port::error::INTERNAL,
@@ -154,9 +121,8 @@ port::Status CUDAFftPlan::Initialize(
           return port::Status::OK();
         case 3:
           // cufftPlan3d
-          ret =
-              wrap::cufftPlan3d(parent, &plan_, elem_count_[0], elem_count_[1],
-                                elem_count_[2], CUDAFftType(type));
+          ret = cufftPlan3d(&plan_, elem_count_[0], elem_count_[1],
+                            elem_count_[2], CUDAFftType(type));
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to create cuFFT 3d plan:" << ret;
             return port::Status(port::error::INTERNAL,
@@ -171,13 +137,13 @@ port::Status CUDAFftPlan::Initialize(
                               "cufftPlan only takes rank 1, 2, or 3.");
       }
     } else {
-      ret = wrap::cufftCreate(parent, &plan_);
+      ret = cufftCreate(&plan_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to create cuFFT plan:" << ret;
         return port::Status(port::error::INTERNAL,
                             "Failed to create cuFFT plan.");
       }
-      ret = wrap::cufftSetAutoAllocation(parent, plan_, 0);
+      ret = cufftSetAutoAllocation(plan_, 0);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to set auto allocation for cuFFT plan:" << ret;
         return port::Status(port::error::INTERNAL,
@@ -185,9 +151,8 @@ port::Status CUDAFftPlan::Initialize(
       }
       switch (rank) {
         case 1:
-          ret = wrap::cufftMakePlan1d(parent, plan_, elem_count_[0],
-                                      CUDAFftType(type), /*batch=*/1,
-                                      &scratch_size_bytes_);
+          ret = cufftMakePlan1d(plan_, elem_count_[0], CUDAFftType(type),
+                                /*batch=*/1, &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to make cuFFT 1d plan:" << ret;
             return port::Status(port::error::INTERNAL,
@@ -195,9 +160,8 @@ port::Status CUDAFftPlan::Initialize(
           }
           break;
         case 2:
-          ret = wrap::cufftMakePlan2d(parent, plan_, elem_count_[0],
-                                      elem_count_[1], CUDAFftType(type),
-                                      &scratch_size_bytes_);
+          ret = cufftMakePlan2d(plan_, elem_count_[0], elem_count_[1],
+                                CUDAFftType(type), &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to make cuFFT 2d plan:" << ret;
             return port::Status(port::error::INTERNAL,
@@ -205,9 +169,9 @@ port::Status CUDAFftPlan::Initialize(
           }
           break;
         case 3:
-          ret = wrap::cufftMakePlan3d(parent, plan_, elem_count_[0],
-                                      elem_count_[1], elem_count_[2],
-                                      CUDAFftType(type), &scratch_size_bytes_);
+          ret = cufftMakePlan3d(plan_, elem_count_[0], elem_count_[1],
+                                elem_count_[2], CUDAFftType(type),
+                                &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to make cuFFT 3d plan:" << ret;
             return port::Status(port::error::INTERNAL,
@@ -226,24 +190,23 @@ port::Status CUDAFftPlan::Initialize(
   } else {
     // For either multiple batches or rank higher than 3, use cufftPlanMany().
     if (scratch_allocator == nullptr) {
-      auto ret = wrap::cufftPlanMany(
-          parent, &plan_, rank, elem_count_,
-          input_embed ? input_embed_ : nullptr, input_stride, input_distance,
-          output_embed ? output_embed_ : nullptr, output_stride,
-          output_distance, CUDAFftType(type), batch_count);
+      auto ret = cufftPlanMany(
+          &plan_, rank, elem_count_, input_embed ? input_embed_ : nullptr,
+          input_stride, input_distance, output_embed ? output_embed_ : nullptr,
+          output_stride, output_distance, CUDAFftType(type), batch_count);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to create cuFFT batched plan:" << ret;
         return port::Status(port::error::INTERNAL,
                             "Failed to create cuFFT batched plan.");
       }
     } else {
-      auto ret = wrap::cufftCreate(parent, &plan_);
+      auto ret = cufftCreate(&plan_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to create cuFFT batched plan:" << ret;
         return port::Status(port::error::INTERNAL,
                             "Failed to create cuFFT batched plan.");
       }
-      ret = wrap::cufftSetAutoAllocation(parent, plan_, 0);
+      ret = cufftSetAutoAllocation(plan_, 0);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to set auto allocation for cuFFT batched plan:"
                    << ret;
@@ -251,11 +214,10 @@ port::Status CUDAFftPlan::Initialize(
             port::error::INTERNAL,
             "Failed to set auto allocation for cuFFT batched plan.");
       }
-      ret = wrap::cufftMakePlanMany(
-          parent, plan_, rank, elem_count_,
-          input_embed ? input_embed_ : nullptr, input_stride, input_distance,
-          output_embed ? output_embed_ : nullptr, output_stride,
-          output_distance, CUDAFftType(type), batch_count,
+      ret = cufftMakePlanMany(
+          plan_, rank, elem_count_, input_embed ? input_embed_ : nullptr,
+          input_stride, input_distance, output_embed ? output_embed_ : nullptr,
+          output_stride, output_distance, CUDAFftType(type), batch_count,
           &scratch_size_bytes_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to make cuFFT batched plan:" << ret;
@@ -268,7 +230,7 @@ port::Status CUDAFftPlan::Initialize(
   return port::Status::OK();
 }
 
-port::Status CUDAFftPlan::Initialize(CUDAExecutor *parent, Stream *stream,
+port::Status CUDAFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
                                      int rank, uint64 *elem_count,
                                      fft::Type type,
                                      ScratchAllocator *scratch_allocator) {
@@ -282,15 +244,15 @@ port::Status CUDAFftPlan::Initialize(CUDAExecutor *parent, Stream *stream,
 port::Status CUDAFftPlan::UpdateScratchAllocator(
     Stream *stream, ScratchAllocator *scratch_allocator) {
   if (scratch_size_bytes_ != 0) {
-    auto allocated =
-        scratch_allocator->AllocateBytes(stream, scratch_size_bytes_);
+    auto allocated = scratch_allocator->AllocateBytes(scratch_size_bytes_);
     if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
       LOG(ERROR) << "failed to allocate work area.";
       return allocated.status();
     }
   }
   // Connect work area with allocated space.
-  cufftResult_t ret = wrap::cufftSetWorkArea(parent_, plan_, scratch_.opaque());
+  cuda::ScopedActivateExecutorContext sac(parent_);
+  cufftResult_t ret = cufftSetWorkArea(plan_, scratch_.opaque());
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "failed to set work area for cuFFT plan:" << ret;
     return port::Status(port::error::INTERNAL,
@@ -299,7 +261,10 @@ port::Status CUDAFftPlan::UpdateScratchAllocator(
   return port::Status::OK();
 }
 
-CUDAFftPlan::~CUDAFftPlan() { wrap::cufftDestroy(parent_, plan_); }
+CUDAFftPlan::~CUDAFftPlan() {
+  cuda::ScopedActivateExecutorContext sac(parent_);
+  cufftDestroy(plan_);
+}
 
 int CUDAFftPlan::GetFftDirection() const {
   if (!IsInitialized()) {
@@ -332,6 +297,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create1dPlan(Stream *stream, uint64 num_x,
   // TODO(yangzihao): In the future, send error msg back to TensorFlow
   // so it can fail gracefully,
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x;
     LOG(FATAL) << "failed to initialize cufft 1d plan: "
                << status.error_message();
   }
@@ -346,6 +312,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create1dPlanWithScratchAllocator(
   port::Status status = fft_plan_ptr->Initialize(parent_, stream, 1, elem_count,
                                                  type, scratch_allocator);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x;
     LOG(FATAL)
         << "failed to initialize cufft 1d plan with customized allocator: "
         << status.error_message();
@@ -361,6 +328,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create2dPlan(Stream *stream, uint64 num_x,
   port::Status status = fft_plan_ptr->Initialize(
       parent_, stream, 1, elem_count, type, /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y;
     LOG(FATAL) << "failed to initialize cufft 2d plan: "
                << status.error_message();
   }
@@ -375,6 +343,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create2dPlanWithScratchAllocator(
   port::Status status = fft_plan_ptr->Initialize(parent_, stream, 2, elem_count,
                                                  type, scratch_allocator);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y;
     LOG(FATAL)
         << "failed to initialize cufft 2d plan with customized allocator: "
         << status.error_message();
@@ -391,6 +360,8 @@ std::unique_ptr<fft::Plan> CUDAFft::Create3dPlan(Stream *stream, uint64 num_x,
   port::Status status = fft_plan_ptr->Initialize(
       parent_, stream, 3, elem_count, type, /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y
+               << " num_z: " << num_z;
     LOG(FATAL) << "failed to initialize cufft 3d plan: "
                << status.error_message();
   }
@@ -405,6 +376,8 @@ std::unique_ptr<fft::Plan> CUDAFft::Create3dPlanWithScratchAllocator(
   port::Status status = fft_plan_ptr->Initialize(parent_, stream, 3, elem_count,
                                                  type, scratch_allocator);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y
+               << " num_z: " << num_z;
     LOG(FATAL)
         << "failed to initialize cufft 3d plan with customized allocator: "
         << status.error_message();
@@ -423,6 +396,15 @@ std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlan(
       input_distance, output_embed, output_stride, output_distance, type,
       batch_count, /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
+    LOG(ERROR) << "Initialize Params: rank: " << rank
+               << " elem_count: " << *elem_count
+               << " input_embed: " << *input_embed
+               << " input_stride: " << input_stride
+               << " input_distance: " << input_distance
+               << " output_embed: " << *output_embed
+               << " output_stride: " << output_stride
+               << " output_distance: " << output_distance
+               << " batch_count: " << batch_count;
     LOG(FATAL) << "failed to initialize batched cufft plan: "
                << status.error_message();
   }
@@ -441,6 +423,15 @@ std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlanWithScratchAllocator(
       input_distance, output_embed, output_stride, output_distance, type,
       batch_count, scratch_allocator);
   if (!status.ok()) {
+    LOG(ERROR) << "Initialize Params: rank: " << rank
+               << " elem_count: " << *elem_count
+               << " input_embed: " << *input_embed
+               << " input_stride: " << input_stride
+               << " input_distance: " << input_distance
+               << " output_embed: " << *output_embed
+               << " output_stride: " << output_stride
+               << " output_distance: " << output_distance
+               << " batch_count: " << batch_count;
     LOG(FATAL)
         << "failed to initialize batched cufft plan with customized allocator: "
         << status.error_message();
@@ -473,9 +464,10 @@ bool CUDAFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT cufftExec,
     return false;
   }
 
-  auto ret = cufftExec(parent_, cuda_fft_plan->GetPlan(),
-                       CUDAComplex(const_cast<InputT *>(CUDAMemory(input))),
-                       CUDAComplex(CUDAMemoryMutable(output)));
+  cuda::ScopedActivateExecutorContext sac(parent_);
+  auto ret = cufftExec(cuda_fft_plan->GetPlan(),
+                       GpuComplex(const_cast<InputT *>(GpuMemory(input))),
+                       GpuComplex(GpuMemoryMutable(output)));
 
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "failed to run cuFFT routine: " << ret;
@@ -500,9 +492,10 @@ bool CUDAFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
     return false;
   }
 
-  auto ret = cufftExec(parent_, cuda_fft_plan->GetPlan(),
-                       CUDAComplex(const_cast<InputT *>(CUDAMemory(input))),
-                       CUDAComplex(CUDAMemoryMutable(output)),
+  cuda::ScopedActivateExecutorContext sac(parent_);
+  auto ret = cufftExec(cuda_fft_plan->GetPlan(),
+                       GpuComplex(const_cast<InputT *>(GpuMemory(input))),
+                       GpuComplex(GpuMemoryMutable(output)),
                        cuda_fft_plan->GetFftDirection());
 
   if (ret != CUFFT_SUCCESS) {
@@ -513,25 +506,23 @@ bool CUDAFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
   return true;
 }
 
-#define STREAM_EXECUTOR_CUDA_DEFINE_FFT(__type, __fft_type1, __fft_type2,   \
-                                        __fft_type3)                        \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                      \
-                      const DeviceMemory<std::complex<__type>> &input,      \
-                      DeviceMemory<std::complex<__type>> *output) {         \
-    return DoFftWithDirectionInternal(                                      \
-        stream, plan, wrap::cufftExec##__fft_type1, input, output);         \
-  }                                                                         \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                      \
-                      const DeviceMemory<__type> &input,                    \
-                      DeviceMemory<std::complex<__type>> *output) {         \
-    return DoFftInternal(stream, plan, wrap::cufftExec##__fft_type2, input, \
-                         output);                                           \
-  }                                                                         \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                      \
-                      const DeviceMemory<std::complex<__type>> &input,      \
-                      DeviceMemory<__type> *output) {                       \
-    return DoFftInternal(stream, plan, wrap::cufftExec##__fft_type3, input, \
-                         output);                                           \
+#define STREAM_EXECUTOR_CUDA_DEFINE_FFT(__type, __fft_type1, __fft_type2,      \
+                                        __fft_type3)                           \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                         \
+                      const DeviceMemory<std::complex<__type>> &input,         \
+                      DeviceMemory<std::complex<__type>> *output) {            \
+    return DoFftWithDirectionInternal(stream, plan, cufftExec##__fft_type1,    \
+                                      input, output);                          \
+  }                                                                            \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                         \
+                      const DeviceMemory<__type> &input,                       \
+                      DeviceMemory<std::complex<__type>> *output) {            \
+    return DoFftInternal(stream, plan, cufftExec##__fft_type2, input, output); \
+  }                                                                            \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                         \
+                      const DeviceMemory<std::complex<__type>> &input,         \
+                      DeviceMemory<__type> *output) {                          \
+    return DoFftInternal(stream, plan, cufftExec##__fft_type3, input, output); \
   }
 
 STREAM_EXECUTOR_CUDA_DEFINE_FFT(float, C2C, R2C, C2R)
@@ -539,22 +530,22 @@ STREAM_EXECUTOR_CUDA_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 
 #undef STREAM_EXECUTOR_CUDA_DEFINE_FFT
 
-}  // namespace cuda
+}  // namespace gpu
 
 void initialize_cufft() {
   port::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
-          cuda::kCudaPlatformId, cuda::kCuFftPlugin, "cuFFT",
+          cuda::kCudaPlatformId, gpu::kCuFftPlugin, "cuFFT",
           [](internal::StreamExecutorInterface *parent) -> fft::FftSupport * {
-            cuda::CUDAExecutor *cuda_executor =
-                dynamic_cast<cuda::CUDAExecutor *>(parent);
+            gpu::GpuExecutor *cuda_executor =
+                dynamic_cast<gpu::GpuExecutor *>(parent);
             if (cuda_executor == nullptr) {
               LOG(ERROR) << "Attempting to initialize an instance of the cuFFT "
                          << "support library with a non-CUDA StreamExecutor";
               return nullptr;
             }
 
-            return new cuda::CUDAFft(cuda_executor);
+            return new gpu::CUDAFft(cuda_executor);
           });
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuFFT factory: "
@@ -562,7 +553,7 @@ void initialize_cufft() {
   }
 
   PluginRegistry::Instance()->SetDefaultFactory(
-      cuda::kCudaPlatformId, PluginKind::kFft, cuda::kCuFftPlugin);
+      cuda::kCudaPlatformId, PluginKind::kFft, gpu::kCuFftPlugin);
 }
 
 }  // namespace stream_executor

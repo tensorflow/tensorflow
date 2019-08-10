@@ -126,7 +126,7 @@ def inputs(train, batch_size, num_epochs):
     dataset = dataset.repeat(num_epochs)
     dataset = dataset.batch(batch_size)
 
-    iterator = dataset.make_one_shot_iterator()
+    iterator = tf.compat.v1.data.make_one_shot_iterator(dataset)
   return iterator.get_next()
 
 
@@ -153,7 +153,7 @@ def run_training():
                        tf.local_variables_initializer())
 
     # Create a session for running operations in the Graph.
-    with tf.Session() as sess:
+    with tf.compat.v1.Session() as sess:
       # Initialize the variables (the trained variables and the
       # epoch counter).
       sess.run(init_op)

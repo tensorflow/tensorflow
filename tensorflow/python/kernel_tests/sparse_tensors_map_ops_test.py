@@ -24,6 +24,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
@@ -76,6 +77,7 @@ class SparseTensorsMapTest(test.TestCase):
     shape = np.array([3, 4, 5]).astype(np.int64)
     return sparse_tensor_lib.SparseTensorValue(ind, val, shape)
 
+  @test_util.run_deprecated_v1
   def testAddTakeMany(self):
     with self.session(graph=ops.Graph(), use_gpu=False) as sess:
       sp_input0 = self._SparseTensorValue_5x6(np.arange(6))
@@ -88,7 +90,7 @@ class SparseTensorsMapTest(test.TestCase):
       sp_out = take_many_sparse_from_tensors_map(
           sparse_map_op=handle0.op, sparse_handles=handles_concat)
 
-      combined_indices, combined_values, combined_shape = sess.run(sp_out)
+      combined_indices, combined_values, combined_shape = self.evaluate(sp_out)
 
       self.assertAllEqual(combined_indices[:6, 0], [0] * 6)  # minibatch 0
       self.assertAllEqual(combined_indices[:6, 1:], sp_input0[0])
@@ -98,8 +100,9 @@ class SparseTensorsMapTest(test.TestCase):
       self.assertAllEqual(combined_values[6:], sp_input1[1])
       self.assertAllEqual(combined_shape, [2, 5, 6])
 
+  @test_util.run_deprecated_v1
   def testFeedAddTakeMany(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
       input1_val = self._SparseTensorValue_3x4(np.arange(6))
@@ -114,7 +117,8 @@ class SparseTensorsMapTest(test.TestCase):
       sp_roundtrip = take_many_sparse_from_tensors_map(
           sparse_map_op=handle.op, sparse_handles=sparse_handles)
 
-      combined_indices, combined_values, combined_shape = sess.run(sp_roundtrip)
+      combined_indices, combined_values, combined_shape = self.evaluate(
+          sp_roundtrip)
 
       self.assertAllEqual(combined_indices[:6, 0], [0] * 6)  # minibatch 0
       self.assertAllEqual(combined_indices[:6, 1:], input0_val[0])
@@ -124,8 +128,9 @@ class SparseTensorsMapTest(test.TestCase):
       self.assertAllEqual(combined_values[6:], input1_val[1])
       self.assertAllEqual(combined_shape, [2, 5, 6])
 
+  @test_util.run_deprecated_v1
   def testAddManyTakeManyRoundTrip(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       # N == 4 because shape_value == [4, 5]
       indices_value = np.array([[0, 0], [0, 1], [2, 0]], dtype=np.int64)
       values_value = np.array([b"a", b"b", b"c"])
@@ -146,8 +151,9 @@ class SparseTensorsMapTest(test.TestCase):
       self.assertAllEqual(roundtrip_value.values, values_value)
       self.assertAllEqual(roundtrip_value.dense_shape, shape_value)
 
+  @test_util.run_deprecated_v1
   def testDeserializeFailsInconsistentRank(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
       input1_val = self._SparseTensorValue_1x1x1()
@@ -165,19 +171,20 @@ class SparseTensorsMapTest(test.TestCase):
       with self.assertRaisesOpError(
           r"Inconsistent rank across SparseTensors: rank prior to "
           r"SparseTensor\[1\] was: 3 but rank of SparseTensor\[1\] is: 4"):
-        sess.run(sp_roundtrip)
+        self.evaluate(sp_roundtrip)
 
+  @test_util.run_deprecated_v1
   def testTakeManyFailsWrongInputOp(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       input_val = self._SparseTensorValue_5x6(np.arange(6))
       handle = add_sparse_to_tensors_map(input_val)
-      handle_value = sess.run(handle)
+      handle_value = self.evaluate(handle)
       bad_handle = handle_value + 10
       sp_roundtrip = take_many_sparse_from_tensors_map(
           sparse_map_op=handle.op, sparse_handles=[handle_value, bad_handle])
 
       with self.assertRaisesOpError(r"Unable to find SparseTensor: 10"):
-        sess.run(sp_roundtrip)
+        self.evaluate(sp_roundtrip)
 
 
 class BenchmarkSparseTensorsMapVsSerialization(test.Benchmark):
@@ -212,8 +219,8 @@ class BenchmarkSparseTensorsMapVsSerialization(test.Benchmark):
 
         variables.global_variables_initializer().run()
 
-        st_roundtrip_values = sess.run(st_roundtrip)
-        st_deserialized_values = sess.run(st_deserialized)
+        st_roundtrip_values = self.evaluate(st_roundtrip)
+        st_deserialized_values = self.evaluate(st_deserialized)
         np.testing.assert_equal(st_roundtrip_values.values,
                                 st_deserialized_values.values)
         np.testing.assert_equal(st_roundtrip_values.indices,

@@ -1,18 +1,24 @@
 # Tests of TensorFlow kernels written using the Python API.
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "sycl_py_test")
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 # CPU only tests should use tf_py_test, GPU tests use cuda_py_test
 # Please avoid the py_tests and cuda_py_tests (plural) while we
 # fix the shared/overbroad dependencies.
+
+py_library(
+    name = "util",
+    srcs = ["util.py"],
+    deps = [
+        "//third_party/py/numpy",
+    ],
+)
 
 tf_py_test(
     name = "random_shuffle_queue_test",
@@ -45,6 +51,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -64,6 +71,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
     ],
     shard_count = 3,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -75,6 +83,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:random_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -88,6 +97,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:random_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -103,6 +113,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:stateless_random_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -110,6 +121,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["random_gamma_test.py"],
     additional_deps = [
+        ":util",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -120,6 +132,7 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = ["nozapfhahn"],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -137,6 +150,25 @@ cuda_py_test(
         "//tensorflow/python:random_grad",
         "//tensorflow/python:random_ops",
     ],
+    xla_enable_strict_auto_jit = True,
+)
+
+# TODO(b/130359919): Reenable test when it becomes stable
+tf_py_test(
+    name = "random_binomial_test",
+    size = "medium",
+    srcs = ["random_binomial_test.py"],
+    additional_deps = [
+        ":util",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:stateful_random_ops",
+    ],
+    tags = ["no_oss"],
 )
 
 cuda_py_test(
@@ -144,6 +176,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["random_poisson_test.py"],
     additional_deps = [
+        ":util",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -152,4 +185,5 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:random_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )

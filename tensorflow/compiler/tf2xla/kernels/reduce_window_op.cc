@@ -130,11 +130,11 @@ class ReduceWindowOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("XlaReduceWindow")
-                    .CompileTimeConstInput("window_dimensions")
-                    .CompileTimeConstInput("window_strides")
-                    .CompileTimeConstInput("base_dilations")
-                    .CompileTimeConstInput("window_dilations")
-                    .CompileTimeConstInput("padding"),
+                    .CompileTimeConstantInput("window_dimensions")
+                    .CompileTimeConstantInput("window_strides")
+                    .CompileTimeConstantInput("base_dilations")
+                    .CompileTimeConstantInput("window_dilations")
+                    .CompileTimeConstantInput("padding"),
                 ReduceWindowOp);
 
 }  // namespace

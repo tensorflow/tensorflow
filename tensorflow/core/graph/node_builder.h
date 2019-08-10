@@ -50,6 +50,7 @@ class NodeBuilder {
   struct NodeOut {
     // For referencing an existing Node.
     NodeOut(Node* n, int32 i = 0);
+    NodeOut(OutputTensor t);
 
     // For referencing Nodes not in the graph being built. It is
     // useful when preparing a graph for ExtendSession or creating a
@@ -76,7 +77,8 @@ class NodeBuilder {
   // specified by calling the methods below.
   // REQUIRES: The OpDef must satisfy ValidateOpDef().
   NodeBuilder(StringPiece name, StringPiece op_name,
-              const OpRegistryInterface* op_registry = OpRegistry::Global());
+              const OpRegistryInterface* op_registry = OpRegistry::Global(),
+              const NodeDebugInfo* debug = nullptr);
   NodeBuilder(StringPiece name, const OpDef* op_def);
 
   // Create a NodeBuilder from an existing NodeDefBuilder.
@@ -103,6 +105,9 @@ class NodeBuilder {
   // Sets the device name in the "assigned device" field in tensorflow::Node.
   NodeBuilder& AssignedDevice(StringPiece device);
 
+  // Sets the _XlaCluster attribute in created node to `xla_cluster`.
+  NodeBuilder& XlaCluster(StringPiece xla_cluster);
+
   // Set the value of an attr.  attr_name must match the name of one of
   // attrs defined by the Op, and value must have the corresponding type
   // (see SetAttrValue() in ../framework/attr_value_util.h for legal
@@ -116,7 +121,9 @@ class NodeBuilder {
   // Validates the described node and adds it to *graph, adding edges
   // for all (non-back) inputs.  If created_node is not nullptr,
   // *created_node will be set to the new node (or nullptr on error).
-  Status Finalize(Graph* graph, Node** created_node) const;
+  // If `consume` is true, the builder state will be moved into `node_def`,
+  // and the builder will be left in an undefined state.
+  Status Finalize(Graph* graph, Node** created_node, bool consume = false);
 
   // Accessors for the values set in the constructor.
   const string& node_name() const { return def_builder_.node_name(); }

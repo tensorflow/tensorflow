@@ -18,93 +18,30 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import os
 import sys
 import tempfile
 
-from six.moves import urllib
 import tensorflow as tf
 
-from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.python import debug as tf_debug
-
-
-# URLs to download data sets from, if necessary.
-IRIS_TRAINING_DATA_URL = "https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/examples/tutorials/monitors/iris_training.csv"
-IRIS_TEST_DATA_URL = "https://raw.githubusercontent.com/tensorflow/tensorflow/master/tensorflow/examples/tutorials/monitors/iris_test.csv"
-
-
-def maybe_download_data(data_dir):
-  """Download data sets if necessary.
-
-  Args:
-    data_dir: Path to where data should be downloaded.
-
-  Returns:
-    Paths to the training and test data files.
-  """
-
-  if not os.path.isdir(data_dir):
-    os.makedirs(data_dir)
-
-  training_data_path = os.path.join(data_dir,
-                                    os.path.basename(IRIS_TRAINING_DATA_URL))
-  if not os.path.isfile(training_data_path):
-    train_file = open(training_data_path, "wt")
-    urllib.request.urlretrieve(IRIS_TRAINING_DATA_URL, train_file.name)
-    train_file.close()
-
-    print("Training data are downloaded to %s" % train_file.name)
-
-  test_data_path = os.path.join(data_dir, os.path.basename(IRIS_TEST_DATA_URL))
-  if not os.path.isfile(test_data_path):
-    test_file = open(test_data_path, "wt")
-    urllib.request.urlretrieve(IRIS_TEST_DATA_URL, test_file.name)
-    test_file.close()
-
-    print("Test data are downloaded to %s" % test_file.name)
-
-  return training_data_path, test_data_path
 
 
 _IRIS_INPUT_DIM = 4
 
 
-def iris_input_fn():
-  iris = base.load_iris()
-  features = tf.reshape(tf.constant(iris.data), [-1, _IRIS_INPUT_DIM])
-  labels = tf.reshape(tf.constant(iris.target), [-1])
-  return features, labels
-
-
 def main(_):
-  # Load datasets.
-  if FLAGS.fake_data:
-    def training_input_fn():
-      return ({"features": tf.random_normal([128, 4])},
-              tf.random_uniform([128], minval=0, maxval=3, dtype=tf.int32))
-    def test_input_fn():
-      return ({"features": tf.random_normal([32, 4])},
-              tf.random_uniform([32], minval=0, maxval=3, dtype=tf.int32))
-    feature_columns = [
-        tf.feature_column.numeric_column("features", shape=(4,))]
-  else:
-    training_data_path, test_data_path = maybe_download_data(FLAGS.data_dir)
-    column_names = [
-        "sepal_length", "sepal_width", "petal_length", "petal_width", "label"]
-    batch_size = 32
-    def training_input_fn():
-      return tf.data.experimental.make_csv_dataset([training_data_path],
-                                                   batch_size,
-                                                   column_names=column_names,
-                                                   label_name="label")
-    def test_input_fn():
-      return tf.data.experimental.make_csv_dataset([test_data_path],
-                                                   batch_size,
-                                                   column_names=column_names,
-                                                   label_name="label")
-    feature_columns = [tf.feature_column.numeric_column(feature)
-                       for feature in column_names[:-1]]
+  # Generate some fake Iris data.
+  # It is okay for this example because this example is about how to use the
+  # debugger, not how to use machine learning to solve the Iris classification
+  # problem.
+  def training_input_fn():
+    return ({"features": tf.random_normal([128, 4])},
+            tf.random_uniform([128], minval=0, maxval=3, dtype=tf.int32))
+  def test_input_fn():
+    return ({"features": tf.random_normal([32, 4])},
+            tf.random_uniform([32], minval=0, maxval=3, dtype=tf.int32))
+  feature_columns = [
+      tf.feature_column.numeric_column("features", shape=(4,))]
 
   # Build 3 layer DNN with 10, 20, 10 units respectively.
   model_dir = FLAGS.model_dir or tempfile.mkdtemp(prefix="debug_tflearn_iris_")
@@ -121,8 +58,11 @@ def main(_):
         "exclusive.")
   hooks = []
   if FLAGS.debug:
+    config_file_path = (tempfile.mktemp(".tfdbg_config")
+                        if FLAGS.use_random_config_path else None)
     hooks.append(tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type,
-                                            dump_root=FLAGS.dump_root))
+                                            dump_root=FLAGS.dump_root,
+                                            config_file_path=config_file_path))
   elif FLAGS.tensorboard_debug_address:
     hooks.append(tf_debug.TensorBoardDebugHook(FLAGS.tensorboard_debug_address))
 
@@ -173,13 +113,6 @@ if __name__ == "__main__":
       default="curses",
       help="Command-line user interface type (curses | readline)")
   parser.add_argument(
-      "--fake_data",
-      type="bool",
-      nargs="?",
-      const=True,
-      default=False,
-      help="Use fake MNIST data for unit testing")
-  parser.add_argument(
       "--debug",
       type="bool",
       nargs="?",
@@ -192,6 +125,14 @@ if __name__ == "__main__":
       type=str,
       default="",
       help="Optional custom root directory for temporary debug dump data")
+  parser.add_argument(
+      "--use_random_config_path",
+      type="bool",
+      nargs="?",
+      const=True,
+      default=False,
+      help="""If set, set config file path to a random file in the temporary
+      directory.""")
   parser.add_argument(
       "--tensorboard_debug_address",
       type=str,

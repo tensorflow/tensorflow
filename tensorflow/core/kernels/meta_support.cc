@@ -54,7 +54,7 @@ class Scratch : public ResourceBase {
 
   uint8_t* buffer() { return scratch_32_aligned_; }
 
-  string DebugString() { return "MetaGemmScratchResource"; }
+  string DebugString() const override { return "MetaGemmScratchResource"; }
 
  private:
   std::unique_ptr<uint8_t> scratch_;

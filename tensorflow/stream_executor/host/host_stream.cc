@@ -17,47 +17,60 @@ limitations under the License.
 // the HostExecutor implementation.
 #include "tensorflow/stream_executor/host/host_stream.h"
 
+#include "absl/synchronization/notification.h"
+#include "tensorflow/core/platform/denormal.h"
+#include "tensorflow/core/platform/setround.h"
+
 namespace stream_executor {
 namespace host {
 
 HostStream::HostStream()
-    : host_executor_(new port::ThreadPool(port::Env::Default(),
-                                          port::ThreadOptions(),
-                                          "host_executor", kExecutorThreads)) {}
+    : thread_(port::Env::Default()->StartThread(
+          port::ThreadOptions(), "host_executor", [this]() { WorkLoop(); })) {}
 
-HostStream::~HostStream() {}
-
-bool HostStream::EnqueueTask(std::function<void()> task) {
-  struct NotifiedTask {
-    HostStream* stream;
-    std::function<void()> task;
-
-    void operator()() {
-      task();
-      // Destroy the task before unblocking its waiters, as BlockHostUntilDone()
-      // should guarantee that all tasks are destroyed.
-      task = std::function<void()>();
-      {
-        mutex_lock lock(stream->mu_);
-        --stream->pending_tasks_;
-      }
-      stream->completion_condition_.notify_all();
-    }
-  };
-
+HostStream::~HostStream() {
   {
-    mutex_lock lock(mu_);
-    ++pending_tasks_;
+    absl::MutexLock lock(&mu_);
+    work_queue_.push(nullptr);
   }
-  host_executor_->Schedule(NotifiedTask{this, std::move(task)});
+  // thread_'s destructor blocks until the thread finishes running.
+  thread_.reset();
+}
+
+bool HostStream::EnqueueTask(std::function<void()> fn) {
+  CHECK(fn != nullptr);
+  absl::MutexLock lock(&mu_);
+  work_queue_.push(std::move(fn));
   return true;
 }
 
-void HostStream::BlockUntilDone() {
-  mutex_lock lock(mu_);
-  while (pending_tasks_ != 0) {
-    completion_condition_.wait(lock);
+bool HostStream::WorkAvailable() { return !work_queue_.empty(); }
+
+void HostStream::WorkLoop() {
+  // Set denormal and rounding behavior to match the default TF ThreadPool
+  // behavior.
+  // TODO(phawkins, jlebar): it's not clear this is the best place to set this.
+  tensorflow::port::ScopedFlushDenormal flush;
+  tensorflow::port::ScopedSetRound round(FE_TONEAREST);
+  while (true) {
+    std::function<void()> fn;
+    {
+      absl::MutexLock lock(&mu_);
+      mu_.Await(absl::Condition(this, &HostStream::WorkAvailable));
+      fn = std::move(work_queue_.front());
+      work_queue_.pop();
+    }
+    if (!fn) {
+      return;
+    }
+    fn();
   }
+}
+
+void HostStream::BlockUntilDone() {
+  absl::Notification done;
+  EnqueueTask([&done]() { done.Notify(); });
+  done.WaitForNotification();
 }
 
 }  // namespace host

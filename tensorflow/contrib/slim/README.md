@@ -11,7 +11,7 @@ import tensorflow.contrib.slim as slim
 
 ## Why TF-Slim?
 
-TF-Slim is a library that makes building, training and evaluation neural
+TF-Slim is a library that makes defining, training and evaluating neural
 networks simple:
 
 * Allows the user to define models much more compactly by eliminating
@@ -78,7 +78,7 @@ provides convenience wrappers for variable creation and manipulation.
 ## Defining Models
 
 Models can be succinctly defined using TF-Slim by combining its variables,
-layers and scopes. Each of these elements are defined below.
+layers and scopes. Each of these elements is defined below.
 
 ### Variables
 
@@ -160,15 +160,15 @@ slim.add_model_variable(my_model_variable)
 
 ### Layers
 
-While the set of TensorFlow operations is quite extensive, developers of
-neural networks typically think of models in terms of higher level concepts
-like "layers", "losses", "metrics", and "networks". A layer,
-such as a Convolutional Layer, a Fully Connected Layer or a BatchNorm Layer
-are more abstract than a single TensorFlow operation and typically involve
-several operations. Furthermore, a layer usually (but not always) has
-variables (tunable parameters) associated with it, unlike more primitive
-operations. For example, a Convolutional Layer in a neural network
-is composed of several low level operations:
+While the set of TensorFlow operations is quite extensive, developers of neural
+networks typically think of models in terms of higher level concepts like
+"layers", "losses", "metrics", and "networks". A layer, such as a Convolutional
+Layer, a Fully Connected Layer or a BatchNorm Layer is more abstract than a
+single TensorFlow operation and typically involve several operations.
+Furthermore, a layer usually (but not always) has variables (tunable parameters)
+associated with it, unlike more primitive operations. For example, a
+Convolutional Layer in a neural network is composed of several low level
+operations:
 
 1. Creating the weight and bias variables
 2. Convolving the weights with the input from the previous layer
@@ -346,7 +346,7 @@ we can both ensure that each layer uses the same values and simplify the code:
   with slim.arg_scope([slim.conv2d], padding='SAME',
                       weights_initializer=tf.truncated_normal_initializer(stddev=0.01)
                       weights_regularizer=slim.l2_regularizer(0.0005)):
-    net = slim.conv2d(inputs, 64, [11, 11], scope='conv1')
+    net = slim.conv2d(inputs, 64, [11, 11], 4, scope='conv1')
     net = slim.conv2d(net, 128, [11, 11], padding='VALID', scope='conv2')
     net = slim.conv2d(net, 256, [11, 11], scope='conv3')
 ```
@@ -455,9 +455,8 @@ loss = slim.losses.softmax_cross_entropy(predictions, labels)
 ```
 
 In this example, we start by creating the model (using TF-Slim's VGG
-implementation), and add the standard classification loss. Now, lets turn
-to the case where we have a multi-task model that produces multiple outputs:
-
+implementation), and add the standard classification loss. Now, let's turn to
+the case where we have a multi-task model that produces multiple outputs:
 
 ```python
 # Load the images and labels.
@@ -555,8 +554,8 @@ that we'll save a model checkpoint every 10 minutes.
 
 ### Working Example: Training the VGG16 Model
 
-To illustrate this, lets
-examine the following sample of training the VGG network:
+To illustrate this, let's examine the following sample of training the VGG
+network:
 
 ```python
 import tensorflow as tf
@@ -682,11 +681,11 @@ name to each graph variable. Consider the following example where the checkpoint
 variables names are obtained via a simple function:
 
 ```python
-# Assuming than 'conv1/weights' should be restored from 'vgg16/conv1/weights'
+# Assuming that 'conv1/weights' should be restored from 'vgg16/conv1/weights'
 def name_in_checkpoint(var):
   return 'vgg16/' + var.op.name
 
-# Assuming than 'conv1/weights' and 'conv1/bias' should be restored from 'conv1/params1' and 'conv1/params2'
+# Assuming that 'conv1/weights' and 'conv1/bias' should be restored from 'conv1/params1' and 'conv1/params2'
 def name_in_checkpoint(var):
   if "weights" in var.op.name:
     return var.op.name.replace("weights", "params1")
@@ -738,7 +737,7 @@ slim.learning.train(train_op, log_dir, init_fn=init_fn)
 
 Once we've trained a model (or even while the model is busy training) we'd like
 to see how well the model performs in practice. This is accomplished by picking
-a set of evaluation metrics, which will grade the models performance, and the
+a set of evaluation metrics, which will grade the model's performance, and the
 evaluation code which actually loads the data, performs inference, compares the
 results to the ground truth and records the evaluation scores. This step may be
 performed once or repeated periodically.

@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -41,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 namespace {
@@ -130,14 +130,14 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentInputLayouts) {
   // Create x as a col-major array.
   auto x_array = LiteralToShapedBuffer(LiteralUtil::CreateR2WithLayout(
       {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({0, 1})));
-  EXPECT_TRUE(LayoutUtil::Equal(x_array.on_device_shape().layout(),
-                                LayoutUtil::MakeLayout({0, 1})));
+  EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
+      x_array.on_device_shape().layout(), LayoutUtil::MakeLayout({0, 1})));
 
   // Create y as a row-major array.
   auto y_array = LiteralToShapedBuffer(LiteralUtil::CreateR2WithLayout(
       {{10.0f, 20.0f}, {30.0f, 40.0f}}, LayoutUtil::MakeLayout({1, 0})));
-  EXPECT_TRUE(LayoutUtil::Equal(y_array.on_device_shape().layout(),
-                                LayoutUtil::MakeLayout({1, 0})));
+  EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
+      y_array.on_device_shape().layout(), LayoutUtil::MakeLayout({1, 0})));
 
   ScopedShapedBuffer result_colmaj =
       ExecuteLocallyOrDie(computation, {&x_array, &y_array});
@@ -171,8 +171,9 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
       DefaultExecutableBuildOptions().set_result_layout(
           ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2}, {0, 1})),
       DefaultExecutableRunOptions());
-  EXPECT_TRUE(LayoutUtil::Equal(result_colmaj.on_device_shape().layout(),
-                                LayoutUtil::MakeLayout({0, 1})));
+  EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
+      result_colmaj.on_device_shape().layout(),
+      LayoutUtil::MakeLayout({0, 1})));
   LiteralTestUtil::ExpectR2Near<float>({{11.0f, 22.0f}, {33.0f, 44.0f}},
                                        ShapedBufferToLiteral(result_colmaj),
                                        error_spec_);
@@ -183,8 +184,9 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
       DefaultExecutableBuildOptions().set_result_layout(
           ShapeUtil::MakeShapeWithLayout(F32, /*dimensions=*/{2, 2}, {1, 0})),
       DefaultExecutableRunOptions());
-  EXPECT_TRUE(LayoutUtil::Equal(result_rowmaj.on_device_shape().layout(),
-                                LayoutUtil::MakeLayout({1, 0})));
+  EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
+      result_rowmaj.on_device_shape().layout(),
+      LayoutUtil::MakeLayout({1, 0})));
   LiteralTestUtil::ExpectR2Near<float>({{11.0f, 22.0f}, {33.0f, 44.0f}},
                                        ShapedBufferToLiteral(result_rowmaj),
                                        error_spec_);
@@ -205,7 +207,7 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResult) {
   ScopedShapedBuffer result =
       ExecuteLocallyOrDie(computation, {&x_array, &y_array});
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result.on_host_shape()));
+  EXPECT_TRUE(result.on_host_shape().IsTuple());
   EXPECT_EQ(3, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
   Literal result_literal = ShapedBufferToLiteral(result);
@@ -233,7 +235,7 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
   ScopedShapedBuffer result =
       ExecuteLocallyOrDie(computation, {&x_array, &y_array});
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result.on_host_shape()));
+  EXPECT_TRUE(result.on_host_shape().IsTuple());
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
   Literal result_literal = ShapedBufferToLiteral(result);
@@ -311,7 +313,7 @@ XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
   ScopedShapedBuffer result =
       ExecuteLocallyOrDie(computation, {&x_buffer, &y_buffer});
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result.on_host_shape()));
+  EXPECT_TRUE(result.on_host_shape().IsTuple());
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
   Literal result_literal = ShapedBufferToLiteral(result);
@@ -842,7 +844,8 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
        LiteralUtil::CreateR0<int64>(123456789000LL)}));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, InfeedTest) {
+// Disabled on interpreter backend since infeed HLO is unsupported.
+XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedTest)) {
   XlaBuilder builder(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = Infeed(&builder, shape);
@@ -867,7 +870,8 @@ XLA_TEST_F(LocalClientExecuteTest, InfeedTest) {
   LiteralTestUtil::ExpectR1Equal<float>({-4.0, 125.0, 45.0}, result);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, InfeedOutfeedTest) {
+// Disabled on interpreter backend since infeed/outfeed HLOs are unsupported.
+XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedOutfeedTest)) {
   XlaBuilder builder(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = Infeed(&builder, shape);
@@ -898,7 +902,7 @@ void BM_LocalClientOverhead(int num_iters) {
 
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
   auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
-  StreamExecutorMemoryAllocator allocator(platform, executors);
+  se::StreamExecutorMemoryAllocator allocator(platform, executors);
   LocalClient* client =
       ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie();
   auto* transfer_manager =

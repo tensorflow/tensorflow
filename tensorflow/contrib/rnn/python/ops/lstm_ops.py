@@ -19,20 +19,18 @@ from __future__ import print_function
 
 import abc
 
-from tensorflow.contrib.rnn.ops import gen_lstm_ops
-from tensorflow.contrib.util import loader
+import six
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_rnn_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
-from tensorflow.python.platform import resource_loader
-
-_lstm_ops_so = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_lstm_ops.so"))
 
 LayerRNNCell = rnn_cell_impl.LayerRNNCell  # pylint: disable=invalid-name
 
@@ -113,7 +111,7 @@ def _lstm_block_cell(x,
     ValueError: If cell_size is None.
   """
   if wci is None:
-    cell_size = cs_prev.get_shape().with_rank(2)[1].value
+    cell_size = cs_prev.get_shape().with_rank(2).dims[1].value
     if cell_size is None:
       raise ValueError("cell_size from `cs_prev` should not be None.")
     wci = array_ops.constant(0, dtype=dtypes.float32, shape=[cell_size])
@@ -121,7 +119,7 @@ def _lstm_block_cell(x,
     wco = wci
 
   # pylint: disable=protected-access
-  return gen_lstm_ops.lstm_block_cell(
+  return gen_rnn_ops.lstm_block_cell(
       x=x,
       cs_prev=cs_prev,
       h_prev=h_prev,
@@ -154,7 +152,7 @@ def _block_lstm(seq_len_max,
 
   Args:
     seq_len_max: A `Tensor` of type `int64`.
-    x: A list of at least 1 `Tensor` objects of the same type in: `float32`.
+    x: A list of at least 1 `Tensor` objects of the same type.
     w: A `Tensor`. Must have the same type as `x`.
     b: A `Tensor`. Must have the same type as `x`.
     cs_prev: A `Tensor`. Must have the same type as `x`.
@@ -187,26 +185,27 @@ def _block_lstm(seq_len_max,
   Raises:
     ValueError: If `b` does not have a valid shape.
   """
-  batch_size = x[0].get_shape().with_rank(2)[0].value
-  cell_size4 = b.get_shape().with_rank(1)[0].value
+  dtype = x[0].dtype
+  batch_size = x[0].get_shape().with_rank(2).dims[0].value
+  cell_size4 = b.get_shape().with_rank(1).dims[0].value
   if cell_size4 is None:
     raise ValueError("`b` shape must not be None.")
   cell_size = cell_size4 / 4
   zero_state = None
   if cs_prev is None or h_prev is None:
     zero_state = array_ops.constant(
-        0, dtype=dtypes.float32, shape=[batch_size, cell_size])
+        0, dtype=dtype, shape=[batch_size, cell_size])
   if cs_prev is None:
     cs_prev = zero_state
   if h_prev is None:
     h_prev = zero_state
   if wci is None:
-    wci = array_ops.constant(0, dtype=dtypes.float32, shape=[cell_size])
+    wci = array_ops.constant(0, dtype=dtype, shape=[cell_size])
     wcf = wci
     wco = wci
 
   # pylint: disable=protected-access
-  i, cs, f, o, ci, co, h = gen_lstm_ops.block_lstm(
+  i, cs, f, o, ci, co, h = gen_rnn_ops.block_lstm(
       seq_len_max=seq_len_max,
       x=array_ops.stack(x),
       cs_prev=cs_prev,
@@ -228,9 +227,6 @@ def _block_lstm(seq_len_max,
   # pylint: enable=invalid-name
 
 
-_lstm_block_cell_grad_outputs = ["cs_prev_grad", "dicfo"]
-
-
 @ops.RegisterGradient("LSTMBlockCell")
 def _LSTMBlockCellGrad(op, *grad):
   """Gradient for LSTMBlockCell."""
@@ -238,38 +234,38 @@ def _LSTMBlockCellGrad(op, *grad):
   (i, cs, f, o, ci, co, _) = op.outputs
   (_, cs_grad, _, _, _, _, h_grad) = grad
 
-  batch_size = x.get_shape().with_rank(2)[0].value
+  batch_size = x.get_shape().with_rank(2).dims[0].value
   if batch_size is None:
     batch_size = -1
-  input_size = x.get_shape().with_rank(2)[1].value
+  input_size = x.get_shape().with_rank(2).dims[1].value
   if input_size is None:
     raise ValueError("input_size from `x` should not be None.")
-  cell_size = cs_prev.get_shape().with_rank(2)[1].value
+  cell_size = cs_prev.get_shape().with_rank(2).dims[1].value
   if cell_size is None:
     raise ValueError("cell_size from `cs_prev` should not be None.")
 
-  (cs_prev_grad, dicfo, wci_grad, wcf_grad,
-   wco_grad) = gen_lstm_ops.lstm_block_cell_grad(
-       x,
-       cs_prev,
-       h_prev,
-       w,
-       wci,
-       wcf,
-       wco,
-       b,
-       i,
-       cs,
-       f,
-       o,
-       ci,
-       co,
-       cs_grad,
-       h_grad,
+  (cs_prev_grad, dgates, wci_grad, wcf_grad,
+   wco_grad) = gen_rnn_ops.lstm_block_cell_grad(
+       x=x,
+       cs_prev=cs_prev,
+       h_prev=h_prev,
+       w=w,
+       wci=wci,
+       wcf=wcf,
+       wco=wco,
+       b=b,
+       i=i,
+       cs=cs,
+       f=f,
+       o=o,
+       ci=ci,
+       co=co,
+       cs_grad=cs_grad,
+       h_grad=h_grad,
        use_peephole=op.get_attr("use_peephole"))
 
-  # Backprop from dicfo to xh.
-  xh_grad = math_ops.matmul(dicfo, w, transpose_b=True)
+  # Backprop from dgates to xh.
+  xh_grad = math_ops.matmul(dgates, w, transpose_b=True)
 
   x_grad = array_ops.slice(xh_grad, (0, 0), (batch_size, input_size))
   x_grad.get_shape().merge_with(x.get_shape())
@@ -278,54 +274,17 @@ def _LSTMBlockCellGrad(op, *grad):
                                 (batch_size, cell_size))
   h_prev_grad.get_shape().merge_with(h_prev.get_shape())
 
-  # Backprop from dicfo to w.
+  # Backprop from dgates to w.
   xh = array_ops.concat([x, h_prev], 1)
-  w_grad = math_ops.matmul(xh, dicfo, transpose_a=True)
+  w_grad = math_ops.matmul(xh, dgates, transpose_a=True)
   w_grad.get_shape().merge_with(w.get_shape())
 
-  # Backprop from dicfo to b.
-  b_grad = nn_ops.bias_add_grad(dicfo)
+  # Backprop from dgates to b.
+  b_grad = nn_ops.bias_add_grad(dgates)
   b_grad.get_shape().merge_with(b.get_shape())
 
   return (x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wcf_grad,
           wco_grad, b_grad)
-
-
-@ops.RegisterGradient("BlockLSTM")
-def _BlockLSTMGrad(op, *grad):
-  """Gradient for BlockLSTM."""
-  seq_len_max, x, cs_prev, h_prev, w, wci, wcf, wco, b = op.inputs
-  i, cs, f, o, ci, co, h = op.outputs
-
-  cs_grad = grad[1]
-  h_grad = grad[6]
-
-  (x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wcf_grad, wco_grad,
-   b_grad) = gen_lstm_ops.block_lstm_grad(
-       seq_len_max,
-       x,
-       cs_prev,
-       h_prev,
-       w,
-       wci,
-       wcf,
-       wco,
-       b,
-       i,
-       cs,
-       f,
-       o,
-       ci,
-       co,
-       h,
-       cs_grad,
-       h_grad,
-       use_peephole=op.get_attr("use_peephole"))
-
-  return [
-      None, x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wcf_grad,
-      wco_grad, b_grad
-  ]
 
 
 class LSTMBlockCell(LayerRNNCell):
@@ -363,7 +322,7 @@ class LSTMBlockCell(LayerRNNCell):
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.  By default this is "lstm_cell", for variable-name compatibility
-        with `tf.nn.rnn_cell.LSTMCell`.
+        with `tf.compat.v1.nn.rnn_cell.LSTMCell`.
 
       When restoring from CudnnLSTM-trained checkpoints, must use
       CudnnCompatibleLSTMBlockCell instead.
@@ -382,7 +341,7 @@ class LSTMBlockCell(LayerRNNCell):
         "scope": "lstm_cell"
     }
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
   @property
   def state_size(self):
@@ -393,10 +352,10 @@ class LSTMBlockCell(LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
-    if not inputs_shape[1].value:
+    if not inputs_shape.dims[1].value:
       raise ValueError(
           "Expecting inputs_shape[1] to be set: %s" % str(inputs_shape))
-    input_size = inputs_shape[1].value
+    input_size = inputs_shape.dims[1].value
     self._kernel = self.add_variable(
         self._names["W"], [input_size + self._num_units, self._num_units * 4])
     self._bias = self.add_variable(
@@ -439,6 +398,7 @@ class LSTMBlockCell(LayerRNNCell):
     return h, new_state
 
 
+@six.add_metaclass(abc.ABCMeta)
 class LSTMBlockWrapper(base_layer.Layer):
   """This is a helper class that provides housekeeping for LSTM cells.
 
@@ -511,10 +471,10 @@ class LSTMBlockWrapper(base_layer.Layer):
     inputs_shape = inputs.get_shape().with_rank(3)
     if not inputs_shape[2]:
       raise ValueError("Expecting inputs_shape[2] to be set: %s" % inputs_shape)
-    batch_size = inputs_shape[1].value
+    batch_size = inputs_shape.dims[1].value
     if batch_size is None:
       batch_size = array_ops.shape(inputs)[1]
-    time_len = inputs_shape[0].value
+    time_len = inputs_shape.dims[0].value
     if time_len is None:
       time_len = array_ops.shape(inputs)[0]
 
@@ -614,7 +574,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.  By default this is "lstm_cell", for variable-name compatibility
-        with `tf.nn.rnn_cell.LSTMCell`.
+        with `tf.compat.v1.nn.rnn_cell.LSTMCell`.
     """
     super(LSTMBlockFusedCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype)
@@ -624,7 +584,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
     self._use_peephole = use_peephole
 
     # Inputs must be 3-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=3)
+    self.input_spec = input_spec.InputSpec(ndim=3)
 
   @property
   def num_units(self):
@@ -632,7 +592,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
     return self._num_units
 
   def build(self, input_shape):
-    input_size = input_shape[2].value
+    input_size = input_shape.dims[2].value
     self._kernel = self.add_variable(
         "kernel", [input_size + self._num_units, self._num_units * 4])
     self._bias = self.add_variable(
@@ -674,7 +634,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
     """
 
     inputs_shape = inputs.get_shape().with_rank(3)
-    time_len = inputs_shape[0].value
+    time_len = inputs_shape.dims[0].value
     if time_len is None:
       time_len = array_ops.shape(inputs)[0]
 
@@ -686,11 +646,12 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       wci = wcf = wco = array_ops.zeros([self._num_units], dtype=dtype)
 
     if sequence_length is None:
-      max_seq_len = math_ops.to_int64(time_len)
+      max_seq_len = math_ops.cast(time_len, dtypes.int64)
     else:
-      max_seq_len = math_ops.to_int64(math_ops.reduce_max(sequence_length))
+      max_seq_len = math_ops.cast(math_ops.reduce_max(sequence_length),
+                                  dtypes.int64)
 
-    _, cs, _, _, _, _, h = gen_lstm_ops.block_lstm(
+    _, cs, _, _, _, _, h = gen_rnn_ops.block_lstm(
         seq_len_max=max_seq_len,
         x=inputs,
         cs_prev=initial_cell_state,

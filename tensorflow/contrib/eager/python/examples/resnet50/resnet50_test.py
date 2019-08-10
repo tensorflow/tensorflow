@@ -267,8 +267,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
         apply_grads = apply_gradients
         if defun:
           model.call = tfe.function(model.call)
-          # TODO(apassos) enable tf.function here
-          apply_grads = tfe.defun(apply_gradients)
+          apply_grads = tfe.function(apply_gradients)
 
         num_burn = 3
         num_iters = 10

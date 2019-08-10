@@ -1,0 +1,42 @@
+op {
+  graph_op_name: "TridiagonalMatMul"
+  visibility: HIDDEN
+  in_arg {
+    name: "superdiag"
+    description: <<END
+Tensor of shape `[..., 1, M]`, representing superdiagonals of
+tri-diagonal matrices to the left of multiplication. Last element is ingored.
+END
+  }
+  in_arg {
+    name: "maindiag"
+    description: <<END
+Tensor of shape `[..., 1, M]`, representing main diagonals of tri-diagonal
+matrices to the left of multiplication.
+END
+  }
+  in_arg {
+    name: "subdiag"
+    description: <<END
+Tensor of shape `[..., 1, M]`, representing subdiagonals of tri-diagonal
+matrices to the left of multiplication. First element is ingored.
+END
+  }
+  in_arg {
+    name: "rhs"
+    description: <<END
+Tensor of shape `[..., M, N]`, representing MxN matrices to the right of
+multiplication.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Tensor of shape `[..., M, N]` containing the product.
+END
+  }
+  summary: "Calculate product with tridiagonal matrix."
+  description: <<END
+Calculates product of two matrices, where left matrix is a tridiagonal matrix.
+END
+}

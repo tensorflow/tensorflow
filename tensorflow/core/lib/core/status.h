@@ -97,6 +97,40 @@ class Status {
   void SlowCopyFrom(const State* src);
 };
 
+// Helper class to manage multiple child status values.
+class StatusGroup {
+ public:
+  // Utility function to mark a Status as derived. By marking derived status,
+  // Derived status messages are ignored when reporting errors to end users.
+  static Status MakeDerived(const Status& s);
+  static bool IsDerived(const Status& s);
+
+  // Enable warning and error log collection for appending to the aggregated
+  // status. This function may be called more than once.
+  static void ConfigureLogHistory();
+
+  // Return a merged status with combined child status messages with a summary.
+  Status as_summary_status() const;
+  // Return a merged status with combined child status messages with
+  // concatenation.
+  Status as_concatenated_status() const;
+
+  bool ok() const { return ok_; }
+
+  // Augment this group with the child status `status`.
+  void Update(const Status& status);
+
+  // Attach recent warning and error log messages
+  void AttachLogMessages();
+  bool HasLogMessages() const { return !recent_logs_.empty(); }
+
+ private:
+  bool ok_ = true;
+  size_t num_ok_ = 0;
+  std::vector<Status> children_;
+  std::vector<std::string> recent_logs_;  // recent warning and error logs
+};
+
 inline Status::Status(const Status& s)
     : state_((s.state_ == NULL) ? NULL : new State(*s.state_)) {}
 

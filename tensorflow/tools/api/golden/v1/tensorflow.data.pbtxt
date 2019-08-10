@@ -2,11 +2,15 @@ path: "tensorflow.data"
 tf_module {
   member {
     name: "Dataset"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DatasetSpec"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "FixedLengthRecordDataset"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "Iterator"
@@ -18,14 +22,34 @@ tf_module {
   }
   member {
     name: "TFRecordDataset"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "TextLineDataset"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "experimental"
     mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "get_output_classes"
+    argspec: "args=[\'dataset_or_iterator\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_output_shapes"
+    argspec: "args=[\'dataset_or_iterator\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_output_types"
+    argspec: "args=[\'dataset_or_iterator\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "make_initializable_iterator"
+    argspec: "args=[\'dataset\', \'shared_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "make_one_shot_iterator"
+    argspec: "args=[\'dataset\'], varargs=None, keywords=None, defaults=None"
   }
 }

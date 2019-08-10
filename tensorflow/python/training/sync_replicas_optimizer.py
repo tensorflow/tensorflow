@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import types_pb2
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -31,6 +32,7 @@ from tensorflow.python.training import optimizer
 from tensorflow.python.training import queue_runner
 from tensorflow.python.training import session_manager
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -39,9 +41,12 @@ from tensorflow.python.util.tf_export import tf_export
 # rate according to the number of replicas. This change is introduced to be
 # consistent with how gradients are aggregated (averaged) within a batch in a
 # replica.
-@tf_export("train.SyncReplicasOptimizer")
+@tf_export(v1=["train.SyncReplicasOptimizer"])
 class SyncReplicasOptimizer(optimizer.Optimizer):
   """Class to synchronize, aggregate gradients and pass them to the optimizer.
+
+  This class is deprecated. For synchrononous training, please use [Distribution
+  Strategies](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute).
 
   In a typical asynchronous training environment, it's common to have some
   stale gradients. For example, with a N-replica asynchronous training,
@@ -105,7 +110,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   # Note that if you want to have 2 backup replicas, you can change
   # total_num_replicas=52 and make sure this number matches how many physical
   # replicas you started in your job.
-  opt = tf.train.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
+  opt = tf.compat.v1.train.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
                                  total_num_replicas=50)
 
   # Some models have startup_delays to help stabilize the model but when using
@@ -139,6 +144,12 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   ```
   """
 
+  @deprecation.deprecated(
+      None,
+      "The `SyncReplicaOptimizer` class is deprecated. For synchrononous "
+      "training, please use [Distribution Strategies](https://github.com/"
+      "tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute).",
+      warn_once=True)
   def __init__(self,
                opt,
                replicas_to_aggregate,
@@ -249,7 +260,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     # local_anchor op will be placed on this worker task by default.
     local_anchor = control_flow_ops.no_op()
     # Colocating local_step variable prevents it being placed on the PS.
-    with ops.colocate_with(local_anchor):
+    distribution_strategy = distribution_strategy_context.get_strategy()
+    with distribution_strategy.extended.colocate_vars_with(local_anchor):
       self._local_step = variable_scope.variable(
           initial_value=0,
           trainable=False,

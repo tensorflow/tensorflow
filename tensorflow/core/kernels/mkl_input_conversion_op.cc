@@ -295,17 +295,19 @@ class MklInputConversionOp : public OpKernel {
 //               Register kernel
 ///////////////////////////////////////////////////////////
 
-#define REGISTER_CPU(T)                                             \
-  REGISTER_KERNEL_BUILDER(Name("_MklInputConversion")               \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklInputConversionOp<CPUDevice, T>);
+#define REGISTER_CPU(T)                                        \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklInputConversion")                              \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklInputConversionOp<CPUDevice, T>);
 
 // TODO(nhasabni): We cannot support all number types since MklDnn does
 // not support types.
 // TF_CALL_NUMBER_TYPES(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
+TF_CALL_bfloat16(REGISTER_CPU);
 #undef REGISTER_CPU
 }  // namespace tensorflow
 #endif  // INTEL_MKL

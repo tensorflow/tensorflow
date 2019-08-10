@@ -100,8 +100,10 @@ class VectorSupportLibrary {
 
   llvm::Value* Floor(llvm::Value* a);
 
+  // Precondition: Neither `low` nor `high` is nan.
   llvm::Value* Clamp(llvm::Value* a, const llvm::APFloat& low,
                      const llvm::APFloat& high);
+
   llvm::Value* SplatFloat(const llvm::APFloat& d) {
     return GetConstantFloat(vector_type(), d);
   }
@@ -114,6 +116,9 @@ class VectorSupportLibrary {
   // raison d'etre) less cluttered.
 
   llvm::Value* FCmpEQMask(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* FCmpEQMask(llvm::Value* lhs, const llvm::APFloat& rhs) {
+    return FCmpEQMask(lhs, GetConstantFloat(lhs->getType(), rhs));
+  }
   llvm::Value* FCmpULEMask(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* FCmpOLTMask(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* FCmpOLTMask(llvm::Value* lhs, const llvm::APFloat& rhs) {

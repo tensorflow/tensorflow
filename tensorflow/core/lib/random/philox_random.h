@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 // Function qualifiers that need to work on both CPU and GPU.
-#if defined(__CUDACC__)
+#if defined(__CUDACC__) || defined(__HIPCC__)
 // For nvcc.
 #define PHILOX_DEVICE_FUNC __host__ __device__
 #define PHILOX_INLINE __inline__
@@ -49,6 +49,7 @@ namespace random {
 template <typename T, int ElementCount>
 class Array {
  public:
+  static const int kElementCount = ElementCount;
   PHILOX_DEVICE_INLINE Array() {
     for (int i = 0; i < ElementCount; ++i) {
       data_[i] = T(0);
@@ -130,6 +131,12 @@ class PhiloxRandom {
 
   PHILOX_DEVICE_INLINE
   PhiloxRandom(ResultType counter, Key key) : counter_(counter), key_(key) {}
+
+  PHILOX_DEVICE_INLINE
+  ResultType const& counter() const { return counter_; }
+
+  PHILOX_DEVICE_INLINE
+  Key const& key() const { return key_; }
 
   // Skip the specified number of samples of 128-bits in the current stream.
   PHILOX_DEVICE_INLINE

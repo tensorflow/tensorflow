@@ -200,9 +200,12 @@ def train_and_predict(
       tf.feature_column.embedding_column(
           categorical_column=categorical_column, dimension=10)]
   estimator = ts_estimators.TimeSeriesRegressor(
-      model=_LSTMModel(num_features=5, num_units=128,
-                       exogenous_feature_columns=exogenous_feature_columns),
-      optimizer=tf.train.AdamOptimizer(0.001), config=estimator_config,
+      model=_LSTMModel(
+          num_features=5,
+          num_units=128,
+          exogenous_feature_columns=exogenous_feature_columns),
+      optimizer=tf.compat.v1.train.AdamOptimizer(0.001),
+      config=estimator_config,
       # Set state to be saved across windows.
       state_manager=state_management.ChainingStateManager())
   reader = tf.contrib.timeseries.CSVReader(
@@ -254,11 +257,11 @@ def train_and_predict(
   if export_directory is None:
     export_directory = tempfile.mkdtemp()
   input_receiver_fn = estimator.build_raw_serving_input_receiver_fn()
-  export_location = estimator.export_savedmodel(
-      export_directory, input_receiver_fn)
+  export_location = estimator.export_saved_model(export_directory,
+                                                 input_receiver_fn)
   # Warm up and predict using the SavedModel
   with tf.Graph().as_default():
-    with tf.Session() as session:
+    with tf.compat.v1.Session() as session:
       signatures = tf.saved_model.loader.load(
           session, [tf.saved_model.tag_constants.SERVING], export_location)
       state = tf.contrib.timeseries.saved_model_utils.cold_start_filter(
@@ -293,4 +296,4 @@ def main(unused_argv):
 
 
 if __name__ == "__main__":
-  tf.app.run(main=main)
+  tf.compat.v1.app.run(main=main)

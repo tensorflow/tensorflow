@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -46,7 +47,7 @@ __all__ = [
     "instead of `tf.contrib.distributions`.",
     warn_once=True)
 def _static_ndims_from_shape(shape):
-  return shape.shape.with_rank_at_least(1)[0].value
+  return tensor_shape.dimension_value(shape.shape.with_rank_at_least(1)[0])
 
 
 @deprecation.deprecated(

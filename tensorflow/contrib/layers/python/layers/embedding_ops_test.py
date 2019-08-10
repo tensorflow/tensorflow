@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import itertools
 import math
+import sys
 
 import numpy as np
 
@@ -36,6 +37,7 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -48,11 +50,13 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
     assert num_shards > 0
     assert num_shards <= vocab_size
 
-    embedding_weights = partitioned_variables.create_partitioned_variables(
+    initializer = init_ops.truncated_normal_initializer(
+        mean=0.0, stddev=1.0 / math.sqrt(vocab_size), dtype=dtypes.float32)
+    embedding_weights = list(variable_scope.get_variable(
+        "embedding_weights",
         shape=[vocab_size, embed_dim],
-        slicing=[num_shards, 1],
-        initializer=init_ops.truncated_normal_initializer(
-            mean=0.0, stddev=1.0 / math.sqrt(vocab_size), dtype=dtypes.float32))
+        partitioner=partitioned_variables.fixed_size_partitioner(num_shards),
+        initializer=initializer))
     for w in embedding_weights:
       w.initializer.run()
     embedding_weights = [w.eval() for w in embedding_weights]
@@ -256,6 +260,13 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
                         embedding_weights, sparse_ids, sparse_weights)
 
 
+# pylint: disable=invalid-name
+def local_variable_scope():
+  """Create a variable scope named like the caller function."""
+  return variable_scope.variable_scope(sys._getframe(1).f_code.co_name)
+# pylint: enable=invalid-name
+
+
 class ScatteredEmbeddingLookupTest(test.TestCase):
 
   def setUp(self):
@@ -266,17 +277,18 @@ class ScatteredEmbeddingLookupTest(test.TestCase):
     assert num_shards > 0
     assert num_shards <= size
 
-    embedding_weights = partitioned_variables.create_partitioned_variables(
+    embedding_weights = list(variable_scope.get_variable(
+        "embedding_weights",
         shape=[size],
-        slicing=[num_shards],
+        partitioner=partitioned_variables.fixed_size_partitioner(num_shards),
         initializer=init_ops.truncated_normal_initializer(
-            mean=0.0, stddev=1.0, dtype=dtypes.float32))
+            mean=0.0, stddev=1.0, dtype=dtypes.float32)))
     for w in embedding_weights:
       w.initializer.run()
     return embedding_weights
 
   def test_scattered_embedding_consistency(self):
-    with self.cached_session():
+    with self.cached_session(), local_variable_scope():
       embedding_weights = self._random_weights()
       values = constant_op.constant(["foo", "foo"])
 
@@ -288,7 +300,7 @@ class ScatteredEmbeddingLookupTest(test.TestCase):
                           embedding_lookup_result[1])
 
   def test_scattered_embedding_multiple_partition(self):
-    with self.cached_session():
+    with self.cached_session(), local_variable_scope():
       embedding_weights = self._random_weights(num_shards=7)
       values = constant_op.constant([4, 4, 5])
 
@@ -304,7 +316,7 @@ class ScatteredEmbeddingLookupTest(test.TestCase):
       self.assertGreater(embedding_diff, 0)
 
   def test_scattered_embedding_coverage(self):
-    with self.cached_session():
+    with self.cached_session(), local_variable_scope():
       size = 8
       embedding_weights = self._random_weights(size=size, num_shards=3)
       values = constant_op.constant(["foo"])
@@ -316,7 +328,7 @@ class ScatteredEmbeddingLookupTest(test.TestCase):
       self.assertEqual(len(np.unique(embedding_lookup_result[0])), size)
 
   def test_scattered_embedding_multi_dimension(self):
-    with self.cached_session():
+    with self.cached_session(), local_variable_scope():
       embedding_weights = self._random_weights()
       values = constant_op.constant([["foo", "bar", "bar"],
                                      ["bar", "bar", "foo"]])
@@ -329,7 +341,7 @@ class ScatteredEmbeddingLookupTest(test.TestCase):
                           embedding_lookup_result[1][2])
 
   def test_scattered_embedding_lookup_sparse(self):
-    with self.cached_session():
+    with self.cached_session(), local_variable_scope():
       embedding_weights = self._random_weights(num_shards=3)
       sparse_tensor = sparse_tensor_lib.SparseTensor(
           values=["foo", "bar", "foo", "bar"],
@@ -358,7 +370,7 @@ class ScatteredEmbeddingLookupTest(test.TestCase):
     embeds = np.random.randn(n_embed, d_embed)
     idx = np.random.randint(0, n_embed, idx_shape)
 
-    with self.cached_session():
+    with self.cached_session(), local_variable_scope():
       embedded_np = embeds[idx]
       embedded_tf = embedding_ops.embedding_lookup_unique(embeds, idx).eval()
 
@@ -370,7 +382,7 @@ class ScatteredEmbeddingLookupTest(test.TestCase):
     idx = np.random.randint(0, 5, 10)
     idx2d = np.random.randint(0, 5, (10, 2))
 
-    with self.cached_session():
+    with self.cached_session(), local_variable_scope():
       embedded_np = embeds[idx]
       embedded_np2d = embeds[idx2d]
       embedded_tf = embedding_ops.embedding_lookup_unique(embeds, idx).eval()
@@ -398,17 +410,18 @@ class SampledScatteredEmbeddingLookupTest(test.TestCase):
     assert num_shards > 0
     assert num_shards <= size
 
-    embedding_weights = partitioned_variables.create_partitioned_variables(
+    embedding_weights = list(variable_scope.get_variable(
+        "embedding_weights",
         shape=[size],
-        slicing=[num_shards],
+        partitioner=partitioned_variables.fixed_size_partitioner(num_shards),
         initializer=init_ops.truncated_normal_initializer(
-            mean=0.0, stddev=1.0, dtype=dtypes.float32))
+            mean=0.0, stddev=1.0, dtype=dtypes.float32)))
     for w in embedding_weights:
       w.initializer.run()
     return embedding_weights
 
   def test_hashed_embedding_consistency(self):
-    with self.cached_session():
+    with self.cached_session(), local_variable_scope():
       embedding_weights = self._random_weights()
       values = constant_op.constant(["foo", "foo"])
       # The first three sampled_candidates are equal, so the first three
@@ -429,7 +442,7 @@ class SampledScatteredEmbeddingLookupTest(test.TestCase):
                           embedding_lookup_result[1][3])
 
   def test_hashed_embedding_multi_dimension(self):
-    with self.cached_session():
+    with self.cached_session(), local_variable_scope():
       embedding_weights = self._random_weights()
       values = constant_op.constant([["foo", "bar", "bar"],
                                      ["bar", "bar", "foo"]])
@@ -691,7 +704,6 @@ class EmbeddingLookupSparseWithDistributedAggregationTest(test.TestCase):
       index += num_val
     return grouped_vals
 
-  @test_util.enable_c_shapes
   def testEmbeddingLookupSparse(self):
     vocab_size = 13
     batch_size = 10

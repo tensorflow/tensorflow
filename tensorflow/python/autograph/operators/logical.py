@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Logical operators, including comparison and bool operators."""
+"""Logical boolean operators: not, and, or."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -26,7 +26,17 @@ from tensorflow.python.ops import gen_math_ops
 def not_(a):
   """Functional form of "not"."""
   if tensor_util.is_tensor(a):
-    return gen_math_ops.logical_not(a)
+    return _tf_not(a)
+  return _py_not(a)
+
+
+def _tf_not(a):
+  """Implementation of the "not_" operator for TensorFlow."""
+  return gen_math_ops.logical_not(a)
+
+
+def _py_not(a):
+  """Default Python implementation of the "not_" operator."""
   return not a
 
 
@@ -88,52 +98,3 @@ def _py_equal(a, b):
 def not_eq(a, b):
   """Functional form of "not-equal"."""
   return not_(eq(a, b))
-
-
-# Default implementation for the remainings.
-
-
-def gt(a, b):
-  """Functional form of "less-than"."""
-  return a > b
-
-
-def gt_e(a, b):
-  """Functional form of "less-than"."""
-  return a >= b
-
-
-def is_(a, b):
-  """Functional form of "less-than"."""
-  return a is b
-
-
-def is_not(a, b):
-  """Functional form of "less-than"."""
-  return a is not b
-
-
-def in_(a, b):
-  """Functional form of "less-than"."""
-  # TODO(mdan): in and not_in should probably be convertible for some types.
-  return a in b
-
-
-def lt(a, b):
-  """Functional form of "less-than"."""
-  return a < b
-
-
-def lt_e(a, b):
-  """Functional form of "less-than"."""
-  return a <= b
-
-
-def not_in(a, b):
-  """Functional form of "less-than"."""
-  return a not in b
-
-
-def u_sub(a):
-  """Functional form of "unary-sub"."""
-  return -a

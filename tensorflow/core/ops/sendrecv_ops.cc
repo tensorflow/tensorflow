@@ -106,8 +106,8 @@ REGISTER_OP("_HostRecv")
     .Doc(R"doc(
 Receives the named tensor from send_device on recv_device.
 
-_HostRecv requires its input on host memory whereas _Recv requires its
-input on device memory.
+_HostRecv produces its output on host memory whereas _Recv produces its
+output on device memory.
 
 tensor: The tensor to receive.
 tensor_name: The name of the tensor to receive.

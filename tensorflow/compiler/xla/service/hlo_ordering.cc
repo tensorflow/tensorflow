@@ -66,24 +66,31 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
     }
   }
 
-  // If the common ancestor is a conditional instruction, even though the true
-  // and false computations are not really ordered per-se, we define the true
-  // computation to be ordered before the false one.
-  // This ensures that buffers can still be shared among the two computations
+  // If the common ancestor is a conditional instruction, even though the branch
+  // computations are not really ordered per-se, we define the 0th branch
+  // computation to be ordered before the 1st one, before the 2nd and so forth.
+  // This ensures that buffers can still be shared among branch computations
   // as they will forcibly have disjoint liveness.
   if (a_ancestor == b_ancestor &&
-      a_ancestor->opcode() == HloOpcode::kConditional) {
-    const HloComputation* true_computation = a_ancestor->true_computation();
-    const HloComputation* false_computation = a_ancestor->false_computation();
-    if (call_graph_->InstructionIsNestedIn(a, true_computation) &&
-        call_graph_->InstructionIsNestedIn(b, false_computation)) {
+      (a_ancestor->opcode() == HloOpcode::kConditional)) {
+    int a_branch = -1;
+    int b_branch = -1;
+    for (int j = 0; j < a_ancestor->branch_count(); ++j) {
+      if (call_graph_->InstructionIsNestedIn(
+              a, a_ancestor->branch_computation(j))) {
+        a_branch = j;
+      }
+      if (call_graph_->InstructionIsNestedIn(
+              b, a_ancestor->branch_computation(j))) {
+        b_branch = j;
+      }
+    }
+    if (a_branch != -1 && a_branch < b_branch) {
       return true;
     }
-    // If 'b' is the conditional ancestor, and 'a' is within the true or false
-    // computations, 'a' executes before 'b'.
-    if (b == a_ancestor &&
-        (call_graph_->InstructionIsNestedIn(a, true_computation) ||
-         call_graph_->InstructionIsNestedIn(a, false_computation))) {
+    // If 'b' is the conditional ancestor, and 'a' is within a branch
+    // computation, 'a' executes before 'b'.
+    if (b == a_ancestor && a_branch != -1) {
       return true;
     }
   }
@@ -144,17 +151,17 @@ bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
            b.defining_instruction()->while_condition()))) {
     return true;
   }
-  // If 'b' is a conditional phi and 'a' is in the true or false computation,
-  // then 'a' executes before 'b'.
+  // If 'b' is a conditional phi and 'a' is in some branch computation, then 'a'
+  // executes before 'b'.
   if (b.is_phi() &&
-      b.defining_instruction()->opcode() == HloOpcode::kConditional &&
-      (call_graph_->InstructionIsNestedIn(
-           a.defining_instruction(),
-           b.defining_instruction()->true_computation()) ||
-       call_graph_->InstructionIsNestedIn(
-           a.defining_instruction(),
-           b.defining_instruction()->false_computation()))) {
-    return true;
+      b.defining_instruction()->opcode() == HloOpcode::kConditional) {
+    for (int j = 0; j < b.defining_instruction()->branch_count(); ++j) {
+      if (call_graph_->InstructionIsNestedIn(
+              a.defining_instruction(),
+              b.defining_instruction()->branch_computation(j))) {
+        return true;
+      }
+    }
   }
   return ExecutesBefore(a.defining_instruction(), b.defining_instruction());
 }
@@ -183,16 +190,29 @@ bool HloOrdering::UseIsBeforeValueDefinition(
   }
 
   // The use at a while is an input to a phi, and logically occurs before values
-  // are defined in the body or condition computations.
+  // are defined in the body. Note that the use is *not* before the value if the
+  // value is defined in the condition and is not the condition parameter, since
+  // the input of a while's life range is only ended at the start the body.
   if (use.instruction->opcode() == HloOpcode::kWhile) {
     const HloInstruction* xla_while = use.instruction;
     if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
-                                           xla_while->while_body()) ||
-        call_graph_->InstructionIsNestedIn(value.defining_instruction(),
-                                           xla_while->while_condition())) {
+                                           xla_while->while_body())) {
       VLOG(4) << "  use is while " << use.instruction->name()
-              << " and def is in condition or body";
+              << " and def is in body";
       return true;
+    }
+    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           xla_while->while_condition())) {
+      if (value.defining_instruction() !=
+          xla_while->while_condition()->parameter_instruction(0)) {
+        VLOG(4) << "  use is while " << use.instruction->name()
+                << " and def is in condition and is not the parameter";
+        return false;
+      } else {
+        VLOG(4) << "  use is while " << use.instruction->name()
+                << " and def is in condition and is the parameter";
+        return true;
+      }
     }
   }
 
@@ -225,17 +245,14 @@ bool HloOrdering::UseIsBeforeValueDefinition(
 
   if (use.instruction->opcode() == HloOpcode::kConditional) {
     const HloInstruction* conditional = use.instruction;
-    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
-                                           conditional->true_computation())) {
-      VLOG(4) << "  use is conditional " << use.instruction->name()
-              << " and def is in TRUE computation";
-      return true;
-    }
-    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
-                                           conditional->false_computation())) {
-      VLOG(4) << "  use is conditional " << use.instruction->name()
-              << " and def is in FALSE computation";
-      return true;
+    for (int j = 0; j < conditional->branch_count(); ++j) {
+      if (call_graph_->InstructionIsNestedIn(
+              value.defining_instruction(),
+              conditional->branch_computation(j))) {
+        VLOG(4) << "  use is conditional " << use.instruction->name()
+                << " and def is in " << j << "th branch computation";
+        return true;
+      }
     }
     if (value.defining_instruction() == use.instruction) {
       VLOG(4) << "  use is conditional " << use << " and def is "
@@ -259,8 +276,21 @@ bool HloOrdering::LiveRangeStrictlyBefore(
   }
 
   if (a.live_out_of_module()) {
-    VLOG(4) << a << " is live out of module and defined before " << b;
+    VLOG(4) << a << " is live out of module and not defined before " << b;
     return false;
+  }
+
+  // If the root instruction aliases the buffer 'a', the live range of 'a' is
+  // until the end of the computation and can never be strictly before another
+  // buffer nested in the same computation. This is needed to prevent the root
+  // instruction's buffers from being reused by later instructions even when
+  // the root is not the last instruction in the schedule.
+  for (const HloPosition& pos : a.positions()) {
+    if (pos.instruction->parent()->root_instruction() == pos.instruction &&
+        call_graph().InstructionIsNestedIn(b.instruction(),
+                                           pos.instruction->parent())) {
+      return false;
+    }
   }
 
   // All uses of 'a' must be before 'b' is defined.
@@ -334,7 +364,7 @@ DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
   // ordering based on dependencies. ExecutesBefore will return true iff there
   // exists a path in the HLO computation graph from 'a' to 'b'.
   for (auto* computation : module->MakeNonfusionComputations()) {
-    predecessors_.emplace(computation, computation->ComputeReachability());
+    predecessors_.emplace(computation, HloReachabilityMap::Build(computation));
   }
 }
 
@@ -356,8 +386,7 @@ void SequentialHloOrdering::Initialize() {
   // Create a map from instruction to its order position.
   TF_DCHECK_OK(schedule_.Verify());
   for (const auto& computation_sequence : schedule_.sequences()) {
-    const std::vector<const HloInstruction*>& order =
-        computation_sequence.second.instructions();
+    const auto& order = computation_sequence.second.instructions();
     for (int i = 0; i < order.size(); ++i) {
       InsertOrDie(&order_position_, order[i], i);
     }
@@ -368,17 +397,16 @@ bool SequentialHloOrdering::ExecutesBeforeInSameComputation(
     const HloInstruction* a, const HloInstruction* b) const {
   CHECK_EQ(a->parent(), b->parent());
   // If either instruction is not in the order, then 'a' and 'b' are unordered.
-  if (order_position_.count(a) == 0 || order_position_.count(b) == 0) {
+  if (!order_position_.contains(a) || !order_position_.contains(b)) {
     return false;
   }
   return order_position_.at(a) < order_position_.at(b);
 }
 
-const std::vector<const HloInstruction*>*
-SequentialHloOrdering::SequentialOrder(
+const HloInstructionSequence* SequentialHloOrdering::SequentialOrder(
     const HloComputation& computation) const {
   return schedule_.is_computation_scheduled(&computation)
-             ? &schedule_.sequence(&computation).instructions()
+             ? &schedule_.sequence(&computation)
              : nullptr;
 }
 

@@ -22,8 +22,8 @@ android {
         }
         externalNativeBuild {
             cmake {
-                arguments '-DANDROID_TOOLCHAIN=gcc',
-                          '-DANDROID_STL=gnustl_static'
+                arguments '-DANDROID_TOOLCHAIN=clang',
+                          '-DANDROID_STL=c++_static'
             }
         }
     }
@@ -70,7 +70,7 @@ if (ndkDir == null || ndkDir == "") {
     ndkDir = System.getenv('ANDROID_NDK_HOME')
 }
 
-if(! Os.isFamily(Os.FAMILY_WINDOWS)) {
+if (!Os.isFamily(Os.FAMILY_WINDOWS)) {
     // This script is for non-Windows OS. For Windows OS, MANUALLY build
     // (or copy the built) libs/headers to the
     //    ${TENSORFLOW_ROOT_DIR}/tensorflow/contrib/makefile/gen

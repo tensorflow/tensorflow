@@ -142,7 +142,7 @@ class Chain(bijector.Bijector):
    softplus = Softplus()
    Chain([exp, softplus]).forward(x)
    = exp.forward(softplus.forward(x))
-   = tf.exp(tf.log(1. + tf.exp(x)))
+   = tf.exp(tf.math.log(1. + tf.exp(x)))
    = 1. + tf.exp(x)
    ```
 
@@ -153,8 +153,8 @@ class Chain(bijector.Bijector):
    softplus = Softplus()
    Chain([exp, softplus]).inverse(y)
    = softplus.inverse(exp.inverse(y))
-   = tf.log(tf.exp(tf.log(y)) - 1.)
-   = tf.log(y - 1.)
+   = tf.math.log(tf.exp(tf.math.log(y)) - 1.)
+   = tf.math.log(y - 1.)
    ```
 
   """

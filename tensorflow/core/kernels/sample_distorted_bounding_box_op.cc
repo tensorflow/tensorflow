@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 // See docs in ../ops/image_ops.cc.
 #include <math.h>
+#include <cmath>
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 
@@ -122,8 +123,8 @@ bool GenerateRandomCrop(int original_width, int original_height,
   const float max_area =
       max_relative_crop_area * original_width * original_height;
 
-  int height = static_cast<int>(lrintf(sqrt(min_area / aspect_ratio)));
-  int max_height = static_cast<int>(lrintf(sqrt(max_area / aspect_ratio)));
+  int height = static_cast<int>(lrintf(std::sqrt(min_area / aspect_ratio)));
+  int max_height = static_cast<int>(lrintf(std::sqrt(max_area / aspect_ratio)));
 
   if (lrintf(max_height * aspect_ratio) > original_width) {
     // We must find the smallest max_height satisfying

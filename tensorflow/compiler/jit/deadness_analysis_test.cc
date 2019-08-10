@@ -37,6 +37,22 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+se::port::StatusOr<bool> HasInputsWithMismatchingDeadness(
+    const DeadnessAnalysis& deadness_analysis, const Node& n) {
+  absl::optional<DeadnessAnalysis::DeadnessPredicate> pred;
+  for (const Edge* edge : n.in_edges()) {
+    TF_ASSIGN_OR_RETURN(
+        DeadnessAnalysis::DeadnessPredicate this_pred,
+        deadness_analysis.GetPredicateFor(edge->src(), edge->src_output()));
+    if (pred && *pred != this_pred) {
+      return true;
+    }
+    pred = this_pred;
+  }
+
+  return false;
+}
+
 using deadness_analysis_internal::ComputePredicates;
 using deadness_analysis_internal::PredicateMapTy;
 
@@ -123,11 +139,11 @@ InductionVarInfo CreateInductionVariable(const Scope& root,
   Output increment_by = ops::Const(root.WithOpName(prefix + "/incr"), 1);
   Output final_value = ops::Const(root.WithOpName(prefix + "/final"), 10);
   Output loop_cond_expr =
-      ops::Less(root.WithOpName(prefix + "/less"), iv.output, final_value);
-  Output loop_cond =
-      ops::LoopCond(root.WithOpName(prefix + "/cond"), loop_cond_expr);
-  ops::Switch latch(root.WithOpName(prefix + "/latch"), iv.output, loop_cond);
-  ops::internal::Exit exit(root.WithOpName(prefix + "/exit"), iv.output);
+      ops::Less(root.WithOpName(prefix + "/cond"), iv.output, final_value);
+  ops::Switch latch(root.WithOpName(prefix + "/latch"), iv.output,
+                    loop_cond_expr);
+  ops::internal::Exit exit(root.WithOpName(prefix + "/exit"),
+                           latch.output_false);
   Output iv_next = ops::Add(root.WithOpName(prefix + "/ivnext"),
                             latch.output_true, increment_by);
   Output next_iteration =
@@ -139,7 +155,7 @@ InductionVarInfo CreateInductionVariable(const Scope& root,
   root.graph()->AddControlEdge(iv.output.node(), increment_by.node());
   root.graph()->AddControlEdge(iv.output.node(), final_value.node());
 
-  return {iv.output, loop_cond};
+  return {iv.output, loop_cond_expr};
 }
 
 InductionVarInfo CreateInductionVariable(const Scope& root,
@@ -191,7 +207,8 @@ DependentInductionVar CreateDependentLoopInvariantValue(
                                             value, frame_name);
   ops::Merge iv(root.WithOpName(prefix + "/iv"), {enter_value, enter_value});
   ops::Switch latch(root.WithOpName(prefix + "/latch"), iv.output, loop_cond);
-  ops::internal::Exit exit(root.WithOpName(prefix + "/exit"), iv.output);
+  ops::internal::Exit exit(root.WithOpName(prefix + "/exit"),
+                           latch.output_false);
   Output next_iteration = ops::NextIteration(
       root.WithOpName(prefix + "/next_iteration"), latch.output_true);
   CHECK(root.graph()
@@ -218,7 +235,10 @@ TEST(DeadnessAnalysisTest, BasicPositive) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, BasicNegative) {
@@ -231,7 +251,10 @@ TEST(DeadnessAnalysisTest, BasicNegative) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, AndIsCommutative) {
@@ -259,11 +282,27 @@ TEST(DeadnessAnalysisTest, AndIsCommutative) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*live0.node()));
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*live1.node()));
+  bool has_inputs_with_mismatching_deadness;
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*halfdead0.node()));
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*halfdead1.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *live0.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *live1.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *halfdead0.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *halfdead1.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, AndIsAssociative) {
@@ -286,7 +325,10 @@ TEST(DeadnessAnalysisTest, AndIsAssociative) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, OrIsCommutative) {
@@ -311,11 +353,27 @@ TEST(DeadnessAnalysisTest, OrIsCommutative) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*live0.node()));
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*live1.node()));
+  bool has_inputs_with_mismatching_deadness;
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*halfdead0.node()));
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*halfdead1.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *live0.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *live1.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *halfdead0.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *halfdead1.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, OrIsAssociative) {
@@ -335,7 +393,10 @@ TEST(DeadnessAnalysisTest, OrIsAssociative) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, AndOfOr) {
@@ -357,7 +418,10 @@ TEST(DeadnessAnalysisTest, AndOfOr) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add2.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add2.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, OrOfAnd) {
@@ -381,7 +445,10 @@ TEST(DeadnessAnalysisTest, OrOfAnd) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add2.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add2.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, AndOrDistributiveSimplified) {
@@ -429,7 +496,10 @@ TEST(DeadnessAnalysisTest, AndOrDistributive) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add3.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add3.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, Ternary) {
@@ -453,7 +523,10 @@ TEST(DeadnessAnalysisTest, Ternary) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, Recv) {
@@ -468,7 +541,10 @@ TEST(DeadnessAnalysisTest, Recv) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, HostRecv) {
@@ -483,7 +559,10 @@ TEST(DeadnessAnalysisTest, HostRecv) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, Loop) {
@@ -504,8 +583,17 @@ TEST(DeadnessAnalysisTest, Loop) {
     std::unique_ptr<DeadnessAnalysis> result;
     TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-    EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add0.node()));
-    EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add1.node()));
+    bool has_inputs_with_mismatching_deadness;
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        has_inputs_with_mismatching_deadness,
+        HasInputsWithMismatchingDeadness(*result, *add0.node()));
+    EXPECT_TRUE(has_inputs_with_mismatching_deadness);
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        has_inputs_with_mismatching_deadness,
+        HasInputsWithMismatchingDeadness(*result, *add1.node()));
+    EXPECT_TRUE(has_inputs_with_mismatching_deadness);
   }
   {
     PredicateMapTy predicate_map;
@@ -513,24 +601,27 @@ TEST(DeadnessAnalysisTest, Loop) {
 
     // In theory we should be able to tell that iv0/cond:0 and iv1/cond:0
     // produce the same deadness.  But we're not that smart today.
-    EXPECT_EQ(predicate_map[ControlOutputFor(iv0)], "{#true,&,*iv0/cond:0}");
-    EXPECT_EQ(predicate_map[ControlOutputFor(iv1)], "{#true,&,*iv1/cond:0}");
-    EXPECT_EQ(predicate_map[ControlOutputFor(iv2)], "{#true,&,*iv2/cond:0}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv0)],
+              "{#true,&,*iv0/cond:0}<fr0>");
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv1)],
+              "{#true,&,*iv1/cond:0}<fr0>");
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv2)],
+              "{#true,&,*iv2/cond:0}<fr0>");
     EXPECT_EQ(predicate_map[ControlOutputFor(add0)],
-              "({#true,&,*iv1/cond:0} & {#true,&,*iv0/cond:0})");
+              "({#true,&,*iv0/cond:0}<fr0> & {#true,&,*iv1/cond:0}<fr0>)");
     EXPECT_EQ(predicate_map[ControlOutputFor(add1)],
-              "({#true,&,*iv1/cond:0} & {#true,&,*iv2/cond:0})");
+              "({#true,&,*iv1/cond:0}<fr0> & {#true,&,*iv2/cond:0}<fr0>)");
   }
 }
 
 TEST(DeadnessAnalysisTest, ControlEquivalentLoopBodies) {
   Scope root = Scope::NewRootScope().ExitOnError();
-  InductionVarInfo iv = CreateInductionVariable(root, "iv0", "frame", 0);
+  InductionVarInfo iv = CreateInductionVariable(root, "iv0", "loop", 0);
   Output dependent_iv0 =
-      CreateDependentLoopInvariantValue(root, "div0", "frame", iv.loop_cond, 0)
+      CreateDependentLoopInvariantValue(root, "div0", "loop", iv.loop_cond, 0)
           .induction_var;
   Output dependent_iv1 =
-      CreateDependentLoopInvariantValue(root, "div1", "frame", iv.loop_cond, 0)
+      CreateDependentLoopInvariantValue(root, "div1", "loop", iv.loop_cond, 0)
           .induction_var;
   Output add0 = ops::Add(root.WithOpName("add0"), dependent_iv0, dependent_iv1);
 
@@ -540,20 +631,38 @@ TEST(DeadnessAnalysisTest, ControlEquivalentLoopBodies) {
     std::unique_ptr<DeadnessAnalysis> result;
     TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-    EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add0.node()));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool has_inputs_with_mismatching_deadness,
+        HasInputsWithMismatchingDeadness(*result, *add0.node()));
+    EXPECT_FALSE(has_inputs_with_mismatching_deadness);
   }
   {
     PredicateMapTy predicate_map;
-    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
+                                   /*enable_optimistic=*/true));
 
     EXPECT_EQ(predicate_map[ControlOutputFor(iv.induction_var)],
-              "{#true,&,*iv0/cond:0}");
+              "{#true,&,*iv0/cond:0}<loop>");
     EXPECT_EQ(predicate_map[ControlOutputFor(dependent_iv0)],
-              "{#true,&,(*iv0/cond:0 & iv0/iv:0)}");
+              predicate_map[ControlOutputFor(iv.induction_var)]);
     EXPECT_EQ(predicate_map[ControlOutputFor(dependent_iv1)],
-              "{#true,&,(*iv0/cond:0 & iv0/iv:0)}");
+              predicate_map[ControlOutputFor(iv.induction_var)]);
     EXPECT_EQ(predicate_map[ControlOutputFor(add0)],
-              "{#true,&,(*iv0/cond:0 & iv0/iv:0)}");
+              predicate_map[ControlOutputFor(iv.induction_var)]);
+  }
+  {
+    PredicateMapTy predicate_map;
+    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
+                                   /*enable_optimistic=*/false));
+
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv.induction_var)],
+              "{#true,&,*iv0/cond:0}<loop>");
+    EXPECT_EQ(predicate_map[ControlOutputFor(dependent_iv0)],
+              "{#true,&,(iv0/iv:0 & *iv0/cond:0)}<loop>");
+    EXPECT_EQ(predicate_map[ControlOutputFor(dependent_iv1)],
+              "{#true,&,(iv0/iv:0 & *iv0/cond:0)}<loop>");
+    EXPECT_EQ(predicate_map[ControlOutputFor(add0)],
+              "{#true,&,(iv0/iv:0 & *iv0/cond:0)}<loop>");
   }
 }
 
@@ -566,16 +675,6 @@ TEST(DeadnessAnalysisTest, LoopInvariantPredicateOnBackedge) {
       CreateDependentLoopInvariantValue(root, "div0", "frame", iv.loop_cond, 0);
   FixupSourceAndSinkEdges(root.graph());
 
-  // To make deadness analysis think that dependent_iv is a loop we need an RPO
-  // that visits the merge before the backedge.  This is a legal RPO for
-  // deadness analysis since it ignores NextIteration->Merge edges during RPO.
-  // Right now dependent_iv has an edge from Merge to NextIteration so do the
-  // RPO with this edge in place.  Then remove this edge to get our test case.
-  std::vector<Node*> rpo;
-  GetReversePostOrder(*root.graph(), &rpo, /*stable_comparator=*/{},
-                      /*edge_filter=*/[](const Edge& edge) {
-                        return !edge.src()->IsNextIteration();
-                      });
   TF_ASSERT_OK(root.graph()->UpdateEdge(
       iv.induction_var.node(), 0, dependent_iv.latch.output_true.node(), 0));
 
@@ -583,7 +682,16 @@ TEST(DeadnessAnalysisTest, LoopInvariantPredicateOnBackedge) {
 
   {
     PredicateMapTy predicate_map;
-    TF_ASSERT_OK(ComputePredicates(*root.graph(), rpo, &predicate_map));
+    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
+                                   /*enable_optimistic=*/true));
+
+    EXPECT_EQ(predicate_map[ControlOutputFor(dependent_iv.induction_var)],
+              "{#true,&,*iv0/cond:0}<frame>");
+  }
+  {
+    PredicateMapTy predicate_map;
+    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
+                                   /*enable_optimistic=*/false));
 
     EXPECT_EQ(predicate_map[ControlOutputFor(dependent_iv.induction_var)],
               "div0/iv:0");
@@ -593,32 +701,33 @@ TEST(DeadnessAnalysisTest, LoopInvariantPredicateOnBackedge) {
 TEST(DeadnessAnalysisTest, ControlEquivalentNestedLoopBodies) {
   Scope root = Scope::NewRootScope().ExitOnError();
   InductionVarInfo iv_outer =
-      CreateInductionVariable(root, "iv_outer", "frame", 0);
+      CreateInductionVariable(root, "iv_outer", "outer_loop", 0);
+  Output enter_constant_outer_loop = ops::internal::Enter(
+      root.WithOpName("constant_enter_outer_loop"),
+      ops::Const(root.WithOpName("constant"), 5), "outer_loop",
+      ops::internal::Enter::Attrs().IsConstant(true));
   ops::Switch inner_value(root.WithOpName("outer_is_live"),
-                          ops::Const(root.WithOpName("constant"), 5),
-                          iv_outer.loop_cond);
+                          enter_constant_outer_loop, iv_outer.loop_cond);
   InductionVarInfo iv_inner = CreateInductionVariable(
-      root, "iv_inner", "frame",
-      ops::internal::Enter(root.WithOpName("iv_inner/enter"),
-                           inner_value.output_true, "frame_inner"));
+      root, "iv_inner", "inner_loop", inner_value.output_true);
 
   Output dependent_outer_iv0 =
-      CreateDependentLoopInvariantValue(root, "dependent_outer_iv0", "frame",
-                                        iv_outer.loop_cond, 0)
+      CreateDependentLoopInvariantValue(root, "dependent_outer_iv0",
+                                        "outer_loop", iv_outer.loop_cond, 0)
           .induction_var;
   Output dependent_outer_iv1 =
-      CreateDependentLoopInvariantValue(root, "dependent_outer_iv1", "frame",
-                                        iv_outer.loop_cond, 0)
+      CreateDependentLoopInvariantValue(root, "dependent_outer_iv1",
+                                        "outer_loop", iv_outer.loop_cond, 0)
           .induction_var;
 
-  Output dependent_inner_iv0 =
-      CreateDependentLoopInvariantValue(root, "dependent_inner_iv0", "frame",
-                                        iv_inner.loop_cond, dependent_outer_iv0)
-          .induction_var;
-  Output dependent_inner_iv1 =
-      CreateDependentLoopInvariantValue(root, "dependent_inner_iv1", "frame",
-                                        iv_inner.loop_cond, dependent_outer_iv1)
-          .induction_var;
+  Output dependent_inner_iv0 = CreateDependentLoopInvariantValue(
+                                   root, "dependent_inner_iv0", "inner_loop",
+                                   iv_inner.loop_cond, dependent_outer_iv0)
+                                   .induction_var;
+  Output dependent_inner_iv1 = CreateDependentLoopInvariantValue(
+                                   root, "dependent_inner_iv1", "inner_loop",
+                                   iv_inner.loop_cond, dependent_outer_iv1)
+                                   .induction_var;
 
   Output add0 = ops::Add(root.WithOpName("add0"), dependent_inner_iv0,
                          dependent_inner_iv1);
@@ -629,53 +738,83 @@ TEST(DeadnessAnalysisTest, ControlEquivalentNestedLoopBodies) {
     std::unique_ptr<DeadnessAnalysis> result;
     TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-    EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add0.node()));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool has_inputs_with_mismatching_deadness,
+        HasInputsWithMismatchingDeadness(*result, *add0.node()));
+    EXPECT_FALSE(has_inputs_with_mismatching_deadness);
   }
   {
     PredicateMapTy predicate_map;
-    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
+                                   /*enable_optimistic=*/true));
 
     EXPECT_EQ(predicate_map[ControlOutputFor(iv_outer.induction_var)],
-              "{#true,&,*iv_outer/cond:0}");
+              "{#true,&,*iv_outer/cond:0}<outer_loop>");
     EXPECT_EQ(predicate_map[ControlOutputFor(iv_inner.induction_var)],
-              "{(*iv_outer/cond:0 & {#true,&,*iv_outer/cond:0}),&,"
-              "*iv_inner/cond:0}");
+              "{(*iv_outer/cond:0 & "
+              "{#true,&,*iv_outer/cond:0}<outer_loop>),&,*iv_inner/"
+              "cond:0}<inner_loop;outer_loop>");
+
+    // enable_optimistic = true or not should produce the same results because
+    // of fallback.  However, note that the order of iv_inner/cond:0 and
+    // iv_inner/iv:0 is different because the optimistic approach does not
+    // create predicates for all merges and it can change the predicate id and
+    // hence the symbol order.
+    EXPECT_EQ(predicate_map[ControlOutputFor(dependent_inner_iv0)],
+              "{{#true,&,(iv_outer/iv:0 & "
+              "*iv_outer/cond:0)}<outer_loop>,&,(*iv_inner/cond:0 & "
+              "iv_inner/iv:0)}<inner_loop;outer_loop>");
+    EXPECT_EQ(predicate_map[ControlOutputFor(dependent_inner_iv1)],
+              predicate_map[ControlOutputFor(dependent_inner_iv0)]);
+    EXPECT_EQ(predicate_map[ControlOutputFor(add0)],
+              predicate_map[ControlOutputFor(dependent_inner_iv0)]);
+  }
+  {
+    PredicateMapTy predicate_map;
+    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
+                                   /*enable_optimistic=*/false));
+
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv_outer.induction_var)],
+              "{#true,&,*iv_outer/cond:0}<outer_loop>");
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv_inner.induction_var)],
+              "{(*iv_outer/cond:0 & "
+              "{#true,&,*iv_outer/cond:0}<outer_loop>),&,*iv_inner/"
+              "cond:0}<inner_loop;outer_loop>");
 
     EXPECT_EQ(predicate_map[ControlOutputFor(dependent_inner_iv0)],
-              "{{#true,&,(iv_outer/iv:0 & *iv_outer/cond:0)},&,"
-              "(*iv_inner/cond:0 & iv_inner/iv:0)}");
+              "{{#true,&,(iv_outer/iv:0 & "
+              "*iv_outer/cond:0)}<outer_loop>,&,(iv_inner/iv:0 & "
+              "*iv_inner/cond:0)}<inner_loop;outer_loop>");
     EXPECT_EQ(predicate_map[ControlOutputFor(dependent_inner_iv1)],
-              "{{#true,&,(iv_outer/iv:0 & *iv_outer/cond:0)},&,"
-              "(*iv_inner/cond:0 & iv_inner/iv:0)}");
+              predicate_map[ControlOutputFor(dependent_inner_iv0)]);
     EXPECT_EQ(predicate_map[ControlOutputFor(add0)],
-              "{{#true,&,(iv_outer/iv:0 & *iv_outer/cond:0)},&,"
-              "(*iv_inner/cond:0 & iv_inner/iv:0)}");
+              predicate_map[ControlOutputFor(dependent_inner_iv0)]);
   }
 }
 
 TEST(DeadnessAnalysisTest, ControlNonEquivalentNestedLoopBodies) {
   Scope root = Scope::NewRootScope().ExitOnError();
-  InductionVarInfo iv_outer_0 =
-      CreateInductionVariable(root, "iv_outer_0", "frame", 0);
-  ops::Switch inner_value_0(root.WithOpName("outer_0_is_live"),
-                            ops::Const(root.WithOpName("constant"), 5),
-                            iv_outer_0.loop_cond);
-  InductionVarInfo iv_inner_0 = CreateInductionVariable(
-      root, "iv_inner_0", "frame",
-      ops::internal::Enter(root.WithOpName("iv_inner_0/enter"),
-                           inner_value_0.output_true, "frame_inner"));
 
-  InductionVarInfo iv_outer_1 =
-      CreateInductionVariable(root, "iv_outer_1", "frame", 1);
-  ops::Switch inner_init_value_1(root.WithOpName("outer_1_is_live"),
-                                 ops::Const(root.WithOpName("constant"), 5),
-                                 iv_outer_1.loop_cond);
-  InductionVarInfo iv_inner_1 = CreateInductionVariable(
-      root, "iv_inner_1", "frame",
-      ops::internal::Enter(root.WithOpName("iv_inner_1/enter"),
-                           inner_init_value_1.output_true, "frame_inner"));
-  Output add0 = ops::Add(root.WithOpName("add0"), iv_inner_0.induction_var,
-                         iv_inner_1.induction_var);
+  std::array<Output, 2> outer_iv;
+  std::array<Output, 2> inner_iv;
+
+  for (int i : {0, 1}) {
+    InductionVarInfo iv_outer =
+        CreateInductionVariable(root, "iv_outer", "outer_loop", 0);
+    Output enter_constant_outer_loop = ops::internal::Enter(
+        root.WithOpName("constant_enter_outer_loop"),
+        ops::Const(root.WithOpName("constant"), 5), "outer_loop",
+        ops::internal::Enter::Attrs().IsConstant(true));
+    ops::Switch inner_value(root.WithOpName("outer_is_live"),
+                            enter_constant_outer_loop, iv_outer.loop_cond);
+    InductionVarInfo iv_inner = CreateInductionVariable(
+        root, "iv_inner", "inner_loop", inner_value.output_true);
+
+    outer_iv[i] = iv_outer.induction_var;
+    inner_iv[i] = iv_inner.induction_var;
+  }
+
+  Output add0 = ops::Add(root.WithOpName("add0"), inner_iv[0], inner_iv[1]);
 
   VLogGraphIfAsked(*root.graph());
 
@@ -683,28 +822,185 @@ TEST(DeadnessAnalysisTest, ControlNonEquivalentNestedLoopBodies) {
     std::unique_ptr<DeadnessAnalysis> result;
     TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-    EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add0.node()));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool has_inputs_with_mismatching_deadness,
+        HasInputsWithMismatchingDeadness(*result, *add0.node()));
+    EXPECT_TRUE(has_inputs_with_mismatching_deadness);
   }
 
   {
     PredicateMapTy predicate_map;
     TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
 
-    EXPECT_EQ(predicate_map[ControlOutputFor(iv_outer_0.induction_var)],
-              "{#true,&,*iv_outer_0/cond:0}");
-    EXPECT_EQ(predicate_map[ControlOutputFor(iv_inner_0.induction_var)],
-              "{(*iv_outer_0/cond:0 & {#true,&,*iv_outer_0/cond:0}),&,"
-              "*iv_inner_0/cond:0}");
-    EXPECT_EQ(predicate_map[ControlOutputFor(iv_outer_1.induction_var)],
-              "{#true,&,*iv_outer_1/cond:0}");
-    EXPECT_EQ(predicate_map[ControlOutputFor(iv_inner_1.induction_var)],
-              "{(*iv_outer_1/cond:0 & {#true,&,*iv_outer_1/cond:0}),&,"
-              "*iv_inner_1/cond:0}");
+    EXPECT_EQ(predicate_map[ControlOutputFor(outer_iv[0])],
+              "{#true,&,*iv_outer/cond:0}<outer_loop>");
+    EXPECT_EQ(predicate_map[ControlOutputFor(inner_iv[0])],
+              "{(*iv_outer/cond:0 & "
+              "{#true,&,*iv_outer/cond:0}<outer_loop>),&,*iv_inner/"
+              "cond:0}<inner_loop;outer_loop>");
+    EXPECT_EQ(predicate_map[ControlOutputFor(outer_iv[1])],
+              "{#true,&,*iv_outer/cond_1:0}<outer_loop>");
+    EXPECT_EQ(predicate_map[ControlOutputFor(inner_iv[1])],
+              "{(*iv_outer/cond_1:0 & "
+              "{#true,&,*iv_outer/cond_1:0}<outer_loop>),&,*iv_inner/"
+              "cond_1:0}<inner_loop;outer_loop>");
     EXPECT_EQ(predicate_map[ControlOutputFor(add0)],
-              "({(*iv_outer_1/cond:0 & {#true,&,*iv_outer_1/cond:0}),&,"
-              "*iv_inner_1/cond:0} & "
-              "{(*iv_outer_0/cond:0 & {#true,&,*iv_outer_0/cond:0}),&,"
-              "*iv_inner_0/cond:0})");
+              "({(*iv_outer/cond:0 & "
+              "{#true,&,*iv_outer/cond:0}<outer_loop>),&,*iv_inner/"
+              "cond:0}<inner_loop;outer_loop> & {(*iv_outer/cond_1:0 & "
+              "{#true,&,*iv_outer/cond_1:0}<outer_loop>),&,*iv_inner/"
+              "cond_1:0}<inner_loop;outer_loop>)");
+  }
+}
+
+TEST(DeadnessAnalysisTest, NestedLoopBodiesWithACapture) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  InductionVarInfo iv_outer =
+      CreateInductionVariable(root, "iv_outer", "outer_loop", 0);
+  Output enter_constant_outer_loop = ops::internal::Enter(
+      root.WithOpName("constant_enter_outer_loop"),
+      ops::Const(root.WithOpName("constant"), 5), "outer_loop",
+      ops::internal::Enter::Attrs().IsConstant(true));
+  ops::Switch inner_value(root.WithOpName("outer_is_live"),
+                          enter_constant_outer_loop, iv_outer.loop_cond);
+  InductionVarInfo iv_inner = CreateInductionVariable(
+      root, "iv_inner", "inner_loop", inner_value.output_true);
+
+  DependentInductionVar div0_outer = CreateDependentLoopInvariantValue(
+      root, "div0_outer", "outer_loop", iv_outer.loop_cond, 0);
+  DependentInductionVar div1_outer = CreateDependentLoopInvariantValue(
+      root, "div1_outer", "outer_loop", iv_outer.loop_cond, 0);
+
+  DependentInductionVar div0_inner = CreateDependentLoopInvariantValue(
+      root, "div0_inner", "inner_loop", iv_inner.loop_cond,
+      div0_outer.induction_var);
+  DependentInductionVar div1_inner = CreateDependentLoopInvariantValue(
+      root, "div1_inner", "inner_loop", iv_inner.loop_cond,
+      div1_outer.induction_var);
+
+  Output captured = ops::_Recv(root.WithOpName("captured"), DT_INT32,
+                               "tensor_a", "sender", 0, "receiver");
+  Output capture_enter_outer = ops::internal::Enter(
+      root.WithOpName("capture_enter_outer"), captured, "outer_loop",
+      ops::internal::Enter::Attrs().IsConstant(true));
+  Output capture_enter_inner = ops::internal::Enter(
+      root.WithOpName("capture_enter_inner"), capture_enter_outer, "inner_loop",
+      ops::internal::Enter::Attrs().IsConstant(true));
+  Output mul0 = ops::Mul(root.WithOpName("mul0"), div1_inner.induction_var,
+                         capture_enter_inner);
+  TF_ASSERT_OK(root.graph()->UpdateEdge(
+      mul0.node(), 0, div1_inner.latch.output_true.node(), 0));
+
+  Output add0 = ops::Add(root.WithOpName("add0"), div0_inner.induction_var,
+                         div1_inner.induction_var);
+
+  VLogGraphIfAsked(*root.graph());
+
+  {
+    std::unique_ptr<DeadnessAnalysis> result;
+    TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool has_inputs_with_mismatching_deadness,
+        HasInputsWithMismatchingDeadness(*result, *add0.node()));
+    EXPECT_TRUE(has_inputs_with_mismatching_deadness);
+  }
+}
+
+TEST(DeadnessAnalysisTest, CyclicRecurrence) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  InductionVarInfo iv = CreateInductionVariable(root, "iv0", "loop", 0);
+  DependentInductionVar div0 =
+      CreateDependentLoopInvariantValue(root, "div0", "loop", iv.loop_cond, 0);
+  DependentInductionVar div1 =
+      CreateDependentLoopInvariantValue(root, "div1", "loop", iv.loop_cond, 0);
+  FixupSourceAndSinkEdges(root.graph());
+  TF_ASSERT_OK(root.graph()->UpdateEdge(div1.induction_var.node(), 0,
+                                        div0.latch.output_true.node(), 0));
+  TF_ASSERT_OK(root.graph()->UpdateEdge(div0.induction_var.node(), 0,
+                                        div1.latch.output_true.node(), 0));
+
+  VLogGraphIfAsked(*root.graph());
+
+  {
+    PredicateMapTy predicate_map;
+    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
+                                   /*enable_optimistic=*/true));
+
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv.induction_var)],
+              "{#true,&,*iv0/cond:0}<loop>");
+    EXPECT_EQ(predicate_map[ControlOutputFor(div0.induction_var)],
+              "{#true,&,*iv0/cond:0}<loop>");
+    EXPECT_EQ(predicate_map[ControlOutputFor(div1.induction_var)],
+              "{#true,&,*iv0/cond:0}<loop>");
+
+    // This tests the rule {S,&,X} & ~X => S.
+    TensorId switch_false_out = {div1.latch.output_false.node()->name(),
+                                 div1.latch.output_false.index()};
+    EXPECT_EQ(predicate_map[switch_false_out], "(#true)");
+  }
+  {
+    PredicateMapTy predicate_map;
+    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map,
+                                   /*enable_optimistic=*/false));
+
+    EXPECT_EQ(predicate_map[ControlOutputFor(iv.induction_var)],
+              "{#true,&,*iv0/cond:0}<loop>");
+    EXPECT_EQ(predicate_map[ControlOutputFor(div0.induction_var)], "div0/iv:0");
+    EXPECT_EQ(predicate_map[ControlOutputFor(div1.induction_var)], "div1/iv:0");
+  }
+}
+
+TEST(DeadnessAnalysisTest, AndRecurrenceNeedsFrameName) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  InductionVarInfo iv_0 = CreateInductionVariable(root, "iv_0", "frame_0", 10);
+  InductionVarInfo iv_1 = CreateInductionVariable(root, "iv_1", "frame_1", 9);
+
+  Output init = CreateSwitch(root, "init").output_true;
+  Output step = CreateSwitch(root, "step").output_true;
+
+  std::array<Output, 2> exits;
+  std::array<Output, 2> next_iterations;
+
+  for (int i : {0, 1}) {
+    Output init_enter = ops::internal::Enter(
+        root.WithOpName(absl::StrCat("init_enter_frame_", i)), init,
+        absl::StrCat("frame_", i),
+        ops::internal::Enter::Attrs().IsConstant(true));
+    Output step_enter = ops::internal::Enter(
+        root.WithOpName(absl::StrCat("step_enter_frame_", i)), step,
+        absl::StrCat("frame_", i),
+        ops::internal::Enter::Attrs().IsConstant(true));
+
+    ops::Merge iv(root.WithOpName(absl::StrCat("expr_", i)),
+                  {init_enter, init_enter});
+    Output add = ops::Add(root.WithOpName(absl::StrCat("add_", i)), iv.output,
+                          step_enter);
+    next_iterations[i] = ops::NextIteration(
+        root.WithOpName(absl::StrCat("expr_", i, "_next_iteration")), add);
+    EXPECT_TRUE(
+        root.graph()
+            ->UpdateEdge(next_iterations[i].node(), 0, iv.output.node(), 1)
+            .ok());
+    exits[i] = ops::internal::Exit(root.WithOpName(absl::StrCat("exit_", i)),
+                                   iv.output);
+  }
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  {
+    PredicateMapTy predicate_map;
+    TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+    EXPECT_NE(predicate_map[ControlOutputFor(exits[0])],
+              predicate_map[ControlOutputFor(exits[1])]);
+    EXPECT_NE(predicate_map[ControlOutputFor(exits[0])], "");
+    EXPECT_NE(predicate_map[ControlOutputFor(exits[1])], "");
+
+    EXPECT_NE(predicate_map[ControlOutputFor(next_iterations[0])],
+              predicate_map[ControlOutputFor(next_iterations[1])]);
+    EXPECT_NE(predicate_map[ControlOutputFor(next_iterations[0])], "");
+    EXPECT_NE(predicate_map[ControlOutputFor(next_iterations[1])], "");
   }
 }
 
@@ -726,7 +1022,10 @@ TEST(DeadnessAnalysisTest, ControlInputs) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, ControlTrigger) {
@@ -753,7 +1052,10 @@ TEST(DeadnessAnalysisTest, ControlTrigger) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, ControlInputsToMerge) {
@@ -774,7 +1076,10 @@ TEST(DeadnessAnalysisTest, ControlInputsToMerge) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_FALSE(result->HasInputsWithMismatchingDeadness(*add.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *add.node()));
+  EXPECT_FALSE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, RecvVsSwitch) {
@@ -791,7 +1096,10 @@ TEST(DeadnessAnalysisTest, RecvVsSwitch) {
   std::unique_ptr<DeadnessAnalysis> result;
   TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
 
-  EXPECT_TRUE(result->HasInputsWithMismatchingDeadness(*logical_and.node()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool has_inputs_with_mismatching_deadness,
+      HasInputsWithMismatchingDeadness(*result, *logical_and.node()));
+  EXPECT_TRUE(has_inputs_with_mismatching_deadness);
 }
 
 TEST(DeadnessAnalysisTest, RecvVsSwitchText) {
@@ -814,6 +1122,191 @@ TEST(DeadnessAnalysisTest, RecvVsSwitchText) {
   TensorId logical_and_output_0 = {logical_and.node()->name(),
                                    Graph::kControlSlot};
   EXPECT_EQ(predicate_map[logical_and_output_0], "(recv:0 & *recv:0)");
+}
+
+TEST(DeadnessAnalysisTest, DeMorgan) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output cond_0 = ops::Placeholder(root.WithOpName("cond_0"), DT_BOOL);
+  Output cond_1 = ops::Placeholder(root.WithOpName("cond_1"), DT_BOOL);
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+
+  ops::Switch sw_0(root.WithOpName("switch_0"), value, cond_0);
+  ops::Switch sw_1(root.WithOpName("switch_1"), value, cond_1);
+
+  Output and_0_1 =
+      ops::Add(root.WithOpName("and_0_1"), sw_0.output_true, sw_1.output_true);
+
+  Output or_not0_not1 = ops::Merge(root.WithOpName("or_not0_not1"),
+                                   {sw_0.output_false, sw_1.output_false})
+                            .output;
+
+  // Predicate(should_always_be_dead) =
+  // (A & B) & (~A | ~B) = (A & B) & ~(A & B) = False
+  Output should_always_be_dead =
+      ops::Add(root.WithOpName("should_always_be_dead"), and_0_1, or_not0_not1);
+
+  // Predicate(should_always_be_dead) =
+  // (A & B) | (~A | ~B) = (A & B) | ~(A & B) = True
+  Output should_always_be_alive =
+      ops::Merge(root.WithOpName("should_always_be_alive"),
+                 {and_0_1, or_not0_not1})
+          .output;
+
+  std::unique_ptr<DeadnessAnalysis> result;
+  TF_ASSERT_OK(AnalyzeDeadness(root.graph(), &result));
+
+  PredicateMapTy predicate_map;
+  TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+  EXPECT_EQ(predicate_map[ControlOutputFor(should_always_be_dead)], "#false");
+  EXPECT_EQ(predicate_map[ControlOutputFor(should_always_be_alive)], "#true");
+}
+
+TEST(DeadnessAnalysisTest, ConstantTrueSwitchCondition) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output constant_true = ops::Const(root.WithOpName("const_true"), true);
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+  ops::Switch sw(root.WithOpName("switch"), value, constant_true);
+
+  Output id_false = ops::Identity(root.WithOpName("id_false"), sw.output_false);
+  Output id_true = ops::Identity(root.WithOpName("id_true"), sw.output_true);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  PredicateMapTy predicate_map;
+  TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_false)], "#false");
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_true)], "#true");
+}
+
+TEST(DeadnessAnalysisTest, ConstantFalseSwitchCondition) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output constant_false = ops::Const(root.WithOpName("const_false"), false);
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+  ops::Switch sw(root.WithOpName("switch"), value, constant_false);
+
+  Output id_false = ops::Identity(root.WithOpName("id_false"), sw.output_false);
+  Output id_true = ops::Identity(root.WithOpName("id_true"), sw.output_true);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  PredicateMapTy predicate_map;
+  TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_false)], "#true");
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_true)], "#false");
+}
+
+TEST(DeadnessAnalysisTest, RefBoolSwitchCondition) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output condition_ref_var =
+      ops::Variable(root.WithOpName("cond_ref"), TensorShape({}), DT_BOOL);
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+  ops::Switch sw(root.WithOpName("switch"), value, condition_ref_var);
+
+  Output id_false = ops::Identity(root.WithOpName("id_false"), sw.output_false);
+  Output id_true = ops::Identity(root.WithOpName("id_true"), sw.output_true);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  PredicateMapTy predicate_map;
+  TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_false)], "~*cond_ref:0");
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_true)], "*cond_ref:0");
+}
+
+void CreateSwitchN(const Scope& scope, Input data, Input output_index,
+                   int64 num_outs, OutputList* outputs) {
+  if (!scope.ok()) return;
+  auto _data = ops::AsNodeOut(scope, data);
+  if (!scope.ok()) return;
+  auto _output_index = ops::AsNodeOut(scope, output_index);
+  if (!scope.ok()) return;
+  Node* ret;
+  const auto unique_name = scope.GetUniqueNameForOp("_SwitchN");
+  auto builder = NodeBuilder(unique_name, "_SwitchN")
+                     .Input(_data)
+                     .Input(_output_index)
+                     .Attr("num_outs", num_outs);
+  scope.UpdateBuilder(&builder);
+  scope.UpdateStatus(builder.Finalize(scope.graph(), &ret));
+  if (!scope.ok()) return;
+  scope.UpdateStatus(scope.DoShapeInference(ret));
+  for (int32 i = 0; i < ret->num_outputs(); ++i) {
+    outputs->push_back(Output(ret, i));
+  }
+}
+
+TEST(DeadnessAnalysisTest, Constant1_SwitchN_2Branches_DoesNotFail) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output constant_1 = ops::Const(root.WithOpName("const_1"), 1);
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+  OutputList outputs;
+  CreateSwitchN(root.WithOpName("switchn"), value, constant_1, 2, &outputs);
+
+  Output id_0 = ops::Identity(root.WithOpName("id_0"), outputs[0]);
+  Output id_1 = ops::Identity(root.WithOpName("id_1"), outputs[1]);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  PredicateMapTy predicate_map;
+  TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_0)], "#false");
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_1)], "#true");
+}
+
+TEST(DeadnessAnalysisTest, Constant7_SwitchN_3Branches) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output constant_7 = ops::Const(root.WithOpName("const_7"), 7);
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+  OutputList outputs;
+  CreateSwitchN(root.WithOpName("switchn"), value, constant_7, 3, &outputs);
+
+  Output id_0 = ops::Identity(root.WithOpName("id_0"), outputs[0]);
+  Output id_1 = ops::Identity(root.WithOpName("id_1"), outputs[1]);
+  Output id_2 = ops::Identity(root.WithOpName("id_2"), outputs[2]);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  PredicateMapTy predicate_map;
+  TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_0)], "#false");
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_1)], "#false");
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_2)], "#true");
+}
+
+TEST(DeadnessAnalysisTest, RefInt_SwitchN_3Branches) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  Output condition_ref_var =
+      ops::Variable(root.WithOpName("bidx"), TensorShape({}), DT_INT32);
+  Output value = ops::Placeholder(root.WithOpName("value"), DT_FLOAT);
+  OutputList outputs;
+  CreateSwitchN(root.WithOpName("switchn"), value, condition_ref_var, 3,
+                &outputs);
+
+  Output id_0 = ops::Identity(root.WithOpName("id_0"), outputs[0]);
+  Output id_1 = ops::Identity(root.WithOpName("id_1"), outputs[1]);
+  Output id_2 = ops::Identity(root.WithOpName("id_2"), outputs[2]);
+
+  FixupSourceAndSinkEdges(root.graph());
+
+  PredicateMapTy predicate_map;
+  TF_ASSERT_OK(ComputePredicates(*root.graph(), &predicate_map));
+
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_0)], "bidx:0=0");
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_1)], "(~bidx:0=0 & bidx:0=1)");
+  EXPECT_EQ(predicate_map[ControlOutputFor(id_2)], "(~bidx:0=0 & ~bidx:0=1)");
 }
 
 }  // namespace

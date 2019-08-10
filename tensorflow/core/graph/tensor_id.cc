@@ -51,7 +51,7 @@ TensorId ParseTensorName(StringPiece name) {
   if (p > base && *p == ':' && mul > 1) {
     id.first = StringPiece(base, p - base);
     id.second = index;
-  } else if (str_util::StartsWith(name, "^")) {
+  } else if (absl::StartsWith(name, "^")) {
     // Control edge
     id.first = StringPiece(base + 1);
     id.second = Graph::kControlSlot;
@@ -60,6 +60,10 @@ TensorId ParseTensorName(StringPiece name) {
     id.second = 0;
   }
   return id;
+}
+
+bool IsTensorIdControl(const TensorId& tensor_id) {
+  return tensor_id.index() == Graph::kControlSlot;
 }
 
 }  // namespace tensorflow

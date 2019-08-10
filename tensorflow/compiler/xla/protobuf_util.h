@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PROTOBUF_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_PROTOBUF_UTIL_H_
 
+#include "absl/time/time.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -36,8 +37,12 @@ extern bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
 // 'directory/file_name.pb'. The 'directory' is recursively created if it
 // doesn't already exist, and the 'file_name' is sanitized by replacing
 // illegal characters with underscore '_'.
+//
+// If 'full_name' is not null then it is set to the name of the file the
+// protobuf was written to.
 Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
-                            const string& directory, const string& file_name);
+                            const string& directory, const string& file_name,
+                            string* full_path = nullptr);
 
 // Registers a function that may either expand a dirpath or forward the original
 // dirpath along as-is.

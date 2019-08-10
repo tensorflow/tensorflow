@@ -37,7 +37,7 @@ class RevNet(tf.keras.Model):
     Args:
       config: tf.contrib.training.HParams object; specifies hyperparameters
     """
-    super(RevNet, self).__init__()
+    super(RevNet, self).__init__(dtype=config.dtype)
     self.axis = 1 if config.data_format == "channels_first" else 3
     self.config = config
 
@@ -96,6 +96,7 @@ class RevNet(tf.keras.Model):
   def call(self, inputs, training=True):
     """Forward pass."""
 
+    saved_hidden = None
     if training:
       saved_hidden = [inputs]
 

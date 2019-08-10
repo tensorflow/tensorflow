@@ -16,10 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <tuple>
 #include <unordered_map>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -27,25 +28,32 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Get the Cudnn workspace limit from the environment variable, which is in MB.
+// Returns true if the given StreamExecutor is for a Volta or newer nvidia GPU.
+inline bool IsVoltaOrLater(const se::StreamExecutor& stream_exec) {
+  int major, minor;
+  CHECK(stream_exec  // Crash OK
+            .GetDeviceDescription()
+            .cuda_compute_capability(&major, &minor));
+  return major >= 7;
+}
+
+// Get the Dnn workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.
-int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
-                             int64 default_value_in_bytes);
+int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
+                           int64 default_value_in_bytes);
 
 // A class to provide scratch-space allocator for Stream-Executor Cudnn
 // callback. TensorFlow is responsible for releasing the temporary buffers after
 // the kernel finishes.
-class CudnnScratchAllocator : public se::ScratchAllocator {
+class DnnScratchAllocator : public se::ScratchAllocator {
  public:
-  virtual ~CudnnScratchAllocator() {}
-  CudnnScratchAllocator(int64 memory_limit, OpKernelContext* context)
+  virtual ~DnnScratchAllocator() {}
+  DnnScratchAllocator(int64 memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
-  int64 GetMemoryLimitInBytes(se::Stream* stream) override {
-    return memory_limit_;
-  }
+  int64 GetMemoryLimitInBytes() override { return memory_limit_; }
   se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
-      se::Stream* stream, int64 byte_size) override {
+      int64 byte_size) override {
     Tensor temporary_memory;
     if (byte_size < 0) {
       return se::port::Status{se::port::error::INVALID_ARGUMENT,
@@ -92,12 +100,12 @@ class ConvParameters {
       : batch_(batch),
         in_depths_(in_depths),
         out_depths_(out_depths),
-        in_(in),
+        in_(CheckSpatialArraySize(in)),
         data_format_(data_format),
-        filter_(filter),
-        dilation_(dilation),
-        stride_(stride),
-        padding_(padding),
+        filter_(CheckSpatialArraySize(filter)),
+        dilation_(CheckSpatialArraySize(dilation)),
+        stride_(CheckSpatialArraySize(stride)),
+        padding_(CheckSpatialArraySize(padding)),
         dtype_(dtype),
         device_id_(device_id) {
     hash_code_ = batch;
@@ -170,6 +178,11 @@ class ConvParameters {
  private:
   friend struct ConvParametersPeer;  // For testing purposes.
 
+  static const SpatialArray& CheckSpatialArraySize(const SpatialArray& array) {
+    CHECK_LE(array.size(), 3);  // Catch corruptions related to b/124313574.
+    return array;
+  }
+
   template <typename T>
   bool ShouldIncludeWinogradNonfusedAlgoPreCudnn7() const {
     int64 total_size = 16 * std::ceil(batch_ / 16.0) *
@@ -200,6 +213,6 @@ typedef Eigen::GpuDevice GPUDevice;
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_

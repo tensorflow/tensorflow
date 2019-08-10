@@ -40,7 +40,7 @@ class FertileStatsResource : public ResourceBase {
     model_op_ = LeafModelOperatorFactory::CreateLeafModelOperator(params_);
   }
 
-  string DebugString() override { return "FertileStats"; }
+  string DebugString() const override { return "FertileStats"; }
 
   void ExtractFromProto(const FertileStats& stats);
 

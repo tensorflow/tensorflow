@@ -168,8 +168,7 @@ def _filter_ds(dataset, acceptance_dist_ds, initial_dist_ds, class_values_ds,
 def _estimate_initial_dist_ds(
     target_dist_t, class_values_ds, dist_estimation_batch_size=32,
     smoothing_constant=10):
-  num_classes = (target_dist_t.shape[0].value or
-                 array_ops.shape(target_dist_t)[0])
+  num_classes = (target_dist_t.shape[0] or array_ops.shape(target_dist_t)[0])
   initial_examples_per_class_seen = array_ops.fill(
       [num_classes], np.int64(smoothing_constant))
 
@@ -207,7 +206,7 @@ def _estimate_data_distribution(c, num_examples_per_class_seen):
       `[num_classes]`.
     dist: The updated distribution.  Type `float32`, shape `[num_classes]`.
   """
-  num_classes = num_examples_per_class_seen.get_shape()[0].value
+  num_classes = num_examples_per_class_seen.get_shape()[0]
   # Update the class-count based on what labels are seen in batch.
   num_examples_per_class_seen = math_ops.add(
       num_examples_per_class_seen, math_ops.reduce_sum(

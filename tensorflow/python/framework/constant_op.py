@@ -23,9 +23,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-import six
-
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import context
@@ -95,27 +92,13 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
       dtype = dtype.as_datatype_enum
     except AttributeError:
       dtype = dtypes.as_dtype(dtype).as_datatype_enum
-  device = ctx.device_name
-  handle = ctx._handle  # pylint: disable=protected-access
-  if isinstance(value, (float,) + six.integer_types):
-    # Use a scalar cache. This will put each scalar of each type only once on
-    # each device. Scalars don't use much device memory but copying scalars can
-    # trigger memcpys which are slow.
-    cache_key = device, value, dtype, type(value)
-    scalar_cache = ctx.scalar_cache()
-    tensor = scalar_cache.get(cache_key, None)
-    if tensor is not None:
-      return ops.EagerTensor(
-          value, context=handle, device=device, dtype=dtype, other_value=tensor)
-    t = ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
-    scalar_cache[cache_key] = t
-    return t
-  else:
-    return ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
+  ctx.ensure_initialized()
+  return ops.EagerTensor(value, ctx.device_name, dtype)
 
 
-@tf_export("constant")
-def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
+@tf_export(v1=["constant"])
+def constant_v1(
+    value, dtype=None, shape=None, name="Const", verify_shape=False):
   """Creates a constant tensor.
 
   The resulting tensor is populated with values of type `dtype`, as
@@ -174,6 +157,79 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
   Raises:
     TypeError: if shape is incorrectly specified or unsupported.
   """
+  return _constant_impl(value, dtype, shape, name, verify_shape=verify_shape,
+                        allow_broadcast=False)
+
+
+@tf_export("constant", v1=[])
+def constant(value, dtype=None, shape=None, name="Const"):
+  """Creates a constant tensor.
+
+  The resulting tensor is populated with values of type `dtype`, as
+  specified by arguments `value` and (optionally) `shape` (see examples
+  below).
+
+  The argument `value` can be a constant value, or a list of values of type
+  `dtype`. If `value` is a list, then the length of the list must be less
+  than or equal to the number of elements implied by the `shape` argument (if
+  specified). In the case where the list length is less than the number of
+  elements specified by `shape`, the last element in the list will be used
+  to fill the remaining entries.
+
+  The argument `shape` is optional. If present, it specifies the dimensions of
+  the resulting tensor. If not present, the shape of `value` is used.
+
+  If the argument `dtype` is not specified, then the type is inferred from
+  the type of `value`.
+
+  For example:
+
+  ```python
+  # Constant 1-D Tensor populated with value list.
+  tensor = tf.constant([1, 2, 3, 4, 5, 6]) => [1 2 3 4 5 6]
+
+  # Constant 1-D Tensor populated with value list.
+  tensor = tf.constant([1, 2, 3, 4, 5, 6], shape=(2,3))
+       => [[1 2 3], [4 5 6]]
+
+  # Constant 2-D tensor populated with scalar value -1.
+  tensor = tf.constant(-1.0, shape=[2, 3]) => [[-1. -1. -1.]
+                                               [-1. -1. -1.]]
+  ```
+
+  `tf.constant` differs from `tf.fill` in a few ways:
+
+  *   `tf.constant` supports arbitrary constants, not just uniform scalar
+      Tensors like `tf.fill`.
+  *   `tf.constant` creates a `Const` node in the computation graph with the
+      exact value at graph construction time. On the other hand, `tf.fill`
+      creates an Op in the graph that is expanded at runtime.
+  *   Because `tf.constant` only embeds constant values in the graph, it does
+      not support dynamic shapes based on other runtime Tensors, whereas
+      `tf.fill` does.
+
+  Args:
+    value:          A constant value (or list) of output type `dtype`.
+
+    dtype:          The type of the elements of the resulting tensor.
+
+    shape:          Optional dimensions of resulting tensor.
+
+    name:           Optional name for the tensor.
+
+  Returns:
+    A Constant Tensor.
+
+  Raises:
+    TypeError: if shape is incorrectly specified or unsupported.
+  """
+  return _constant_impl(value, dtype, shape, name, verify_shape=False,
+                        allow_broadcast=True)
+
+
+def _constant_impl(
+    value, dtype, shape, name, verify_shape, allow_broadcast):
+  """Implementation of constant."""
   ctx = context.context()
   if ctx.executing_eagerly():
     t = convert_to_eager_tensor(value, ctx, dtype)
@@ -205,7 +261,8 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
   tensor_value = attr_value_pb2.AttrValue()
   tensor_value.tensor.CopyFrom(
       tensor_util.make_tensor_proto(
-          value, dtype=dtype, shape=shape, verify_shape=verify_shape))
+          value, dtype=dtype, shape=shape, verify_shape=verify_shape,
+          allow_broadcast=allow_broadcast))
   dtype_value = attr_value_pb2.AttrValue(type=tensor_value.tensor.dtype)
   const_tensor = g.create_op(
       "Const", [], [dtype_value.type],
@@ -231,10 +288,6 @@ def _constant_tensor_conversion_function(v, dtype=None, name=None,
 
 ops.register_tensor_conversion_function(
     (list, tuple), _constant_tensor_conversion_function, 100)
-ops.register_tensor_conversion_function(
-    np.ndarray, _constant_tensor_conversion_function, 100)
-ops.register_tensor_conversion_function(
-    np.generic, _constant_tensor_conversion_function, 100)
 ops.register_tensor_conversion_function(
     object, _constant_tensor_conversion_function, 200)
 

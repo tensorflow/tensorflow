@@ -164,6 +164,11 @@ static void BM_Mean2DToScalarGPU(int iters, int num_x, int num_y) {
 }
 BENCHMARK(BM_Mean2DToScalarGPU)->RangePair(2048, 8192, 2048, 8192);
 
+static void BM_EuclideanNorm2DToScalarGPU(int iters, int num_x, int num_y) {
+  ReduceToScalar<float>(iters, "gpu", "EuclideanNorm", num_x, num_y);
+}
+BENCHMARK(BM_EuclideanNorm2DToScalarGPU)->RangePair(2048, 8192, 2048, 8192);
+
 static void BM_Max2DToScalarGPU(int iters, int num_x, int num_y) {
   ReduceToScalar<float>(iters, "gpu", "Max", num_x, num_y);
 }

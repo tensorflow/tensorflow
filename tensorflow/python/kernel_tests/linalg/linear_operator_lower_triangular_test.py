@@ -17,7 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
@@ -25,11 +28,17 @@ from tensorflow.python.platform import test
 linalg = linalg_lib
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorLowerTriangularTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  @staticmethod
+  def skip_these_tests():
+    # Cholesky does not make sense for triangular matrices.
+    return ["cholesky"]
+
+  def operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
     # Upper triangle will be nonzero, but ignored.
     # Use a diagonal that ensures this matrix is well conditioned.
@@ -71,6 +80,37 @@ class LinearOperatorLowerTriangularTest(
     with self.assertRaisesRegexp(ValueError, "at least 2 dimensions"):
       linalg.LinearOperatorLowerTriangular([1.])
 
+  def test_triangular_diag_matmul(self):
+    operator1 = linalg_lib.LinearOperatorLowerTriangular(
+        [[1., 0., 0.], [2., 1., 0.], [2., 3., 3.]])
+    operator2 = linalg_lib.LinearOperatorDiag([2., 2., 3.])
+    operator_matmul = operator1.matmul(operator2)
+    self.assertTrue(isinstance(
+        operator_matmul,
+        linalg_lib.LinearOperatorLowerTriangular))
+    self.assertAllClose(
+        math_ops.matmul(
+            operator1.to_dense(),
+            operator2.to_dense()),
+        self.evaluate(operator_matmul.to_dense()))
+
+    operator_matmul = operator2.matmul(operator1)
+    self.assertTrue(isinstance(
+        operator_matmul,
+        linalg_lib.LinearOperatorLowerTriangular))
+    self.assertAllClose(
+        math_ops.matmul(
+            operator2.to_dense(),
+            operator1.to_dense()),
+        self.evaluate(operator_matmul.to_dense()))
+
+  def test_tape_safe(self):
+    tril = variables_module.Variable([[1., 0.], [0., 1.]])
+    operator = linalg_lib.LinearOperatorLowerTriangular(
+        tril, is_non_singular=True)
+    self.check_tape_safe(operator)
+
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(LinearOperatorLowerTriangularTest)
   test.main()

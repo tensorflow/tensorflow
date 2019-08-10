@@ -198,8 +198,9 @@ void TFStats::AddGraph(std::unique_ptr<GraphDef> graph) {
       continue;
     }
     node_added = true;
+    size_t num_nodes = nodes_map_.size();
     nodes_map_[node.name()] = std::unique_ptr<TFGraphNode>(
-        new TFGraphNode(&node, nodes_map_.size(), &nodes_map_));
+        new TFGraphNode(&node, num_nodes, &nodes_map_));
     node_defs[node.name()] = &node;
   }
   for (auto it = node_defs.begin(); it != node_defs.end(); it++) {
@@ -274,7 +275,7 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
   bool has_gpu_stream = false;
 
   for (const auto& dev_stat : run_meta->step_stats().dev_stats()) {
-    string dev = str_util::Lowercase(dev_stat.device());
+    string dev = absl::AsciiStrToLower(dev_stat.device());
     if (IsPlacedOnAccelerator(dev)) {
       has_gpu_scheduling = true;
       if (CountAsAcceleratorTime(dev)) {
@@ -292,8 +293,9 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
       if (node == nodes_map_.end()) {
         NodeDef def;
         if (CreateRunMetadataNode(name, &def)) {
+          size_t num_nodes = nodes_map_.size();
           nodes_map_[name] = std::unique_ptr<TFGraphNode>(
-              new TFGraphNode(&def, nodes_map_.size(), &nodes_map_));
+              new TFGraphNode(&def, num_nodes, &nodes_map_));
           nodes_map_.at(name)->AddStepStat(step, dev_stat.device(), node_stat);
         }
       } else {

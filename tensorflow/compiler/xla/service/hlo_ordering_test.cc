@@ -53,7 +53,7 @@ TEST_F(HloOrderingTest, InstructionsInDifferentComputations) {
   //   %c = Constant(42.0f)
   //
   // This results in a diamond-shaped callgraph.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
 
   auto builder_c = HloComputation::Builder("C");
@@ -126,7 +126,7 @@ TEST_F(HloOrderingTest, InstructionsInWhileComputations) {
   //   %constant = Constant(1.0)
   //   return While(%constant, body, condition)
   //
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
 
   auto body_builder = HloComputation::Builder("body");
@@ -176,7 +176,7 @@ TEST_F(HloOrderingTest, InstructionsInWhileComputations) {
 
 TEST_F(HloOrderingTest, ParametersDefinedBeforeOthers) {
   // Entry parameter should always be defined before other instruction.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
@@ -209,7 +209,7 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   //   %while = While(%constant, body, condition)
   //   %add = Add(%constant, %while)
   //
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
 
   auto body_builder = HloComputation::Builder("body");
@@ -247,6 +247,11 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   EXPECT_FALSE(ordering.LiveRangeStrictlyBefore(
       dataflow->GetValueDefinedAt(constant),
       dataflow->GetValueDefinedAt(xla_while), *dataflow));
+  // Value defined as init of while interferes with instructions in the
+  // condition other than the parameter.
+  EXPECT_FALSE(ordering.LiveRangeStrictlyBefore(
+      dataflow->GetValueDefinedAt(constant),
+      dataflow->GetValueDefinedAt(convert), *dataflow));
   EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(constant),
                                     dataflow->GetValueDefinedAt(xla_while),
                                     *dataflow));
@@ -261,8 +266,10 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   EXPECT_FALSE(ordering.MayInterfere(dataflow->GetValueDefinedAt(negate),
                                      dataflow->GetValueDefinedAt(xla_while),
                                      *dataflow));
-
-  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(convert),
+  EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(constant),
+                                    dataflow->GetValueDefinedAt(xla_while),
+                                    *dataflow));
+  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(constant),
                                        dataflow->GetValueDefinedAt(xla_while)));
   EXPECT_TRUE(ordering.LiveRangeStrictlyBefore(
       dataflow->GetValueDefinedAt(convert),
@@ -306,7 +313,7 @@ condition.v4 {
   constant.2 = s32[] constant(2)
   prev.2 = (s32[], f32[3]{0}, f32[3]{0}, f32[3]{0}) parameter(0)
   get-tuple-element.8 = s32[] get-tuple-element(prev.2), index=0
-  ROOT greater-than = pred[] greater-than(constant.2, get-tuple-element.8)
+  ROOT greater-than = pred[] compare(constant.2, get-tuple-element.8), direction=GT
 }
 
 fused_computation {
@@ -331,7 +338,7 @@ ENTRY while.v11 {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   DependencyHloOrdering ordering(module.get());
   ordering.ToString();  // Shouldn't crash.
 }
@@ -368,7 +375,7 @@ ENTRY root {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnUnverifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
                           HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   DependencyHloOrdering ordering(module.get());
@@ -407,7 +414,7 @@ TEST_F(HloOrderingTest,
   //   %dead = Constant(123.0)
   //
   // %root should interfere with %dead.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
 
   auto builder = HloComputation::Builder(TestName());
@@ -455,7 +462,7 @@ TEST_F(HloOrderingTest,
   //   ROOT %call = call({%c}), subcomputation
   //
   // %root should interfere with %dead.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
 
   auto subbuilder = HloComputation::Builder(TestName() + ".sub");
@@ -493,6 +500,38 @@ TEST_F(HloOrderingTest,
 
   EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(root),
                                     dataflow->GetValueDefinedAt(dead),
+                                    *dataflow));
+}
+
+TEST_F(HloOrderingTest, InterferenceWithOuterRoot) {
+  absl::string_view hlo_string = R"(
+HloModule InterferenceWithOuterRoot, is_scheduled=true
+
+Emmbedded (embedded_param: f32[42]) -> f32[42] {
+  embedded_param = f32[42]{0} parameter(0)
+  multiply = f32[42]{0} multiply(embedded_param, embedded_param)
+  ROOT log = f32[42]{0} log(multiply)
+}
+
+ENTRY InterferenceWithOuterRoot {
+  param = f32[4096,4096]{1,0} parameter(0)
+  ROOT add = f32[4096,4096]{1,0} add(param, param)
+  call = f32[42]{0} call(param), to_apply=Emmbedded
+}
+
+)";
+  HloModuleConfig hlo_config;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnUnverifiedModule(hlo_string, hlo_config));
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  DependencyHloOrdering ordering(module.get());
+  auto multiply = FindInstruction(module.get(), "multiply");
+  auto add = FindInstruction(module.get(), "add");
+
+  EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(multiply),
+                                    dataflow->GetValueDefinedAt(add),
                                     *dataflow));
 }
 

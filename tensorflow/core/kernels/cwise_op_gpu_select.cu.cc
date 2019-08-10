@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -22,6 +22,22 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
+
+template <typename T, int NDIMS>
+struct BCastSelectFunctor<GPUDevice, T, NDIMS> {
+  void operator()(const GPUDevice& d,
+                  typename TTypes<T, NDIMS>::Tensor output_tensor,
+                  typename TTypes<bool, NDIMS>::ConstTensor cond_tensor,
+                  typename TTypes<T, NDIMS>::ConstTensor then_tensor,
+                  typename TTypes<T, NDIMS>::ConstTensor else_tensor,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> cond_bcast,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> then_bcast,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> else_bcast) {
+    output_tensor.device(d) = cond_tensor.broadcast(cond_bcast)
+                                  .select(then_tensor.broadcast(then_bcast),
+                                          else_tensor.broadcast(else_bcast));
+  }
+};
 
 template <typename T>
 struct SelectFunctor<GPUDevice, T> {
@@ -89,11 +105,20 @@ struct BatchSelectFunctor<GPUDevice, T> {
   }
 };
 
-#define SELECT_FUNCTOR(T)                            \
-  template struct SelectFunctor<GPUDevice, T>;       \
-  template struct SelectScalarFunctor<GPUDevice, T>; \
-  template struct BatchSelectFunctor<GPUDevice, T>;
+#define SELECT_FUNCTOR(T)                              \
+  template struct SelectFunctor<GPUDevice, T>;         \
+  template struct SelectScalarFunctor<GPUDevice, T>;   \
+  template struct BatchSelectFunctor<GPUDevice, T>;    \
+  template struct BCastSelectFunctor<GPUDevice, T, 1>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 2>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 3>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 4>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 5>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 6>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 7>; \
+  template struct BCastSelectFunctor<GPUDevice, T, 8>;
 
+SELECT_FUNCTOR(bool);
 SELECT_FUNCTOR(Eigen::half);
 SELECT_FUNCTOR(float);
 SELECT_FUNCTOR(double);
@@ -107,4 +132,4 @@ SELECT_FUNCTOR(complex128);
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

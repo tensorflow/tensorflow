@@ -227,7 +227,7 @@ class ModelOpsTest(test_util.TensorFlowTestCase):
             tree_ensemble_config=tree_ensemble_config.SerializeToString(),
             name="restore_tree")
         resources.initialize_resources(resources.shared_resources()).run()
-        variables.initialize_all_variables().run()
+        variables.global_variables_initializer().run()
         my_saver = saver.Saver()
 
         # Add the second tree and replace the ensemble of the handle.

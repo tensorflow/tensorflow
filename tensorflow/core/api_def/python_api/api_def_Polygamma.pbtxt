@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "polygamma"
-    deprecated: true
+    deprecation_version: 2
   }
 }

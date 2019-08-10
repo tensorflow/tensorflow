@@ -180,7 +180,7 @@ class Barrier : public ResourceBase {
         // SQSS is closed, nothing is left in the incomplete set,
         // the queue is not already marked as closed, and (most
         // importantly), the queue has entries in it.
-        [this, ctx, callback, component_index]() {
+        [this, ctx, callback]() {
           if (!ctx->status().ok()) {
             callback();
             return;
@@ -247,7 +247,6 @@ class Barrier : public ResourceBase {
           keys = t[1];
           values.insert(values.begin(), t.begin() + 2, t.end());
           callback(indices, keys, values);
-          return;
         });
   }
 
@@ -300,7 +299,7 @@ class Barrier : public ResourceBase {
     ready_queue_->Unref();
   }
 
-  string DebugString() override { return "A barrier"; }
+  string DebugString() const override { return "A barrier"; }
 
  protected:
   template <typename T>
@@ -309,7 +308,7 @@ class Barrier : public ResourceBase {
                          int component_index, int i,
                          std::vector<Tuple>* ready_tuples, bool* new_elements)
       EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    auto keys_vec = keys.flat<string>();
+    auto keys_vec = keys.flat<tstring>();
     auto values_matrix = values.flat_outer_dims<T>();
 
     PersistentTuple* element_ptr;
@@ -393,7 +392,7 @@ class Barrier : public ResourceBase {
                                                   &key, &allocated_key));
       ready_tuple.push_back(*element[0].AccessTensor(ctx));  // index
       ready_tuple.push_back(*allocated_key);                 // key
-      ready_tuple[1].scalar<string>()() = keys_vec(i);       // set the key
+      ready_tuple[1].scalar<tstring>()() = keys_vec(i);      // set the key
       for (int j = 1; j < num_components() + 1; ++j) {
         ready_tuple.push_back(*element[j].AccessTensor(ctx));
       }
@@ -509,7 +508,7 @@ class BarrierOpKernel : public AsyncOpKernel {
     Barrier* barrier = nullptr;
     OP_REQUIRES_OK_ASYNC(ctx, GetResourceFromContext(ctx, "handle", &barrier),
                          callback);
-    ComputeAsync(ctx, barrier, [this, callback, barrier]() {
+    ComputeAsync(ctx, barrier, [callback, barrier]() {
       barrier->Unref();
       callback();
     });
@@ -618,7 +617,6 @@ class TakeManyOp : public BarrierOpKernel {
             values_output.set(i, values[i]);
           }
           callback();
-          return;
         });
   }
 

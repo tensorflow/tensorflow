@@ -17,9 +17,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/matrix_band_part_op.h"
 
@@ -148,7 +148,8 @@ struct MatrixBandPartFunctor<CPUDevice, Scalar> {
     const bool in_place = input.data() == output.data();
     auto compute_shard = [=, &input, &output](int64 begin, int64 end) {
       if (!in_place) {
-        std::fill(output.data() + begin * n, output.data() + end * n, Scalar());
+        std::fill(output.data() + begin * n, output.data() + end * n,
+                  Scalar(0));
       }
       const int64 batch_begin = begin / m;
       const int64 batch_end = (end + m - 1) / m;
@@ -167,11 +168,11 @@ struct MatrixBandPartFunctor<CPUDevice, Scalar> {
           if (in_place) {
             if (band_start > 0) {
               std::fill(&output(batch, row, 0), &output(batch, row, band_start),
-                        Scalar());
+                        Scalar(0));
             }
             if (band_end < n) {
               std::fill(&output(batch, row, band_end), &output(batch, row, n),
-                        Scalar());
+                        Scalar(0));
             }
           } else {
             if (band_start < band_end) {
@@ -195,7 +196,7 @@ TF_CALL_POD_TYPES(DEFINE_CPU_SPEC);
 
 }  // namespace functor
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
@@ -242,6 +243,6 @@ TF_CALL_complex128(REGISTER_MATRIX_BAND_PART_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_BATCH_MATRIX_BAND_PART_GPU);
 #undef REGISTER_BATCH_MATRIX_BAND_PART_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

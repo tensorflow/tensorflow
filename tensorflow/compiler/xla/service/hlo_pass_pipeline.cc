@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -57,14 +58,21 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
   TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, last_pass_name));
   bool changed = false;
   for (HloPassInterface* pass : passes) {
-    VLOG(1) << "  HLO pass " << pass->name();
+    absl::string_view pass_name = pass->name();
+    VLOG(1) << "  HLO pass " << pass_name;
     MaybeDumpHlo(*hlo,
                  /*after_pass_name=*/last_pass_name,
-                 /*before_pass_name=*/pass->name());
+                 /*before_pass_name=*/pass_name);
+    if (!pass->IsPassPipeline()) {
+      compilation_stats_->StartPass(pass_name);
+    }
     TF_ASSIGN_OR_RETURN(bool pass_changed, RunHelper(pass, hlo));
     changed |= pass_changed;
-    TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, pass->name()));
-    last_pass_name = string(pass->name());
+    TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, pass_name));
+    last_pass_name = string(pass_name);
+    if (!pass->IsPassPipeline()) {
+      compilation_stats_->EndPass(pass_name);
+    }
   }
   MaybeDumpHlo(*hlo,
                /*after_pass_name=*/last_pass_name,
@@ -74,18 +82,43 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
 
 std::vector<HloPassInterface*> HloPassPipeline::GetEnabledPasses(
     const DebugOptions& debug_options) {
-  auto repeated_field = debug_options.xla_disable_hlo_passes();
-  absl::flat_hash_set<string> disabled_pass_names(repeated_field.begin(),
-                                                  repeated_field.end());
+  if (debug_options.xla_disable_all_hlo_passes()) {
+    VLOG(1) << "*All* passes disabled by --xla_disable_all_hlo_passes.";
+    return {};
+  }
+
+  absl::flat_hash_set<string> disabled_pass_names(
+      debug_options.xla_disable_hlo_passes().begin(),
+      debug_options.xla_disable_hlo_passes().end());
+
+  absl::flat_hash_set<string> enabled_pass_names(
+      debug_options.xla_enable_hlo_passes_only().begin(),
+      debug_options.xla_enable_hlo_passes_only().end());
+
   if (!disabled_pass_names.empty()) {
     VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
             << absl::StrJoin(disabled_pass_names, ", ");
   }
 
+  if (!enabled_pass_names.empty()) {
+    VLOG(1) << "Passes enabled by --xla_enable_hlo_passes_only: "
+            << absl::StrJoin(enabled_pass_names, ", ");
+  }
+
+  CHECK(disabled_pass_names.empty() || enabled_pass_names.empty());
+
   std::vector<HloPassInterface*> enabled_passes;
-  for (auto& pass : passes_) {
-    if (disabled_pass_names.count(string(pass->name())) == 0) {
-      enabled_passes.push_back(pass.get());
+  if (!enabled_pass_names.empty()) {
+    for (auto& pass : passes_) {
+      if (enabled_pass_names.contains(pass->name())) {
+        enabled_passes.push_back(pass.get());
+      }
+    }
+  } else {
+    for (auto& pass : passes_) {
+      if (!disabled_pass_names.contains(pass->name())) {
+        enabled_passes.push_back(pass.get());
+      }
     }
   }
   return enabled_passes;
@@ -94,29 +127,8 @@ std::vector<HloPassInterface*> HloPassPipeline::GetEnabledPasses(
 void HloPassPipeline::MaybeDumpHlo(const HloModule& module,
                                    absl::string_view after_pass_name,
                                    absl::string_view before_pass_name) {
-  const string& proto_dump_path =
-      module.config().debug_options().xla_dump_per_pass_hlo_proto_to();
-  if (!proto_dump_path.empty()) {
-    static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-    static auto* const module_id_to_pass_number =
-        new absl::flat_hash_map<int64, int64>();
-
-    tensorflow::mutex_lock lock(mu);
-    const int64 pass_number = (*module_id_to_pass_number)[module.unique_id()]++;
-
-    const string filename = SanitizeFileName(
-        absl::StrFormat("module_%04d.%04d.%s.after_%s", module.unique_id(),
-                        pass_number, name(), after_pass_name));
-
-    TF_QCHECK_OK(protobuf_util::DumpProtoToDirectory(
-        MakeHloProto(module), proto_dump_path, filename));
-  }
-
-  const string message =
-      StrCat("after ", after_pass_name, ", before ", before_pass_name);
-  hlo_graph_dumper::MaybeDumpHloModule(module, message);
-  VLOG(3) << "HLO " << message << ":";
-  XLA_VLOG_LINES(3, module.ToString());
+  DumpHloModuleBetweenPassesIfEnabled(name(), before_pass_name, after_pass_name,
+                                      module);
 }
 
 void HloPassPipeline::MaybeDumpHlo(const HloModuleGroup& module_group,

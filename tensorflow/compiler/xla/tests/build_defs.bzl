@@ -4,7 +4,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
 load("//tensorflow/compiler/xla/tests:plugin.bzl", "plugins")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -34,6 +34,7 @@ def xla_test(
         xla_test_library_deps = [],
         backends = [],
         blacklisted_backends = [],
+        real_hardware_only = False,
         args = [],
         tags = [],
         copts = [],
@@ -108,6 +109,10 @@ def xla_test(
         use for that target.
       **kwargs: Additional keyword arguments to pass to native.cc_test.
     """
+
+    # All of the backends in all_backends are real hardware.
+    _ignore = [real_hardware_only]
+
     test_names = []
     if not backends:
         backends = all_backends
@@ -123,7 +128,7 @@ def xla_test(
         srcs = srcs,
         copts = copts,
         testonly = True,
-        deps = deps + ["//tensorflow/compiler/xla/tests:test_macros_header"],
+        deps = deps,
     )
 
     for backend in filter_backends(backends):
@@ -260,6 +265,8 @@ def generate_backend_test_macros(backends = []):
                 "-DXLA_DISABLED_MANIFEST=\\\"%s\\\"" % manifest,
             ],
             deps = [
+                "@com_google_absl//absl/container:flat_hash_map",
+                "@com_google_absl//absl/strings",
                 "//tensorflow/compiler/xla:types",
                 "//tensorflow/core:lib",
                 "//tensorflow/core:regexp_internal",

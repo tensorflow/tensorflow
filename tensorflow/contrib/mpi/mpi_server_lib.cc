@@ -54,7 +54,10 @@ MPIServer::~MPIServer() {
 
 Status MPIServer::Init(ServiceInitFunction service_func,
                        RendezvousMgrCreationFunction rendezvous_mgr_func) {
-  Status s = GrpcServer::Init(service_func, rendezvous_mgr_func);
+  GrpcServerOptions opts;
+  opts.service_func = service_func;
+  opts.rendezvous_mgr_func = rendezvous_mgr_func;
+  Status s = GrpcServer::Init(opts);
   return s;
 }
 

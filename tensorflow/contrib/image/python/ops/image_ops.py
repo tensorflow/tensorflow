@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.contrib.image.ops import gen_image_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
@@ -271,8 +272,11 @@ def transform(images,
       raise TypeError("Images should have rank between 2 and 4.")
 
     if output_shape is None:
-      output_shape = tensor_util.constant_value(
-          array_ops.shape(images)[1:3]) or array_ops.shape(images)[1:3]
+      output_shape = array_ops.shape(images)[1:3]
+      if not context.executing_eagerly():
+        output_shape_value = tensor_util.constant_value(output_shape)
+        if output_shape_value is not None:
+          output_shape = output_shape_value
 
     output_shape = ops.convert_to_tensor(
         output_shape, dtypes.int32, name="output_shape")
@@ -502,7 +506,7 @@ def connected_components(images):
     # constructing multiple additional large tensors.
     components_flat = array_ops.reshape(components, [-1])
     unique_ids, id_index = array_ops.unique(components_flat)
-    id_is_zero = array_ops.where(math_ops.equal(unique_ids, 0))[:, 0]
+    id_is_zero = array_ops.where_v2(math_ops.equal(unique_ids, 0))[:, 0]
     # Map each nonzero id to consecutive values.
     nonzero_consecutive_ids = math_ops.range(
         array_ops.shape(unique_ids)[0] - array_ops.shape(id_is_zero)[0]) + 1
@@ -514,7 +518,7 @@ def connected_components(images):
     def has_zero():
       # Insert a zero in the consecutive ids where zero appears in unique_ids.
       # id_is_zero has length 1.
-      zero_id_ind = math_ops.to_int32(id_is_zero[0])
+      zero_id_ind = math_ops.cast(id_is_zero[0], dtypes.int32)
       ids_before = nonzero_consecutive_ids[:zero_id_ind]
       ids_after = nonzero_consecutive_ids[zero_id_ind:]
       return array_ops.concat([ids_before, [0], ids_after], axis=0)

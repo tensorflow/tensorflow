@@ -25,7 +25,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
-from tensorflow.python.training import rmsprop
 
 
 class GlobalPoolingTest(test.TestCase):
@@ -48,7 +47,7 @@ class GlobalPoolingTest(test.TestCase):
     model = keras.Sequential()
     model.add(keras.layers.Masking(mask_value=0., input_shape=(3, 4)))
     model.add(keras.layers.GlobalAveragePooling1D())
-    model.compile(loss='mae', optimizer=rmsprop.RMSPropOptimizer(0.001))
+    model.compile(loss='mae', optimizer='rmsprop')
 
     model_input = np.random.random((2, 3, 4))
     model_input[0, 1:, :] = 0
@@ -145,6 +144,8 @@ class Pooling3DTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_maxpooling_3d(self):
+    if test.is_built_with_rocm():
+      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
     pool_size = (3, 3, 3)
     testing_utils.layer_test(
         keras.layers.MaxPooling3D,
@@ -164,6 +165,8 @@ class Pooling3DTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_averagepooling_3d(self):
+    if test.is_built_with_rocm():
+      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
     pool_size = (3, 3, 3)
     testing_utils.layer_test(
         keras.layers.AveragePooling3D,

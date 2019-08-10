@@ -33,6 +33,11 @@ message KernelDef {
   // won't be used unless the user specifies a "_kernel" attr with
   // value matching this.
   string label = 5;
+
+  // Prioritization of kernel amongst different devices. By default we assume
+  // priority is 0. The higher the priority the better. By default (i.e. if
+  // this is not set), we prefer GPU kernels over CPU.
+  int32 priority = 6;
 }
 
 // A collection of KernelDefs

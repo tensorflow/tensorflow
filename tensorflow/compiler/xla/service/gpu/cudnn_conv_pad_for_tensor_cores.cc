@@ -50,10 +50,10 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
   auto* zero = comp->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
 
-  PaddingConfig pad_config = MakeNoPaddingConfig(ShapeUtil::Rank(shape));
+  PaddingConfig pad_config = MakeNoPaddingConfig(shape.rank());
 
   bool added_padding = false;
-  for (int64 dim = 0; dim < ShapeUtil::Rank(shape); ++dim) {
+  for (int64 dim = 0; dim < shape.rank(); ++dim) {
     if (shape.dimensions(dim) == new_shape.dimensions(dim)) {
       continue;
     }

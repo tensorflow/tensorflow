@@ -25,9 +25,13 @@ from tensorflow.contrib.boosted_trees.estimator_batch import estimator_utils
 from tensorflow.contrib.boosted_trees.estimator_batch import trainer_hooks
 from tensorflow.contrib.boosted_trees.python.ops import model_ops
 from tensorflow.contrib.boosted_trees.python.training.functions import gbdt_batch
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import training_util
+from google.protobuf import text_format
+from tensorflow.contrib.boosted_trees.proto import tree_config_pb2
+
 
 class ModelBuilderOutputType(object):
   MODEL_FN_OPS = 0
@@ -88,6 +92,12 @@ def model_builder(features,
 
   if config is None:
     raise ValueError("Missing estimator RunConfig.")
+  if config.session_config is not None:
+    session_config = config.session_config
+    session_config.allow_soft_placement = True
+  else:
+    session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+  config = config.replace(session_config=session_config)
 
   center_bias = params["center_bias"]
 
@@ -99,10 +109,30 @@ def model_builder(features,
   training_features = copy.copy(features)
   training_features.pop(weight_column_name, None)
   global_step = training_util.get_global_step()
+
+  initial_ensemble = ""
+  if learner_config.each_tree_start.nodes:
+    if learner_config.each_tree_start_num_layers <= 0:
+      raise ValueError("You must provide each_tree_start_num_layers.")
+    num_layers = learner_config.each_tree_start_num_layers
+    initial_ensemble = """
+             trees { %s }
+             tree_weights: 0.1
+             tree_metadata {
+              num_tree_weight_updates: 1
+              num_layers_grown: %d
+              is_finalized: false
+             }
+             """ % (text_format.MessageToString(
+                 learner_config.each_tree_start), num_layers)
+    tree_ensemble_proto = tree_config_pb2.DecisionTreeEnsembleConfig()
+    text_format.Merge(initial_ensemble, tree_ensemble_proto)
+    initial_ensemble = tree_ensemble_proto.SerializeToString()
+
   with ops.device(global_step.device):
     ensemble_handle = model_ops.tree_ensemble_variable(
         stamp_token=0,
-        tree_ensemble_config="",  # Initialize an empty ensemble.
+        tree_ensemble_config=initial_ensemble,  # Initialize the ensemble.
         name="ensemble_model")
 
   # Create GBDT model.
@@ -178,6 +208,10 @@ def model_builder(features,
         labels=labels,
         train_op_fn=_train_op_fn,
         logits=logits)
+
+    if output_leaf_index and gbdt_batch.LEAF_INDEX in predictions_dict:
+      estimator_spec.predictions[gbdt_batch.LEAF_INDEX] = predictions_dict[
+          gbdt_batch.LEAF_INDEX]
 
     estimator_spec = estimator_spec._replace(
         training_hooks=training_hooks + list(estimator_spec.training_hooks))

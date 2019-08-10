@@ -21,8 +21,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.proto.python.ops.decode_proto_op import decode_proto
-from tensorflow.contrib.proto.python.ops.encode_proto_op import encode_proto
+from tensorflow.python.ops.proto_ops import decode_proto
+from tensorflow.python.ops.proto_ops import encode_proto
 
 from tensorflow.python.util.all_util import remove_undocumented
 remove_undocumented(__name__)

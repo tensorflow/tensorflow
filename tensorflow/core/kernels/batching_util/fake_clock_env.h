@@ -52,11 +52,11 @@ class FakeClockEnv : public EnvWrapper {
   void BlockUntilThreadsAsleep(int num_threads);
 
   // Methods that this class implements.
-  uint64 NowMicros() override;
+  uint64 NowMicros() const override;
   void SleepForMicroseconds(int64 micros) override;
 
  private:
-  mutex mu_;
+  mutable mutex mu_;
 
   uint64 current_time_ GUARDED_BY(mu_) = 0;
 

@@ -82,8 +82,8 @@ class OptimizerCSETest : public ::testing::Test {
     // Canonicalize
     std::sort(nodes.begin(), nodes.end());
     std::sort(edges.begin(), edges.end());
-    return strings::StrCat(str_util::Join(nodes, ";"), "|",
-                           str_util::Join(edges, ";"));
+    return strings::StrCat(absl::StrJoin(nodes, ";"), "|",
+                           absl::StrJoin(edges, ";"));
   }
 
   string DoCSE(const std::function<bool(const Node*)>& consider_fn = nullptr) {
@@ -337,9 +337,13 @@ TEST_F(OptimizerCSETest, Constant_Dedup) {
   EXPECT_EQ(OriginalGraph(),
             "n/_0(Const);n/_1(Const);n/_2(Const);n/_3(Const);"
             "n/_4(Const);n/_5(Const);n/_6(Const);n/_7(Const)|");
-  // In theory, there are 2^4 possible correct output of CSE.  In this
-  // test, it happens to eliminate the last 4 nodes.
-  EXPECT_EQ(DoCSE(), "n/_0(Const);n/_1(Const);n/_2(Const);n/_3(Const)|");
+  std::vector<string> nodes = str_util::Split(DoCSE(), ";|");
+  std::set<string> node_set(nodes.begin(), nodes.end());
+  // Expect exactly one of each type of node to be retained after CSE.
+  EXPECT_EQ(node_set.count("n/_0(Const)") + node_set.count("n/_7(Const)"), 1);
+  EXPECT_EQ(node_set.count("n/_1(Const)") + node_set.count("n/_6(Const)"), 1);
+  EXPECT_EQ(node_set.count("n/_2(Const)") + node_set.count("n/_5(Const)"), 1);
+  EXPECT_EQ(node_set.count("n/_3(Const)") + node_set.count("n/_4(Const)"), 1);
 }
 
 static void BM_CSE(int iters, int op_nodes) {

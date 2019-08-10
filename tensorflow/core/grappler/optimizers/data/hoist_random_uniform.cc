@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/hoist_random_uniform.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -39,7 +40,7 @@ NodeDef MakeStatelessMap(const NodeDef& map_node, const NodeDef& zip_node,
                          const FunctionDef& stateless_function,
                          MutableGraphView* graph) {
   NodeDef stateless_map;
-  graph_utils::SetUniqueGraphNodeName("stateless_map", graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName("stateless_map", graph->graph(),
                                       &stateless_map);
 
   stateless_map.set_op("MapDataset");
@@ -67,8 +68,8 @@ NodeDef MakeStatelessMap(const NodeDef& map_node, const NodeDef& zip_node,
 NodeDef MakeRandomDataset(const NodeDef& random_uniform_node,
                           MutableGraphView* graph) {
   NodeDef random_dataset;
-  random_dataset.set_op("RandomDataset");
-  graph_utils::SetUniqueGraphNodeName("RandomDataset", graph->GetGraph(),
+  random_dataset.set_op("ExperimentalRandomDataset");
+  graph_utils::SetUniqueGraphNodeName("RandomDataset", graph->graph(),
                                       &random_dataset);
 
   const auto* seed = graph_utils::AddScalarConstNode<int64>(
@@ -89,7 +90,7 @@ NodeDef MakeRandomDataset(const NodeDef& random_uniform_node,
 NodeDef MakeBatchTwo(const NodeDef& random_dataset, MutableGraphView* graph) {
   NodeDef batch_dataset;
   batch_dataset.set_op("BatchDatasetV2");
-  graph_utils::SetUniqueGraphNodeName("pair_of_random", graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName("pair_of_random", graph->graph(),
                                       &batch_dataset);
   const auto* batch_size = graph_utils::AddScalarConstNode<int64>(2, graph);
   const auto* drop_reminder = graph_utils::AddScalarConstNode(false, graph);
@@ -112,7 +113,7 @@ NodeDef MakeBatchTwo(const NodeDef& random_dataset, MutableGraphView* graph) {
 NodeDef MakeZipNode(const NodeDef& first_node, const NodeDef& second_node,
                     MutableGraphView* graph) {
   NodeDef zip_node;
-  graph_utils::SetUniqueGraphNodeName("zip_with_random", graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName("zip_with_random", graph->graph(),
                                       &zip_node);
 
   zip_node.set_op("ZipDataset");
@@ -173,7 +174,7 @@ const FunctionDef* MakeLessStatefulFunction(const FunctionDef& map_function,
   return stateless_function;
 }
 // This function returns true if function is stateful and has single
-// RandomUniform op and no other stateful ops except Assert.
+// RandomUniform op and no other stateful ops except Assert and If/While.
 // `is_stateful_after_hoisting` is set to true if RandomUniform is the only
 // stateful op and hoisting can be performed.
 bool CanHoistRandomUniform(const FunctionDef& map_function,
@@ -188,10 +189,10 @@ bool CanHoistRandomUniform(const FunctionDef& map_function,
   for (const auto& node : map_function.node_def()) {
     const OpDef* op_def;
     TF_CHECK_OK(library.LookUpOpDef(node.op(), &op_def));
-    // Skip stateless nodes and assert, as it does not actually have a state.
     if (!op_def->is_stateful()) continue;
 
-    if (op_def->name() == "Assert") {
+    if (!function_utils::IsNodeStateful(library, node, true)) {
+      // Skip ops that are marked stateful but are in fact not stateful.
       have_other_stateful_ops = true;
       continue;
     }
@@ -220,12 +221,14 @@ int NumberOfPlaceholders(const NodeDef& map_node) {
 
 }  // namespace
 
-Status HoistRandomUniform::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                    GraphDef* output) {
+Status HoistRandomUniform::OptimizeAndCollectStats(Cluster* cluster,
+                                                   const GrapplerItem& item,
+                                                   GraphDef* output,
+                                                   OptimizationStats* stats) {
   *output = item.graph;
 
   MutableGraphView graph(output);
-  std::set<string> nodes_to_delete;
+  absl::flat_hash_set<string> nodes_to_delete;
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());
 
@@ -266,14 +269,16 @@ Status HoistRandomUniform::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* stateless_map = graph.AddNode(
         MakeStatelessMap(*map_node, *zip_node, *stateless_func, &graph));
 
-    graph.ReplaceInput(*map_node, *stateless_map);
+    TF_RETURN_IF_ERROR(
+        graph.UpdateFanouts(map_node->name(), stateless_map->name()));
 
     // TODO(b/116285210): we could also remove map functions from library if
     // they are not used anymore.
     nodes_to_delete.insert(map_node->name());
+    stats->num_changes++;
   }
 
-  graph.DeleteNodes(nodes_to_delete);
+  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
 }
 
@@ -285,5 +290,5 @@ void HoistRandomUniform::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(HoistRandomUniform, "hoist_random_uniform");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

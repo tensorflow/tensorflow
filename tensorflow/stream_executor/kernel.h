@@ -75,11 +75,10 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/kernel_cache_config.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
-#include "tensorflow/stream_executor/lib/inlined_vector.h"
-#include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
@@ -178,7 +177,7 @@ class KernelBase {
   // Gets the preferred cache configuration for a kernel.
   KernelCacheConfig GetPreferredCacheConfig() const;
 
-  void set_name(port::StringPiece name);
+  void set_name(absl::string_view name);
   const string &name() const { return name_; }
   const string &demangled_name() const { return demangled_name_; }
 
@@ -526,15 +525,18 @@ class TypedKernel : public KernelBase {
   // structure.
   void PackParams(KernelArgsArray<kNumberOfParameters> *args,
                   Params &... params) const {
-    PackOneParam(args, params...);
+    PackOneParamFromList(args, params...);
   }
 
   template <typename T, typename... RestOfParams>
-  void PackOneParam(KernelArgsArray<kNumberOfParameters> *args, const T &arg,
-                    const RestOfParams &... rest) const {
+  void PackOneParamFromList(KernelArgsArray<kNumberOfParameters> *args,
+                            const T &arg, const RestOfParams &... rest) const {
     PackOneParam(args, arg);
-    PackOneParam(args, rest...);
+    PackOneParamFromList(args, rest...);
   }
+
+  // Base case for variadic template expansion - nothing to do!
+  void PackOneParamFromList(KernelArgsArray<kNumberOfParameters> *args) const {}
 
   // Packs one (non-DeviceMemoryBase) parameter into the arg and sizes array.
   // The enable_if<> is for excluding DeviceMemoryBase args, which have a
@@ -581,9 +583,6 @@ class TypedKernel : public KernelBase {
           nullptr) const {
     args->add_shared_bytes(arg.size());
   }
-
-  // Base case for variadic template expansion - nothing to do!
-  void PackOneParam(KernelArgsArray<kNumberOfParameters> *args) const {}
 
   SE_DISALLOW_COPY_AND_ASSIGN(TypedKernel);
 };

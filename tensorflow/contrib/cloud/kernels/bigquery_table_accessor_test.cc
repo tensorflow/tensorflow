@@ -30,7 +30,7 @@ constexpr char kTestDataset[] = "test-dataset";
 constexpr char kTestTable[] = "test-table";
 
 bool HasSubstr(StringPiece base, StringPiece substr) {
-  bool ok = str_util::StrContains(base, substr);
+  bool ok = absl::StrContains(base, substr);
   EXPECT_TRUE(ok) << base << ", expected substring " << substr;
   return ok;
 }

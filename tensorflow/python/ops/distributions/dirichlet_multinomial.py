@@ -51,7 +51,7 @@ fractional components, and such that
 with `self.concentration` and `self.total_count`."""
 
 
-@tf_export("distributions.DirichletMultinomial")
+@tf_export(v1=["distributions.DirichletMultinomial"])
 class DirichletMultinomial(distribution.Distribution):
   """Dirichlet-Multinomial compound distribution.
 

@@ -20,9 +20,10 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -42,7 +43,7 @@ StatusOr<Literal> Client::Transfer(const GlobalData& data,
   TransferToClientRequest request;
   *request.mutable_data() = data.handle();
   if (shape_with_layout != nullptr) {
-    *request.mutable_shape_with_layout() = *shape_with_layout;
+    *request.mutable_shape_with_layout() = shape_with_layout->ToProto();
   }
   TransferToClientResponse response;
 
@@ -123,7 +124,7 @@ StatusOr<Literal> Client::TransferFromOutfeed(
   }
   request.set_replica_id(replica_id);
   if (shape_with_layout != nullptr) {
-    *request.mutable_shape_with_layout() = *shape_with_layout;
+    *request.mutable_shape_with_layout() = shape_with_layout->ToProto();
   }
   TransferFromOutfeedResponse response;
 
@@ -170,11 +171,14 @@ StatusOr<Literal> Client::ExecuteAndTransfer(
       std::unique_ptr<GlobalData> data,
       Execute(computation, arguments, execution_options, execution_profile));
 
-  const Shape* shape_with_output_layout = nullptr;
+  absl::optional<Shape> shape_with_output_layout;
   if (execution_options && execution_options->has_shape_with_output_layout()) {
-    shape_with_output_layout = &execution_options->shape_with_output_layout();
+    shape_with_output_layout =
+        Shape(execution_options->shape_with_output_layout());
   }
-  return Transfer(*data, shape_with_output_layout);
+  return Transfer(*data, shape_with_output_layout.has_value()
+                             ? &(*shape_with_output_layout)
+                             : nullptr);
 }
 
 StatusOr<Literal> Client::ComputeConstant(const XlaComputation& computation,
@@ -182,7 +186,7 @@ StatusOr<Literal> Client::ComputeConstant(const XlaComputation& computation,
   ComputeConstantGraphRequest request;
   *request.mutable_computation() = computation.proto();
   if (output_layout != nullptr) {
-    *request.mutable_output_layout() = *output_layout;
+    *request.mutable_output_layout() = output_layout->ToProto();
   }
 
   ComputeConstantResponse response;
@@ -210,11 +214,10 @@ StatusOr<XlaComputation> Client::LoadSnapshot(const HloSnapshot& module) {
   return XlaComputation(module.hlo().hlo_module());
 }
 
-StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
-    const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
-    const ExecutionOptions* execution_options,
-    ExecutionProfile* execution_profile) {
-  ExecuteGraphRequest request;
+StatusOr<ExecutionHandle> Client::Compile(
+    const XlaComputation& computation, absl::Span<const Shape> argument_shapes,
+    const ExecutionOptions* execution_options) {
+  CompileRequest request;
   *request.mutable_computation() = computation.proto();
 
   if (execution_options == nullptr) {
@@ -222,6 +225,34 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
   } else {
     *request.mutable_execution_options() = *execution_options;
   }
+  if (request.execution_options().device_handles_size() > 1) {
+    return InvalidArgument(
+        "Compiling with multiple device handles is not supported. Use "
+        "'Execute' instead.");
+  }
+
+  // The argument shapes affect how the computation is compiled.
+  for (const auto& arg_shape : argument_shapes) {
+    *request.add_input_shape_with_layout() = arg_shape.ToProto();
+  }
+
+  CompileResponse response;
+  VLOG(1) << "making compile request: " << request.ShortDebugString();
+  Status s = stub_->Compile(&request, &response);
+  VLOG(1) << "done with request";
+
+  if (!s.ok()) {
+    return s;
+  }
+  TF_RET_CHECK(response.has_handle());
+  return response.handle();
+}
+
+StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
+    const ExecutionHandle& handle, absl::Span<GlobalData* const> arguments,
+    ExecutionProfile* execution_profile) {
+  ExecuteRequest request;
+  *request.mutable_handle() = handle;
   for (GlobalData* argument : arguments) {
     CHECK(argument != nullptr) << "Argument pointers must not be null.";
     *request.add_arguments() = argument->handle();
@@ -229,7 +260,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
 
   ExecuteResponse response;
   VLOG(1) << "making execute request: " << request.ShortDebugString();
-  Status s = stub_->ExecuteGraph(&request, &response);
+  Status s = stub_->Execute(&request, &response);
   VLOG(1) << "done with request";
 
   if (!s.ok()) {
@@ -238,15 +269,60 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
 
   if (execution_profile != nullptr) {
     *execution_profile = response.profile();
-    if (VLOG_IS_ON(1)) {
-      TF_ASSIGN_OR_RETURN(
-          auto execution_stats,
-          ExecutionStatsAsString(computation, response.profile()));
-      VLOG(1) << execution_stats;
-    }
   }
 
   return absl::make_unique<GlobalData>(stub_, response.output());
+}
+
+StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
+    const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
+    const ExecutionOptions* execution_options,
+    ExecutionProfile* execution_profile) {
+  // Create an ExecutionOptions if necessary, or set its DeviceHandles.
+  absl::optional<ExecutionOptions> options_storage;
+  if (!execution_options || execution_options->device_handles().empty()) {
+    if (execution_options) {
+      options_storage.emplace(*execution_options);
+    } else {
+      options_storage.emplace(CreateDefaultExecutionOptions());
+    }
+    execution_options = &*options_storage;
+
+    TF_ASSIGN_OR_RETURN(auto device_handles,
+                        GetDeviceHandles(/*device_count=*/1));
+    TF_RET_CHECK(!device_handles.empty());
+    *options_storage->add_device_handles() = std::move(device_handles[0]);
+  }
+
+  std::vector<XlaComputationInstance> computation_instances = {
+      XlaComputationInstance{
+          computation,
+          std::vector<GlobalData*>(arguments.begin(), arguments.end()),
+          *execution_options, execution_profile}};
+
+  // Instead of invoking Compile() and Execute(), invoke
+  // Service::ExecuteParallel() to execute our one computation.  Compile()
+  // caches the executable forever, which isn't what we want.
+  VLOG(1) << "Making ExecuteParallel request: "
+          << execution_options->DebugString();
+  TF_ASSIGN_OR_RETURN(auto results, ExecuteParallel(computation_instances));
+  VLOG(1) << "ExecuteParallel request done.";
+
+  // The result selection is a bit hacky, but better than assuming it is
+  // device 0.
+  //
+  // TODO(b/118493728): Allow Execute to return one result per computation.
+  for (int64 i = 0; i < results.size(); i++) {
+    TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(*results[i]));
+    if (!ShapeUtil::IsEmptyTuple(shape)) {
+      VLOG(3) << "Fetching result from device " << i << ": "
+              << ShapeUtil::HumanString(shape);
+      return std::move(results[i]);
+    }
+  }
+  TF_RET_CHECK(!results.empty());
+  VLOG(1) << "Defaulting to device 0 result";
+  return std::move(results[0]);
 }
 
 StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
@@ -274,10 +350,11 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   }
 
   std::vector<std::unique_ptr<GlobalData>> outputs;
-  for (size_t i = 0; i < computations.size(); ++i) {
+  for (size_t i = 0; i < response.responses_size(); ++i) {
     outputs.push_back(
         absl::make_unique<GlobalData>(stub_, response.responses(i).output()));
-    if (computations[i].execution_profile != nullptr) {
+    if (i < computations.size() &&
+        computations[i].execution_profile != nullptr) {
       *computations[i].execution_profile = response.responses(i).profile();
     }
   }
@@ -312,7 +389,7 @@ StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
 
 Status Client::Unregister(const GlobalData& data) {
   UnregisterRequest request;
-  *request.mutable_data() = data.handle();
+  *request.add_data() = data.handle();
   UnregisterResponse response;
 
   VLOG(1) << "making unregister request";
@@ -383,15 +460,14 @@ StatusOr<Shape> Client::GetShape(const GlobalData& data) {
     return s;
   }
 
-  return response.shape();
+  return Shape(response.shape());
 }
 
 StatusOr<string> Client::ExecutionStatsAsString(
     const XlaComputation& computation, const ExecutionProfile& profile) {
   TF_ASSIGN_OR_RETURN(
       auto computation_stats,
-      GetComputationStats(computation,
-                          legacy_flags::GetDebugOptionsFromFlags()));
+      GetComputationStats(computation, GetDebugOptionsFromFlags()));
   int64 total_flops =
       computation_stats.flop_count() + computation_stats.transcendental_count();
   if (profile.compute_time_ns() > 0) {

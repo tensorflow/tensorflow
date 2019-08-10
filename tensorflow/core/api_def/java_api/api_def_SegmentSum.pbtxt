@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "SegmentSum"
+  endpoint {
+    name: "math.SegmentSum"
+  }
+}

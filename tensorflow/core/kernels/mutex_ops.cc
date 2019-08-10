@@ -45,7 +45,9 @@ class Mutex : public ResourceBase {
     VLOG(2) << "Creating mutex with name " << name << ": " << this;
   }
 
-  string DebugString() override { return strings::StrCat("Mutex ", name_); }
+  string DebugString() const override {
+    return strings::StrCat("Mutex ", name_);
+  }
 
   class LockReleaser {
    public:
@@ -72,6 +74,8 @@ class Mutex : public ResourceBase {
   struct SharedLockReleaser {
     std::shared_ptr<LockReleaser> shared_lock;
 
+    SharedLockReleaser() : shared_lock() {}
+
     explicit SharedLockReleaser(std::shared_ptr<LockReleaser>&& lock)
         : shared_lock(std::forward<decltype(lock)>(lock)) {
       VLOG(3) << "Creating shared_ptr of " << shared_lock.get()
@@ -82,6 +86,16 @@ class Mutex : public ResourceBase {
         : shared_lock(std::move(rhs.shared_lock)) {
       VLOG(3) << "Moving SharedLockReleaser of " << shared_lock.get()
               << " count is: " << shared_lock.use_count();
+    }
+
+    SharedLockReleaser& operator=(const SharedLockReleaser& rhs) = delete;
+
+    SharedLockReleaser& operator=(SharedLockReleaser&& rhs) {
+      if (&rhs == this) return *this;
+      std::swap(shared_lock, rhs.shared_lock);
+      VLOG(3) << "Move-assign of SharedLockReleaser of " << shared_lock.get()
+              << " count is: " << shared_lock.use_count();
+      return *this;
     }
 
     SharedLockReleaser(const SharedLockReleaser& rhs)
@@ -146,7 +160,7 @@ class Mutex : public ResourceBase {
             fn_(Status::OK(),
                 SharedLockReleaser{std::make_shared<LockReleaser>(this)});
           } else {
-            fn_(errors::Cancelled("Lock acqusition cancelled."),
+            fn_(errors::Cancelled("Lock acquisition cancelled."),
                 SharedLockReleaser{nullptr});
           }
         },
@@ -240,10 +254,24 @@ class ConsumeMutexLockOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("MutexLock").Device(DEVICE_CPU), MutexLockOp);
 
-REGISTER_KERNEL_BUILDER(Name("MutexV2").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("MutexLock")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("mutex_lock")
+                            .HostMemory("mutex"),
+                        MutexLockOp);
+
+REGISTER_KERNEL_BUILDER(
+    Name("MutexV2").Device(DEVICE_CPU).HostMemory("resource"),
+    ResourceHandleOp<Mutex>);
+
+REGISTER_KERNEL_BUILDER(Name("MutexV2").Device(DEVICE_GPU),
                         ResourceHandleOp<Mutex>);
 
 REGISTER_KERNEL_BUILDER(Name("ConsumeMutexLock").Device(DEVICE_CPU),
                         ConsumeMutexLockOp);
+
+REGISTER_KERNEL_BUILDER(
+    Name("ConsumeMutexLock").Device(DEVICE_GPU).HostMemory("mutex_lock"),
+    ConsumeMutexLockOp);
 
 }  // namespace tensorflow

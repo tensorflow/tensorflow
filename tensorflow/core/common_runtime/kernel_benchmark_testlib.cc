@@ -51,7 +51,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
   }
 
   testing::StopTiming();
-  string t = str_util::Uppercase(device);
+  string t = absl::AsciiStrToUpper(device);
   // Allow NewDevice to allocate a new threadpool with different number of
   // threads for each new benchmark.
   LocalDevice::set_use_global_threadpool(false);
@@ -59,8 +59,8 @@ Benchmark::Benchmark(const string& device, Graph* g,
       DeviceFactory::NewDevice(t, *options, "/job:localhost/replica:0/task:0");
   CHECK(device_) << "Could not create a " << device << " device";
 
-  pool_ = new thread::ThreadPool(options->env, "blocking",
-                                 port::NumSchedulableCPUs());
+  pool_ =
+      new thread::ThreadPool(options->env, "blocking", port::MaxParallelism());
 
   auto runner = [this](std::function<void()> closure) {
     pool_->Schedule(closure);
@@ -75,12 +75,12 @@ Benchmark::Benchmark(const string& device, Graph* g,
   const int graph_def_version = g->versions().producer();
 
   LocalExecutorParams params;
-  params.device = device_;
+  params.device = device_.get();
   params.function_library = nullptr;
   params.create_kernel = [this, graph_def_version](const NodeDef& ndef,
                                                    OpKernel** kernel) {
-    return CreateNonCachedKernel(device_, nullptr, ndef, graph_def_version,
-                                 kernel);
+    return CreateNonCachedKernel(device_.get(), nullptr, ndef,
+                                 graph_def_version, kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
@@ -107,7 +107,7 @@ Benchmark::~Benchmark() {
     // run kernel destructors that may attempt to access state borrowed from
     // `device_`, such as the resource manager.
     exec_.reset();
-    delete device_;
+    device_.reset();
     delete pool_;
   }
 }

@@ -1,11 +1,12 @@
 # Description:
 #   Libraries for storing tensors in SQL databases.
 
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts")
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "sqlite",

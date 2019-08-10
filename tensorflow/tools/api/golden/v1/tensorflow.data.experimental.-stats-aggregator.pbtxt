@@ -1,6 +1,6 @@
 path: "tensorflow.data.experimental.StatsAggregator"
 tf_class {
-  is_instance: "<class \'tensorflow.python.data.experimental.ops.stats_ops.StatsAggregator\'>"
+  is_instance: "<class \'tensorflow.python.data.experimental.ops.stats_aggregator.StatsAggregatorV1\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

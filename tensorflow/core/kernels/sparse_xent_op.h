@@ -18,8 +18,9 @@ limitations under the License.
 // Functor definition for SparseXentOp, must be compilable by nvcc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -128,6 +129,26 @@ class SparseXentGradGenerator {
 
 namespace functor {
 
+template <typename Device, typename T>
+struct RowMaxReduction {
+  // Computes the maximum across the rows of logits
+  //
+  // logits: batch_size, num_classes.
+  // maximum: temporary tensor, dims: batch_size, 1
+  static inline void Compute(OpKernelContext* ctx,
+                             typename TTypes<T>::ConstMatrix logits,
+                             typename TTypes<T>::Vec maximum) {
+#if !defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::array<int, 1> along_row;
+    along_row[0] = 1;
+#else
+    Eigen::IndexList<Eigen::type2index<1> > along_row;
+#endif
+    Device d = ctx->eigen_device<Device>();
+    To32Bit(maximum).device(d) = To32Bit(logits).maximum(along_row);
+  }
+};
+
 // Functor used by SparseXentOp to do the computations.
 template <typename Device, typename T, typename Index>
 struct SparseXentFunctor {
@@ -138,7 +159,7 @@ struct SparseXentFunctor {
   // scratch: temporary tensor, dims: batch_size, 1
   // loss: output tensor for the loss, dims: batch_size.
   // backprop: output tensor for the backprop, dims: batch_size, num_classes.
-  void operator()(const Device& d, typename TTypes<T>::ConstMatrix logits,
+  void operator()(OpKernelContext* ctx, typename TTypes<T>::ConstMatrix logits,
                   typename TTypes<Index>::ConstVec labels,
                   typename TTypes<T>::Vec scratch, typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop);
@@ -149,7 +170,8 @@ struct SparseXentFunctor {
 // specializations for both device types.
 template <typename Device, typename T, typename Index>
 struct SparseXentEigenImpl {
-  static void Compute(const Device& d, typename TTypes<T>::ConstMatrix logits,
+  static void Compute(OpKernelContext* ctx,
+                      typename TTypes<T>::ConstMatrix logits,
                       typename TTypes<Index>::ConstVec labels,
                       typename TTypes<T>::Vec scratch,
                       typename TTypes<T>::Vec loss,
@@ -188,8 +210,9 @@ struct SparseXentEigenImpl {
 #endif
 
     // scratch = max_logits along classes.
-    To32Bit(scratch).device(d) = To32Bit(logits).maximum(along_class);
+    RowMaxReduction<Device, T>::Compute(ctx, logits, scratch);
 
+    Device d = ctx->eigen_device<Device>();
     // backprop = logits - max_logits.
     To32Bit(backprop).device(d) =
         To32Bit(logits) -

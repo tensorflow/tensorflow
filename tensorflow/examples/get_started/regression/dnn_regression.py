@@ -45,12 +45,11 @@ def main(argv):
         # that the examples are well mixed.
         train.shuffle(1000).batch(128)
         # Repeat forever
-        .repeat().make_one_shot_iterator().get_next())
+        .repeat())
 
   # Build the validation input_fn.
   def input_test():
-    return (test.shuffle(1000).batch(128)
-            .make_one_shot_iterator().get_next())
+    return test.shuffle(1000).batch(128)
 
   # The first way assigns a unique weight to each category. To do this you must
   # specify the category's vocabulary (values outside this specification will

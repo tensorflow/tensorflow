@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -52,6 +53,16 @@ Shape MergeDimensions(absl::Span<const size_t> segs, const Shape& shape) {
   return ShapeUtil::MakeShapeWithDescendingLayout(shape.element_type(),
                                                   dimensions);
 }
+
+std::array<int64, 3> ElementWiseCeilOfRatio(std::array<int64, 3> dividends,
+                                            std::array<int64, 3> divisors) {
+  std::array<int64, 3> out;
+  for (int i = 0; i < 3; i++) {
+    out[i] = CeilOfRatio<int64>(dividends.at(i), divisors.at(i));
+  }
+  return out;
+}
+
 }  // namespace
 
 absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
@@ -60,28 +71,30 @@ absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
     return absl::nullopt;
   }
 
-  std::vector<int64> perm(a.dimensions().size());
-  {
-    auto layout_a_orig = LayoutUtil::MinorToMajor(a);
-    std::vector<int64> layout_a(layout_a_orig.rbegin(), layout_a_orig.rend());
-    auto layout_b_orig = LayoutUtil::MinorToMajor(b);
-    std::vector<int64> layout_b(layout_b_orig.rbegin(), layout_b_orig.rend());
-    for (size_t i = 0; i < perm.size(); ++i) {
-      perm[i] = PositionInContainer(layout_b, layout_a[i]);
-    }
+  std::vector<int64> permutation(a.dimensions().size());
+  absl::Span<const int64> minor_to_major_a = LayoutUtil::MinorToMajor(a);
+  std::vector<int64> major_to_minor_a(minor_to_major_a.rbegin(),
+                                      minor_to_major_a.rend());
+  absl::Span<const int64> minor_to_major_b = LayoutUtil::MinorToMajor(b);
+  std::vector<int64> major_to_minor_b(minor_to_major_b.rbegin(),
+                                      minor_to_major_b.rend());
+  for (size_t i = 0; i < permutation.size(); ++i) {
+    permutation[i] = PositionInContainer(major_to_minor_b, major_to_minor_a[i]);
   }
-  auto segs = ConsecutiveSegments(perm);
-  if ((3 == segs.size() && 0 == perm[0]) || 2 == segs.size()) {
-    Shape norm_a =
+
+  std::vector<size_t> segments = ConsecutiveSegments(permutation);
+  if ((3 == segments.size() && 0 == permutation[0]) || 2 == segments.size()) {
+    Shape descending_layout_shape =
         ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(a);
-    Shape reduced_a = MergeDimensions(segs, norm_a);
-    auto reduced_a_dims = reduced_a.dimensions();
+    Shape normalized_shape = MergeDimensions(segments, descending_layout_shape);
+    absl::Span<const int64> normalized_dims =
+        AsInt64Slice(normalized_shape.dimensions());
     std::vector<int64> dims_021;
-    if (2 == segs.size()) {
+    if (2 == segments.size()) {
       // The logical component-0 is of size one.
-      dims_021 = {1, reduced_a_dims[1], reduced_a_dims[0]};
+      dims_021 = {1, normalized_dims[1], normalized_dims[0]};
     } else {
-      dims_021 = {reduced_a_dims[0], reduced_a_dims[2], reduced_a_dims[1]};
+      dims_021 = {normalized_dims[0], normalized_dims[2], normalized_dims[1]};
     }
 
     return dims_021;
@@ -90,27 +103,113 @@ absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
   return absl::nullopt;
 }
 
-IrArray::Index GetUnreducedOutputIndex(
-    const IrArray::Index& reduced_output_index,
-    const Shape& reduced_output_shape, const Shape& unreduced_output_shape,
-    llvm::IRBuilder<>* b) {
-  auto bounds = reduced_output_shape.dimensions();
-  auto minor_to_major = reduced_output_shape.layout().minor_to_major();
-  llvm::Value* linear_index = reduced_output_index.GetConstantWithIndexType(0);
-  int64 multiplier = 1;
-  for (int i = 0; i < reduced_output_index.size(); ++i) {
-    int64 dim = minor_to_major[i];
-    llvm::Value* addend =
-        b->CreateMul(reduced_output_index[dim],
-                     reduced_output_index.GetConstantWithIndexType(multiplier),
-                     "linearizing",
-                     /*HasNUW=*/true, /*HasNSW=*/true);
-    linear_index = b->CreateAdd(linear_index, addend, "",
-                                /*HasNUW=*/true, /*HasNSW=*/true);
-    multiplier *= bounds[dim];
-  }
+KernelMappingScheme::KernelMappingScheme(
+    absl::Span<const int64> dims_in_elems, int64 tile_size_y, int64 tile_size_x,
+    absl::Span<const int64> req_block_sizes, int64 num_threads_y,
+    int64 num_threads_x, llvm::IRBuilder<>* b)
+    : b_(b),
+      dims_in_elems_{dims_in_elems.at(0), dims_in_elems.at(1),
+                     dims_in_elems.at(2)},
+      tile_sizes_{1, tile_size_y, tile_size_x},
+      dims_in_tiles_(ElementWiseCeilOfRatio(dims_in_elems_, tile_sizes_)),
+      block_sizes_{std::min(req_block_sizes.at(0), dims_in_tiles_.at(0)),
+                   std::min(req_block_sizes.at(1), dims_in_tiles_.at(1)),
+                   std::min(req_block_sizes.at(2), dims_in_tiles_.at(2))},
+      dims_in_blocks_(ElementWiseCeilOfRatio(dims_in_tiles_, block_sizes_)),
+      num_threads_x_(num_threads_x),
+      num_threads_y_(num_threads_y),
+      dilated_x_(true) {
+  DCHECK_EQ(req_block_sizes.size(), 3);
+  DCHECK_EQ(tile_size_y % num_threads_y_, 0);
+  DCHECK_EQ(tile_size_x % num_threads_x_, 0);
+  VLOG(10) << "dims_in_elems_ = [" << absl::StrJoin(dims_in_elems_, ",") << "]";
+  VLOG(10) << "dims_in_tiles_ = [" << absl::StrJoin(dims_in_tiles_, ",") << "]";
+  VLOG(10) << "dims_in_blocks_ = [" << absl::StrJoin(dims_in_blocks_, ",")
+           << "]";
+}
 
-  return IrArray::Index(linear_index, unreduced_output_shape, b);
+IrArray::Index KernelMappingScheme::GetUnnormalizedIndex(
+    const IrArray::Index& normalized_shape_index,
+    const Shape& unnormalized_shape) {
+  DCHECK_EQ(normalized_shape_index.size(), dims_in_elems_.size());
+  llvm::Value* linear =
+      normalized_shape_index.Linearize(GetDimensionsInElements(), b_);
+  return IrArray::Index(linear, unnormalized_shape, b_);
+}
+
+IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty) {
+  llvm::Value* block_id = gpu::EmitCallToTargetIntrinsic(
+      gpu::TargetIntrinsicID::kBlockIdx, {}, {}, b_);
+  llvm_ir::AddRangeMetadata(0, GetNumberOfBlocks(),
+                            llvm::cast<llvm::Instruction>(block_id));
+  llvm::Value* linear_block_id =
+      b_->CreateIntCast(block_id, index_ty, /*isSigned=*/true, "block.id.x");
+  return IrArray::Index(linear_block_id,
+                        ShapeUtil::MakeShapeWithDescendingLayout(
+                            PRED /*arbitrary*/, dims_in_blocks_),
+                        b_);
+}
+
+IrArray::Index KernelMappingScheme::GetTileIndexForBlockOrigin(
+    const IrArray::Index& block_index) {
+  DCHECK_EQ(block_index.size(), block_sizes_.size());
+  std::vector<llvm::Value*> multidim;
+  multidim.reserve(block_sizes_.size());
+  for (int i = 0; i < block_sizes_.size(); ++i) {
+    multidim.push_back(b_->CreateMul(
+        block_index[i],
+        llvm::ConstantInt::get(block_index[i]->getType(), block_sizes_[i]),
+        "block_origin." + std::to_string(i)));
+  }
+  return IrArray::Index(multidim, dims_in_tiles_, block_index.GetType());
+}
+
+IrArray::Index KernelMappingScheme::GetElementIndexForTileOrigin(
+    const IrArray::Index& tile_index) {
+  std::vector<llvm::Value*> elem_multi_index = tile_index.multidim();
+  for (int i = DimY; i < DimTot; ++i) {
+    elem_multi_index[i] =
+        b_->CreateMul(tile_index[i],
+                      llvm::ConstantInt::get(tile_index[i]->getType(),
+                                             GetTileSizeForDimension(i)),
+                      "tile_origin." + std::to_string(i));
+  }
+  return IrArray::Index(elem_multi_index, dims_in_elems_, tile_index.GetType());
+}
+
+llvm::GlobalVariable* KernelMappingScheme::GetSharedMemoryBufferForElementType(
+    llvm::Type* elem_ty, absl::string_view buffer_name) {
+  // If shared memory tranpose is needed, we use square tiles.
+  CHECK_EQ(GetTileSizeForDimensionX(), GetTileSizeForDimensionY());
+
+  // For Nvidia GPUs, the warp size is 32 threads and the shared memory bank is
+  // organized into 32-way. We usually use the warp size or a multiplier or a
+  // the warp size as the size for tiling. This may cause all elements in the
+  // same column of a tile use the same memory bank and therefore shared memory
+  // bank conflicts. Adding 1 to the minor dimension of the shared memory buffer
+  // can reduce such shared memory bank conflicts.
+  llvm::Type* buffer_type = llvm::ArrayType::get(
+      llvm::ArrayType::get(elem_ty, GetTileSizeForDimension(DimX) + 1),
+      GetTileSizeForDimension(DimY));
+  return llvm_ir::AllocateSharedMemoryTile(b_->GetInsertBlock()->getModule(),
+                                           buffer_type, buffer_name);
+}
+
+std::tuple<llvm::Value*, llvm::Value*>
+KernelMappingScheme::EmitThreadYXCoordinate(llvm::Type* index_ty) {
+  // Calculate (y, x) coordinate of the thread in the 2D view of thread block
+  // defined by (num_thread_y, num_thread_x) from thread_id.
+  llvm::CallInst* thread_id_raw = gpu::EmitCallToTargetIntrinsic(
+      gpu::TargetIntrinsicID::kThreadIdx, {}, {}, b_);
+  llvm_ir::AddRangeMetadata(0, GetThreadsPerBlock(), thread_id_raw);
+  llvm::Value* thread_id_int =
+      b_->CreateIntCast(thread_id_raw, index_ty,
+                        /*isSigned=*/true, "thread.id.x");
+  llvm::Value* num_thread_x =
+      llvm::ConstantInt::get(index_ty, GetNumberOfThreadsForDimensionX());
+  llvm::Value* x = b_->CreateURem(thread_id_int, num_thread_x, "thread.x");
+  llvm::Value* y = b_->CreateUDiv(thread_id_int, num_thread_x, "thread.y");
+  return std::make_tuple(y, x);
 }
 
 }  // namespace llvm_ir

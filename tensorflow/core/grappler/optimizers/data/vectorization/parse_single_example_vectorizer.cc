@@ -27,23 +27,15 @@ namespace {
 class ParseSingleExampleVectorizer : public Vectorizer {
  public:
   Status Vectorize(const Node& node, Graph* outer_scope,
-                   std::vector<WrappedTensor>&& inputs,
-                   std::vector<WrappedTensor>* outputs) override {
-    if (!inputs[0].stacked) {
-      return errors::InvalidArgument("Expecting input 0 to be stacked.");
-    }
-    for (size_t i = 1; i < inputs.size(); ++i) {
-      if (inputs[i].stacked) {
-        // Dense defaults should not be stacked
-        return errors::InvalidArgument("Expecting input ", i,
-                                       "to be unstacked.");
-      }
-    }
+                   VectorizerInput&& inputs,
+                   VectorizerOutput* outputs) override {
+    NodeBuilder::NodeOut serialized;
+    TF_RETURN_IF_ERROR(inputs.stacked(0, &serialized));
 
     std::vector<NodeBuilder::NodeOut> dense_defaults;
-    dense_defaults.reserve(inputs.size() - 1);
+    dense_defaults.resize(inputs.size() - 1);
     for (size_t i = 1; i < inputs.size(); ++i) {
-      dense_defaults.emplace_back(inputs[i].node, inputs[i].output_index);
+      TF_RETURN_IF_ERROR(inputs.unstacked(i, &dense_defaults[i - 1]));
     }
 
     Status scope_status;
@@ -79,11 +71,11 @@ class ParseSingleExampleVectorizer : public Vectorizer {
     Node* new_node;
     auto node_builder =
         NodeBuilder(strings::StrCat("vectorized/", node.name()), "ParseExample")
-            .Input(inputs[0].node, inputs[0].output_index)  // serialized
-            .Input(names)                                   // names
-            .Input(sparse_keys)                             // sparse_keys
-            .Input(dense_keys)                              // dense_keys
-            .Input(dense_defaults);                         // dense_defaults
+            .Input(serialized)
+            .Input(names)
+            .Input(sparse_keys)
+            .Input(dense_keys)
+            .Input(dense_defaults);
 
     for (const auto& attr : {"sparse_types", "dense_shapes"}) {
       // Copy attrs if they exist

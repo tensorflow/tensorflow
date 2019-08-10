@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -137,25 +138,23 @@ bool HasPadding(const Window& window) {
 }
 
 bool HasSymmetricPadding(const Window& window) {
-  return std::all_of(window.dimensions().begin(), window.dimensions().end(),
-                     [](const WindowDimension& dim) {
-                       return dim.padding_low() == dim.padding_high();
-                     });
+  return absl::c_all_of(window.dimensions(), [](const WindowDimension& dim) {
+    return dim.padding_low() == dim.padding_high();
+  });
 }
 
 bool HasSymmetricPadding(const PaddingConfig& padding_config) {
-  return std::all_of(padding_config.dimensions().begin(),
-                     padding_config.dimensions().end(),
-                     [](const PaddingConfig::PaddingConfigDimension& dim) {
-                       return dim.edge_padding_low() == dim.edge_padding_high();
-                     });
+  return absl::c_all_of(padding_config.dimensions(),
+                        [](const PaddingConfig::PaddingConfigDimension& dim) {
+                          return dim.edge_padding_low() ==
+                                 dim.edge_padding_high();
+                        });
 }
 
 bool HasNegativePadding(const Window& window) {
-  return std::any_of(window.dimensions().begin(), window.dimensions().end(),
-                     [](const WindowDimension& dim) {
-                       return dim.padding_low() < 0 || dim.padding_high() < 0;
-                     });
+  return absl::c_any_of(window.dimensions(), [](const WindowDimension& dim) {
+    return dim.padding_low() < 0 || dim.padding_high() < 0;
+  });
 }
 
 bool HasBaseDilation(const Window& window) {
@@ -185,14 +184,26 @@ bool HasWindowReversal(const Window& window) {
   return false;
 }
 
+bool AllOrNoneReversed(const Window& window) {
+  if (window.dimensions().empty()) {
+    return true;
+  }
+  bool reversed = window.dimensions()[0].window_reversal();
+  return absl::c_all_of(window.dimensions(), [&](const WindowDimension& dim) {
+    return dim.window_reversal() == reversed;
+  });
+}
+
 bool HasDilation(const Window& window) {
   return HasBaseDilation(window) || HasWindowDilation(window);
 }
 
-bool IsInactiveWindowDimension(const Window& window, int64 logical_dim) {
-  const WindowDimension& window_dim = window.dimensions(logical_dim);
-  return window_dim.size() == 1 && window_dim.stride() == 1 &&
-         window_dim.padding_low() == 0 && window_dim.padding_high() == 0;
+bool IsTrivialWindowDimension(const WindowDimension& window_dimension) {
+  return window_dimension.size() == 1 && window_dimension.stride() == 1 &&
+         window_dimension.padding_low() == 0 &&
+         window_dimension.padding_high() == 0 &&
+         window_dimension.window_dilation() == 1 &&
+         window_dimension.base_dilation() == 1;
 }
 
 int64 DilatedBound(int64 bound, int64 dilation) {

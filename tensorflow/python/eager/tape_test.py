@@ -80,8 +80,8 @@ class TapeTest(test.TestCase):
       tf_e = tf_d + tf_f
       tf_da, tf_db = gradients_impl.gradients(tf_e, [tf_a, tf_b])
 
-      self.assertAllEqual(da, tf_da.eval())
-      self.assertAllEqual(db, tf_db.eval())
+      self.assertAllEqual(da, self.evaluate(tf_da))
+      self.assertAllEqual(db, self.evaluate(tf_db))
 
   def testBasicFunctional(self):
 
@@ -142,8 +142,8 @@ class TapeTest(test.TestCase):
       tf_rr = 2 * math_ops.reduce_sum(tf_mm)
       tf_da, tf_db = gradients_impl.gradients(tf_rr, [tf_a, tf_b])
 
-      self.assertAllEqual(da, tf_da.eval())
-      self.assertAllEqual(db, tf_db.eval())
+      self.assertAllEqual(da, self.evaluate(tf_da))
+      self.assertAllEqual(db, self.evaluate(tf_db))
 
   def testGcTwoOutputs(self):
 

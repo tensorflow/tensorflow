@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -50,6 +50,25 @@ struct ApplyAdagrad<GPUDevice, T> {
     bcast[0] = grad.dimension(0);
     Eigen::Sizes<1> single;
     var.device(d) -= lr.reshape(single).broadcast(bcast) * grad * accum.rsqrt();
+  }
+};
+
+template <typename T>
+struct ApplyAdagradV2<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad, bool update_slots) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+    if (update_slots) {
+      accum.device(d) += grad.square();
+    }
+    const auto update =
+        grad / (accum.sqrt() + epsilon.reshape(single).broadcast(bcast));
+    var.device(d) -= lr.reshape(single).broadcast(bcast) * update;
   }
 };
 
@@ -102,6 +121,27 @@ struct ApplyMomentum<GPUDevice, T> {
 };
 
 template <typename T>
+struct ApplyKerasMomentum<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar momentum, bool use_nesterov) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+    accum.device(d) = (accum * momentum.reshape(single).broadcast(bcast) -
+                       grad * lr.reshape(single).broadcast(bcast));
+    if (use_nesterov) {
+      var.device(d) += (accum * momentum.reshape(single).broadcast(bcast) -
+                        grad * lr.reshape(single).broadcast(bcast));
+    } else {
+      var.device(d) += accum;
+    }
+  }
+};
+
+template <typename T>
 struct ApplyAdam<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
@@ -141,6 +181,39 @@ struct ApplyAdam<GPUDevice, T> {
                        m /
                        (epsilon.reshape(single).broadcast(bcast) + v.sqrt());
     }
+  }
+};
+
+template <typename T>
+struct ApplyAdamWithAmsgrad<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
+                  typename TTypes<T>::Flat vhat,
+                  typename TTypes<T>::ConstScalar beta1_power,
+                  typename TTypes<T>::ConstScalar beta2_power,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar beta1,
+                  typename TTypes<T>::ConstScalar beta2,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+    const auto one = static_cast<T>(1.0);
+    m.device(d) =
+        m + (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
+                (grad - m);
+    v.device(d) =
+        v + (beta2.constant(one) - beta2).reshape(single).broadcast(bcast) *
+                (grad.square() - v);
+    vhat.device(d) = vhat.cwiseMax(v);
+
+    var.device(d) -= (lr * (beta2_power.constant(one) - beta2_power).sqrt() /
+                      (beta1_power.constant(one) - beta1_power))
+                         .reshape(single)
+                         .broadcast(bcast) *
+                     m /
+                     (epsilon.reshape(single).broadcast(bcast) + vhat.sqrt());
   }
 };
 
@@ -294,6 +367,10 @@ template struct functor::ApplyAdagrad<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdagrad<GPUDevice, float>;
 template struct functor::ApplyAdagrad<GPUDevice, double>;
 
+template struct functor::ApplyAdagradV2<GPUDevice, Eigen::half>;
+template struct functor::ApplyAdagradV2<GPUDevice, float>;
+template struct functor::ApplyAdagradV2<GPUDevice, double>;
+
 template struct functor::ApplyAdadelta<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdadelta<GPUDevice, float>;
 template struct functor::ApplyAdadelta<GPUDevice, double>;
@@ -302,9 +379,17 @@ template struct functor::ApplyMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyMomentum<GPUDevice, float>;
 template struct functor::ApplyMomentum<GPUDevice, double>;
 
+template struct functor::ApplyKerasMomentum<GPUDevice, Eigen::half>;
+template struct functor::ApplyKerasMomentum<GPUDevice, float>;
+template struct functor::ApplyKerasMomentum<GPUDevice, double>;
+
 template struct functor::ApplyAdam<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdam<GPUDevice, float>;
 template struct functor::ApplyAdam<GPUDevice, double>;
+
+template struct functor::ApplyAdamWithAmsgrad<GPUDevice, Eigen::half>;
+template struct functor::ApplyAdamWithAmsgrad<GPUDevice, float>;
+template struct functor::ApplyAdamWithAmsgrad<GPUDevice, double>;
 
 template struct functor::ApplyAdaMax<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdaMax<GPUDevice, float>;
@@ -328,4 +413,4 @@ template struct functor::ApplyPowerSign<GPUDevice, double>;
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

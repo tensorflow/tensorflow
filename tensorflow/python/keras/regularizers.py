@@ -24,10 +24,10 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.regularizers.Regularizer')
+@keras_export('keras.regularizers.Regularizer')
 class Regularizer(object):
   """Regularizer base class.
   """
@@ -40,7 +40,7 @@ class Regularizer(object):
     return cls(**config)
 
 
-@tf_export('keras.regularizers.L1L2')
+@keras_export('keras.regularizers.L1L2')
 class L1L2(Regularizer):
   """Regularizer for L1 and L2 regularization.
 
@@ -54,11 +54,13 @@ class L1L2(Regularizer):
     self.l2 = K.cast_to_floatx(l2)
 
   def __call__(self, x):
+    if not self.l1 and not self.l2:
+      return K.constant(0.)
     regularization = 0.
     if self.l1:
-      regularization += math_ops.reduce_sum(self.l1 * math_ops.abs(x))
+      regularization += self.l1 * math_ops.reduce_sum(math_ops.abs(x))
     if self.l2:
-      regularization += math_ops.reduce_sum(self.l2 * math_ops.square(x))
+      regularization += self.l2 * math_ops.reduce_sum(math_ops.square(x))
     return regularization
 
   def get_config(self):
@@ -68,27 +70,27 @@ class L1L2(Regularizer):
 # Aliases.
 
 
-@tf_export('keras.regularizers.l1')
+@keras_export('keras.regularizers.l1')
 def l1(l=0.01):
   return L1L2(l1=l)
 
 
-@tf_export('keras.regularizers.l2')
+@keras_export('keras.regularizers.l2')
 def l2(l=0.01):
   return L1L2(l2=l)
 
 
-@tf_export('keras.regularizers.l1_l2')
+@keras_export('keras.regularizers.l1_l2')
 def l1_l2(l1=0.01, l2=0.01):  # pylint: disable=redefined-outer-name
   return L1L2(l1=l1, l2=l2)
 
 
-@tf_export('keras.regularizers.serialize')
+@keras_export('keras.regularizers.serialize')
 def serialize(regularizer):
   return serialize_keras_object(regularizer)
 
 
-@tf_export('keras.regularizers.deserialize')
+@keras_export('keras.regularizers.deserialize')
 def deserialize(config, custom_objects=None):
   return deserialize_keras_object(
       config,
@@ -97,15 +99,21 @@ def deserialize(config, custom_objects=None):
       printable_module_name='regularizer')
 
 
-@tf_export('keras.regularizers.get')
+@keras_export('keras.regularizers.get')
 def get(identifier):
   if identifier is None:
     return None
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
-    config = {'class_name': str(identifier), 'config': {}}
-    return deserialize(config)
+    identifier = str(identifier)
+    # We have to special-case functions that return classes.
+    # TODO(omalleyt): Turn these into classes or class aliases.
+    special_cases = ['l1', 'l2', 'l1_l2']
+    if identifier in special_cases:
+      # Treat like a class.
+      return deserialize({'class_name': identifier, 'config': {}})
+    return deserialize(str(identifier))
   elif callable(identifier):
     return identifier
   else:

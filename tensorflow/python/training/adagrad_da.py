@@ -26,7 +26,7 @@ from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.AdagradDAOptimizer")
+@tf_export(v1=["train.AdagradDAOptimizer"])
 class AdagradDAOptimizer(optimizer.Optimizer):
   """Adagrad Dual Averaging algorithm for sparse linear models.
 

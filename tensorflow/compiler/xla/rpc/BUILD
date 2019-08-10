@@ -1,7 +1,3 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:internal"])
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load(
@@ -10,13 +6,17 @@ load(
     "xla_py_grpc_library",
 )
 
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
 xla_proto_library(
     name = "xla_service_proto",
     srcs = ["xla_service.proto"],
     use_grpc_plugin = True,
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
     ],
 )

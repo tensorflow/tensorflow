@@ -32,7 +32,7 @@ from tensorflow.contrib.timeseries.python.timeseries.state_space_models.filterin
 from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.estimator.canned import optimizers
 from tensorflow.python.estimator.export import export_lib
-from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -47,20 +47,25 @@ from tensorflow.python.util import nest
 class TimeSeriesRegressor(estimator_lib.Estimator):
   """An Estimator to fit and evaluate a time series model."""
 
-  def __init__(self, model, state_manager=None, optimizer=None, model_dir=None,
-               config=None, head_type=ts_head_lib.TimeSeriesRegressionHead):
+  def __init__(self,
+               model,
+               state_manager=None,
+               optimizer=None,
+               model_dir=None,
+               config=None,
+               head_type=ts_head_lib.TimeSeriesRegressionHead):
     """Initialize the Estimator.
 
     Args:
       model: The time series model to wrap (inheriting from TimeSeriesModel).
       state_manager: The state manager to use, or (by default)
-          PassthroughStateManager if none is needed.
+        PassthroughStateManager if none is needed.
       optimizer: The optimization algorithm to use when training, inheriting
-          from tf.train.Optimizer. Defaults to Adam with step size 0.02.
+        from tf.train.Optimizer. Defaults to Adam with step size 0.02.
       model_dir: See `Estimator`.
       config: See `Estimator`.
       head_type: The kind of head to use for the model (inheriting from
-          `TimeSeriesRegressionHead`).
+        `TimeSeriesRegressionHead`).
     """
     input_statistics_generator = math_utils.InputStatisticsFromMiniBatch(
         dtype=model.dtype, num_features=model.num_features)
@@ -73,16 +78,17 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
       optimizer = train.AdamOptimizer(0.02)
     self._model = model
     ts_regression_head = head_type(
-        model=model, state_manager=state_manager, optimizer=optimizer,
+        model=model,
+        state_manager=state_manager,
+        optimizer=optimizer,
         input_statistics_generator=input_statistics_generator)
     model_fn = ts_regression_head.create_estimator_spec
     super(TimeSeriesRegressor, self).__init__(
-        model_fn=model_fn,
-        model_dir=model_dir,
-        config=config)
+        model_fn=model_fn, model_dir=model_dir, config=config)
 
-  def _model_start_state_placeholders(
-      self, batch_size_tensor, static_batch_size=None):
+  def _model_start_state_placeholders(self,
+                                      batch_size_tensor,
+                                      static_batch_size=None):
     """Creates placeholders with zeroed start state for the current model."""
     gathered_state = {}
     # Models may not know the shape of their state without creating some
@@ -90,33 +96,39 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
     # use only static metadata from the returned Tensors.
     with ops.Graph().as_default():
       self._model.initialize_graph()
+
       # Evaluate the initial state as same-dtype "zero" values. These zero
       # constants aren't used, but are necessary for feeding to
       # placeholder_with_default for the "cold start" case where state is not
       # fed to the model.
       def _zeros_like_constant(tensor):
         return tensor_util.constant_value(array_ops.zeros_like(tensor))
-      start_state = nest.map_structure(
-          _zeros_like_constant, self._model.get_start_state())
+
+      start_state = nest.map_structure(_zeros_like_constant,
+                                       self._model.get_start_state())
     for prefixed_state_name, state in ts_head_lib.state_to_dictionary(
         start_state).items():
       state_shape_with_batch = tensor_shape.TensorShape(
           (static_batch_size,)).concatenate(state.shape)
       default_state_broadcast = array_ops.tile(
           state[None, ...],
-          multiples=array_ops.concat(
-              [batch_size_tensor[None],
-               array_ops.ones(len(state.shape), dtype=dtypes.int32)],
-              axis=0))
+          multiples=array_ops.concat([
+              batch_size_tensor[None],
+              array_ops.ones(len(state.shape), dtype=dtypes.int32)
+          ],
+                                     axis=0))
       gathered_state[prefixed_state_name] = array_ops.placeholder_with_default(
           input=default_state_broadcast,
           name=prefixed_state_name,
           shape=state_shape_with_batch)
     return gathered_state
 
-  def build_one_shot_parsing_serving_input_receiver_fn(
-      self, filtering_length, prediction_length, default_batch_size=None,
-      values_input_dtype=None, truncate_values=False):
+  def build_one_shot_parsing_serving_input_receiver_fn(self,
+                                                       filtering_length,
+                                                       prediction_length,
+                                                       default_batch_size=None,
+                                                       values_input_dtype=None,
+                                                       truncate_values=False):
     """Build an input_receiver_fn for export_savedmodel accepting tf.Examples.
 
     Only compatible with `OneShotPredictionHead` (see `head`).
@@ -167,35 +179,34 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
       times_column = feature_column.numeric_column(
           key=feature_keys.TrainEvalFeatures.TIMES, dtype=dtypes.int64)
       values_column = feature_column.numeric_column(
-          key=feature_keys.TrainEvalFeatures.VALUES, dtype=values_input_dtype,
+          key=feature_keys.TrainEvalFeatures.VALUES,
+          dtype=values_input_dtype,
           shape=(self._model.num_features,))
       parsed_features_no_sequence = (
           feature_column.make_parse_example_spec(
-              list(self._model.exogenous_feature_columns)
-              + [times_column, values_column]))
+              list(self._model.exogenous_feature_columns) +
+              [times_column, values_column]))
       parsed_features = {}
       for key, feature_spec in parsed_features_no_sequence.items():
         if isinstance(feature_spec, parsing_ops.FixedLenFeature):
           if key == feature_keys.TrainEvalFeatures.VALUES:
             parsed_features[key] = feature_spec._replace(
-                shape=((values_proto_length,)
-                       + feature_spec.shape))
+                shape=((values_proto_length,) + feature_spec.shape))
           else:
             parsed_features[key] = feature_spec._replace(
-                shape=((filtering_length + prediction_length,)
-                       + feature_spec.shape))
+                shape=((filtering_length + prediction_length,) +
+                       feature_spec.shape))
         elif feature_spec.dtype == dtypes.string:
           parsed_features[key] = parsing_ops.FixedLenFeature(
               shape=(filtering_length + prediction_length,),
               dtype=dtypes.string)
         else:  # VarLenFeature
-          raise ValueError("VarLenFeatures not supported, got %s for key %s"
-                           % (feature_spec, key))
+          raise ValueError("VarLenFeatures not supported, got %s for key %s" %
+                           (feature_spec, key))
       tfexamples = array_ops.placeholder(
           shape=[default_batch_size], dtype=dtypes.string, name="input")
       features = parsing_ops.parse_example(
-          serialized=tfexamples,
-          features=parsed_features)
+          serialized=tfexamples, features=parsed_features)
       features[feature_keys.TrainEvalFeatures.TIMES] = array_ops.squeeze(
           features[feature_keys.TrainEvalFeatures.TIMES], axis=-1)
       features[feature_keys.TrainEvalFeatures.VALUES] = math_ops.cast(
@@ -206,12 +217,13 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
               batch_size_tensor=array_ops.shape(
                   features[feature_keys.TrainEvalFeatures.TIMES])[0],
               static_batch_size=default_batch_size))
-      return export_lib.ServingInputReceiver(
-          features, {"examples": tfexamples})
+      return export_lib.ServingInputReceiver(features, {"examples": tfexamples})
+
     return _serving_input_receiver_fn
 
-  def build_raw_serving_input_receiver_fn(
-      self, default_batch_size=None, default_series_length=None):
+  def build_raw_serving_input_receiver_fn(self,
+                                          default_batch_size=None,
+                                          default_series_length=None):
     """Build an input_receiver_fn for export_savedmodel which accepts arrays.
 
     Automatically creates placeholders for exogenous `FeatureColumn`s passed to
@@ -227,10 +239,12 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
         which means only this series length will be accepted by the exported
         model. If None (default), static shape information for series length is
         omitted.
+
     Returns:
       An input_receiver_fn which may be passed to the Estimator's
       export_savedmodel.
     """
+
     def _serving_input_receiver_fn():
       """A receiver function to be passed to export_savedmodel."""
       placeholders = {}
@@ -246,9 +260,9 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
               name=feature_keys.TrainEvalFeatures.VALUES,
               input=array_ops.zeros(
                   shape=[
-                      default_batch_size
-                      if default_batch_size else 0, default_series_length
-                      if default_series_length else 0, self._model.num_features
+                      default_batch_size if default_batch_size else 0,
+                      default_series_length if default_series_length else 0,
+                      self._model.num_features
                   ],
                   dtype=self._model.dtype),
               shape=(default_batch_size, default_series_length,
@@ -268,12 +282,12 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
           exogenous_feature_shapes = {
               key: (value.get_shape(), value.dtype) for key, value
               in placeholder_features.items()}
-        for feature_key, (batch_only_feature_shape, value_dtype) in (
-            exogenous_feature_shapes.items()):
+        for feature_key, (batch_only_feature_shape,
+                          value_dtype) in (exogenous_feature_shapes.items()):
           batch_only_feature_shape = (
               batch_only_feature_shape.with_rank_at_least(1).as_list())
-          feature_shape = ([default_batch_size, default_series_length]
-                           + batch_only_feature_shape[1:])
+          feature_shape = ([default_batch_size, default_series_length] +
+                           batch_only_feature_shape[1:])
           placeholders[feature_key] = array_ops.placeholder(
               dtype=value_dtype, name=feature_key, shape=feature_shape)
       batch_size_tensor = array_ops.shape(time_placeholder)[0]
@@ -296,12 +310,20 @@ class ARRegressor(TimeSeriesRegressor):
   evaluation, although it may be seeded for deterministic evaluation.
   """
 
-  def __init__(
-      self, periodicities, input_window_size, output_window_size,
-      num_features, exogenous_feature_columns=None, num_time_buckets=10,
-      loss=ar_model.ARModel.NORMAL_LIKELIHOOD_LOSS, hidden_layer_sizes=None,
-      anomaly_prior_probability=None, anomaly_distribution=None,
-      optimizer=None, model_dir=None, config=None):
+  def __init__(self,
+               periodicities,
+               input_window_size,
+               output_window_size,
+               num_features,
+               exogenous_feature_columns=None,
+               num_time_buckets=10,
+               loss=ar_model.ARModel.NORMAL_LIKELIHOOD_LOSS,
+               hidden_layer_sizes=None,
+               anomaly_prior_probability=None,
+               anomaly_distribution=None,
+               optimizer=None,
+               model_dir=None,
+               config=None):
     """Initialize the Estimator.
 
     Args:
@@ -318,7 +340,7 @@ class ARRegressor(TimeSeriesRegressor):
         `tf.feature_column.embedding_column`) corresponding to exogenous
         features which provide extra information to the model but are not part
         of the series to be predicted. Passed to
-        `tf.feature_column.input_layer`.
+        `tf.compat.v1.feature_column.input_layer`.
       num_time_buckets: Number of buckets into which to divide (time %
         periodicity) for generating time based features.
       loss: Loss function to use for training. Currently supported values are
@@ -338,9 +360,10 @@ class ARRegressor(TimeSeriesRegressor):
         `ar_model.AnomalyMixtureARModel.CAUCHY_ANOMALY`. See
         `AnomalyMixtureARModel`. Defaults to `GAUSSIAN_ANOMALY`.
       optimizer: The optimization algorithm to use when training, inheriting
-          from tf.train.Optimizer. Defaults to Adagrad with step size 0.1.
+        from tf.train.Optimizer. Defaults to Adagrad with step size 0.1.
       model_dir: See `Estimator`.
       config: See `Estimator`.
+
     Raises:
       ValueError: For invalid combinations of arguments.
     """
@@ -353,14 +376,16 @@ class ARRegressor(TimeSeriesRegressor):
       if anomaly_distribution is None:
         anomaly_distribution = ar_model.AnomalyMixtureARModel.GAUSSIAN_ANOMALY
       model = ar_model.ARModel(
-          periodicities=periodicities, num_features=num_features,
+          periodicities=periodicities,
+          num_features=num_features,
           prediction_model_factory=functools.partial(
               ar_model.FlatPredictionModel,
               hidden_layer_sizes=hidden_layer_sizes),
           exogenous_feature_columns=exogenous_feature_columns,
           num_time_buckets=num_time_buckets,
           input_window_size=input_window_size,
-          output_window_size=output_window_size, loss=loss)
+          output_window_size=output_window_size,
+          loss=loss)
     else:
       if loss != ar_model.ARModel.NORMAL_LIKELIHOOD_LOSS:
         raise ValueError(
@@ -451,13 +476,13 @@ class LSTMAutoRegressor(TimeSeriesRegressor):
       extra_feature_columns=extra_feature_columns,
       num_timesteps=50,
       num_units=10,
-      optimizer=tf.train.ProximalAdagradOptimizer(...))
+      optimizer=tf.compat.v1.train.ProximalAdagradOptimizer(...))
 
   # Input builders
   def input_fn_train():
     return {
       "times": tf.range(15)[None, :],
-      "values": tf.random_normal(shape=[1, 15, 1])
+      "values": tf.random.normal(shape=[1, 15, 1])
     }
   estimator.train(input_fn=input_fn_train, steps=100)
 
@@ -496,10 +521,10 @@ class LSTMAutoRegressor(TimeSeriesRegressor):
       output_window_size: Number of future time steps to predict. Note that
         setting this value to > 1 empirically seems to give a better fit.
       model_dir: Directory to save model parameters, graph and etc. This can
-        also be used to load checkpoints from the directory into a estimator
-        to continue training a previously saved model.
-      num_features: The dimensionality of the time series (default value is
-        one for univariate, more than one for multivariate).
+        also be used to load checkpoints from the directory into a estimator to
+        continue training a previously saved model.
+      num_features: The dimensionality of the time series (default value is one
+        for univariate, more than one for multivariate).
       extra_feature_columns: A list of `tf.feature_column`s (for example
         `tf.feature_column.embedding_column`) corresponding to features which
         provide extra information to the model but are not part of the series to
@@ -515,14 +540,13 @@ class LSTMAutoRegressor(TimeSeriesRegressor):
         normalized data.
       num_units: The size of the hidden state in the encoder and decoder LSTM
         cells.
-      optimizer: string, `tf.train.Optimizer` object, or callable that defines
-        the optimizer algorithm to use for training. Defaults to the Adam
-        optimizer with a learning rate of 0.01.
+      optimizer: string, `tf.compat.v1.train.Optimizer` object, or callable that
+        defines the optimizer algorithm to use for training. Defaults to the
+        Adam optimizer with a learning rate of 0.01.
       config: Optional `estimator.RunConfig` object to configure the runtime
         settings.
     """
-    optimizer = optimizers.get_optimizer_instance(
-        optimizer, learning_rate=0.01)
+    optimizer = optimizers.get_optimizer_instance(optimizer, learning_rate=0.01)
     model = ar_model.ARModel(
         periodicities=periodicities,
         input_window_size=input_window_size,
@@ -546,8 +570,13 @@ class LSTMAutoRegressor(TimeSeriesRegressor):
 class StateSpaceRegressor(TimeSeriesRegressor):
   """An Estimator for general state space models."""
 
-  def __init__(self, model, state_manager=None, optimizer=None, model_dir=None,
-               config=None, head_type=ts_head_lib.TimeSeriesRegressionHead):
+  def __init__(self,
+               model,
+               state_manager=None,
+               optimizer=None,
+               model_dir=None,
+               config=None,
+               head_type=ts_head_lib.TimeSeriesRegressionHead):
     """See TimeSeriesRegressor. Uses the ChainingStateManager by default."""
     if not isinstance(model, state_space_model.StateSpaceModel):
       raise ValueError(
@@ -610,60 +639,59 @@ class StructuralEnsembleRegressor(StateSpaceRegressor):
 
     Args:
       periodicities: The expected periodicity of the data (for example 24 if
-          feeding hourly data with a daily periodicity, or 60 * 24 if feeding
-          minute-level data with daily periodicity). Either a scalar or a
-          list. This parameter can be any real value, and does not control the
-          size of the model. However, increasing this without increasing
-          `num_values_per_cycle` will lead to smoother periodic behavior, as the
-          same number of distinct values will be cycled through over a longer
-          period of time.
+        feeding hourly data with a daily periodicity, or 60 * 24 if feeding
+        minute-level data with daily periodicity). Either a scalar or a list.
+        This parameter can be any real value, and does not control the size of
+        the model. However, increasing this without increasing
+        `num_values_per_cycle` will lead to smoother periodic behavior, as the
+        same number of distinct values will be cycled through over a longer
+        period of time.
       num_features: The dimensionality of the time series (one for univariate,
-          more than one for multivariate).
+        more than one for multivariate).
       cycle_num_latent_values: Along with `moving_average_order` and
-          `num_features`, controls the latent state size of the model. Square
-          matrices of size `num_features * (moving_average_order +
-          cycle_num_latent_values + 3)` are created and multiplied, so larger
+        `num_features`, controls the latent state size of the model. Square
+        matrices of size `num_features * (moving_average_order +
+        cycle_num_latent_values + 3)` are created and multiplied, so larger
           values may be slow. The trade-off is with resolution: cycling between
-          a smaller number of latent values means that only smoother functions
-          can be modeled.
+            a smaller number of latent values means that only smoother functions
+            can be modeled.
       moving_average_order: Controls model size (along with
-          `cycle_num_latent_values` and `autoregressive_order`) and the number
-          of steps before transient deviations revert to the mean defined by the
-          period and level/trend components.
+        `cycle_num_latent_values` and `autoregressive_order`) and the number of
+        steps before transient deviations revert to the mean defined by the
+        period and level/trend components.
       autoregressive_order: Each contribution from this component is a linear
-          combination of this many previous contributions. Also helps to
-          determine the model size. Learning autoregressive coefficients
-          typically requires more steps and a smaller step size than other
-          components.
+        combination of this many previous contributions. Also helps to determine
+        the model size. Learning autoregressive coefficients typically requires
+        more steps and a smaller step size than other components.
       exogenous_feature_columns: A list of `tf.feature_column`s (for example
-          `tf.feature_column.embedding_column`) corresponding to exogenous
-          features which provide extra information to the model but are not part
-          of the series to be predicted. Passed to
-          `tf.feature_column.input_layer`.
+        `tf.feature_column.embedding_column`) corresponding to exogenous
+        features which provide extra information to the model but are not part
+        of the series to be predicted. Passed to
+        `tf.compat.v1.feature_column.input_layer`.
       exogenous_update_condition: A function taking two Tensor arguments,
-          `times` (shape [batch size]) and `features` (a dictionary mapping
-          exogenous feature keys to Tensors with shapes [batch size, ...]), and
-          returning a boolean Tensor with shape [batch size] indicating whether
-          state should be updated using exogenous features for each part of the
-          batch. Where it is False, no exogenous update is performed. If None
-          (default), exogenous updates are always performed. Useful for avoiding
-          "leaky" frequent exogenous updates when sparse updates are
-          desired. Called only during graph construction. See the "known
-          anomaly" example for example usage.
+        `times` (shape [batch size]) and `features` (a dictionary mapping
+        exogenous feature keys to Tensors with shapes [batch size, ...]), and
+        returning a boolean Tensor with shape [batch size] indicating whether
+        state should be updated using exogenous features for each part of the
+        batch. Where it is False, no exogenous update is performed. If None
+        (default), exogenous updates are always performed. Useful for avoiding
+        "leaky" frequent exogenous updates when sparse updates are desired.
+        Called only during graph construction. See the "known anomaly" example
+        for example usage.
       dtype: The floating point data type to compute with. float32 may be
         faster, but can be problematic for larger models and longer time series.
       anomaly_prior_probability: If not None, the model attempts to
-          automatically detect and ignore anomalies during training. This
-          parameter then controls the prior probability of an anomaly. Values
-          closer to 0 mean that points will be discarded less frequently. The
-          default value (None) means that anomalies are not discarded, which may
-          be slightly faster.
+        automatically detect and ignore anomalies during training. This
+        parameter then controls the prior probability of an anomaly. Values
+        closer to 0 mean that points will be discarded less frequently. The
+        default value (None) means that anomalies are not discarded, which may
+        be slightly faster.
       optimizer: The optimization algorithm to use when training, inheriting
-          from tf.train.Optimizer. Defaults to Adam with step size 0.02.
+        from tf.train.Optimizer. Defaults to Adam with step size 0.02.
       model_dir: See `Estimator`.
       config: See `Estimator`.
       head_type: The kind of head to use for the model (inheriting from
-          `TimeSeriesRegressionHead`).
+        `TimeSeriesRegressionHead`).
     """
     if anomaly_prior_probability is not None:
       filtering_postprocessor = StateInterpolatingAnomalyDetector(

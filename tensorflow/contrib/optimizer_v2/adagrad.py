@@ -18,11 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras.optimizer_v2 import adagrad
-from tensorflow.python.util import deprecation
+from tensorflow.contrib.optimizer_v2 import optimizer_v2
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.training import training_ops
 
 
-class AdagradOptimizer(adagrad.Adagrad):
+class AdagradOptimizer(optimizer_v2.OptimizerV2):
   """Optimizer that implements the Adagrad algorithm.
 
   See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
@@ -30,10 +34,6 @@ class AdagradOptimizer(adagrad.Adagrad):
   [intro](https://ppasupat.github.io/a9online/uploads/proximal_notes.pdf).
   """
 
-  @deprecation.deprecated_args(
-      "2018-10-01",
-      "`use_locking = True` is no longer supported and will be ignored.",
-      ("use_locking", [False]))
   def __init__(self, learning_rate, initial_accumulator_value=0.1,
                use_locking=False, name="Adagrad"):
     """Construct a new Adagrad optimizer.
@@ -54,7 +54,66 @@ class AdagradOptimizer(adagrad.Adagrad):
     Raises:
       ValueError: If the `initial_accumulator_value` is invalid.
     """
-    super(AdagradOptimizer, self).__init__(
-        learning_rate=learning_rate,
-        initial_accumulator_value=initial_accumulator_value,
-        name=name)
+    if initial_accumulator_value <= 0.0:
+      raise ValueError("initial_accumulator_value must be positive: %s" %
+                       initial_accumulator_value)
+    super(AdagradOptimizer, self).__init__(use_locking, name)
+    self._set_hyper("learning_rate", learning_rate)
+
+    self._initial_accumulator_value = initial_accumulator_value
+
+  def _create_vars(self, var_list, state):
+    for v in var_list:
+      dtype = v.dtype.base_dtype
+      if v.get_shape().is_fully_defined():
+        init = init_ops.constant_initializer(
+            self._initial_accumulator_value, dtype=dtype)
+      else:
+
+        def init(v=v, dtype=dtype):
+          # Use a Tensor instead of initializer if variable does not have
+          # static shape.
+          init_constant = gen_array_ops.fill(
+              array_ops.shape(v), self._initial_accumulator_value)
+          return math_ops.cast(init_constant, dtype)
+
+      state.create_slot_with_initializer(v, init, v.get_shape(), dtype,
+                                         "accumulator")
+
+  def _apply_dense(self, grad, var, state):
+    acc = state.get_slot(var, "accumulator")
+    return training_ops.apply_adagrad(
+        var,
+        acc,
+        state.get_hyper("learning_rate", var.dtype.base_dtype),
+        grad,
+        use_locking=self._use_locking)
+
+  def _resource_apply_dense(self, grad, var, state):
+    acc = state.get_slot(var, "accumulator")
+    return training_ops.resource_apply_adagrad(
+        var.handle,
+        acc.handle,
+        state.get_hyper("learning_rate", var.dtype.base_dtype),
+        grad,
+        use_locking=self._use_locking)
+
+  def _apply_sparse(self, grad, var, state):
+    acc = state.get_slot(var, "accumulator")
+    return training_ops.sparse_apply_adagrad(
+        var,
+        acc,
+        state.get_hyper("learning_rate", var.dtype.base_dtype),
+        grad.values,
+        grad.indices,
+        use_locking=self._use_locking)
+
+  def _resource_apply_sparse(self, grad, var, indices, state):
+    acc = state.get_slot(var, "accumulator")
+    return training_ops.resource_sparse_apply_adagrad(
+        var.handle,
+        acc.handle,
+        state.get_hyper("learning_rate", var.dtype.base_dtype),
+        grad,
+        indices,
+        use_locking=self._use_locking)

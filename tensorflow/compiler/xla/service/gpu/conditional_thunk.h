@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CONDITIONAL_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CONDITIONAL_THUNK_H_
 
+#include <memory>
+#include <vector>
+
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
@@ -38,28 +42,24 @@ namespace gpu {
 // false computation share the same allocation.
 class ConditionalThunk : public Thunk {
  public:
-  ConditionalThunk(const BufferAllocation::Slice& predicate_buffer_index,
-                   const BufferAllocation::Slice& true_operand_buffer_index,
-                   const BufferAllocation::Slice& false_operand_buffer_index,
-                   ThunkSequence true_thunk_sequence,
-                   ThunkSequence false_thunk_sequence,
-                   const HloInstruction* hlo);
+  ConditionalThunk(
+      const BufferAllocation::Slice& branch_index_buffer_index,
+      absl::Span<const BufferAllocation::Slice> branch_operand_buffer_indexes,
+      std::vector<ThunkSequence> branch_thunk_sequences,
+      const HloInstruction* hlo);
 
   ConditionalThunk(const ConditionalThunk&) = delete;
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
 
   Status Initialize(const GpuExecutable& executable,
                     se::StreamExecutor* executor) override;
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  BufferAllocation::Slice predicate_buffer_index_;
-  BufferAllocation::Slice true_operand_buffer_index_;
-  BufferAllocation::Slice false_operand_buffer_index_;
-  SequentialThunk true_thunk_;
-  SequentialThunk false_thunk_;
+  const bool branch_index_is_bool_;
+  BufferAllocation::Slice branch_index_buffer_index_;
+  std::vector<BufferAllocation::Slice> branch_operand_buffer_indexes_;
+  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks_;
 };
 
 }  // namespace gpu

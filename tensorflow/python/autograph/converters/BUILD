@@ -1,6 +1,8 @@
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 filegroup(
     name = "all_files",
@@ -17,22 +19,19 @@ filegroup(
 py_library(
     name = "converters",
     srcs = [
+        "arg_defaults.py",
         "asserts.py",
         "break_statements.py",
-        "builtin_functions.py",
         "call_trees.py",
         "conditional_expressions.py",
         "continue_statements.py",
         "control_flow.py",
-        "decorators.py",
         "directives.py",
-        "error_handlers.py",
         "function_scopes.py",
         "list_comprehensions.py",
         "lists.py",
         "logical_expressions.py",
         "return_statements.py",
-        "side_effect_guards.py",
         "slices.py",
     ],
     srcs_version = "PY2AND3",
@@ -48,10 +47,20 @@ py_library(
 )
 
 py_test(
+    name = "arg_defaults_test",
+    srcs = ["arg_defaults_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":converters",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/core:test_lib",
+    ],
+)
+
+py_test(
     name = "asserts_test",
     srcs = ["asserts_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     deps = [
         ":converters",
         "//tensorflow/python:client_testlib",
@@ -71,20 +80,7 @@ py_test(
 )
 
 py_test(
-    name = "builtin_functions_test",
-    srcs = ["builtin_functions_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_windows"],
-    deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:test_lib",
-    ],
-)
-
-py_test(
     name = "call_trees_test",
-    size = "large",
     srcs = ["call_trees_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_windows"],
@@ -122,21 +118,6 @@ py_test(
     name = "control_flow_test",
     srcs = ["control_flow_test.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:test_lib",
-    ],
-)
-
-py_test(
-    name = "decorators_test",
-    srcs = ["decorators_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-        "no_windows",
-    ],
     deps = [
         ":converters",
         "//tensorflow/python:client_testlib",
@@ -201,32 +182,8 @@ py_test(
 )
 
 py_test(
-    name = "side_effect_guards_test",
-    srcs = ["side_effect_guards_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:test_lib",
-    ],
-)
-
-py_test(
     name = "return_statements_test",
     srcs = ["return_statements_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":converters",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/autograph/pyct",
-    ],
-)
-
-py_test(
-    name = "error_handlers_test",
-    srcs = ["error_handlers_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":converters",

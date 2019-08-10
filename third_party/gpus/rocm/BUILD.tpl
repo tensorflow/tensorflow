@@ -18,6 +18,7 @@ cc_library(
     includes = [
         ".",
         "rocm/include",
+        "rocm/include/rocrand",
     ],
     visibility = ["//visibility:public"],
 )
@@ -96,4 +97,4 @@ cc_library(
     ],
 )
 
-%{rocm_include_genrules}
+%{copy_rules}

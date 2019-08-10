@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 
 #include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -40,6 +39,18 @@ std::unordered_map<string, const AttrTypeMap*>* OpNameToAttrTypeMap() {
 
 const uint32 kIsList = 1U << 31;
 
+AttrTypeMap* DefaultFunctionAttrTypeMap() {
+  AttrTypeMap* map = new AttrTypeMap();
+  (*map)["executor_type"] = TF_ATTR_STRING;
+  (*map)["config_proto"] = TF_ATTR_STRING;
+  return map;
+}
+
+const AttrTypeMap* GetDefaultFunctionAttrTypeMap() {
+  static const AttrTypeMap* map = DefaultFunctionAttrTypeMap();
+  return map;
+}
+
 }  // namespace
 
 Status OpDefForOp(const char* op_name, const OpDef** op_def) {
@@ -51,13 +62,27 @@ Status OpDefForOp(const char* op_name, const OpDef** op_def) {
   return s;
 }
 
-Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out) {
+Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
+                        bool* is_function) {
   mutex_lock l(g_op_name_to_attr_type_map_lock);
+  *is_function = false;
   *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
   if (*out != nullptr) return Status::OK();
   const OpDef* op_def = nullptr;
   Status s = OpDefForOp(op_name, &op_def);
-  if (!s.ok()) return s;
+  if (errors::IsNotFound(s)) {
+    // If we did not find the op def, we assume `op_name` is a function.
+    // If it is actually a misspelled op, user will get another error when
+    // trying to run it.
+    // TODO(iga): If we ever have a use case for different attribute specs
+    // in different functions, we will need to look at the OpDef in the
+    // function def to retrieve their types.
+    *out = GetDefaultFunctionAttrTypeMap();
+    *is_function = true;
+    return Status::OK();
+  } else if (!s.ok()) {
+    return s;
+  }
   std::unique_ptr<AttrTypeMap> m(new AttrTypeMap);
   // TODO(agarwal): Avoid having to create this "registry" at runtime,
   // perhaps can be done at op registration time?
@@ -99,7 +124,9 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out) {
 #define DEFINE_SET_ATTR(value_type, value_field)                             \
   template <>                                                                \
   AttrBuilder& AttrBuilder::Set(StringPiece attr_name, value_type&& value) { \
-    value_field.push_back(std::make_pair(attr_name, value));                 \
+    DCHECK(!node_def_finalized_) << "Calling Set() after BuildNodeDef.";     \
+    value_field.push_back(std::make_pair(string(attr_name), value));         \
+    cached_cache_key_ = absl::nullopt;                                       \
     return *this;                                                            \
   }
 
@@ -109,6 +136,26 @@ DEFINE_SET_ATTR(bool, bool_attrs_);
 DEFINE_SET_ATTR(tensorflow::DataType, type_attrs_);
 
 #undef DEFINE_SET_ATTR
+
+#define DEFINE_GET_ATTR(value_type, value_field)                            \
+  template <>                                                               \
+  Status AttrBuilder::Get(StringPiece attr_name, value_type* value) const { \
+    for (const auto& name_value : value_field) {                            \
+      if (attr_name == name_value.first) {                                  \
+        *value = name_value.second;                                         \
+        return Status::OK();                                                \
+      }                                                                     \
+    }                                                                       \
+    return errors::NotFound("No attr named'", attr_name,                    \
+                            "' found in AttrBuilder for ", op_name_);       \
+  }
+
+DEFINE_GET_ATTR(float, float_attrs_);
+DEFINE_GET_ATTR(int, int_attrs_);
+DEFINE_GET_ATTR(bool, bool_attrs_);
+DEFINE_GET_ATTR(tensorflow::DataType, type_attrs_);
+
+#undef DEFINE_GET_ATTR
 
 AttrBuilder& AttrBuilder::NumInputs(int n) {
   DCHECK(!node_def_finalized_) << "Calling NumInputs after BuildNodeDef.";
@@ -185,7 +232,7 @@ namespace {
 inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
                                                const tensorflow::Fprint128& b) {
   return {tensorflow::FingerprintCat64(a.low64, b.low64),
-          tensorflow::FingerprintCat64(a.low64, b.low64)};
+          tensorflow::FingerprintCat64(a.high64, b.high64)};
 }
 
 void CombineUnordered(const tensorflow::Fprint128& a,
@@ -206,7 +253,17 @@ inline tensorflow::Fprint128 CacheKeyHelper(StringPiece s, uint64 b) {
 
 }  // namespace
 
-tensorflow::Fprint128 AttrBuilder::CacheKey(const string& device) const {
+tensorflow::Fprint128 AttrBuilder::CacheKey(const StringPiece device) {
+  if (!cached_cache_key_ || device != device_for_cached_cache_key_) {
+    cached_cache_key_ = BuildCacheKeyForDevice(device);
+    device_for_cached_cache_key_ = string(device);
+  }
+
+  return *cached_cache_key_;
+}
+
+tensorflow::Fprint128 AttrBuilder::BuildCacheKeyForDevice(
+    const StringPiece device) const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(op_name_);
   f = tensorflow::FingerprintCat128(f, tensorflow::Fingerprint128(device));
   if (node_def_ != nullptr) {

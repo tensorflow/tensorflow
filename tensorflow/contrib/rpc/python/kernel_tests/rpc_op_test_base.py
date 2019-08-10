@@ -22,13 +22,12 @@ import itertools
 
 import numpy as np
 
-from tensorflow.contrib.proto.python.ops import decode_proto_op
-from tensorflow.contrib.proto.python.ops import encode_proto_op
 from tensorflow.contrib.rpc.python.kernel_tests import test_example_pb2
 from tensorflow.contrib.rpc.python.ops import rpc_op
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.ops import proto_ops
 
 __all__ = ['I_WARNED_YOU', 'RpcOpTestBase']
 
@@ -124,8 +123,6 @@ class RpcOpTestBase(object):
               address=address,
               request=''))
       self.assertEqual(errors.UNAVAILABLE, status_code_value)
-      self.assertTrue(
-          self.connect_failed_string in status_message_value.decode('ascii'))
 
   def testAlwaysFailingMethod(self):
     with self.cached_session() as sess:
@@ -176,7 +173,9 @@ class RpcOpTestBase(object):
       expected_message_values = np.where(
           status_code_values == errors.INVALID_ARGUMENT,
           I_WARNED_YOU.encode('ascii'), b'')
-      self.assertAllEqual(expected_message_values, status_message_values)
+      for msg, expected in zip(status_message_values, expected_message_values):
+        self.assertTrue(expected in msg,
+                        '"%s" did not contain "%s"' % (msg, expected))
 
   def testVecHostPortRpc(self):
     with self.cached_session() as sess:
@@ -220,7 +219,7 @@ class RpcOpTestBase(object):
 
   def testVecHostPortRpcUsingEncodeAndDecodeProto(self):
     with self.cached_session() as sess:
-      request_tensors = encode_proto_op.encode_proto(
+      request_tensors = proto_ops.encode_proto(
           message_type='tensorflow.contrib.rpc.TestCase',
           field_names=['values'],
           sizes=[[3]] * 20,
@@ -231,7 +230,7 @@ class RpcOpTestBase(object):
           method=self.get_method_name('Increment'),
           address=self._address,
           request=request_tensors)
-      _, (response_shape,) = decode_proto_op.decode_proto(
+      _, (response_shape,) = proto_ops.decode_proto(
           bytes=response_tensor_strings,
           message_type='tensorflow.contrib.rpc.TestCase',
           field_names=['values'],

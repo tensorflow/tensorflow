@@ -18,11 +18,11 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -115,13 +115,17 @@ struct GatherFunctorCPU {
                    typename TTypes<T, 3>::ConstTensor params,
                    typename TTypes<Index>::ConstFlat indices,
                    typename TTypes<T, 3>::Tensor out) {
-    const int64 N = indices.size();
+    const int64 indices_size = indices.size();
     const int64 slice_size = out.dimension(2);
     int64 bad_i;
 
+    const int64 batch_size = params.dimension(0);
+
     bool use_large = (slice_size > std::numeric_limits<int32>::max() ||
                       params.size() > std::numeric_limits<int32>::max() ||
-                      N > std::numeric_limits<int32>::max());
+                      indices_size > std::numeric_limits<int32>::max() ||
+                      batch_size * indices_size * slice_size >
+                          std::numeric_limits<int32>::max());
 #define CALL(elems)                                                      \
   do {                                                                   \
     if (use_large) {                                                     \

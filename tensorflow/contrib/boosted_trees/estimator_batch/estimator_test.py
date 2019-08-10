@@ -20,11 +20,14 @@ from __future__ import print_function
 import tempfile
 import numpy as np
 
+from google.protobuf import text_format
 from tensorflow.contrib.boosted_trees.estimator_batch import estimator
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
+from tensorflow.contrib.boosted_trees.proto import tree_config_pb2
 from tensorflow.contrib.layers.python.layers import feature_column as contrib_feature_column
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.python.estimator.canned import head as head_lib
+from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.feature_column import feature_column_lib as core_feature_column
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -47,8 +50,8 @@ def _multiclass_train_input_fn():
   features = {
       "x": constant_op.constant([[2.], [1.], [1.], [5.], [3.5], [4.6], [3.5]])
   }
-  label = constant_op.constant(
-      [[1], [0], [0], [2], [2], [0], [1]], dtype=dtypes.int32)
+  label = constant_op.constant([[1], [0], [0], [2], [2], [0], [1]],
+                               dtype=dtypes.int32)
   return features, label
 
 
@@ -77,11 +80,73 @@ def _infer_ranking_train_input_fn():
   return features, None
 
 
+_QUANTILE_REGRESSION_SIZE = 1000
+
+
+def _quantile_regression_input_fns(two_dimension=False):
+  # The data generation is taken from
+  # http://scikit-learn.org/stable/auto_examples/ensemble/plot_gradient_boosting_quantile.html
+  np.random.seed(1)
+
+  def f(x):
+    """The function to predict."""
+    return x * np.sin(x)
+
+  def g(x):
+    """The function to predict."""
+    return x * np.cos(x)
+
+  #  Training data.
+  x = np.atleast_2d(np.random.uniform(0, 10.0,
+                                      size=_QUANTILE_REGRESSION_SIZE)).T
+  x = x.astype(np.float32)
+
+  # Labels.
+  if not two_dimension:
+    y = f(x).ravel()
+  else:
+    y = np.column_stack((f(x).ravel(), g(x).ravel()))
+
+  # Add random noise.
+  dy = 1.5 + 1.0 * np.random.random(y.shape)
+  noise = np.random.normal(0, dy)
+  y += noise
+  y_original = y.astype(np.float32)
+  if not two_dimension:
+    y = y.reshape(_QUANTILE_REGRESSION_SIZE, 1)
+
+  train_input_fn = numpy_io.numpy_input_fn(
+      x=x,
+      y=y,
+      batch_size=_QUANTILE_REGRESSION_SIZE,
+      num_epochs=None,
+      shuffle=True)
+
+  # Test on the training data to make sure the predictions are calibrated.
+  test_input_fn = numpy_io.numpy_input_fn(
+      x=x,
+      y=y,
+      batch_size=_QUANTILE_REGRESSION_SIZE,
+      num_epochs=1,
+      shuffle=False)
+
+  return train_input_fn, test_input_fn, y_original
+
+
 class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     self._export_dir_base = tempfile.mkdtemp() + "export/"
     gfile.MkDir(self._export_dir_base)
+
+  def _assert_checkpoint_and_return_model(self, model_dir, global_step):
+    reader = checkpoint_utils.load_checkpoint(model_dir)
+    self.assertEqual(global_step, reader.get_tensor(ops.GraphKeys.GLOBAL_STEP))
+    serialized = reader.get_tensor("ensemble_model:0_config")
+    ensemble_proto = tree_config_pb2.DecisionTreeEnsembleConfig()
+    ensemble_proto.ParseFromString(serialized)
+
+    return ensemble_proto
 
   def _assert_checkpoint(self, model_dir, global_step):
     reader = checkpoint_utils.load_checkpoint(model_dir)
@@ -341,6 +406,405 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
     for prediction_dict in result_iter:
       self.assertTrue("classes" in prediction_dict)
 
+  # One dimensional quantile regression.
+  def testQuantileRegression(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 2
+    learner_config.constraints.max_tree_depth = 6
+    learner_config.growing_mode = learner_pb2.LearnerConfig.LAYER_BY_LAYER
+    learner_config.constraints.min_node_weight = 1 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.l2 = 1.0 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.l1 = 1.0 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.tree_complexity = (1.0 /
+                                                     _QUANTILE_REGRESSION_SIZE)
+
+    train_input_fn, test_input_fn, y = _quantile_regression_input_fns()
+
+    # 95% percentile.
+    model_upper = estimator.GradientBoostedDecisionTreeQuantileRegressor(
+        quantiles=[0.95],
+        learner_config=learner_config,
+        num_trees=12,
+        examples_per_layer=_QUANTILE_REGRESSION_SIZE,
+        center_bias=False)
+
+    model_upper.fit(input_fn=train_input_fn, steps=1000)
+    result_iter = model_upper.predict(input_fn=test_input_fn)
+    upper = []
+    for prediction_dict in result_iter:
+      upper.append(prediction_dict["scores"])
+
+    frac_below_upper = round(1. * np.count_nonzero(upper > y) / len(y), 3)
+    # +/- 3%
+    self.assertTrue(frac_below_upper >= 0.92)
+    self.assertTrue(frac_below_upper <= 0.98)
+
+  # Multi-dimensional quantile regression.
+  def testQuantileRegressionMultiDimLabel(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 2
+    learner_config.constraints.max_tree_depth = 6
+    learner_config.growing_mode = learner_pb2.LearnerConfig.LAYER_BY_LAYER
+    learner_config.constraints.min_node_weight = 1 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.l2 = 1.0 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.l1 = 1.0 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.tree_complexity = (1.0 /
+                                                     _QUANTILE_REGRESSION_SIZE)
+
+    train_input_fn, test_input_fn, y = _quantile_regression_input_fns(
+        two_dimension=True)
+
+    # 95% percentile.
+    model_upper = estimator.GradientBoostedDecisionTreeQuantileRegressor(
+        quantiles=[0.95],
+        learner_config=learner_config,
+        label_dimension=2,
+        num_trees=18,
+        examples_per_layer=_QUANTILE_REGRESSION_SIZE,
+        center_bias=False)
+
+    model_upper.fit(input_fn=train_input_fn, steps=1000)
+    result_iter = model_upper.predict(input_fn=test_input_fn)
+    upper = []
+    for prediction_dict in result_iter:
+      upper.append(prediction_dict["scores"])
+
+    count_below_upper = np.count_nonzero(upper > y, axis=0)
+    count_both_below_upper = np.count_nonzero(np.prod(upper > y, axis=1))
+    frac_below_upper_0 = round(1. * count_below_upper[0] / len(y), 3)
+    frac_below_upper_1 = round(1. * count_below_upper[1] / len(y), 3)
+    frac_both_below_upper = round(1. * count_both_below_upper / len(y), 3)
+    # +/- 3%
+    self.assertTrue(frac_below_upper_0 >= 0.92)
+    self.assertTrue(frac_below_upper_0 <= 0.98)
+    self.assertTrue(frac_below_upper_1 >= 0.92)
+    self.assertTrue(frac_below_upper_1 <= 0.98)
+    self.assertTrue(frac_both_below_upper >= 0.91)
+    self.assertTrue(frac_both_below_upper <= 0.99)
+
+  def testForcedInitialSplits(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 2
+    learner_config.constraints.max_tree_depth = 3
+
+    initial_subtree = """
+            nodes {
+              dense_float_binary_split {
+                feature_column: 0
+                threshold: -0.5
+                left_id: 1
+                right_id: 2
+              }
+              node_metadata {
+                gain: 0
+              }
+            }
+            nodes {
+              dense_float_binary_split {
+                feature_column: 0
+                threshold: 0.52
+                left_id: 3
+                right_id: 4
+              }
+              node_metadata {
+                gain: 0
+              }
+            }
+            nodes {
+              dense_float_binary_split {
+                feature_column: 0
+                threshold: 0.554
+                left_id: 5
+                right_id: 6
+              }
+              node_metadata {
+                gain: 0
+              }
+            }
+            nodes {
+              leaf {
+                vector {
+                  value: 0.0
+                }
+              }
+            }
+            nodes {
+              leaf {
+                vector {
+                  value: 0.0
+                }
+              }
+            }
+            nodes {
+              leaf {
+                vector {
+                  value: 0.0
+                }
+              }
+            }
+            nodes {
+              leaf {
+                vector {
+                  value: 0.0
+                }
+              }
+            }
+    """
+    tree_proto = tree_config_pb2.DecisionTreeConfig()
+    text_format.Merge(initial_subtree, tree_proto)
+
+    # Set initial subtree info.
+    learner_config.each_tree_start.CopyFrom(tree_proto)
+    learner_config.each_tree_start_num_layers = 2
+
+    model_dir = tempfile.mkdtemp()
+    config = run_config.RunConfig()
+
+    classifier = estimator.GradientBoostedDecisionTreeClassifier(
+        learner_config=learner_config,
+        num_trees=2,
+        examples_per_layer=6,
+        model_dir=model_dir,
+        config=config,
+        center_bias=False,
+        feature_columns=[contrib_feature_column.real_valued_column("x")],
+        output_leaf_index=False)
+
+    classifier.fit(input_fn=_train_input_fn, steps=100)
+    # When no override of global steps, 5 steps were used.
+    ensemble = self._assert_checkpoint_and_return_model(
+        classifier.model_dir, global_step=6)
+
+    # TODO(nponomareva): find a better way to test this.
+    expected_ensemble = """
+      trees {
+        nodes {
+          dense_float_binary_split {
+            threshold: -0.5
+            left_id: 1
+            right_id: 2
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            threshold: 0.519999980927
+            left_id: 3
+            right_id: 4
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            threshold: 0.554000020027
+            left_id: 5
+            right_id: 6
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            threshold: 1.0
+            left_id: 7
+            right_id: 8
+          }
+          node_metadata {
+            gain: 0.888888895512
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: -2.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 2.00000023842
+            }
+          }
+        }
+      }
+      trees {
+        nodes {
+          dense_float_binary_split {
+            threshold: -0.5
+            left_id: 1
+            right_id: 2
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            threshold: 0.519999980927
+            left_id: 3
+            right_id: 4
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            threshold: 0.554000020027
+            left_id: 5
+            right_id: 6
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            threshold: 1.0
+            left_id: 7
+            right_id: 8
+          }
+          node_metadata {
+            gain: 0.727760672569
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: -1.81873059273
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 1.81873047352
+            }
+          }
+        }
+      }
+      trees {
+        nodes {
+          dense_float_binary_split {
+            threshold: -0.5
+            left_id: 1
+            right_id: 2
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            threshold: 0.519999980927
+            left_id: 3
+            right_id: 4
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          dense_float_binary_split {
+            threshold: 0.554000020027
+            left_id: 5
+            right_id: 6
+          }
+          node_metadata {
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+        nodes {
+          leaf {
+            vector {
+              value: 0.0
+            }
+          }
+        }
+      }
+      tree_weights: 0.10000000149
+      tree_weights: 0.10000000149
+      tree_weights: 0.10000000149
+      tree_metadata {
+        num_tree_weight_updates: 1
+        num_layers_grown: 3
+        is_finalized: true
+      }
+      tree_metadata {
+        num_tree_weight_updates: 1
+        num_layers_grown: 3
+        is_finalized: true
+      }
+      tree_metadata {
+        num_tree_weight_updates: 1
+        num_layers_grown: 2
+      }
+      growing_metadata {
+        num_layers_attempted: 3
+      }
+    """
+    self.assertProtoEquals(expected_ensemble, ensemble)
+
 
 class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):
 
@@ -489,8 +953,8 @@ class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):
 
     feature_columns = [
         core_feature_column.weighted_categorical_column(
-            categorical_column=core_feature_column.
-            categorical_column_with_vocabulary_list(
+            categorical_column=core_feature_column
+            .categorical_column_with_vocabulary_list(
                 key="word", vocabulary_list=["the", "cat", "dog"]),
             weight_feature_key="weight")
     ]
@@ -509,8 +973,8 @@ class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):
         # Weights for the words are 5 - cat, 6- dog and 1 -the.
         features_dict["word"] = sparse_tensor.SparseTensor(
             indices=[[0, 0], [0, 1], [1, 0], [3, 0]],
-            values=constant_op.constant(
-                ["the", "cat", "dog", "the"], dtype=dtypes.string),
+            values=constant_op.constant(["the", "cat", "dog", "the"],
+                                        dtype=dtypes.string),
             dense_shape=[4, 3])
         features_dict["weight"] = sparse_tensor.SparseTensor(
             indices=[[0, 0], [0, 1], [1, 0], [3, 0]],
@@ -533,6 +997,33 @@ class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):
     est.train(input_fn=input_fn, steps=100)
     est.evaluate(input_fn=input_fn, steps=1)
     est.predict(input_fn=input_fn)
+
+  # Quantile regression in core is the same as in non core estimator, so we
+  # just check that it does not fail.
+  def testQuantileRegressionDoesNotThroughException(self):
+    learner_config = learner_pb2.LearnerConfig()
+    learner_config.num_classes = 2
+    learner_config.constraints.max_tree_depth = 1
+    learner_config.growing_mode = learner_pb2.LearnerConfig.WHOLE_TREE
+    learner_config.constraints.min_node_weight = 1 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.l2 = 1.0 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.l1 = 1.0 / _QUANTILE_REGRESSION_SIZE
+    learner_config.regularization.tree_complexity = (1.0 /
+                                                     _QUANTILE_REGRESSION_SIZE)
+
+    train_input_fn, test_input_fn, y = _quantile_regression_input_fns()
+    y = y.reshape(_QUANTILE_REGRESSION_SIZE, 1)
+
+    # 95% percentile.
+    model_upper = estimator.CoreGradientBoostedDecisionTreeQuantileRegressor(
+        quantiles=[0.95],
+        learner_config=learner_config,
+        num_trees=1,
+        examples_per_layer=_QUANTILE_REGRESSION_SIZE,
+        center_bias=False)
+
+    model_upper.train(input_fn=train_input_fn, steps=1000)
+    result_iter = model_upper.predict(input_fn=test_input_fn)
 
 
 if __name__ == "__main__":

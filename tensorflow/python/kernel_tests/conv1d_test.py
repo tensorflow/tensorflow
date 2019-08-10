@@ -31,7 +31,10 @@ class Conv1DTest(test.TestCase):
 
   def testBasic(self):
     """Test that argument passing to conv1d is handled properly."""
-    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+    # double datatype is currently not supported for convolution ops
+    # on the ROCm platform
+    optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
+    for dtype in [dtypes.float16, dtypes.float32] + optional_float64:
       x = constant_op.constant([1, 2, 3, 4], dtype=dtype)
       x = array_ops.expand_dims(x, 0)  # Add batch dimension
       x = array_ops.expand_dims(x, 2)  # And depth dimension
@@ -40,10 +43,10 @@ class Conv1DTest(test.TestCase):
       filters = array_ops.expand_dims(filters, 2)  # out_channels
       # Filters is 2x1x1
       for stride in [1, 2]:
-        with self.test_session(use_gpu=test.is_gpu_available()):
+        with self.cached_session(use_gpu=test.is_gpu_available()):
           c = nn_ops.conv1d(x, filters, stride, padding="VALID")
           reduced = array_ops.squeeze(c)
-          output = reduced.eval()
+          output = self.evaluate(reduced)
           if stride == 1:
             self.assertEqual(len(output), 3)
             self.assertAllClose(output,
@@ -68,8 +71,8 @@ class Conv1DTest(test.TestCase):
       f = constant_op.constant(
           1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
       output = nn_ops.conv1d_transpose(
-          x, f, y_shape, stride=stride, padding="VALID")
-      value = output.eval()
+          x, f, y_shape, strides=stride, padding="VALID")
+      value = self.evaluate(output)
 
       cache_values = np.zeros(y_shape, dtype=np.float32)
 

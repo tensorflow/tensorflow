@@ -17,7 +17,7 @@ platform(
     remote_execution_properties = """
         properties:{
           name:"container-image"
-          value:"docker://gcr.io/tensorflow-testing/tf-rbe-win@sha256:b2eeb661e0134ef96a4736677e8f96a90970bc206dea93739cd711031b62a0e5"
+          value:"docker://gcr.io/tensorflow-testing/tf-win-rbe@sha256:e62d7bc6b99d841f47701d2a49c01484699abf7b438a8645c6b3f0d175f0fae2"
         }
         properties:{
           name: "OSFamily" value: "Windows"

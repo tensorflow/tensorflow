@@ -12,8 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-// See docs in ../ops/parsing_ops.cc.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op.h"
@@ -25,6 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class CSVDatasetOp : public DatasetOpKernel {
@@ -63,7 +62,7 @@ class CSVDatasetOp : public DatasetOpKernel {
     OP_REQUIRES(ctx, select_cols_tensor->dims() == 1,
                 errors::InvalidArgument("`select_cols` must be a vector."));
 
-    int64 buffer_size;
+    int64 buffer_size = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
     OP_REQUIRES(ctx, buffer_size > 0,
@@ -94,7 +93,7 @@ class CSVDatasetOp : public DatasetOpKernel {
     std::vector<string> filenames;
     filenames.reserve(filenames_tensor->NumElements());
     for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
-      filenames.push_back(filenames_tensor->flat<string>()(i));
+      filenames.push_back(filenames_tensor->flat<tstring>()(i));
     }
 
     io::ZlibCompressionOptions zlib_compression_options =
@@ -159,8 +158,8 @@ class CSVDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::CSV")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::CSV")});
     }
 
     const DataTypeVector& output_dtypes() const override { return out_type_; }
@@ -170,6 +169,8 @@ class CSVDatasetOp : public DatasetOpKernel {
     }
 
     string DebugString() const override { return "CSVDatasetOp::Dataset"; }
+
+    Status CheckExternalState() const override { return Status::OK(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -263,6 +264,11 @@ class CSVDatasetOp : public DatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeSourceNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("current_file_index"),
@@ -640,7 +646,8 @@ class CSVDatasetOp : public DatasetOpKernel {
                                          " fields but have more in record");
         }
         const DataType& dtype = dataset()->out_type_[output_idx];
-        Tensor component(ctx->allocator({}), dtype, {});
+        out_tensors->emplace_back(ctx->allocator({}), dtype, TensorShape({}));
+        Tensor& component = out_tensors->back();
         if ((field.empty() || field == dataset()->na_value_) &&
             dataset()->record_defaults_[output_idx].NumElements() != 1) {
           // If the field is empty or NA value, and default is not given,
@@ -714,10 +721,10 @@ class CSVDatasetOp : public DatasetOpKernel {
           }
           case DT_STRING: {
             if (field.empty() || field == dataset()->na_value_) {
-              component.scalar<string>()() =
-                  dataset()->record_defaults_[output_idx].flat<string>()(0);
+              component.scalar<tstring>()() =
+                  dataset()->record_defaults_[output_idx].flat<tstring>()(0);
             } else {
-              component.scalar<string>()() = string(field);
+              component.scalar<tstring>()() = string(field);
             }
             break;
           }
@@ -726,7 +733,6 @@ class CSVDatasetOp : public DatasetOpKernel {
                                            " not supported in field ",
                                            output_idx);
         }
-        out_tensors->push_back(std::move(component));
         return Status::OK();
       }
 
@@ -851,10 +857,11 @@ class CSVDatasetOp : public DatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };  // class CSVDatasetOp
 
-// Register the kernel implementation for CSVDataset.
+REGISTER_KERNEL_BUILDER(Name("CSVDataset").Device(DEVICE_CPU), CSVDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalCSVDataset").Device(DEVICE_CPU),
                         CSVDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

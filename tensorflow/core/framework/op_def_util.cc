@@ -114,6 +114,8 @@ Status ValidateAttrValue(const AttrValue& attr_value,
         length = attr_value.list().shape_size();
       } else if (attr.type() == "list(tensor)") {
         length = attr_value.list().tensor_size();
+      } else if (attr.type() == "list(func)") {
+        length = attr_value.list().func_size();
       }
       if (length < attr.minimum()) {
         return errors::InvalidArgument(
@@ -249,10 +251,10 @@ static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
 Status ValidateOpDef(const OpDef& op_def) {
   using ::tensorflow::strings::Scanner;
 
-  if (!str_util::StartsWith(op_def.name(), "_")) {
+  if (!absl::StartsWith(op_def.name(), "_")) {
     VALIDATE(Scanner(op_def.name())
                  .One(Scanner::UPPERLETTER)
-                 .Any(Scanner::LETTER_DIGIT)
+                 .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
                  .Eos()
                  .GetResult(),
              "Invalid name: ", op_def.name(), " (Did you use CamelCase?)");
@@ -269,11 +271,11 @@ Status ValidateOpDef(const OpDef& op_def) {
 
     // Validate type
     StringPiece type(attr.type());
-    bool is_list = str_util::ConsumePrefix(&type, "list(");
+    bool is_list = absl::ConsumePrefix(&type, "list(");
     bool found = false;
     for (StringPiece valid : {"string", "int", "float", "bool", "type", "shape",
                               "tensor", "func"}) {
-      if (str_util::ConsumePrefix(&type, valid)) {
+      if (absl::ConsumePrefix(&type, valid)) {
         found = true;
         break;
       }
@@ -281,7 +283,7 @@ Status ValidateOpDef(const OpDef& op_def) {
     VALIDATE(found, "Unrecognized type '", type, "' in attr '", attr.name(),
              "'");
     if (is_list) {
-      VALIDATE(str_util::ConsumePrefix(&type, ")"),
+      VALIDATE(absl::ConsumePrefix(&type, ")"),
                "'list(' is missing ')' in attr ", attr.name(), "'s type ",
                attr.type());
     }
@@ -833,25 +835,37 @@ bool OpDefEqual(const OpDef& o1, const OpDef& o2) {
   // Compare it separately here instead of serializing below.
   if (!RepeatedAttrDefEqual(o1.attr(), o2.attr())) return false;
 
-  // Clear attr field, serialize, and compare serialized strings
+  // `control_output` order doesn't matter.
+  std::set<string> control_output1(o1.control_output().begin(),
+                                   o1.control_output().end());
+  std::set<string> control_output2(o2.control_output().begin(),
+                                   o2.control_output().end());
+  if (control_output1 != control_output2) return false;
+
+  // Clear `attr` and `control_output` fields, serialize, and compare serialized
+  // strings.
   OpDef o1_copy = o1;
   OpDef o2_copy = o2;
   o1_copy.clear_attr();
+  o1_copy.clear_control_output();
   o2_copy.clear_attr();
-  string s1, s2;
-  SerializeToStringDeterministic(o1_copy, &s1);
-  SerializeToStringDeterministic(o2_copy, &s2);
-  if (s1 != s2) return false;
-  return true;
+  o2_copy.clear_control_output();
+
+  return AreSerializedProtosEqual(o1_copy, o2_copy);
 }
 
 uint64 OpDefHash(const OpDef& o) {
   uint64 h = RepeatedAttrDefHash(o.attr());
+
+  // Compute deterministic order-independent control outputs hash.
+  std::set<string> control_output(o.control_output().begin(),
+                                  o.control_output().end());
+  for (const auto& co : control_output) h = Hash64Combine(h, Hash64(co));
+
   OpDef o_copy = o;
   o_copy.clear_attr();
-  string s;
-  SerializeToStringDeterministic(o_copy, &s);
-  return Hash64(s.data(), s.size(), h);
+  o_copy.clear_control_output();
+  return DeterministicProtoHash64(o_copy, h);
 }
 
 }  // namespace tensorflow

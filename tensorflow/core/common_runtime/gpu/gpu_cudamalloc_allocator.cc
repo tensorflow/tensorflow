@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #ifdef GOOGLE_CUDA
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
@@ -61,6 +61,10 @@ void GPUcudaMallocAllocator::DeallocateRaw(void* ptr) {
 #endif  // GOOGLE_CUDA
 }
 
-bool GPUcudaMallocAllocator::TracksAllocationSizes() { return false; }
+absl::optional<AllocatorStats> GPUcudaMallocAllocator::GetStats() {
+  return base_allocator_->GetStats();
+}
+
+bool GPUcudaMallocAllocator::TracksAllocationSizes() const { return false; }
 
 }  // namespace tensorflow

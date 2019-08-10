@@ -30,8 +30,7 @@ namespace grappler {
 class DependencyOptimizer : public GraphOptimizer {
  public:
   DependencyOptimizer() {}
-  explicit DependencyOptimizer(RewriterConfig::Toggle opt_level)
-      : opt_level_(opt_level) {}
+  explicit DependencyOptimizer(RewriterConfig::Toggle opt_level) {}
   ~DependencyOptimizer() override {}
 
   string name() const override { return "dependency_optimizer"; };
@@ -48,7 +47,8 @@ class DependencyOptimizer : public GraphOptimizer {
   bool BypassingNodeIsBeneficial(
       const NodeDef& node, const std::vector<NodeDef*>& input_nodes,
       const std::vector<NodeDef*>& output_nodes) const;
-
+  int NumEdgesIfBypassed(const NodeDef& node,
+                         const std::vector<NodeDef*>& output_nodes) const;
   // Returns true if node is not an Identity node or if it is an Identity
   // that is safe to remove.
   bool SafeToRemoveIdentity(const NodeDef& node) const;
@@ -72,7 +72,6 @@ class DependencyOptimizer : public GraphOptimizer {
   // single control edge.
   void GroupCrossDeviceControlEdges();
 
-  RewriterConfig::Toggle opt_level_;
   bool fetch_nodes_known_;
   std::unordered_set<string> nodes_to_preserve_;
   std::unique_ptr<NodeMap> node_map_;

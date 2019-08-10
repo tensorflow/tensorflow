@@ -15,9 +15,12 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#include "tensorflow/cc/ops/nn_ops.h"
 
 #include <functional>
 #include <memory>
@@ -26,10 +29,8 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/cc/ops/const_op.h"
-#include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -107,6 +108,7 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
                          CONV_OP op, int num_threads, int stride,
                          Padding padding, bool use_gpu, DataType data_type,
                          const string& label) {
+  testing::StopTiming();
   if (!IsGoogleCudaEnabled() && use_gpu) {
     testing::SetLabel(
         strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
@@ -220,6 +222,7 @@ static void BM_ConvFloat(int iters, int batch, int rows, int cols, int in_depth,
 
   string device = use_gpu ? "gpu" : "cpu";
   testing::UseRealTime();
+  testing::StartTiming();
   test::Benchmark(device, g, &options).Run(iters);
   testing::ItemsProcessed(num_ops * iters);
 }
@@ -501,6 +504,7 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
                                   int filter_cols, DEPTHWISE_CONV_OP op,
                                   int num_threads, int stride, Padding padding,
                                   bool use_gpu, const string& label) {
+  testing::StopTiming();
   if (!IsGoogleCudaEnabled() && use_gpu) {
     testing::SetLabel(
         strings::StrCat("Skipping GPU test (no --config=cuda): ", label));
@@ -600,6 +604,7 @@ static void BM_ConvFloatDepthwise(int iters, int batch, int rows, int cols,
 
   string device = use_gpu ? "gpu" : "cpu";
   testing::UseRealTime();
+  testing::StartTiming();
   test::Benchmark(device, g, &options).Run(iters);
   testing::ItemsProcessed(num_ops * iters);
 }
@@ -735,8 +740,8 @@ static void BM_LRNFloat(int iters, int depth, int cols, int rows,
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
   thread::ThreadPool threadpool(Env::Default(), "test", num_threads);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_cpu_device(&wrapper, num_threads);
+  Eigen::ThreadPoolDevice eigen_cpu_device(threadpool.AsEigenThreadPool(),
+                                           num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
   gtl::InlinedVector<TensorValue, 4> inputs;
@@ -817,8 +822,8 @@ static void BM_AvgPool(int iters, int batch_size, int rows, int cols, int depth,
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
   thread::ThreadPool threadpool(Env::Default(), "test", num_threads);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_cpu_device(&wrapper, num_threads);
+  Eigen::ThreadPoolDevice eigen_cpu_device(threadpool.AsEigenThreadPool(),
+                                           num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
   gtl::InlinedVector<TensorValue, 4> inputs;
@@ -909,8 +914,8 @@ static void BM_AvgPoolBk(int iters, int batch_size, int rows, int cols,
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
   thread::ThreadPool threadpool(Env::Default(), "test", num_threads);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_cpu_device(&wrapper, num_threads);
+  Eigen::ThreadPoolDevice eigen_cpu_device(threadpool.AsEigenThreadPool(),
+                                           num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
   gtl::InlinedVector<TensorValue, 4> inputs;
@@ -1013,8 +1018,8 @@ static void BM_MaxPool(int iters, int batch_size, int rows, int cols, int depth,
       DeviceFactory::NewDevice("CPU", options, "/job:a/replica:0/task:0"));
 
   thread::ThreadPool threadpool(Env::Default(), "test", num_threads);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_cpu_device(&wrapper, num_threads);
+  Eigen::ThreadPoolDevice eigen_cpu_device(threadpool.AsEigenThreadPool(),
+                                           num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
   gtl::InlinedVector<TensorValue, 4> inputs;
@@ -1193,8 +1198,8 @@ static void BM_ReluFloat(int iters, int batch_size, int rows, int cols,
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
   thread::ThreadPool threadpool(Env::Default(), "test", num_threads);
-  EigenThreadPoolWrapper wrapper(&threadpool);
-  Eigen::ThreadPoolDevice eigen_cpu_device(&wrapper, num_threads);
+  Eigen::ThreadPoolDevice eigen_cpu_device(threadpool.AsEigenThreadPool(),
+                                           num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
   gtl::InlinedVector<TensorValue, 4> inputs;
@@ -1274,7 +1279,7 @@ static void BM_ImageNetSoftmaxFwd(int iters, int batch_size, int node_depth,
   opts.config.set_use_per_session_threads(true);
   opts.config.mutable_graph_options()
       ->mutable_optimizer_options()
-      ->set_opt_level(OptimizerOptions_Level_L0);
+      ->set_opt_level(OptimizerOptions::L0);
   testing::UseRealTime();
   test::Benchmark(device, g, &opts).Run(iters);
   testing::ItemsProcessed(batch_size * node_depth * iters);
@@ -1322,7 +1327,7 @@ static void BM_TopK(int iters, int rows, int cols, int k, int num_threads,
   opts.config.set_use_per_session_threads(true);
   opts.config.mutable_graph_options()
       ->mutable_optimizer_options()
-      ->set_opt_level(OptimizerOptions_Level_L0);
+      ->set_opt_level(OptimizerOptions::L0);
   testing::UseRealTime();
   testing::StartTiming();
   test::Benchmark(device, g, &opts).Run(iters);

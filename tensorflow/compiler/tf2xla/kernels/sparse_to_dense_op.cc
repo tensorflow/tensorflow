@@ -74,13 +74,13 @@ class SparseToDenseOp : public XlaOpKernel {
     auto buffer = Broadcast(default_value, output_shape.dim_sizes());
 
     auto result = XlaScatter(buffer, sparse_values, indices,
-                             /*indices_are_vectors=*/num_dims > 1,
+                             /*indices_are_vectors=*/indices_shape.dims() > 1,
                              /*combiner=*/{}, builder);
     context->SetOutput(0, builder->ReportErrorOrReturn(result));
   }
 };
 
-REGISTER_XLA_OP(Name("SparseToDense").CompileTimeConstInput("output_shape"),
+REGISTER_XLA_OP(Name("SparseToDense").CompileTimeConstantInput("output_shape"),
                 SparseToDenseOp);
 
 }  // namespace

@@ -151,7 +151,10 @@ def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
       seed2=seed2, name=name)
 
 
-@tf_export('nn.learned_unigram_candidate_sampler')
+@tf_export(
+    'random.learned_unigram_candidate_sampler',
+    'nn.learned_unigram_candidate_sampler')
+@deprecation.deprecated_endpoints(['nn.learned_unigram_candidate_sampler'])
 def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
                                       unique, range_max, seed=None, name=None):
   """Samples a set of classes from a distribution learned during training.
@@ -208,7 +211,8 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
       seed2=seed2, name=name)
 
 
-@tf_export('nn.fixed_unigram_candidate_sampler')
+@tf_export('random.fixed_unigram_candidate_sampler',
+           'nn.fixed_unigram_candidate_sampler')
 def fixed_unigram_candidate_sampler(true_classes,
                                     num_true,
                                     num_sampled,
@@ -300,7 +304,7 @@ def fixed_unigram_candidate_sampler(true_classes,
       unigrams=unigrams, seed=seed1, seed2=seed2, name=name)
 
 
-@tf_export('nn.all_candidate_sampler')
+@tf_export('random.all_candidate_sampler', 'nn.all_candidate_sampler')
 def all_candidate_sampler(true_classes, num_true, num_sampled, unique,
                           seed=None, name=None):
   """Generate the set of all classes.

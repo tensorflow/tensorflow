@@ -77,26 +77,26 @@ StatusOr<DisassemblerResult> Disassembler::DisassembleObjectFile(
     }
 
     // Sort the symbols in increasing address order.
-    std::sort(
-        symbols.begin(), symbols.end(),
-        [](const llvm::object::SymbolRef& a, const llvm::object::SymbolRef& b) {
-          // getAddress returns a Expected object. Assert there is no error
-          // before extracting the address.
-          llvm::Expected<uint64_t> a_address_or_error = a.getAddress();
-          CHECK(a_address_or_error);
-          llvm::Expected<uint64_t> b_address_or_error = b.getAddress();
-          CHECK(b_address_or_error);
-          return a_address_or_error.get() < b_address_or_error.get();
-        });
+    absl::c_sort(symbols, [](const llvm::object::SymbolRef& a,
+                             const llvm::object::SymbolRef& b) {
+      // getAddress returns a Expected object. Assert there is no error
+      // before extracting the address.
+      llvm::Expected<uint64_t> a_address_or_error = a.getAddress();
+      CHECK(a_address_or_error);
+      llvm::Expected<uint64_t> b_address_or_error = b.getAddress();
+      CHECK(b_address_or_error);
+      return a_address_or_error.get() < b_address_or_error.get();
+    });
 
     // Construct ArrayRef pointing to section contents.
-    llvm::StringRef section_content_string;
-    if (section.getContents(section_content_string)) {
+    llvm::Expected<llvm::StringRef> section_content_string =
+        section.getContents();
+    if (!section_content_string) {
       continue;
     }
     llvm::ArrayRef<uint8_t> section_content_bytes(
-        reinterpret_cast<const uint8*>(section_content_string.data()),
-        section_content_string.size());
+        reinterpret_cast<const uint8*>(section_content_string->data()),
+        section_content_string->size());
 
     // Use int types from LLVM (eg, uint64_t) for values passed to and returned
     // from the LLVM API. These values map to different types in LLVM and

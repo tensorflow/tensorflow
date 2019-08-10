@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TFGAN estimator module.
+"""TF-GAN estimator module.
 
 GANEstimator provides all the infrastructure support of a TensorFlow Estimator
-with the feature support of TFGAN.
+with the feature support of TF-GAN.
 """
 
 from __future__ import absolute_import
@@ -26,18 +26,25 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.gan.python.estimator.python import gan_estimator
 from tensorflow.contrib.gan.python.estimator.python import head
+from tensorflow.contrib.gan.python.estimator.python import latent_gan_estimator
 from tensorflow.contrib.gan.python.estimator.python import stargan_estimator
+from tensorflow.contrib.gan.python.estimator.python import tpu_gan_estimator
 
 from tensorflow.contrib.gan.python.estimator.python.gan_estimator import *
 from tensorflow.contrib.gan.python.estimator.python.head import *
+from tensorflow.contrib.gan.python.estimator.python.latent_gan_estimator import *
 from tensorflow.contrib.gan.python.estimator.python.stargan_estimator import *
+from tensorflow.contrib.gan.python.estimator.python.tpu_gan_estimator import *
 # pylint: enable=unused-import,wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = [
+_allowed_symbols = ([
     'gan_estimator',
     'stargan_estimator',
+    'tpu_gan_estimator',
+    'latent_gan_estimator',
     'head',
-] + gan_estimator.__all__ + stargan_estimator.__all__ + head.__all__
+] + gan_estimator.__all__ + stargan_estimator.__all__ + head.__all__ +
+                    tpu_gan_estimator.__all__ + latent_gan_estimator.__all__)
 remove_undocumented(__name__, _allowed_symbols)

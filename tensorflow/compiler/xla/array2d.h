@@ -104,7 +104,7 @@ std::unique_ptr<Array2D<NativeT>> MakeLinspaceArray2D(double from, double to,
   int64 count = n1 * n2;
   NativeT step =
       static_cast<NativeT>((count > 1) ? (to - from) / (count - 1) : 0);
-  auto set = [&array, n1, n2](int64 index, NativeT value) {
+  auto set = [&array, n2](int64 index, NativeT value) {
     (*array)(index / n2, index % n2) = value;
   };
   for (int64 i = 0; i < count - 1; ++i) {

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_HOIST_RANDOM_UNIFORM_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_HOIST_RANDOM_UNIFORM_H_
 
-#include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -30,7 +30,7 @@ namespace grappler {
 // `stateless_random_uniform`.
 // TODO(prazek): for now only `RandomUniform` is handled, but we could handle
 // `RandomUniformInt` similarly.
-class HoistRandomUniform : public CustomGraphOptimizer {
+class HoistRandomUniform : public TFDataOptimizerBase {
  public:
   HoistRandomUniform() = default;
   ~HoistRandomUniform() override = default;
@@ -42,14 +42,15 @@ class HoistRandomUniform : public CustomGraphOptimizer {
     return Status::OK();
   }
 
-  Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                  GraphDef* output) override;
+  Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
+                                 GraphDef* output,
+                                 OptimizationStats* stats) override;
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override;
 };
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_HOIST_RANDOM_UNIFORM_H_

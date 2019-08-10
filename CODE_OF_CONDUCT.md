@@ -51,10 +51,12 @@ However, for the vast majority of issues, we aim to empower individuals to first
 
 If you are experiencing or witnessing conflict, we ask you to use the following escalation strategy to address the conflict:
 
-1. Address the perceived conflict directly with those involved, preferably in a real-time medium. 
-2. If this fails, get a third party (e.g. a mutual friend, and/or someone with background on the issue, but not involved in conflict) to intercede.
-3. If you are still unable to resolve the conflict, and you believe it rises to harassment or another code of conduct violation, report it.
-
+1.  Address the perceived conflict directly with those involved, preferably in a
+    real-time medium.
+2.  If this fails, get a third party (e.g. a mutual friend, and/or someone with
+    background on the issue, but not involved in the conflict) to intercede.
+3.  If you are still unable to resolve the conflict, and you believe it rises to
+    harassment or another code of conduct violation, report it.
 
 ## Reporting Violations
 

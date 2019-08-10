@@ -1,12 +1,6 @@
 # Description:
 # BigQueryReader implementation
 
-package(
-    default_visibility = ["//visibility:private"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -16,8 +10,13 @@ load(
 
 # For platform specific build config
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_proto_library",
+)
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 tf_kernel_library(
@@ -27,7 +26,6 @@ tf_kernel_library(
     deps = [
         ":bigquery_table_accessor",
         ":bigquery_table_partition_proto_cc",
-        "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:reader_base",
@@ -79,7 +77,6 @@ tf_kernel_library(
     srcs = ["gcs_config_ops.cc"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform/cloud:curl_http_request",

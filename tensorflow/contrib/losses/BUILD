@@ -1,13 +1,14 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-package(default_visibility = ["//tensorflow:__subpackages__"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "losses_py",
@@ -18,6 +19,10 @@ py_library(
         "python/metric_learning/metric_loss_ops.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":metric_learning_py",
         "//tensorflow/contrib/framework:framework_py",
@@ -39,6 +44,7 @@ py_library(
 py_test(
     name = "loss_ops_test",
     srcs = glob(["python/losses/loss_ops_test.py"]),
+    python_version = "PY2",
     srcs_version = "PY2AND3",
     deps = [
         ":losses_py",
@@ -82,10 +88,12 @@ py_library(
 
 py_test(
     name = "metric_loss_ops_test",
-    size = "large",
+    size = "medium",
     srcs = [
         "python/metric_learning/metric_loss_ops_test.py",
     ],
+    python_version = "PY2",
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":metric_learning_py",

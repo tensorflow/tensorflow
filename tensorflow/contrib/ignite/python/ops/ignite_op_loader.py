@@ -21,4 +21,4 @@ from tensorflow.contrib.util import loader
 from tensorflow.python.platform import resource_loader
 
 _dataset_ops = loader.load_op_library(
-    resource_loader.get_path_to_datafile("../../_dataset_ops.so"))
+    resource_loader.get_path_to_datafile("../../_ignite_ops.so"))

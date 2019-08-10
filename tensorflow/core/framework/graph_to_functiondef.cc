@@ -30,11 +30,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// TODO(phawkins) add a canonical copy of these operator names and refactor
-// everything to use it.
-const char* const kArgOp = "_Arg";
-const char* const kRetValOp = "_Retval";
-
 // Class that maintains a one-to-one original node name -> new name mapping.
 // We have to normalize the names used as input and output arguments to
 // match regexp "[a-z][a-z0-9_]*". Once we rename them, we risk creating
@@ -108,12 +103,15 @@ string NodeNameMapping::Renormalize(const string& name) const {
   return iter->second;
 }
 
+using ControlRetMapping = std::function<absl::optional<string>(const Node*)>;
+
 }  // anonymous namespace
 
 // Graph to FunctionDef conversion. This code is closely modeled on the Python
 // code in tensorflow/python/framework/function.py.
 
 Status GraphToFunctionDef(const Graph& graph, const string& name,
+                          const ControlRetMapping& control_ret,
                           FunctionDef* fdef) {
   fdef->mutable_signature()->set_name(name);
 
@@ -122,7 +120,7 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
   NodeNameMapping node_names;
 
   for (Node const* node : graph.op_nodes()) {
-    if (node->type_string() == kArgOp) {
+    if (node->IsArg()) {
       int index;
       DataType type;
       TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &type));
@@ -139,7 +137,7 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
       continue;
     }
 
-    if (node->type_string() == kRetValOp) {
+    if (node->IsRetval()) {
       int index;
       DataType type;
       TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &type));
@@ -165,6 +163,19 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
       node_def->set_device(node->assigned_device_name());
     }
     node_def->set_name(node_names.Uniquify(node->name()));
+    MergeDebugInfo(NodeDebugInfo(node->def()), node_def);
+
+    // Check if a node must be a part of control return set.
+    absl::optional<string> maybe_control_ret =
+        control_ret ? control_ret(node) : absl::nullopt;
+    if (maybe_control_ret.has_value()) {
+      const string& control_output_name = *maybe_control_ret;
+      const string& control_output_node = node_def->name();
+
+      *fdef->mutable_signature()->add_control_output() = control_output_name;
+      fdef->mutable_control_ret()->insert(
+          {control_output_name, control_output_node});
+    }
 
     // Reset input names based on graph rather than the NodeDef.
     node_def->clear_input();
@@ -197,10 +208,18 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
       node_def->add_input(
           strings::StrCat(edge->src()->name(), ":", edge->src_output()));
     }
-
     // Add control inputs
+    std::vector<std::string> control_inputs;
+    control_inputs.reserve(control_edges.size());
     for (const Edge* edge : control_edges) {
-      node_def->add_input(strings::StrCat("^", edge->src()->name()));
+      control_inputs.push_back(strings::StrCat("^", edge->src()->name()));
+    }
+    // Sort the control inputs so that nodes that are semantically equivalent
+    // generate idential node_def.
+    std::sort(control_inputs.begin(), control_inputs.end());
+
+    for (const auto& input : control_inputs) {
+      node_def->add_input(input);
     }
 
     // Populate tensor_renaming.
@@ -230,7 +249,7 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
   for (int n_index = 0; n_index < fdef->node_def_size(); ++n_index) {
     NodeDef* node_def = fdef->mutable_node_def(n_index);
     for (int i = 0; i < node_def->input_size(); ++i) {
-      if (str_util::StartsWith(node_def->input(i), "^")) {
+      if (absl::StartsWith(node_def->input(i), "^")) {
         // Control input
         const string normalized =
             node_names.Renormalize(node_def->input(i).substr(1));
@@ -270,6 +289,11 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
   }
 
   return Status::OK();
+}
+
+Status GraphToFunctionDef(const Graph& graph, const string& name,
+                          FunctionDef* fdef) {
+  return GraphToFunctionDef(graph, name, /*control_ret=*/nullptr, fdef);
 }
 
 }  // namespace tensorflow

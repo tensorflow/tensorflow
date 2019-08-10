@@ -109,7 +109,7 @@ $(HOST_NSYNC_LIB) \
 
 # If we're on Linux, also link in the dl library.
 ifeq ($(HOST_OS),LINUX)
-	HOST_LIBS += -ldl -lpthread
+	HOST_LIBS += -ldl -lpthread -lrt
 endif
 
 # If we're on a Pi, link in pthreads and dl
@@ -208,6 +208,16 @@ endif
 # override local versions in the source tree.
 INCLUDES += -I/usr/local/include
 
+# If `$(WITH_TFLITE_FLEX)` is `true`, this Makefile will build a library
+# for TensorFlow Lite Flex runtime.
+# Farmhash and Flatbuffer is required for TensorFlow Lite Flex runtime.
+ifeq ($(WITH_TFLITE_FLEX), true)
+	HOST_INCLUDES += -I$(MAKEFILE_DIR)/downloads/farmhash/src
+	HOST_INCLUDES += -I$(MAKEFILE_DIR)/downloads/flatbuffers/include
+	INCLUDES += -I$(MAKEFILE_DIR)/downloads/farmhash/src
+	INCLUDES += -I$(MAKEFILE_DIR)/downloads/flatbuffers/include
+endif
+
 LIBS := \
 $(TARGET_NSYNC_LIB) \
 -lstdc++ \
@@ -249,7 +259,7 @@ endif
 endif
 # If we're on Linux, also link in the dl library.
 ifeq ($(TARGET),LINUX)
-	LIBS += -ldl -lpthread
+	LIBS += -ldl -lpthread -lrt
 endif
 # If we're cross-compiling for the Raspberry Pi, use the right gcc.
 ifeq ($(TARGET),PI)
@@ -283,7 +293,7 @@ ifeq ($(TARGET),ANDROID)
 	else
 		ANDROID_HOST_OS_ARCH := $(ANDROID_HOST_OS_ARCH)-$(HOST_ARCH)
 	endif
-    
+
 	ifndef ANDROID_ARCH
 		ANDROID_ARCH := armeabi-v7a
 	endif
@@ -330,7 +340,7 @@ ifeq ($(TARGET),ANDROID)
 		BIN_PREFIX := x86_64-linux-android
 		MARCH_OPTION :=
 	endif
-    
+
 	ifndef NDK_ROOT
     $(error "NDK_ROOT is not defined.")
 	endif
@@ -429,7 +439,6 @@ $(MARCH_OPTION) \
 -Itensorflow/core/kernels \
 -I$(MAKEFILE_DIR)/downloads/cub \
 -I$(MAKEFILE_DIR)/downloads/cub/cub_archive/cub/device \
--Ithird_party/toolchains/gpus/cuda \
 -I$(JETPACK)/cuda/include \
 -I$(JETPACK) \
 -I$(JETPACK)/cuDNN/aarch64 \
@@ -500,6 +509,7 @@ ifeq ($(TARGET),IOS)
 		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -524,6 +534,7 @@ ifeq ($(TARGET),IOS)
 		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -546,7 +557,8 @@ ifeq ($(TARGET),IOS)
 		LDFLAGS := -arch arm64 \
 		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
-		-framework Accelerate \
+	  -framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -570,7 +582,8 @@ ifeq ($(TARGET),IOS)
 		LDFLAGS := -arch i386 \
 		-fembed-bitcode \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
-		-framework Accelerate \
+    -framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -594,6 +607,7 @@ ifeq ($(TARGET),IOS)
 		-fembed-bitcode \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -620,6 +634,12 @@ BENCHMARK_NAME := $(BINDIR)benchmark
 
 CORE_CC_ALL_SRCS := \
 $(ABSL_CC_SRCS) \
+tensorflow/c/c_api.cc \
+tensorflow/c/kernels.cc \
+tensorflow/c/tf_datatype.cc \
+tensorflow/c/tf_status.cc \
+tensorflow/c/tf_status_helper.cc \
+tensorflow/c/tf_tensor.cc \
 $(wildcard tensorflow/core/*.cc) \
 $(wildcard tensorflow/core/common_runtime/*.cc) \
 $(wildcard tensorflow/core/framework/*.cc) \
@@ -633,6 +653,10 @@ $(wildcard tensorflow/core/platform/*/*/*.cc) \
 $(wildcard tensorflow/core/util/*.cc) \
 $(wildcard tensorflow/core/util/*/*.cc) \
 $(wildcard tensorflow/contrib/makefile/downloads/double_conversion/double-conversion/*.cc) \
+tensorflow/core/profiler/internal/profiler_interface.cc \
+tensorflow/core/profiler/internal/traceme_recorder.cc \
+tensorflow/core/profiler/lib/profiler_session.cc \
+tensorflow/core/profiler/lib/traceme.cc \
 tensorflow/core/util/version_info.cc
 # Remove duplicates (for version_info.cc)
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
@@ -668,7 +692,7 @@ $(wildcard tensorflow/core/platform/windows/*) \
 $(wildcard tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.*) \
 $(wildcard tensorflow/core/grappler/inputs/file_input_yielder.*) \
 $(wildcard tensorflow/core/grappler/clusters/single_machine.*) \
-tensorflow/core/util/cuda_kernel_helper_test.cu.cc
+tensorflow/core/util/gpu_kernel_helper_test.cu.cc
 
 CORE_CC_EXCLUDE_SRCS := \
 $(CORE_CC_EXCLUDE_SRCS_NON_GPU) \
@@ -716,6 +740,57 @@ BENCHMARK_SRCS := \
 tensorflow/core/util/reporter.cc \
 tensorflow/tools/benchmark/benchmark_model.cc \
 tensorflow/tools/benchmark/benchmark_model_main.cc
+
+# If `$(WITH_TFLITE_FLEX)` is `true`, this Makefile will build a library
+# for TensorFlow Lite Flex runtime.
+# Adding the following dependencies>
+# * TensorFlow Eager Runtime.
+# * TensorFlow Lite Runtime.
+# * TensorFlow Lite Flex Delegate.
+ifeq ($(WITH_TFLITE_FLEX), true)
+	EAGER_CC_ALL_SRCS += $(wildcard tensorflow/core/common_runtime/eager/*.cc)
+	EAGER_CC_EXCLUDE_SRCS := $(wildcard tensorflow/core/common_runtime/eager/*test.cc)
+	EAGER_CC_SRCS := $(filter-out $(EAGER_CC_EXCLUDE_SRCS), $(EAGER_CC_ALL_SRCS))
+	TF_CC_SRCS += $(EAGER_CC_SRCS)
+
+	TF_LITE_CORE_CC_ALL_SRCS := \
+	$(wildcard tensorflow/lite/*.cc) \
+	$(wildcard tensorflow/lite/*.c) \
+	$(wildcard tensorflow/lite/c/*.c) \
+	$(wildcard tensorflow/lite/core/api/*.cc)
+
+	TF_LITE_CORE_CC_ALL_SRCS += \
+	$(wildcard tensorflow/lite/kernels/*.cc) \
+	$(wildcard tensorflow/lite/kernels/internal/*.cc) \
+	$(wildcard tensorflow/lite/kernels/internal/optimized/*.cc) \
+	$(wildcard tensorflow/lite/kernels/internal/reference/*.cc) \
+	$(PROFILER_SRCS) \
+	$(wildcard tensorflow/lite/kernels/*.c) \
+	$(wildcard tensorflow/lite/kernels/internal/*.c) \
+	$(wildcard tensorflow/lite/kernels/internal/optimized/*.c) \
+	$(wildcard tensorflow/lite/kernels/internal/reference/*.c) \
+	$(wildcard tensorflow/lite/delegates/flex/*.cc)
+
+	# Hack. This shouldn't be here?
+	TF_LITE_CORE_CC_ALL_SRCS += \
+	$(wildcard tensorflow/contrib/makefile/downloads/farmhash/src/farmhash.cc) \
+
+	# Remove any duplicates.
+	TF_LITE_CORE_CC_ALL_SRCS := $(sort $(TF_LITE_CORE_CC_ALL_SRCS))
+	TF_LITE_CORE_CC_EXCLUDE_SRCS := \
+	$(wildcard tensorflow/lite/*test.cc) \
+	$(wildcard tensorflow/lite/*/*test.cc) \
+	$(wildcard tensorflow/lite/*/*/*test.cc) \
+	$(wildcard tensorflow/lite/*/*/*/*test.cc) \
+	$(wildcard tensorflow/lite/kernels/test_util.cc) \
+	$(wildcard tensorflow/lite/delegates/flex/test_util.cc) \
+	$(wildcard tensorflow/lite/nnapi_delegate.cc) \
+	$(wildcard tensorflow/lite/mmap_allocation_disabled.cc)
+
+	# Filter out all the excluded files.
+	TF_LITE_CC_SRCS := $(filter-out $(TF_LITE_CORE_CC_EXCLUDE_SRCS), $(TF_LITE_CORE_CC_ALL_SRCS))
+	TF_CC_SRCS += $(TF_LITE_CC_SRCS)
+endif
 
 ifdef HEXAGON_LIBS
 	TF_CC_SRCS += \
@@ -832,6 +907,18 @@ $(HOST_OBJDIR)%.pb.o: $(HOST_GENDIR)%.pb.cc
 # Ensures we wait until proto_text has generated the .h files from protos before
 # we compile the C++.
 $(PROTO_TEXT_OBJS) : $(PROTO_TEXT_PB_H_FILES)
+
+# Ensures we link CoreFoundation as it is used for time library when building
+# for Mac and iOS
+ifeq ($(TARGET),OSX)
+  ifeq ($(HOST_ARCH),x86_64)
+    HOST_LDOPTS += -framework CoreFoundation
+    LIBS += -framework CoreFoundation
+  endif
+endif
+ifeq ($(TARGET),IOS)
+  HOST_LDOPTS += -framework CoreFoundation
+endif
 
 # Runs proto_text to generate C++ source files from protos.
 $(PROTO_TEXT): $(PROTO_TEXT_OBJS) $(PROTO_TEXT_PB_H_FILES)
