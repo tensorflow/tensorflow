@@ -1215,6 +1215,12 @@ NNAPIDelegateKernel::MappingFn NNAPIDelegateKernel::Map(
         };
       }
       break;
+    case kTfLiteBuiltinHardSwish:
+      // TODO(131260336): Add support for hardswish, at the very least
+      // we should deconstruct it into basic ops. Though for some nnapi
+      // accelerators using optimized tflite kernels might even be faster.
+      return nullptr;
+
     case kTfLiteBuiltinSoftmax:
       if (version <= 2) {
         const auto& input = context->tensors[node->outputs->data[0]];
