@@ -992,34 +992,80 @@ class LayerNormalization(Layer):
 
     self.built = True
 
+  def _can_use_fused(self, input_shape):
+    # Check if axis is contiguous
+    axis = sorted(self.axis)
+    for i in range(1, len(axis)):
+      if axis[i] - axis[i-1] > 1:
+        return False
+    return True
+
   def call(self, inputs):
     # Compute the axes along which to reduce the mean / variance
     input_shape = inputs.shape
     ndims = len(input_shape)
 
-    # Calculate the moments on the last axis (layer activations).
-    mean, variance = nn.moments(inputs, self.axis, keep_dims=True)
+    if not self._can_use_fused(input_shape):
+      # Calculate the moments on the last axis (layer activations).
+      mean, variance = nn.moments(inputs, self.axis, keep_dims=True)
 
-    # Broadcasting only necessary for norm where the axis is not just
-    # the last dimension
-    broadcast_shape = [1] * ndims
-    for dim in self.axis:
-      broadcast_shape[dim] = input_shape.dims[dim].value
-    def _broadcast(v):
-      if (v is not None and len(v.shape) != ndims and
-          self.axis != [ndims - 1]):
-        return array_ops.reshape(v, broadcast_shape)
-      return v
-    scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
+      # Broadcasting only necessary for norm where the axis is not just
+      # the last dimension
+      broadcast_shape = [1] * ndims
+      for dim in self.axis:
+        broadcast_shape[dim] = input_shape.dims[dim].value
+      def _broadcast(v):
+        if (v is not None and len(v.shape) != ndims and
+            self.axis != [ndims - 1]):
+          return array_ops.reshape(v, broadcast_shape)
+        return v
+      scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
 
-    # Compute layer normalization using the batch_normalization function.
-    outputs = nn.batch_normalization(
-        inputs,
-        mean,
-        variance,
-        offset=offset,
-        scale=scale,
-        variance_epsilon=self.epsilon)
+      # Compute layer normalization using the batch_normalization function.
+      outputs = nn.batch_normalization(
+          inputs,
+          mean,
+          variance,
+          offset=offset,
+          scale=scale,
+          variance_epsilon=self.epsilon)
+    else:
+      # Squeeze self.axis to C in NCHW of squeezed_shape 
+      squeezed_shape = [1] * 4
+      axis = sorted(self.axis)
+      for dim in range(0, ndims):
+        dim_val = input_shape.dims[dim].value
+        if dim < axis[0]:
+          squeezed_shape[0] = ((squeezed_shape[0] * dim_val) if dim_val and
+                               squeezed_shape[0] != -1 else -1)
+        elif dim in axis:
+          squeezed_shape[1] *= dim_val
+        else:
+          squeezed_shape[2] = ((squeezed_shape[2] * dim_val) if dim_val and
+                               squeezed_shape[2] != -1 else -1)
+
+      axis_dim_val = squeezed_shape[1]
+      squeezed_shape = ops.convert_to_tensor(squeezed_shape)
+      inputs = array_ops.reshape(inputs, squeezed_shape)
+
+      def _set_tensor(t, val, dtype, shape):
+        if (t is None):
+          return K.constant(val, dtype=dtype, shape=shape)
+        return t
+      scale = _set_tensor(self.gamma, 1.0, inputs.dtype, [axis_dim_val])
+      offset = _set_tensor(self.beta, 0.0, inputs.dtype, [axis_dim_val])
+
+      # Compute layer normalization using the fused_batch_norm function.
+      outputs, _, _ = nn.fused_batch_norm(
+          inputs,
+          scale=scale,
+          offset=offset,
+          epsilon=self.epsilon,
+          data_format='NCHW')
+
+      original_shape = [x if x else -1 for x in input_shape.as_list()]
+      original_shape = ops.convert_to_tensor(original_shape)
+      outputs = array_ops.reshape(outputs, original_shape)
 
     # If some components of the shape got lost due to adjustments, fix that.
     outputs.set_shape(input_shape)
