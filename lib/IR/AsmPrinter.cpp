@@ -726,7 +726,7 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
 /// Print the integer element of the given DenseElementsAttr at 'index'.
 static void printDenseIntElement(DenseElementsAttr attr, raw_ostream &os,
                                  unsigned index) {
-  APInt value = *std::next(attr.getIntValues().begin(), index);
+  APInt value = *std::next(attr.int_value_begin(), index);
   if (value.getBitWidth() == 1)
     os << (value.getBoolValue() ? "true" : "false");
   else
@@ -736,7 +736,7 @@ static void printDenseIntElement(DenseElementsAttr attr, raw_ostream &os,
 /// Print the float element of the given DenseElementsAttr at 'index'.
 static void printDenseFloatElement(DenseElementsAttr attr, raw_ostream &os,
                                    unsigned index) {
-  APFloat value = *std::next(attr.getFloatValues().begin(), index);
+  APFloat value = *std::next(attr.float_value_begin(), index);
   printFloatValue(value, os);
 }
 

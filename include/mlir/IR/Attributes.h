@@ -461,6 +461,9 @@ public:
   /// element, then a null attribute is returned.
   Attribute getValue(ArrayRef<uint64_t> index) const;
 
+  /// Returns the number of elements held by this attribute.
+  int64_t getNumElements() const;
+
   /// Generates a new ElementsAttr by mapping each int value to a new
   /// underlying APInt. The new values can represent either a integer or float.
   /// This ElementsAttr should contain integers.
@@ -481,6 +484,50 @@ public:
            attr.getKind() <= StandardAttributes::LAST_ELEMENTS_ATTR;
   }
 };
+
+namespace detail {
+/// DenseElementsAttr data is aligned to uint64_t, so this traits class is
+/// necessary to interop with PointerIntPair.
+class DenseElementDataPointerTypeTraits {
+public:
+  static inline const void *getAsVoidPointer(const char *ptr) { return ptr; }
+  static inline const char *getFromVoidPointer(const void *ptr) {
+    return static_cast<const char *>(ptr);
+  }
+
+  // Note: We could steal more bits if the need arises.
+  enum { NumLowBitsAvailable = 1 };
+};
+
+/// Pair of raw pointer and a boolean flag of whether the pointer holds a splat,
+using DenseIterPtrAndSplat =
+    llvm::PointerIntPair<const char *, 1, bool,
+                         DenseElementDataPointerTypeTraits>;
+
+/// Impl iterator for indexed DenseElementAttr iterators that records a data
+/// pointer and data index that is adjusted for the case of a splat attribute.
+template <typename ConcreteT, typename T, typename PointerT = T *,
+          typename ReferenceT = T &>
+class DenseElementIndexedIteratorImpl
+    : public indexed_accessor_iterator<ConcreteT, DenseIterPtrAndSplat, T,
+                                       PointerT, ReferenceT> {
+protected:
+  DenseElementIndexedIteratorImpl(const char *data, bool isSplat,
+                                  size_t dataIndex)
+      : indexed_accessor_iterator<ConcreteT, DenseIterPtrAndSplat, T, PointerT,
+                                  ReferenceT>({data, isSplat}, dataIndex) {}
+
+  /// Return the current index for this iterator, adjusted for the case of a
+  /// splat.
+  ptrdiff_t getDataIndex() const {
+    bool isSplat = this->object.getInt();
+    return isSplat ? 0 : this->index;
+  }
+
+  /// Return the data object pointer.
+  const char *getData() const { return this->object.getPointer(); }
+};
+} // namespace detail
 
 /// An attribute that represents a reference to a dense vector or tensor object.
 ///
@@ -566,10 +613,32 @@ public:
     AttributeElementIterator(DenseElementsAttr attr, size_t index);
   };
 
+  /// Iterator for walking raw element values of the specified type 'T', which
+  /// may be any c++ data type matching the stored representation: int32_t,
+  /// float, etc.
+  template <typename T>
+  class ElementIterator
+      : public detail::DenseElementIndexedIteratorImpl<ElementIterator<T>,
+                                                       const T> {
+  public:
+    /// Accesses the raw value at this iterator position.
+    const T &operator*() const {
+      return reinterpret_cast<const T *>(this->getData())[this->getDataIndex()];
+    }
+
+  private:
+    friend DenseElementsAttr;
+
+    /// Constructs a new iterator.
+    ElementIterator(const char *data, bool isSplat, size_t dataIndex)
+        : detail::DenseElementIndexedIteratorImpl<ElementIterator<T>, const T>(
+              data, isSplat, dataIndex) {}
+  };
+
   /// A utility iterator that allows walking over the internal raw APInt values.
   class IntElementIterator
-      : public indexed_accessor_iterator<IntElementIterator, const char *,
-                                         APInt, APInt, APInt> {
+      : public detail::DenseElementIndexedIteratorImpl<IntElementIterator,
+                                                       APInt, APInt, APInt> {
   public:
     /// Accesses the raw APInt value at this iterator position.
     APInt operator*() const;
@@ -601,9 +670,6 @@ public:
   // Value Querying
   //===--------------------------------------------------------------------===//
 
-  /// Returns the number of raw elements held by this attribute.
-  size_t rawSize() const;
-
   /// Returns if this attribute corresponds to a splat, i.e. if all element
   /// values are the same.
   bool isSplat() const;
@@ -616,17 +682,18 @@ public:
   /// element, then a null attribute is returned.
   Attribute getValue(ArrayRef<uint64_t> index) const;
 
-  /// Return the held element values as an array of integer or floating-point
+  /// Return the held element values as a range of integer or floating-point
   /// values.
   template <typename T, typename = typename std::enable_if<
                             (!std::is_same<T, bool>::value &&
                              std::numeric_limits<T>::is_integer) ||
                             llvm::is_one_of<T, float, double>::value>::type>
-  ArrayRef<T> getValues() const {
+  llvm::iterator_range<ElementIterator<T>> getValues() const {
     assert(isValidIntOrFloat(sizeof(T), std::numeric_limits<T>::is_integer));
-    auto rawData = getRawData();
-    return ArrayRef<T>(reinterpret_cast<const T *>(rawData.data()),
-                       rawData.size() / sizeof(T));
+    auto rawData = getRawData().data();
+    bool splat = isSplat();
+    return {ElementIterator<T>(rawData, splat, 0),
+            ElementIterator<T>(rawData, splat, getNumElements())};
   }
 
   /// Return the held element values as a range of Attributes.
@@ -693,7 +760,7 @@ protected:
     return IntElementIterator(*this, 0);
   }
   IntElementIterator raw_int_end() const {
-    return IntElementIterator(*this, rawSize());
+    return IntElementIterator(*this, getNumElements());
   }
 
   /// Constructs a dense elements attribute from an array of raw APInt values.
