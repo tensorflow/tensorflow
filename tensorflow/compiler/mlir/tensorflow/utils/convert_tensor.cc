@@ -164,8 +164,11 @@ Status ConvertOpaqueElementsAttr(const ElementsAttr attr,
 Status ConvertFloatElementsAttr(const ElementsAttr attr,
                                 TensorProto* output_tensor) {
   if (auto elts = attr.dyn_cast<DenseFPElementsAttr>()) {
-    for (auto value : elts.getValues<float>()) {
-      output_tensor->add_float_val(value);
+    if (elts.isSplat()) {
+      output_tensor->add_float_val(*elts.getValues<float>().begin());
+    } else {
+      for (auto value : elts.getValues<float>())
+        output_tensor->add_float_val(value);
     }
     return Status::OK();
   }
@@ -177,8 +180,10 @@ Status ConvertFloatElementsAttr(const ElementsAttr attr,
 Status ConvertIntElementsAttr(const mlir::ElementsAttr attr,
                               TensorProto* output_tensor) {
   if (auto elts = attr.dyn_cast<DenseIntElementsAttr>()) {
-    for (auto val : elts) {
-      output_tensor->add_int_val(val.getSExtValue());
+    if (elts.isSplat()) {
+      output_tensor->add_int_val((*elts.begin()).getSExtValue());
+    } else {
+      for (auto val : elts) output_tensor->add_int_val(val.getSExtValue());
     }
     return Status::OK();
   }
@@ -190,8 +195,10 @@ Status ConvertIntElementsAttr(const mlir::ElementsAttr attr,
 Status ConvertInt64ElementsAttr(const mlir::ElementsAttr attr,
                                 TensorProto* output_tensor) {
   if (auto elts = attr.dyn_cast<DenseIntElementsAttr>()) {
-    for (auto val : elts) {
-      output_tensor->add_int64_val(val.getSExtValue());
+    if (elts.isSplat()) {
+      output_tensor->add_int64_val((*elts.begin()).getSExtValue());
+    } else {
+      for (auto val : elts) output_tensor->add_int64_val(val.getSExtValue());
     }
     return Status::OK();
   }

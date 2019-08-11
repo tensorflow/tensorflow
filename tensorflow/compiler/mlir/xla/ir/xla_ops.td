@@ -562,12 +562,7 @@ def XLA_BroadcastOp : XLA_Op<"broadcast",
                         resultRank, operandRank, sizesSize));
     }
 
-    auto raw_sizes = sizes.getValues<int64_t>();
-    llvm::SmallVector<int64_t, 10> expectedShape(raw_sizes.begin(),
-                                                 raw_sizes.end());
-    if (sizes.isSplat()) {
-      expectedShape.resize(sizesSize, raw_sizes.front());
-    }
+    llvm::SmallVector<int64_t, 10> expectedShape(sizes.getValues<int64_t>());
 
     auto operandShape = operandType.getShape();
     expectedShape.insert(expectedShape.end(), operandShape.begin(),

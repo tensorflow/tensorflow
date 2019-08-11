@@ -616,10 +616,10 @@ void ReshapeOp::build(Builder *builder, OperationState *result, Value *tensor,
   if (matchPattern(shape, m_Constant(&attr_shape))) {
     llvm::SmallVector<int64_t, 4> const_shape;
     if (attr_shape.isSplat()) {
-      const_shape.assign(attr_shape.getType().getNumElements(),
+      const_shape.assign(attr_shape.getNumElements(),
                          (*attr_shape.begin()).getSExtValue());
     } else {
-      const_shape.reserve(attr_shape.getType().getNumElements());
+      const_shape.reserve(attr_shape.getNumElements());
       for (auto dim : attr_shape) const_shape.push_back(dim.getSExtValue());
     }
     return ReshapeOp::build(builder, result,
@@ -757,10 +757,10 @@ void TransposeOp::build(Builder *builder, OperationState *result, Value *x,
     llvm::SmallVector<int64_t, 4> const_shape;
     if (attr_shape.isSplat()) {
       const_shape.assign(
-          attr_shape.getType().getNumElements(),
+          attr_shape.getNumElements(),
           x_type.getDimSize((*attr_shape.begin()).getSExtValue()));
     } else {
-      const_shape.reserve(attr_shape.getType().getNumElements());
+      const_shape.reserve(attr_shape.getNumElements());
       for (auto dim : attr_shape)
         const_shape.push_back(x_type.getDimSize(dim.getSExtValue()));
     }
