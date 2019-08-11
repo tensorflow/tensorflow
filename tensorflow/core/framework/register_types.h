@@ -67,8 +67,8 @@ limitations under the License.
 #define TF_CALL_int16(m) m(::tensorflow::int16)
 
 #define TF_CALL_int8(m) m(::tensorflow::int8)
-#define TF_CALL_string(m) m(tstring)
-#define TF_CALL_tstring(m) m(tstring)
+#define TF_CALL_string(m) m(::tensorflow::tstring)
+#define TF_CALL_tstring(m) m(::tensorflow::tstring)
 #define TF_CALL_resource(m) m(::tensorflow::ResourceHandle)
 #define TF_CALL_variant(m) m(::tensorflow::Variant)
 #define TF_CALL_complex64(m) m(::tensorflow::complex64)
@@ -99,8 +99,8 @@ limitations under the License.
 #define TF_CALL_int16(m)
 
 #define TF_CALL_int8(m)
-#define TF_CALL_string(m) m(tstring)
-#define TF_CALL_tstring(m) m(tstring)
+#define TF_CALL_string(m) m(::tensorflow::tstring)
+#define TF_CALL_tstring(m) m(::tensorflow::tstring)
 #define TF_CALL_resource(m)
 #define TF_CALL_variant(m)
 #define TF_CALL_complex64(m)
