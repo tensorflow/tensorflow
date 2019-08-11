@@ -75,6 +75,30 @@ gentbl(
 )
 
 gentbl(
+    name = "tensorflow_device_ops_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "ir/tf_device.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "ir/tf_device.cc.inc",
+        ),
+        (
+            "-gen-op-doc",
+            "g3doc/tf_device.md",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "ir/tf_device_ops.td",
+    td_srcs = [
+        "@local_config_mlir//:include/mlir/IR/OpBase.td",
+        "@local_config_mlir//:include/mlir/StandardOps/Ops.td",
+    ],
+)
+
+gentbl(
     name = "tensorflow_canonicalize_inc_gen",
     tbl_outs = [
         (
@@ -93,6 +117,7 @@ cc_library(
     name = "tensorflow",
     srcs = [
         "ir/control_flow_ops.cc",
+        "ir/tf_device.cc",
         "ir/tf_executor.cc",
         "ir/tf_executor.cc.inc",
         "ir/tf_executor.h.inc",
@@ -111,6 +136,7 @@ cc_library(
     ],
     hdrs = [
         "ir/control_flow_ops.h",
+        "ir/tf_device.h",
         "ir/tf_executor.h",
         "ir/tf_ops.h",
         "ir/tf_traits.h",
@@ -121,6 +147,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":tensorflow_canonicalize_inc_gen",
+        ":tensorflow_device_ops_inc_gen",
         ":tensorflow_executor_inc_gen",
         ":tensorflow_ops_inc_gen",
         ":tensorflow_optimize_inc_gen",

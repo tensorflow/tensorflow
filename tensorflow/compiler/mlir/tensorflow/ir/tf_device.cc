@@ -13,20 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+
+#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 
 namespace mlir {
+namespace tf_device {
 
-// Static initialization for TF dialect registration.
-static DialectRegistration<TFControlFlow::TFControlFlowDialect>
-    tf_control_flow_ops;
-static DialectRegistration<TF::TensorFlowDialect> tf_ops;
-static DialectRegistration<tf_executor::TensorFlowExecutorDialect>
-    tf_excutor_dialect;
-static DialectRegistration<tf_device::TensorFlowDeviceDialect>
-    tf_device_dialect;
+TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext *context)
+    : Dialect(/*name=*/"tf_device", context) {
+  addOperations<
+#define GET_OP_LIST
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.cc.inc"
+      >();
+}
 
+//===----------------------------------------------------------------------===//
+// TableGen'd op method definitions
+//===----------------------------------------------------------------------===//
+
+#define GET_OP_CLASSES
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.cc.inc"
+
+}  // namespace tf_device
 }  // namespace mlir
