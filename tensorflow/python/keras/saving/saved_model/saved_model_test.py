@@ -47,6 +47,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import save as tf_save
+from tensorflow.python.util import tf_inspect
 
 
 class LayerWithLearningPhase(keras.engine.base_layer.Layer):
@@ -383,6 +384,56 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
         ops.convert_to_tensor([example.SerializeToString()]))
     self.assertAllClose(model.predict(input_arr), outputs['predictions'])
     self.assertAllClose(model.layers[0](input_arr), outputs['layer_1_outputs'])
+
+  def testTrainingDefaults(self):
+    def assert_training_default(fn, default_value):
+      arg_spec = tf_inspect.getfullargspec(fn)
+      index = len(arg_spec.args) - arg_spec.args.index('training')
+      self.assertEqual(arg_spec.defaults[-index], default_value)
+
+    class LayerWithTrainingRequiredArg(keras.engine.base_layer.Layer):
+
+      def call(self, inputs, training):
+        return tf_utils.smart_cond(
+            training, lambda: inputs * 0, lambda: array_ops.identity(inputs))
+
+    class LayerWithTrainingDefaultTrue(keras.engine.base_layer.Layer):
+
+      def call(self, inputs, training=True):
+        return tf_utils.smart_cond(
+            training, lambda: inputs * 0, lambda: array_ops.identity(inputs))
+
+    class Model(keras.models.Model):
+
+      def __init__(self):
+        super(Model, self).__init__()
+        self.layer_with_training_default_none = LayerWithLearningPhase()
+        self.layer_with_training_default_true = LayerWithTrainingDefaultTrue()
+        self.layer_with_required_training_arg = LayerWithTrainingRequiredArg()
+
+      def call(self, inputs):
+        x = self.layer_with_training_default_none(inputs)
+        x += self.layer_with_training_default_true(inputs)
+        x += self.layer_with_required_training_arg(inputs, False)
+        return x
+
+    model = Model()
+    # Build and set model inputs
+    model.predict(np.ones([1, 3]).astype('float32'))
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+    load = tf_load.load(saved_model_dir)
+
+    assert_training_default(load.__call__, False)
+    assert_training_default(
+        load.layer_with_training_default_none.__call__, False)
+    assert_training_default(
+        load.layer_with_training_default_true.__call__, True)
+
+    # Assert that there are no defaults for layer with required training arg
+    arg_spec = tf_inspect.getfullargspec(
+        load.layer_with_required_training_arg.__call__)
+    self.assertFalse(arg_spec.defaults)  # defaults is None or empty
 
 
 class TestLayerCallTracing(test.TestCase):
