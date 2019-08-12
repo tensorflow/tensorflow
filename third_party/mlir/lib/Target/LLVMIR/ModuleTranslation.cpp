@@ -135,9 +135,8 @@ static llvm::CmpInst::Predicate getLLVMCmpPredicate(ICmpPredicate p) {
     return llvm::CmpInst::Predicate::ICMP_UGT;
   case LLVM::ICmpPredicate::uge:
     return llvm::CmpInst::Predicate::ICMP_UGE;
-  default:
-    llvm_unreachable("incorrect comparison predicate");
   }
+  llvm_unreachable("incorrect comparison predicate");
 }
 
 static llvm::CmpInst::Predicate getLLVMCmpPredicate(FCmpPredicate p) {
@@ -174,9 +173,8 @@ static llvm::CmpInst::Predicate getLLVMCmpPredicate(FCmpPredicate p) {
     return llvm::CmpInst::Predicate::FCMP_UNO;
   case LLVM::FCmpPredicate::_true:
     return llvm::CmpInst::Predicate::FCMP_TRUE;
-  default:
-    llvm_unreachable("incorrect comparison predicate");
   }
+  llvm_unreachable("incorrect comparison predicate");
 }
 
 // A helper to look up remapped operands in the value remapping table.
