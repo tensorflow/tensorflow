@@ -1275,6 +1275,7 @@ cc_library(
         ":SPIRVDialectRegistration",
         ":Support",
         ":Transforms",
+        ":VectorToLLVMTransforms",
         ":ViewRegionGraph",
         "@llvm//:support",
     ],
@@ -1858,6 +1859,26 @@ gentbl(
     td_srcs = [
         ":VectorOpsTdFiles",
     ],
+)
+
+cc_library(
+    name = "VectorToLLVMTransforms",
+    srcs = ["lib/Conversion/VectorToLLVM/VectorToLLVM.cpp"],
+    hdrs = [
+        "include/mlir/Conversion/VectorToLLVM/VectorToLLVM.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":LLVMDialect",
+        ":LLVMTransforms",
+        ":Pass",
+        ":Transforms",
+        ":VectorOps",
+        "@llvm//:core",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
 )
 
 # To reference all tablegen files here when checking for updates to them.
