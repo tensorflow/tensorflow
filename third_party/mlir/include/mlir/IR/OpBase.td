@@ -604,6 +604,9 @@ def APIntAttr : Attr<CPred<"$_self.isa<IntegerAttr>()">,
   let returnType = [{ APInt }];
 }
 
+def I1Attr  : IntegerAttrBase<I1,  "1-bit integer attribute">;
+def I8Attr  : IntegerAttrBase<I8,  "8-bit integer attribute">;
+def I16Attr : IntegerAttrBase<I16, "16-bit integer attribute">;
 def I32Attr : IntegerAttrBase<I32, "32-bit integer attribute">;
 def I64Attr : IntegerAttrBase<I64, "64-bit integer attribute">;
 
