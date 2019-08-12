@@ -533,17 +533,20 @@ int Main(int argc, char** argv) {
     InputLayerInfo input;
     CHECK(DataTypeFromString(input_layer_types[n], &input.data_type))
         << input_layer_types[n] << " was an invalid type";
-    std::vector<int32> sizes;
-    CHECK(str_util::SplitAndParseAsInts(input_layer_shapes[n], ',', &sizes))
-        << "Incorrect size string specified: " << input_layer_shapes[n];
-    for (int i = 0; i < sizes.size(); ++i) {
-      int32 size = sizes[i];
-      if (size == -1) {
+
+    std::vector<string> split_layer_shapes =
+        str_util::Split(input_layer_shapes[n], ',');
+    for (const string& layer_shape : split_layer_shapes) {
+      int32 tmp;
+      CHECK(strings::safe_strto32(layer_shape, &tmp))
+          << "Incorrect size string specified: " << input_layer_shapes[n];
+      if (tmp == -1) {
         LOG(ERROR) << "Any unknown sizes in the shapes (-1's) must be replaced"
                    << " with the size you want to benchmark with.";
         return -1;
+      } else {
+        input.shape.AddDim(tmp);
       }
-      input.shape.AddDim(sizes[i]);
     }
     input.name = input_layers[n];
     if (n < input_layer_values.size()) {

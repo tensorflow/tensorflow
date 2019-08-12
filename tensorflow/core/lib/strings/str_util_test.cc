@@ -267,53 +267,6 @@ TEST(Split, Basic) {
             "a|b|c");
 }
 
-TEST(SplitAndParseAsInts, Int32) {
-  std::vector<int32> nums;
-  EXPECT_TRUE(str_util::SplitAndParseAsInts("", ',', &nums));
-  EXPECT_EQ(nums.size(), 0);
-
-  EXPECT_TRUE(str_util::SplitAndParseAsInts("134", ',', &nums));
-  EXPECT_EQ(nums.size(), 1);
-  EXPECT_EQ(nums[0], 134);
-
-  EXPECT_TRUE(str_util::SplitAndParseAsInts("134,2,13,-5", ',', &nums));
-  EXPECT_EQ(nums.size(), 4);
-  EXPECT_EQ(nums[0], 134);
-  EXPECT_EQ(nums[1], 2);
-  EXPECT_EQ(nums[2], 13);
-  EXPECT_EQ(nums[3], -5);
-
-  EXPECT_FALSE(str_util::SplitAndParseAsInts("abc", ',', &nums));
-
-  EXPECT_FALSE(str_util::SplitAndParseAsInts("-13,abc", ',', &nums));
-
-  EXPECT_FALSE(str_util::SplitAndParseAsInts("13,abc,5", ',', &nums));
-}
-
-TEST(SplitAndParseAsInts, Int64) {
-  std::vector<int64> nums;
-  EXPECT_TRUE(str_util::SplitAndParseAsInts("", ',', &nums));
-  EXPECT_EQ(nums.size(), 0);
-
-  EXPECT_TRUE(str_util::SplitAndParseAsInts("134", ',', &nums));
-  EXPECT_EQ(nums.size(), 1);
-  EXPECT_EQ(nums[0], 134);
-
-  EXPECT_TRUE(
-      str_util::SplitAndParseAsInts("134,2,13,-4000000000", ',', &nums));
-  EXPECT_EQ(nums.size(), 4);
-  EXPECT_EQ(nums[0], 134);
-  EXPECT_EQ(nums[1], 2);
-  EXPECT_EQ(nums[2], 13);
-  EXPECT_EQ(nums[3], static_cast<int64>(-4000000000ull));
-
-  EXPECT_FALSE(str_util::SplitAndParseAsInts("abc", ',', &nums));
-
-  EXPECT_FALSE(str_util::SplitAndParseAsInts("-13,abc", ',', &nums));
-
-  EXPECT_FALSE(str_util::SplitAndParseAsInts("13,abc,5", ',', &nums));
-}
-
 TEST(Lowercase, Basic) {
   EXPECT_EQ("", str_util::Lowercase(""));
   EXPECT_EQ("hello", str_util::Lowercase("hello"));

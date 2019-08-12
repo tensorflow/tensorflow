@@ -218,16 +218,6 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
   }
 }
 
-bool SplitAndParseAsInts(StringPiece text, char delim,
-                         std::vector<int32>* result) {
-  return SplitAndParseAsInts<int32>(text, delim, strings::safe_strto32, result);
-}
-
-bool SplitAndParseAsInts(StringPiece text, char delim,
-                         std::vector<int64>* result) {
-  return SplitAndParseAsInts<int64>(text, delim, strings::safe_strto64, result);
-}
-
 size_t Strnlen(const char* str, const size_t string_max_len) {
   size_t len = 0;
   while (len < string_max_len && str[len] != '\0') {

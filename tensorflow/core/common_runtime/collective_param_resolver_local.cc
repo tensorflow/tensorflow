@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
@@ -229,17 +230,20 @@ GlobalDeviceMap BuildDevRecs(const CollInstanceParams& ip,
 }
 
 bool ParseRingOrder(const string& gpu_ring_order_str, TaskDeviceMap* tdm) {
-  std::vector<int32> gpu_ring_order_vec;
-  if (!str_util::SplitAndParseAsInts(gpu_ring_order_str, ',',
-                                     &gpu_ring_order_vec)) {
-    return false;
-  }
-  if (gpu_ring_order_vec.size() != tdm->size()) return false;
+  std::vector<string> split_gpu_ring_order_str =
+      str_util::Split(gpu_ring_order_str, ',');
+  if (split_gpu_ring_order_str.size() != tdm->size()) return false;
+
   // gpu id -> local rank
   gtl::FlatMap<int32, int32> gpu_ranks;
-  for (int32 rank = 0; rank < static_cast<int32>(gpu_ring_order_vec.size());
-       ++rank) {
-    gpu_ranks[gpu_ring_order_vec[rank]] = rank;
+  for (int32 rank = 0;
+       rank < static_cast<int32>(split_gpu_ring_order_str.size()); ++rank) {
+    int32 tmp;
+    if (strings::safe_strto32(split_gpu_ring_order_str[rank], &tmp)) {
+      gpu_ranks[tmp] = rank;
+    } else {
+      return false;
+    }
   }
 
   for (auto& tdm_it : *tdm) {
