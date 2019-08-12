@@ -674,7 +674,18 @@ void CollectiveParamResolverLocal::CompleteInstanceAsync(
 // implementation.  The ideal way would depend upon the topology and link
 // strength before picking a particular implementation.
 void CollectiveParamResolverLocal::AssignCollectiveType(CollectiveParams* cp) {
-  cp->instance.impl_details.collective_name = GetCollectiveName(cp, nccl_);
+  // We use the NCCL implementation if this is an environment which supports
+  // NCCL, i.e. `LookupParamResolverInstance` for `NcclReduce` returns OK, and
+  // also if indicated either in `ConfigProto` or `communication_hint`.
+  //
+  // After enough testing, we may simplify this logic to use NCCL whenever
+  // available.
+  CollectiveImplementationInterface* col_impl;
+  bool use_nccl =
+      (nccl_ || cp->instance.impl_details.communication_hint == "nccl") &&
+      CollectiveRegistry::LookupParamResolverInstance("NcclReduce", &col_impl)
+          .ok();
+  cp->instance.impl_details.collective_name = GetCollectiveName(cp, use_nccl);
   VLOG(1) << "AssignCollectiveType "
           << cp->instance.impl_details.collective_name;
 }

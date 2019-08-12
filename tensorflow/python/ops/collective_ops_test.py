@@ -22,6 +22,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import collective_ops
@@ -32,7 +33,8 @@ from tensorflow.python.platform import test
 
 class CollectiveOpTest(test.TestCase):
 
-  def _testCollectiveReduce(self, inputs, expected, set_graph_key):
+  def _testCollectiveReduce(self, inputs, expected, set_graph_key,
+                            communication_hint='auto'):
     group_key = 1
     group_size = len(inputs)
     instance_key = 1
@@ -45,8 +47,9 @@ class CollectiveOpTest(test.TestCase):
       for i in range(group_size):
         with ops.device(devices[i]):
           tensor = constant_op.constant(inputs[i])
-          colred.append(collective_ops.all_reduce(tensor, group_size, group_key,
-                                                  instance_key, 'Add', 'Div'))
+          colred.append(collective_ops.all_reduce(
+              tensor, group_size, group_key, instance_key, 'Add', 'Div',
+              communication_hint=communication_hint))
       run_options = config_pb2.RunOptions()
       if set_graph_key:
         run_options.experimental.collective_graph_key = 1
@@ -94,6 +97,18 @@ class CollectiveOpTest(test.TestCase):
         [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
         [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
         [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2])
+
+  @test_util.run_deprecated_v1
+  def testNcclHintFallbackToRingReduce(self):
+    """Tests that setting `communication_hint=nccl` works on non-GPU builds."""
+    if kernels.get_registered_kernels_for_op('NcclAllReduce'):
+      self.skipTest('Run only on non-GPU environments')
+    self._testCollectiveReduce(
+        inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
+        expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
+        set_graph_key=False,
+        communication_hint='nccl')
 
   @test_util.run_deprecated_v1
   def testWhileWithScopedAllocator(self):
