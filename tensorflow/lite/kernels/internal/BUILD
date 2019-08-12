@@ -786,6 +786,19 @@ cc_test(
 )
 
 cc_test(
+    name = "strided_slice_logic_test",
+    timeout = "moderate",
+    srcs = [
+        "strided_slice_logic_test.cc",
+    ],
+    shard_count = 4,
+    deps = [
+        ":strided_slice_logic",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "logsoftmax_quantized_test",
     timeout = "long",
     srcs = [
