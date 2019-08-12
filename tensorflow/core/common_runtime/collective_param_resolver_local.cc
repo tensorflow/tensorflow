@@ -59,13 +59,13 @@ namespace {
 const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
   switch (cp->instance.type) {
     case BROADCAST_COLLECTIVE:
-      return nccl ? "NcclBroadcast" : "HierarchicalTreeBroadcast";
+      return "HierarchicalTreeBroadcast";
 
     case REDUCTION_COLLECTIVE:
       return nccl ? "NcclReduce" : "RingReduce";
 
     case GATHER_COLLECTIVE:
-      return nccl ? "NcclGather" : "RingGather";
+      return "RingGather";
 
     default:
       return "undef";
@@ -91,8 +91,16 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
 
       // Initialize group runtime details.
       CollectiveImplementationInterface* col_impl;
-      status = CollectiveRegistry::LookupParamResolverInstance(
-          GetCollectiveName(cp, nccl_), &col_impl);
+      // Try to lookup a NCCL collective kernel.  This will return error status
+      // if `NcclReduce` kernel is not present in the registry, e.g. on an
+      // environment that does not support NCCL.
+      status = CollectiveRegistry::LookupParamResolverInstance("NcclReduce",
+                                                               &col_impl);
+      if (!status.ok()) {
+        // Fallback to non-NCCL collective.
+        status = CollectiveRegistry::LookupParamResolverInstance(
+            GetCollectiveName(cp, /*nccl=*/false), &col_impl);
+      }
       if (status.ok()) {
         status = col_impl->InitializeCollectiveGroupRuntimeDetails(
             &gr->group.runtime_details);
