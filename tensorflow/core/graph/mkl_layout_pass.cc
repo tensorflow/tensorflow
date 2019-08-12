@@ -245,7 +245,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.avg_pool_grad = "AvgPoolGrad";
     csinfo_.avg_pool3d = "AvgPool3D";
     csinfo_.avg_pool3d_grad = "AvgPool3DGrad";
-    csinfo_.batch_matmul = "BatchMatMul";
+    csinfo_.batch_matmul = "BatchMatMulV2";
     csinfo_.bias_add = "BiasAdd";
     csinfo_.bias_add_grad = "BiasAddGrad";
     csinfo_.concat = "Concat";
