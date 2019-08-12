@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,47 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/kernels/internal/reference/comparisons.h"
+
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
-namespace builtin {
+namespace micro {
 namespace comparisons {
 namespace {
 
 constexpr int kInputTensor1 = 0;
 constexpr int kInputTensor2 = 1;
 constexpr int kOutputTensor = 0;
-
-TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
-  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-
-  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
-  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-
-  // Don't support string.
-  TF_LITE_ENSURE(context, input1->type != kTfLiteString);
-  // Currently only support tensors have the same type.
-  TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
-  output->type = kTfLiteBool;
-
-  bool requires_broadcast = !HaveSameShapes(input1, input2);
-
-  TfLiteIntArray* output_size = nullptr;
-  if (requires_broadcast) {
-    TF_LITE_ENSURE_OK(context, CalculateShapeForBroadcast(
-                                   context, input1, input2, &output_size));
-  } else {
-    output_size = TfLiteIntArrayCopy(input1->dims);
-  }
-
-  return context->ResizeTensor(context, output, output_size);
-}
 
 // TODO(ruic): optimize macros below to using template functions.
 #define TF_LITE_QUANTIZE_COMPARISON(opname)                                    \
@@ -323,45 +298,41 @@ TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace comparisons
 
 TfLiteRegistration* Register_EQUAL() {
-  static TfLiteRegistration r = {
-      nullptr, nullptr, comparisons::ComparisonPrepare, comparisons::EqualEval};
+  static TfLiteRegistration r = {nullptr, nullptr, nullptr,
+                                 comparisons::EqualEval};
   return &r;
 }
 
 TfLiteRegistration* Register_NOT_EQUAL() {
-  static TfLiteRegistration r = {nullptr, nullptr,
-                                 comparisons::ComparisonPrepare,
+  static TfLiteRegistration r = {nullptr, nullptr, nullptr,
                                  comparisons::NotEqualEval};
   return &r;
 }
 
 TfLiteRegistration* Register_GREATER() {
-  static TfLiteRegistration r = {nullptr, nullptr,
-                                 comparisons::ComparisonPrepare,
+  static TfLiteRegistration r = {nullptr, nullptr, nullptr,
                                  comparisons::GreaterEval};
   return &r;
 }
 
 TfLiteRegistration* Register_GREATER_EQUAL() {
-  static TfLiteRegistration r = {nullptr, nullptr,
-                                 comparisons::ComparisonPrepare,
+  static TfLiteRegistration r = {nullptr, nullptr, nullptr,
                                  comparisons::GreaterEqualEval};
   return &r;
 }
 
 TfLiteRegistration* Register_LESS() {
-  static TfLiteRegistration r = {
-      nullptr, nullptr, comparisons::ComparisonPrepare, comparisons::LessEval};
+  static TfLiteRegistration r = {nullptr, nullptr, nullptr,
+                                 comparisons::LessEval};
   return &r;
 }
 
 TfLiteRegistration* Register_LESS_EQUAL() {
-  static TfLiteRegistration r = {nullptr, nullptr,
-                                 comparisons::ComparisonPrepare,
+  static TfLiteRegistration r = {nullptr, nullptr, nullptr,
                                  comparisons::LessEqualEval};
   return &r;
 }
 
-}  // namespace builtin
+}  // namespace micro
 }  // namespace ops
 }  // namespace tflite
