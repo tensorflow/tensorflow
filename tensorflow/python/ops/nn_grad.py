@@ -513,24 +513,6 @@ def _BroadcastMul(vec, mat):
   return vec * mat
 
 
-def _IsZero(tensor):
-  """Check if tensor contains only zeros.
-
-  Args:
-    tensor: tensor to check
-
-  Returns:
-    True if tensor contains only zeros and False otherwise
-  """
-  if context.executing_eagerly():
-    # TODO(apassos) add an efficient way to detect eager zeros here.
-    return False
-  if tensor.op.type in ("ZerosLike", "Zeros"):
-    return True
-  const_fill_value = tensor_util.constant_value(tensor)
-  return const_fill_value is not None and (const_fill_value == 0).all()
-
-
 @ops.RegisterGradient("SoftmaxCrossEntropyWithLogits")
 def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
   """Gradient function for SoftmaxCrossEntropyWithLogits."""
@@ -542,8 +524,18 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
   softmax_grad = op.outputs[1]
   grad = _BroadcastMul(grad_loss, softmax_grad)
 
+  def IsZero(g):
+    # Some introspection to check if the gradient is feeding zeros
+    if context.executing_eagerly():
+      # TODO(apassos) add an efficient way to detect eager zeros here.
+      return False
+    if g.op.type in ("ZerosLike", "Zeros"):
+      return True
+    const_fill_value = tensor_util.constant_value(g)
+    return const_fill_value is not None and (const_fill_value == 0).all()
+
   logits = op.inputs[0]
-  if grad_grad is not None and not _IsZero(grad_grad):
+  if grad_grad is not None and not IsZero(grad_grad):
     softmax = nn_ops.softmax(logits)
 
     grad += ((grad_grad - array_ops.squeeze(
@@ -556,28 +548,22 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
 
 
 @ops.RegisterGradient("SparseSoftmaxCrossEntropyWithLogits")
-def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
+def _SparseSoftmaxCrossEntropyWithLogitsGrad(op, grad_0, _):
   """Gradient function for SparseSoftmaxCrossEntropyWithLogits."""
-  # grad_loss is the backprop for cost, and we multiply it with the gradients
+  # grad_0 is the backprop for cost, and we multiply it with the gradients
   # (which is output[1])
-  # grad_grad is the backprop for softmax gradient.
   # There is no gradient for the labels
   #
-  # Second derivative is just softmax derivative w.r.t. logits.
-  softmax_grad = op.outputs[1]
-  grad = _BroadcastMul(grad_loss, softmax_grad)
-
-  logits = op.inputs[0]
-  if grad_grad is not None and not _IsZero(grad_grad):
-    softmax = nn_ops.softmax(logits)
-
-    grad += ((grad_grad - array_ops.squeeze(
-        math_ops.matmul(
-            array_ops.expand_dims(grad_grad, 1),
-            array_ops.expand_dims(softmax, 2)),
-        axis=1)) * softmax)
-
-  return grad, None
+  # Currently there is no way to take the second derivative of this op
+  # due to the fused implementation's interaction with tf.gradients(),
+  # so we make sure we prevent silently incorrect results by raising
+  # an error if the second derivative is requested via prevent_gradient.
+  sparse_softmax_grad_without_gradient = array_ops.prevent_gradient(
+      op.outputs[1],
+      message="Currently there is no way to take the second "
+      "derivative of sparse_softmax_cross_entropy_with_logits due to the fused "
+      "implementation's interaction with tf.gradients()")
+  return _BroadcastMul(grad_0, sparse_softmax_grad_without_gradient), None
 
 
 @ops.RegisterGradient("Conv2D")
