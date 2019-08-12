@@ -93,7 +93,7 @@ class SerializeSparseOp : public OpKernel {
 // performs O(1) shallow copies (and hence is much cheaper than
 // dispatching to another thread would be).
 template <>
-bool SerializeSparseOp<tstring>::IsExpensive() {
+bool SerializeSparseOp<string>::IsExpensive() {
   return true;
 }
 template <>
@@ -102,14 +102,14 @@ bool SerializeSparseOp<Variant>::IsExpensive() {
 }
 
 template <>
-Status SerializeSparseOp<tstring>::Initialize(Tensor* result) {
+Status SerializeSparseOp<string>::Initialize(Tensor* result) {
   *result = Tensor(DT_STRING, TensorShape({3}));
   return Status::OK();
 }
 
 template <>
-Status SerializeSparseOp<tstring>::Serialize(const Tensor& input,
-                                             tstring* result) {
+Status SerializeSparseOp<string>::Serialize(const Tensor& input,
+                                            string* result) {
   TensorProto proto;
   input.AsProtoTensorContent(&proto);
   *result = proto.SerializeAsString();
@@ -118,8 +118,8 @@ Status SerializeSparseOp<tstring>::Serialize(const Tensor& input,
 
 REGISTER_KERNEL_BUILDER(Name("SerializeSparse")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<tstring>("out_type"),
-                        SerializeSparseOp<tstring>);
+                            .TypeConstraint<string>("out_type"),
+                        SerializeSparseOp<string>);
 
 template <>
 Status SerializeSparseOp<Variant>::Initialize(Tensor* result) {
@@ -261,27 +261,27 @@ class SerializeManySparseOp : public SerializeManySparseOpBase<U> {
 };
 
 template <>
-Status SerializeManySparseOpBase<tstring>::Initialize(const int64 n,
-                                                      Tensor* result) {
+Status SerializeManySparseOpBase<string>::Initialize(const int64 n,
+                                                     Tensor* result) {
   *result = Tensor(DT_STRING, TensorShape({n, 3}));
   return Status::OK();
 }
 
 template <>
-Status SerializeManySparseOpBase<tstring>::Serialize(const Tensor& input,
-                                                     tstring* result) {
+Status SerializeManySparseOpBase<string>::Serialize(const Tensor& input,
+                                                    string* result) {
   TensorProto proto;
   input.AsProtoTensorContent(&proto);
   *result = proto.SerializeAsString();
   return Status::OK();
 }
 
-#define REGISTER_KERNELS(type)                                      \
-  REGISTER_KERNEL_BUILDER(Name("SerializeManySparse")               \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<type>("T")            \
-                              .TypeConstraint<tstring>("out_type"), \
-                          SerializeManySparseOp<type, tstring>)
+#define REGISTER_KERNELS(type)                                     \
+  REGISTER_KERNEL_BUILDER(Name("SerializeManySparse")              \
+                              .Device(DEVICE_CPU)                  \
+                              .TypeConstraint<type>("T")           \
+                              .TypeConstraint<string>("out_type"), \
+                          SerializeManySparseOp<type, string>)
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS

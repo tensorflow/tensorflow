@@ -120,7 +120,7 @@ REGISTER_KERNEL_BUILDER(Name(kArgOp)
 REGISTER_KERNEL_BUILDER(Name(kArgOp)
                             .Device(DEVICE_GPU)
                             .HostMemory("output")
-                            .TypeConstraint<tstring>("T"),
+                            .TypeConstraint<string>("T"),
                         ArgOp);
 
 REGISTER_KERNEL_BUILDER(
@@ -148,7 +148,7 @@ REGISTER_KERNEL_BUILDER(Name(kRetOp)
 
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<tstring>("T")
+                            .TypeConstraint<string>("T")
                             .HostMemory("input"),
                         RetvalOp);
 #undef REGISTER

@@ -283,7 +283,7 @@ class DeserializeSparseOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<tstring>("Tserialized"),
+                            .TypeConstraint<string>("Tserialized"),
                         DeserializeSparseOp)
 
 REGISTER_KERNEL_BUILDER(Name("DeserializeManySparse").Device(DEVICE_CPU),

@@ -54,9 +54,9 @@ struct SetZeroFunctor<Eigen::SyclDevice, T> {
 #endif  // TENSORFLOW_USE_SYCL
 
 template <>
-struct SetZeroFunctor<Eigen::ThreadPoolDevice, tstring> {
+struct SetZeroFunctor<Eigen::ThreadPoolDevice, string> {
   void operator()(const Eigen::ThreadPoolDevice& d,
-                  typename TTypes<tstring>::Flat out);
+                  typename TTypes<string>::Flat out);
 };
 
 template <typename Device, typename T>
@@ -81,9 +81,9 @@ struct SetOneFunctor<Eigen::SyclDevice, T> {
 #endif  // TENSORFLOW_USE_SYCL
 
 template <>
-struct SetOneFunctor<Eigen::ThreadPoolDevice, tstring> {
+struct SetOneFunctor<Eigen::ThreadPoolDevice, string> {
   void operator()(const Eigen::ThreadPoolDevice& d,
-                  typename TTypes<tstring>::Flat out);
+                  typename TTypes<string>::Flat out);
 };
 
 }  // namespace functor
