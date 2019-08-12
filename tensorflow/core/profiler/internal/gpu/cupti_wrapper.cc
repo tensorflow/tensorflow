@@ -44,6 +44,11 @@ CUptiResult CuptiWrapper::ActivityGetNumDroppedRecords(CUcontext context,
   return cuptiActivityGetNumDroppedRecords(context, stream_id, dropped);
 }
 
+CUptiResult CuptiWrapper::ActivityConfigureUnifiedMemoryCounter(
+    CUpti_ActivityUnifiedMemoryCounterConfig* config, uint32_t count) {
+  return cuptiActivityConfigureUnifiedMemoryCounter(config, count);
+}
+
 CUptiResult CuptiWrapper::ActivityRegisterCallbacks(
     CUpti_BuffersCallbackRequestFunc func_buffer_requested,
     CUpti_BuffersCallbackCompleteFunc func_buffer_completed) {

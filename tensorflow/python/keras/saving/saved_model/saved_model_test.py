@@ -23,9 +23,15 @@ import shutil
 
 import numpy as np
 
+from tensorflow.core.example import example_pb2
+from tensorflow.core.example import feature_pb2
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import regularizers
@@ -36,10 +42,12 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import save as tf_save
+from tensorflow.python.util import tf_inspect
 
 
 class LayerWithLearningPhase(keras.engine.base_layer.Layer):
@@ -307,6 +315,126 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertLen(loaded.layers, 2)
     self.assertLen(loaded.losses, 2)
 
+  def testBatchNormUpdates(self):
+    model = keras.models.Sequential(
+        keras.layers.BatchNormalization(input_shape=(1,)))
+    self.evaluate(variables.variables_initializer(model.variables))
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_load.load(saved_model_dir)
+    self.evaluate(variables.variables_initializer(loaded.variables))
+    input_arr_1 = np.array([[11], [12], [13]]).astype('float32')
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0])
+    self.evaluate(loaded(input_arr_1, training=True))
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
+    self.evaluate(loaded(input_arr_1, training=False))
+    self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
+
+  def testSaveWithSignatures(self):
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(5, input_shape=(3,),
+                                 kernel_regularizer=regularizers.get('l2')))
+    model.add(keras.layers.Dropout(0.5))
+    model.add(keras.layers.Dense(4, kernel_regularizer=regularizers.get('l2')))
+
+    input_arr = np.random.random((2, 3)).astype(np.float32)
+    target_arr = np.random.random((2, 4)).astype(np.float32)
+
+    model.compile(
+        loss='mse',
+        optimizer='rmsprop')
+    model.train_on_batch(input_arr, target_arr)
+
+    @def_function.function(input_signature=[tensor_spec.TensorSpec((None, 3))])
+    def predict(inputs):
+      return {'predictions': model(inputs)}
+
+    feature_configs = {
+        'inputs': parsing_ops.FixedLenFeature(
+            shape=[2, 3], dtype=dtypes.float32)}
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([None], dtypes.string)])
+    def parse_and_predict(examples):
+      features = parsing_ops.parse_single_example(examples[0], feature_configs)
+      return {'predictions': model(features['inputs']),
+              'layer_1_outputs': model.layers[0](features['inputs'])}
+
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf', signatures={
+        'predict': predict,
+        'parse_and_predict': parse_and_predict})
+    model.save('/tmp/saved', save_format='tf', signatures={
+        'predict': predict,
+        'parse_and_predict': parse_and_predict})
+
+    loaded = keras_load.load(saved_model_dir)
+
+    self.assertAllClose(
+        model.predict(input_arr),
+        loaded.signatures['predict'](
+            ops.convert_to_tensor(input_arr))['predictions'])
+
+    feature = {
+        'inputs': feature_pb2.Feature(
+            float_list=feature_pb2.FloatList(value=input_arr.flatten()))}
+    example = example_pb2.Example(
+        features=feature_pb2.Features(feature=feature))
+    outputs = loaded.signatures['parse_and_predict'](
+        ops.convert_to_tensor([example.SerializeToString()]))
+    self.assertAllClose(model.predict(input_arr), outputs['predictions'])
+    self.assertAllClose(model.layers[0](input_arr), outputs['layer_1_outputs'])
+
+  def testTrainingDefaults(self):
+    def assert_training_default(fn, default_value):
+      arg_spec = tf_inspect.getfullargspec(fn)
+      index = len(arg_spec.args) - arg_spec.args.index('training')
+      self.assertEqual(arg_spec.defaults[-index], default_value)
+
+    class LayerWithTrainingRequiredArg(keras.engine.base_layer.Layer):
+
+      def call(self, inputs, training):
+        return tf_utils.smart_cond(
+            training, lambda: inputs * 0, lambda: array_ops.identity(inputs))
+
+    class LayerWithTrainingDefaultTrue(keras.engine.base_layer.Layer):
+
+      def call(self, inputs, training=True):
+        return tf_utils.smart_cond(
+            training, lambda: inputs * 0, lambda: array_ops.identity(inputs))
+
+    class Model(keras.models.Model):
+
+      def __init__(self):
+        super(Model, self).__init__()
+        self.layer_with_training_default_none = LayerWithLearningPhase()
+        self.layer_with_training_default_true = LayerWithTrainingDefaultTrue()
+        self.layer_with_required_training_arg = LayerWithTrainingRequiredArg()
+
+      def call(self, inputs):
+        x = self.layer_with_training_default_none(inputs)
+        x += self.layer_with_training_default_true(inputs)
+        x += self.layer_with_required_training_arg(inputs, False)
+        return x
+
+    model = Model()
+    # Build and set model inputs
+    model.predict(np.ones([1, 3]).astype('float32'))
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+    load = tf_load.load(saved_model_dir)
+
+    assert_training_default(load.__call__, False)
+    assert_training_default(
+        load.layer_with_training_default_none.__call__, False)
+    assert_training_default(
+        load.layer_with_training_default_true.__call__, True)
+
+    # Assert that there are no defaults for layer with required training arg
+    arg_spec = tf_inspect.getfullargspec(
+        load.layer_with_required_training_arg.__call__)
+    self.assertFalse(arg_spec.defaults)  # defaults is None or empty
+
 
 class TestLayerCallTracing(test.TestCase):
 
@@ -369,6 +497,17 @@ class TestLayerCallTracing(test.TestCase):
         return inputs * kwargs['training']
 
     assert_num_traces(LayerWithKwargs, training_keyword=False)
+
+    class LayerWithChildLayer(keras.engine.base_layer.Layer):
+
+      def __init__(self):
+        self.child = LayerWithKwargs()
+        super(LayerWithChildLayer, self).__init__()
+
+      def call(self, inputs):
+        return self.child(inputs)
+
+    assert_num_traces(LayerWithChildLayer, training_keyword=False)
 
   @test_util.run_in_graph_and_eager_modes
   def test_maintains_losses(self):

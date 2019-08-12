@@ -22,9 +22,6 @@ namespace data {
 namespace experimental {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
-// description of the following op.
-
 class DirectedInterleaveDatasetOp : public DatasetOpKernel {
  public:
   explicit DirectedInterleaveDatasetOp(OpKernelConstruction* ctx)
@@ -110,13 +107,11 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
       return strings::StrCat("DirectedInterleaveDatasetOp::Dataset");
     }
 
-    bool IsStateful() const override {
+    Status CheckExternalState() const override {
       for (const auto& input : data_inputs_) {
-        if (input->IsStateful()) {
-          return true;
-        }
+        TF_RETURN_IF_ERROR(input->CheckExternalState());
       }
-      return selector_input_->IsStateful();
+      return selector_input_->CheckExternalState();
     }
 
    protected:
@@ -206,8 +201,8 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
             }
           }
 
-          LOG(WARNING) << "DirectedInterleave selected an exhausted input: "
-                       << selected_input;
+          VLOG(2) << "DirectedInterleave selected an exhausted input: "
+                  << selected_input;
         }
       }
 

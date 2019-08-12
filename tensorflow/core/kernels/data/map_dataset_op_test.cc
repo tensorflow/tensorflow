@@ -74,10 +74,10 @@ TestCase TestCase1() {
           FunctionDefHelper::FunctionRef("XTimesTwo", {{"T", DT_INT64}}),
           /*func_lib*/ {test::function::XTimesTwo()},
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {6}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {18})},
+          {CreateTensor<int64>(TensorShape({}), {0}),
+           CreateTensor<int64>(TensorShape({}), {6}),
+           CreateTensor<int64>(TensorShape({}), {12}),
+           CreateTensor<int64>(TensorShape({}), {18})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 4,
@@ -92,10 +92,10 @@ TestCase TestCase2() {
           FunctionDefHelper::FunctionRef("XAddX", {{"T", DT_INT64}}),
           /*func_lib*/ {test::function::XAddX()},
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {20}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {14}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {8}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2})},
+          {CreateTensor<int64>(TensorShape({}), {20}),
+           CreateTensor<int64>(TensorShape({}), {14}),
+           CreateTensor<int64>(TensorShape({}), {8}),
+           CreateTensor<int64>(TensorShape({}), {2})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 4,
@@ -113,10 +113,10 @@ TestCase TestCase3() {
       FunctionDefHelper::FunctionRef("XTimesFour", {{"T", DT_INT64}}),
       /*func_lib*/ {test::function::XTimesTwo(), test::function::XTimesFour()},
       /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {12}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {24}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {36})},
+      {CreateTensor<int64>(TensorShape({}), {0}),
+       CreateTensor<int64>(TensorShape({}), {12}),
+       CreateTensor<int64>(TensorShape({}), {24}),
+       CreateTensor<int64>(TensorShape({}), {36})},
       /*expected_output_dtypes*/ {DT_INT64},
       /*expected_output_shapes*/ {PartialTensorShape({})},
       /*expected_cardinality*/ 4,
@@ -339,43 +339,6 @@ TEST_P(ParameterizedMapDatasetOpTest, Cardinality) {
   core::ScopedUnref scoped_unref_map_dataset(map_dataset);
 
   EXPECT_EQ(map_dataset->Cardinality(), test_case.expected_cardinality);
-}
-
-TEST_P(ParameterizedMapDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateRangeDataset<int64>(
-      test_case.start, test_case.end, test_case.step, "range", &range_dataset));
-  Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  // The ownership of range_dataset is transferred to DatasetVariantWrapper,
-  // which will handle the release of memory.
-  TF_ASSERT_OK(
-      StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> map_dataset_inputs;
-  map_dataset_inputs.emplace_back(&range_dataset_tensor);
-
-  std::unique_ptr<OpKernel> map_dataset_kernel;
-  TF_ASSERT_OK(CreateMapDatasetOpKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &map_dataset_kernel));
-  std::unique_ptr<OpKernelContext> map_dataset_context;
-  TF_ASSERT_OK(CreateMapDatasetContext(
-      map_dataset_kernel.get(), &map_dataset_inputs, &map_dataset_context));
-  DatasetBase* map_dataset;
-  TF_ASSERT_OK(CreateDataset(map_dataset_kernel.get(),
-                             map_dataset_context.get(), &map_dataset));
-  core::ScopedUnref scoped_unref_map_dataset(map_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(map_dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
 }
 
 TEST_F(MapDatasetOpTest, IteratorOutputDtypes) {

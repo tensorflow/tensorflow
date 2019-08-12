@@ -143,10 +143,11 @@
 /// ```
 
 using llvm::dbgs;
-using llvm::DenseSet;
 using llvm::SetVector;
 
 using namespace mlir;
+using vector::VectorTransferReadOp;
+using vector::VectorTransferWriteOp;
 
 using functional::makePtrDynCaster;
 using functional::map;

@@ -106,16 +106,6 @@ ValueHandle LoopNestRangeBuilder::LoopNestRangeBuilder::operator()(
   return ValueHandle::null();
 }
 
-SmallVector<Value *, 8> mlir::linalg::getViewSizes(LinalgOp &linalgOp) {
-  SmallVector<Value *, 8> res;
-  for (auto v : linalgOp.getInputsAndOutputs()) {
-    ViewType t = v->getType().cast<ViewType>();
-    for (unsigned i = 0; i < t.getRank(); ++i)
-      res.push_back(linalg::intrinsics::dim(v, i));
-  }
-  return res;
-}
-
 static Value *emitOrFoldComposedAffineApply(OpBuilder &b, Location loc,
                                             AffineMap map,
                                             ArrayRef<Value *> operandsRef,

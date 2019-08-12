@@ -366,19 +366,36 @@ TF_CAPI_EXPORT extern TFE_Executor* TFE_NewExecutor(bool is_async);
 // make sure all nodes are finished.
 TF_CAPI_EXPORT extern void TFE_DeleteExecutor(TFE_Executor*);
 
-// Blocks until all nodes in this Executor are finished.
+// Returns true if the executor is in async mode.
+TF_CAPI_EXPORT extern bool TFE_ExecutorIsAsync(TFE_Executor*);
+
+// Causes the calling thread to block till all ops dispatched in this executor
+// have been executed. Note that "execution" here refers to kernel execution /
+// scheduling of copies, etc. Similar to sync execution, it doesn't guarantee
+// that lower level device queues (like GPU streams) have been flushed.
+//
+// This call may not block for execution of ops enqueued concurrently with this
+// call.
 TF_CAPI_EXPORT extern void TFE_ExecutorWaitForAllPendingNodes(
     TFE_Executor*, TF_Status* status);
+
+// When an error happens, any pending operations are discarded and newly issued
+// ops return an error. This call clears the error state and re-enables
+// execution of newly issued ops.
+//
+// Note that outputs of discarded ops remain in a corrupt state and should not
+// be used for future calls.
+// TODO(agarwal): mark the affected handles and raise errors if they are used.
+TF_CAPI_EXPORT extern void TFE_ExecutorClearError(TFE_Executor*);
 
 // Sets a custom Executor for current thread. All nodes created by this thread
 // will be added to this Executor. It will override current executor.
 TF_CAPI_EXPORT extern void TFE_ContextSetExecutorForThread(TFE_Context*,
                                                            TFE_Executor*);
 
-// Clears the custom Executor for current thread. All ops created by this thread
-// will be added to the default Executor in EagerContext. Nothing will happen if
-// no custom Executor is set for current thread.
-TF_CAPI_EXPORT extern void TFE_ContextClearExecutorForThread(TFE_Context*);
+// Returns the Executor for current thread.
+TF_CAPI_EXPORT extern TFE_Executor* TFE_ContextGetExecutorForThread(
+    TFE_Context*);
 
 #ifdef __cplusplus
 } /* end extern "C" */

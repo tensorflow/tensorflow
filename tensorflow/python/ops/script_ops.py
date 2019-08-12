@@ -102,7 +102,7 @@ class EagerFunc(object):
   def __call__(self, device, token, args):
     """Passes `args` to `self._func`, which is executed eagerly."""
 
-    func_executor = executor.Executor(context.is_async())
+    func_executor = executor.new_executor(context.is_async())
     with context.executor_scope(func_executor):
       with context.eager_mode(), backprop.GradientTape() as tape:
         # Only watch tensors with a floating dtype.

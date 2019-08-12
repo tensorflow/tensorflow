@@ -65,10 +65,9 @@ ASYNC = 1
 MIRRORING_NONE = pywrap_tensorflow.TFE_MIRRORING_NONE
 MIRRORING_ALL = pywrap_tensorflow.TFE_MIRRORING_ALL
 
-_tf2_gauge = monitoring.BoolGauge("/tensorflow/api/tf2_enable",
-                                  "Whether tf2.enable() is called.")
-
-_tf2_gauge.get_cell().set(tf2.enabled())
+_python_eager_context_create_counter = monitoring.Counter(
+    "/tensorflow/api/python/eager_context_create_counter",
+    "Counter for number of eager contexts created in Python.")
 
 
 class _EagerTensorCache(object):
@@ -156,7 +155,6 @@ class _TensorCaches(threading.local):
 
   def __init__(self):
     super(_TensorCaches, self).__init__()
-    self.scalar_cache = {}
     self._ones_rank_cache = None
     self._zeros_cache = None
 
@@ -384,6 +382,7 @@ class Context(object):
     self._post_execution_callbacks = []
     self._seed = None
     self._initialize_lock = threading.Lock()
+    self._initialized = False
     if device_policy is None:
       device_policy = DEVICE_PLACEMENT_SILENT
     self._device_policy = device_policy
@@ -415,6 +414,7 @@ class Context(object):
     self._log_device_placement = None
     self._optimizer_experimental_options = {}
 
+    _python_eager_context_create_counter.get_cell().increase_by(1)
   # pylint: enable=redefined-outer-name
 
   def _set_global_seed(self, seed):
@@ -468,8 +468,10 @@ class Context(object):
 
   def ensure_initialized(self):
     """Initialize handle and devices if not already done so."""
+    if self._initialized:
+      return
     with self._initialize_lock:
-      if self._context_handle is not None:
+      if self._initialized:
         return
       assert self._context_devices is None
       opts = pywrap_tensorflow.TFE_NewContextOptions()
@@ -484,7 +486,7 @@ class Context(object):
               opts, self._mirroring_policy)
         if self._default_is_async == ASYNC:
           pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
-        self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
+        context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
       assert not (self._server_def and self._collective_ops_server_def), (
@@ -492,19 +494,21 @@ class Context(object):
           "moment. If this is important to you, please file an issue.")
       if self._server_def is not None:
         server_def_str = self._server_def.SerializeToString()
-        pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle, 600,
+        pywrap_tensorflow.TFE_ContextSetServerDef(context_handle, 600,
                                                   server_def_str)
       elif self._collective_ops_server_def is not None:
         server_def_str = self._collective_ops_server_def.SerializeToString()
-        pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
+        pywrap_tensorflow.TFE_EnableCollectiveOps(context_handle,
                                                   server_def_str)
 
+      self._context_handle = context_handle
       self._initialize_logical_devices()
+      self._initialized = True
 
   def _clear_caches(self):
-    self.scalar_cache().clear()
     self.ones_rank_cache().flush()
     self.zeros_cache().flush()
+    pywrap_tensorflow.TFE_ClearScalarCache()
 
   def set_server_def(self, server_def, keep_alive_secs=600):
     """Allow setting a server_def on the context.
@@ -534,11 +538,10 @@ class Context(object):
       server_def_str = server_def.SerializeToString()
       pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle,
                                                 keep_alive_secs, server_def_str)
-
-      # Clear all the caches in case there are remote tensors in them.
-      self._clear_caches()
-
       self._initialize_logical_devices()
+
+    # Clear all the caches in case there are remote tensors in them.
+    self._clear_caches()
 
   def enable_collective_ops(self, server_def):
     """Enable distributed collective ops with an appropriate server_def.
@@ -651,10 +654,6 @@ class Context(object):
     """Returns True if current thread has eager executing enabled."""
     return self._thread_local_data.is_eager
 
-  def scalar_cache(self):
-    """Per-device cache for scalars."""
-    return _tensor_caches_map[self._id].scalar_cache
-
   def ones_rank_cache(self):
     """Per-device cache for scalars."""
     return _tensor_caches_map[self._id].ones_rank_cache
@@ -766,8 +765,8 @@ class Context(object):
     if self.is_async() != enable_async:
       # Only set the execution mode if the context has already been initialized
       if self._context_handle is not None:
-        self.async_wait()
-        executor_new = executor.Executor(enable_async)
+        self.executor.wait()
+        executor_new = executor.new_executor(enable_async)
         self._thread_local_data.executor = executor_new
         pywrap_tensorflow.TFE_ContextSetExecutorForThread(
             self._context_handle, executor_new.handle())
@@ -775,27 +774,22 @@ class Context(object):
         self._default_is_async = enable_async
 
   def is_async(self):
-    if self._thread_local_data.executor is None:
-      return self._default_is_async
+    if self._context_handle is not None:
+      return self.executor.is_async()
     else:
-      return self._thread_local_data.executor.is_async()
+      return self._default_is_async
 
   @property
   def executor(self):
-    return self._thread_local_data.executor
+    ensure_initialized()
+    return executor.Executor(
+        pywrap_tensorflow.TFE_ContextGetExecutorForThread(self._context_handle))
 
   @executor.setter
   def executor(self, e):
     ensure_initialized()
-    if self._thread_local_data.executor != e:
-      self._thread_local_data.executor = e
-
-      if e is None:
-        pywrap_tensorflow.TFE_ContextClearExecutorForThread(
-            self._context_handle)
-      else:
-        pywrap_tensorflow.TFE_ContextSetExecutorForThread(
-            self._context_handle, e.handle())
+    pywrap_tensorflow.TFE_ContextSetExecutorForThread(self._context_handle,
+                                                      e.handle())
 
   @property
   def config(self):
@@ -962,14 +956,6 @@ class Context(object):
   def function_call_options(self, options):
     """Returns function call options for current thread."""
     self._thread_local_data.function_call_options = options
-
-  def async_wait(self):
-    """Waits for ops dispatched in ASYNC mode to finish."""
-    pywrap_tensorflow.TFE_ContextAsyncWait(self._handle)
-
-  def async_clear_error(self):
-    """Clears errors raised during ASYNC execution."""
-    pywrap_tensorflow.TFE_ContextAsyncClearError(self._handle)
 
   def num_gpus(self):
     """The number of GPUs available to execute operations."""
@@ -1755,12 +1741,15 @@ def set_execution_mode(mode):
 def execution_mode(mode):
   """Context manager for setting execution mode for current thread."""
   ctx = context()
-  old_mode = ctx.execution_mode
+  executor_new = executor.new_executor(mode == ASYNC)
+  executor_old = ctx.executor
   try:
-    ctx.execution_mode = mode
+    executor_old.wait()
+    ctx.executor = executor_new
     yield
   finally:
-    ctx.execution_mode = old_mode
+    ctx.executor = executor_old
+    executor_new.wait()
 
 
 @tf_contextlib.contextmanager
@@ -1813,12 +1802,12 @@ def is_async():
 
 def async_wait():
   """Waits for ops dispatched in ASYNC mode to finish."""
-  return context().async_wait()
+  return context().executor.wait()
 
 
 def async_clear_error():
   """Clears errors raised during ASYNC execution mode."""
-  return context().async_clear_error()
+  return context().executor.clear_error()
 
 
 def num_gpus():

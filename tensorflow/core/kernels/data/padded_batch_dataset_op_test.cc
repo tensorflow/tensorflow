@@ -147,70 +147,60 @@ std::vector<Tensor> ConvertToTensorVec(std::vector<T> values) {
   std::vector<Tensor> tensors;
   tensors.reserve(values.size());
   for (auto &value : values) {
-    tensors.emplace_back(
-        DatasetOpsTestBase::CreateTensor<T>(TensorShape({1}), {value}));
+    tensors.emplace_back(CreateTensor<T>(TensorShape({1}), {value}));
   }
   return tensors;
 }
 
 // Test case 1: input elements with same shapes.
 TestCase TestCase1() {
-  return {/*input_tensors*/
-          {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {0, 1, 2, 3, 4, 5})},
-           {DatasetOpsTestBase::CreateTensor<int64>(
-               TensorShape{4, 2}, {6, 7, 8, 9, 10, 11, 12, 13})}},
-          /*concatenate_output_dtypes*/ {DT_INT64},
-          /*concatenate_output_shapes*/ {PartialTensorShape({2})},
-          /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
-          /*padded_shapes*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3})},
-          /*padding_values*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1})},
-          /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape{}, {true}),
-          /*parallel_copy*/ true,
-          /*n*/ 1,
-          /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                                   {0, 1, 1, 2, 3, 1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                                   {4, 5, 1, 6, 7, 1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                                   {8, 9, 1, 10, 11, 1})},
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({2, 3})},
-          /*expected_cardinality*/ 3,
-          /*breakpoints*/ {0, 2, 5}};
+  return {
+      /*input_tensors*/
+      {{CreateTensor<int64>(TensorShape{3, 2}, {0, 1, 2, 3, 4, 5})},
+       {CreateTensor<int64>(TensorShape{4, 2}, {6, 7, 8, 9, 10, 11, 12, 13})}},
+      /*concatenate_output_dtypes*/ {DT_INT64},
+      /*concatenate_output_shapes*/ {PartialTensorShape({2})},
+      /*batch_size*/
+      CreateTensor<int64>(TensorShape{}, {2}),
+      /*padded_shapes*/
+      {CreateTensor<int64>(TensorShape{1}, {3})},
+      /*padding_values*/
+      {CreateTensor<int64>(TensorShape{}, {1})},
+      /*drop_remainder*/
+      CreateTensor<bool>(TensorShape{}, {true}),
+      /*parallel_copy*/ true,
+      /*n*/ 1,
+      /*expected_outputs*/
+      {CreateTensor<int64>(TensorShape{2, 3}, {0, 1, 1, 2, 3, 1}),
+       CreateTensor<int64>(TensorShape{2, 3}, {4, 5, 1, 6, 7, 1}),
+       CreateTensor<int64>(TensorShape{2, 3}, {8, 9, 1, 10, 11, 1})},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({2, 3})},
+      /*expected_cardinality*/ 3,
+      /*breakpoints*/ {0, 2, 5}};
 }
 
 // Test case 2: input elements with different shapes.
 TestCase TestCase2() {
   return {/*input_tensors*/
-          {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {0, 1, 2, 3, 4, 5})},
-           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{4, 1},
-                                                    {6, 7, 8, 9})}},
+          {{CreateTensor<int64>(TensorShape{3, 2}, {0, 1, 2, 3, 4, 5})},
+           {CreateTensor<int64>(TensorShape{4, 1}, {6, 7, 8, 9})}},
           /*concatenate_output_dtypes*/ {DT_INT64},
           /*concatenate_output_shapes*/ {PartialTensorShape({-1})},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
+          CreateTensor<int64>(TensorShape{}, {2}),
           /*padded_shapes*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3})},
+          {CreateTensor<int64>(TensorShape{1}, {3})},
           /*padding_values*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1})},
+          {CreateTensor<int64>(TensorShape{}, {1})},
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape{}, {true}),
+          CreateTensor<bool>(TensorShape{}, {true}),
           /*parallel_copy*/ true,
           /*n*/ 1,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                                   {0, 1, 1, 2, 3, 1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                                   {4, 5, 1, 6, 1, 1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                                   {7, 1, 1, 8, 1, 1})},
+          {CreateTensor<int64>(TensorShape{2, 3}, {0, 1, 1, 2, 3, 1}),
+           CreateTensor<int64>(TensorShape{2, 3}, {4, 5, 1, 6, 1, 1}),
+           CreateTensor<int64>(TensorShape{2, 3}, {7, 1, 1, 8, 1, 1})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({2, 3})},
           /*expected_cardinality*/ 3,
@@ -219,149 +209,132 @@ TestCase TestCase2() {
 
 // Test case 3: similar with the test case 2 but drop_remainder = false.
 TestCase TestCase3() {
-  return {
-      /*input_tensors*/
-      {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                {0, 1, 2, 3, 4, 5})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{4, 1},
-                                                {6, 7, 8, 9})}},
-      /*concatenate_output_dtypes*/ {DT_INT64},
-      /*concatenate_output_shapes*/ {PartialTensorShape({-1})},
-      /*batch_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
-      /*padded_shapes*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3})},
-      /*padding_values*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1})},
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape{}, {false}),
-      /*parallel_copy*/ false,
-      /*n*/ 1,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                               {0, 1, 1, 2, 3, 1}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                               {4, 5, 1, 6, 1, 1}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                               {7, 1, 1, 8, 1, 1}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1, 3}, {9, 1, 1})},
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({-1, 3})},
-      /*expected_cardinality*/ 4,
-      /*breakpoints*/ {0, 2, 5}};
+  return {/*input_tensors*/
+          {{CreateTensor<int64>(TensorShape{3, 2}, {0, 1, 2, 3, 4, 5})},
+           {CreateTensor<int64>(TensorShape{4, 1}, {6, 7, 8, 9})}},
+          /*concatenate_output_dtypes*/ {DT_INT64},
+          /*concatenate_output_shapes*/ {PartialTensorShape({-1})},
+          /*batch_size*/
+          CreateTensor<int64>(TensorShape{}, {2}),
+          /*padded_shapes*/
+          {CreateTensor<int64>(TensorShape{1}, {3})},
+          /*padding_values*/
+          {CreateTensor<int64>(TensorShape{}, {1})},
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape{}, {false}),
+          /*parallel_copy*/ false,
+          /*n*/ 1,
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape{2, 3}, {0, 1, 1, 2, 3, 1}),
+           CreateTensor<int64>(TensorShape{2, 3}, {4, 5, 1, 6, 1, 1}),
+           CreateTensor<int64>(TensorShape{2, 3}, {7, 1, 1, 8, 1, 1}),
+           CreateTensor<int64>(TensorShape{1, 3}, {9, 1, 1})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({-1, 3})},
+          /*expected_cardinality*/ 4,
+          /*breakpoints*/ {0, 2, 5}};
 }
 
 // Test case 4: similar with the test case 3 but the input elements can be
 // divided by the batch size evenly. As drop_remainder = false, the output
 // shape is still {-1, 3} instead of {2, 3}.
 TestCase TestCase4() {
-  return {
-      /*input_tensors*/
-      {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                {0, 1, 2, 3, 4, 5})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 1}, {6, 7, 8})}},
-      /*concatenate_output_dtypes*/ {DT_INT64},
-      /*concatenate_output_shapes*/ {PartialTensorShape({-1})},
-      /*batch_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
-      /*padded_shapes*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3})},
-      /*padding_values*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1})},
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape{}, {false}),
-      /*parallel_copy*/ false,
-      /*n*/ 1,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                               {0, 1, 1, 2, 3, 1}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                               {4, 5, 1, 6, 1, 1}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                               {7, 1, 1, 8, 1, 1})},
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({-1, 3})},
-      /*expected_cardinality*/ 3,
-      /*breakpoints*/ {0, 2, 5}};
+  return {/*input_tensors*/
+          {{CreateTensor<int64>(TensorShape{3, 2}, {0, 1, 2, 3, 4, 5})},
+           {CreateTensor<int64>(TensorShape{3, 1}, {6, 7, 8})}},
+          /*concatenate_output_dtypes*/ {DT_INT64},
+          /*concatenate_output_shapes*/ {PartialTensorShape({-1})},
+          /*batch_size*/
+          CreateTensor<int64>(TensorShape{}, {2}),
+          /*padded_shapes*/
+          {CreateTensor<int64>(TensorShape{1}, {3})},
+          /*padding_values*/
+          {CreateTensor<int64>(TensorShape{}, {1})},
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape{}, {false}),
+          /*parallel_copy*/ false,
+          /*n*/ 1,
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape{2, 3}, {0, 1, 1, 2, 3, 1}),
+           CreateTensor<int64>(TensorShape{2, 3}, {4, 5, 1, 6, 1, 1}),
+           CreateTensor<int64>(TensorShape{2, 3}, {7, 1, 1, 8, 1, 1})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({-1, 3})},
+          /*expected_cardinality*/ 3,
+          /*breakpoints*/ {0, 2, 5}};
 }
 
 // Test case 5: similar with the test case 3 but padded_shapes = {-1}.
 TestCase TestCase5() {
-  return {
-      /*input_tensors*/
-      {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                {0, 1, 2, 3, 4, 5})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{4, 1},
-                                                {6, 7, 8, 9})}},
-      /*concatenate_output_dtypes*/ {DT_INT64},
-      /*concatenate_output_shapes*/ {PartialTensorShape({-1})},
-      /*batch_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
-      /*padded_shapes*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {-1})},
-      /*padding_values*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1})},
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape{}, {false}),
-      /*parallel_copy*/ false,
-      /*n*/ 1,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2}, {0, 1, 2, 3}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2}, {4, 5, 6, 1}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 1}, {7, 8}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1, 1}, {9})},
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({-1, -1})},
-      /*expected_cardinality*/ 4,
-      /*breakpoints*/ {0, 2, 5}};
+  return {/*input_tensors*/
+          {{CreateTensor<int64>(TensorShape{3, 2}, {0, 1, 2, 3, 4, 5})},
+           {CreateTensor<int64>(TensorShape{4, 1}, {6, 7, 8, 9})}},
+          /*concatenate_output_dtypes*/ {DT_INT64},
+          /*concatenate_output_shapes*/ {PartialTensorShape({-1})},
+          /*batch_size*/
+          CreateTensor<int64>(TensorShape{}, {2}),
+          /*padded_shapes*/
+          {CreateTensor<int64>(TensorShape{1}, {-1})},
+          /*padding_values*/
+          {CreateTensor<int64>(TensorShape{}, {1})},
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape{}, {false}),
+          /*parallel_copy*/ false,
+          /*n*/ 1,
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape{2, 2}, {0, 1, 2, 3}),
+           CreateTensor<int64>(TensorShape{2, 2}, {4, 5, 6, 1}),
+           CreateTensor<int64>(TensorShape{2, 1}, {7, 8}),
+           CreateTensor<int64>(TensorShape{1, 1}, {9})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({-1, -1})},
+          /*expected_cardinality*/ 4,
+          /*breakpoints*/ {0, 2, 5}};
 }
 
 // Test case 6: similar with the test case 5 but parallel_copy = true.
 TestCase TestCase6() {
-  return {
-      /*input_tensors*/
-      {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                {0, 1, 2, 3, 4, 5})},
-       {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{4, 1},
-                                                {6, 7, 8, 9})}},
-      /*concatenate_output_dtypes*/ {DT_INT64},
-      /*concatenate_output_shapes*/ {PartialTensorShape({-1})},
-      /*batch_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
-      /*padded_shapes*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {-1})},
-      /*padding_values*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1})},
-      /*drop_remainder*/
-      DatasetOpsTestBase::CreateTensor<bool>(TensorShape{}, {false}),
-      /*parallel_copy*/ true,
-      /*n*/ 1,
-      /*expected_outputs*/
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2}, {0, 1, 2, 3}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2}, {4, 5, 6, 1}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 1}, {7, 8}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1, 1}, {9})},
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({-1, -1})},
-      /*expected_cardinality*/ 4,
-      /*breakpoints*/ {0, 2, 5}};
+  return {/*input_tensors*/
+          {{CreateTensor<int64>(TensorShape{3, 2}, {0, 1, 2, 3, 4, 5})},
+           {CreateTensor<int64>(TensorShape{4, 1}, {6, 7, 8, 9})}},
+          /*concatenate_output_dtypes*/ {DT_INT64},
+          /*concatenate_output_shapes*/ {PartialTensorShape({-1})},
+          /*batch_size*/
+          CreateTensor<int64>(TensorShape{}, {2}),
+          /*padded_shapes*/
+          {CreateTensor<int64>(TensorShape{1}, {-1})},
+          /*padding_values*/
+          {CreateTensor<int64>(TensorShape{}, {1})},
+          /*drop_remainder*/
+          CreateTensor<bool>(TensorShape{}, {false}),
+          /*parallel_copy*/ true,
+          /*n*/ 1,
+          /*expected_outputs*/
+          {CreateTensor<int64>(TensorShape{2, 2}, {0, 1, 2, 3}),
+           CreateTensor<int64>(TensorShape{2, 2}, {4, 5, 6, 1}),
+           CreateTensor<int64>(TensorShape{2, 1}, {7, 8}),
+           CreateTensor<int64>(TensorShape{1, 1}, {9})},
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({-1, -1})},
+          /*expected_cardinality*/ 4,
+          /*breakpoints*/ {0, 2, 5}};
 }
 
 // Test case 7: empty input elements.
 TestCase TestCase7() {
   return {/*input_tensors*/
-          {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{0}, {})},
-           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{0}, {})}},
+          {{CreateTensor<int64>(TensorShape{0}, {})},
+           {CreateTensor<int64>(TensorShape{0}, {})}},
           /*concatenate_output_dtypes*/ {DT_INT64},
           /*concatenate_output_shapes*/ {PartialTensorShape({-1})},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
+          CreateTensor<int64>(TensorShape{}, {2}),
           /*padded_shapes*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {-1})},
+          {CreateTensor<int64>(TensorShape{1}, {-1})},
           /*padding_values*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1})},
+          {CreateTensor<int64>(TensorShape{}, {1})},
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape{}, {false}),
+          CreateTensor<bool>(TensorShape{}, {false}),
           /*parallel_copy*/ true,
           /*n*/ 1,
           /*expected_outputs*/ {},
@@ -373,20 +346,18 @@ TestCase TestCase7() {
 
 TestCase ShortPaddingTestCase() {
   return {/*input_tensors*/
-          {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {0, 1, 2, 3, 4, 5})},
-           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {6, 7, 8, 9, 10, 11})}},
+          {{CreateTensor<int64>(TensorShape{3, 2}, {0, 1, 2, 3, 4, 5})},
+           {CreateTensor<int64>(TensorShape{3, 2}, {6, 7, 8, 9, 10, 11})}},
           /*concatenate_output_dtypes*/ {DT_INT64},
           /*concatenate_output_shapes*/ {PartialTensorShape({2})},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
+          CreateTensor<int64>(TensorShape{}, {2}),
           /*padded_shapes*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {1})},
+          {CreateTensor<int64>(TensorShape{1}, {1})},
           /*padding_values*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1})},
+          {CreateTensor<int64>(TensorShape{}, {1})},
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape{}, {false}),
+          CreateTensor<bool>(TensorShape{}, {false}),
           /*parallel_copy*/ true,
           /*n*/ 1,
           /*expected_outputs*/ {},
@@ -398,20 +369,18 @@ TestCase ShortPaddingTestCase() {
 
 TestCase InvalidPaddingShapesTestCase() {
   return {/*input_tensors*/
-          {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {0, 1, 2, 3, 4, 5})},
-           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {6, 7, 8, 9, 10, 11})}},
+          {{CreateTensor<int64>(TensorShape{3, 2}, {0, 1, 2, 3, 4, 5})},
+           {CreateTensor<int64>(TensorShape{3, 2}, {6, 7, 8, 9, 10, 11})}},
           /*concatenate_output_dtypes*/ {DT_INT64},
           /*concatenate_output_shapes*/ {PartialTensorShape({2})},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
+          CreateTensor<int64>(TensorShape{}, {2}),
           /*padded_shapes*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {1, 2})},
+          {CreateTensor<int64>(TensorShape{2}, {1, 2})},
           /*padding_values*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1})},
+          {CreateTensor<int64>(TensorShape{}, {1})},
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape{}, {false}),
+          CreateTensor<bool>(TensorShape{}, {false}),
           /*parallel_copy*/ true,
           /*n*/ 1,
           /*expected_outputs*/ {},
@@ -423,20 +392,18 @@ TestCase InvalidPaddingShapesTestCase() {
 
 TestCase InvalidBatchSizeTestCase() {
   return {/*input_tensors*/
-          {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {0, 1, 2, 3, 4, 5})},
-           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {6, 7, 8, 9, 10, 11})}},
+          {{CreateTensor<int64>(TensorShape{3, 2}, {0, 1, 2, 3, 4, 5})},
+           {CreateTensor<int64>(TensorShape{3, 2}, {6, 7, 8, 9, 10, 11})}},
           /*concatenate_output_dtypes*/ {DT_INT64},
           /*concatenate_output_shapes*/ {PartialTensorShape({2})},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {-1}),
+          CreateTensor<int64>(TensorShape{}, {-1}),
           /*padded_shapes*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3})},
+          {CreateTensor<int64>(TensorShape{1}, {3})},
           /*padding_values*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1})},
+          {CreateTensor<int64>(TensorShape{}, {1})},
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape{}, {false}),
+          CreateTensor<bool>(TensorShape{}, {false}),
           /*parallel_copy*/ true,
           /*n*/ 1,
           /*expected_outputs*/ {},
@@ -448,21 +415,19 @@ TestCase InvalidBatchSizeTestCase() {
 
 TestCase InvalidPaddedShapesSizeTestCase() {
   return {/*input_tensors*/
-          {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {0, 1, 2, 3, 4, 5})},
-           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {6, 7, 8, 9, 10, 11})}},
+          {{CreateTensor<int64>(TensorShape{3, 2}, {0, 1, 2, 3, 4, 5})},
+           {CreateTensor<int64>(TensorShape{3, 2}, {6, 7, 8, 9, 10, 11})}},
           /*concatenate_output_dtypes*/ {DT_INT64},
           /*concatenate_output_shapes*/ {PartialTensorShape({2})},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
+          CreateTensor<int64>(TensorShape{}, {2}),
           /*padded_shapes*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3})},
+          {CreateTensor<int64>(TensorShape{1}, {3}),
+           CreateTensor<int64>(TensorShape{1}, {3})},
           /*padding_values*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1})},
+          {CreateTensor<int64>(TensorShape{}, {1})},
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape{}, {false}),
+          CreateTensor<bool>(TensorShape{}, {false}),
           /*parallel_copy*/ true,
           /*n*/ 2,
           /*expected_outputs*/ {},
@@ -474,21 +439,19 @@ TestCase InvalidPaddedShapesSizeTestCase() {
 
 TestCase InvalidPaddedValuesSizeTestCase() {
   return {/*input_tensors*/
-          {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {0, 1, 2, 3, 4, 5})},
-           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {6, 7, 8, 9, 10, 11})}},
+          {{CreateTensor<int64>(TensorShape{3, 2}, {0, 1, 2, 3, 4, 5})},
+           {CreateTensor<int64>(TensorShape{3, 2}, {6, 7, 8, 9, 10, 11})}},
           /*concatenate_output_dtypes*/ {DT_INT64},
           /*concatenate_output_shapes*/ {PartialTensorShape({2})},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
+          CreateTensor<int64>(TensorShape{}, {2}),
           /*padded_shapes*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3})},
+          {CreateTensor<int64>(TensorShape{1}, {3})},
           /*padding_values*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {1})},
+          {CreateTensor<int64>(TensorShape{}, {1}),
+           CreateTensor<int64>(TensorShape{}, {1})},
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape{}, {false}),
+          CreateTensor<bool>(TensorShape{}, {false}),
           /*parallel_copy*/ true,
           /*n*/ 1,
           /*expected_outputs*/ {},
@@ -500,20 +463,18 @@ TestCase InvalidPaddedValuesSizeTestCase() {
 
 TestCase InvalidPaddedValuesDTypeTestCase() {
   return {/*input_tensors*/
-          {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {0, 1, 2, 3, 4, 5})},
-           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {6, 7, 8, 9, 10, 11})}},
+          {{CreateTensor<int64>(TensorShape{3, 2}, {0, 1, 2, 3, 4, 5})},
+           {CreateTensor<int64>(TensorShape{3, 2}, {6, 7, 8, 9, 10, 11})}},
           /*concatenate_output_dtypes*/ {DT_INT64},
           /*concatenate_output_shapes*/ {PartialTensorShape({2})},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
+          CreateTensor<int64>(TensorShape{}, {2}),
           /*padded_shapes*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3})},
+          {CreateTensor<int64>(TensorShape{1}, {3})},
           /*padding_values*/
-          {DatasetOpsTestBase::CreateTensor<string>(TensorShape{}, {"a"})},
+          {CreateTensor<string>(TensorShape{}, {"a"})},
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape{}, {false}),
+          CreateTensor<bool>(TensorShape{}, {false}),
           /*parallel_copy*/ true,
           /*n*/ 1,
           /*expected_outputs*/ {},
@@ -525,20 +486,18 @@ TestCase InvalidPaddedValuesDTypeTestCase() {
 
 TestCase InvalidPaddedValuesShapeTestCase() {
   return {/*input_tensors*/
-          {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {0, 1, 2, 3, 4, 5})},
-           {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3, 2},
-                                                    {6, 7, 8, 9, 10, 11})}},
+          {{CreateTensor<int64>(TensorShape{3, 2}, {0, 1, 2, 3, 4, 5})},
+           {CreateTensor<int64>(TensorShape{3, 2}, {6, 7, 8, 9, 10, 11})}},
           /*concatenate_output_dtypes*/ {DT_INT64},
           /*concatenate_output_shapes*/ {PartialTensorShape({2})},
           /*batch_size*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape{}, {2}),
+          CreateTensor<int64>(TensorShape{}, {2}),
           /*padded_shapes*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {3})},
+          {CreateTensor<int64>(TensorShape{1}, {3})},
           /*padding_values*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {1})},
+          {CreateTensor<int64>(TensorShape{1}, {1})},
           /*drop_remainder*/
-          DatasetOpsTestBase::CreateTensor<bool>(TensorShape{}, {false}),
+          CreateTensor<bool>(TensorShape{}, {false}),
           /*parallel_copy*/ true,
           /*n*/ 1,
           /*expected_outputs*/ {},
@@ -824,53 +783,6 @@ TEST_P(ParameterizedPaddedBatchDatasetOpTest, Cardinality) {
 
   EXPECT_EQ(padded_batch_dataset->Cardinality(),
             test_case.expected_cardinality);
-}
-
-TEST_P(ParameterizedPaddedBatchDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  std::unique_ptr<OpKernel> padded_batch_dataset_kernel;
-  TF_ASSERT_OK(CreatePaddedBatchDatasetKernel(
-      test_case.parallel_copy, test_case.n, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &padded_batch_dataset_kernel));
-
-  Tensor concatenate_dataset_tensor(DT_VARIANT, TensorShape({}));
-  TF_ASSERT_OK(CreateConcatenateDatasetTensor(
-      test_case.input_tensors, test_case.concatenate_output_dtypes,
-      test_case.concatenate_output_shapes, &concatenate_dataset_tensor));
-  Tensor batch_size = test_case.batch_size;
-  std::vector<Tensor> padded_shapes = test_case.padded_shapes;
-  std::vector<Tensor> padding_values = test_case.padding_values;
-  Tensor drop_remainder = test_case.drop_remainder;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&concatenate_dataset_tensor), TensorValue(&batch_size)});
-  for (auto &padded_shape : padded_shapes) {
-    inputs.emplace_back(&padded_shape);
-  }
-  for (auto &padding_value : padding_values) {
-    inputs.emplace_back(&padding_value);
-  }
-  inputs.emplace_back(&drop_remainder);
-
-  std::unique_ptr<OpKernelContext> padded_batch_dataset_context;
-  TF_ASSERT_OK(
-      CreatePaddedBatchDatasetContext(padded_batch_dataset_kernel.get(),
-                                      &inputs, &padded_batch_dataset_context));
-  DatasetBase *padded_batch_dataset;
-  TF_ASSERT_OK(CreateDataset(padded_batch_dataset_kernel.get(),
-                             padded_batch_dataset_context.get(),
-                             &padded_batch_dataset));
-  core::ScopedUnref scoped_unref(padded_batch_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(padded_batch_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
 }
 
 TEST_P(ParameterizedPaddedBatchDatasetOpTest, IteratorOutputDtypes) {

@@ -333,6 +333,11 @@ def _AssertCompatible(values, dtype):
 
 def _is_array_like(obj):  # pylint: disable=invalid-name
   """Check if a given object is array-like."""
+  if isinstance(obj, ops.Tensor) and not isinstance(obj, ops._EagerTensorBase):  # pylint: disable=protected-access
+    # Tensor implements __array__ only so it can inform the user that it is not
+    # a valid array.
+    return False
+
   # TODO(slebedev): an object could also implement C-level array interface.
   if (callable(getattr(obj, "__array__", None)) or
       isinstance(getattr(obj, "__array_interface__", None), dict)):
@@ -905,18 +910,18 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
       pass
     except TypeError:  # Could come from slicing prev.
       pass
-  elif tensor.op.type == "Placeholder" and tensor.op.graph.building_function:
+  elif (tensor.op.type == "Placeholder" and
+        tensor.op.graph.building_function and
+        hasattr(tensor.op.graph, "internal_captures")):
     # If we are inside a FuncGraph try to lookup the constant value of the
     # corresponding external capture. Note that we only look at captures and
     # not the fed inputs because those can be fed different values in different
     # instantiations of the function call or different iterations of a
     # tf.while_loop.
-    try:
-      external_capture = tensor.op.graph.external_captures[
-          tensor.op.graph.internal_captures.index(tensor)]
-      return constant_value_as_shape(external_capture)
-    except ValueError:  # `tensor` not in `internal_captures`.
-      pass
+    for i, capture in enumerate(tensor.op.graph.internal_captures):
+      if capture is tensor:
+        external_capture = tensor.op.graph.external_captures[i]
+        return constant_value_as_shape(external_capture)
 
   ret = tensor_shape.unknown_shape(shape.dims[0].value)
   value = constant_value(tensor)

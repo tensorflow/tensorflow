@@ -466,8 +466,8 @@ Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
 
   // All the node types handled here have their output datatype set in
   // either attribute 'dtype' or 'T'.
-  if (!GetNodeAttr(node, "dtype", type).ok() &&
-      !GetNodeAttr(node, "T", type).ok()) {
+  if (!TryGetNodeAttr(node, "dtype", type) &&
+      !TryGetNodeAttr(node, "T", type)) {
     return errors::InvalidArgument(
         "Could not determine output type for feed node: ", node.name(),
         " of type ", node.op());
@@ -848,7 +848,8 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
           for (const NodeDef& ndef : fdef->node_def()) {
             if (ndef.op() == "CollectiveReduce" ||
                 ndef.op() == "CollectiveBcastSend" ||
-                ndef.op() == "CollectiveBcastRecv") {
+                ndef.op() == "CollectiveBcastRecv" ||
+                ndef.op() == "CollectiveGather") {
               int32 instance_key;
               TF_RETURN_IF_ERROR(
                   GetNodeAttr(ndef, "instance_key", &instance_key));

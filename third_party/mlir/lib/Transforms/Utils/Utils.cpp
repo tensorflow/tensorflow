@@ -242,11 +242,8 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
 
     // Create the new operation.
     auto *repOp = builder.createOperation(state);
-    // Replace old memref's deferencing op's uses.
-    unsigned r = 0;
-    for (auto *res : opInst->getResults()) {
-      res->replaceAllUsesWith(repOp->getResult(r++));
-    }
+    opInst->replaceAllUsesWith(repOp);
+
     // Collect and erase at the end since one of these op's could be
     // domInstFilter or postDomInstFilter as well!
     opsToErase.push_back(opInst);

@@ -51,7 +51,7 @@ public:
 
     func.walk<loop::ForOp>([&processorIds, &numProcessors](loop::ForOp op) {
       // Ignore nested loops.
-      if (op.getContainingRegion()->getParentOfType<loop::ForOp>())
+      if (op.getParentRegion()->getParentOfType<loop::ForOp>())
         return;
       mapLoopToProcessorIds(op, processorIds, numProcessors);
     });

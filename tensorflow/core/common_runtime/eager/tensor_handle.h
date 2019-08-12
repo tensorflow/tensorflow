@@ -149,6 +149,11 @@ class TensorHandle : public core::RefCounted {
   // Return the op_id and output num if the handle refers to a remote tensor.
   Status RemoteAddress(Device* d, int64* op_id, int32* output_num) const;
 
+  // Set remote_op_id_ and remote_output_num_ if the handle refers to a local
+  // tensor that needs to be copied to remote workers.
+  void SetRemoteOpIdAndOutputNumToLocalTensorHandle(const int64 op_id,
+                                                    const int32 output_num);
+
   // Called on an async remote tensor once it's shape has been determined. This
   // transitions the tensor handle from a non-ready to a ready state by
   // replacing the backing data abstraction to allow for the shape to be
@@ -238,8 +243,8 @@ class TensorHandle : public core::RefCounted {
       remote_mirrors_ GUARDED_BY(remote_mirrors_mutex_);
 
   // IDs required when this class is representing a remote tensor handle.
-  const int64 remote_op_id_;
-  const int32 remote_output_num_;
+  int64 remote_op_id_;
+  int32 remote_output_num_;
   eager::EagerClient* remote_eager_client_;
   uint64 remote_context_id_;
 #endif

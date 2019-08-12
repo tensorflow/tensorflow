@@ -115,16 +115,20 @@ private:
   // Constant
   //===--------------------------------------------------------------------===//
 
-  /// Processes a SPIR-V OpConstant instruction with the given `operands`.
-  LogicalResult processConstant(ArrayRef<uint32_t> operands);
+  /// Processes a SPIR-V Op{|Spec}Constant instruction with the given
+  /// `operands`. `isSpec` indicates whether this is a specialization constant.
+  LogicalResult processConstant(ArrayRef<uint32_t> operands, bool isSpec);
 
-  /// Processes a SPIR-V OpConstant{True|False} instruction with the given
-  /// `operands`.
-  LogicalResult processConstantBool(bool isTrue, ArrayRef<uint32_t> operands);
+  /// Processes a SPIR-V Op{|Spec}Constant{True|False} instruction with the
+  /// given `operands`. `isSpec` indicates whether this is a specialization
+  /// constant.
+  LogicalResult processConstantBool(bool isTrue, ArrayRef<uint32_t> operands,
+                                    bool isSpec);
 
-  /// Processes a SPIR-V OpConstantComposite instruction with the given
-  /// `operands`.
-  LogicalResult processConstantComposite(ArrayRef<uint32_t> operands);
+  /// Processes a SPIR-V Op{|Spec}ConstantComposite instruction with the given
+  /// `operands`. `isSpec` indicates whether this is a specialization constant.
+  LogicalResult processConstantComposite(ArrayRef<uint32_t> operands,
+                                         bool isSpec);
 
   /// Processes a SPIR-V OpConstantNull instruction with the given `operands`.
   LogicalResult processConstantNull(ArrayRef<uint32_t> operands);
@@ -224,7 +228,7 @@ LogicalResult Deserializer::deserialize() {
   if (failed(processHeader()))
     return failure();
 
-  spirv::Opcode opcode;
+  spirv::Opcode opcode = spirv::Opcode::OpNop;
   ArrayRef<uint32_t> operands;
   auto binarySize = binary.size();
   while (curOffset < binarySize) {
@@ -372,7 +376,7 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
   if (functionType.getNumInputs()) {
     for (size_t i = 0, e = functionType.getNumInputs(); i != e; ++i) {
       auto argType = functionType.getInput(i);
-      spirv::Opcode opcode;
+      spirv::Opcode opcode = spirv::Opcode::OpNop;
       ArrayRef<uint32_t> operands;
       if (failed(sliceInstruction(opcode, operands,
                                   spirv::Opcode::OpFunctionParameter))) {
@@ -410,7 +414,7 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
   OpBuilder funcBody(funcOp.getBody());
   std::swap(funcBody, opBuilder);
 
-  spirv::Opcode opcode;
+  spirv::Opcode opcode = spirv::Opcode::OpNop;
   ArrayRef<uint32_t> instOperands;
   while (succeeded(sliceInstruction(opcode, instOperands,
                                     spirv::Opcode::OpFunctionEnd)) &&
@@ -610,14 +614,17 @@ LogicalResult Deserializer::processFunctionType(ArrayRef<uint32_t> operands) {
 // Constant
 //===----------------------------------------------------------------------===//
 
-LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands) {
+LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands,
+                                            bool isSpec) {
+  StringRef opname = isSpec ? "OpSpecConstant" : "OpConstant";
+
   if (operands.size() < 2) {
-    return emitError(unknownLoc,
-                     "OpConstant must have type <id> and result <id>");
+    return emitError(unknownLoc)
+           << opname << " must have type <id> and result <id>";
   }
   if (operands.size() < 3) {
-    return emitError(unknownLoc,
-                     "OpConstant must have at least 1 more parameter");
+    return emitError(unknownLoc)
+           << opname << " must have at least 1 more parameter";
   }
 
   Type resultType = getType(operands[0]);
@@ -631,22 +638,24 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands) {
       if (operands.size() == 4) {
         return success();
       }
-      return emitError(unknownLoc,
-                       "OpConstant should have 2 parameters for 64-bit values");
+      return emitError(unknownLoc)
+             << opname << " should have 2 parameters for 64-bit values";
     }
     if (bitwidth <= 32) {
       if (operands.size() == 3) {
         return success();
       }
 
-      return emitError(unknownLoc, "OpConstant should have 1 parameter for "
-                                   "values with no more than 32 bits");
+      return emitError(unknownLoc)
+             << opname
+             << " should have 1 parameter for values with no more than 32 bits";
     }
     return emitError(unknownLoc, "unsupported OpConstant bitwidth: ")
            << bitwidth;
   };
 
   spirv::ConstantOp op;
+  UnitAttr isSpecConst = isSpec ? opBuilder.getUnitAttr() : UnitAttr();
   if (auto intType = resultType.dyn_cast<IntegerType>()) {
     auto bitwidth = intType.getWidth();
     if (failed(checkOperandSizeForBitwidth(bitwidth))) {
@@ -668,7 +677,8 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands) {
     }
 
     auto attr = opBuilder.getIntegerAttr(intType, value);
-    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, intType, attr);
+    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, intType, attr,
+                                             isSpecConst);
   } else if (auto floatType = resultType.dyn_cast<FloatType>()) {
     auto bitwidth = floatType.getWidth();
     if (failed(checkOperandSizeForBitwidth(bitwidth))) {
@@ -693,7 +703,8 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands) {
     }
 
     auto attr = opBuilder.getFloatAttr(floatType, value);
-    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, floatType, attr);
+    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, floatType, attr,
+                                             isSpecConst);
   } else {
     return emitError(unknownLoc, "OpConstant can only generate values of "
                                  "scalar integer or floating-point type");
@@ -704,23 +715,27 @@ LogicalResult Deserializer::processConstant(ArrayRef<uint32_t> operands) {
 }
 
 LogicalResult Deserializer::processConstantBool(bool isTrue,
-                                                ArrayRef<uint32_t> operands) {
+                                                ArrayRef<uint32_t> operands,
+                                                bool isSpec) {
   if (operands.size() != 2) {
-    return emitError(unknownLoc, "OpConstant")
+    return emitError(unknownLoc, "Op")
+           << (isSpec ? "Spec" : "") << "Constant"
            << (isTrue ? "True" : "False")
            << " must have type <id> and result <id>";
   }
 
   auto attr = opBuilder.getBoolAttr(isTrue);
-  auto op = opBuilder.create<spirv::ConstantOp>(unknownLoc,
-                                                opBuilder.getI1Type(), attr);
+  UnitAttr isSpecConst = isSpec ? opBuilder.getUnitAttr() : UnitAttr();
+  auto op = opBuilder.create<spirv::ConstantOp>(
+      unknownLoc, opBuilder.getI1Type(), attr, isSpecConst);
 
   valueMap[operands[1]] = op.getResult();
   return success();
 }
 
 LogicalResult
-Deserializer::processConstantComposite(ArrayRef<uint32_t> operands) {
+Deserializer::processConstantComposite(ArrayRef<uint32_t> operands,
+                                       bool isSpec) {
   if (operands.size() < 2) {
     return emitError(unknownLoc,
                      "OpConstantComposite must have type <id> and result <id>");
@@ -757,12 +772,15 @@ Deserializer::processConstantComposite(ArrayRef<uint32_t> operands) {
   }
 
   spirv::ConstantOp op;
+  UnitAttr isSpecConst = isSpec ? opBuilder.getUnitAttr() : UnitAttr();
   if (auto vectorType = resultType.dyn_cast<VectorType>()) {
     auto attr = opBuilder.getDenseElementsAttr(vectorType, elements);
-    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr);
+    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr,
+                                             isSpecConst);
   } else if (auto arrayType = resultType.dyn_cast<spirv::ArrayType>()) {
     auto attr = opBuilder.getArrayAttr(elements);
-    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr);
+    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr,
+                                             isSpecConst);
   } else {
     return emitError(unknownLoc, "unsupported OpConstantComposite type: ")
            << resultType;
@@ -788,7 +806,9 @@ LogicalResult Deserializer::processConstantNull(ArrayRef<uint32_t> operands) {
   if (resultType.isa<IntegerType>() || resultType.isa<FloatType>() ||
       resultType.isa<VectorType>()) {
     auto attr = opBuilder.getZeroAttr(resultType);
-    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr);
+    UnitAttr isSpecConst;
+    op = opBuilder.create<spirv::ConstantOp>(unknownLoc, resultType, attr,
+                                             isSpecConst);
   } else {
     return emitError(unknownLoc, "unsupported OpConstantNull type: ")
            << resultType;
@@ -859,13 +879,21 @@ LogicalResult Deserializer::processInstruction(spirv::Opcode opcode,
   case spirv::Opcode::OpTypePointer:
     return processType(opcode, operands);
   case spirv::Opcode::OpConstant:
-    return processConstant(operands);
+    return processConstant(operands, /*isSpec=*/false);
+  case spirv::Opcode::OpSpecConstant:
+    return processConstant(operands, /*isSpec=*/true);
   case spirv::Opcode::OpConstantComposite:
-    return processConstantComposite(operands);
+    return processConstantComposite(operands, /*isSpec=*/false);
+  case spirv::Opcode::OpSpecConstantComposite:
+    return processConstantComposite(operands, /*isSpec=*/true);
   case spirv::Opcode::OpConstantTrue:
-    return processConstantBool(true, operands);
+    return processConstantBool(/*isTrue=*/true, operands, /*isSpec=*/false);
+  case spirv::Opcode::OpSpecConstantTrue:
+    return processConstantBool(/*isTrue=*/true, operands, /*isSpec=*/true);
   case spirv::Opcode::OpConstantFalse:
-    return processConstantBool(false, operands);
+    return processConstantBool(/*isTrue=*/false, operands, /*isSpec=*/false);
+  case spirv::Opcode::OpSpecConstantFalse:
+    return processConstantBool(/*isTrue=*/false, operands, /*isSpec=*/true);
   case spirv::Opcode::OpConstantNull:
     return processConstantNull(operands);
   case spirv::Opcode::OpDecorate:

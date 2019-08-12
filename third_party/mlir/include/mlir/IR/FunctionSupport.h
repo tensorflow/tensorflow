@@ -53,24 +53,41 @@ inline ArrayRef<NamedAttribute> getArgAttrs(Operation *op, unsigned index) {
   return argDict ? argDict.getValue() : llvm::None;
 }
 
+/// A named class for passing around the variadic flag.
+class VariadicFlag {
+public:
+  explicit VariadicFlag(bool variadic) : variadic(variadic) {}
+  bool isVariadic() const { return variadic; }
+
+private:
+  /// Underlying storage.
+  bool variadic;
+};
+
 /// Callback type for `parseFunctionLikeOp`, the callback should produce the
 /// type that will be associated with a function-like operation from lists of
-/// function arguments and results.
-using FuncTypeBuilder =
-    llvm::function_ref<Type(Builder &, ArrayRef<Type>, ArrayRef<Type>)>;
+/// function arguments and results, VariadicFlag indicates whether the function
+/// should have variadic arguments; in case of error, it may populate the last
+/// argument with a message.
+using FuncTypeBuilder = llvm::function_ref<Type(
+    Builder &, ArrayRef<Type>, ArrayRef<Type>, VariadicFlag, std::string &)>;
 
 /// Parser implementation for function-like operations.  Uses
 /// `funcTypeBuilder` to construct the custom function type given lists of
-/// input and output types.  If the builder returns a null type, `result` will
-/// not contain the `type` attribute.  The caller can then either add the type
-/// or use op's verifier to report errors.
+/// input and output types.  If `allowVariadic` is set, the parser will accept
+/// trailing ellipsis in the function signature and indicate to the builder
+/// whether the function is variadic.  If the builder returns a null type,
+/// `result` will not contain the `type` attribute.  The caller can then add a
+/// type, report the error or delegate the reporting to the op's verifier.
 ParseResult parseFunctionLikeOp(OpAsmParser *parser, OperationState *result,
+                                bool allowVariadic,
                                 FuncTypeBuilder funcTypeBuilder);
 
 /// Printer implementation for function-like operations.  Accepts lists of
 /// argument and result types to use while printing.
 void printFunctionLikeOp(OpAsmPrinter *p, Operation *op,
-                         ArrayRef<Type> argTypes, ArrayRef<Type> results);
+                         ArrayRef<Type> argTypes, bool isVariadic,
+                         ArrayRef<Type> results);
 
 } // namespace impl
 

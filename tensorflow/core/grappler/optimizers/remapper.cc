@@ -456,7 +456,7 @@ bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx, int node_index,
 
   // Squeeze must not squeeze output channel dimension.
   std::vector<int32> dims;
-  if (!GetNodeAttr(*squeeze_node_def, "squeeze_dims", &dims).ok()) return false;
+  if (!TryGetNodeAttr(*squeeze_node_def, "squeeze_dims", &dims)) return false;
   for (auto dim : dims) {
     if (dim == 3) return false;
   }
@@ -531,7 +531,7 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
   // We successfully found a Conv2D+FusedBatchNorm pattern.
   matched->contraction = conv2d_node_view->node_index();
   matched->fused_batch_norm = node_index;
-  if (!GetNodeAttr(*node_def, "epsilon", &matched->epsilon).ok()) return false;
+  if (!TryGetNodeAttr(*node_def, "epsilon", &matched->epsilon)) return false;
 
   return true;
 }
@@ -684,7 +684,7 @@ bool FindFusedBatchNorm(const RemapperContext& ctx, int node_index,
 
   // Check that the node is in inference mode.
   bool is_training = true;
-  if (!GetNodeAttr(*node_def, kIsTraining, &is_training).ok()) return false;
+  if (!TryGetNodeAttr(*node_def, kIsTraining, &is_training)) return false;
   if (is_training) return false;
 
   const auto& props = ctx.graph_properties.GetInputProperties(node_def->name());
@@ -1477,7 +1477,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     if (GetDataTypeFromAttr(*node_def, "T") != DT_FLOAT) return false;
 
     bool is_training = true;
-    if (!GetNodeAttr(*node_def, kIsTraining, &is_training).ok()) return false;
+    if (!TryGetNodeAttr(*node_def, kIsTraining, &is_training)) return false;
     if (is_training) return false;
 
     return true;
@@ -1634,7 +1634,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     // Infer properties lazily in case they are not needed.
     if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
       const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
-      // TODO(rmlarsen): Get rid of tensor value copies.
       TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
           assume_valid_feeds,
           /*aggressive_shape_inference=*/false,

@@ -130,9 +130,11 @@ public:
   FloatAttr getF16FloatAttr(float value);
   FloatAttr getF32FloatAttr(float value);
   FloatAttr getF64FloatAttr(double value);
+
   IntegerAttr getI32IntegerAttr(int32_t value);
   IntegerAttr getI64IntegerAttr(int64_t value);
 
+  ArrayAttr getAffineMapArrayAttr(ArrayRef<AffineMap> values);
   ArrayAttr getI32ArrayAttr(ArrayRef<int32_t> values);
   ArrayAttr getI64ArrayAttr(ArrayRef<int64_t> values);
   ArrayAttr getF32ArrayAttr(ArrayRef<float> values);
@@ -148,6 +150,8 @@ public:
                          ArrayRef<AffineExpr> results);
 
   // Special cases of affine maps and integer sets
+  /// Returns a zero result affine map with no dimensions or symbols: () -> ().
+  AffineMap getEmptyAffineMap();
   /// Returns a single constant result affine map with 0 dimensions and 0
   /// symbols.  One constant result: () -> (val).
   AffineMap getConstantAffineMap(int64_t val);

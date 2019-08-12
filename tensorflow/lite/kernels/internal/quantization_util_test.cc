@@ -381,6 +381,20 @@ TEST(QuantizationUtilTest, QuantizeMultiplierGreaterThanOne) {
   EXPECT_THAT(quantize(2), Pair(1073741824, 2));
 }
 
+TEST(QuantizationUtilTest, QuantizeMultiplierUnderflow) {
+  auto quantize = [](double d) {
+    int32_t q;
+    int s;
+    QuantizeMultiplier(d, &q, &s);
+    return std::pair<int32_t, int>{q, s};
+  };
+
+  EXPECT_THAT(quantize(std::ldexp(1.0f, -31)), Pair(1073741824, -30));
+  EXPECT_THAT(quantize(std::ldexp(1.0f, -32)), Pair(1073741824, -31));
+  EXPECT_THAT(quantize(std::ldexp(0.99f, -32)), Pair(0, 0));
+  EXPECT_THAT(quantize(std::ldexp(1.0f, -33)), Pair(0, 0));
+}
+
 TEST(QuantizationUtilTest, PreprocessSoftmaxScaling) {
   auto quantize = [](double beta, double scale, int integer_bits) {
     int32_t q;

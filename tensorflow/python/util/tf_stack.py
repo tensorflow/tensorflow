@@ -24,6 +24,21 @@ import linecache
 import sys
 import threading
 
+import six
+
+# Generally such lookups should be done using `threading.local()`. See
+# https://blogs.gnome.org/jamesh/2008/06/11/tls-python/ for a detailed
+# explanation of why. However the transform stacks are expected to be empty
+# when a thread is joined, so reusing the key does not introduce a correctness
+# issue. Moreover, get_ident is faster than storing and retrieving a unique
+# key in a thread local store.
+if six.PY3:
+  _get_thread_key = threading.get_ident
+else:
+  import thread  # pylint: disable=g-import-not-at-top
+  _get_thread_key = thread.get_ident
+
+
 # Names for indices into TF traceback tuples.
 TB_FILENAME = 0
 TB_LINENO = 1
@@ -31,59 +46,60 @@ TB_FUNCNAME = 2
 TB_CODEDICT = 3  # Dictionary of Python interpreter state.
 
 
-stacks = threading.local()
+_source_mapper_stacks = collections.defaultdict(list)
+_source_filter_stacks = collections.defaultdict(list)
 
 
-def _source_mappers():
-  if not hasattr(stacks, 'source_mapper'):
-    stacks.source_mapper = []
-  return stacks.source_mapper
+class StackTraceTransform(object):
+  """Base class for stack trace transformation functions."""
 
-
-def _source_filters():
-  if not hasattr(stacks, 'source_filter'):
-    stacks.source_filter = []
-  return stacks.source_filter
-
-
-class StackTraceMapper(object):
-  """Allows remapping traceback information to different source code."""
+  _stack_dict = None  # Subclasses should override
+  _thread_key = None
 
   def __enter__(self):
-    self._effective_source_map = None
-    mappers_stack = _source_mappers()
-    if mappers_stack:
-      self.parent = mappers_stack[-1]
+    self.reset()
+
+    # Any given instance is assumed to be used by a single thread, which reduces
+    # expensive thread local lookups.
+    if self._thread_key is None:
+      self._thread_key = _get_thread_key()
+    else:
+      assert self._thread_key == _get_thread_key(), 'Shared across threads?'
+
+    stack = self._stack_dict[self._thread_key]
+    if stack:
+      self.parent = stack[-1]
     else:
       self.parent = None
-    mappers_stack.append(self)
+    stack.append(self)
     return self
 
   def __exit__(self, unused_type, unused_value, unused_traceback):
-    assert _source_mappers()[-1] is self, 'Concurrent access?'
-    _source_mappers().pop()
+    top = self._stack_dict[self._thread_key].pop()
+    assert top is self, 'Concurrent access?'
+
+  def reset(self):
+    pass
+
+
+class StackTraceMapper(StackTraceTransform):
+  """Allows remapping traceback information to different source code."""
+  _stack_dict = _source_mapper_stacks
+
+  def reset(self):
+    self._effective_source_map = None
 
   def get_effective_source_map(self):
     """Returns a map (filename, lineno) -> (filename, lineno, function_name)."""
     raise NotImplementedError('subclasses need to override this')
 
 
-class StackTraceFilter(object):
+class StackTraceFilter(StackTraceTransform):
   """Allows filtering traceback information by removing superfluous frames."""
+  _stack_dict = _source_filter_stacks
 
-  def __enter__(self):
+  def reset(self):
     self._filtered_filenames = None
-    filters_stack = _source_filters()
-    if filters_stack:
-      self.parent = filters_stack[-1]
-    else:
-      self.parent = None
-    filters_stack.append(self)
-    return self
-
-  def __exit__(self, unused_type, unused_value, unused_traceback):
-    assert _source_filters()[-1] is self, 'Concurrent access?'
-    _source_filters().pop()
 
   def get_filtered_filenames(self):
     raise NotImplementedError('subclasses need to override this')
@@ -148,14 +164,15 @@ def extract_stack(limit=None):
   ret = []
   length = 0
 
-  source_mappers = _source_mappers()
+  thread_key = _get_thread_key()
+  source_mappers = _source_mapper_stacks[thread_key]
   # TODO(mdan): Use sentinels instead.
   if source_mappers:
     source_map = source_mappers[-1].get_effective_source_map()
   else:
     source_map = EMPTY_FROZEN_MAP
 
-  source_filters = _source_filters()
+  source_filters = _source_filter_stacks[thread_key]
   if source_filters:
     filtered_filenames = source_filters[-1].get_filtered_filenames()
   else:

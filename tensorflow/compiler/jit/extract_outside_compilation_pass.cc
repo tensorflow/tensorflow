@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
@@ -369,7 +369,8 @@ xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
   return new_def;
 }
 
-Status ValidateOutsideCompilationCallNode(Node* call_node) {
+TF_ATTRIBUTE_NOINLINE Status
+ValidateOutsideCompilationCallNode(Node* call_node) {
   // DT_INT64 as input/output for outside compilation is not supported yet:
   // b/120809951.
   for (const Edge* e : call_node->in_edges()) {
@@ -402,7 +403,7 @@ Status ValidateOutsideCompilationCallNode(Node* call_node) {
 }
 
 // Replace outside compilation function call node with XlaHostCompute node.
-xla::StatusOr<Node*> ReplaceOutsideCompilationCallNode(
+TF_ATTRIBUTE_NOINLINE xla::StatusOr<Node*> ReplaceOutsideCompilationCallNode(
     Graph* g, Node* call_node, const std::map<string, int>& host_compute_core,
     const absl::flat_hash_map<string, std::vector<string>>& cluster_deps) {
   // Build XlaHostCompute NodeDef.
@@ -440,7 +441,7 @@ Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
         n->ClearAttr(attr_name);
         n->AddAttr(attr_name, branch_func);
       }
-    } else if (n->type_string() == "While") {
+    } else if (n->IsWhileNode()) {
       for (const string& attr_name : std::vector<string>{"cond", "body"}) {
         NameAttrList branch_func;
         TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), attr_name, &branch_func));
@@ -595,7 +596,7 @@ void ReplaceLiftedArgNodePlaceholderWithArg(
 Status PostprocessLiftedArgsForWhile(
     const std::unordered_map<string, Node*>& outside_compilation_attr_to_node,
     Graph* g, Node* n, FunctionLibraryDefinition* fld) {
-  TF_RET_CHECK(n->type_string() == "While");
+  TF_RET_CHECK(n->IsWhileNode());
 
   // Check if there is any lifted args in body function.
   NameAttrList body_func;
@@ -695,7 +696,7 @@ Status PostprocessLiftedArgsForWhile(
 Status PostprocessLiftedArgsForIf(
     const std::unordered_map<string, Node*>& outside_compilation_attr_to_node,
     Graph* g, Node* n, FunctionLibraryDefinition* fld) {
-  TF_RET_CHECK(n->type_string() == "If");
+  TF_RET_CHECK(n->IsIfNode());
 
   NameAttrList then_branch_func;
   TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "then_branch", &then_branch_func));
@@ -913,10 +914,9 @@ xla::StatusOr<std::unordered_map<string, Node*>> OutsideCompilationAttrToNode(
   for (Node* n : g.op_nodes()) {
     bool is_lifted_arg;
     string outside_compilation_attr;
-    if (GetNodeAttr(n->def(), kXlaIsLiftedArgAttrName, &is_lifted_arg).ok() &&
-        GetNodeAttr(n->def(), "_xla_outside_compilation",
-                    &outside_compilation_attr)
-            .ok()) {
+    if (TryGetNodeAttr(n->def(), kXlaIsLiftedArgAttrName, &is_lifted_arg) &&
+        TryGetNodeAttr(n->def(), "_xla_outside_compilation",
+                       &outside_compilation_attr)) {
       TF_RET_CHECK(is_lifted_arg);
       TF_RET_CHECK(n->IsIdentity() || n->type_string() == "Placeholder");
       outside_compilation_attr_to_node[outside_compilation_attr] = n;
@@ -936,12 +936,12 @@ Status PostprocessLiftedArgs(Graph* g, FunctionLibraryDefinition* fld) {
       continue;
     }
 
-    if (n->type_string() == "While") {
+    if (n->IsWhileNode()) {
       TF_RETURN_IF_ERROR(PostprocessLiftedArgsForWhile(
           outside_compilation_attr_to_node, g, n, fld));
     }
 
-    if (n->type_string() == "If") {
+    if (n->IsIfNode()) {
       TF_RETURN_IF_ERROR(PostprocessLiftedArgsForIf(
           outside_compilation_attr_to_node, g, n, fld));
     }
@@ -1307,9 +1307,9 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
 }
 
 // Builds XlaSendToHost node which sends cond predicate to host.
-xla::StatusOr<Node*> BuildSendIfPredNode(const string& name,
-                                         const string& host_transfer_key,
-                                         Node* pred_node, Graph* g) {
+TF_ATTRIBUTE_NOINLINE xla::StatusOr<Node*> BuildSendIfPredNode(
+    const string& name, const string& host_transfer_key, Node* pred_node,
+    Graph* g) {
   NodeDefBuilder send_pred_builder(name, "XlaSendToHost");
   send_pred_builder.Attr("Tinput", DT_BOOL);
   send_pred_builder.Attr("key", absl::StrCat(host_transfer_key, "_dtoh_0"));
@@ -1372,15 +1372,13 @@ Status ReplaceKeyPlaceholderWithArgNode(const string& xla_cluster_name,
 }
 
 // Builds host side graph for If node.
-Status BuildHostGraphForIfNode(const string& xla_cluster_attr_name,
-                               const string& outside_compilation_attr_name,
-                               const string& xla_cluster_name,
-                               const string& if_node_name,
-                               const string& host_transfer_key,
-                               const string& host_graph_func_name,
-                               FunctionLibraryDefinition* fld,
-                               const string& then_branch_host_func_name,
-                               const string& else_branch_host_func_name) {
+TF_ATTRIBUTE_NOINLINE Status BuildHostGraphForIfNode(
+    const string& xla_cluster_attr_name,
+    const string& outside_compilation_attr_name, const string& xla_cluster_name,
+    const string& if_node_name, const string& host_transfer_key,
+    const string& host_graph_func_name, FunctionLibraryDefinition* fld,
+    const string& then_branch_host_func_name,
+    const string& else_branch_host_func_name) {
   Graph host_graph(fld);
   string outside_compilation_name = absl::StrCat("oc_if_", if_node_name);
   AttrValue device_ordinal_value;
@@ -1457,10 +1455,9 @@ Status BuildHostGraphForIfNode(const string& xla_cluster_attr_name,
 }
 
 // Rewrites loop cond to add a node which sends loop cond to host.
-Status AddSendLoopPredToLoopCond(FunctionLibraryDefinition* fld,
-                                 const NameAttrList& loop_cond_func,
-                                 const string& while_node_name,
-                                 const string& host_transfer_key) {
+TF_ATTRIBUTE_NOINLINE Status AddSendLoopPredToLoopCond(
+    FunctionLibraryDefinition* fld, const NameAttrList& loop_cond_func,
+    const string& while_node_name, const string& host_transfer_key) {
   // Instantiate the loop cond function.
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fld->Find(loop_cond_func.name()),
@@ -1648,7 +1645,7 @@ Status RewriteHostWhileLoopBody(
 }
 
 // Builds host side graph for while node.
-Status BuildHostGraphForWhileNode(
+TF_ATTRIBUTE_NOINLINE Status BuildHostGraphForWhileNode(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name, const string& xla_cluster_name,
     const string& while_node_name, const string& host_transfer_key,
@@ -1745,10 +1742,6 @@ Status BuildHostGraphForFuncCallNode(
   call_builder.Attr(kXlaHasHostTransferAttrName, true);
   call_builder.Attr(xla_cluster_attr_name, xla_cluster_name);
   call_builder.Attr(outside_compilation_attr_name, call_builder.node_name());
-  // Make sure control outputs of this function call node will be respected when
-  // this node is lowered.
-  call_builder.Attr(LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr,
-                    true);
   NodeDef call_def;
   TF_RETURN_IF_ERROR(call_builder.Finalize(&call_def));
   Status s;
@@ -1771,6 +1764,221 @@ Status BuildHostGraphForFuncCallNode(
   return Status::OK();
 }
 
+TF_ATTRIBUTE_NOINLINE Status ExtractOutsideCompilationForFuncCallNode(
+    const string& xla_cluster_attr_name,
+    const string& outside_compilation_attr_name, const string& xla_cluster_name,
+    const std::map<string, int>& host_compute_core, Graph* g, Node* n,
+    FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld,
+    std::vector<string>* host_graphs,
+    std::vector<string>* shape_inference_graphs,
+    bool* has_outside_compilation) {
+  bool func_has_outside_compilation = false;
+  NameAttrList func;
+  if (fld->Contains(n->type_string())) {
+    func.set_name(n->type_string());
+    typedef protobuf::Map<string, AttrValue> AttrMap;
+    *func.mutable_attr() = AttrMap(n->attrs().begin(), n->attrs().end());
+  } else if (n->IsPartitionedCall()) {
+    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "f", &func));
+  } else {
+    TF_RET_CHECK(n->type_string() == FunctionLibraryDefinition::kGradientOp);
+    func.set_name(FunctionLibraryDefinition::kGradientOp);
+    *func.mutable_attr() = n->def().attr();
+  }
+  string new_func_name = absl::StrCat(n->name(), "_oc");
+  string host_func_name = absl::StrCat("oc_func_call_host_", n->name());
+  TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFunction(
+      xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
+      func, new_func_name, host_func_name, host_compute_core, flr, fld,
+      shape_inference_graphs, &func_has_outside_compilation));
+
+  // If the function call does not have outside compilation, nothing to do.
+  if (!func_has_outside_compilation) {
+    return Status::OK();
+  }
+
+  *has_outside_compilation = true;
+
+  // Change `n` to call the new function directly.
+  auto replace_builder =
+      absl::make_unique<NodeDefBuilder>(n->name(), new_func_name, fld);
+  std::vector<NodeDefBuilder::NodeOut> inputs(n->num_inputs());
+  for (const Edge* e : n->in_edges()) {
+    if (e->IsControlEdge()) {
+      continue;
+    }
+
+    TF_RET_CHECK(e->dst_input() >= 0 && e->dst_input() < inputs.size());
+    inputs[e->dst_input()] =
+        NodeDefBuilder::NodeOut{e->src()->name(), e->src_output(),
+                                e->src()->output_type(e->src_output())};
+  }
+  for (const auto& input : inputs) {
+    replace_builder->Input(input);
+  }
+  for (const auto& attr : n->attrs()) {
+    replace_builder->Attr(attr.first, attr.second);
+  }
+  auto replace_def = absl::make_unique<NodeDef>();
+  TF_RETURN_IF_ERROR(replace_builder->Finalize(replace_def.get()));
+  TF_ASSIGN_OR_RETURN(Node * replace, ReplaceNode(g, n, *replace_def));
+  replace->AddAttr(kXlaTokenInputNodesAttrName,
+                   std::vector<string>{kXlaTokenArgNodeName});
+
+  // Build host side graph for the function call.
+  string oc_host_graph_name =
+      absl::StrCat("oc_func_host_graph_", replace->name());
+  TF_RETURN_IF_ERROR(BuildHostGraphForFuncCallNode(
+      xla_cluster_attr_name, xla_cluster_name, outside_compilation_attr_name,
+      replace->name(), host_func_name, oc_host_graph_name, fld));
+
+  // Record the host graph.
+  host_graphs->push_back(oc_host_graph_name);
+
+  return Status::OK();
+}
+
+Status ExtractOutsideCompilationForIfNode(
+    const string& xla_cluster_attr_name,
+    const string& outside_compilation_attr_name, const string& xla_cluster_name,
+    const std::map<string, int>& host_compute_core, Graph* g, Node* n,
+    FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld,
+    std::vector<string>* host_graphs,
+    std::vector<string>* shape_inference_graphs,
+    bool* has_outside_compilation) {
+  // Instantiate "then_branch" and "else_branch".
+  NameAttrList then_branch, else_branch;
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "then_branch", &then_branch));
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "else_branch", &else_branch));
+
+  // Extract outside compilation for then_branch and else_branch.
+  bool then_branch_has_outside_compilation = false;
+  bool else_branch_has_outside_compilation = false;
+  string then_branch_host_func_name =
+             absl::StrCat("oc_then_branch_host_if_", n->name()),
+         else_branch_host_func_name =
+             absl::StrCat("oc_else_branch_host_if_", n->name());
+  string then_branch_xla_func_name = absl::StrCat(then_branch.name(), "_oc"),
+         else_branch_xla_func_name = absl::StrCat(else_branch.name(), "_oc");
+  TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFunction(
+      xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
+      then_branch, then_branch_xla_func_name, then_branch_host_func_name,
+      host_compute_core, flr, fld, shape_inference_graphs,
+      &then_branch_has_outside_compilation));
+  TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFunction(
+      xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
+      else_branch, else_branch_xla_func_name, else_branch_host_func_name,
+      host_compute_core, flr, fld, shape_inference_graphs,
+      &else_branch_has_outside_compilation));
+
+  // If then/else branch do not have outside compilation, nothing to do.
+  if (!then_branch_has_outside_compilation &&
+      !else_branch_has_outside_compilation) {
+    return Status::OK();
+  }
+
+  *has_outside_compilation = true;
+
+  // Change If node to call the new functions.
+  then_branch.set_name(then_branch_xla_func_name);
+  n->ClearAttr("then_branch");
+  n->AddAttr("then_branch", then_branch);
+  else_branch.set_name(else_branch_xla_func_name);
+  n->ClearAttr("else_branch");
+  n->AddAttr("else_branch", else_branch);
+
+  string host_transfer_key = absl::StrCat("oc_if_pred_", n->name());
+
+  // XLA computation: add a SendToHost node to send cond predicate.
+  Node* pred_node;
+  TF_RETURN_IF_ERROR(n->input_node(0, &pred_node));
+  TF_ASSIGN_OR_RETURN(
+      Node * send_pred_node,
+      BuildSendIfPredNode(absl::StrCat("send_oc_if_pred_", n->name()),
+                          host_transfer_key, pred_node, g));
+  n->AddAttr(kXlaTokenInputNodesAttrName,
+             std::vector<string>{send_pred_node->name()});
+
+  // Add a control edge from `send_pred_node` to If node, so XlaCompiler will
+  // visit If node after `send_pred_node`, thus the token output for
+  // `send_pred_node` has been generated.
+  g->AddControlEdge(send_pred_node, n);
+
+  // Build host side graph for the "If" node.
+  string oc_host_graph_name = absl::StrCat("oc_if_host_graph_", n->name());
+  TF_RETURN_IF_ERROR(BuildHostGraphForIfNode(
+      xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
+      n->name(), host_transfer_key, oc_host_graph_name, fld,
+      then_branch_host_func_name, else_branch_host_func_name));
+  host_graphs->push_back(oc_host_graph_name);
+
+  return Status::OK();
+}
+
+Status ExtractOutsideCompilationForWhileNode(
+    const string& xla_cluster_attr_name,
+    const string& outside_compilation_attr_name, const string& xla_cluster_name,
+    const std::map<string, int>& host_compute_core, Graph* g, Node* n,
+    FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld,
+    std::vector<string>* host_graphs,
+    std::vector<string>* shape_inference_graphs,
+    bool* has_outside_compilation) {
+  // Instantiate "cond" and "body".
+  NameAttrList cond, body;
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "cond", &cond));
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "body", &body));
+
+  // Extract outside compilation for cond and body.
+  bool cond_has_outside_compilation = false;
+  bool body_has_outside_compilation = false;
+  string cond_host_func_name = absl::StrCat("oc_cond_host_while_", n->name()),
+         body_host_func_name = absl::StrCat("oc_body_host_while_", n->name());
+  string cond_xla_func_name = absl::StrCat(cond.name(), "_oc"),
+         body_xla_func_name = absl::StrCat(body.name(), "_oc");
+  TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFunction(
+      xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
+      cond, cond_xla_func_name, cond_host_func_name, host_compute_core, flr,
+      fld, shape_inference_graphs, &cond_has_outside_compilation));
+  TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFunction(
+      xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
+      body, body_xla_func_name, body_host_func_name, host_compute_core, flr,
+      fld, shape_inference_graphs, &body_has_outside_compilation));
+
+  // If cond/body do not have outside compilation, nothing to do.
+  if (!cond_has_outside_compilation && !body_has_outside_compilation) {
+    return Status::OK();
+  }
+
+  *has_outside_compilation = true;
+
+  // Change While node to call the new functions.
+  cond.set_name(cond_xla_func_name);
+  n->ClearAttr("cond");
+  n->AddAttr("cond", cond);
+  body.set_name(body_xla_func_name);
+  n->ClearAttr("body");
+  n->AddAttr("body", body);
+
+  string host_transfer_key = absl::StrCat("oc_while_pred_", n->name());
+
+  // XLA computation: rewrite cond function to add a SendToHost node to send
+  // loop predicate.
+  TF_RETURN_IF_ERROR(
+      AddSendLoopPredToLoopCond(fld, cond, n->name(), host_transfer_key));
+  n->AddAttr(kXlaTokenInputNodesAttrName,
+             std::vector<string>{kXlaTokenArgNodeName});
+
+  // Build host side graph for the "While" node.
+  string oc_host_graph_name = absl::StrCat("oc_while_host_graph_", n->name());
+  TF_RETURN_IF_ERROR(BuildHostGraphForWhileNode(
+      xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
+      n->name(), host_transfer_key, oc_host_graph_name, fld,
+      cond_host_func_name, body_host_func_name));
+  host_graphs->push_back(oc_host_graph_name);
+
+  return Status::OK();
+}
+
 Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
     Graph* g, const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name, const string& xla_cluster_name,
@@ -1782,7 +1990,7 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
   for (Node* n : g->nodes()) {
     if (n->IsIfNode()) {
       if_nodes.push_back(n);
-    } else if (n->type_string() == "While") {
+    } else if (n->IsWhileNode()) {
       while_nodes.push_back(n);
     } else if (IsFunctionCall(*fld, *n)) {
       func_call_nodes.push_back(n);
@@ -1790,184 +1998,24 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
   }
 
   for (Node* n : func_call_nodes) {
-    // Extract outside compilation for the function call.
-    bool func_has_outside_compilation = false;
-    NameAttrList func;
-    if (fld->Contains(n->type_string())) {
-      func.set_name(n->type_string());
-      typedef protobuf::Map<string, AttrValue> AttrMap;
-      *func.mutable_attr() = AttrMap(n->attrs().begin(), n->attrs().end());
-    } else if (n->IsPartitionedCall()) {
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "f", &func));
-    } else {
-      TF_RET_CHECK(n->type_string() == FunctionLibraryDefinition::kGradientOp);
-      func.set_name(FunctionLibraryDefinition::kGradientOp);
-      *func.mutable_attr() = n->def().attr();
-    }
-    string new_func_name = absl::StrCat(n->name(), "_oc");
-    string host_func_name = absl::StrCat("oc_func_call_host_", n->name());
-    TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFunction(
+    TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFuncCallNode(
         xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
-        func, new_func_name, host_func_name, host_compute_core, flr, fld,
-        shape_inference_graphs, &func_has_outside_compilation));
-
-    // If the function call does not have outside compilation, nothing to do.
-    if (!func_has_outside_compilation) {
-      continue;
-    }
-
-    *has_outside_compilation = true;
-
-    // Change `n` to call the new function directly.
-    NodeDefBuilder replace_builder(n->name(), new_func_name, fld);
-    for (const Edge* e : n->in_edges()) {
-      if (e->IsControlEdge()) {
-        continue;
-      }
-      replace_builder.Input(e->src()->name(), e->src_output(),
-                            e->src()->output_type(e->src_output()));
-    }
-    for (const auto& attr : n->attrs()) {
-      replace_builder.Attr(attr.first, attr.second);
-    }
-    NodeDef replace_def;
-    TF_RETURN_IF_ERROR(replace_builder.Finalize(&replace_def));
-    TF_ASSIGN_OR_RETURN(Node * replace, ReplaceNode(g, n, replace_def));
-    replace->AddAttr(kXlaTokenInputNodesAttrName,
-                     std::vector<string>{kXlaTokenArgNodeName});
-
-    // Build host side graph for the function call.
-    string oc_host_graph_name =
-        absl::StrCat("oc_func_host_graph_", replace->name());
-    TF_RETURN_IF_ERROR(BuildHostGraphForFuncCallNode(
-        xla_cluster_attr_name, xla_cluster_name, outside_compilation_attr_name,
-        replace->name(), host_func_name, oc_host_graph_name, fld));
-
-    // Record the host graph.
-    host_graphs->push_back(oc_host_graph_name);
+        host_compute_core, g, n, flr, fld, host_graphs, shape_inference_graphs,
+        has_outside_compilation));
   }
 
   for (Node* n : if_nodes) {
-    // Instantiate "then_branch" and "else_branch".
-    NameAttrList then_branch, else_branch;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "then_branch", &then_branch));
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "else_branch", &else_branch));
-
-    // Extract outside compilation for then_branch and else_branch.
-    bool then_branch_has_outside_compilation = false;
-    bool else_branch_has_outside_compilation = false;
-    string then_branch_host_func_name =
-               absl::StrCat("oc_then_branch_host_if_", n->name()),
-           else_branch_host_func_name =
-               absl::StrCat("oc_else_branch_host_if_", n->name());
-    string then_branch_xla_func_name = absl::StrCat(then_branch.name(), "_oc"),
-           else_branch_xla_func_name = absl::StrCat(else_branch.name(), "_oc");
-    TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFunction(
+    TF_RETURN_IF_ERROR(ExtractOutsideCompilationForIfNode(
         xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
-        then_branch, then_branch_xla_func_name, then_branch_host_func_name,
-        host_compute_core, flr, fld, shape_inference_graphs,
-        &then_branch_has_outside_compilation));
-    TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFunction(
-        xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
-        else_branch, else_branch_xla_func_name, else_branch_host_func_name,
-        host_compute_core, flr, fld, shape_inference_graphs,
-        &else_branch_has_outside_compilation));
-
-    // If then/else branch do not have outside compilation, nothing to do.
-    if (!then_branch_has_outside_compilation &&
-        !else_branch_has_outside_compilation) {
-      continue;
-    }
-
-    *has_outside_compilation = true;
-
-    // Change If node to call the new functions.
-    then_branch.set_name(then_branch_xla_func_name);
-    n->ClearAttr("then_branch");
-    n->AddAttr("then_branch", then_branch);
-    else_branch.set_name(else_branch_xla_func_name);
-    n->ClearAttr("else_branch");
-    n->AddAttr("else_branch", else_branch);
-
-    string host_transfer_key = absl::StrCat("oc_if_pred_", n->name());
-
-    // XLA computation: add a SendToHost node to send cond predicate.
-    Node* pred_node;
-    TF_RETURN_IF_ERROR(n->input_node(0, &pred_node));
-    TF_ASSIGN_OR_RETURN(
-        Node * send_pred_node,
-        BuildSendIfPredNode(absl::StrCat("send_oc_if_pred_", n->name()),
-                            host_transfer_key, pred_node, g));
-    n->AddAttr(kXlaTokenInputNodesAttrName,
-               std::vector<string>{send_pred_node->name()});
-
-    // Add a control edge from `send_pred_node` to If node, so XlaCompiler will
-    // visit If node after `send_pred_node`, thus the token output for
-    // `send_pred_node` has been generated.
-    g->AddControlEdge(send_pred_node, n);
-
-    // Build host side graph for the "If" node.
-    string oc_host_graph_name = absl::StrCat("oc_if_host_graph_", n->name());
-    TF_RETURN_IF_ERROR(BuildHostGraphForIfNode(
-        xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
-        n->name(), host_transfer_key, oc_host_graph_name, fld,
-        then_branch_host_func_name, else_branch_host_func_name));
-    host_graphs->push_back(oc_host_graph_name);
+        host_compute_core, g, n, flr, fld, host_graphs, shape_inference_graphs,
+        has_outside_compilation));
   }
 
   for (Node* n : while_nodes) {
-    // Instantiate "cond" and "body".
-    NameAttrList cond, body;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "cond", &cond));
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "body", &body));
-
-    // Extract outside compilation for cond and body.
-    bool cond_has_outside_compilation = false;
-    bool body_has_outside_compilation = false;
-    string cond_host_func_name = absl::StrCat("oc_cond_host_while_", n->name()),
-           body_host_func_name = absl::StrCat("oc_body_host_while_", n->name());
-    string cond_xla_func_name = absl::StrCat(cond.name(), "_oc"),
-           body_xla_func_name = absl::StrCat(body.name(), "_oc");
-    TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFunction(
+    TF_RETURN_IF_ERROR(ExtractOutsideCompilationForWhileNode(
         xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
-        cond, cond_xla_func_name, cond_host_func_name, host_compute_core, flr,
-        fld, shape_inference_graphs, &cond_has_outside_compilation));
-    TF_RETURN_IF_ERROR(ExtractOutsideCompilationForFunction(
-        xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
-        body, body_xla_func_name, body_host_func_name, host_compute_core, flr,
-        fld, shape_inference_graphs, &body_has_outside_compilation));
-
-    // If cond/body do not have outside compilation, nothing to do.
-    if (!cond_has_outside_compilation && !body_has_outside_compilation) {
-      continue;
-    }
-
-    *has_outside_compilation = true;
-
-    // Change While node to call the new functions.
-    cond.set_name(cond_xla_func_name);
-    n->ClearAttr("cond");
-    n->AddAttr("cond", cond);
-    body.set_name(body_xla_func_name);
-    n->ClearAttr("body");
-    n->AddAttr("body", body);
-
-    string host_transfer_key = absl::StrCat("oc_while_pred_", n->name());
-
-    // XLA computation: rewrite cond function to add a SendToHost node to send
-    // loop predicate.
-    TF_RETURN_IF_ERROR(
-        AddSendLoopPredToLoopCond(fld, cond, n->name(), host_transfer_key));
-    n->AddAttr(kXlaTokenInputNodesAttrName,
-               std::vector<string>{kXlaTokenArgNodeName});
-
-    // Build host side graph for the "While" node.
-    string oc_host_graph_name = absl::StrCat("oc_while_host_graph_", n->name());
-    TF_RETURN_IF_ERROR(BuildHostGraphForWhileNode(
-        xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
-        n->name(), host_transfer_key, oc_host_graph_name, fld,
-        cond_host_func_name, body_host_func_name));
-    host_graphs->push_back(oc_host_graph_name);
+        host_compute_core, g, n, flr, fld, host_graphs, shape_inference_graphs,
+        has_outside_compilation));
   }
 
   return Status::OK();
@@ -2130,11 +2178,11 @@ Status ExtractOutsideCompilationForFunction(
 
   // Encapsulate outside_compilation cluster into function call node.
   std::unique_ptr<Graph> graph_out;
-  RewriteOutsideCompilationSubgraphFn rewrite_fn(
+  auto rewrite_fn = absl::make_unique<RewriteOutsideCompilationSubgraphFn>(
       xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
       new_func_name);
   TF_RETURN_IF_ERROR(EncapsulateSubgraphsInFunctions(
-      outside_compilation_attr_name, *fbody->graph, rewrite_fn,
+      outside_compilation_attr_name, *fbody->graph, *rewrite_fn,
       /*reuse_existing_functions=*/true, &graph_out, fld));
 
   // Replace outside_compilation function nodes with HostCompute ops.
@@ -2149,26 +2197,26 @@ Status ExtractOutsideCompilationForFunction(
       // If we could not infer shapes for XlaSendFromHost inputs statically, we
       // will set the "shape_inference_graph" attribute. In that case, copy
       // outside compilation subgraph as shape inference graph in `fld`.
-      NameAttrList shape_inference_graph;
+      auto shape_inference_graph = absl::make_unique<NameAttrList>();
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "shape_inference_graph",
-                                     &shape_inference_graph));
-      if (!shape_inference_graph.name().empty()) {
-        shape_inference_graphs->push_back(shape_inference_graph.name());
+                                     shape_inference_graph.get()));
+      if (!shape_inference_graph->name().empty()) {
+        shape_inference_graphs->push_back(shape_inference_graph->name());
         shape_inference_graphs_to_rewrite.push_back(
-            shape_inference_graph.name());
+            shape_inference_graph->name());
 
         const FunctionDef* xla_fdef = fld->Find(n->name());
         if (!xla_fdef) {
           return errors::Internal("Cannot find XLA function ", n->name());
         }
-        FunctionDef shape_inference_fdef = *xla_fdef;
-        shape_inference_fdef.mutable_signature()->set_name(
-            shape_inference_graph.name());
-        if (fld->Find(shape_inference_graph.name())) {
-          TF_RETURN_IF_ERROR(fld->ReplaceFunction(shape_inference_graph.name(),
-                                                  shape_inference_fdef));
+        auto shape_inference_fdef = absl::make_unique<FunctionDef>(*xla_fdef);
+        shape_inference_fdef->mutable_signature()->set_name(
+            shape_inference_graph->name());
+        if (fld->Find(shape_inference_graph->name())) {
+          TF_RETURN_IF_ERROR(fld->ReplaceFunction(shape_inference_graph->name(),
+                                                  *shape_inference_fdef));
         } else {
-          TF_RETURN_IF_ERROR(fld->AddFunctionDef(shape_inference_fdef));
+          TF_RETURN_IF_ERROR(fld->AddFunctionDef(*shape_inference_fdef));
         }
       }
     }
@@ -2213,15 +2261,15 @@ Status ExtractOutsideCompilationForFunction(
   TF_RETURN_IF_ERROR(
       ConstructHostGraph(xla_cluster_name, outside_compilation_attr_name,
                          outside_compilation_host_graphs, fld, &host_graph));
-  FunctionDef host_graph_fdef;
+  auto host_graph_fdef = absl::make_unique<FunctionDef>();
   TF_RETURN_IF_ERROR(GraphToFunctionDef(*host_graph, host_graph_func_name,
                                         HostGraphControlRetMapping,
-                                        &host_graph_fdef));
+                                        host_graph_fdef.get()));
   if (fld->Find(host_graph_func_name)) {
     TF_RETURN_IF_ERROR(
-        fld->ReplaceFunction(host_graph_func_name, host_graph_fdef));
+        fld->ReplaceFunction(host_graph_func_name, *host_graph_fdef));
   } else {
-    TF_RETURN_IF_ERROR(fld->AddFunctionDef(host_graph_fdef));
+    TF_RETURN_IF_ERROR(fld->AddFunctionDef(*host_graph_fdef));
   }
 
   // Shape inference graphs might contain Placeholder nodes for outside
@@ -2240,19 +2288,19 @@ Status ExtractOutsideCompilationForFunction(
   }
 
   // Replace original function.
-  FunctionDef updated_fdef;
+  auto updated_fdef = absl::make_unique<FunctionDef>();
   TF_RETURN_IF_ERROR(
-      GraphToFunctionDef(*graph_out, new_func_name, &updated_fdef));
+      GraphToFunctionDef(*graph_out, new_func_name, updated_fdef.get()));
   const FunctionDef* original_fdef = fld->Find(func_name);
   if (original_fdef) {
     for (const auto& attr : original_fdef->attr()) {
-      (*updated_fdef.mutable_attr())[attr.first] = attr.second;
+      (*updated_fdef->mutable_attr())[attr.first] = attr.second;
     }
   }
   if (fld->Find(new_func_name)) {
-    TF_RETURN_IF_ERROR(fld->ReplaceFunction(new_func_name, updated_fdef));
+    TF_RETURN_IF_ERROR(fld->ReplaceFunction(new_func_name, *updated_fdef));
   } else {
-    TF_RETURN_IF_ERROR(fld->AddFunctionDef(updated_fdef));
+    TF_RETURN_IF_ERROR(fld->AddFunctionDef(*updated_fdef));
   }
   if (VLOG_IS_ON(4)) {
     DumpGraphToFile(

@@ -149,6 +149,12 @@ static void AllocateFlags() {
         return true;
       };
 
+  // Custom "sub-parser" lambda for xla_gpu_ptx_file.
+  auto setter_for_xla_gpu_ptx_file = [](string value) {
+    flag_values->add_xla_gpu_ptx_file(value);
+    return true;
+  };
+
   // Custom "sub-parser" lambda for xla_backend_extra_options.
   auto setter_for_xla_backend_extra_options =
       [](string comma_separated_values) {
@@ -342,6 +348,13 @@ static void AllocateFlags() {
           int32_setter_for(&DebugOptions::set_xla_gpu_max_kernel_unroll_factor),
           flag_values->xla_gpu_max_kernel_unroll_factor(),
           "Specify the maximum kernel unroll factor for the GPU backend."),
+      tensorflow::Flag("xla_gpu_ptx_file", setter_for_xla_gpu_ptx_file, "",
+                       "If non-empty, speficies a file containing ptx to use. "
+                       "The filename prefix must have the same pattern as PTX "
+                       "dumped by XLA. This allows to match one specific "
+                       "module. General workflow. Get the generated module "
+                       "ptx from XLA. Modify it. Then pass it back via this "
+                       "option."),
       tensorflow::Flag(
           "xla_test_all_output_layouts",
           bool_setter_for(&DebugOptions::set_xla_test_all_output_layouts),
@@ -508,6 +521,13 @@ static void AllocateFlags() {
           bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nchw),
           flag_values->xla_gpu_force_conv_nchw(),
           "For cuDNN convolutions, always NCHW layouts."),
+      tensorflow::Flag(
+          "xla_gpu_cudnn_conv_blacklist_path",
+          string_setter_for(
+              &DebugOptions::set_xla_gpu_cudnn_conv_blacklist_path),
+          flag_values->xla_gpu_cudnn_conv_blacklist_path(),
+          "A CudnnConvolutionList text proto file as a blacklist of "
+          "convolutions to avoid to use."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

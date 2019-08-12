@@ -100,6 +100,7 @@ class TrainTest(test.TestCase):
         'background_frequency': 0.8,
         'eval_step_interval': 1,
         'save_step_interval': 1,
+        'verbosity': tf.compat.v1.logging.INFO
     }
     return DictStruct(**flags)
 

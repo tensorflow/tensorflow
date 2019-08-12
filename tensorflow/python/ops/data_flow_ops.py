@@ -1518,6 +1518,40 @@ class SparseConditionalAccumulator(ConditionalAccumulatorBase):
         values=return_val.values,
         dense_shape=return_val.shape)
 
+  # SparseConditionalAccumulator is not switched to resource. Use old kernels.
+  def num_accumulated(self, name=None):
+    """Number of gradients that have currently been aggregated in accumulator.
+
+    Args:
+      name: Optional name for the operation.
+
+    Returns:
+      Number of accumulated gradients currently in accumulator.
+    """
+    if name is None:
+      name = "%s_NumAccumulated" % self._name
+
+    return gen_data_flow_ops.accumulator_num_accumulated(
+        self._accumulator_ref, name=name)
+
+  def set_global_step(self, new_global_step, name=None):
+    """Sets the global time step of the accumulator.
+
+    The operation logs a warning if we attempt to set to a time step that is
+    lower than the accumulator's own time step.
+
+    Args:
+      new_global_step: Value of new time step. Can be a variable or a constant
+      name: Optional name for the operation.
+
+    Returns:
+      Operation that sets the accumulator's time step.
+    """
+    return gen_data_flow_ops.accumulator_set_global_step(
+        self._accumulator_ref,
+        math_ops.cast(ops.convert_to_tensor(new_global_step), _dtypes.int64),
+        name=name)
+
 
 class BaseStagingArea(object):
   """Base class for Staging Areas."""

@@ -393,7 +393,7 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->allocate_output("split_with_default_directions",
                                           {num_nodes}, &output_split_types_t));
-    auto output_split_types_vec = output_split_types_t->vec<string>();
+    auto output_split_types_vec = output_split_types_t->vec<tstring>();
 
     // Sets output tensors from vectors.
     for (int i = 0; i < num_nodes; ++i) {
@@ -677,7 +677,7 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->allocate_output("split_with_default_directions",
                                           {num_nodes}, &output_split_types_t));
-    auto output_split_types_vec = output_split_types_t->vec<string>();
+    auto output_split_types_vec = output_split_types_t->vec<tstring>();
 
     // Sets output tensors from vectors.
     for (int i = 0; i < num_nodes; ++i) {

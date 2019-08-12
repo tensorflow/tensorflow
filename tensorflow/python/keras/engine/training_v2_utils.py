@@ -35,6 +35,8 @@ from tensorflow.python.keras.distribute import distributed_training_utils as dis
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
+from tensorflow.python.ops import array_ops
+from tensorflow.python.util import nest
 
 
 def _get_or_make_execution_function(model, mode):
@@ -68,8 +70,8 @@ def _make_execution_function(model, mode):
     outputs = strategy.experimental_run_v2(
         per_replica_function, args=(model, x, y, sample_weights))
     # Out of PerReplica outputs reduce or pick values to return.
-    all_outputs = dist_utils.unwrap_outputs(
-        strategy, outputs, with_loss_tensor=(mode != ModeKeys.PREDICT))
+    all_outputs = dist_utils.unwrap_output_dict(
+        strategy, outputs, mode)
     return all_outputs
 
   if not model.run_eagerly:
@@ -78,8 +80,8 @@ def _make_execution_function(model, mode):
 
   def execution_function(input_fn):
     # `numpy` translates Tensors to values in Eager mode.
-    return [_non_none_constant_value(out)
-            for out in distributed_function(input_fn)]
+    return nest.map_structure(_non_none_constant_value,
+                              distributed_function(input_fn))
 
   return execution_function
 
@@ -247,7 +249,7 @@ def train_on_batch(
   x, y, sample_weights = model._standardize_user_data(
       x, y, sample_weight=sample_weight, class_weight=class_weight,
       extract_tensors_from_dataset=True)
-
+  batch_size = array_ops.shape(nest.flatten(x, expand_composites=True)[0])[0]
   # If `model._distribution_strategy` is True, then we are in a replica context
   # at this point because of the check above.  `train_on_batch` is being run
   # for each replica by `model._distribution_strategy` and the same code path
@@ -262,6 +264,7 @@ def train_on_batch(
   if reset_metrics:
     model.reset_metrics()
 
+  outputs['batch_size'] = batch_size
   return outputs
 
 
@@ -313,6 +316,7 @@ def test_on_batch(model, x, y=None, sample_weight=None, reset_metrics=True):
   x, y, sample_weights = model._standardize_user_data(
       x, y, sample_weight=sample_weight, extract_tensors_from_dataset=True)
 
+  batch_size = array_ops.shape(nest.flatten(x, expand_composites=True)[0])[0]
   outputs = training_eager.test_on_batch(
       model,
       x,
@@ -323,6 +327,7 @@ def test_on_batch(model, x, y=None, sample_weight=None, reset_metrics=True):
   if reset_metrics:
     model.reset_metrics()
 
+  outputs['batch_size'] = batch_size
   return outputs
 
 

@@ -141,7 +141,7 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
      * <p>{@link DevicePlacementPolicy#SILENT} is used by default.
      *
      * @param value policy to apply
-     * @see {@link DevicePlacementPolicy}
+     * @see DevicePlacementPolicy
      */
     public Options devicePlacementPolicy(DevicePlacementPolicy value) {
       devicePlacementPolicy = value;
@@ -154,7 +154,7 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
      * <p>{@link ResourceCleanupStrategy#IN_BACKGROUND} is used by default.
      *
      * @param value strategy to use
-     * @see {@link ResourceCleanupStrategy}
+     * @see ResourceCleanupStrategy
      */
     public Options resourceCleanupStrategy(ResourceCleanupStrategy value) {
       resourceCleanupStrategy = value;
@@ -169,8 +169,8 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
      * not be supported on public endpoints in the future.
      *
      * @param value a serialized config proto
-     * @see
-     *     https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/config.proto
+     * @see <a
+     *     href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/config.proto"/>
      */
     public Options config(byte[] value) {
       config = value;
@@ -231,7 +231,7 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
    * @param options options to use to build default session
    * @return default eager session
    * @throws IllegalStateException if the default session is already initialized
-   * @see {@link #getDefault()}
+   * @see #getDefault()
    */
   public static EagerSession initDefault(Options options) {
     synchronized (EagerSession.class) {
@@ -262,12 +262,12 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
    * Ops tf = Ops.create();
    *
    * // Starting to build eager operations using default session, by calling
-   * // EagerSession.getDefault() explictly
+   * // EagerSession.getDefault() explicitly
    * Ops tf = Ops.create(EagerSession.getDefault());
    * }</pre>
    *
    * @return default eager session
-   * @see {@link #initDefault(Options)}
+   * @see #initDefault
    */
   public static EagerSession getDefault() {
     if (defaultSession == null) {

@@ -18,7 +18,10 @@
 #ifndef MLIR_LINALG_LINALGOPS_H_
 #define MLIR_LINALG_LINALGOPS_H_
 
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Linalg/IR/LinalgTraits.h"
 #include "mlir/Linalg/IR/LinalgTypes.h"
@@ -183,46 +186,27 @@ public:
   }
 };
 
-/// The "linalg.view" op produces a linalg.view which is a multi-dimensional
-/// range abstraction on top of an underlying linalg.buffer. This gives an
-/// indexing structure to an otherwise non-indexable linalg.buffer.
+/// Returns the name mangled library call name to disambiguate between different
+/// overloads at the C level. The name mangling scheme is basic and uses MLIR
+/// type names:
+///   1. form a string which is the concatenation of the linalg op name with all
+///      the operand type names, separate by underscores;
+///   2. drop the `linalg.` prefix, and the `<`, `>`, `?` symbols from the type.
+/// Assumes `op` is a LinalgOp.
 ///
-/// A "linalg.view" takes a buffer and a variadic number of ranges and produces
-/// a `view` of the same elemental type as the buffer and of rank the number of
-/// ranges:
+/// Examples:
 ///
-/// ```{.mlir}
-///    %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
-///    %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
-///    %3 = linalg.view %1[%2, %2] : !linalg.view<?x?xf32>
-/// ```
-class ViewOp : public Op<ViewOp, OpTrait::VariadicOperands, OpTrait::OneResult,
-                         OpTrait::HasNoSideEffect> {
-  enum { FirstIndexingOperand = 1 };
-
-public:
-  using Op::Op;
-
-  // Hooks to customize the behavior of this op.
-  static llvm::StringRef getOperationName() { return "linalg.view"; }
-  static void build(Builder *b, OperationState *result, Value *buffer,
-                    llvm::ArrayRef<Value *> indexings);
-  LogicalResult verify();
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
-
-  // Op-specific functionality.
-  unsigned getRank() { return getViewType().getRank(); }
-  Type getElementType() { return getViewType().getElementType(); }
-  ViewType getViewType() { return getType().cast<ViewType>(); }
-  Value *getSupportingBuffer() { return getOperand(0); }
-  // Get the underlying indexing at a given rank.
-  Value *getIndexing(unsigned rank) { return *(getIndexings().begin() + rank); }
-  // Get all the indexings in this view.
-  Operation::operand_range getIndexings() {
-    return {operand_begin() + ViewOp::FirstIndexingOperand, operand_end()};
-  }
-};
+/// 1. linalg.fill(%A, %f) : !linalg.view<f32>, f32
+///   name mangles into `linalg_fill_viewf32_f32_impl`
+///
+/// 2. linalg.dot(%A, %B, %C) :
+///      !linalg.view<?xf32>, !linalg.view<?xf32>, !linalg.view<f32>
+///   name mangles into `linalg_dot_viewxf32_viewxf32_viewf32_impl`
+///
+/// 3. linalg.matmul(...) :
+///      !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
+///   name mangles into `linalg_matmul_viewxxf32_viewxxf32_viewxxf32_impl`
+std::string generateLibraryCallName(Operation *op);
 
 #define GET_OP_CLASSES
 #include "mlir/Linalg/IR/LinalgOps.h.inc"
@@ -434,11 +418,6 @@ private:
     }
   };
 };
-
-void emitScalarImplementation(llvm::ArrayRef<Value *> parallelIvs,
-                              llvm::ArrayRef<Value *> reductionIvs,
-                              llvm::ArrayRef<Value *> windowIvs,
-                              LinalgOp &linalgOp, OperationFolder &folder);
 
 } // namespace linalg
 } // namespace mlir

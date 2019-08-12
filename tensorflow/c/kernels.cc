@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -239,4 +240,15 @@ TF_DataType TF_ExpectedOutputDataType(TF_OpKernelContext* ctx, int i) {
 
 int64_t TF_StepId(TF_OpKernelContext* ctx) {
   return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->step_id();
+}
+
+TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
+                             TF_DataType dtype, int64_t* dims, int num_dims,
+                             size_t len) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
+  tensorflow::AllocatorAttributes attr = cc_ctx->output_alloc_attr(index);
+  auto* allocator = cc_ctx->get_allocator(attr);
+  void* data = tensorflow::allocate_tensor("TF_AllocateOutput", len, allocator);
+  return TF_NewTensor(dtype, dims, num_dims, data, len,
+                      tensorflow::deallocate_buffer, allocator);
 }

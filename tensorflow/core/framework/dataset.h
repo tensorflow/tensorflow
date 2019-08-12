@@ -36,9 +36,11 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/tracing.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
@@ -66,7 +68,12 @@ class SerializationContext;
 class IteratorStateReader {
  public:
   virtual Status ReadScalar(StringPiece key, int64* val) = 0;
+#ifdef USE_TSTRING
+  // TODO(dero): Temp guard to prevent duplicate declaration during tstring
+  // migration.
   virtual Status ReadScalar(StringPiece key, string* val) = 0;
+#endif
+  virtual Status ReadScalar(StringPiece key, tstring* val) = 0;
   virtual Status ReadTensor(StringPiece key, Tensor* val) = 0;
   virtual bool Contains(StringPiece key) = 0;
 
@@ -78,7 +85,12 @@ class IteratorStateReader {
 class IteratorStateWriter {
  public:
   virtual Status WriteScalar(StringPiece key, const int64 val) = 0;
+#ifdef USE_TSTRING
+  // TODO(dero): Temp guard to prevent duplicate declaration during tstring
+  // migration.
   virtual Status WriteScalar(StringPiece key, const string& val) = 0;
+#endif
+  virtual Status WriteScalar(StringPiece key, const tstring& val) = 0;
   virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
 
   virtual ~IteratorStateWriter() {}
@@ -113,7 +125,7 @@ class GraphDefBuilderWrapper {
   Status AddVector(const std::vector<T>& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<T>::v(),
                           TensorShape({static_cast<int64>(val.size())}));
-    for (int i = 0; i < val.size(); i++) {
+    for (size_t i = 0; i < val.size(); i++) {
       val_t.flat<T>()(i) = val[i];
     }
     AddTensorInternal(val_t, output);
@@ -122,6 +134,23 @@ class GraphDefBuilderWrapper {
     }
     return Status::OK();
   }
+
+#ifdef USE_TSTRING
+  // TODO(dero): Temp guard to prevent duplicate declaration during tstring
+  // migration.
+  Status AddVector(const std::vector<string>& val, Node** output) {
+    Tensor val_t = Tensor(DataTypeToEnum<tstring>::v(),
+                          TensorShape({static_cast<int64>(val.size())}));
+    for (size_t i = 0; i < val.size(); i++) {
+      val_t.flat<tstring>()(i) = val[i];
+    }
+    AddTensorInternal(val_t, output);
+    if (*output == nullptr) {
+      return errors::Internal("AddVector: Failed to build Const op.");
+    }
+    return Status::OK();
+  }
+#endif  // USE_TSTRING
 
   // Adds a `Const` node for the given tensor value to the graph.
   //
@@ -199,48 +228,6 @@ class GraphDefBuilderWrapper {
  private:
   void AddPlaceholderInternal(const Tensor& val, Node** output);
   void AddTensorInternal(const Tensor& val, Node** output);
-
-  Status EnsureFunctionIsStateless(
-      const string& function_name,
-      const FunctionLibraryDefinition& lib_def) const {
-    const FunctionDef* function_def = lib_def.Find(function_name);
-    if (!function_def) {
-      return errors::InvalidArgument("Unable to find FunctionDef for ",
-                                     function_name, " in registry.");
-    }
-    for (const NodeDef& node_def : function_def->node_def()) {
-      const OpDef* op_def;
-      TF_RETURN_IF_ERROR(lib_def.LookUpOpDef(node_def.op(), &op_def));
-      // TODO(b/65524810): Hack to allow functions to capture Dataset op
-      // nodes needed for FlatMap. Currently, source datasets nodes have been
-      // marked stateful to avoid constant folding since we do not have a
-      // good way of serializing them.
-      if (IsOpWhitelisted(op_def)) {
-        continue;
-      }
-      if (op_def->is_stateful()) {
-        return errors::InvalidArgument(
-            "Op[name: ", node_def.name(), ", type: ", node_def.op(), "] ",
-            "in function ", function_name, " is stateful. ",
-            "Saving stateful functions is not supported yet.");
-      }
-    }
-    return Status::OK();
-  }
-
-  // Returns whether an op has been whitelisted for use inside map_fns.
-  // Uses a heuristic to whitelist source dataset ops which have been
-  // marked stateful due to b/65524810.
-  // Also looks up the `op_def->name` in the global
-  // `WhitelistedStatefulOpRegistry`.
-  bool IsOpWhitelisted(const OpDef* op_def) const {
-    return ((absl::EndsWith(op_def->name(), "Dataset") ||
-             absl::EndsWith(op_def->name(), "DatasetV2")) &&
-            op_def->output_arg_size() == 1 &&
-            op_def->output_arg(0).type() == DT_VARIANT) ||
-           WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());
-  }
-
   bool HasAttr(const string& op_type_name, const string& attr_name) const;
 
   bool HasAttr(const OpDef* op_def, const string& attr_name) const {
@@ -309,7 +296,8 @@ class IteratorContext {
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
           stats_aggregator(ctx->stats_aggregator()),
-          thread_factory(ctx->thread_factory()) {}
+          thread_factory(ctx->thread_factory()),
+          thread_pool(ctx->thread_pool()) {}
 
     explicit Params(OpKernelContext* ctx)
         : env(ctx->env()), flr(ctx->function_library()) {
@@ -374,9 +362,11 @@ class IteratorContext {
     // The `StatsAggregator` object to record statistics about the iterator.
     std::shared_ptr<StatsAggregator> stats_aggregator = nullptr;
 
-    // A `ThreadFactory` for creating threads used by iterators to perform
-    // blocking work.
+    // A factory for creating threads to perform blocking work.
     std::shared_ptr<ThreadFactory> thread_factory = nullptr;
+
+    // A shared thread pool to schedule computation into.
+    thread::ThreadPoolInterface* thread_pool = nullptr;
   };
 
   explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
@@ -413,8 +403,33 @@ class IteratorContext {
     return &params_.runner;
   }
 
+  int32 runner_threadpool_size() { return params_.runner_threadpool_size; }
+
+  std::shared_ptr<StatsAggregator> stats_aggregator() {
+    return params_.stats_aggregator;
+  }
+
   const std::shared_ptr<ThreadFactory>& thread_factory() {
     return params_.thread_factory;
+  }
+
+  thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
+
+  Params params() { return params_; }
+
+  std::unique_ptr<thread::ThreadPool> CreateThreadPool(const string& name,
+                                                       int num_threads) {
+    if (params_.thread_pool) {
+      // Create a `ThreadPool` instance by wrapping `params_.thread_pool` (which
+      // is an instance of `thread::ThreadPoolInterface`). Notably, the
+      // ownership of `params_.thread_pool` is *not* transferred onto the newly
+      // created `ThreadPool` instance.
+      return absl::make_unique<thread::ThreadPool>(params_.thread_pool);
+    } else {
+      return absl::make_unique<thread::ThreadPool>(params_.env, ThreadOptions(),
+                                                   name, num_threads,
+                                                   /*low_latency_hint=*/false);
+    }
   }
 
   std::unique_ptr<Thread> StartThread(const string& name,
@@ -427,14 +442,6 @@ class IteratorContext {
     }
   }
 
-  int32 runner_threadpool_size() { return params_.runner_threadpool_size; }
-
-  std::shared_ptr<StatsAggregator> stats_aggregator() {
-    return params_.stats_aggregator;
-  }
-
-  Params params() { return params_; }
-
  private:
   Params params_;
 };
@@ -444,7 +451,23 @@ class SerializationContext {
  public:
   struct Params {
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
-    bool optimization_only = false;
+
+    // Indicates whether serialization should check if the dataset depends on
+    // external state. If the check is enabled and external state is
+    // encountered, then the serialization will fail.
+    bool check_external_state = true;
+
+    // Indicates whether an attempt to serialize a dataset that does not
+    // implement serialization should result in an error. If set to `false`, the
+    // serialized graph will replace the dataset with a placeholder returned in
+    // `input_list`.
+    bool fail_if_unimplemented = true;
+
+    // Indicates whether (potentionally large) data tensors should be
+    // serialized, or replaced with a placeholder returned in `input_list`. The
+    // latter makes sense to do when performing data agnostic graph rewrites to
+    // reduce the memory usage.
+    bool serialize_data_tensors = true;
   };
 
   explicit SerializationContext(Params params) : params_(std::move(params)) {}
@@ -453,7 +476,11 @@ class SerializationContext {
     return params_.input_list;
   }
 
-  bool optimization_only() { return params_.optimization_only; }
+  bool check_external_state() const { return params_.check_external_state; }
+
+  bool fail_if_unimplemented() const { return params_.fail_if_unimplemented; }
+
+  bool serialize_data_tensors() const { return params_.serialize_data_tensors; }
 
  private:
   Params params_;
@@ -528,10 +555,6 @@ class IteratorBase {
     return RestoreInternal(ctx, reader);
   }
 
-  Status Restore(IteratorContext&& ctx, IteratorStateReader* reader) {
-    return Restore(&ctx, reader);
-  }
-
  protected:
   // Returns a node that models this iterator.
   virtual std::shared_ptr<model::Node> CreateNode(
@@ -551,12 +574,22 @@ class IteratorBase {
     return input->RestoreInternal(ctx, reader);
   }
 
-  // Saves the state of this iterator recursively.
+  // Saves the state of this iterator.
+  //
+  // This method is used to store the state of the iterator in a checkpoint.
+  //
+  // TODO(jsimsa): Make this method pure virtual once all `IteratorBase`
+  // implementations have an override.
   virtual Status SaveInternal(IteratorStateWriter* writer) {
     return errors::Unimplemented("SaveInternal");
   }
 
-  // Restores the state of this iterator recursively.
+  // Restores the state of this iterator.
+  //
+  // This method is used to restore the state of the iterator from a checkpoint.
+  //
+  // TODO(jsimsa): Make this method pure virtual once all `IteratorBase`
+  // implementations have an override.
   virtual Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) {
     return errors::Unimplemented("RestoreInternal");
@@ -696,13 +729,25 @@ class DatasetBase : public core::RefCounted {
   // A human-readable debug string for this dataset.
   virtual string DebugString() const = 0;
 
-  // Serializes the dataset and writes it to the `writer`.
-  virtual Status Save(SerializationContext* ctx,
-                      IteratorStateWriter* writer) const;
-
-  // Indicates whether the dataset depends on external state, which is for
-  // instance used to decide whether dataset iterator can be saved.
+  // If the dataset is stateful it will not be possible to save its graph or
+  // checkpoint the state of its iterators.
+  //
+  // TODO(jsimsa): Remove this method once all `DatasetBase` implementations are
+  // migrated over to `CheckExternalState`.
   virtual bool IsStateful() const { return false; }
+
+  // Indicates whether the dataset depends on any external state. If so, the
+  // method returns `errors::FailedPrecondition` with a message that identifies
+  // the external state. Otherwise, the method returns `Status::OK()`.
+  //
+  // TODO(jsimsa): Make this method pure virtual once all `DatasetBase`
+  // implementations have an override.
+  virtual Status CheckExternalState() const {
+    if (IsStateful()) {
+      return errors::FailedPrecondition("Dataset cannot be serialized.");
+    }
+    return Status::OK();
+  }
 
  protected:
   friend Status AsGraphDef(
@@ -713,11 +758,22 @@ class DatasetBase : public core::RefCounted {
 
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
    public:
-    DatasetGraphDefBuilder(GraphDefBuilder* b) : GraphDefBuilderWrapper(b) {}
+    explicit DatasetGraphDefBuilder(GraphDefBuilder* b)
+        : GraphDefBuilderWrapper(b) {}
     Status AddInputDataset(SerializationContext* ctx,
                            const DatasetBase* dataset, Node** output);
   };
 
+  // Serializes the dataset into a `GraphDef`, which has two uses:
+  //
+  // 1) To perform static input pipeline optimizations, tf.data serializes the
+  // dataset graph, applies graph rewrites, and then deserializes the graph.
+  // If a subclass of `DatasetBase` does not implement this method, then it will
+  // be excluded from static optimizations (and so will any upstream datasets).
+  //
+  // 2) To save the dataset so that it can restore at a later point (possibly in
+  // different environment). If a subclass of `DatasetBase` does not implement
+  // this method, then this migration will not be possible.
   virtual Status AsGraphDefInternal(SerializationContext* ctx,
                                     DatasetGraphDefBuilder* b,
                                     Node** node) const = 0;
@@ -776,10 +832,7 @@ class DatasetBaseIterator : public IteratorBase {
                  bool* end_of_sequence) final;
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
-    if (params_.dataset->IsStateful()) {
-      return errors::FailedPrecondition(
-          "Saving iterator that depends on external state is not supported.");
-    }
+    TF_RETURN_IF_ERROR(params_.dataset->CheckExternalState());
     return IteratorBase::Save(ctx, writer);
   }
 

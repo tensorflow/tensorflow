@@ -31,7 +31,6 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -1743,12 +1742,8 @@ class DatasetV1(DatasetV2):
     dataset = self._apply_options()
     if shared_name is None:
       shared_name = ""
-    if compat.forward_compatible(2018, 8, 3):
-      iterator_resource = gen_dataset_ops.iterator_v2(
-          container="", shared_name=shared_name, **self._flat_structure)
-    else:
-      iterator_resource = gen_dataset_ops.iterator(
-          container="", shared_name=shared_name, **self._flat_structure)
+    iterator_resource = gen_dataset_ops.iterator_v2(
+        container="", shared_name=shared_name, **self._flat_structure)
     with ops.colocate_with(iterator_resource):
       initializer = gen_dataset_ops.make_iterator(
           dataset._variant_tensor,  # pylint: disable=protected-access
@@ -2214,7 +2209,7 @@ class Options(options_lib.OptionsBase):
       name="experimental_distribute",
       ty=distribute_options.DistributeOptions,
       docstring=
-      "The distribution options associated with the dataset. See "
+      "The distribution strategy options associated with the dataset. See "
       "`tf.data.experimental.DistributeOptions` for more details.",
       default_factory=distribute_options.DistributeOptions)
 
@@ -2263,6 +2258,9 @@ class Options(options_lib.OptionsBase):
       result.append("latency_all_edges")
     if self.experimental_slack:
       result.append("slack")
+    if (self.experimental_distribute and
+        self.experimental_distribute._make_stateless):  # pylint: disable=protected-access
+      result.append("make_stateless")
     return result
 
   def _static_optimization_configs(self):
@@ -2596,6 +2594,8 @@ class StructuredFunctionWrapper(object):
                          "must be specified.")
       self._input_structure = input_structure
 
+    self._func = func
+
     if defun_kwargs is None:
       defun_kwargs = {}
 
@@ -2927,6 +2927,47 @@ class RangeDataset(DatasetSource):
     return self._structure
 
 
+class _MemoryCacheDeleter(object):
+  """An object which cleans up an anonymous memory cache resource.
+
+  An alternative to defining a __del__ method on an object. Even if the parent
+  object is part of a reference cycle, the cycle will be collectable.
+  """
+
+  def __init__(self, handle, device, deleter):
+    self._deleter = deleter
+    self._handle = handle
+    self._device = device
+    self._eager_mode = context.executing_eagerly()
+
+  def __del__(self):
+    with ops.device(self._device):
+      # Make sure the resource is deleted in the same mode as it was created in.
+      if self._eager_mode:
+        with context.eager_mode():
+          gen_dataset_ops.delete_memory_cache(
+              handle=self._handle, deleter=self._deleter)
+      else:
+        with context.graph_mode():
+          gen_dataset_ops.delete_memory_cache(
+              handle=self._handle, deleter=self._deleter)
+
+
+class _MemoryCache(object):
+  """Represents a memory cache resource."""
+
+  def __init__(self):
+    super(_MemoryCache, self).__init__()
+    self._device = context.context().device_name
+    self._handle, self._deleter = (gen_dataset_ops.anonymous_memory_cache())
+    self._resource_deleter = _MemoryCacheDeleter(
+        handle=self._handle, device=self._device, deleter=self._deleter)
+
+  @property
+  def handle(self):
+    return self._handle
+
+
 class CacheDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that caches elements of its input."""
 
@@ -2935,10 +2976,19 @@ class CacheDataset(UnaryUnchangedStructureDataset):
     self._input_dataset = input_dataset
     self._filename = ops.convert_to_tensor(
         filename, dtype=dtypes.string, name="filename")
-    variant_tensor = gen_dataset_ops.cache_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        filename=self._filename,
-        **self._flat_structure)
+    if tf2.enabled() and (context.executing_eagerly() or
+                          ops.get_default_graph()._building_function):  # pylint: disable=protected-access
+      self._cache = _MemoryCache()
+      variant_tensor = gen_dataset_ops.cache_dataset_v2(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          filename=self._filename,
+          cache=self._cache.handle,
+          **self._flat_structure)
+    else:
+      variant_tensor = gen_dataset_ops.cache_dataset(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          filename=self._filename,
+          **self._flat_structure)
     super(CacheDataset, self).__init__(input_dataset, variant_tensor)
 
 
@@ -3700,20 +3750,12 @@ class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
     self._stats_aggregator = aggregator
     self._prefix = prefix
     self._counter_prefix = counter_prefix
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = ged_ops.set_stats_aggregator_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._stats_aggregator._resource,  # pylint: disable=protected-access
-          self._prefix,
-          self._counter_prefix,
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.experimental_set_stats_aggregator_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._stats_aggregator._resource,  # pylint: disable=protected-access
-          self._prefix,
-          self._counter_prefix,
-          **self._flat_structure)
+    variant_tensor = ged_ops.set_stats_aggregator_dataset(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._stats_aggregator._resource,  # pylint: disable=protected-access
+        self._prefix,
+        self._counter_prefix,
+        **self._flat_structure)
     super(_SetStatsAggregatorDataset, self).__init__(input_dataset,
                                                      variant_tensor)
 
@@ -3727,16 +3769,10 @@ class _MaxIntraOpParallelismDataset(UnaryUnchangedStructureDataset):
         max_intra_op_parallelism,
         dtype=dtypes.int64,
         name="max_intra_op_parallelism")
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = ged_ops.max_intra_op_parallelism_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._max_intra_op_parallelism,
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.experimental_max_intra_op_parallelism_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._max_intra_op_parallelism,
-          **self._flat_structure)
+    variant_tensor = ged_ops.max_intra_op_parallelism_dataset(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._max_intra_op_parallelism,
+        **self._flat_structure)
     super(_MaxIntraOpParallelismDataset, self).__init__(input_dataset,
                                                         variant_tensor)
 
@@ -3748,16 +3784,10 @@ class _PrivateThreadPoolDataset(UnaryUnchangedStructureDataset):
     self._input_dataset = input_dataset
     self._num_threads = ops.convert_to_tensor(
         num_threads, dtype=dtypes.int64, name="num_threads")
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = ged_ops.private_thread_pool_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._num_threads,
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.experimental_private_thread_pool_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._num_threads,
-          **self._flat_structure)
+    variant_tensor = ged_ops.private_thread_pool_dataset(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._num_threads,
+        **self._flat_structure)
     super(_PrivateThreadPoolDataset, self).__init__(input_dataset,
                                                     variant_tensor)
 
@@ -3796,14 +3826,9 @@ class _UnbatchDataset(UnaryDataset):
     self._structure = nest.map_structure(
         lambda component_spec: component_spec._unbatch(),  # pylint: disable=protected-access
         get_structure(input_dataset))
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = ged_ops.unbatch_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          **self._flat_structure)
-    else:
-      variant_tensor = ged_ops.experimental_unbatch_dataset(
-          self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-          **self._flat_structure)
+    variant_tensor = ged_ops.unbatch_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        **self._flat_structure)
     super(_UnbatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property

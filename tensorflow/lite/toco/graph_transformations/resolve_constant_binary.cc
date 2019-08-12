@@ -165,7 +165,7 @@ void EvaluateBinaryOperatorOnConstantInputs(Model* model,
   }
 }
 
-void EvaluateBinaryOperatorOnConstantInputs(Model* model,
+bool EvaluateBinaryOperatorOnConstantInputs(Model* model,
                                             const Operator* binary_op) {
   const auto inputs_data_type = model->GetArray(binary_op->inputs[0]).data_type;
   const auto output_data_type =
@@ -175,7 +175,7 @@ void EvaluateBinaryOperatorOnConstantInputs(Model* model,
       output_data_type == OutputDataType) {                                 \
     EvaluateBinaryOperatorOnConstantInputs<InputsDataType, OutputDataType>( \
         model, binary_op);                                                  \
-    return;                                                                 \
+    return true;                                                            \
   }
   TOCO_HANDLE_CASE(ArrayDataType::kFloat, ArrayDataType::kFloat)
   TOCO_HANDLE_CASE(ArrayDataType::kFloat, ArrayDataType::kBool)
@@ -183,8 +183,7 @@ void EvaluateBinaryOperatorOnConstantInputs(Model* model,
   TOCO_HANDLE_CASE(ArrayDataType::kInt32, ArrayDataType::kBool)
   TOCO_HANDLE_CASE(ArrayDataType::kInt64, ArrayDataType::kInt64)
   TOCO_HANDLE_CASE(ArrayDataType::kInt64, ArrayDataType::kBool)
-  LOG(FATAL) << "Unimplemented: don't know how to resolve a constant "
-             << "binary operator for these data types.";
+  return false;
 #undef TOCO_HANDLE_CASE
 }
 }  // namespace
@@ -245,7 +244,9 @@ void EvaluateBinaryOperatorOnConstantInputs(Model* model,
       << static_cast<int>(input1_array.data_type) << ").";
 
   // Do the actual constants propagation
-  EvaluateBinaryOperatorOnConstantInputs(model, binary_op);
+  if (!EvaluateBinaryOperatorOnConstantInputs(model, binary_op)) {
+    return ::tensorflow::Status::OK();
+  }
 
   DeleteOpAndArrays(model, binary_op);
   *modified = true;

@@ -171,11 +171,7 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
     # Create placeholders to build the model on top of.
     input_tensors = []
     for layer in model._input_layers:
-      input_tensor = Input(
-          batch_shape=layer._batch_input_shape,
-          dtype=layer.dtype,
-          sparse=layer.sparse,
-          name=layer.name)
+      input_tensor = Input(**layer.get_config())
       input_tensors.append(input_tensor)
       # Cache newly created input layer.
       newly_created_input_layer = input_tensor._keras_history.layer

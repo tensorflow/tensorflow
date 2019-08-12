@@ -656,7 +656,7 @@ Status XlaCompiler::CompileFunction(
   const char* const kKernelAttr = "_kernel";
   for (Node* n : graph->nodes()) {
     string value;
-    if (GetNodeAttrSimple(n->attrs(), kKernelAttr, &value) && value == "host") {
+    if (TryGetNodeAttr(n->attrs(), kKernelAttr, &value) && value == "host") {
       n->ClearAttr(kKernelAttr);
     }
   }

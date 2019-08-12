@@ -21,6 +21,7 @@
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/Linalg/IR/LinalgOps.h"
+#include "mlir/Linalg/Utils/Intrinsics.h"
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
@@ -79,7 +80,16 @@ namespace linalg {
 /// Returns the linearized list of all view dimensions in a linalgOp. Applying
 /// the inverse, concatenated loopToOperandRangeMaps to this list allows the
 /// derivation of loop ranges for any linalgOp.
-SmallVector<Value *, 8> getViewSizes(LinalgOp &linalgOp);
+template <typename ConcreteOp>
+SmallVector<Value *, 8> getViewSizes(ConcreteOp linalgOp) {
+  SmallVector<Value *, 8> res;
+  for (auto v : linalgOp.getInputsAndOutputs()) {
+    ViewType t = v->getType().template cast<ViewType>();
+    for (unsigned i = 0; i < t.getRank(); ++i)
+      res.push_back(intrinsics::dim(v, i));
+  }
+  return res;
+}
 
 /// Returns the values obtained by applying `map` to the list of values.
 /// Performs simplifications and foldings where possible.

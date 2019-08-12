@@ -32,25 +32,27 @@ from tensorflow.python.platform import test
 
 class CollectiveOpTest(test.TestCase):
 
-  def _testCollectiveReduce(self, t0, t1, expected, set_graph_key):
+  def _testCollectiveReduce(self, inputs, expected, set_graph_key):
     group_key = 1
+    group_size = len(inputs)
     instance_key = 1
-    with self.session(
-        config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
-      with ops.device('/CPU:0'):
-        in0 = constant_op.constant(t0)
-        colred0 = collective_ops.all_reduce(in0, 2, group_key, instance_key,
-                                            'Add', 'Div')
-      with ops.device('/CPU:1'):
-        in1 = constant_op.constant(t1)
-        colred1 = collective_ops.all_reduce(in1, 2, group_key, instance_key,
-                                            'Add', 'Div')
+    device_type = 'CPU'
+    config = config_pb2.ConfigProto(device_count={device_type: group_size})
+    devices = ['/{}:{}'.format(device_type, i) for i in range(group_size)]
+
+    with self.session(config=config) as sess:
+      colred = []
+      for i in range(group_size):
+        with ops.device(devices[i]):
+          tensor = constant_op.constant(inputs[i])
+          colred.append(collective_ops.all_reduce(tensor, group_size, group_key,
+                                                  instance_key, 'Add', 'Div'))
       run_options = config_pb2.RunOptions()
       if set_graph_key:
         run_options.experimental.collective_graph_key = 1
-      results = sess.run([colred0, colred1], options=run_options)
-    self.assertAllClose(results[0], expected, rtol=1e-5, atol=1e-5)
-    self.assertAllClose(results[1], expected, rtol=1e-5, atol=1e-5)
+      results = sess.run(colred, options=run_options)
+    for i in range(group_size):
+      self.assertAllClose(results[i], expected, rtol=1e-5, atol=1e-5)
 
   def _testMultipleConcurrentCollectiveReduce(self, t0, t1, expected):
     group_key = 1
@@ -72,15 +74,19 @@ class CollectiveOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testCollectiveReduce(self):
-    self._testCollectiveReduce([0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-                               [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
-                               [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2], True)
+    self._testCollectiveReduce(
+        inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
+        expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
+        set_graph_key=True)
 
   @test_util.run_deprecated_v1
   def testCollectiveAutoGraphKey(self):
-    self._testCollectiveReduce([0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-                               [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
-                               [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2], False)
+    self._testCollectiveReduce(
+        inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
+        expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
+        set_graph_key=False)
 
   @test_util.run_deprecated_v1
   def testCollectiveMultipleConcurrentReduce(self):
@@ -122,7 +128,8 @@ class CollectiveOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testCollectiveReduceScalar(self):
-    self._testCollectiveReduce(0.1, 0.3, 0.2, True)
+    self._testCollectiveReduce(inputs=[0.1, 0.3], expected=0.2,
+                               set_graph_key=True)
 
   def _testCollectiveBroadcast(self, t0):
     group_key = 1
@@ -154,14 +161,14 @@ class CollectiveOpTest(test.TestCase):
         config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
       with ops.device('/CPU:0'):
         in0 = constant_op.constant(t0)
-        colred0 = collective_ops.all_gather(in0, 2, group_key, instance_key)
+        c0 = collective_ops.all_gather(in0, 2, group_key, instance_key)
       with ops.device('/CPU:1'):
         in1 = constant_op.constant(t1)
-        colred1 = collective_ops.all_gather(in1, 2, group_key, instance_key)
+        c1 = collective_ops.all_gather(in1, 2, group_key, instance_key)
       run_options = config_pb2.RunOptions()
       if set_graph_key:
         run_options.experimental.collective_graph_key = 1
-      results = sess.run([colred0, colred1], options=run_options)
+      results = sess.run([c0, c1], options=run_options)
     self.assertAllClose(results[0], expected, rtol=1e-5, atol=1e-5)
     self.assertAllClose(results[1], expected, rtol=1e-5, atol=1e-5)
 
@@ -194,18 +201,38 @@ class CollectiveOpTest(test.TestCase):
         config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
       with ops.device('/CPU:0'):
         in0 = constant_op.constant(t0)
-        colred0 = collective_ops.all_gather(in0, 2, group_key, instance_key)
+        c0 = collective_ops.all_gather(in0, 2, group_key, instance_key)
       with ops.device('/CPU:1'):
         in1 = constant_op.constant(t1)
         in2 = constant_op.constant(t2)
-        colred1 = collective_ops.all_gather(in1, 2, group_key, instance_key)
-        colred2 = collective_ops.all_gather(in2, 2, group_key, instance_key)
+        c1 = collective_ops.all_gather(in1, 2, group_key, instance_key)
+        c2 = collective_ops.all_gather(in2, 2, group_key, instance_key)
       run_options = config_pb2.RunOptions()
       run_options.experimental.collective_graph_key = 1
-      sess.run([colred0, colred1], options=run_options)
-      with self.assertRaisesRegexp(errors.InternalError,
-                                   'Inconsistent output shapes'):
-        sess.run([colred0, colred2], options=run_options)
+      sess.run([c0, c1], options=run_options)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   'Shape mismatch'):
+        sess.run([c0, c2], options=run_options)
+
+  @test_util.run_deprecated_v1
+  def testCollectiveGatherShapeMismatchAcrossDevices(self):
+    group_key = 1
+    instance_key = 1
+    t0 = [1, 2, 3, 4]
+    t1 = [5, 6]
+    with self.session(
+        config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
+      with ops.device('/CPU:0'):
+        in0 = constant_op.constant(t0)
+        c0 = collective_ops.all_gather(in0, 2, group_key, instance_key)
+      with ops.device('/CPU:1'):
+        in1 = constant_op.constant(t1)
+        c1 = collective_ops.all_gather(in1, 2, group_key, instance_key)
+      run_options = config_pb2.RunOptions()
+      run_options.experimental.collective_graph_key = 1
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   'Shape mismatch'):
+        sess.run([c0, c1], options=run_options)
 
 
 if __name__ == '__main__':

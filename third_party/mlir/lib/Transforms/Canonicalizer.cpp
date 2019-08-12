@@ -49,7 +49,7 @@ void Canonicalizer::runOnFunction() {
   for (auto *op : context->getRegisteredOperations())
     op->getCanonicalizationPatterns(patterns, context);
 
-  applyPatternsGreedily(func, std::move(patterns));
+  applyPatternsGreedily(func, patterns);
 }
 
 /// Create a Canonicalizer pass.

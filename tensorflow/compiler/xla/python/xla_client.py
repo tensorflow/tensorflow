@@ -116,9 +116,17 @@ class LocalBackend(Backend):
                                         compile_options.device_assignment)
 
 
+xla_platform_names = {
+    'cpu': 'Host',
+    'gpu': 'CUDA',
+}
+
+
 def _cpu_backend_factory():
   client = _xla.LocalClient.Get(
-      platform='cpu', xla_platform_id='Host', asynchronous=True)
+      platform='cpu',
+      xla_platform_id=xla_platform_names['cpu'],
+      asynchronous=True)
   return LocalBackend(platform='cpu', client=client)
 
 
@@ -143,7 +151,9 @@ def _gpu_backend_factory():
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
   client = _xla.LocalClient.Get(
-      platform='gpu', xla_platform_id='CUDA', asynchronous=True,
+      platform='gpu',
+      xla_platform_id=xla_platform_names['gpu'],
+      asynchronous=True,
       allocator_config=config)
   return LocalBackend(platform='gpu', client=client)
 
@@ -544,6 +554,9 @@ class Computation(object):
 #   def DeviceOrdinals(self) -> [int]:
 #   def Execute(self, arguments : [Buffer]) -> Buffer:
 #     """Execute on one replica with Buffer arguments and return value."""
+#
+#   def SizeOfGeneratedCodeInBytes(self) -> int:
+#     """Return generated binary size, or -1 if not known."""
 #
 #   def ExecutePerReplica(self, arguments: [[Buffer]]) -> [Buffer]:
 #     """Execute on many replicas with Buffer arguments and return value.
@@ -1593,14 +1606,18 @@ def _forward_methods_to_local_builder():
 _forward_methods_to_local_builder()
 
 
-def register_cpu_custom_call_target(name, fn):
-  """Registers a CPU custom call target.
+def register_custom_call_target(name, fn, platform='cpu'):
+  """Registers a custom call target.
 
   Args:
     name: bytes containing the name of the function.
     fn: a PyCapsule object containing the function pointer.
+    platform: the target platform.
   """
-  _xla.RegisterCpuCustomCallTarget(name, fn)
+  _xla.RegisterCustomCallTarget(name, fn, xla_platform_names[platform])
+
+# Deprecated. Use register_custom_call_target instead.
+register_cpu_custom_call_target = register_custom_call_target
 
 
 class PaddingConfigDimension(object):

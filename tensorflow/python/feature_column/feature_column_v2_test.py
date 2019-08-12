@@ -5005,8 +5005,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
             values=np.array((0, 1, 0), dtype=np.int64),
             dense_shape=(2, 2)), self.evaluate(id_weight_pair.id_tensor))
 
-  @test_util.run_deprecated_v1
-  def test_get_sparse_tensors_with_inputs_too_small(self):
+  def _test_get_sparse_tensors_with_inputs_too_small(self):
     column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
     inputs = sparse_tensor.SparseTensorValue(
         indices=((0, 0), (1, 0), (1, 1)), values=(1, -1, 0), dense_shape=(2, 2))
@@ -5019,11 +5018,19 @@ class IdentityCategoricalColumnTest(test.TestCase):
     self.evaluate(variables_lib.global_variables_initializer())
     self.evaluate(lookup_ops.tables_initializer())
 
-    with self.assertRaisesRegexp(errors.OpError, 'assert_greater_or_equal_0'):
+    with self.assertRaisesRegexp(errors.OpError, 'assert'):
       self.evaluate(id_weight_pair.id_tensor)
 
   @test_util.run_deprecated_v1
-  def test_get_sparse_tensors_with_inputs_too_big(self):
+  def test_get_sparse_tensors_with_inputs_too_small(self):
+    self._test_get_sparse_tensors_with_inputs_too_small()
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_control_flow_v2
+  def test_get_sparse_tensors_with_inputs_too_small_v2(self):
+    self._test_get_sparse_tensors_with_inputs_too_small()
+
+  def _test_get_sparse_tensors_with_inputs_too_big(self):
     column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
     inputs = sparse_tensor.SparseTensorValue(
         indices=((0, 0), (1, 0), (1, 1)), values=(1, 99, 0), dense_shape=(2, 2))
@@ -5036,9 +5043,17 @@ class IdentityCategoricalColumnTest(test.TestCase):
     self.evaluate(variables_lib.global_variables_initializer())
     self.evaluate(lookup_ops.tables_initializer())
 
-    with self.assertRaisesRegexp(errors.OpError,
-                                 'assert_less_than_num_buckets'):
+    with self.assertRaisesRegexp(errors.OpError, 'assert'):
       self.evaluate(id_weight_pair.id_tensor)
+
+  @test_util.run_deprecated_v1
+  def test_get_sparse_tensors_with_inputs_too_big(self):
+    self._test_get_sparse_tensors_with_inputs_too_big()
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_control_flow_v2
+  def test_get_sparse_tensors_with_inputs_too_big_v2(self):
+    self._test_get_sparse_tensors_with_inputs_too_big()
 
   @test_util.run_deprecated_v1
   def test_get_sparse_tensors_with_default_value(self):

@@ -80,7 +80,7 @@ EagerContext::EagerContext(
       log_device_placement_(opts.config.log_device_placement()),
       allow_soft_placement_(opts.config.allow_soft_placement()),
       num_active_steps_(0),
-      async_default_(async),
+      default_executor_(async),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
       use_send_tensor_rpc_(false),
@@ -97,13 +97,14 @@ EagerContext::EagerContext(
   } else {
     local_unowned_device_manager_ = device_mgr;
   }
-  if (async_default_) {
-    default_executor_.EnableAsync();
-  }
   InitDeviceMapAndAsync();
   runner_ = [this](std::function<void()> closure) {
     this->thread_pool_->Schedule(std::move(closure));
   };
+
+#if !defined(IS_MOBILE_PLATFORM)
+  context_id_ = kInvalidContextId;
+#endif  // IS_MOBILE_PLATFORM
 
   std::unique_ptr<DeviceResolverInterface> drl(
       new DeviceResolverLocal(local_device_mgr()));
@@ -143,12 +144,11 @@ EagerExecutor* EagerContext::Executor() {
 
 void EagerContext::SetExecutorForThread(EagerExecutor* executor) {
   tensorflow::mutex_lock l(executor_map_mu_);
-  thread_local_executor_[std::this_thread::get_id()] = executor;
-}
-
-void EagerContext::ClearExecutorForThread() {
-  tensorflow::mutex_lock l(executor_map_mu_);
-  thread_local_executor_.erase(std::this_thread::get_id());
+  if (executor == &default_executor_) {
+    thread_local_executor_.erase(std::this_thread::get_id());
+  } else {
+    thread_local_executor_[std::this_thread::get_id()] = executor;
+  }
 }
 
 void EagerContext::ClearCaches() {
@@ -211,6 +211,9 @@ void EagerContext::CloseRemoteContexts() {
   // Close all remote contexts.
   eager::CloseContextRequest request;
   request.set_context_id(context_id_);
+  // Setting context_id to a new value can avoid us issuing DestroyTensorHandle
+  // request to closed remote workers.
+  context_id_ = kInvalidContextId;
   std::vector<eager::CloseContextResponse> responses(remote_contexts_.size());
   BlockingCounter counter(static_cast<int>(remote_contexts_.size()));
 
@@ -304,12 +307,6 @@ EagerContext::~EagerContext() {
 #endif  // !IS_MOBILE_PLATFORM
 
   rendezvous_->Unref();
-
-  // Release resources ahead of destroying the device manager as the resource
-  // destructors (e.g. ~IteratorResource) assume devices still exist.
-  for (auto device : local_device_mgr()->ListDevices()) {
-    device->ClearResourceMgr();
-  }
 }
 
 bool EagerContext::FindFunctionByName(const string& name) {
@@ -670,6 +667,11 @@ Status EagerContext::InitializeRemoteMaster(
     DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
+  if (context_id == kInvalidContextId) {
+    return errors::InvalidArgument(
+        "Failed to initialize remote for master context due to invalid ",
+        "context id");
+  }
   mutex_lock l(remote_state_mu_);
   is_master_ = true;
 
@@ -788,6 +790,11 @@ Status EagerContext::InitializeRemoteWorker(
     std::function<Rendezvous*(const int64)> rendezvous_creator,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
+  if (context_id == kInvalidContextId) {
+    return errors::InvalidArgument(
+        "Failed to initialize remote for worker context due to invalid ",
+        "context id");
+  }
   mutex_lock l(remote_state_mu_);
 
   if (remote_device_manager_ != nullptr || server_ != nullptr ||

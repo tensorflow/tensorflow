@@ -150,7 +150,7 @@ class Tensor {
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(int8 scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(string scalar_value)
+  explicit Tensor(tstring scalar_value)
       : Tensor(std::move(scalar_value), host_scalar_tag{}) {}
   explicit Tensor(complex64 scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
@@ -183,7 +183,7 @@ class Tensor {
   // convenience because otherwise passing a string literal would surprisingly
   // construct a DT_BOOL tensor.
   explicit Tensor(const char* scalar_value)
-      : Tensor(string(scalar_value), host_scalar_tag{}) {}
+      : Tensor(tstring(scalar_value), host_scalar_tag{}) {}
 
   /// Copy constructor.
   Tensor(const Tensor& other);

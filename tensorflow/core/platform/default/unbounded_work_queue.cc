@@ -43,27 +43,22 @@ UnboundedWorkQueue::~UnboundedWorkQueue() {
     // Clear the list of pooled threads, which will eventually terminate due to
     // the previous notification.
     //
-    // NOTE: It is safe to do this while holding `pooled_threads_mu_`, because
-    // no subsequent calls to `this->StartThread()` should be issued after the
+    // NOTE: It is safe to do this while holding `thread_pool_mu_`, because
+    // no subsequent calls to `this->Schedule()` should be issued after the
     // destructor starts.
     thread_pool_.clear();
   }
 }
 
 void UnboundedWorkQueue::Schedule(WorkFunction fn) {
-  bool all_threads_busy;
-  {
-    // Enqueue a work item for the new thread's function, and wake up a
-    // cached thread to process it.
-    mutex_lock l(work_queue_mu_);
-    work_queue_.push_back(std::move(fn));
-    work_queue_cv_.notify_one();
-    // NOTE: The queue may be non-empty, so we must account for queued work when
-    // considering how many threads are free.
-    all_threads_busy = work_queue_.size() > num_idle_threads_;
-  }
-
-  if (all_threads_busy) {
+  // Enqueue a work item for the new thread's function, and wake up a
+  // cached thread to process it.
+  mutex_lock l(work_queue_mu_);
+  work_queue_.push_back(std::move(fn));
+  work_queue_cv_.notify_one();
+  // NOTE: The queue may be non-empty, so we must account for queued work when
+  // considering how many threads are free.
+  if (work_queue_.size() > num_idle_threads_) {
     // Spawn a new physical thread to process the given function.
     // NOTE: `PooledThreadFunc` will eventually increment `num_idle_threads_`
     // at the beginning of its work loop.

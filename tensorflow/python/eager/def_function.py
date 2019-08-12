@@ -182,7 +182,16 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
             with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
               self._initializer_op = resource_variable_ops.assign_variable_op(
                   self._handle, lifted_initializer, name=n)
+      elif context.executing_eagerly():
+        # In this case, both current scope and init scope are eager.
+        # Assign_variable_op will be executed immediately. So we don't need to
+        # add it to "add_initializers_to" to lift it out.
+        with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
+          resource_variable_ops.assign_variable_op(
+              self._handle, initial_value, name=n)
       else:
+        # Init scope is eager but current scope is graph. We will lift out this
+        # variable by addint it into "add_initializers_to".
         if add_initializers_to is not None:
           add_initializers_to[self] = initial_value
         def assign_fn():
@@ -196,7 +205,8 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
         def not_assign_fn():
           return ops.convert_to_tensor(0)
         # Note: this cond is always guaranteed to run because we're inside a
-        # defun which will insert automatic control dependencies.
+        # defun which will insert automatic control dependencies. It will only
+        # execute assign_fn if lifting failed.
         control_flow_ops.cond(
             resource_variable_ops.var_is_initialized_op(self._handle),
             not_assign_fn, assign_fn)
@@ -435,7 +445,7 @@ class Function(object):
       return results
 
     # This is the first call of __call__, so we have to initialize.
-    initializer_map = {}
+    initializer_map = object_identity.ObjectIdentityDictionary()
     self._initialize(args, kwds, add_initializers_to=initializer_map)
     if self._created_variables:
       try:
@@ -574,7 +584,7 @@ class Function(object):
           "has been used")
     # Here we trace the function, collect the initializers, and attempt to
     # extract them and run them eagerly. Fail only if we cannot do so.
-    initializer_map = {}
+    initializer_map = object_identity.ObjectIdentityDictionary()
     self._initialize(args, kwargs, add_initializers_to=initializer_map)
 
     # Note: using defun here avoids an infinite recursion.
@@ -603,13 +613,7 @@ class Function(object):
       concrete_functions.extend(
           self._stateless_fn._function_cache.all_values())
     # pylint: enable=protected-access
-    deduplicated_concrete_functions = []
     seen_signatures = []
-    # We are using a list so that:
-    #  - the returned collection is deterministic, and
-    #  - we can use a custom equality operator (is_same_structure).
-    # This is run only at serialization time on likely very small inputs so we
-    # are not concerned about O(n^2) runtime.
     for concrete_function in concrete_functions:
       signature = concrete_function.structured_input_signature
       flattened = nest.flatten(signature)
@@ -621,9 +625,14 @@ class Function(object):
       equal_to_signature = functools.partial(
           function_lib.is_same_structure, signature, check_values=True)
       if not any(equal_to_signature(s) for s in seen_signatures):
-        deduplicated_concrete_functions.append(concrete_function)
         seen_signatures.append(signature)
-    return deduplicated_concrete_functions
+
+    # Re-create concrete functions for these signatures. Re-creating ensures
+    # that if the cache key has changed, the function will be traced again.
+    concrete_functions = []
+    for args, kwargs in seen_signatures:
+      concrete_functions.append(self.get_concrete_function(*args, **kwargs))
+    return concrete_functions
 
   def get_concrete_function(self, *args, **kwargs):
     """Returns a `ConcreteFunction` specialized to inputs and execution context.
@@ -702,7 +711,7 @@ class Function(object):
       ValueError: if this object has not yet been called on concrete values.
     """
     if self._stateful_fn is None:
-      initializer_map = {}
+      initializer_map = object_identity.ObjectIdentityDictionary()
       self._initialize(args, kwargs, add_initializers_to=initializer_map)
       self._initialize_uninitialized_variables(initializer_map)
 

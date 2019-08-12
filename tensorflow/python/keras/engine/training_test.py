@@ -334,6 +334,28 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertAllClose(history.history['val_loss'][0], 1.0)
 
   @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_with_all_model_types
+  def test_target_dtype_matches_output(self):
+
+    def _loss_fn(labels, preds):
+      self.assertEqual(labels.dtype, preds.dtype)
+      return labels - preds
+
+    layers = [keras.layers.Dense(10, dtype=np.float64),
+              keras.layers.Dense(10, dtype=np.float64)]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(1,))
+    inputs = np.ones(10, dtype=np.float64)
+    targets = np.ones(10, dtype=np.float64)
+    model.compile(
+        'sgd',
+        loss=_loss_fn,
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    model.train_on_batch(inputs, targets)
+    model.test_on_batch(inputs, targets)
+    self.assertEqual(model.predict(inputs).dtype, np.float64)
+
+  @keras_parameterized.run_all_keras_modes
   def test_fit_and_validate_nested_training_arg(self):
 
     class NestedReturnTraining(keras.layers.Layer):
@@ -588,18 +610,10 @@ class TrainingTest(keras_parameterized.TestCase):
     input_a_np = np.random.random((10, 3))
     input_b_np = np.random.random((10, 4))
 
-    if testing_utils.should_run_tf_function():
-      model.fit(np.ndarray.tolist(input_a_np),
-                np.ndarray.tolist(input_b_np),
-                epochs=2,
-                batch_size=5,
-                verbose=2)
-    else:
-      model.fit([np.ndarray.tolist(input_a_np)],
-                [np.ndarray.tolist(input_b_np)],
-                epochs=2,
-                batch_size=5,
-                verbose=2)
+    model.fit([np.ndarray.tolist(input_a_np)], [np.ndarray.tolist(input_b_np)],
+              epochs=2,
+              batch_size=5,
+              verbose=2)
 
   @keras_parameterized.run_all_keras_modes
   def test_evaluate_predict_on_arrays(self):
@@ -1375,32 +1389,28 @@ class TrainingTest(keras_parameterized.TestCase):
   # TODO(b/131372221): Make this work with subclassed models.
   @keras_parameterized.run_with_all_model_types(exclude_models=['subclass'])
   @keras_parameterized.run_all_keras_modes
+  @testing_utils.enable_v2_dtype_behavior
   def test_model_dtype(self):
 
     class AssertTypeLayer(keras.layers.Layer):
 
-      def __init__(self, assert_type=None, **kwargs):
-        super(AssertTypeLayer, self).__init__(**kwargs)
-        self.assert_type = assert_type
-
       def call(self, inputs):
-        assert inputs.dtype.name == self.assert_type, (
+        assert inputs.dtype.name == self.dtype, (
             'Input tensor has type %s which does not match assert type %s' %
             (inputs.dtype.name, self.assert_type))
         return inputs + 1.
 
     for dtype in ('float16', 'float32', 'float64'):
-      model = testing_utils.get_model_from_layers([AssertTypeLayer(dtype)],
-                                                  input_shape=(10,),
-                                                  input_dtype=dtype)
+      model = testing_utils.get_model_from_layers(
+          [AssertTypeLayer(dtype=dtype)], input_shape=(10,))
       model.compile(
           'sgd',
           'mse',
           run_eagerly=testing_utils.should_run_eagerly(),
           experimental_run_tf_function=testing_utils.should_run_tf_function())
 
-      x = np.ones((10, 10), dtype=dtype)
-      y = np.ones((10, 10), dtype=dtype)
+      x = np.ones((10, 10))
+      y = np.ones((10, 10))
       model.fit(x, y)
       model.test_on_batch(x, y)
       model(x)

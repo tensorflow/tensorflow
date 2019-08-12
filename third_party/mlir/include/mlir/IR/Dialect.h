@@ -57,7 +57,12 @@ public:
   /// Returns true if this dialect allows for unregistered operations, i.e.
   /// operations prefixed with the dialect namespace but not registered with
   /// addOperation.
-  bool allowsUnknownOperations() const { return allowUnknownOps; }
+  bool allowsUnknownOperations() const { return unknownOpsAllowed; }
+
+  /// Return true if this dialect allows for unregistered types, i.e., types
+  /// prefixed with the dialect namespace but not registered with addType.
+  /// These are represented with OpaqueType.
+  bool allowsUnknownTypes() const { return unknownTypesAllowed; }
 
   //===--------------------------------------------------------------------===//
   // Constant Hooks
@@ -226,8 +231,11 @@ protected:
     }
   };
 
-  // Enable support for unregistered operations.
-  void allowUnknownOperations(bool allow = true) { allowUnknownOps = allow; }
+  /// Enable support for unregistered operations.
+  void allowUnknownOperations(bool allow = true) { unknownOpsAllowed = allow; }
+
+  /// Enable support for unregistered types.
+  void allowUnknownTypes(bool allow = true) { unknownTypesAllowed = allow; }
 
 private:
   // Register a symbol(e.g. type) with its given unique class identifier.
@@ -246,10 +254,15 @@ private:
   /// This is the context that owns this Dialect object.
   MLIRContext *context;
 
-  /// Flag that toggles if this dialect supports unregistered operations, i.e.
-  /// operations prefixed with the dialect namespace but not registered with
-  /// addOperation.
-  bool allowUnknownOps;
+  /// Flag that specifies whether this dialect supports unregistered operations,
+  /// i.e. operations prefixed with the dialect namespace but not registered
+  /// with addOperation.
+  bool unknownOpsAllowed = false;
+
+  /// Flag that specifies whether this dialect allows unregistered types, i.e.
+  /// types prefixed with the dialect namespace but not registered with addType.
+  /// These types are represented with OpaqueType.
+  bool unknownTypesAllowed = false;
 };
 
 using DialectAllocatorFunction = std::function<void(MLIRContext *)>;

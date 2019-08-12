@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -48,9 +49,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace {
-
-using ::absl::make_unique;
-using ::absl::StrCat;
 
 // Creates a node that consumes output from the given node. Because output need
 // to stay the same, newly created node will inherit the output from the given
@@ -78,8 +76,8 @@ template <typename T>
 Status CreateVectorCopyData(const TfLiteTensor& tensor, T* tensor_data) {
   if (tensor.bytes % sizeof(T) != 0) {
     return InvalidArgumentError(
-        StrCat("Input data size ", tensor.bytes,
-               " is not aligned to expected type: ", sizeof(T)));
+        absl::StrCat("Input data size ", tensor.bytes,
+                     " is not aligned to expected type: ", sizeof(T)));
   }
   std::memcpy(tensor_data, tensor.data.uint8, tensor.bytes);
   return OkStatus();
@@ -172,7 +170,7 @@ template <>
 Status SetAllDimensions<OHWI>(const TfLiteIntArray* dimensions, OHWI* shape) {
   if (dimensions->size != 4) {
     return InvalidArgumentError(
-        StrCat("Dimensions are not OHWI: ", dimensions->size));
+        absl::StrCat("Dimensions are not OHWI: ", dimensions->size));
   }
   shape->o = dimensions->data[0];
   shape->h = dimensions->data[1];
@@ -185,7 +183,7 @@ template <>
 Status SetAllDimensions<IHWO>(const TfLiteIntArray* dimensions, IHWO* shape) {
   if (dimensions->size != 4) {
     return InvalidArgumentError(
-        StrCat("Dimensions are not IHWO: ", dimensions->size));
+        absl::StrCat("Dimensions are not IHWO: ", dimensions->size));
   }
   shape->i = dimensions->data[0];
   shape->h = dimensions->data[1];
@@ -266,7 +264,8 @@ class ObjectReader {
 
   Status ReadValue(uint32_t idx, Value<TensorRef<BHWC>>** value) const {
     if (idx >= tflite_node_->inputs->size) {
-      return OutOfRangeError(StrCat("ReadValue: input tensor index: ", idx));
+      return OutOfRangeError(
+          absl::StrCat("ReadValue: input tensor index: ", idx));
     }
     return ReadValueByTensorIdx(tflite_node_->inputs->data[idx], value);
   }
@@ -277,11 +276,11 @@ class ObjectReader {
 
   Status GetTensorDims(uint32_t idx, TfLiteIntArray* dimensions) const {
     if (idx >= tflite_node_->inputs->size) {
-      return OutOfRangeError(StrCat("Input tensor index: ", idx));
+      return OutOfRangeError(absl::StrCat("Input tensor index: ", idx));
     }
     const int tensor_idx = tflite_node_->inputs->data[idx];
     if (tensor_idx < 0 || tensor_idx > context_->tensors_size) {
-      return OutOfRangeError(StrCat("Tensor index: ", tensor_idx));
+      return OutOfRangeError(absl::StrCat("Tensor index: ", tensor_idx));
     }
     const TfLiteTensor& tflite_tensor = context_->tensors[tensor_idx];
     *dimensions = *tflite_tensor.dims;
@@ -304,9 +303,9 @@ class ObjectReader {
 
   Status AddOutput(const Node* node, int id) {
     if (tflite_node_->outputs->size <= id) {
-      return InvalidArgumentError(
-          StrCat("Data id ", id, " must be less than tflite node outputs size ",
-                 tflite_node_->outputs->size));
+      return InvalidArgumentError(absl::StrCat(
+          "Data id ", id, " must be less than tflite node outputs size ",
+          tflite_node_->outputs->size));
     }
     int output_tensor_idx = tflite_node_->outputs->data[id];
     Value<TensorRef<BHWC>>* value;
@@ -332,13 +331,13 @@ class ObjectReader {
                               Value<TensorRef<BHWC>>** value) const {
     if (tensor_idx >= tensor_to_value_->size()) {
       return OutOfRangeError(
-          StrCat("ReadValue: input tensor index: ", tensor_idx));
+          absl::StrCat("ReadValue: input tensor index: ", tensor_idx));
     }
     if ((*tensor_to_value_)[tensor_idx] == nullptr) {
       const TfLiteTensor& tflite_tensor = context_->tensors[tensor_idx];
       if (tflite::IsConstantTensor(&tflite_tensor)) {
-        return NotFoundError(
-            StrCat("ReadValue: value is a constant tensor: ", tensor_idx));
+        return NotFoundError(absl::StrCat(
+            "ReadValue: value is a constant tensor: ", tensor_idx));
       }
       Value<TensorRef<BHWC>>* value = graph_->NewValue();
       RETURN_IF_ERROR(
@@ -464,7 +463,7 @@ Status MaybeFuseActivation(TfLiteFusedActivation fused_activation,
       break;
     default:
       return NotFoundError(
-          StrCat("Unsupported fused activation: ", fused_activation));
+          absl::StrCat("Unsupported fused activation: ", fused_activation));
   }
   return OkStatus();
 }
@@ -1047,8 +1046,6 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    TfLiteSubParams* tf_options;
-    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     if (IsOneArgumentOperation()) {
       RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node, /*inputs=*/1,
                                          /*outputs=*/1));
@@ -1058,7 +1055,9 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
     } else {
       return InvalidArgumentError("Op can only handle 1 or 2 operand(s).");
     }
-    return IsActivationSupported(tf_options->activation);
+    TfLiteFusedActivation activation;
+    RETURN_IF_ERROR(GetActivation(tflite_node, &activation));
+    return IsActivationSupported(activation);
   }
 
   Status Parse(const TfLiteNode* tflite_node,
@@ -1111,6 +1110,27 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   }
 
  private:
+  Status GetActivation(const TfLiteNode* tflite_node,
+                       TfLiteFusedActivation* activation) const {
+    if (operation_type_ == OperationType::DIV) {
+      TfLiteDivParams* tf_options;
+      RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+      *activation = tf_options ? tf_options->activation : kTfLiteActNone;
+      return OkStatus();
+    }
+    if (operation_type_ == OperationType::SUB) {
+      TfLiteSubParams* tf_options;
+      RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+      *activation = tf_options ? tf_options->activation : kTfLiteActNone;
+      return OkStatus();
+    }
+
+    // Return kTfLiteActNone as other ops either do not have TfLiteXxxParams or
+    // TfLiteXxxParams.activation.
+    *activation = kTfLiteActNone;
+    return OkStatus();
+  }
+
   bool IsOneArgumentOperation() const {
     switch (operation_type_) {
       case OperationType::ABS:
@@ -1715,7 +1735,7 @@ class SoftmaxOperationParser : public TFLiteOperationParser {
                const TfLiteRegistration* registration, GraphFloat32* graph,
                ObjectReader* reader) final {
     Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::SOFT_MAX);
+    node->operation.type = ToString(OperationType::SOFTMAX);
     RETURN_IF_ERROR(reader->AddInput(node, 0));
     RETURN_IF_ERROR(reader->AddOutputs(node));
 
@@ -1731,8 +1751,7 @@ class SoftmaxOperationParser : public TFLiteOperationParser {
       // auto mul_node = reader->NewPassthroughNode(node);
       // mul_node->operation.type = ToString(OperationType::MUL);
     }
-    // TODO(impjdi): Rename to SoftmaxAttributes.
-    SoftMaxAttributes attr;
+    SoftmaxAttributes attr;
     attr.axis = Axis::CHANNELS;  // always by channels
     node->operation.attributes = attr;
     return OkStatus();
@@ -2096,86 +2115,89 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
   const absl::string_view custom_name = registration->custom_name;
   switch (builtin_code) {
     case kTfLiteBuiltinAbs:
-      return make_unique<ElementwiseOperationParser>(OperationType::ABS);
+      return absl::make_unique<ElementwiseOperationParser>(OperationType::ABS);
     case kTfLiteBuiltinAdd:
-      return make_unique<AddOperationParser>();
+      return absl::make_unique<AddOperationParser>();
     case kTfLiteBuiltinAveragePool2d:
-      return make_unique<Pooling2DOperationParser>(PoolingType::AVERAGE);
+      return absl::make_unique<Pooling2DOperationParser>(PoolingType::AVERAGE);
     case kTfLiteBuiltinConcatenation:
-      return make_unique<ConcatenationOperationParser>();
+      return absl::make_unique<ConcatenationOperationParser>();
     case kTfLiteBuiltinConv2d:
-      return make_unique<Conv2DOperationParser>();
+      return absl::make_unique<Conv2DOperationParser>();
     case kTfLiteBuiltinCos:
-      return make_unique<ElementwiseOperationParser>(OperationType::COS);
+      return absl::make_unique<ElementwiseOperationParser>(OperationType::COS);
     case kTfLiteBuiltinDepthwiseConv2d:
-      return make_unique<DepthwiseConvolutionOperationParser>();
+      return absl::make_unique<DepthwiseConvolutionOperationParser>();
     case kTfLiteBuiltinDiv:
-      return make_unique<ElementwiseOperationParser>(OperationType::DIV);
+      return absl::make_unique<ElementwiseOperationParser>(OperationType::DIV);
     case kTfLiteBuiltinFullyConnected:
-      return make_unique<FullyConnectedOperationParser>();
+      return absl::make_unique<FullyConnectedOperationParser>();
     case kTfLiteBuiltinHardSwish:
-      return make_unique<HardSwishOperationParser>();
+      return absl::make_unique<HardSwishOperationParser>();
     case kTfLiteBuiltinLogistic:
-      return make_unique<ElementwiseOperationParser>(OperationType::SIGMOID);
+      return absl::make_unique<ElementwiseOperationParser>(
+          OperationType::SIGMOID);
     case kTfLiteBuiltinLog:
-      return make_unique<ElementwiseOperationParser>(OperationType::LOG);
+      return absl::make_unique<ElementwiseOperationParser>(OperationType::LOG);
     case kTfLiteBuiltinLstm:
-      return make_unique<LSTMOperationParser>();
+      return absl::make_unique<LSTMOperationParser>();
     case kTfLiteBuiltinMaxPool2d:
-      return make_unique<Pooling2DOperationParser>(PoolingType::MAX);
+      return absl::make_unique<Pooling2DOperationParser>(PoolingType::MAX);
     case kTfLiteBuiltinMul:
-      return make_unique<MulOperationParser>();
+      return absl::make_unique<MulOperationParser>();
     case kTfLiteBuiltinPad:
-      return make_unique<PadOperationParser>();
+      return absl::make_unique<PadOperationParser>();
     case kTfLiteBuiltinPow:
-      return make_unique<ElementwiseOperationParser>(OperationType::POW);
+      return absl::make_unique<ElementwiseOperationParser>(OperationType::POW);
     case kTfLiteBuiltinRelu:
-      return make_unique<ReLUOperationParser>(0);
+      return absl::make_unique<ReLUOperationParser>(0);
     case kTfLiteBuiltinRelu6:
-      return make_unique<ReLUOperationParser>(6);
+      return absl::make_unique<ReLUOperationParser>(6);
     case kTfLiteBuiltinLeakyRelu:
-      return make_unique<ReLUOperationParser>(0);
+      return absl::make_unique<ReLUOperationParser>(0);
     case kTfLiteBuiltinPrelu:
-      return make_unique<PReLUOperationParser>();
+      return absl::make_unique<PReLUOperationParser>();
     case kTfLiteBuiltinReshape:
-      return make_unique<ReshapeOperationParser>();
+      return absl::make_unique<ReshapeOperationParser>();
     case kTfLiteBuiltinResizeBilinear:
-      return make_unique<ResizeBilinearOperationParser>();
+      return absl::make_unique<ResizeBilinearOperationParser>();
     case kTfLiteBuiltinRsqrt:
-      return make_unique<ElementwiseOperationParser>(OperationType::RSQRT);
+      return absl::make_unique<ElementwiseOperationParser>(
+          OperationType::RSQRT);
     case kTfLiteBuiltinSin:
-      return make_unique<ElementwiseOperationParser>(OperationType::SIN);
+      return absl::make_unique<ElementwiseOperationParser>(OperationType::SIN);
     case kTfLiteBuiltinSoftmax:
-      return make_unique<SoftmaxOperationParser>();
+      return absl::make_unique<SoftmaxOperationParser>();
     case kTfLiteBuiltinStridedSlice:
-      return make_unique<StridedSliceOperationParser>();
+      return absl::make_unique<StridedSliceOperationParser>();
     case kTfLiteBuiltinSqrt:
-      return make_unique<ElementwiseOperationParser>(OperationType::SQRT);
+      return absl::make_unique<ElementwiseOperationParser>(OperationType::SQRT);
     case kTfLiteBuiltinSquare:
-      return make_unique<ElementwiseOperationParser>(OperationType::SQUARE);
+      return absl::make_unique<ElementwiseOperationParser>(
+          OperationType::SQUARE);
     case kTfLiteBuiltinSquaredDifference:
-      return make_unique<ElementwiseOperationParser>(
+      return absl::make_unique<ElementwiseOperationParser>(
           OperationType::SQUARED_DIFF);
     case kTfLiteBuiltinSub:
-      return make_unique<ElementwiseOperationParser>(OperationType::SUB);
+      return absl::make_unique<ElementwiseOperationParser>(OperationType::SUB);
     case kTfLiteBuiltinTanh:
-      return make_unique<ElementwiseOperationParser>(OperationType::TANH);
+      return absl::make_unique<ElementwiseOperationParser>(OperationType::TANH);
     case kTfLiteBuiltinTransposeConv:
-      return make_unique<TransposeConvOperationParser>();
+      return absl::make_unique<TransposeConvOperationParser>();
 
     case kTfLiteBuiltinCustom:
       if (custom_name == "Convolution2DTransposeBias") {
-        return make_unique<Convolution2DTransposeBiasParser>();
+        return absl::make_unique<Convolution2DTransposeBiasParser>();
       }
       if (custom_name == "MaxPoolingWithArgmax2D") {
-        return make_unique<Pooling2DOperationParser>(PoolingType::MAX);
+        return absl::make_unique<Pooling2DOperationParser>(PoolingType::MAX);
       }
       if (custom_name == "MaxUnpooling2D") {
-        return make_unique<Unpooling2DOperationParser>();
+        return absl::make_unique<Unpooling2DOperationParser>();
       }
       break;
   }
-  return make_unique<UnsupportedOperationParser>();
+  return absl::make_unique<UnsupportedOperationParser>();
 }
 
 }  // namespace
@@ -2220,8 +2242,8 @@ Status GetNodeAndRegistration(TfLiteContext* context, int node_id,
                               TfLiteRegistration** registration) {
   if (context->GetNodeAndRegistration(context, node_id, tflite_node,
                                       registration) != kTfLiteOk) {
-    return InvalidArgumentError(
-        StrCat("Couldn't get node and registration info for op: ", node_id));
+    return InvalidArgumentError(absl::StrCat(
+        "Couldn't get node and registration info for op: ", node_id));
   }
   return OkStatus();
 }
@@ -2361,8 +2383,8 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
   std::set<std::string> errors;
   for (int i = 0; i < execution_plan->size; ++i) {
     const int node_id = execution_plan->data[i];
-    TfLiteNode* node = nullptr;
-    TfLiteRegistration* registration = nullptr;
+    TfLiteNode* node;
+    TfLiteRegistration* registration;
     auto status =
         GetNodeAndRegistration(context, node_id, &node, &registration);
     if (!status.ok()) {
@@ -2377,8 +2399,8 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
         IsAllFloatTensors(context, node->outputs)) {
       if (errors.empty()) subgraph->data[subgraph->size++] = node_id;
     } else {
-      errors.insert(GetOpNameByRegistration(registration) + ": " +
-                    status.error_message());
+      errors.insert(absl::StrCat(GetOpNameByRegistration(registration), ": ",
+                                 status.error_message()));
     }
   }
   if (!errors.empty()) {
@@ -2411,9 +2433,9 @@ Status BuildModel(TfLiteContext* context,
     auto op_parser = NewOperationParser(registration);
     if (!op_parser) {
       return UnimplementedError(
-          StrCat("Operation ", registration->builtin_code, "(",
-                 registration->custom_name,
-                 ") is not supported by TFLite GPU Delegate."));
+          absl::StrCat("Operation ", registration->builtin_code, "(",
+                       registration->custom_name,
+                       ") is not supported by TFLite GPU Delegate."));
     }
     operations.push_back(std::move(op_parser));
     tflite_nodes.push_back(i);
@@ -2421,14 +2443,18 @@ Status BuildModel(TfLiteContext* context,
   std::vector<Value<TensorRef<BHWC>>*> tensor_to_value(context->tensors_size,
                                                        nullptr);
   for (int i = 0; i < operations.size(); ++i) {
-    TfLiteNode* tflite_node = nullptr;
-    TfLiteRegistration* registration = nullptr;
+    TfLiteNode* tflite_node;
+    TfLiteRegistration* registration;
     RETURN_IF_ERROR(GetNodeAndRegistration(
         context, delegate_params->nodes_to_replace->data[tflite_nodes[i]],
         &tflite_node, &registration));
     ObjectReader reader(graph, context, tflite_node, &tensor_to_value);
-    RETURN_IF_ERROR(
-        operations[i]->Parse(tflite_node, registration, graph, &reader));
+    const auto status =
+        operations[i]->Parse(tflite_node, registration, graph, &reader);
+    if (!status.ok()) {
+      return InternalError(absl::StrCat(GetOpNameByRegistration(registration),
+                                        ": ", status.error_message()));
+    }
   }
   return OkStatus();
 }

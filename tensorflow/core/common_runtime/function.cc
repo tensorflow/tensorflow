@@ -1654,7 +1654,7 @@ namespace {
 Status ValidateNoInline(const FunctionBody* fbody) {
   const auto attr = AttrSlice(&fbody->fdef.attr());
   bool noinline = false;
-  if (GetNodeAttr(attr, kNoInlineAttr, &noinline).ok() && noinline) {
+  if (TryGetNodeAttr(attr, kNoInlineAttr, &noinline) && noinline) {
     return errors::InvalidArgument(
         "Can't inline function marked with '_noinline'");
   }

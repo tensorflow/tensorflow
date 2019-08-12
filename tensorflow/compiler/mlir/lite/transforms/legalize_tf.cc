@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
-#include "tensorflow/compiler/mlir/lite/utils/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -205,10 +204,10 @@ void LegalizeTF::runOnFunction() {
 
   // Add the generated patterns to the list.
   populateWithGenerated(ctx, &patterns);
-  RewriteListBuilder<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
-                     ConvertTFPackOp, ConvertTFSplitOp, ConvertTFSplitVOp,
-                     ConvertTFUnpackOp>::build(patterns, ctx);
-  applyPatternsGreedily(func, std::move(patterns));
+  patterns.insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
+                  ConvertTFPackOp, ConvertTFSplitOp, ConvertTFSplitVOp,
+                  ConvertTFUnpackOp>(ctx);
+  applyPatternsGreedily(func, patterns);
 }
 
 }  // namespace

@@ -10,7 +10,7 @@ load(
     "tf_cc_test",
 )
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "if_static",
     "if_static_and_not_mobile",
 )

@@ -27,6 +27,7 @@ import threading
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from google.protobuf import json_format
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
@@ -41,6 +42,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
@@ -64,6 +66,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
@@ -108,8 +112,9 @@ class Layer(module.Module):
   Arguments:
     trainable: Boolean, whether the layer's variables should be trainable.
     name: String name of the layer.
-    dtype: Default dtype of the layer's weights (default of `None` means use the
-      type of the first input).
+    dtype: The dtype of the layer's computations and weights (default of
+      `None` means use `tf.keras.backend.floatx` in TensorFlow 2, or the type
+      of the first input in TensorFlow 1).
     dynamic: Set this to `True` if your layer should only be run eagerly, and
       should not be used to generate a static computation graph.
       This would be the case for a Tree-RNN or a recursive network,
@@ -119,8 +124,10 @@ class Layer(module.Module):
 
   Read-only properties:
     name: The name of the layer (string).
-    dtype: Default dtype of the layer's weights (default of `None` means use the
-      type of the first input).
+    dtype: The dtype of the layer's computations and weights. If mixed
+      precision is used with a `tf.keras.mixed_precision.experimental.Policy`,
+      this is instead just the dtype of the layer's weights, as the computations
+      are done in a different dtype.
     updates: List of update ops of this layer.
     losses: List of losses added by this layer.
     trainable_weights: List of variables to be included in backprop.
@@ -133,6 +140,129 @@ class Layer(module.Module):
     trainable: Whether the layer should be trained (boolean).
     input_spec: Optional (list of) `InputSpec` object(s) specifying the
       constraints on inputs that can be accepted by the layer.
+
+  ### Dtypes and casting
+  Each layer has a dtype, which is typically the dtype of the layer's
+  computations and variables. A layer's dtype can be queried via the
+  `Layer.dtype` property. The dtype is specified with the `dtype` constructor
+  argument. In TensorFlow 2, the dtype defaults to `tf.keras.backend.floatx()`
+  if no dtype is passed. `floatx()` itself defaults to "float32". Additionally,
+  layers will cast their inputs to the layer's dtype in TensorFlow 2. For
+  example:
+
+  ```
+  x = tf.ones((4, 4, 4, 4), dtype='float64')
+  layer = tf.keras.layers.Conv2D(filters=4, kernel_size=2)
+  print(layer.dtype)  # float32
+
+  # `layer` casts it's inputs to layer.dtype, which is float32, and does
+  # computations in float32.
+  y = layer(x)
+  ```
+
+  Currently, only tensors in the first argument to the layer's `call` method are
+  casted. For example:
+
+  ```
+  class MyLayer(tf.keras.layers.Layer):
+    # Bug! `b` will not be casted.
+    def call(self, a, b):
+      return a + 1., b + 1.
+
+  a = tf.constant(1., dtype="float32")
+  b = tf.constant(1., dtype="float32")
+
+  layer = MyLayer(dtype="float64")
+  x, y = layer(a, b)
+  print(x.dtype)  # float64
+  print(y.dtype)  # float32. Not casted since `b` was not passed to first input
+  ```
+
+  It is recommended to accept tensors only in the first argument. This way,
+  all tensors are casted to the layer's dtype. `MyLayer` should therefore be
+  written as:
+
+  ```
+  class MyLayer(tf.keras.layers.Layer):
+    # Now, all tensor inputs will be casted.
+    def call(self, inputs):
+      a, b = inputs
+      return a + 1., b + 1.
+
+  a = tf.constant(1., dtype="float32")
+  b = tf.constant(1., dtype="float32")
+
+  layer = MyLayer(dtype="float64")
+  x, y = layer((a, b))
+  print(x.dtype)  # float64
+  print(y.dtype)  # float64.
+  ```
+
+  In a future minor release, tensors in other arguments may be casted as well.
+
+  Currently, other arguments are not automatically casted for
+  technical reasons, but this may change in a future minor release.
+
+  A layer subclass can prevent its inputs from being autocasted by passing
+  `autocast=False` to the layer constructor. For example:
+
+  ```
+  class MyLayer(tf.keras.layers.Layer):
+
+    def __init__(self, **kwargs):
+      kwargs['autocast']=False
+      super(MyLayer, self).__init__(**kwargs)
+
+    def call(self, inp):
+      return inp
+
+  x = tf.ones((4, 4, 4, 4), dtype='float64')
+  layer = MyLayer()
+  print(layer.dtype)  # float32.
+  y = layer(x)  # MyLayer will not cast inputs to it's dtype of float32
+  print(y.dtype)  # float64
+  ```
+
+  #### Running models in float64 in TensorFlow 2
+
+  If you want to run a Model in float64, you can set floatx to be float64 by
+  calling `tf.keras.backend.set_floatx('float64')`. This will cause all layers
+  to default to float64 instead of float32:
+
+  ```
+  tf.keras.backend.set_floatx('float64')
+  layer1 = tf.keras.layers.Dense(4)
+  layer2 = tf.keras.layers.Dense(4)
+
+  x = tf.ones((4, 4))
+  y = layer2(layer1(x))  # Both layers run in float64
+  ```
+
+  Alternatively, you can pass `dtype='float64'` to each individual layer. Note
+  that if you have any layers which contain other layers as members, you must
+  ensure each sublayer gets `dtype='float64'` passed to it's constructor as
+  well:
+
+  ```
+  layer1 = tf.keras.layers.Dense(4, dtype='float64')
+  layer2 = tf.keras.layers.Dense(4, dtype='float64')
+
+  x = tf.ones((4, 4))
+  y = layer2(layer1(x))  # Both layers run in float64
+
+  class NestedLayer(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+      super(NestedLayer, self).__init__(**kwargs)
+      self.dense = tf.keras.layers.Dense(4, dtype=kwargs.get('dtype'))
+
+    def call(self, inp):
+      return self.dense(inp)
+
+  layer3 = NestedLayer(dtype='float64')
+  z = layer3(x)  # layer3's dense layer runs in float64, since NestedLayer
+                 # correcty passed it's dtype to it's dense layer
+
+  ```
   """
 
   # See tf.Module for the usage of this property.
@@ -160,6 +290,7 @@ class Layer(module.Module):
         'batch_size',
         'weights',
         'activity_regularizer',
+        'autocast'
     }
     # Validate optional keyword arguments.
     generic_utils.validate_kwargs(kwargs, allowed_kwargs)
@@ -195,7 +326,12 @@ class Layer(module.Module):
     # added using the `add_metric` API.
     self._metrics = []
 
-    self._set_dtype_and_policy(dtype)
+    self._set_dtype_policy(dtype)
+    # Boolean indicating whether the layer automatically casts its inputs to the
+    # layer's compute_dtype.
+    self._autocast = kwargs.get('autocast',
+                                base_layer_utils.v2_dtype_behavior_enabled())
+
     # Dependencies tracked via attribute assignment.
     self._maybe_create_attribute('_layers', [])
 
@@ -326,8 +462,9 @@ class Layer(module.Module):
     if dtype is None:
       dtype = self.dtype or backend.floatx()
     dtype = dtypes.as_dtype(dtype)
-    if self._dtype is None:
-      self._dtype = dtype.base_dtype.name
+    if self._dtype_policy.variable_dtype is None:
+      # The policy is "infer", so we infer the policy from the variable dtype.
+      self._dtype_policy = policy.Policy(dtype.base_dtype.name)
     initializer = initializers.get(initializer)
     regularizer = regularizers.get(regularizer)
     constraint = constraints.get(constraint)
@@ -359,7 +496,7 @@ class Layer(module.Module):
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
-    if autocast and self._mixed_precision_policy.should_cast_variables:
+    if autocast and self._dtype_policy.should_cast_variables:
       # Wrap 'getter' with a version that returns an AutoCastVariable.
       old_getter = getter
       def getter(*args, **kwargs):  # pylint: disable=function-redefined
@@ -438,7 +575,7 @@ class Layer(module.Module):
     if len(extra_args) > 1 and hasattr(self.get_config, '_is_default'):
       raise NotImplementedError('Layers with arguments in `__init__` must '
                                 'override `get_config`.')
-    # TODO(reedwm): Handle serializing self._mixed_precision_policy.
+    # TODO(reedwm): Handle serializing self._dtype_policy.
     return config
 
   @classmethod
@@ -534,12 +671,7 @@ class Layer(module.Module):
       return s.shape
     input_shape = nest.map_structure(check_type_return_shape, input_signature)
     output_shape = self.compute_output_shape(input_shape)
-    if self._mixed_precision_policy.should_cast_variables:
-      # If using mixed precision, and weights are cast to input dtype, we should
-      # not infer the dtype from self.dtype
-      dtype = None
-    else:
-      dtype = self.dtype
+    dtype = self._compute_dtype
     if dtype is None:
       input_dtypes = [s.dtype for s in nest.flatten(input_signature)]
       # Default behavior when self.dtype is None, is to use the first input's
@@ -650,6 +782,12 @@ class Layer(module.Module):
             training_value = backend.learning_phase()
 
       if self._expects_training_arg and training_value is not None:
+        # Force the training_value to be bool type which matches to the contract
+        # for layer/model call args.
+        if tensor_util.is_tensor(training_value):
+          training_value = math_ops.cast(training_value, dtypes.bool)
+        else:
+          training_value = bool(training_value)
         kwargs['training'] = training_value
         training_arg_passed_by_framework = True
 
@@ -671,6 +809,8 @@ class Layer(module.Module):
       if build_graph:
         # Symbolic execution on symbolic tensors. We will attempt to build
         # the corresponding TF subgraph inside `backend.get_graph()`
+        # TODO(reedwm): We should assert input compatibility after the inputs
+        # are casted, not before.
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
         graph = backend.get_graph()
@@ -678,6 +818,7 @@ class Layer(module.Module):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           self._maybe_build(inputs)
+          cast_inputs = self._maybe_cast_inputs(inputs)
 
           # Wrapping `call` function in autograph to allow for dynamic control
           # flow and control dependencies in call. We are limiting this to
@@ -695,19 +836,18 @@ class Layer(module.Module):
           if not self.dynamic:
             try:
               with base_layer_utils.autocast_context_manager(
-                  input_list,
-                  self._mixed_precision_policy.should_cast_variables):
+                  self._compute_dtype):
                 # Add auto_control_deps in V2 when they are not already added by
                 # a `tf.function`.
                 if (ops.executing_eagerly_outside_functions() and
                     not base_layer_utils.is_in_eager_or_tf_function()):
                   with auto_control_deps.AutomaticControlDependencies() as acd:
-                    outputs = call_fn(inputs, *args, **kwargs)
+                    outputs = call_fn(cast_inputs, *args, **kwargs)
                     # Wrap Tensors in `outputs` in `tf.identity` to avoid
                     # circular dependencies.
                     outputs = base_layer_utils.mark_as_return(outputs, acd)
                 else:
-                  outputs = call_fn(inputs, *args, **kwargs)
+                  outputs = call_fn(cast_inputs, *args, **kwargs)
 
             except errors.OperatorNotAllowedInGraphError as e:
               raise TypeError('You are attempting to use Python control '
@@ -748,9 +888,10 @@ class Layer(module.Module):
         # Eager execution on data tensors.
         with backend.name_scope(self._name_scope()):
           self._maybe_build(inputs)
+          cast_inputs = self._maybe_cast_inputs(inputs)
           with base_layer_utils.autocast_context_manager(
-              input_list, self._mixed_precision_policy.should_cast_variables):
-            outputs = self.call(inputs, *args, **kwargs)
+              self._compute_dtype):
+            outputs = self.call(cast_inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks)
 
@@ -758,7 +899,7 @@ class Layer(module.Module):
 
   @property
   def dtype(self):
-    return self._dtype
+    return self._dtype_policy.variable_dtype
 
   @property
   def name(self):
@@ -1479,9 +1620,9 @@ class Layer(module.Module):
           (in which case its weights aren't yet defined).
     """
     if not self.built:
-      if self.__class__.__name__ == 'Sequential':
+      if getattr(self, '_is_graph_network', False):
         with tf_utils.maybe_init_scope(self):
-          self._maybe_build()  # pylint: disable=no-value-for-parameter
+          self._maybe_build(self.inputs)
       else:
         raise ValueError('You tried to call `count_params` on ' + self.name +
                          ', but the layer isn\'t built. '
@@ -1584,23 +1725,110 @@ class Layer(module.Module):
   # Methods & attributes below are all private and only used by the framework. #
   ##############################################################################
 
-  def _set_dtype_and_policy(self, dtype):
-    """Sets self._dtype and self._mixed_precision_policy."""
-    if dtype:
-      if isinstance(dtype, policy.Policy):
-        self._mixed_precision_policy = dtype
-        self._dtype = self._mixed_precision_policy.default_variable_dtype
-      else:
-        # If a non-policy dtype is passed, no casting should be done. So we use
-        # the "infer" policy, which does no casting.
-        self._mixed_precision_policy = policy.Policy('infer')
-        self._dtype = dtypes.as_dtype(dtype).name
+  def _set_dtype_policy(self, dtype):
+    """Sets self._dtype_policy."""
+    if isinstance(dtype, policy.Policy):
+      self._dtype_policy = dtype
+    elif dtype:
+      self._dtype_policy = policy.Policy(dtypes.as_dtype(dtype).name)
     else:
-      self._mixed_precision_policy = policy.global_policy()
-      # If the global policy has not been set, it will be an "infer" policy
-      # without a default variable dtype, and so self._dtype will be None. In
-      # that case, self._dtype will be set when the layer is built or called.
-      self._dtype = self._mixed_precision_policy.default_variable_dtype
+      self._dtype_policy = policy.global_policy()
+
+    if self._dtype_policy.should_cast_variables and backend.is_tpu_strategy(
+        ds_context.get_strategy()):
+      # TODO(b/137859335): Supoprt this. AutoCastVariables currently do not work
+      # properly when wrapping TPUMirroredVariables.
+      raise ValueError('DType Policies ending in "_with_float32_vars" are '
+                       'not yet supported with TPUStrategy. Got policy: %s' %
+                       self._dtype_policy.name)
+
+    # This has no impact on the layer behavior, and is only used for printing
+    # warnings.
+    self._dtype_defaulted_to_floatx = (not dtype and
+                                       policy.policy_defaults_to_floatx())
+
+  # TODO(reedwm): Expose this property?
+  @property
+  def _compute_dtype(self):
+    """The layer's compute dtype.
+
+    Unless mixed-precision is used, this is the same as `Layer.dtype`.
+
+    If self._autocast is True, layer's will cast floating-point inputs to this.
+
+    Returns:
+      The layer's compute dtype.
+    """
+    return self._dtype_policy.compute_dtype
+
+  def _maybe_cast_inputs(self, inputs):
+    """Maybe casts the inputs to the compute dtype.
+
+    If self._compute_dtype is floating-point, and self_autocast is True,
+    floating-point inputs are casted to self._compute_dtype.
+
+    Args:
+      inputs: Input tensor, or structure of input tensors.
+
+    Returns:
+      `inputs`, but tensors may have been casted to self._compute_dtype
+    """
+    compute_dtype = self._compute_dtype
+    if (self._autocast and compute_dtype and
+        dtypes.as_dtype(compute_dtype).is_floating):
+      def f(x):
+        cast_types = (ops.Tensor, sparse_tensor.SparseTensor,
+                      ragged_tensor.RaggedTensor)
+        if (isinstance(x, cast_types) and x.dtype.is_floating and
+            x.dtype.base_dtype.name != compute_dtype):
+          if self._dtype_defaulted_to_floatx:
+            self._warn_about_input_casting(x.dtype.base_dtype)
+          return math_ops.cast(x, compute_dtype)
+        else:
+          return x
+      return nest.map_structure(f, inputs)
+    else:
+      return inputs
+
+  def _warn_about_input_casting(self, input_dtype):
+    # self._already_warned_about_input_casting is only retrieved or set in this
+    # function.
+    already_warned = getattr(self, '_already_warned_about_input_casting', False)
+    if not already_warned:
+      tf_logging.warn(
+          "Layer {self.name} is casting an input tensor from dtype "
+          "{input_dtype} to the layer's dtype of {layer_dtype}, which is new "
+          "behavior in TensorFlow 2.  The layer has dtype {layer_dtype} "
+          "because it's dtype defaults to floatx.\n\n"
+          ""
+          "If you intended to run this layer in {layer_dtype}, you can safely "
+          "ignore this warning. If in doubt, this warning is likely only an "
+          "issue if you are porting a TensorFlow 1.X model to TensorFlow 2.\n\n"
+          ""
+          "To change all layers to have dtype {input_dtype} by default, call "
+          "`tf.keras.backend.set_floatx('{input_dtype}')`. To change just this "
+          "layer, pass dtype='{input_dtype}' to the layer constructor. If you "
+          "are the author of this layer, you can disable autocasting by "
+          "passing autocast=False to the base Layer constructor.\n".format(
+              self=self,
+              input_dtype=input_dtype.name,
+              layer_dtype=self._compute_dtype))
+      self._already_warned_about_input_casting = True
+
+  # _dtype used to be an attribute set in the constructor. We still expose it
+  # because some clients still use it.
+  # TODO(reedwm): Deprecate, then remove the _dtype property.
+  @property
+  def _dtype(self):
+    # This is equivalent to returning self.dtype . We do not return self.dtype
+    # as it would cause infinite recursion in a few subclasses, which override
+    # "dtype" to return self._dtype.
+    return self._dtype_policy.variable_dtype
+
+  @_dtype.setter
+  def _dtype(self, value):
+    value = dtypes.as_dtype(value).name
+    self._dtype_policy = policy.Policy(value)
 
   def _name_scope(self):
     return self.name
@@ -1766,19 +1994,25 @@ class Layer(module.Module):
       return None
     return input_masks
 
-  def _call_arg_was_passed(self, arg_name, args, kwargs):
+  def _call_arg_was_passed(self, arg_name, args, kwargs, inputs_in_args=False):
     if arg_name in kwargs:
       return True
-    # Ignore `inputs` arg.
-    if arg_name in dict(zip(self._call_fn_args[1:], args)):
+    call_fn_args = self._call_fn_args
+    if not inputs_in_args:
+      # Ignore `inputs` arg.
+      call_fn_args = call_fn_args[1:]
+    if arg_name in dict(zip(call_fn_args, args)):
       return True
     return False
 
-  def _get_call_arg_value(self, arg_name, args, kwargs):
+  def _get_call_arg_value(self, arg_name, args, kwargs, inputs_in_args=False):
     if arg_name in kwargs:
       return kwargs[arg_name]
-    # Ignore `inputs` arg.
-    args_dict = dict(zip(self._call_fn_args[1:], args))
+    call_fn_args = self._call_fn_args
+    if not inputs_in_args:
+      # Ignore `inputs` arg.
+      call_fn_args = call_fn_args[1:]
+    args_dict = dict(zip(call_fn_args, args))
     return args_dict[arg_name]
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
@@ -1888,11 +2122,14 @@ class Layer(module.Module):
       input_spec.assert_input_compatibility(
           self.input_spec, inputs, self.name)
       input_list = nest.flatten(inputs)
-      if input_list and self._dtype is None:
+      if input_list and self._dtype_policy.compute_dtype is None:
         try:
-          self._dtype = input_list[0].dtype.base_dtype.name
+          dtype = input_list[0].dtype.base_dtype.name
         except AttributeError:
           pass
+        else:
+          self._dtype_policy = policy.with_input_dtype(self._dtype_policy,
+                                                       dtype)
       input_shapes = None
       if all(hasattr(x, 'shape') for x in input_list):
         input_shapes = nest.map_structure(lambda x: x.shape, inputs)
@@ -2262,7 +2499,7 @@ class Layer(module.Module):
   def _unique_trainable_weights(self):
     """Dedupe trainable weights while maintaining order as much as possible."""
     trainable_weights = self.trainable_weights
-    output, seen_weights = [], set()
+    output, seen_weights = [], object_identity.ObjectIdentitySet()
     for w in trainable_weights:
       if w not in seen_weights:
         output.append(w)
@@ -2307,11 +2544,17 @@ class TensorFlowOpLayer(Layer):
                constants=None,
                trainable=True,
                dtype=None):
+    # Pass autocast=False, as if inputs are cast, input types might not match
+    # Operation type.
     super(TensorFlowOpLayer, self).__init__(
-        name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype)
-    if not isinstance(node_def, bytes):
-      node_def = node_def.encode('utf-8')
-    self.node_def = node_def_pb2.NodeDef.FromString(node_def)
+        name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype,
+        autocast=False)
+    if isinstance(node_def, dict):
+      self.node_def = json_format.ParseDict(node_def, node_def_pb2.NodeDef())
+    else:
+      if not isinstance(node_def, bytes):
+        node_def = node_def.encode('utf-8')
+      self.node_def = node_def_pb2.NodeDef.FromString(node_def)
     # JSON serialization stringifies keys which are integer input indices.
     self.constants = ({
         int(index): constant for index, constant in constants.items()
@@ -2375,7 +2618,7 @@ class TensorFlowOpLayer(Layer):
     config.update({
         # `__init__` prefixes the name. Revert to the constructor argument.
         'name': config['name'][len(_TF_OP_LAYER_NAME_PREFIX):],
-        'node_def': self.node_def.SerializeToString().decode('utf-8'),
+        'node_def': json_format.MessageToDict(self.node_def),
         'constants': {
             i: backend.get_value(c) for i, c in self.constants.items()
         }

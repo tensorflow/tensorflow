@@ -27,8 +27,10 @@ class BufferDeallocOp;
 class CopyOp;
 class DimOp;
 class FillOp;
+class LoadOp;
 class RangeOp;
 class SliceOp;
+class StoreOp;
 class ViewOp;
 namespace intrinsics {
 using buffer_alloc = mlir::edsc::intrinsics::ValueBuilder<BufferAllocOp>;
@@ -37,6 +39,8 @@ using buffer_dealloc =
 using copy = mlir::edsc::intrinsics::OperationBuilder<CopyOp>;
 using dim = mlir::edsc::intrinsics::ValueBuilder<linalg::DimOp>;
 using fill = mlir::edsc::intrinsics::OperationBuilder<FillOp>;
+using linalg_load = mlir::edsc::intrinsics::ValueBuilder<linalg::LoadOp>;
+using linalg_store = mlir::edsc::intrinsics::OperationBuilder<linalg::StoreOp>;
 using range = mlir::edsc::intrinsics::ValueBuilder<RangeOp>;
 using slice = mlir::edsc::intrinsics::ValueBuilder<SliceOp>;
 using view = mlir::edsc::intrinsics::ValueBuilder<ViewOp>;

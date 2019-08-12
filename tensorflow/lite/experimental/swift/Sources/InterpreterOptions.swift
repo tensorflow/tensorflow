@@ -14,9 +14,8 @@
 
 /// Custom configuration options for a TensorFlow Lite `Interpreter`.
 public struct InterpreterOptions: Equatable {
-
-  /// Maximum number of CPU threads that the interpreter should run on. Default is `nil` which
-  /// indicates that the `Interpreter` will decide the number of threads to use.
+  /// Maximum number of CPU threads that the interpreter should run on. Default is `nil` indicating
+  /// that the `Interpreter` will decide the number of threads to use.
   public var threadCount: Int? = nil
 
   /// Creates a new instance of interpreter options.

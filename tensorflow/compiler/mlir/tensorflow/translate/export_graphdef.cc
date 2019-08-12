@@ -208,10 +208,8 @@ std::string Exporter::UniqueName(mlir::Operation* op) {
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     mlir::BlockArgument* arg, unsigned index) {
   auto node_def = absl::make_unique<NodeDef>();
-  node_def->set_name(UniqueName(arg->getContainingRegion()
-                                    ->getParentOfType<mlir::FuncOp>()
-                                    .getName()
-                                    .str()));
+  node_def->set_name(UniqueName(
+      arg->getParentRegion()->getParentOfType<mlir::FuncOp>().getName().str()));
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
@@ -333,7 +331,7 @@ Status Exporter::AddArgumentNode(mlir::BlockArgument* arg, unsigned index) {
   // is an input node. We recover the original input node and skip adding the
   // argument node. The new input node will be handled as normal in the
   // following steps.
-  if (arg->getContainingRegion()->getParentOfType<mlir::FuncOp>().getName() ==
+  if (arg->getParentRegion()->getParentOfType<mlir::FuncOp>().getName() ==
       "main") {
     if (!arg->hasOneUse()) {
       return errors::FailedPrecondition(

@@ -40,10 +40,8 @@ limitations under the License.
 using tensorflow::int64;
 
 static std::vector<int64> ConvertDenseIntAttr(mlir::DenseIntElementsAttr attr) {
-  llvm::ArrayRef<int64> raw_data = attr.getValues<int64>();
-  if (attr.isSplat())
-    return std::vector<int64>(attr.getType().getNumElements(), raw_data[0]);
-  return raw_data;
+  auto values = attr.getValues<int64>();
+  return {values.begin(), values.end()};
 }
 
 // Converts the broadcast_dimensions attribute into a span of dimension numbers
@@ -179,7 +177,7 @@ LogicalResult Lower(mlir::Operation* inst, xla::XlaBuilder* builder,
 
   // TODO(riverriddle) We currently don't support lowering constant operations.
   if (isa<mlir::XLA::ConstOp>(inst)) {
-    inst->emitError("unable to lower 'xla.constant' operation");
+    inst->emitError("unable to lower 'xla_hlo.constant' operation");
     return failure();
   }
 

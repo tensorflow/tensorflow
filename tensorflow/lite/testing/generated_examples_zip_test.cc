@@ -106,6 +106,9 @@ std::map<string, string> kBrokenTests = {
 
     // Select kernel doesn't support broadcasting yet.
     {R"(^\/where.*1,2,3,1)", "134692786"},
+
+    // Strided slice doesn't support ellipsis.
+    {R"(strided_slice.*Ellipsis)", "138098220"},
 };
 
 // Additional list of tests that are expected to fail when

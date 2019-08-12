@@ -25,7 +25,10 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Linalg/IR/LinalgTypes.h"
 #include "mlir/Linalg/Utils/Utils.h"
@@ -33,10 +36,88 @@
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/FoldUtils.h"
 
+#include "llvm/ADT/StringSet.h"
+#include "llvm/Support/raw_ostream.h"
+
 using namespace mlir;
 using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
+
+namespace {
+/// Fold constant dimensions into an alloc operation.
+struct SimplifyDimOp : public OpRewritePattern<linalg::DimOp> {
+  using OpRewritePattern<linalg::DimOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(linalg::DimOp dimOp,
+                                     PatternRewriter &rewriter) const override;
+};
+} // end namespace
+
+PatternMatchResult
+SimplifyDimOp::matchAndRewrite(linalg::DimOp dimOp,
+                               PatternRewriter &rewriter) const {
+  auto *viewProducingOp = dimOp.view()->getDefiningOp();
+  auto subView = dyn_cast_or_null<SubViewOp>(viewProducingOp);
+  auto slice = dyn_cast_or_null<SliceOp>(viewProducingOp);
+  auto view = dyn_cast_or_null<ViewOp>(viewProducingOp);
+  if (!subView && !slice && !view)
+    return matchFailure();
+
+  unsigned dim = dimOp.getIndex();
+  Value *min, *max, *step;
+  if (view) {
+    // Cannot traverse block arguments, fail.
+    if (isa<BlockArgument>(view.getRange(dim)))
+      return matchFailure();
+    // Record min, max, step for further processing.
+    auto range = cast<RangeOp>(view.getRange(dim)->getDefiningOp());
+    std::tie(min, max, step) =
+        std::make_tuple(range.min(), range.max(), range.step());
+  } else if (subView) {
+    // Record min, max, step for further processing.
+    auto range = subView.getRange(dim);
+    std::tie(min, max, step) =
+        std::make_tuple(range.min, range.max, range.step);
+  } else {
+    // Taking the dim of a slice must take a range (since other dims have been
+    // rank-reduced).
+    auto *rangeValue = slice.getRanges()[dim];
+    // Cannot traverse block arguments, fail.
+    if (isa<BlockArgument>(rangeValue))
+      return matchFailure();
+    auto range = cast<RangeOp>(rangeValue->getDefiningOp());
+    // Record min, max, step for further processing.
+    std::tie(min, max, step) =
+        std::make_tuple(range.min(), range.max(), range.step());
+  }
+
+  // Only support constant steps of 1 atm.
+  auto constant = dyn_cast_or_null<ConstantIndexOp>(step->getDefiningOp());
+  if (!constant || constant.getValue() != 1)
+    return matchFailure();
+
+  // Circumvent affine constraints:
+  //   emit an affine_apply when possible, otherwise emit a `subi`.
+  bool validAffineMin = isValidDim(min) || isValidSymbol(min) ||
+                        isa_and_nonnull<ConstantIndexOp>(min->getDefiningOp());
+  bool validAffineMax = isValidDim(max) || isValidSymbol(max) ||
+                        isa_and_nonnull<ConstantIndexOp>(max->getDefiningOp());
+
+  OpBuilder b(dimOp);
+  ScopedContext scope(b, dimOp.getLoc());
+  // Emit `subi`.
+  if (!validAffineMin || !validAffineMax) {
+    rewriter.replaceOp(dimOp, {subi(max, min)}, {dimOp.view()});
+    return matchSuccess();
+  }
+
+  // Emit affine_apply.
+  using edsc::op::operator-;
+  rewriter.replaceOp(dimOp, {ValueHandle(max) - ValueHandle(min)},
+                     {dimOp.view()});
+  return matchSuccess();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // LoadOp.
@@ -334,96 +415,14 @@ LogicalResult mlir::linalg::StoreOp::verify() {
   return success();
 }
 
-//////////////////////////////////////////////////////////////////////////////
-// ViewOp
-//////////////////////////////////////////////////////////////////////////////
-void mlir::linalg::ViewOp::build(Builder *b, OperationState *result,
-                                 Value *buffer, ArrayRef<Value *> indexings) {
-  BufferType bufferType = buffer->getType().cast<BufferType>();
-  result->addOperands({buffer});
-  result->addOperands(indexings);
-  assert(
-      std::none_of(indexings.begin(), indexings.end(),
-                   [](Value *v) { return !v->getType().isa<RangeType>(); }) &&
-      "linalg.view takes only arguments of type linalg.range");
-
-  Type elementType = bufferType.getElementType();
-  result->addTypes(
-      {ViewType::get(b->getContext(), elementType, indexings.size())});
-}
-
-LogicalResult mlir::linalg::ViewOp::verify() {
-  if (llvm::empty(getOperands()))
-    return emitOpError(
-        "requires at least a buffer operand followed by indexings");
-  auto bufferType = getOperand(0)->getType().dyn_cast<BufferType>();
-  if (!bufferType)
-    return emitOpError("first operand must be of BufferType");
-  unsigned index = 0;
-  for (auto indexing : getIndexings()) {
-    if (!indexing->getType().isa<RangeType>()) {
-      return emitOpError() << index << "^th index must be of range type";
-    }
-    ++index;
-  }
-  if (getViewType().getRank() != index)
-    return emitOpError()
-           << "the rank of the view must be the number of its indexings";
-  return success();
-}
-
-ParseResult mlir::linalg::ViewOp::parse(OpAsmParser *parser,
-                                        OperationState *result) {
-  OpAsmParser::OperandType bufferInfo;
-  SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
-  Type bType, type;
-  if (parser->parseOperand(bufferInfo) ||
-      parser->parseOperandList(indexingsInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColon() || parser->parseType(bType) ||
-      parser->parseArrow() || parser->parseType(type)) {
-    return failure();
-  }
-
-  BufferType bufferType = bType.dyn_cast<BufferType>();
-  if (!bufferType) {
-    return parser->emitError(parser->getNameLoc(), "buffer type expected");
-  }
-
-  ViewType viewType = type.dyn_cast<ViewType>();
-  if (!viewType)
-    return parser->emitError(parser->getNameLoc(), "view type expected");
-  if (viewType.getRank() != indexingsInfo.size())
-    return parser->emitError(parser->getNameLoc(), "expected")
-           << viewType.getRank() << " range indexings";
-  return failure(
-      parser->resolveOperand(bufferInfo, bufferType, result->operands) ||
-      (!indexingsInfo.empty() &&
-       parser->resolveOperands(indexingsInfo, RangeType::get(type.getContext()),
-                               result->operands)) ||
-      parser->addTypeToList(viewType, result->types));
-}
-
-// A ViewOp prints as:
-//
-// ```{.mlir}
-//   linalg.view %0[%1, %2] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
-// ```
-//
-// Where %0 is an ssa-value holding a buffer, %1 and %2 are ssa-value each
-// holding a range.
-void mlir::linalg::ViewOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *getSupportingBuffer() << "[";
-  interleave(
-      getIndexings().begin(), getIndexings().end(), [&](Value *v) { *p << *v; },
-      [&]() { *p << ", "; });
-  *p << "] : " << getSupportingBuffer()->getType() << " -> " << getType();
-}
-
 ///////////////////// Operations defined with Tablegen /////////////////////////
 // For such operations that do not correspond to library calls (i.e. defined in
 // LinalgOps.td), we define an overloaded `print` function and a
 // parse`className` function.
+
+//===----------------------------------------------------------------------===//
+// BufferAllocOp
+//===----------------------------------------------------------------------===//
 
 static void print(OpAsmPrinter *p, BufferAllocOp op) {
   *p << op.getOperationName() << " ";
@@ -464,6 +463,10 @@ static LogicalResult verify(BufferAllocOp op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// BufferDeallocOp
+//===----------------------------------------------------------------------===//
+
 static void print(OpAsmPrinter *p, BufferDeallocOp op) {
   *p << op.getOperationName() << " " << *op.buffer();
   p->printOptionalAttrDict(op.getAttrs());
@@ -485,6 +488,10 @@ static void print(OpAsmPrinter *p, BufferSizeOp op) {
   *p << " : " << op.getOperand()->getType();
 }
 
+//===----------------------------------------------------------------------===//
+// BufferSizeOp
+//===----------------------------------------------------------------------===//
+
 static ParseResult parseBufferSizeOp(OpAsmParser *parser,
                                      OperationState *result) {
   OpAsmParser::OperandType op;
@@ -495,6 +502,14 @@ static ParseResult parseBufferSizeOp(OpAsmParser *parser,
                  parser->resolveOperand(op, type, result->operands) ||
                  parser->addTypeToList(parser->getBuilder().getIndexType(),
                                        result->types));
+}
+
+//===----------------------------------------------------------------------===//
+// DimOp
+//===----------------------------------------------------------------------===//
+void mlir::linalg::DimOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<SimplifyDimOp>(context);
 }
 
 static void print(OpAsmPrinter *p, linalg::DimOp op) {
@@ -518,22 +533,255 @@ static ParseResult parseDimOp(OpAsmParser *parser, OperationState *result) {
                  parser->addTypeToList(indexType, result->types));
 }
 
-static void print(OpAsmPrinter *p, RangeIntersectOp op) {
-  *p << op.getOperationName() << " " << *op.getOperand(0) << ", "
-     << *op.getOperand(1);
-  p->printOptionalAttrDict(op.getAttrs());
-  *p << " : " << op.getOperand(0)->getType();
+//===----------------------------------------------------------------------===//
+// GenericOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter *p, GenericOp op) {
+  auto attrNames = op.linalgTraitAttrNames();
+  llvm::StringSet<> linalgTraitAttrsSet;
+  linalgTraitAttrsSet.insert(attrNames.begin(), attrNames.end());
+  SmallVector<NamedAttribute, 8> attrs;
+  for (auto attr : op.getAttrs()) {
+    if (linalgTraitAttrsSet.count(attr.first.strref()) > 0)
+      attrs.push_back(attr);
+  }
+  auto dictAttr = DictionaryAttr::get(attrs, op.getContext());
+  *p << op.getOperationName() << " " << dictAttr << " ";
+  p->printOperands(op.getOperands());
+  if (!op.region().empty())
+    p->printRegion(op.region());
+  p->printOptionalAttrDict(op.getAttrs(), attrNames);
+  *p << ": ";
+  interleaveComma(op.getOperandTypes(), *p);
 }
 
-static ParseResult parseRangeIntersectOp(OpAsmParser *parser,
-                                         OperationState *result) {
-  SmallVector<OpAsmParser::OperandType, 2> ops;
-  Type type;
-  return failure(parser->parseOperandList(ops) ||
-                 parser->parseOptionalAttributeDict(result->attributes) ||
-                 parser->parseColonType(type) ||
-                 parser->resolveOperands(ops, type, result->operands) ||
-                 parser->addTypeToList(type, result->types));
+static ParseResult parseGenericOp(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 8> operandsInfo, regionOperandsInfo;
+  DictionaryAttr dictAttr;
+  // Parse the core linalg traits that must check into a dictAttr.
+  // The name is unimportant as we will overwrite result->attributes.
+  // The core linalg traits must contain the information necessary to pass the
+  // verifier.
+  if (parser->parseAttribute(dictAttr, "_", result->attributes) ||
+      parser->parseOperandList(operandsInfo))
+    return failure();
+  result->attributes.assign(dictAttr.getValue().begin(),
+                            dictAttr.getValue().end());
+
+  Region &region = *result->addRegion();
+  SmallVector<Type, 8> operandTypes, regionTypes;
+  // Optional attributes may be added.
+  // Either Optional "fun" attribute or region must be specified.
+  if (!dictAttr.get("fun") &&
+      parser->parseOptionalRegion(region, regionOperandsInfo, regionTypes))
+    return failure();
+  if (parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColonTypeList(operandTypes))
+    return failure();
+  return parser->resolveOperands(operandsInfo, operandTypes,
+                                 parser->getCurrentLocation(),
+                                 result->operands);
+}
+
+static LogicalResult verify(GenericOp op) {
+  auto nInputViews = op.getNumInputs();
+  auto nViews = op.getNumInputsAndOutputs();
+  if (nViews != llvm::size(op.views()))
+    return op.emitError("op expected exactly ") << nViews << " view operands";
+
+  auto &region = op.region();
+  auto funOp = op.getFunction();
+  auto funType = funOp ? funOp.getType() : FunctionType();
+  if (!region.empty()) {
+    if (region.getBlocks().size() != 1)
+      return op.emitError("op expected region with 1 block");
+
+    auto &block = region.getBlocks().front();
+    if (block.getNumArguments() != nViews)
+      return op.emitError(
+          "op expected number of block arguments to match number of views");
+
+    for (unsigned i = 0; i < nViews; ++i) {
+      auto viewType = op.getViewType(i);
+      if (viewType.getElementType() != block.getArgument(i)->getType())
+        return op.emitError("op expected block argument ")
+               << i << " of the same type as elemental type of "
+               << ((i < nInputViews) ? "input " : "output ")
+               << "view: " << viewType;
+    }
+  } else {
+    if (!funOp || !funOp.getType())
+      return op.emitError(
+          "op expected fun attribute to refer to a defined symbol");
+    if (funType.getNumInputs() != nViews)
+      return op.emitError("op expected fun arguments to match number of views");
+    if (funType.getNumResults() != op.getNumOutputs())
+      return op.emitError(
+          "op expected fun results to match number of output views");
+  }
+
+  auto nLoops = op.getNumLoops();
+  SmallVector<AffineMap, 4> indexingMaps;
+  indexingMaps.reserve(op.indexing_maps().size());
+  for (auto en : llvm::enumerate(op.indexing_maps())) {
+    auto idx = en.index();
+    auto m = en.value().cast<AffineMapAttr>().getValue();
+    indexingMaps.push_back(m); // Save reference to map for further checks.
+    auto view = (idx < nInputViews) ? op.getInputViewType(idx)
+                                    : op.getOutputViewType(idx - nInputViews);
+
+    if (m.getNumSymbols() != 0)
+      return op.emitError("op expected indexing_map #")
+             << idx << " to have no symbols";
+
+    if (m.getNumDims() != nLoops)
+      return op.emitError("op expected indexing_map #")
+             << idx << " to have " << nLoops
+             << " dim(s) to match the number of loops";
+
+    if (m.getNumResults() == 1 && view.getRank() == 0) {
+      auto cst = m.getResult(0).dyn_cast<AffineConstantExpr>();
+      if (!cst || cst.getValue() != 0)
+        return op.emitError("op expected indexing_map #")
+               << idx << " to be 0 to match 0-D view: " << view;
+    }
+
+    if (m.getNumResults() != view.getRank())
+      return op.emitError("op expected indexing_map #")
+             << idx << " results to match view rank: " << view;
+
+    if (funType) {
+      if (funType.getInput(idx) != view.getElementType())
+        return op.emitError("op expected fun argument ")
+               << idx
+               << " to match view element type: " << view.getElementType();
+
+      if (idx >= nInputViews)
+        if (funType.getResult(idx - nInputViews) != view.getElementType())
+          return op.emitError("op expected fun result ")
+                 << idx << " to match output view element type: "
+                 << view.getElementType();
+    }
+  }
+
+  auto concatMap = concatAffineMaps(indexingMaps);
+  auto aggregateMap = inversePermutation(concatMap);
+  if (!aggregateMap)
+    return op.emitError("op expected the concatenation of maps in indexing_map "
+                        "to be invertible");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ViewOp
+//===----------------------------------------------------------------------===//
+void mlir::linalg::ViewOp::build(Builder *b, OperationState *result,
+                                 Value *buffer, ArrayRef<Value *> ranges,
+                                 Type resultType,
+                                 ArrayRef<NamedAttribute> attrs) {
+  if (!resultType) {
+    Type elementType = buffer->getType().cast<BufferType>().getElementType();
+    resultType = ViewType::get(b->getContext(), elementType, ranges.size());
+  }
+  build(b, result, resultType, buffer, ranges);
+  result->addAttributes(attrs);
+}
+
+static ParseResult parseViewOp(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType bufferInfo;
+  SmallVector<OpAsmParser::OperandType, 8> rangesInfo;
+  Type bType, vType;
+  if (parser->parseOperand(bufferInfo) ||
+      parser->parseOperandList(rangesInfo, OpAsmParser::Delimiter::Square) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColon() || parser->parseType(bType) ||
+      parser->parseArrow() || parser->parseType(vType)) {
+    return failure();
+  }
+
+  BufferType bufferType = bType.dyn_cast<BufferType>();
+  if (!bufferType) {
+    return parser->emitError(parser->getNameLoc(), "buffer type expected");
+  }
+
+  ViewType viewType = vType.dyn_cast<ViewType>();
+  if (!viewType)
+    return parser->emitError(parser->getNameLoc(), "view type expected");
+  if (viewType.getRank() != rangesInfo.size())
+    return parser->emitError(parser->getNameLoc(), "expected")
+           << viewType.getRank() << " range ranges";
+  return failure(
+      parser->resolveOperand(bufferInfo, bufferType, result->operands) ||
+      (!rangesInfo.empty() &&
+       parser->resolveOperands(rangesInfo, RangeType::get(vType.getContext()),
+                               result->operands)) ||
+      parser->addTypeToList(viewType, result->types));
+}
+
+// A ViewOp prints as:
+//
+// ```{.mlir}
+//   linalg.view %0[%1, %2] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
+// ```
+//
+// Where %0 is an ssa-value holding a buffer, %1 and %2 are ssa-value each
+// holding a range.
+static void print(OpAsmPrinter *p, ViewOp op) {
+  *p << op.getOperationName() << " " << *op.buffer() << "[";
+  interleaveComma(op.ranges(), *p, [&](Value *v) { *p << *v; });
+  *p << "] : " << op.buffer()->getType() << " -> " << op.getType();
+}
+
+//===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseYieldOp(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> opInfo;
+  SmallVector<Type, 2> types;
+  llvm::SMLoc loc = parser->getCurrentLocation();
+  return failure(parser->parseOperandList(opInfo) ||
+                 (!opInfo.empty() && parser->parseColonTypeList(types)) ||
+                 parser->resolveOperands(opInfo, types, loc, result->operands));
+}
+
+static void print(OpAsmPrinter *p, YieldOp op) {
+  *p << op.getOperationName();
+  if (op.getNumOperands() > 0) {
+    *p << ' ';
+    p->printOperands(op.operand_begin(), op.operand_end());
+    *p << " : ";
+    interleaveComma(op.getOperands(), *p,
+                    [&](Value *e) { p->printType(e->getType()); });
+  }
+}
+
+static LogicalResult verify(YieldOp op) {
+  auto *parentOp = op.getParentOp();
+  if (parentOp->getNumRegions() != 1 || parentOp->getRegion(0).empty())
+    return op.emitOpError("op expected single non-empty parent region");
+
+  auto genericOp = dyn_cast<GenericOp>(parentOp);
+  if (!genericOp)
+    return op.emitOpError("op expected '")
+           << GenericOp::getOperationName() << "' parent op";
+
+  // The operand number and types must match the view element types.
+  auto nOutputViews = genericOp.getNumOutputs();
+  if (op.getNumOperands() != nOutputViews)
+    return op.emitOpError("op expected ")
+           << nOutputViews << " operand to match enclosing linalg.generic op";
+
+  for (unsigned i = 0; i != nOutputViews; ++i) {
+    auto elementType = genericOp.getOutputViewType(i).getElementType();
+    if (op.getOperand(i)->getType() != elementType)
+      return op.emitError("type of return operand ")
+             << i << " (" << op.getOperand(i)->getType()
+             << ") doesn't match view element type (" << elementType << ")";
+  }
+  return success();
 }
 
 static void print(OpAsmPrinter *p, SubViewOp op) {
@@ -546,6 +794,10 @@ static void print(OpAsmPrinter *p, SubViewOp op) {
   p->printOptionalAttrDict(op.getAttrs());
   *p << " : " << op.getViewType();
 }
+
+//===----------------------------------------------------------------------===//
+// SubViewOp
+//===----------------------------------------------------------------------===//
 
 static ParseResult parseSubViewOp(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType inputView, resultView;
@@ -747,23 +999,6 @@ static SmallVector<AffineExpr, 4> concat(ArrayRef<AffineExpr> a,
   return res;
 }
 
-static SmallVector<ValueHandle, 8>
-foldedAffineApplies(OpBuilder &b, Location loc, AffineMap map,
-                    ArrayRef<Value *> vals, OperationFolder &folder) {
-  assert(map.getNumSymbols() == 0);
-  assert(map.getNumInputs() == vals.size());
-  SmallVector<ValueHandle, 8> res;
-  res.reserve(map.getNumResults());
-  auto dims = map.getNumDims();
-  for (auto e : map.getResults()) {
-    auto exprMap = AffineMap::get(dims, 0, e);
-    SmallVector<Value *, 4> operands(vals.begin(), vals.end());
-    canonicalizeMapAndOperands(&exprMap, &operands);
-    res.push_back(affine_apply(folder, exprMap, operands));
-  }
-  return res;
-}
-
 // Note: both functions below would completely disappear with a simple tensor
 // kernel language.
 //
@@ -840,110 +1075,46 @@ SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
         AffineMap::get(idx, 0, concat(concat(bs, ws), qs)),
         // output[b, x[0], ..., x[N-1], k]
         AffineMap::get(idx, 0, concat(concat(bs, xs), ks))};
+  } else if (auto genericOp = dyn_cast<GenericOp>(op)) {
+    SmallVector<AffineMap, 4> res;
+    unsigned nViews = genericOp.getNumInputsAndOutputs();
+    res.reserve(nViews);
+    for (unsigned i = 0, e = nViews; i < e; ++i) {
+      res.push_back(genericOp.getIndexingMap(i));
+    }
+    return res;
   }
   llvm_unreachable("Missing loopToOperandRangesMaps for op");
 }
 
-static SmallVector<Value *, 4> permuteIvs(ArrayRef<Value *> ivs,
-                                          Optional<AffineMap> permutation,
-                                          OperationFolder &state) {
-  return permutation ? applyMapToValues(ScopedContext::getBuilder(),
-                                        ScopedContext::getLocation(),
-                                        permutation.getValue(), ivs, state)
-                     : SmallVector<Value *, 4>(ivs.begin(), ivs.end());
+static void appendMangledType(llvm::raw_string_ostream &ss, Type t) {
+  if (auto view = t.dyn_cast<ViewType>()) {
+    ss << "view";
+    for (unsigned i = 0, e = view.getRank(); i < e; ++i)
+      ss << "x";
+    appendMangledType(ss, view.getElementType());
+  } else if (auto vec = t.dyn_cast<VectorType>()) {
+    ss << "vector";
+    interleave(
+        vec.getShape(), [&](int64_t i) { ss << i; }, [&]() { ss << "x"; });
+    appendMangledType(ss, vec.getElementType());
+  } else if (t.isIntOrIndexOrFloat()) {
+    ss << t;
+  } else {
+    llvm_unreachable("Invalid type for linalg library name mangling");
+  }
 }
 
-// Ideally this should all be Tablegen'd but there is no good story for op
-// expansion directly in MLIR for now.
-void mlir::linalg::emitScalarImplementation(
-    llvm::ArrayRef<Value *> parallelIvs, llvm::ArrayRef<Value *> reductionIvs,
-    llvm::ArrayRef<Value *> windowIvs, LinalgOp &linalgOp,
-    OperationFolder &folder) {
-  using linalg_load = ValueBuilder<linalg::LoadOp>;
-  using linalg_store = OperationBuilder<linalg::StoreOp>;
-  using IndexedValue = TemplatedIndexedValue<linalg_load, linalg_store>;
-  using edsc::op::operator+;
-  using edsc::op::operator*;
-  using edsc::op::operator==;
-  using edsc::intrinsics::select;
-
-  auto nPar = parallelIvs.size();
-  auto nRed = reductionIvs.size();
-  auto nWin = windowIvs.size();
-  SmallVector<Value *, 8> allIvs;
-  allIvs.reserve(nPar + nRed + nWin);
-  allIvs.assign(parallelIvs.begin(), parallelIvs.end());
-  allIvs.append(reductionIvs.begin(), reductionIvs.end());
-  allIvs.append(windowIvs.begin(), windowIvs.end());
-
-  // Default OpBuilder supports 0-D case (no loops).
-  OpBuilder b(linalgOp.getOperation());
-  auto nLoops = nPar + nRed + nWin;
-  if (nLoops > 0) {
-    auto innermostLoop = loop::getForInductionVarOwner(allIvs.back());
-    // accounts for linalg.terminator in loop.
-    b = innermostLoop.getBodyBuilder();
-  }
-
-  auto loc = linalgOp.getLoc();
-  ScopedContext scope(b, loc);
-  auto *op = linalgOp.getOperation();
-  if (auto copyOp = dyn_cast<CopyOp>(op)) {
-    OperationFolder state;
-    auto inputIvs = permuteIvs(parallelIvs, copyOp.inputPermutation(), state);
-    auto outputIvs = permuteIvs(parallelIvs, copyOp.outputPermutation(), state);
-    SmallVector<IndexHandle, 8> iivs(inputIvs.begin(), inputIvs.end());
-    SmallVector<IndexHandle, 8> oivs(outputIvs.begin(), outputIvs.end());
-    // clang-format off
-    IndexedValue O(copyOp.getOutput(0)), I(copyOp.getInput(0));
-    nLoops > 0 ?
-        O(oivs) = I(iivs) :
-        O() = I();
-    // clang-format on
-    return;
-  }
-  if (auto fillOp = dyn_cast<FillOp>(op)) {
-    SmallVector<IndexHandle, 8> ivs(parallelIvs.begin(), parallelIvs.end());
-    // clang-format off
-    IndexedValue O(fillOp.getOutput(0));
-    nLoops > 0 ?
-        O(ivs) = ValueHandle(fillOp.getValue()) :
-        O() = ValueHandle(fillOp.getValue());
-    // clang-format on
-    return;
-  }
-  if (auto dotOp = dyn_cast<DotOp>(op)) {
-    IndexHandle r_i(reductionIvs[0]);
-    IndexedValue A(dotOp.getInput(0)), B(dotOp.getInput(1)),
-        C(dotOp.getOutput(0));
-    C() = C() + A(r_i) * B(r_i);
-    return;
-  }
-  if (auto matvecOp = dyn_cast<MatvecOp>(op)) {
-    IndexHandle i(parallelIvs[0]), r_j(reductionIvs[0]);
-    IndexedValue A(matvecOp.getInput(0)), B(matvecOp.getInput(1)),
-        C(matvecOp.getOutput(0));
-    C(i) = C(i) + A(i, r_j) * B(r_j);
-    return;
-  }
-  if (auto matmulOp = dyn_cast<MatmulOp>(op)) {
-    IndexHandle i(parallelIvs[0]), j(parallelIvs[1]), r_k(reductionIvs[0]);
-    IndexedValue A(matmulOp.getInput(0)), B(matmulOp.getInput(1)),
-        C(matmulOp.getOutput(0));
-    C(i, j) = C(i, j) + A(i, r_k) * B(r_k, j);
-    return;
-  }
-  if (auto convOp = dyn_cast<ConvOp>(op)) {
-    auto maps = loopToOperandRangesMaps(op);
-    SmallVector<ValueHandle, 8> fIdx(
-        foldedAffineApplies(b, loc, maps[0], allIvs, folder));
-    SmallVector<ValueHandle, 8> imIdx(
-        foldedAffineApplies(b, loc, maps[1], allIvs, folder));
-    SmallVector<ValueHandle, 8> oIdx(
-        foldedAffineApplies(b, loc, maps[2], allIvs, folder));
-    IndexedValue F(convOp.filter()), I(convOp.input()), O(convOp.output());
-    O(oIdx) += F(fIdx) * I(imIdx);
-    return;
-  }
-  llvm_unreachable("Missing emitScalarImplementation for op");
+std::string mlir::linalg::generateLibraryCallName(Operation *op) {
+  assert(isa<LinalgOp>(op));
+  std::string name(op->getName().getStringRef().str());
+  name.reserve(128);
+  std::replace(name.begin(), name.end(), '.', '_');
+  llvm::raw_string_ostream ss(name);
+  ss << "_";
+  auto types = op->getOperandTypes();
+  interleave(
+      types.begin(), types.end(), [&](Type t) { appendMangledType(ss, t); },
+      [&]() { ss << "_"; });
+  return ss.str();
 }

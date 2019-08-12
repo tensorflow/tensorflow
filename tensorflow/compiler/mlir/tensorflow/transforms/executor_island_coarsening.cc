@@ -20,6 +20,7 @@ limitations under the License.
 #include <iterator>
 #include <tuple>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
@@ -37,13 +38,13 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
-namespace TFExecutor {
+namespace tf_executor {
 
 namespace {
 
 // IslandType is an enum representing if an island is the island (parent)
 // merging another island or is the island (child) being being merged.
-enum class IslandType : bool { kParentIsland, kChildIsland };
+enum IslandType { kParentIsland, kChildIsland };
 
 // Output is a helper struct holding a result index and island type (parent or
 // child).
@@ -60,30 +61,29 @@ struct ExecutorIslandCoarsening
   void runOnFunction() override;
 
  private:
-  void MergeIslands(OpBuilder* builder, tf_executor::IslandOp* parent,
-                    tf_executor::IslandOp* child, IslandType insert_position);
-  bool MergeIslandWithOperand(OpBuilder* builder, tf_executor::IslandOp* child);
-  bool MergeIslandWithResult(OpBuilder* builder, tf_executor::IslandOp* parent);
+  void MergeIslands(IslandOp parent, IslandOp child,
+                    IslandType insert_position);
+  bool MergeIslandWithOperand(IslandOp child);
+  bool MergeIslandWithResult(IslandOp parent);
 };
 
 // Finds the operation leading to an island that the island can be merged with.
 // This looks for the operation, either control input or data input to an op,
 // that is closest to the island in the graph. If no candidate can be found or
 // the op found is not an island, an empty optional is returned.
-llvm::Optional<tf_executor::IslandOp> GetOperandCandidateToMergeWith(
-    tf_executor::IslandOp* island) {
-  Operation* graph_op = island->getParentOp();
+llvm::Optional<IslandOp> GetOperandCandidateToMergeWith(IslandOp island) {
+  Operation* graph_op = island.getParentOp();
   Operation* candidate = nullptr;
 
   // Check island control operands.
-  for (Value* input : island->controlInputs()) {
+  for (Value* input : island.controlInputs()) {
     Operation* def = input->getDefiningOp();
     DCHECK_EQ(def->getParentOp(), graph_op);
     if (!candidate || candidate->isBeforeInBlock(def)) candidate = def;
   }
 
   // Check island data operands.
-  island->walk([graph_op, &candidate](Operation* op) {
+  island.walk([graph_op, &candidate](Operation* op) {
     for (Value* input : op->getOperands()) {
       Operation* def = input->getDefiningOp();
       if (!def || def->getParentOp() != graph_op) continue;
@@ -91,53 +91,48 @@ llvm::Optional<tf_executor::IslandOp> GetOperandCandidateToMergeWith(
     }
   });
 
-  if (!candidate || !llvm::isa<tf_executor::IslandOp>(candidate))
-    return llvm::None;
+  if (!candidate || !llvm::isa<IslandOp>(candidate)) return llvm::None;
 
-  return llvm::Optional<tf_executor::IslandOp>(
-      llvm::cast<tf_executor::IslandOp>(candidate));
+  return llvm::Optional<IslandOp>(llvm::cast<IslandOp>(candidate));
 }
 
 // Finds the operation leading from an island that the island can be merged
 // with. This looks for the operation, either control output or data output to
 // an op, that is closest to the island in the graph. If no candidate can be
 // found or the op found is not an island, an empty optional is returned.
-llvm::Optional<tf_executor::IslandOp> GetResultCandidateToMergeWith(
-    tf_executor::IslandOp* island) {
-  Operation* graph_op = island->getParentOp();
+llvm::Optional<IslandOp> GetResultCandidateToMergeWith(IslandOp island) {
+  Operation* graph_op = island.getParentOp();
   Operation* candidate = nullptr;
 
   // Check island control results.
-  for (Operation* user : island->control()->getUsers()) {
+  for (Operation* user : island.control()->getUsers()) {
     DCHECK_EQ(user->getParentOp(), graph_op);
-    if (!candidate || candidate->isBeforeInBlock(user)) candidate = user;
+    if (!candidate || user->isBeforeInBlock(candidate)) candidate = user;
   }
 
   // Check island data results.
-  Block& graph_block = llvm::cast<tf_executor::GraphOp>(graph_op).GetBody();
-  for (Value* result : island->outputs()) {
+  Block& graph_body = llvm::cast<GraphOp>(graph_op).GetBody();
+  for (Value* result : island.outputs()) {
     for (Operation* user : result->getUsers()) {
-      Operation* def = graph_block.findAncestorInstInBlock(*user);
+      Operation* def = graph_body.findAncestorInstInBlock(*user);
       DCHECK_NE(def, nullptr);
       if (!candidate || def->isBeforeInBlock(candidate)) candidate = def;
     }
   }
 
-  if (!candidate || !llvm::isa<tf_executor::IslandOp>(candidate))
-    return llvm::None;
+  if (!candidate || !llvm::isa<IslandOp>(candidate)) return llvm::None;
 
-  return llvm::Optional<tf_executor::IslandOp>(
-      llvm::cast<tf_executor::IslandOp>(candidate));
+  return llvm::Optional<IslandOp>(llvm::cast<IslandOp>(candidate));
 }
 
 // Collects the operands for the new island by collecting all control inputs of
 // the islands being merged.
-llvm::SmallSetVector<Value*, 8> GetNewIslandOperands(
-    tf_executor::IslandOp* parent, tf_executor::IslandOp* child) {
+llvm::SmallSetVector<Value*, 8> GetNewIslandOperands(IslandOp parent,
+                                                     IslandOp child) {
   llvm::SmallSetVector<Value*, 8> operands;
-  operands.insert(parent->getOperands().begin(), parent->getOperands().end());
-  operands.insert(child->getOperands().begin(), child->getOperands().end());
-  operands.remove(parent->control());
+  operands.insert(parent.getOperands().begin(), parent.getOperands().end());
+  operands.insert(child.getOperands().begin(), child.getOperands().end());
+  operands.remove(parent.control());
   return operands;
 }
 
@@ -149,95 +144,87 @@ llvm::SmallSetVector<Value*, 8> GetNewIslandOperands(
 // island are replaced by the respective inner ops output from the parent
 // island.
 llvm::SmallVector<Output, 8> GetNewIslandResultsAndForwardOutputs(
-    mlir::MLIRContext* context, tf_executor::IslandOp* parent,
-    tf_executor::IslandOp* child, llvm::SmallVector<Type, 8>* result_types) {
+    mlir::MLIRContext* context, IslandOp parent, IslandOp child,
+    llvm::SmallVector<Type, 8>* result_types) {
   llvm::SmallVector<Output, 8> results;
-  Block& child_body = child->GetBody();
-  int result_index = 0;
 
-  Operation& last_op = parent->GetBody().back();
-  auto yield_op = cast<tf_executor::YieldOp>(last_op);
-  for (Value* output : parent->outputs()) {
+  Operation& last_op = parent.GetBody().back();
+  auto yield_op = cast<YieldOp>(last_op);
+  Block& child_body = child.GetBody();
+  for (auto& ret_and_idx : llvm::enumerate(parent.outputs())) {
     bool output_captured = false;
-    Value* yield_input = yield_op.getOperand(result_index);
-    for (auto& use : llvm::make_early_inc_range(output->getUses())) {
+    Value* yield_input = yield_op.getOperand(ret_and_idx.index());
+    for (auto& use :
+         llvm::make_early_inc_range(ret_and_idx.value()->getUses())) {
       if (child_body.findAncestorInstInBlock(*use.getOwner())) {
         // Forward output from inner op.
         use.set(yield_input);
       } else if (!output_captured) {
-        results.push_back(Output(IslandType::kParentIsland, result_index));
-        result_types->push_back(output->getType());
+        results.push_back(
+            Output(IslandType::kParentIsland, ret_and_idx.index()));
+        result_types->push_back(ret_and_idx.value()->getType());
         output_captured = true;
       }
     }
-    result_index++;
   }
 
-  result_index = 0;
-  for (Value* output : child->outputs()) {
-    if (!output->use_empty()) {
-      results.push_back(Output(IslandType::kChildIsland, result_index));
-      result_types->push_back(output->getType());
+  for (auto& ret_and_idx : llvm::enumerate(child.outputs())) {
+    if (!ret_and_idx.value()->use_empty()) {
+      results.push_back(Output(IslandType::kChildIsland, ret_and_idx.index()));
+      result_types->push_back(ret_and_idx.value()->getType());
     }
-    result_index++;
   }
 
   // IslandOps always have a control output.
-  result_types->push_back(tf_executor::ControlType::get(context));
+  result_types->push_back(ControlType::get(context));
 
   return results;
 }
 
 // Creates the new merged island.
-tf_executor::IslandOp CreateNewIsland(
-    OpBuilder* builder, Operation* old_island,
-    const llvm::SmallVector<Type, 8>& result_types,
-    const llvm::SmallSetVector<Value*, 8>& operands) {
-  builder->setInsertionPoint(old_island);
-  auto new_island = builder->create<tf_executor::IslandOp>(
-      old_island->getLoc(), result_types, operands.getArrayRef(),
-      ArrayRef<NamedAttribute>{});
+IslandOp CreateNewIsland(Operation* old_island,
+                         llvm::ArrayRef<Type> result_types,
+                         llvm::ArrayRef<Value*> operands) {
+  OpBuilder builder(old_island);
+  auto new_island = builder.create<IslandOp>(
+      old_island->getLoc(), result_types, operands, ArrayRef<NamedAttribute>{});
   new_island.body().push_back(new Block);
   return new_island;
 }
 
 // Creates respective YieldOp for the new merged island.
-tf_executor::YieldOp CreateNewIslandYieldOp(
-    OpBuilder* builder, tf_executor::IslandOp* new_island,
-    const llvm::SmallVector<Output, 8>& results, tf_executor::IslandOp* parent,
-    tf_executor::IslandOp* child) {
+YieldOp CreateNewIslandYieldOp(IslandOp new_island,
+                               llvm::ArrayRef<Output> results, IslandOp parent,
+                               IslandOp child) {
   llvm::SmallVector<Value*, 8> yield_operands;
   yield_operands.reserve(results.size());
-  for (auto ret_vals : llvm::zip(results, new_island->outputs())) {
+  for (auto ret_vals : llvm::zip(results, new_island.outputs())) {
     // Get consumed output (island type and result index).
     const auto& output = std::get<0>(ret_vals);
-    tf_executor::IslandOp* output_island =
+    IslandOp& output_island =
         output.island_type == IslandType::kParentIsland ? parent : child;
-    Value* result = output_island->getResult(output.result_index);
+    Value* result = output_island.getResult(output.result_index);
     // Replace original result with new island result.
     result->replaceAllUsesWith(std::get<1>(ret_vals));
     // Find YieldOp in original island, grab the associated operand (inner op
     // output) and add it as a operand to the YieldOp of the merged island.
     yield_operands.push_back(
-        output_island->GetBody().back().getOperand(output.result_index));
+        output_island.GetBody().back().getOperand(output.result_index));
   }
 
   // Create YieldOp for the new island.
-  builder->setInsertionPoint(&new_island->GetBody(),
-                             new_island->GetBody().end());
-  return builder->create<tf_executor::YieldOp>(new_island->getLoc(),
-                                               yield_operands);
+  OpBuilder builder(&new_island.GetBody(), new_island.GetBody().end());
+  return builder.create<YieldOp>(new_island.getLoc(), yield_operands);
 }
 
 // Moves inner ops (excluding last op/YieldOp) from islands being merged into
 // the new merged island.
-void MoveInnerOpsToNewIsland(tf_executor::IslandOp* parent,
-                             tf_executor::IslandOp* child,
+void MoveInnerOpsToNewIsland(IslandOp parent, IslandOp child,
                              Operation* new_yield_op) {
   Block* block = new_yield_op->getBlock();
 
-  auto move_inner_ops = [block, new_yield_op](tf_executor::IslandOp* island) {
-    auto& island_body = island->GetBody().getOperations();
+  auto move_inner_ops = [block, new_yield_op](IslandOp island) {
+    auto& island_body = island.GetBody().getOperations();
     block->getOperations().splice(new_yield_op->getIterator(), island_body,
                                   island_body.begin(),
                                   std::prev(island_body.end()));
@@ -248,9 +235,7 @@ void MoveInnerOpsToNewIsland(tf_executor::IslandOp* parent,
 }
 
 // Merges two islands and places new merged island before parent or child.
-void ExecutorIslandCoarsening::MergeIslands(OpBuilder* builder,
-                                            tf_executor::IslandOp* parent,
-                                            tf_executor::IslandOp* child,
+void ExecutorIslandCoarsening::MergeIslands(IslandOp parent, IslandOp child,
                                             IslandType insert_position) {
   // Collect operands for the new merged island.
   llvm::SmallSetVector<Value*, 8> operands =
@@ -262,38 +247,36 @@ void ExecutorIslandCoarsening::MergeIslands(OpBuilder* builder,
       &getContext(), parent, child, &result_types);
 
   // Create the new merged island.
-  tf_executor::IslandOp new_island = CreateNewIsland(
-      builder, insert_position == IslandType::kParentIsland ? *parent : *child,
-      result_types, operands);
+  IslandOp new_island = CreateNewIsland(
+      insert_position == IslandType::kParentIsland ? parent : child,
+      result_types, operands.getArrayRef());
 
   // Create associated YieldOp for the new merged island.
-  tf_executor::YieldOp new_yield_op =
-      CreateNewIslandYieldOp(builder, &new_island, results, parent, child);
+  YieldOp new_yield_op =
+      CreateNewIslandYieldOp(new_island, results, parent, child);
 
   // Move inner ops from original islands into the new island.
   MoveInnerOpsToNewIsland(parent, child, new_yield_op.getOperation());
 
   // Update control inputs to point to the new merged island.
-  child->control()->replaceAllUsesWith(new_island.control());
-  parent->control()->replaceAllUsesWith(new_island.control());
+  child.control()->replaceAllUsesWith(new_island.control());
+  parent.control()->replaceAllUsesWith(new_island.control());
 
   // Remove merged islands.
-  child->erase();
-  parent->erase();
+  child.erase();
+  parent.erase();
 }
 
 // Merges island with the operand closest to the island in the graph. The
 // operand must be another IslandOp for merging to take place. A new island is
 // created and the islands being merged are removed if a merge took place.
 // Returns true if the island was merged with its operand.
-bool ExecutorIslandCoarsening::MergeIslandWithOperand(
-    OpBuilder* builder, tf_executor::IslandOp* child) {
+bool ExecutorIslandCoarsening::MergeIslandWithOperand(IslandOp child) {
   // Find candidate operand to merge island with.
-  llvm::Optional<tf_executor::IslandOp> candidate =
-      GetOperandCandidateToMergeWith(child);
+  llvm::Optional<IslandOp> candidate = GetOperandCandidateToMergeWith(child);
   if (!candidate.hasValue()) return false;
   auto& parent = candidate.getValue();
-  MergeIslands(builder, &parent, child, IslandType::kParentIsland);
+  MergeIslands(parent, child, IslandType::kParentIsland);
   return true;
 }
 
@@ -301,21 +284,18 @@ bool ExecutorIslandCoarsening::MergeIslandWithOperand(
 // must be another IslandOp for merging to take place. A new island is created
 // and the islands being merged are removed if a merge took place. Returns true
 // if the island was merged with its result.
-bool ExecutorIslandCoarsening::MergeIslandWithResult(
-    OpBuilder* builder, tf_executor::IslandOp* parent) {
+bool ExecutorIslandCoarsening::MergeIslandWithResult(IslandOp parent) {
   // Find candidate result to merge island with.
-  llvm::Optional<tf_executor::IslandOp> candidate =
-      GetResultCandidateToMergeWith(parent);
+  llvm::Optional<IslandOp> candidate = GetResultCandidateToMergeWith(parent);
   if (!candidate.hasValue()) return false;
   auto& child = candidate.getValue();
-  MergeIslands(builder, parent, &child, IslandType::kChildIsland);
+  MergeIslands(parent, child, IslandType::kChildIsland);
   return false;
 }
 
 void ExecutorIslandCoarsening::runOnFunction() {
-  getFunction().walk<tf_executor::GraphOp>([this](tf_executor::GraphOp graph) {
+  getFunction().walk<GraphOp>([this](GraphOp graph) {
     Block& graph_body = graph.GetBody();
-    OpBuilder builder(&graph_body);
 
     bool updated = false;
     do {
@@ -323,19 +303,18 @@ void ExecutorIslandCoarsening::runOnFunction() {
 
       auto reversed = llvm::reverse(graph_body);
       for (Operation& operation : llvm::make_early_inc_range(reversed)) {
-        auto island = llvm::dyn_cast<tf_executor::IslandOp>(operation);
+        auto island = llvm::dyn_cast<IslandOp>(operation);
         if (!island) continue;
-        updated |= MergeIslandWithResult(&builder, &island);
+        updated |= MergeIslandWithResult(island);
       }
 
       for (Operation& operation : llvm::make_early_inc_range(graph_body)) {
-        auto island = llvm::dyn_cast<tf_executor::IslandOp>(operation);
+        auto island = llvm::dyn_cast<IslandOp>(operation);
         if (!island) continue;
-        updated |= MergeIslandWithOperand(&builder, &island);
+        updated |= MergeIslandWithOperand(island);
       }
     } while (updated);
   });
-  // TODO(lyandy): Add canonicalization for dedupping control inputs.
 }
 
 }  // namespace
@@ -347,5 +326,5 @@ FunctionPassBase* CreateTFExecutorIslandCoarseningPass() {
 static PassRegistration<ExecutorIslandCoarsening> pass(
     "tf-executor-island-coarsening", "Merges TFExecutor dialect IslandOps");
 
-}  // namespace TFExecutor
+}  // namespace tf_executor
 }  // namespace mlir

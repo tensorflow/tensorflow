@@ -15,10 +15,12 @@ limitations under the License.
 
 // This transformation pass applies quantization propagation on TFLite dialect.
 
+#include "absl/memory/memory.h"
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/utils/quantization_utils.h"
 
 //===----------------------------------------------------------------------===//
 // The prepare-quantize Pass.
@@ -27,6 +29,7 @@ namespace mlir {
 namespace TFL {
 
 namespace {
+
 // Applies prepare quantization on the model in TFL dialect. This pass runs
 // before the quantization pass and propagate the quantization parameters
 // across ops. This step is necessary for post-training quantization and also
@@ -47,8 +50,11 @@ class PrepareQuantizePass : public FunctionPass<PrepareQuantizePass> {
   bool quantize_sign_;
 };
 
+#include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
+
 void PrepareQuantizePass::runOnFunction() {
-  ApplyQuantizationParamsPropagation(getFunction(), quantize_sign_);
+  ApplyQuantizationParamsPropagation(getFunction(), quantize_sign_,
+                                     GetOpQuantSpec);
 }
 
 }  // namespace

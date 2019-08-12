@@ -22,6 +22,8 @@ import sys
 
 import six
 
+from tensorflow.python.autograph.core import converter
+from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.autograph.operators import data_structures
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.data.ops import dataset_ops
@@ -32,6 +34,12 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
+
+
+class TestBase(object):
+
+  def plus_twenty(self, x):
+    return x + 20
 
 
 class PyBuiltinsTest(test.TestCase):
@@ -155,66 +163,71 @@ class PyBuiltinsTest(test.TestCase):
       self.assertAllEqual(self.evaluate(iterator.get_next()), (20, b'a'))
       self.assertAllEqual(self.evaluate(iterator.get_next()), (21, b'c'))
 
+  def _basic_function_scope(self):
+    return function_wrappers.FunctionScope(
+        'test_function_name',
+        'test_scope',  # Note: this must match the name in the `with` statement.
+        converter.ConversionOptions())
+
   def test_eval_in_original_context(self):
 
-    def caller_1(lvl_delta):
+    def test_fn():
       l = 1  # pylint:disable=unused-variable
-      return py_builtins.eval_in_original_context(eval, ('l',), lvl_delta)
+      with self._basic_function_scope() as test_scope:
+        return py_builtins.eval_in_original_context(eval, ('l',), test_scope)
 
-    def caller_2(lvl_delta):
-      l = 2  # pylint:disable=unused-variable
-      return caller_1(lvl_delta)
+    self.assertEqual(test_fn(), 1)
 
-    def caller_3(lvl_delta):
-      l = 3  # pylint:disable=unused-variable
-      return caller_2(lvl_delta)
+  def test_eval_in_original_context_inner_function(self):
 
-    self.assertEqual(caller_3(0), 1)
-    self.assertEqual(caller_3(1), 2)
-    self.assertEqual(caller_3(2), 3)
+    def test_fn():
+      l = 1  # pylint:disable=unused-variable
+      with self._basic_function_scope() as test_scope:
 
-  def test_super_with_one_arg_in_original_context(self):
+        def inner_fn():
+          # Note: a user function without a top-level function scope should
+          # never be found in user code; it's only possible in generated code.
+          l = 2  # pylint:disable=unused-variable
+          return py_builtins.eval_in_original_context(eval, ('l',), test_scope)
+
+        return inner_fn()
+
+    self.assertEqual(test_fn(), 2)
+
+  def test_super_in_original_context_unary_call(self):
     test_case_self = self
-
-    class TestBase(object):
-
-      def plus_twenty(self, x):
-        return x + 20
 
     class TestSubclass(TestBase):
 
       def plus_twenty(self, x):
         test_case_self.fail('This should never be called.')
 
-      def one_arg(self):
-        test_base_unbound = py_builtins.super_in_original_context(
-            super, (TestSubclass,), 0)
-        test_base = test_base_unbound.__get__(self, TestSubclass)
-        return test_base.plus_twenty(1)
+      def test_method(self):
+        with test_case_self._basic_function_scope() as test_scope:
+          test_base_unbound = py_builtins.super_in_original_context(
+              super, (TestSubclass,), test_scope)
+          test_base = test_base_unbound.__get__(self, TestSubclass)
+          return test_base.plus_twenty(1)
 
     tc = TestSubclass()
-    self.assertEqual(tc.one_arg(), 21)
+    self.assertEqual(tc.test_method(), 21)
 
-  def test_super_with_two_args_in_original_context(self):
+  def test_super_in_original_context_binary_call(self):
     test_case_self = self
-
-    class TestBase(object):
-
-      def plus_twenty(self, x):
-        return x + 20
 
     class TestSubclass(TestBase):
 
       def plus_twenty(self, x):
         test_case_self.fail('This should never be called.')
 
-      def two_args(self):
-        test_base = py_builtins.super_in_original_context(
-            super, (TestSubclass, self), 0)
-        return test_base.plus_twenty(1)
+      def test_method(self):
+        with test_case_self._basic_function_scope() as test_scope:
+          test_base = py_builtins.super_in_original_context(
+              super, (TestSubclass, self), test_scope)
+          return test_base.plus_twenty(1)
 
     tc = TestSubclass()
-    self.assertEqual(tc.two_args(), 21)
+    self.assertEqual(tc.test_method(), 21)
 
 
 if __name__ == '__main__':

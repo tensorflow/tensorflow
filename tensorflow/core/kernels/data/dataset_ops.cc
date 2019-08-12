@@ -40,7 +40,7 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
       ctx, AsGraphDef(ctx, dataset, SerializationContext({}), &graph_def));
   Tensor* result;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
-  result->scalar<string>()() = graph_def.SerializeAsString();
+  result->scalar<tstring>()() = graph_def.SerializeAsString();
 }
 
 void DatasetCardinalityOp::Compute(OpKernelContext* ctx) {

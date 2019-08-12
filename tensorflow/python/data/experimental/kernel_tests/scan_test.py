@@ -31,6 +31,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -155,6 +156,9 @@ class ScanTest(test_base.DatasetTestBase):
         num_test_iterations=2)
 
   def testTensorArrayWithCondResetByExternalCaptureBreaks(self):
+
+    if control_flow_v2_toggles.control_flow_v2_enabled():
+      self.skipTest("v1 only test")
 
     empty_ta = tensor_array_ops.TensorArray(
         size=0, element_shape=[], dtype=dtypes.int64, dynamic_size=True)

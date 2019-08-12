@@ -34,7 +34,6 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import dtypes
@@ -475,9 +474,14 @@ def standardize_input_data(data,
   Raises:
       ValueError: in case of improperly formatted user-provided data.
   """
+  try:
+    data_len = len(data)
+  except TypeError:
+    # For instance if data is `None` or a symbolic Tensor.
+    data_len = None
+
   if not names:
-    if (data is not None and hasattr(data, '__len__') and len(data) and
-        not isinstance(data, dict)):
+    if data_len and not isinstance(data, dict):
       raise ValueError(
           'Error when checking model ' + exception_prefix + ': '
           'expected no data, but got:', data)
@@ -1218,6 +1222,33 @@ def cast_single_tensor(x, dtype=None):
   return x
 
 
+def cast_if_floating_dtype_and_mismatch(targets, outputs):
+  """Returns target data tensors using correct datatype.
+
+  Checks that each target and output pair are the same datatype. If not, casts
+  the target to the output's datatype.
+
+  Args:
+    targets: tensor or list of targets.
+    outputs: tensor or list of outputs.
+
+  Returns:
+    Targets in appropriate datatype.
+  """
+  if tensor_util.is_tensor(targets):
+    # There is one target, so output[0] should be the only output.
+    return cast_single_tensor(targets, dtype=outputs[0].dtype)
+  new_targets = []
+  for target, out in zip(targets, outputs):
+    if isinstance(target, np.ndarray):
+      target = ops.convert_to_tensor(target)
+    if target.dtype != out.dtype:
+      new_targets.append(cast_single_tensor(target, dtype=out.dtype))
+    else:
+      new_targets.append(target)
+  return new_targets
+
+
 def cast_if_floating_dtype(x):
   """Casts the given data tensors to the default floating point type.
 
@@ -1584,10 +1615,15 @@ def unpack_iterator_input(iterator):
   return x, y, weights
 
 
-def infer_steps_for_dataset(dataset, steps, epochs=1, steps_name='steps'):
+def infer_steps_for_dataset(model,
+                            dataset,
+                            steps,
+                            epochs=1,
+                            steps_name='steps'):
   """Infers steps_per_epoch needed to loop through a dataset.
 
   Arguments:
+      model: Keras model instance.
       dataset: Input data of type tf.data.Dataset.
       steps: Number of steps to draw from the dataset (may be None if unknown).
       epochs: Number of times to iterate over the dataset.
@@ -1605,7 +1641,7 @@ def infer_steps_for_dataset(dataset, steps, epochs=1, steps_name='steps'):
     ValueError: In case of invalid argument values.
   """
   assert isinstance(dataset, dataset_ops.DatasetV2)
-  if (multi_worker_util.in_multi_worker_mode() and
+  if (model._in_multi_worker_mode() and
       dataset.options().experimental_distribute.auto_shard):
     # If the dataset would be auto-sharded, we should not infer a local
     # steps_per_epoch due to the possible inbalanced sharding between workers.

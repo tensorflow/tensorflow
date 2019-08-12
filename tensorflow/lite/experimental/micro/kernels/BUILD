@@ -14,12 +14,20 @@ package(
 cc_library(
     name = "micro_ops",
     srcs = [
+        "arg_min_max.cc",
+        "ceil.cc",
+        "comparisons.cc",
         "conv.cc",
         "depthwise_conv.cc",
         "elementwise.cc",
+        "floor.cc",
         "fully_connected.cc",
+        "logical.cc",
+        "maximum_minimum.cc",
         "pooling.cc",
         "prelu.cc",
+        "reshape.cc",
+        "round.cc",
         "softmax.cc",
     ],
     hdrs = [
@@ -27,6 +35,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro/kernels:micro_utils",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
@@ -55,12 +64,20 @@ cc_library(
 cc_library(
     name = "portable_optimized_micro_ops",
     srcs = [
+        "arg_min_max.cc",
+        "ceil.cc",
+        "comparisons.cc",
         "conv.cc",
         "elementwise.cc",
+        "floor.cc",
         "fully_connected.cc",
+        "logical.cc",
+        "maximum_minimum.cc",
         "pooling.cc",
         "portable_optimized/depthwise_conv.cc",
         "prelu.cc",
+        "reshape.cc",
+        "round.cc",
         "softmax.cc",
     ],
     hdrs = [
@@ -68,6 +85,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro/kernels:micro_utils",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
@@ -186,6 +204,117 @@ tflite_micro_cc_test(
     name = "prelu_test",
     srcs = [
         "prelu_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "floor_test",
+    srcs = [
+        "floor_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "logical_test",
+    srcs = [
+        "logical_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "maximum_minimum_test",
+    srcs = [
+        "maximum_minimum_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "arg_min_max_test",
+    srcs = [
+        "arg_min_max_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/kernels:micro_utils",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "comparisons_test",
+    srcs = [
+        "comparisons_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/kernels:micro_utils",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "ceil_test",
+    srcs = [
+        "ceil_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "round_test",
+    srcs = [
+        "round_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+cc_library(
+    name = "micro_utils",
+    hdrs = ["micro_utils.h"],
+)
+
+tflite_micro_cc_test(
+    name = "reshape_test",
+    srcs = [
+        "reshape_test.cc",
     ],
     deps = [
         ":all_ops_resolver",

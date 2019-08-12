@@ -70,6 +70,8 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
+  Status CheckExternalState() const override { return Status::OK(); }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -108,7 +110,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
                 line_contents.size());
             out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                       TensorShape({}));
-            out_tensors->back().scalar<string>()() = std::move(line_contents);
+            out_tensors->back().scalar<tstring>()() = std::move(line_contents);
             *end_of_sequence = false;
             return Status::OK();
           } else if (!errors::IsOutOfRange(s)) {
@@ -266,7 +268,7 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
   std::vector<string> filenames;
   filenames.reserve(filenames_tensor->NumElements());
   for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
-    filenames.push_back(filenames_tensor->flat<string>()(i));
+    filenames.push_back(filenames_tensor->flat<tstring>()(i));
   }
 
   *output = new Dataset(ctx, std::move(filenames), compression_type,

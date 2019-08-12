@@ -76,10 +76,38 @@ FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
 
-CacheKey = collections.namedtuple("CacheKey", [
-    "input_signature", "parent_graph", "device_functions", "colocation_stack",
-    "in_cross_replica_context"
-])
+class CacheKey(
+    collections.namedtuple("CacheKey", [
+        "input_signature", "parent_graph", "device_functions",
+        "colocation_stack", "in_cross_replica_context"
+    ])):
+  """Named tuple used to key the function cache."""
+
+  def __hash__(self):
+    """Provide a hash even if the input signature objects aren't hashable."""
+    return hash((self._hash_fix(self.input_signature), self.parent_graph,
+                 self.device_functions, self.colocation_stack,
+                 self.in_cross_replica_context))
+
+  def _hash_fix(self, elem):
+    """Ensure elem is hashable even if a Variable is nested in it."""
+    # Descend into tuples
+    if isinstance(elem, tuple):
+      return tuple(self._hash_fix(i) for i in elem)
+
+    if isinstance(elem, set):
+      return {self._hash_fix(i) for i in elem}
+
+    # If the element is not hashable, assume it is a weakref to a variable and
+    # return the dtype & shape. Else, simply return the element
+    try:
+      hash(elem)
+    except TypeError:
+      v = elem()
+      return (v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype))
+
+    return elem
+
 
 CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access
 
@@ -356,9 +384,11 @@ class _EagerDefinedFunction(object):
     operations = [op for op in graph.get_operations() if op not in input_ops]
 
     graph_output_names = graph._output_names  # pylint: disable=protected-access
-    if (graph_output_names is not None
-        and all(t in graph_output_names for t in outputs)):
-      output_names = [compat.as_bytes(graph_output_names[t]) for t in outputs]
+    if (graph_output_names is not None and
+        all(ops.tensor_id(t) in graph_output_names for t in outputs)):
+      output_names = [
+          compat.as_bytes(graph_output_names[ops.tensor_id(t)]) for t in outputs
+      ]
       if len(set(output_names)) != len(output_names):
         # There are duplicate names for some reason, probably an invalid
         # signature. Revert to auto-naming.
@@ -450,7 +480,8 @@ class _EagerDefinedFunction(object):
     """
     if len(args) != len(self.signature.input_arg):
       raise ValueError(
-          "Arguments and signature arguments do not match: %s %s " %
+          "Arguments and signature arguments do not match. "
+          "got: %s, expected: %s " %
           (len(args), len(list(self.signature.input_arg))))
 
     function_call_options = ctx.function_call_options
@@ -636,10 +667,12 @@ class _DelayedRewriteGradientFunctions(object):
       custom_gradient.copy_handle_data(func_graph_output, op.outputs[i])
     # pylint: enable=protected-access
 
-    capture_mapping = dict(zip(self._func_graph.outputs, op.outputs))
-    remapped_captures = []
-    for capture in backwards_function.captured_inputs:
-      remapped_captures.append(capture_mapping.get(capture, capture))
+    capture_mapping = dict(
+        zip([ops.tensor_id(t) for t in self._func_graph.outputs], op.outputs))
+    remapped_captures = [
+        capture_mapping.get(ops.tensor_id(capture), capture)
+        for capture in backwards_function.captured_inputs
+    ]
 
     # Replace Nones with zeros since we're calling a graph function which
     # expects numeric inputs.
@@ -695,7 +728,7 @@ class _DelayedRewriteGradientFunctions(object):
     def _backward_function(*args):
       call_op = outputs[0].op
       return self._rewrite_forward_and_call_backward(call_op, *args)
-    return _backward_function
+    return _backward_function, outputs
 
 
 class _TapeGradientFunctions(object):
@@ -829,9 +862,15 @@ class _TapeGradientFunctions(object):
     variant_zeros_like = {}
     backward_function_inputs = (
         len(self._backward.inputs) - len(self._backward.captured_inputs))
+    recorded_outputs = []
+    trainable_recorded_outputs = 0
     skip_positions = []
     for output_index, output in enumerate(outputs):
-      if not gradients_util.IsTrainable(output):
+      if trainable_recorded_outputs < backward_function_inputs:
+        recorded_outputs.append(output)
+      if gradients_util.IsTrainable(output):
+        trainable_recorded_outputs += 1
+      else:
         skip_positions.append(output_index)
       if output.dtype == dtypes.variant:
         variant_zeros_like[output_index] = default_gradient.zeros_like(output)
@@ -863,7 +902,7 @@ class _TapeGradientFunctions(object):
       return self._backward._call_flat(  # pylint: disable=protected-access
           processed_args, remapped_captures)
 
-    return _backward_function_wrapper
+    return _backward_function_wrapper, recorded_outputs
 
 
 class _FirstOrderTapeGradientFunctions(_TapeGradientFunctions):
@@ -1114,6 +1153,11 @@ class ConcreteFunction(object):
     ctx = context.context()
     executing_eagerly = ctx.executing_eagerly()
 
+    # Copy saveable status of function's graph to current FuncGraph.
+    default_graph = ops.get_default_graph()
+    if default_graph.building_function and not self._func_graph.saveable:
+      default_graph.mark_as_unsaveable(self._func_graph.saving_errors)
+
     if any(isinstance(a, composite_tensor.CompositeTensor) for a in args):
       raise AssertionError("Expected all args to be Tensors or Variables; "
                            "but got CompositeTensor: %r" % args)
@@ -1179,9 +1223,9 @@ class ConcreteFunction(object):
     if isinstance(flat_outputs, ops.Operation) or flat_outputs is None:
       # We only record function calls which have outputs.
       return self._build_call_outputs(flat_outputs)
-    backward_function = forward_backward.backward(flat_outputs)
+    backward_function, to_record = forward_backward.backward(flat_outputs)
     tape.record_operation(forward_function.signature.name,
-                          flat_outputs, args, backward_function)
+                          to_record, args, backward_function)
     return self._build_call_outputs(flat_outputs)
 
   def _experimental_with_cancellation_manager(self, cancellation_manager):

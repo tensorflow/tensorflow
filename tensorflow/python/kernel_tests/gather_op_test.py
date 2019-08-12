@@ -343,7 +343,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     result = array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
     self.assertAllEqual(expected, result)
 
-    with compat.forward_compatibility_horizon(2019, 6, 11):
+    with compat.forward_compatibility_horizon(2019, 8, 11):
       result = array_ops.gather(
           params, indices, axis=axis, batch_dims=batch_dims)
 
@@ -443,7 +443,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(output_shape, result.shape.as_list())
     self.assertAllEqual(expected, result)
 
-    with compat.forward_compatibility_horizon(2019, 6, 11):
+    with compat.forward_compatibility_horizon(2019, 8, 11):
       result = array_ops.gather(
           params, indices, axis=axis, batch_dims=batch_dims)
 

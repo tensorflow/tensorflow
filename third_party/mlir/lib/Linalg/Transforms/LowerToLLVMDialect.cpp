@@ -39,6 +39,8 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/LowerAffine.h"
 #include "mlir/Transforms/Passes.h"
+
+#include "llvm/ADT/SetVector.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
@@ -55,12 +57,12 @@ using namespace mlir::linalg::intrinsics;
 using add = ValueBuilder<mlir::LLVM::AddOp>;
 using addi = ValueBuilder<mlir::AddIOp>;
 using bitcast = ValueBuilder<mlir::LLVM::BitcastOp>;
-using call = OperationBuilder<mlir::LLVM::CallOp>;
 using cmpi = ValueBuilder<mlir::CmpIOp>;
 using constant = ValueBuilder<mlir::LLVM::ConstantOp>;
 using extractvalue = ValueBuilder<mlir::LLVM::ExtractValueOp>;
 using gep = ValueBuilder<mlir::LLVM::GEPOp>;
 using insertvalue = ValueBuilder<mlir::LLVM::InsertValueOp>;
+using llvm_call = OperationBuilder<mlir::LLVM::CallOp>;
 using llvm_icmp = ValueBuilder<LLVM::ICmpOp>;
 using llvm_load = ValueBuilder<LLVM::LoadOp>;
 using llvm_store = OperationBuilder<LLVM::StoreOp>;
@@ -206,7 +208,7 @@ public:
     Value *allocSize =
         mul(size, constant(int64Ty, IntegerAttr::get(indexType, elementSize)));
     Value *allocated =
-        call(voidPtrTy, rewriter.getSymbolRefAttr(mallocFunc), allocSize)
+        llvm_call(voidPtrTy, rewriter.getSymbolRefAttr(mallocFunc), allocSize)
             .getOperation()
             ->getResult(0);
     allocated = bitcast(elementPtrType, allocated);
@@ -251,7 +253,7 @@ public:
     edsc::ScopedContext context(rewriter, op->getLoc());
     Value *casted = bitcast(voidPtrTy, extractvalue(elementPtrTy, operands[0],
                                                     positionAttr(rewriter, 0)));
-    call(ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), casted);
+    llvm_call(ArrayRef<Type>(), rewriter.getSymbolRefAttr(freeFunc), casted);
     rewriter.replaceOp(op, llvm::None);
     return matchSuccess();
   }
@@ -372,53 +374,6 @@ public:
     desc = insertvalue(rangeDescriptorTy, desc, operands[1],
                        positionAttr(rewriter, 1));
     desc = insertvalue(rangeDescriptorTy, desc, operands[2],
-                       positionAttr(rewriter, 2));
-    rewriter.replaceOp(op, desc);
-    return matchSuccess();
-  }
-};
-
-// RangeIntersectOp creates a new range descriptor.
-class RangeIntersectOpConversion : public LLVMOpLowering {
-public:
-  explicit RangeIntersectOpConversion(MLIRContext *context,
-                                      LLVMTypeConverter &lowering_)
-      : LLVMOpLowering(RangeIntersectOp::getOperationName(), context,
-                       lowering_) {}
-
-  PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                  ConversionPatternRewriter &rewriter) const override {
-    auto rangeIntersectOp = cast<RangeIntersectOp>(op);
-    auto rangeDescriptorTy =
-        convertLinalgType(rangeIntersectOp.getResult()->getType(), lowering);
-    auto int64Ty = lowering.convertType(rewriter.getIntegerType(64));
-    auto int1Ty = lowering.convertType(rewriter.getIntegerType(1));
-
-    edsc::ScopedContext context(rewriter, op->getLoc());
-    auto min1 = extractvalue(int64Ty, operands[0], positionAttr(rewriter, 0));
-    auto min2 = extractvalue(int64Ty, operands[1], positionAttr(rewriter, 0));
-    auto max1 = extractvalue(int64Ty, operands[0], positionAttr(rewriter, 1));
-    auto max2 = extractvalue(int64Ty, operands[1], positionAttr(rewriter, 1));
-    auto step1 = extractvalue(int64Ty, operands[0], positionAttr(rewriter, 2));
-    auto step2 = extractvalue(int64Ty, operands[1], positionAttr(rewriter, 2));
-
-    // Fill in an aggregate value of the descriptor.
-    auto SLE =
-        rewriter.getI64IntegerAttr(static_cast<int64_t>(CmpIPredicate::SLE));
-    auto SGE =
-        rewriter.getI64IntegerAttr(static_cast<int64_t>(CmpIPredicate::SGE));
-    Value *desc = undef(rangeDescriptorTy);
-    desc = insertvalue(
-        rangeDescriptorTy, desc,
-        llvm_select(int64Ty, llvm_icmp(int1Ty, SGE, min1, min2), min1, min2),
-        positionAttr(rewriter, 0));
-    desc = insertvalue(
-        rangeDescriptorTy, desc,
-        llvm_select(int64Ty, llvm_icmp(int1Ty, SLE, max1, max2), max1, max2),
-        positionAttr(rewriter, 1));
-    // TODO(ntv): this assumes both steps are one for now. Enforce and extend.
-    desc = insertvalue(rangeDescriptorTy, desc, mul(step1, step2),
                        positionAttr(rewriter, 2));
     rewriter.replaceOp(op, desc);
     return matchSuccess();
@@ -559,9 +514,9 @@ public:
     desc = insertvalue(viewDescriptorTy, desc, baseOffset, pos(1));
 
     // Compute and insert view sizes (max - min along the range).
-    int numIndexings = llvm::size(viewOp.getIndexings());
+    int numRanges = llvm::size(viewOp.ranges());
     Value *runningStride = constant(int64Ty, IntegerAttr::get(indexTy, 1));
-    for (int i = numIndexings - 1; i >= 0; --i) {
+    for (int i = numRanges - 1; i >= 0; --i) {
       // Update stride.
       Value *rangeDescriptor = operands[1 + i];
       Value *step = extractvalue(int64Ty, rangeDescriptor, pos(2));
@@ -592,7 +547,7 @@ static FuncOp getLLVMLibraryCallImplDefinition(FuncOp libFn) {
   }
   SmallVector<Type, 4> fnArgTypes;
   for (auto t : libFn.getType().getInputs()) {
-    assert(t.isa<LLVMType>() &&
+    assert(t && t.isa<LLVMType>() &&
            "Expected LLVM Type for argument while generating library Call "
            "Implementation Definition");
     fnArgTypes.push_back(t.cast<LLVMType>().getPointerTo());
@@ -611,8 +566,12 @@ template <typename LinalgOp>
 static FuncOp
 getLLVMLibraryCallDeclaration(Operation *op, LLVMTypeConverter &lowering,
                               ConversionPatternRewriter &rewriter) {
-  assert(isa<LinalgOp>(op));
-  auto fnName = LinalgOp::getLibraryCallName();
+  auto linalgOp = cast<LinalgOp>(op);
+  auto fnName = linalgOp.getLibraryCallName();
+  if (fnName.empty()) {
+    op->emitWarning("No library call defined for: ") << *op;
+    return FuncOp();
+  }
   auto module = op->getParentOfType<ModuleOp>();
   if (auto f = module.lookupSymbol<FuncOp>(fnName)) {
     return f;
@@ -620,12 +579,8 @@ getLLVMLibraryCallDeclaration(Operation *op, LLVMTypeConverter &lowering,
 
   // Get the Function type consistent with LLVM Lowering.
   SmallVector<Type, 4> inputTypes;
-  for (auto operand : op->getOperands()) {
-    // TODO(ravishankarm): convertLinalgType handles only a subset of Linalg
-    // types. Handle other types (as well as non-Linalg types) either here or in
-    // convertLinalgType.
-    inputTypes.push_back(convertLinalgType(operand->getType(), lowering));
-  }
+  for (auto operand : op->getOperands())
+    inputTypes.push_back(lowering.convertType(operand->getType()));
   assert(op->getNumResults() == 0 &&
          "Library call for linalg operation can be generated only for ops that "
          "have void return types");
@@ -643,9 +598,7 @@ static void getLLVMLibraryCallDefinition(FuncOp fn,
   auto implFn = getLLVMLibraryCallImplDefinition(fn);
 
   // Generate the function body.
-  fn.addEntryBlock();
-
-  OpBuilder builder(fn.getBody());
+  OpBuilder builder(fn.addEntryBlock());
   edsc::ScopedContext scope(builder, fn.getLoc());
   SmallVector<Value *, 4> implFnArgs;
 
@@ -661,7 +614,7 @@ static void getLLVMLibraryCallDefinition(FuncOp fn,
     implFnArgs.push_back(alloca);
     llvm_store(arg, alloca);
   }
-  call(ArrayRef<Type>(), builder.getSymbolRefAttr(implFn), implFnArgs);
+  llvm_call(ArrayRef<Type>(), builder.getSymbolRefAttr(implFn), implFnArgs);
   llvm_return{ArrayRef<Value *>()};
 }
 
@@ -677,15 +630,15 @@ public:
     return convertLinalgType(t, *this);
   }
 
-  void addLibraryFnDeclaration(FuncOp fn) {
-    libraryFnDeclarations.push_back(fn);
-  }
+  void addLibraryFnDeclaration(FuncOp fn) { libraryFnDeclarations.insert(fn); }
 
-  ArrayRef<FuncOp> getLibraryFnDeclarations() { return libraryFnDeclarations; }
+  ArrayRef<FuncOp> getLibraryFnDeclarations() {
+    return libraryFnDeclarations.getArrayRef();
+  }
 
 private:
   /// List of library functions declarations needed during dialect conversion
-  SmallVector<FuncOp, 2> libraryFnDeclarations;
+  llvm::SetVector<FuncOp> libraryFnDeclarations;
 };
 } // end anonymous namespace
 
@@ -704,6 +657,8 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     // Only emit library call declaration. Fill in the body later.
     auto f = getLLVMLibraryCallDeclaration<LinalgOp>(op, lowering, rewriter);
+    if (!f)
+      return matchFailure();
     static_cast<LinalgTypeConverter &>(lowering).addLibraryFnDeclaration(f);
 
     auto fAttr = rewriter.getSymbolRefAttr(f);
@@ -719,13 +674,13 @@ static void
 populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
                                        OwningRewritePatternList &patterns,
                                        MLIRContext *ctx) {
-  RewriteListBuilder<BufferAllocOpConversion, BufferDeallocOpConversion,
-                     BufferSizeOpConversion, DimOpConversion,
-                     LinalgOpConversion<DotOp>, LinalgOpConversion<MatmulOp>,
-                     LoadOpConversion, RangeOpConversion,
-                     RangeIntersectOpConversion, SliceOpConversion,
-                     StoreOpConversion, ViewOpConversion>::build(patterns, ctx,
-                                                                 converter);
+  patterns
+      .insert<BufferAllocOpConversion, BufferDeallocOpConversion,
+              BufferSizeOpConversion, DimOpConversion,
+              LinalgOpConversion<DotOp>, LinalgOpConversion<FillOp>,
+              LinalgOpConversion<MatmulOp>, LoadOpConversion, RangeOpConversion,
+              SliceOpConversion, StoreOpConversion, ViewOpConversion>(
+          ctx, converter);
 }
 
 namespace {
@@ -776,8 +731,7 @@ void LowerLinalgToLLVMPass::runOnModule() {
   target.addLegalDialect<LLVM::LLVMDialect>();
   target.addDynamicallyLegalOp<FuncOp>(
       [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
-  if (failed(applyPartialConversion(module, target, std::move(patterns),
-                                    &converter))) {
+  if (failed(applyPartialConversion(module, target, patterns, &converter))) {
     signalPassFailure();
   }
 

@@ -19,12 +19,11 @@ from __future__ import print_function
 
 import collections
 import csv
-import gzip
 import functools
+import gzip
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import interleave_ops
@@ -460,7 +459,8 @@ def make_csv_dataset_v2(
 
   if column_defaults is not None:
     column_defaults = [
-        constant_op.constant([], dtype=x) if x in _ACCEPTABLE_CSV_TYPES else x
+        constant_op.constant([], dtype=x)
+        if not tensor_util.is_tensor(x) and x in _ACCEPTABLE_CSV_TYPES else x
         for x in column_defaults
     ]
   else:
@@ -664,7 +664,8 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         argument_default="",
         argument_dtype=dtypes.string)
     record_defaults = [
-        constant_op.constant([], dtype=x) if x in _ACCEPTABLE_CSV_TYPES else x
+        constant_op.constant([], dtype=x)
+        if not tensor_util.is_tensor(x) and x in _ACCEPTABLE_CSV_TYPES else x
         for x in record_defaults
     ]
     self._record_defaults = ops.convert_n_to_tensor(
@@ -687,30 +688,17 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     )
     self._element_spec = tuple(
         tensor_spec.TensorSpec([], d.dtype) for d in self._record_defaults)
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = gen_experimental_dataset_ops.csv_dataset(
-          filenames=self._filenames,
-          record_defaults=self._record_defaults,
-          buffer_size=self._buffer_size,
-          header=self._header,
-          output_shapes=self._flat_shapes,
-          field_delim=self._field_delim,
-          use_quote_delim=self._use_quote_delim,
-          na_value=self._na_value,
-          select_cols=self._select_cols,
-          compression_type=self._compression_type)
-    else:
-      variant_tensor = gen_experimental_dataset_ops.experimental_csv_dataset(
-          filenames=self._filenames,
-          record_defaults=self._record_defaults,
-          buffer_size=self._buffer_size,
-          header=self._header,
-          output_shapes=self._flat_shapes,
-          field_delim=self._field_delim,
-          use_quote_delim=self._use_quote_delim,
-          na_value=self._na_value,
-          select_cols=self._select_cols,
-          compression_type=self._compression_type)
+    variant_tensor = gen_experimental_dataset_ops.csv_dataset(
+        filenames=self._filenames,
+        record_defaults=self._record_defaults,
+        buffer_size=self._buffer_size,
+        header=self._header,
+        output_shapes=self._flat_shapes,
+        field_delim=self._field_delim,
+        use_quote_delim=self._use_quote_delim,
+        na_value=self._na_value,
+        select_cols=self._select_cols,
+        compression_type=self._compression_type)
     super(CsvDatasetV2, self).__init__(variant_tensor)
 
   @property
@@ -993,14 +981,9 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
         query, dtype=dtypes.string, name="query")
     self._element_spec = nest.map_structure(
         lambda dtype: tensor_spec.TensorSpec([], dtype), output_types)
-    if compat.forward_compatible(2019, 8, 3):
-      variant_tensor = gen_experimental_dataset_ops.sql_dataset(
-          self._driver_name, self._data_source_name, self._query,
-          **self._flat_structure)
-    else:
-      variant_tensor = gen_experimental_dataset_ops.experimental_sql_dataset(
-          self._driver_name, self._data_source_name, self._query,
-          **self._flat_structure)
+    variant_tensor = gen_experimental_dataset_ops.sql_dataset(
+        self._driver_name, self._data_source_name, self._query,
+        **self._flat_structure)
     super(SqlDatasetV2, self).__init__(variant_tensor)
 
   @property
