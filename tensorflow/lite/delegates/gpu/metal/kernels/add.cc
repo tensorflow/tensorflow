@@ -66,6 +66,26 @@ std::string GetAddTableCode(int src_count) {
 }
 }  // namespace
 
+std::string GetAddBufferCode() {
+  return R"(
+    #include <metal_stdlib>
+    using namespace metal;
+    $0
+    kernel void ComputeFunction(
+                                $1
+                                uint3 gid[[thread_position_in_grid]]) {
+      if (int(gid.x) >= size.x || int(gid.y) >= size.y) {
+        return;
+      }
+      const int linear_index = (gid.z * size.y + gid.y) * size.x + gid.x;
+      FLT4 value = input_buffer[linear_index];
+      value += add_buf[gid.z];
+      $2
+      output_buffer[linear_index] = value;
+    }
+  )";
+}
+
 std::vector<ComputeTaskDescriptorPtr> Add(int id,
                                           const std::vector<ValueId> input_ids,
                                           ValueId output_id,
@@ -84,6 +104,40 @@ std::vector<ComputeTaskDescriptorPtr> Add(int id,
         std::to_string(*add_value) + ";}";
     desc->input_buffers = {{input_ids[0]}};
     desc->output_buffer = {output_id};
+    return {desc};
+  }
+
+  // Add buffer
+  auto add_buffer = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
+  if (add_buffer) {
+    desc->is_linkable = false;
+    desc->shader_source = GetAddBufferCode();
+    desc->input_buffers = {{input_ids[0], "device FLT4* const input_buffer"}};
+    desc->output_buffer = {output_id, "device FLT4* output_buffer", [input_ids](const std::map<ValueId, BHWC>& buffers) {
+      return buffers.find(input_ids[0])->second;
+    }};
+    auto coeffs = options.storage_precision == RuntimeOptions::Precision::FP32
+                      ? VectorToUint8Vector(add_buffer->data)
+                      : VectorFloatToHalf(add_buffer->data);
+    desc->uniform_buffers = {
+      {"constant int2& size", [input_ids](const std::map<ValueId, BHWC>& buffers) {
+          const auto& dimension = buffers.find(input_ids[0])->second;
+          std::vector<int> uniform_params = {dimension.w, dimension.h};
+          return VectorToUint8Vector(uniform_params);
+      }}
+    };
+    desc->immutable_buffers = {
+        {"device FLT4* const add_buf", coeffs},
+    };
+    desc->resize_function = [input_ids](const std::map<ValueId, BHWC>& buffers) {
+      const auto& src_dim = buffers.find(input_ids[0])->second;
+      const uint3 groups_size{16, 16, 1};
+      int groups_x = IntegralDivideRoundUp(src_dim.w, groups_size.x);
+      int groups_y = IntegralDivideRoundUp(src_dim.h, groups_size.y);
+      const int dst_layers = IntegralDivideRoundUp(src_dim.c, 4);
+      int groups_z = IntegralDivideRoundUp(dst_layers, groups_size.z);
+      return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
+    };
     return {desc};
   }
 
