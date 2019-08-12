@@ -2277,6 +2277,13 @@ tf_pyclif_proto_library(
 )
 
 tf_pyclif_proto_library(
+    name = "protobuf/graph_debug_info_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "protobuf/graph_debug_info.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
     name = "protobuf/meta_graph_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "protobuf/meta_graph.proto",
