@@ -233,6 +233,7 @@ static PyObject* TFE_ClearScalarCache();
 }
 
 %typemap(in, numinputs=0) unsigned char* is_list (unsigned char tmp) {
+  tmp = 0;
   $1 = &tmp;
 }
 
