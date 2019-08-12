@@ -44,7 +44,7 @@ namespace {
 class GreedyPatternRewriteDriver : public PatternRewriter {
 public:
   explicit GreedyPatternRewriteDriver(MLIRContext *ctx,
-                                      OwningRewritePatternList &patterns)
+                                      const OwningRewritePatternList &patterns)
       : PatternRewriter(ctx), matcher(patterns) {
     worklist.reserve(64);
   }
@@ -221,7 +221,7 @@ bool GreedyPatternRewriteDriver::simplify(Operation *op, int maxIterations) {
 /// Note: This does not apply patterns to the top-level operation itself.
 ///
 bool mlir::applyPatternsGreedily(Operation *op,
-                                 OwningRewritePatternList &patterns) {
+                                 const OwningRewritePatternList &patterns) {
   // The top-level operation must be known to be isolated from above to
   // prevent performing canonicalizations on operations defined at or above
   // the region containing 'op'.

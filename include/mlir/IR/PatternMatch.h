@@ -436,7 +436,7 @@ private:
 class RewritePatternMatcher {
 public:
   /// Create a RewritePatternMatcher with the specified set of patterns.
-  explicit RewritePatternMatcher(OwningRewritePatternList &patterns);
+  explicit RewritePatternMatcher(const OwningRewritePatternList &patterns);
 
   /// Try to match the given operation to a pattern and rewrite it. Return
   /// true if any pattern matches.
@@ -457,7 +457,8 @@ private:
 /// the result operation regions.
 /// Note: This does not apply patterns to the top-level operation itself.
 ///
-bool applyPatternsGreedily(Operation *op, OwningRewritePatternList &patterns);
+bool applyPatternsGreedily(Operation *op,
+                           const OwningRewritePatternList &patterns);
 
 } // end namespace mlir
 
