@@ -107,6 +107,7 @@ tensorflow/lite/kernels/padding.h \
 tensorflow/lite/kernels/internal/common.h \
 tensorflow/lite/kernels/internal/compatibility.h \
 tensorflow/lite/kernels/internal/optimized/neon_check.h \
+tensorflow/lite/kernels/internal/reference/arg_min_max.h \
 tensorflow/lite/kernels/internal/reference/binary_function.h \
 tensorflow/lite/kernels/internal/reference/comparisons.h \
 tensorflow/lite/kernels/internal/reference/ceil.h \
@@ -118,8 +119,8 @@ tensorflow/lite/kernels/internal/reference/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/pooling.h \
 tensorflow/lite/kernels/internal/reference/prelu.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
+tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
-tensorflow/lite/kernels/internal/reference/arg_min_max.h \
 tensorflow/lite/kernels/internal/round.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \
 tensorflow/lite/kernels/internal/types.h \
