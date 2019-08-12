@@ -44,6 +44,7 @@ using mkldnn::memory;
 using mkldnn::padding_kind;
 using mkldnn::primitive;
 using mkldnn::reorder;
+using mkldnn::stream;
 
 #ifdef _WIN32
 typedef unsigned int uint;
@@ -210,8 +211,9 @@ memory::desc CreateBlockedMemDescHelper(const memory::dims& dim,
                                         const memory::dims& strides,
                                         memory::data_type dtype);
 
-#ifdef ENABLE_MKLDNN_V1
 typedef std::unordered_map<int, memory> MemoryArgsMap;
+
+#ifdef ENABLE_MKLDNN_V1
 inline std::ostream& operator<<(std::ostream& os,
                                 const memory::format_tag& tag) {
   if (tag == memory::format_tag::undef) {
@@ -632,9 +634,24 @@ class MklDnnShape {
 // List of MklShape objects. Used in Concat/Split layers.
 typedef std::vector<MklDnnShape> MklDnnShapeList;
 
-using mkldnn::stream;
 template <typename T>
 class MklDnnData;
+
+inline void ExecutePrimitive(const std::vector<primitive>& net,
+                             const std::vector<MemoryArgsMap>* net_args,
+                             const engine& cpu_engine) {
+#ifdef ENABLE_MKLDNN_V1
+  DCHECK(net_args);
+  DCHECK_EQ(net.size(), net_args->size());
+  stream cpu_stream(cpu_engine);
+  for (size_t i = 0; i < net.size(); ++i) {
+    net.at(i).execute(cpu_stream, net_args->at(i));
+  }
+  cpu_stream.wait();
+#else
+  stream(stream::kind::eager).submit(net).wait();
+#endif  // ENABLE_MKLDNN_V1
+}
 
 template <typename T>
 inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
@@ -667,30 +684,40 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
     if (input.IsReorderNeeded(output_tf_md)) {
       std::vector<primitive> net;
       std::vector<MemoryArgsMap> net_args;
-      DCHECK(input.CheckReorderToOpMem(output_tf_md, &output_tensor, net,
-                                       net_args, &cpu_engine));
-      DCHECK_EQ(net.size(), net_args.size());
-      stream cpu_stream(cpu_engine);
-      for (size_t i = 0; i < net.size(); ++i) {
-        net.at(i).execute(cpu_stream, net_args.at(i));
+      auto status = input.CheckReorderToOpMem(output_tf_md, &output_tensor, net,
+                                              net_args, &cpu_engine);
+      if (!status) {
+        TF_CHECK_OK(
+            Status(error::Code::INTERNAL,
+                   "ConvertMklToTF(): Failed to create reorder for input"));
       }
-      cpu_stream.wait();
+      ExecutePrimitive(net, &net_args, cpu_engine);
 #else
     // Reorder
     if (input.IsReorderNeeded(output_tf_pd)) {
       std::vector<primitive> net;
-      CHECK_EQ(input.CheckReorderToOpMem(output_tf_pd, &output_tensor, &net),
-               true);
-      stream(stream::kind::eager).submit(net).wait();
+      auto status =
+          input.CheckReorderToOpMem(output_tf_pd, &output_tensor, &net);
+      if (!status) {
+        TF_CHECK_OK(
+            Status(error::Code::INTERNAL,
+                   "ConvertMklToTF(): Failed to create reorder for input"));
+      }
+      ExecutePrimitive(net, nullptr, cpu_engine);
 #endif  // ENABLE_MKLDNN_V1
     } else {
       // If not, just forward input tensor to output tensor.
-      CHECK(output_tensor.CopyFrom(mkl_tensor, output_shape));
+      auto status = output_tensor.CopyFrom(mkl_tensor, output_shape);
+      if (!status) {
+        TF_CHECK_OK(Status(
+            error::Code::INTERNAL,
+            "ConvertMklToTF(): Failed to forward input tensor to output"));
+      }
     }
   } catch (mkldnn::error& e) {
-    string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + string(e.message) + ", in file " +
-                       string(__FILE__) + ":" + std::to_string(__LINE__);
+    string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                       string(e.message) + ", in file " + string(__FILE__) +
+                       ":" + std::to_string(__LINE__);
     LOG(FATAL) << "Operation received an exception: " << error_msg;
   }
   return output_tensor;
@@ -1179,11 +1206,12 @@ inline memory::desc CreateBlockedMemDescHelper(const memory::dims& dim,
     input_strides[i] = strides[i];
   }
   mkldnn_memory_desc_t md;
-  DCHECK_EQ(mkldnn_memory_desc_init_by_strides(&md, dim.size(), input_dims,
-                                               memory::convert_to_c(dtype),
-                                               input_strides),
-            0)
-      << "Failed to create blocked memory descriptor";
+  auto status = mkldnn_memory_desc_init_by_strides(
+      &md, dim.size(), input_dims, memory::convert_to_c(dtype), input_strides);
+  if (!status) {
+    TF_CHECK_OK(Status(error::Code::INTERNAL,
+                       "Failed to create blocked memory descriptor"));
+  }
 #else
   // We have to construct memory descriptor in a C style. This is not at all
   // ideal but MKL-DNN does not offer any API to construct descriptor in
@@ -1217,15 +1245,10 @@ inline void CreateAndExecuteReorder(const reorder::primitive_desc& reorder_desc,
   net.push_back(mkldnn::reorder(reorder_desc));
   std::vector<MemoryArgsMap> net_args;
   net_args.push_back({{MKLDNN_ARG_FROM, src_mem}, {MKLDNN_ARG_TO, dst_mem}});
-  DCHECK_EQ(net.size(), net_args.size());
-  stream cpu_stream(engine);
-  for (size_t i = 0; i < net.size(); ++i) {
-    net.at(i).execute(cpu_stream, net_args.at(i));
-  }
-  cpu_stream.wait();
+  ExecutePrimitive(net, &net_args, engine);
 #else
   net.push_back(mkldnn::reorder(reorder_desc, src_mem, dst_mem));
-  stream(stream::kind::eager).submit(net).wait();
+  ExecutePrimitive(net, nullptr, engine);
 #endif  // ENABLE_MKLDNN_V1
 }
 
@@ -1746,10 +1769,7 @@ class MklDnnData {
   inline void InsertReorderToUserMem() {
     DCHECK(user_memory_);
     DCHECK(reorder_memory_);
-#ifdef ENABLE_MKLDNN_V1
     DCHECK(cpu_engine_);
-    stream cpu_stream(cpu_engine_);
-#endif  // ENABLE_MKLDNN_V1
     // primitive reuse don't allow two same reorder prim in
     // one stream, so submit it immediately
     std::vector<primitive> net;
@@ -1758,14 +1778,10 @@ class MklDnnData {
     net.push_back(FindOrCreateReorder<T>(reorder_memory_, user_memory_));
     net_args.push_back(MemoryArgsMap{{MKLDNN_ARG_FROM, *reorder_memory_},
                                      {MKLDNN_ARG_TO, *user_memory_}});
-    DCHECK_EQ(net.size(), net_args.size());
-    for (size_t i = 0; i < net.size(); ++i) {
-      net.at(i).execute(cpu_stream, net_args.at(i));
-    }
-    cpu_stream.wait();
+    ExecutePrimitive(net, &net_args, *cpu_engine_);
 #else
     net.push_back(FindOrCreateReorder<T>(reorder_memory_, user_memory_));
-    stream(stream::kind::eager).submit(net).wait();
+    ExecutePrimitive(net, nullptr, *cpu_engine_);
 #endif  // ENABLE_MKLDNN_V1
   }
 };
