@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
 #include "absl/strings/strip.h"
-#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -31,24 +30,6 @@ namespace tensorflow {
 namespace str_util {
 
 string CEscape(StringPiece src) { return absl::CEscape(src); }
-
-namespace {  // Private helpers for CUnescape().
-
-template <typename T>
-bool SplitAndParseAsInts(StringPiece text, char delim,
-                         std::function<bool(StringPiece, T*)> converter,
-                         std::vector<T>* result) {
-  result->clear();
-  std::vector<string> num_strings = Split(text, delim);
-  for (const auto& s : num_strings) {
-    T num;
-    if (!converter(s, &num)) return false;
-    result->push_back(num);
-  }
-  return true;
-}
-
-}  // namespace
 
 bool CUnescape(StringPiece source, string* dest, string* error) {
   return absl::CUnescape(source, dest, error);
