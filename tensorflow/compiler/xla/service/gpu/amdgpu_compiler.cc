@@ -118,7 +118,7 @@ string GetROCDLDir(const HloModuleConfig& config) {
   if (!datadir.empty()) {
     potential_rocdl_dirs.push_back(datadir);
   }
-  potential_rocdl_dirs.push_back(tensorflow::ROCDLRoot());
+  potential_rocdl_dirs.push_back(tensorflow::RocdlRoot());
 
   // Tries all potential ROCDL directories in the order they are inserted.
   // Returns the first directory that exists in the file system.

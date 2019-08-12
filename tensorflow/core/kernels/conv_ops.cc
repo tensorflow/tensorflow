@@ -961,14 +961,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
 
     se::TfAllocatorAdapter tf_allocator_adapter(
         stream->parent()->platform(), ctx->device()->GetAllocator({}));
-<<<<<<< HEAD
 
     se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
                                       se::cuda::PtxCompilationOptions());
-=======
-    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                            se::cuda::PtxCompilationOptions());
->>>>>>> upstream/master
     se::DeviceMemory<T> output_tensor(
         WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
@@ -976,14 +971,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
-<<<<<<< HEAD
       se::RedzoneAllocator rz_scratch_allocator(
           stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions());
-=======
-      se::cuda::RedzoneAllocator rz_scratch_allocator(
-          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
-          /*memory_limit=*/ConvolveScratchSize);
->>>>>>> upstream/master
       DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
       se::ScratchAllocator* allocator_used =
           !RedzoneCheckDisabled()

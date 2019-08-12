@@ -748,13 +748,9 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
           convolution = convolutional.conv3d
 
           if test.is_built_with_rocm():
-<<<<<<< HEAD
-            # 5D tensors are not yet supported in ROCm
-=======
             # This subtest triggers a known bug in ROCm runtime code
             # The bug has been fixed and will be available in ROCm 2.7
             # Re-enable this test once ROCm 2.7 is released
->>>>>>> upstream/master
             continue
 
         inputs = random_ops.random_normal(shape, dtype=dtype)

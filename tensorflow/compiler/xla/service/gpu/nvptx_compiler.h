@@ -23,14 +23,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
-<<<<<<< HEAD
-#include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/llvm_compiler.h"
-=======
-#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
->>>>>>> upstream/master
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/mutex.h"

@@ -23,16 +23,11 @@ licenses(["notice"])  # Apache 2.0
 
 tf_gpu_library(
     name = "blas_gemm",
-<<<<<<< HEAD
-    srcs = if_cuda_is_configured(["blas_gemm.cc"])
-    + if_rocm_is_configured(["blas_gemm.cc"]),
-=======
     srcs = [] + if_cuda_is_configured([
         "blas_gemm.cc",
     ]) + if_rocm_is_configured([
         "blas_gemm.cc",
     ]),
->>>>>>> upstream/master
     hdrs = ["blas_gemm.h"],
     deps = [
         "//tensorflow/core:framework",

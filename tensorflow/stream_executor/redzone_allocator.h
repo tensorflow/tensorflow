@@ -43,11 +43,7 @@ class RedzoneAllocator : public ScratchAllocator {
       1LL << 23;  // 8MiB per side, 16MiB total.
   static const uint8 kDefaultRedzonePattern = -1;
   RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,
-<<<<<<< HEAD:tensorflow/stream_executor/redzone_allocator.h
                    GpuAsmOpts gpu_compilation_opts_,
-=======
-                   cuda::PtxCompilationOptions ptx_compilation_opts,
->>>>>>> upstream/master:tensorflow/stream_executor/cuda/redzone_allocator.h
                    int64 memory_limit = kDefaultMemoryLimit,
                    int64 redzone_size = kDefaultRedzoneSize,
                    uint8 redzone_pattern = kDefaultRedzonePattern);

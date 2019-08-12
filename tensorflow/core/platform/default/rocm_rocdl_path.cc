@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-=======
 /* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
->>>>>>> upstream/master
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,22 +17,13 @@ limitations under the License.
 
 #include <stdlib.h>
 
-<<<<<<< HEAD
-#if !defined(PLATFORM_GOOGLE)
-=======
 #if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
->>>>>>> upstream/master
 #include "rocm/rocm_config.h"
 #endif
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
-<<<<<<< HEAD
-string ROCmRoot() {
-  VLOG(3) << "ROCM root = " << TF_ROCM_TOOLKIT_PATH;
-  return TF_ROCM_TOOLKIT_PATH;
-=======
 string RocmRoot() {
 #if TENSORFLOW_USE_ROCM
   VLOG(3) << "ROCM root = " << TF_ROCM_TOOLKIT_PATH;
@@ -44,7 +31,6 @@ string RocmRoot() {
 #else
   return "";
 #endif
->>>>>>> upstream/master
 }
 
 }  // namespace tensorflow

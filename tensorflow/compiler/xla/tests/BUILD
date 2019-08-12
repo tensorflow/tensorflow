@@ -3,13 +3,8 @@
 
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
 load(
-<<<<<<< HEAD
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags", "tf_gpu_tests_tags",
-=======
     "//tensorflow/core/platform:default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
->>>>>>> upstream/master
+    "tf_cuda_tests_tags", "tf_gpu_tests_tags",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
@@ -2109,12 +2104,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
-<<<<<<< HEAD
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler_impl",
-=======
-        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
->>>>>>> upstream/master
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:stream_executor_no_cuda",

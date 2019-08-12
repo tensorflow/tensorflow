@@ -523,13 +523,8 @@ tf_cuda_library(
         "//tensorflow/core:logger",
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/util/proto:proto_utils",
-<<<<<<< HEAD
         "//tensorflow/stream_executor:redzone_allocator",
     ] + if_cuda([
-=======
-    ] + if_cuda([
-        "//tensorflow/stream_executor/cuda:redzone_allocator",
->>>>>>> upstream/master
         "//tensorflow/stream_executor/cuda:ptxas_utils",
     ]),
 )
@@ -3351,22 +3346,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
     ] + if_cuda_is_configured([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
-<<<<<<< HEAD
-    ] + if_static(
-        [
-            "@local_config_cuda//cuda:cusolver",
-            "@local_config_cuda//cuda:cublas",
-        ],
-        [
-            "//tensorflow/stream_executor/cuda:cusolver_stub",
-            "//tensorflow/stream_executor/cuda:cublas_stub",
-        ],
-    )),
-=======
         "//tensorflow/stream_executor/cuda:cublas_lib",
         "//tensorflow/stream_executor/cuda:cusolver_lib",
-    ],
->>>>>>> upstream/master
+    ]),
 )
 
 tf_kernel_library(

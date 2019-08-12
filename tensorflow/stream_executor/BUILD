@@ -5,15 +5,10 @@
 # do not link against restricted binary blobs.
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-<<<<<<< HEAD
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
-=======
 load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
->>>>>>> upstream/master
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(

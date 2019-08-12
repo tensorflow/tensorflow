@@ -13,11 +13,7 @@ load(
     "tf_cuda_library",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-<<<<<<< HEAD
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-=======
 load(
     "//tensorflow/core/platform:default/cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -26,7 +22,6 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
->>>>>>> upstream/master
 
 package(
     default_visibility = [":friends"],
@@ -540,20 +535,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-<<<<<<< HEAD
-    ]
-    + if_cuda_is_configured([
-        ":cusolver_context",
-        "//tensorflow/stream_executor/cuda:cuda_stream",
-        "//tensorflow/stream_executor/cuda:curand_plugin",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
-        "//tensorflow/core/platform/default/build_config:cudnn_plugin",
-        "//tensorflow/core/platform/default/build_config:cufft_plugin",
-        "@local_config_cuda//cuda:cuda_headers",
-    ])
-    + if_rocm_is_configured([
-=======
     ] + if_cuda_is_configured([
         ":cusolver_context",
         "//tensorflow/stream_executor/cuda:cuda_stream",
@@ -563,7 +544,6 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm_is_configured([
->>>>>>> upstream/master
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
@@ -745,15 +725,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:blas",
-<<<<<<< HEAD
-    ] + if_static(
-        ["@local_config_cuda//cuda:cusolver"],
-        ["//tensorflow/stream_executor/cuda:cusolver_stub"],
-    )),
-=======
         "//tensorflow/stream_executor/cuda:cusolver_lib",
-    ],
->>>>>>> upstream/master
+    ]),
 )
 
 cc_library(
@@ -1024,25 +997,6 @@ cc_library(
 )
 
 cc_library(
-<<<<<<< HEAD
-    name = "gpu_compiler_impl",
-    srcs = [
-        "gpu_compiler.cc",
-    ] + if_cuda_is_configured([
-        "nvptx_compiler.cc",
-    ]) + if_rocm_is_configured([
-        "amdgpu_compiler.cc",
-    ]),
-    hdrs = [
-        "gpu_compiler.h"
-    ] + if_cuda_is_configured([
-        "nvptx_compiler.h",
-    ]) + if_rocm_is_configured([
-        "amdgpu_compiler.h",
-    ]),
-    deps = [
-        ":cudnn_batchnorm_rewriter",
-=======
     name = "gpu_compiler",
     deps = if_cuda_is_configured([
         ":nvptx_compiler",
@@ -1062,8 +1016,6 @@ cc_library(
     ],
     deps = [
         ":cudnn_batchnorm_rewriter",
-        ":cudnn_conv_algorithm_picker",
->>>>>>> upstream/master
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
         ":fusion_merger",
@@ -1154,20 +1106,11 @@ cc_library(
         "//tensorflow/stream_executor/cuda:ptxas_utils",
     ])
     + if_rocm_is_configured([
-        "//tensorflow/core:rocm_rocdl_path",
+        "//tensorflow/core/platform:rocm_rocdl_path",
     ]),
 )
 
 cc_library(
-<<<<<<< HEAD
-    name = "gpu_compiler",
-    srcs = if_cuda_is_configured([
-        "nvptx_compiler_registration.cc",
-    ]) + if_rocm_is_configured([
-        "amdgpu_compiler_registration.cc",
-    ]),
-    deps = [":gpu_compiler_impl"],
-=======
     name = "nvptx_compiler",
     srcs = if_cuda_is_configured([
         "nvptx_compiler_registration.cc",
@@ -1247,7 +1190,6 @@ cc_library(
         "//tensorflow/stream_executor:stream_executor_headers",
     ] + if_cuda_is_configured([
         ":cudnn_batchnorm_rewriter",
-        ":cudnn_conv_algorithm_picker",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
         ":cudnn_conv_pad_for_tensor_cores",
@@ -1287,25 +1229,20 @@ cc_library(
     deps = if_rocm_is_configured([
         "amdgpu_compiler_impl",
     ]),
->>>>>>> upstream/master
     alwayslink = True,  # Contains compiler registration
 )
 
 cc_library(
     name = "amdgpu_compiler_impl",
     srcs = if_rocm_is_configured([
-        # TODO(whchung@gmail.com) : enable in the subsequent PR.
-        #"amdgpu_compiler.cc",
+        "amdgpu_compiler.cc",
     ]),
     hdrs = if_rocm_is_configured([
-        # TODO(whchung@gmail.com): enable in the subsequent PR.
-        #"amdgpu_compiler.h"
+        "amdgpu_compiler.h"
     ]),
     deps = if_rocm_is_configured([
-        # TODO(whchung@gmail.com): Enable these after pending PRs get merged.
-        #":gpu_compiler_impl",
-        #":miopen_conv_algorithm_picker",
-        #"//tensorflow/core:rocm_rocdl_path",
+        ":gpu_compiler_impl",
+        "//tensorflow/core/platform:rocm_rocdl_path",
     ]),
 )
 

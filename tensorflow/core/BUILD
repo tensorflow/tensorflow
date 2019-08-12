@@ -119,13 +119,6 @@ load(
     "tf_additional_lib_deps",
     "tf_additional_libdevice_data",
     "tf_additional_libdevice_deps",
-<<<<<<< HEAD
-    "tf_additional_libdevice_srcs",
-    "tf_additional_rocdl_data",
-    "tf_additional_rocdl_deps",
-    "tf_additional_rocdl_srcs",
-=======
->>>>>>> upstream/master
     "tf_additional_minimal_lib_srcs",
     "tf_additional_monitoring_hdrs",
     "tf_additional_mpi_lib_defines",
@@ -1843,26 +1836,6 @@ filegroup(
             "util/events_writer.*",
             "util/stats_calculator.*",
             "util/reporter.*",
-<<<<<<< HEAD
-            "platform/**/cuda_libdevice_path.*",
-            "platform/**/rocm_rocdl_path.*",
-            "platform/**/logger.cc",
-            # Exclude env_time and logging to avoid collisions with
-            # :platform_base, a common dependency for downstream targets.
-            "platform/**/env_time.cc",
-            "platform/**/logging.cc",
-            "platform/default/test_benchmark.*",
-            "platform/cuda.h",
-            "platform/rocm.h",
-            "platform/google/**/*",
-            "platform/hadoop/**/*",
-            "platform/gif.h",
-            "platform/jpeg.h",
-            "platform/png.h",
-            "platform/stream_executor.*",
-            "platform/windows/**/*",
-=======
->>>>>>> upstream/master
             "user_ops/**/*.cu.cc",
             "util/ctc/*.h",
             "util/ctc/*.cc",
@@ -2514,46 +2487,12 @@ cc_library(
             "lib/gif/**/*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
-<<<<<<< HEAD
-            "platform/**/env_time.cc",
-            "platform/**/monitoring.cc",
-            "platform/**/cuda_libdevice_path.cc",
-            "platform/**/rocm_rocdl_path.cc",
-            "platform/**/device_tracer.cc",
-            "platform/**/logger.cc",
-            "platform/**/logging.cc",
-            "platform/**/human_readable_json.cc",
-            "platform/abi.cc",
-            "platform/protobuf.cc",
-        ],
-    ) + tf_additional_lib_srcs(
-        exclude = [
-            "**/*test*",
-            "platform/**/cuda.h",
-            "platform/**/cuda_libdevice_path.cc",
-            "platform/**/rocm.h",
-            "platform/**/rocm_rocdl_path.cc",
-            "platform/**/monitoring.cc",
-            "platform/**/stream_executor.h",
-            "platform/**/env_time.cc",
-            "platform/**/device_tracer.cc",
-            "platform/**/logger.cc",
-            "platform/**/logging.cc",
-            "platform/**/human_readable_json.cc",
-            "platform/abi.cc",
-        ] +
-        # Protobuf deps already included through the ":lib_proto_parsing"
-        # dependency.
-        tf_additional_proto_srcs(),
-    ) + tf_additional_monitoring_srcs(),
-=======
         ],
     ) + [
         "//tensorflow/core/platform:legacy_monitoring_srcs",
         "//tensorflow/core/platform:legacy_platform_lib_srcs",
         "//tensorflow/core/platform:legacy_lib_internal_srcs",
     ],
->>>>>>> upstream/master
     hdrs = LIB_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     defines = LIB_INTERNAL_DEFINES,
@@ -4611,16 +4550,6 @@ tf_cuda_cc_test(
 tf_cc_test_gpu(
     name = "rocm_rocdl_path_test",
     size = "small",
-<<<<<<< HEAD
-    srcs = ["platform/rocm_rocdl_path_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":rocm_rocdl_path",
-        ":lib",
-        ":test",
-        ":test_main",
-=======
     srcs = ["//tensorflow/core/platform:rocm_rocdl_path_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_gpu_tests_tags(),
@@ -4629,7 +4558,6 @@ tf_cc_test_gpu(
         ":test",
         ":test_main",
         "//tensorflow/core/platform:rocm_rocdl_path",
->>>>>>> upstream/master
     ],
 )
 
@@ -5610,18 +5538,6 @@ cc_library(
     deps = [
         ":lib",
     ] + tf_additional_libdevice_deps(),
-)
-
-cc_library(
-    name = "rocm_rocdl_path",
-    srcs = ["platform/rocm_rocdl_path.cc"] + tf_additional_rocdl_srcs(),
-    hdrs = ["platform/rocm_rocdl_path.h"],
-    copts = tf_copts(),
-    data = tf_additional_rocdl_data(),
-    visibility = ["//visibility:public"],
-    deps = [
-        ":lib",
-    ] + tf_additional_rocdl_deps(),
 )
 
 transitive_hdrs(

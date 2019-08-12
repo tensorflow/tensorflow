@@ -240,11 +240,7 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // the gte(customcall, 0) would probably already be into a fusion node.  We
   // can't simplify across HloComputation boundaries, so in this case we
   // wouldn't be able to simplify away the new_tuple bits.
-<<<<<<< HEAD
   pipeline.AddPass<GpuConvAlgorithmPicker>(stream_exec, device_allocator);
-=======
-  pipeline.AddPass<CudnnConvAlgorithmPicker>(stream_exec, device_allocator);
->>>>>>> upstream/master
 
   // Find the fastest algorithm for GEMMs.
   pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
@@ -351,28 +347,6 @@ bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
 
 }  // namespace
 
-<<<<<<< HEAD
-NVPTXCompiler::NVPTXCompiler(se::Platform::Id platform_id)
-    : GpuCompiler(platform_id, nvptx::kTargetTriple, nvptx::kDataLayout) {}
-
-HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() {
-  return &CanShareBufferHint;
-}
-
-GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
-  int cc_major, cc_minor;
-  if (!stream_exec->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                                   &cc_minor)) {
-    LOG(WARNING)
-        << "Couldn't get compute capability for device; assuming sm_20.";
-    cc_major = 2;
-    cc_minor = 0;
-  }
-
-  return std::make_pair(cc_major, cc_minor);
-}
-
-=======
 NVPTXCompiler::NVPTXCompiler()
     : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::kTargetTriple,
                   nvptx::kDataLayout) {}
@@ -394,18 +368,13 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
   return std::make_pair(cc_major, cc_minor);
 }
 
->>>>>>> upstream/master
 StatusOr<std::pair<std::string, std::vector<uint8>>>
 NVPTXCompiler::CompileTargetBinary(const HloModule* module,
                                    llvm::Module* llvm_module,
                                    GpuVersion gpu_version,
                                    se::StreamExecutor* stream_exec) {
-<<<<<<< HEAD
-  std::pair<int, int> compute_capability = absl::get<std::pair<int, int>>(gpu_version);
-=======
   std::pair<int, int> compute_capability =
       absl::get<std::pair<int, int>>(gpu_version);
->>>>>>> upstream/master
 
   std::string libdevice_dir;
   {
@@ -421,17 +390,10 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
   }
   VLOG(2) << "Libdevice dir = " << libdevice_dir << "\n";
 
-<<<<<<< HEAD
-  std::string ptx;
-
-  if (!MaybeLoadPtxFromFile(module, &ptx)) {
-    XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - CompileToPtx");
-=======
   string ptx;
   if (!MaybeLoadPtxFromFile(module, &ptx)) {
     XLA_SCOPED_LOGGING_TIMER(
         "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
->>>>>>> upstream/master
     TF_ASSIGN_OR_RETURN(
         ptx, nvptx::CompileToPtx(llvm_module, gpu_version, module->config(),
                                  libdevice_dir));
@@ -447,15 +409,9 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
     DumpToFileInDirOrStdout(*module, "ptx", ptx);
   }
 
-<<<<<<< HEAD
-  std::vector<uint8> cubin = CompilePtxOrGetCachedResult(
-      stream_exec, ptx, compute_capability.first, compute_capability.second,
-      module->config());
-=======
   std::vector<uint8> cubin =
       CompilePtxOrGetCachedResult(stream_exec, ptx, compute_capability.first,
                                   compute_capability.second, module->config());
->>>>>>> upstream/master
 
   return std::pair<std::string, std::vector<uint8>>(std::move(ptx),
                                                     std::move(cubin));

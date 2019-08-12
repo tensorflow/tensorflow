@@ -569,21 +569,6 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
 // TargetMachine for the AMDGPU target.
 StatusOr<std::vector<uint8>> EmitModuleToHsaco(
     Module* module, llvm::TargetMachine* target_machine) {
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
-  char tempdir_template[] = "/tmp/amdgpu_xla-XXXXXX";
-  char* tempdir_name = mkdtemp(tempdir_template);
-
-  VLOG(1) << "Compile-time artifacts located at: " << tempdir_name;
-
-  // prepare filenames for all stages of compilation:
-  // IR, ISA, binary ISA, and HSACO
-  std::string ir_filename =
-      tensorflow::strings::StrCat(module->getModuleIdentifier(), ".ll");
-  std::string ir_path = tensorflow::io::JoinPath(tempdir_name, ir_filename);
-
-  std::string isabin_filename =
-      tensorflow::strings::StrCat(module->getModuleIdentifier(), ".o");
-=======
   auto* env = tensorflow::Env::Default();
   std::vector<std::string> tempdir_vector;
   env->GetLocalTempDirectories(&tempdir_vector);
@@ -601,42 +586,26 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
 
   std::string isabin_filename =
       absl::StrCat(module->getModuleIdentifier(), ".o");
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
   std::string isabin_path =
       tensorflow::io::JoinPath(tempdir_name, isabin_filename);
 
   std::string hsaco_filename =
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
-      tensorflow::strings::StrCat(module->getModuleIdentifier(), ".hsaco");
-=======
       absl::StrCat(module->getModuleIdentifier(), ".hsaco");
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
   std::string hsaco_path =
       tensorflow::io::JoinPath(tempdir_name, hsaco_filename);
 
   std::error_code ec;
 
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
-  // dump LLVM IR
-=======
   // Dump LLVM IR.
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
   std::unique_ptr<llvm::raw_fd_ostream> ir_fs(
       new llvm::raw_fd_ostream(ir_path, ec, llvm::sys::fs::F_None));
   module->print(*ir_fs, nullptr);
   ir_fs->flush();
 
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
-  //// emit GCN ISA binary
-  // The extension is stripped by IrDumpingPassManager, so we need to
-  // get creative to add a suffix.
-  string module_id(llvm_ir::AsString(module->getModuleIdentifier()));
-=======
   // Emit GCN ISA binary.
   // The extension is stripped by IrDumpingPassManager, so we need to
   // get creative to add a suffix.
   std::string module_id = module->getModuleIdentifier();
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
   IrDumpingPassManager codegen_passes(
       ReplaceFilenameExtension(tensorflow::io::Basename(module_id),
                                "-amdgpu.dummy"),
@@ -653,24 +622,6 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   codegen_passes.run(*module);
   isabin_fs->flush();
 
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
-  // Locate lld
-  // ROCM TODO: change to tensorflow::ROCmRoot() after ROCm-Device-Libs PR.
-  std::string lld_path = tensorflow::io::JoinPath("/opt/rocm", "hcc/bin");
-  auto lld_program = llvm::sys::findProgramByName("ld.lld", {lld_path});
-  if (!lld_program) {
-    LOG(FATAL) << "unable to find ld.lld in PATH: "
-               << lld_program.getError().message();
-  }
-  std::vector<llvm::StringRef> lld_args{
-      llvm_ir::AsStringRef("ld.lld"),      llvm_ir::AsStringRef("-flavor"),
-      llvm_ir::AsStringRef("gnu"),         llvm_ir::AsStringRef("-shared"),
-      llvm_ir::AsStringRef("isabin_path"), llvm_ir::AsStringRef("-o"),
-      llvm_ir::AsStringRef("hsaco_path"),
-  };
-  lld_args[4] = llvm_ir::AsStringRef(isabin_path.c_str());
-  lld_args[6] = llvm_ir::AsStringRef(hsaco_path.c_str());
-=======
   // Locate lld.
   // TODO(whchung@gmail.com): change to tensorflow::ROCmRoot() after
   // ROCm-Device-Libs PR.
@@ -689,7 +640,6 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
       llvm_ir::AsStringRef("-o"),
       llvm_ir::AsStringRef(hsaco_path),
   };
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
 
   std::string error_message;
   int lld_result =
@@ -697,28 +647,17 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
                                 llvm::None, {}, 0, 0, &error_message);
 
   if (lld_result) {
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
-    LOG(FATAL) << "ld.lld execute fail: " << error_message;
-  }
-
-  // read HSACO
-=======
     return xla::InternalError("ld.lld execute fail: %s", error_message);
   }
 
   // Read HSACO.
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
   std::ifstream hsaco_file(hsaco_path, std::ios::binary | std::ios::ate);
   std::ifstream::pos_type hsaco_file_size = hsaco_file.tellg();
 
   std::vector<uint8> hsaco(hsaco_file_size);
   hsaco_file.seekg(0, std::ios::beg);
   hsaco_file.read(reinterpret_cast<char*>(&hsaco[0]), hsaco_file_size);
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
-  return std::move(hsaco);
-=======
   return hsaco;
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
 }
 
 // Links ROCm-Device-Libs into the given module if the module needs it.
@@ -760,18 +699,12 @@ void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
   // Initialize the AMDGPU target; it's the only target we link with, so call
   // its specific initialization functions instead of the catch-all
   // InitializeAll*.
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
-=======
 #if TENSORFLOW_USE_ROCM
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
   LLVMInitializeAMDGPUTarget();
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTargetMC();
   LLVMInitializeAMDGPUAsmPrinter();
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
-=======
 #endif
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
 
   llvm::PassRegistry* registry = llvm::PassRegistry::getPassRegistry();
   InitializePasses(registry);
@@ -812,18 +745,10 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
         AMDGPUTargetModuleLinker, default_target_triple, target_machine.get(),
         kAMDGPUInlineThreshold));
 
-<<<<<<< HEAD:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
-    // Lower optimize LLVM module to HSA code object.
-    TF_ASSIGN_OR_RETURN(hsaco,
-                        EmitModuleToHsaco(module, target_machine.get()));
-  }
-  return std::move(hsaco);
-=======
     // Lower optimized LLVM module to HSA code object.
     TF_ASSIGN_OR_RETURN(hsaco, EmitModuleToHsaco(module, target_machine.get()));
   }
   return hsaco;
->>>>>>> upstream/master:tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc
 }
 
 }  // namespace amdgpu

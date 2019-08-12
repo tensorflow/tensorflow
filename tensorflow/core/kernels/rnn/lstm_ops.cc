@@ -442,33 +442,6 @@ REGISTER_KERNEL(float);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-<<<<<<< HEAD
-namespace functor {
-#define DECLARE_GPU_SPEC(T)                                                \
-  template <>                                                              \
-  void LSTMBlockCellFprop<GPUDevice, T, true>::operator()(                 \
-      OpKernelContext* ctx, const GPUDevice& d, const float forget_bias,   \
-      const float cell_clip, bool use_peephole,                            \
-      typename TTypes<T>::ConstMatrix x,                                   \
-      typename TTypes<T>::ConstMatrix cs_prev,                             \
-      typename TTypes<T>::ConstMatrix h_prev,                              \
-      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci, \
-      typename TTypes<T>::ConstVec wcf, typename TTypes<T>::ConstVec wco,  \
-      typename TTypes<T>::ConstVec b, typename TTypes<T>::Matrix xh,       \
-      typename TTypes<T>::Matrix i, typename TTypes<T>::Matrix cs,         \
-      typename TTypes<T>::Matrix f, typename TTypes<T>::Matrix o,          \
-      typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,        \
-      typename TTypes<T>::Matrix icfo, typename TTypes<T>::Matrix h);      \
-                                                                           \
-  extern template struct LSTMBlockCellFprop<GPUDevice, T, true>;
-
-DECLARE_GPU_SPEC(float);
-DECLARE_GPU_SPEC(Eigen::half);
-#undef DECLARE_GPU_SPEC
-}  // end namespace functor
-
-=======
->>>>>>> upstream/master
 #define REGISTER_GPU_KERNEL(T)                                         \
   REGISTER_KERNEL_BUILDER(                                             \
       Name("LSTMBlockCell").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
@@ -732,41 +705,6 @@ REGISTER_KERNEL(Eigen::half);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-<<<<<<< HEAD
-namespace functor {
-#define DECLARE_GPU_SPEC(T)                                                   \
-  template <>                                                                 \
-  void LSTMBlockCellBprop<GPUDevice, T, true>::operator()(                    \
-      OpKernelContext* ctx, const GPUDevice& d, bool use_peephole,            \
-      typename TTypes<T>::ConstMatrix x,                                      \
-      typename TTypes<T>::ConstMatrix cs_prev,                                \
-      typename TTypes<T>::ConstMatrix h_prev,                                 \
-      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci,    \
-      typename TTypes<T>::ConstVec wcf, typename TTypes<T>::ConstVec wco,     \
-      typename TTypes<T>::ConstVec b, typename TTypes<T>::ConstMatrix i,      \
-      typename TTypes<T>::ConstMatrix cs, typename TTypes<T>::ConstMatrix f,  \
-      typename TTypes<T>::ConstMatrix o, typename TTypes<T>::ConstMatrix ci,  \
-      typename TTypes<T>::ConstMatrix co,                                     \
-      typename TTypes<T>::ConstMatrix cs_grad,                                \
-      typename TTypes<T>::ConstMatrix h_grad, typename TTypes<T>::Matrix do_, \
-      typename TTypes<T>::Matrix dcs, typename TTypes<T>::Matrix dci,         \
-      typename TTypes<T>::Matrix df, typename TTypes<T>::Matrix di,           \
-      typename TTypes<T>::Matrix dicfo,                                       \
-      typename TTypes<T>::Matrix cs_prev_grad,                                \
-      typename TTypes<T>::Vec wci_grad, typename TTypes<T>::Vec wcf_grad,     \
-      typename TTypes<T>::Vec wco_grad);                                      \
-                                                                              \
-  extern template struct LSTMBlockCellBprop<GPUDevice, T,                     \
-                                            true /* USE_CUBLAS */>;
-
-DECLARE_GPU_SPEC(float);
-DECLARE_GPU_SPEC(Eigen::half);
-// DECLARE_GPU_SPEC(double);
-#undef DECLARE_GPU_SPEC
-}  // namespace functor
-
-=======
->>>>>>> upstream/master
 #define REGISTER_GPU_KERNEL(T)                                             \
   REGISTER_KERNEL_BUILDER(                                                 \
       Name("LSTMBlockCellGrad").Device(DEVICE_GPU).TypeConstraint<T>("T"), \

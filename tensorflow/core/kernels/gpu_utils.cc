@@ -26,11 +26,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/cuda/ptxas_utils.h"
-<<<<<<< HEAD
 #include "tensorflow/stream_executor/redzone_allocator.h"
-=======
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
->>>>>>> upstream/master
 
 namespace tensorflow {
 
@@ -39,13 +35,8 @@ bool RedzoneCheckDisabled() {
   return disable_rz_str != nullptr && std::strcmp(disable_rz_str, "1") == 0;
 }
 
-<<<<<<< HEAD
 se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
                                            se::DeviceMemoryBase buffer) {
-=======
-se::DeviceMemoryBase WrapRedzoneBestEffort(
-    se::cuda::RedzoneAllocator* rz_allocator, se::DeviceMemoryBase buffer) {
->>>>>>> upstream/master
   if (RedzoneCheckDisabled()) {
     return buffer;
   }
@@ -64,15 +55,9 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(
   return se::DeviceMemoryBase(output_rz_or.ValueOrDie());
 }
 
-<<<<<<< HEAD
 void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
                    tensorflow::AutotuneResult* autotune_result) {
   se::port::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
-=======
-void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
-                   tensorflow::AutotuneResult* autotune_result) {
-  se::port::StatusOr<se::cuda::RedzoneAllocator::RedzoneCheckStatus> rz_status =
->>>>>>> upstream/master
       rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {
     static std::once_flag failure_logged;
