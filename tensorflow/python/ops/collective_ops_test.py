@@ -25,9 +25,11 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -109,6 +111,63 @@ class CollectiveOpTest(test.TestCase):
         expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
         set_graph_key=False,
         communication_hint='nccl')
+
+  def _testWhile(self, num_vars, num_iterations, key_base):
+    group_size = 2
+    group_key = 1
+    instances = [(key_base + i) for i in range(num_vars)]
+    devices = ['CPU:{}'.format(i) for i in range(group_size)]
+
+    config = config_pb2.ConfigProto(device_count={'CPU': group_size})
+    rewrite_options = config.graph_options.rewrite_options
+    rewrite_options.scoped_allocator_optimization = (
+        rewriter_config_pb2.RewriterConfig.ON)
+    del rewrite_options.scoped_allocator_opts.enable_op[:]
+    rewrite_options.scoped_allocator_opts.enable_op.append('CollectiveReduce')
+
+    with self.session(config=config) as sess:
+      loop_vars = []
+      for device in devices:
+        with ops.device(device):
+          loop_vars.append(
+              [variables.VariableV1((1 << i) * 1.) for i in range(num_vars)])
+      # This variable controls number of iterations.
+      loop_vars.append(variables.VariableV1(0.))
+      def loop_body(dev0_tensors, dev1_tensors, loop_tensor):
+        return_ops = []
+        for i in range(len(devices)):
+          device = devices[i]
+          device_tensors = dev0_tensors if i == 0 else dev1_tensors
+          with ops.device(device):
+            device_collectives = []
+            for j in range(num_vars):
+              # TODO(ayushd): figure out why identity is necessary to get the
+              # right device on the input here with TF2_BEHAVIOR=1.
+              input_tensor = array_ops.identity(device_tensors[j])
+              collective_op = collective_ops.all_reduce(
+                  input_tensor, group_size, group_key, instances[j],
+                  'Add', 'Id')
+              device_collectives.append(collective_op)
+            return_ops.append(device_collectives)
+        return_ops.append(math_ops.add(loop_tensor, 1.))
+        return return_ops
+      # Run until last variable exceeds number of iterations.
+      loop_cond = lambda d0, d1, i: math_ops.less(i, num_iterations)
+      sess.run(variables.global_variables_initializer())
+      results = sess.run(control_flow_ops.while_loop(loop_cond, loop_body,
+                                                     loop_vars))
+      self.assertEqual(results[:-1], [
+          [((1 << (num_iterations + v)) * 1.) for v in range(num_vars)]
+          for _ in range(group_size)])
+
+  @test_util.run_deprecated_v1
+  def testSimpleWhile(self):
+    self._testWhile(num_vars=1, num_iterations=4, key_base=20)
+
+  @test_util.run_deprecated_v1
+  def testWhileMultipleAllReduce(self):
+    self.skipTest('Temporarily disabled')  # TODO(b/135686041): re-enable
+    self._testWhile(num_vars=2, num_iterations=4, key_base=20)
 
   @test_util.run_deprecated_v1
   def testWhileWithScopedAllocator(self):
