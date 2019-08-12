@@ -11592,6 +11592,13 @@ op {
     type: "string"
   }
   attr {
+    name: "is_async"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "Tin"
     type: "list(type)"
     has_minimum: true
