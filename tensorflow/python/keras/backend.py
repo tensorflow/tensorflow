@@ -47,6 +47,7 @@ from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
 from tensorflow.python.ops import array_ops
@@ -3206,7 +3207,13 @@ def set_value(x, value):
         assign_placeholder = x._assign_placeholder
         assign_op = x._assign_op
       else:
-        assign_placeholder = array_ops.placeholder(tf_dtype, shape=value.shape)
+        # In order to support assigning weights to resizable variables in
+        # Keras, we make a placeholder with the correct number of dimensions
+        # but with None in each dimension. This way, we can assign weights
+        # of any size (as long as they have the correct dimensionality).
+        placeholder_shape = tensor_shape.TensorShape([None] * value.ndim)
+        assign_placeholder = array_ops.placeholder(
+            tf_dtype, shape=placeholder_shape)
         assign_op = x.assign(assign_placeholder)
         x._assign_placeholder = assign_placeholder
         x._assign_op = assign_op
@@ -3237,8 +3244,13 @@ def batch_set_value(tuples):
             assign_placeholder = x._assign_placeholder
             assign_op = x._assign_op
           else:
-            assign_placeholder = array_ops.placeholder(tf_dtype,
-                                                       shape=value.shape)
+            # In order to support assigning weights to resizable variables in
+            # Keras, we make a placeholder with the correct number of dimensions
+            # but with None in each dimension. This way, we can assign weights
+            # of any size (as long as they have the correct dimensionality).
+            placeholder_shape = tensor_shape.TensorShape([None] * value.ndim)
+            assign_placeholder = array_ops.placeholder(
+                tf_dtype, shape=placeholder_shape)
             assign_op = x.assign(assign_placeholder)
             x._assign_placeholder = assign_placeholder
             x._assign_op = assign_op
