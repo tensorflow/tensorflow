@@ -897,6 +897,9 @@ class LayerNormalization(Layer):
     beta_constraint: Optional constraint for the beta weight.
     gamma_constraint: Optional constraint for the gamma weight.
     trainable: Boolean, if `True` the variables will be marked as trainable.
+    fused: if `True`, use a faster, fused implementation, or raise a ValueError
+      if the fused implementation cannot be used. If False, do not used the
+      fused implementation. Only GPU supports fused implementation.
 
   Input shape:
     Arbitrary. Use the keyword argument `input_shape`
@@ -922,6 +925,7 @@ class LayerNormalization(Layer):
                beta_constraint=None,
                gamma_constraint=None,
                trainable=True,
+               fused=False,
                name=None,
                **kwargs):
     super(LayerNormalization, self).__init__(
@@ -945,6 +949,19 @@ class LayerNormalization(Layer):
     self.gamma_constraint = constraints.get(gamma_constraint)
 
     self.supports_masking = True
+    self.fused = fused
+
+  def _raise_if_fused_cannot_be_used(self):
+    """Raises a ValueError if fused implementation cannot be used.
+
+    Check if the axis is contiguous. It is possible to squeeze the dims to
+    NCHW-friendly when the axis is contiguous.
+    """
+    axis = sorted(self.axis)
+    for i in range(1, len(axis)):
+      if axis[i] - axis[i-1] > 1:
+        raise ValueError('Passing fused=True is only supported when axis is '
+                         'contigous')
 
   def build(self, input_shape):
     ndims = len(input_shape)
@@ -964,6 +981,9 @@ class LayerNormalization(Layer):
         raise ValueError('Invalid axis: %d' % x)
     if len(self.axis) != len(set(self.axis)):
       raise ValueError('Duplicate axis: {}'.format(tuple(self.axis)))
+
+    if self.fused:
+      self._raise_if_fused_cannot_be_used()
 
     param_shape = [input_shape[dim] for dim in self.axis]
     if self.scale:
@@ -992,20 +1012,12 @@ class LayerNormalization(Layer):
 
     self.built = True
 
-  def _can_use_fused(self, input_shape):
-    # Check if axis is contiguous
-    axis = sorted(self.axis)
-    for i in range(1, len(axis)):
-      if axis[i] - axis[i-1] > 1:
-        return False
-    return True
-
   def call(self, inputs):
     # Compute the axes along which to reduce the mean / variance
     input_shape = inputs.shape
     ndims = len(input_shape)
 
-    if not self._can_use_fused(input_shape):
+    if not self.fused:
       # Calculate the moments on the last axis (layer activations).
       mean, variance = nn.moments(inputs, self.axis, keep_dims=True)
 
@@ -1086,7 +1098,8 @@ class LayerNormalization(Layer):
         'beta_regularizer': regularizers.serialize(self.beta_regularizer),
         'gamma_regularizer': regularizers.serialize(self.gamma_regularizer),
         'beta_constraint': constraints.serialize(self.beta_constraint),
-        'gamma_constraint': constraints.serialize(self.gamma_constraint)
+        'gamma_constraint': constraints.serialize(self.gamma_constraint),
+        'fused': self.fused 
     }
     base_config = super(LayerNormalization, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
