@@ -138,6 +138,7 @@ Build Type                                                                      
 *   [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
 *   [TensorFlow YouTube Channel](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
 *   [TensorFlow Visualization Toolkit](https://github.com/tensorflow/tensorboard)
+*   [TensorFlow in Practice Specialization](https://www.coursera.org/specializations/tensorflow-in-practice)
 
 Learn more about the TensorFlow community at the [community page of tensorflow.org](https://www.tensorflow.org/community) for a few ways to participate.
 
