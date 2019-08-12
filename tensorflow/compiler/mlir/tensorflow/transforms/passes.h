@@ -43,6 +43,10 @@ FunctionPassBase* CreateTFExecutorIslandCoarseningPass();
 }  // namespace tf_executor
 
 namespace TFDevice {
+// Creates a pass that forms clusters from instructions that are assigned to
+// same device.
+FunctionPassBase* CreateClusterFormationPass();
+
 // Creates a pass that outlines regions of tf_device.launch operations.
 ModulePassBase* CreateClusterOutliningPass();
 }  // namespace TFDevice
