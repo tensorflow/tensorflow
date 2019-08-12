@@ -1133,7 +1133,6 @@ cc_library(
         "//tensorflow/core/platform:default/integral_types.h",
         "//tensorflow/core/platform:default/logging.h",
         "//tensorflow/core/platform:default/mutex.h",
-        "//tensorflow/core/platform:default/thread_annotations.h",
         "//tensorflow/core/platform:dynamic_annotations.h",
         "//tensorflow/core/platform:macros.h",
         "//tensorflow/core/platform:mutex.h",
