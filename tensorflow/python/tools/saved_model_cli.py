@@ -181,12 +181,12 @@ def _show_defined_functions(saved_model_dir):
     trackable_object = load.load(saved_model_dir)
 
   print('\nDefined Functions:', end="")
-  functions = save._AugmentedGraphView(
-      trackable_object).list_functions(trackable_object)
+  functions = (save._AugmentedGraphView(trackable_object)  # pylint: disable=protected-access
+               .list_functions(trackable_object))
   functions = sorted(functions.items(), key=lambda x: x[0])
   for name, function in functions:
     print('\n  Function Name: \'%s\'' % name)
-    concrete_functions = function._list_all_concrete_functions_for_serialization()
+    concrete_functions = function._list_all_concrete_functions_for_serialization()  # pylint: disable=line-too-long, protected-access
     concrete_functions = sorted(concrete_functions, key=lambda x: x.name)
     for index, concrete_function in enumerate(concrete_functions, 1):
       args, kwargs = concrete_function.structured_input_signature
@@ -203,7 +203,8 @@ def _print_args(arguments, argument_type="Argument", indent=0):
      Args:
        arguments: Arguments of the concrete functions.
        argument_type: Type of Argument List to Format and print.
-       indent: How far (in increments of 2 spaces) to indent each line of output.
+       indent: How far (in increments of 2 spaces) to indent each line
+               of output.
   """
   indent_str = '  ' * indent
 
@@ -218,8 +219,9 @@ def _print_args(arguments, argument_type="Argument", indent=0):
     if indent == 4:
       in_print('%s #%d' % (argument_type, index))
     if isinstance(element, tensor_spec.TensorSpec):
-      print((indent + 1) * '  ' + '%s: %s' % (element.name, repr(element)))
-    elif isinstance(element, collections.Iterable) and not isinstance(element, dict):
+      print((indent + 1) * '  ' +
+            '%s: %s' % (element.name, repr(element)))
+    elif isinstance(element, collections.Iterable) and not isinstance(element, dict):  # pylint: disable=line-too-long
       in_print('  DType: %s' % type(element).__name__)
       in_print('  Value: [', end='')
       for value in element:
