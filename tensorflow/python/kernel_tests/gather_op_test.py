@@ -39,6 +39,14 @@ _TEST_TYPES = (dtypes.int64, dtypes.float32,
 # TODO(virimia): Add a benchmark for gather_v2, with batch_dims and axis set.
 
 
+def _to_str_elements(values):
+  """Converts the inner list elements to strings."""
+  if isinstance(values, list):
+    return [_to_str_elements(value) for value in values]
+  else:
+    return str(values).encode("utf-8")
+
+
 class GatherTest(test.TestCase, parameterized.TestCase):
 
   def _buildParams(self, data, dtype):
@@ -343,11 +351,19 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     result = array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
     self.assertAllEqual(expected, result)
 
-    with compat.forward_compatibility_horizon(2019, 8, 11):
+    with compat.forward_compatibility_horizon(2019, 9, 11):
       result = array_ops.gather(
           params, indices, axis=axis, batch_dims=batch_dims)
 
-    self.assertAllEqual(expected, result)
+      self.assertAllEqual(expected, result)
+
+      # Run the same test for strings.
+      params = _to_str_elements(params)
+      expected = _to_str_elements(expected)
+      result = array_ops.gather(
+          params, indices, axis=axis, batch_dims=batch_dims)
+
+      self.assertAllEqual(expected, result)
 
   @parameterized.parameters([
       dict(
@@ -443,12 +459,22 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(output_shape, result.shape.as_list())
     self.assertAllEqual(expected, result)
 
-    with compat.forward_compatibility_horizon(2019, 8, 11):
+    with compat.forward_compatibility_horizon(2019, 9, 11):
       result = array_ops.gather(
           params, indices, axis=axis, batch_dims=batch_dims)
 
-    self.assertAllEqual(output_shape, result.shape.as_list())
-    self.assertAllEqual(expected, result)
+      self.assertAllEqual(output_shape, result.shape.as_list())
+      self.assertAllEqual(expected, result)
+
+      # Run the same test for strings.
+      params = _to_str_elements(params)
+      expected = _to_str_elements(expected.tolist())
+      result = array_ops.gather(
+          params, indices, axis=axis, batch_dims=batch_dims)
+
+      self.assertAllEqual(output_shape, result.shape.as_list())
+      self.assertAllEqual(expected, result)
+
 
   def _batchNumpyGather(self, params, indices, axis, batch_dims):
     """Performs a batch gather by making recursive calls to np.take().
