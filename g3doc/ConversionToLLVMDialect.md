@@ -39,11 +39,14 @@ object. For example, on x86-64 CPUs it converts to `!llvm.type<"i64">`.
 ### Vector Types
 
 LLVM IR only supports *one-dimensional* vectors, unlike MLIR where vectors can
-be multi-dimensional. MLIR vectors are converted to LLVM IR vectors of the same
-size with element type converted using these conversion rules. Vector types
-cannot be nested in either IR.
+be multi-dimensional. Vector types cannot be nested in either IR. In the
+one-dimensional case, MLIR vectors are converted to LLVM IR vectors of the same
+size with element type converted using these conversion rules. In the
+n-dimensional case, MLIR vectors are converted to (n-1)-dimensional array types
+of one-dimensional vectors.
 
-For example, `vector<4 x f32>` converts to `!llvm.type<"<4 x float>">`.
+For example, `vector<4 x f32>` converts to `!llvm.type<"<4 x float>">` and
+`vector<4 x 8 x 16 f32>` converts to `!llvm<"[4 x [8 x <16 x float>]]">`.
 
 ### Memref Types
 
