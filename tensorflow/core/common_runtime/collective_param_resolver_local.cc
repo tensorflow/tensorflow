@@ -56,18 +56,13 @@ void CollectiveParamResolverLocal::CompleteGroupAsync(
 }
 
 namespace {
-string GetCollectiveName(const CollectiveParams* cp, bool nccl) {
+const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
   switch (cp->instance.type) {
     case BROADCAST_COLLECTIVE:
       return "HierarchicalTreeBroadcast";
 
-    case REDUCTION_COLLECTIVE: {
-      if (nccl) {
-        return "NcclReduce";
-      } else {
-        return "RingReduce";
-      }
-    }
+    case REDUCTION_COLLECTIVE:
+      return nccl ? "NcclReduce" : "RingReduce";
 
     case GATHER_COLLECTIVE:
       return "RingGather";
@@ -96,15 +91,22 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
 
       // Initialize group runtime details.
       CollectiveImplementationInterface* col_impl;
-      // TODO(b/128853131,b/132707282): Remove NCCL special case when we have
-      // NCCL implementations for all collectives.
-      status = CollectiveRegistry::LookupParamResolverInstance(
-          nccl_ ? "NcclReduce" : GetCollectiveName(cp, /*nccl=*/false),
-          &col_impl);
+      // Try to lookup a NCCL collective kernel.  This will return error status
+      // if `NcclReduce` kernel is not present in the registry, e.g. on an
+      // environment that does not support NCCL.
+      status = CollectiveRegistry::LookupParamResolverInstance("NcclReduce",
+                                                               &col_impl);
+      if (!status.ok()) {
+        // Fallback to non-NCCL collective.
+        status = CollectiveRegistry::LookupParamResolverInstance(
+            GetCollectiveName(cp, /*nccl=*/false), &col_impl);
+      }
       if (status.ok()) {
         status = col_impl->InitializeCollectiveGroupRuntimeDetails(
             &gr->group.runtime_details);
-      } else {
+      }
+
+      if (!status.ok()) {
         done(status, gr);
         return;
       }
@@ -702,12 +704,23 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
 void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
     const string& device, const GroupRec* gr, CollectiveParams* cp,
     InstanceRec* ir, bool is_source, const StatusCallback& done) {
+  auto expected_shape = cp->instance.shape;
   // Populate the fields common across instance.
   {
     mutex_lock l(ir->out_mu);
     ir->WaitForOutMu(l);
     // custom operator= does a deep copy.
     cp->instance = ir->shared.instance;
+  }
+  if (expected_shape != cp->instance.shape) {
+    done(errors::InvalidArgument(
+        "Shape mismatch in the collective instance ", cp->instance.instance_key,
+        ". Op at device ", device, " expected shape ",
+        expected_shape.DebugString(), " but another member in the group ",
+        "expected shape ", cp->instance.shape.DebugString(), ". This is likely",
+        " due to different input shapes at different members of the collective",
+        " op."));
+    return;
   }
   // Populate the fields common across task.
   AssignCollectiveType(cp);

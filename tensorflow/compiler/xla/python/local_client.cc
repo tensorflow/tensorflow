@@ -85,14 +85,12 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "include/pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
-#include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -105,8 +103,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 
 namespace xla {
-
-namespace py = pybind11;
 
 static StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
     se::Platform* platform, LocalClient* client, double memory_fraction,
@@ -222,47 +218,21 @@ PyLocalClient::PyLocalClient(
 
 Status PyLocalClient::TransferToInfeed(const LiteralSlice& literal,
                                        int device_ordinal) {
-  py_ref_manager().CollectGarbage();
-  py::gil_scoped_release gil_release;
   return client_->TransferToInfeedLocal(literal, device_ordinal);
 }
 
-StatusOr<pybind11::object> PyLocalClient::TransferFromOutfeed(
-    const Shape& shape, int device_ordinal) {
-  py_ref_manager().CollectGarbage();
-  Literal literal;
-  {
-    py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(
-        literal, client_->TransferFromOutfeedLocal(shape, device_ordinal));
-  }
-  return LiteralToPython(std::make_shared<Literal>(std::move(literal)));
+StatusOr<Literal> PyLocalClient::TransferFromOutfeed(const Shape& shape,
+                                                     int device_ordinal) {
+  return client_->TransferFromOutfeedLocal(shape, device_ordinal);
 }
 
 /* static */
-StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
-    const py::object& argument, std::shared_ptr<PyLocalClient> client,
-    int device_ordinal) {
-  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromPython");
-  struct H2DTransfer {
-    PythonBufferTree tree;
-    std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref;
-  };
-  auto transfer = std::make_shared<H2DTransfer>();
-  TF_ASSIGN_OR_RETURN(transfer->tree, GetPythonBufferTree(argument));
-
-  client->py_ref_manager().CollectGarbage();
-
-  // Take a reference to the buffer to ensure that the inputs in host memory
-  // remain live until the transfer is complete.
-  transfer->py_buffer_ref = client->py_ref_manager().ManageReferences(
-      absl::MakeSpan(transfer->tree.arrays));
-  transfer->tree.arrays.clear();
-
-  // We are done manipulating Python objects; release the GIL.
-  py::gil_scoped_release gil_release;
-  VLOG(1) << "PyLocalBuffer::FromPython: shape: "
-          << transfer->tree.shape.ToString()
+StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromLiterals(
+    std::vector<BorrowingLiteral> leaves_literals, const Shape& tuple_shape,
+    std::shared_ptr<void> leaves_reference,
+    std::shared_ptr<PyLocalClient> client, int device_ordinal) {
+  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromLiterals");
+  VLOG(1) << "PyLocalBuffer::FromLiterals: shape: " << tuple_shape.ToString()
           << " device ordinal: " << device_ordinal;
 
   Device* device = &client->device(device_ordinal);
@@ -270,11 +240,22 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
       client->client()->backend().transfer_manager();
   se::DeviceMemoryAllocator* allocator = client->allocator();
   TF_ASSIGN_OR_RETURN(
-      transfer->tree.shape,
-      transfer_manager->ChooseCompactLayoutForShape(transfer->tree.shape));
+      Shape compact_shape,
+      transfer_manager->ChooseCompactLayoutForShape(tuple_shape));
   TF_ASSIGN_OR_RETURN(ScopedShapedBuffer scoped_buffer,
                       transfer_manager->AllocateScopedShapedBuffer(
-                          transfer->tree.shape, allocator, device_ordinal));
+                          compact_shape, allocator, device_ordinal));
+
+  // Make the host to device stream wait for the newly allocated buffer to be
+  // available on the compute stream. We schedule this wait synchronously; while
+  // not strictly necessary, we must not create stream dependency cycles, and
+  // adding the wait synchronously avoids any chance of any dependent
+  // computations that depend on this transfer being enqueued on the compute
+  // stream.
+  if (!transfer_manager->CanShapedBufferBeAccessedNow(
+          device->host_to_device_stream()->parent(), scoped_buffer)) {
+    device->host_to_device_stream()->ThenWaitFor(device->compute_stream());
+  }
 
   std::shared_ptr<BufferDefinitionEvent> definition_event =
       std::make_shared<BufferDefinitionEvent>();
@@ -282,30 +263,30 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
       SharedDeviceBuffer::FromScopedShapedBuffer(std::move(scoped_buffer),
                                                  definition_event);
 
+  // TODO(makro): Use move capture once C++ 14 features are available.
+  auto leaves = std::make_shared<std::vector<BorrowingLiteral>>(
+      std::move(leaves_literals));
   auto transfer_h2d = [client, transfer_manager, device, device_ordinal,
-                       device_buffer, transfer]() {
+                       device_buffer, compact_shape, leaves,
+                       leaves_reference]() {
     // This function uses TF_CHECK_OK and ValueOrDie() since we have no way to
     // report failures from a callback. However, the operations here are
     // unlikely to fail and not recoverable even if we were to fail: DMAs to
     // memory that has already been allocated, and a possible Event allocation.
-    ShapedBuffer buffer = device_buffer->AsShapedBuffer(transfer->tree.shape);
+    ShapedBuffer buffer = device_buffer->AsShapedBuffer(compact_shape);
     TF_CHECK_OK(transfer_manager->WriteTupleIndexTablesAsync(
         device->host_to_device_stream(), buffer));
     std::vector<std::shared_ptr<void>> staging_buffers;
-    staging_buffers.reserve(transfer->tree.leaves.size());
-    auto it = transfer->tree.leaves.begin();
+    staging_buffers.reserve(leaves->size());
+    auto it = leaves->begin();
     for (const ShapeUtil::IndexedShape& indexed_shape :
-         ShapeUtil::GetLeafShapes(transfer->tree.shape)) {
-      CHECK(it != transfer->tree.leaves.end());
+         ShapeUtil::GetLeafShapes(compact_shape)) {
+      CHECK(it != leaves->end());
       ShapedBuffer leaf(
           indexed_shape.shape,
           transfer_manager->HostShapeToDeviceShape(indexed_shape.shape),
           client->client()->platform(), device_ordinal);
       leaf.buffers().CopySubtreeFrom(buffer.buffers(), indexed_shape.index, {});
-      if (!transfer_manager->CanShapedBufferBeAccessedNow(
-              device->host_to_device_stream()->parent(), leaf)) {
-        device->host_to_device_stream()->ThenWaitFor(device->compute_stream());
-      }
 
       // If applicable on the backend, stage the transfer via host memory
       // allocated via the host_memory_allocator. On GPU, this is pinned memory.
@@ -334,6 +315,10 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
         device->event_pool()
             .ThenAllocateAndRecordEvent(device->host_to_device_stream())
             .ValueOrDie();
+
+    // Sets the buffer definition event. Note: this has the side effect of
+    // unblocking any host threads that may have been waiting to consume the
+    // buffer.
     device_buffer->definition_event()->SetDefinitionEvent(
         std::move(event), device->host_to_device_stream());
 
@@ -341,19 +326,19 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromPython(
       device->ThenRelease(device->host_to_device_stream(), device_buffer);
     }
 
-    device->ThenRelease(device->host_to_device_stream(),
-                        std::make_pair(std::move(transfer->py_buffer_ref),
-                                       std::move(staging_buffers)));
+    device->ThenRelease(
+        device->host_to_device_stream(),
+        std::make_pair(leaves_reference, std::move(staging_buffers)));
   };
   client->h2d_transfer_pool()->Schedule(transfer_h2d);
   return absl::make_unique<PyLocalBuffer>(
-      transfer->tree.shape, std::move(device_buffer), std::move(client));
+      compact_shape, std::move(device_buffer), std::move(client));
 }
 
 /* static */ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::MakeTuple(
     const std::vector<PyLocalBuffer*> buffers,
     std::shared_ptr<PyLocalClient> client, int device_ordinal) {
-  std::vector<xla::Shape> host_shapes;
+  std::vector<Shape> host_shapes;
   std::vector<std::shared_ptr<SharedDeviceBuffer>> device_buffers;
   host_shapes.reserve(buffers.size());
   device_buffers.reserve(buffers.size());
@@ -447,29 +432,22 @@ Status PyLocalBuffer::CopyToHostAsync() {
   return Status::OK();
 }
 
-StatusOr<py::object> PyLocalBuffer::ToPython() {
-  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::ToPython");
+StatusOr<std::shared_ptr<Literal>> PyLocalBuffer::ToLiteral() {
+  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::ToLiteral");
   std::shared_ptr<SharedDeviceBuffer> device_buffer = DeviceBuffer();
   if (!device_buffer) {
-    return InvalidArgument("ToPython() called on invalid buffer.");
+    return InvalidArgument("ToLiteral() called on invalid buffer.");
   }
 
-  client_->py_ref_manager().CollectGarbage();
-  std::shared_ptr<Literal> literal;
+  TF_RETURN_IF_ERROR(CopyToHostAsync());
+  std::shared_ptr<HostValue> host_value;
   {
-    py::gil_scoped_release gil_release;
-    TF_RETURN_IF_ERROR(CopyToHostAsync());
-    std::shared_ptr<HostValue> host_value;
-    {
-      absl::MutexLock lock(&mu_);
-      host_value = host_value_;
-    }
-    host_value->ready.WaitForNotification();
-    TF_RETURN_IF_ERROR(host_value->status);
-    literal = host_value->value;
+    absl::MutexLock lock(&mu_);
+    host_value = host_value_;
   }
-
-  return LiteralToPython(std::move(literal));
+  host_value->ready.WaitForNotification();
+  TF_RETURN_IF_ERROR(host_value->status);
+  return host_value->value;
 }
 
 std::shared_ptr<SharedDeviceBuffer> PyLocalBuffer::DeviceBuffer() const {
@@ -513,8 +491,6 @@ PyLocalBuffer::DestructureTuple() {
 StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
     int dst_device_ordinal) {
   tensorflow::profiler::TraceMe traceme("PyLocalBuffer::CopyToDevice");
-  client_->py_ref_manager().CollectGarbage();
-  py::gil_scoped_release gil_release;
   std::shared_ptr<SharedDeviceBuffer> src_device_buffer = DeviceBuffer();
   if (dst_device_ordinal == device_ordinal_) {
     return absl::make_unique<PyLocalBuffer>(on_host_shape_, src_device_buffer,
@@ -543,7 +519,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
 
   // Copy the leaf buffers.
   for (const auto& leaf : src_buffer.buffers().leaves()) {
-    const xla::ShapeIndex& index = leaf.first;
+    const ShapeIndex& index = leaf.first;
     const se::DeviceMemoryBase& input_buffer = leaf.second;
     const se::DeviceMemoryBase& output_buffer = dst_buffer.buffer(index);
     TF_RET_CHECK(input_buffer.size() == output_buffer.size())
@@ -591,9 +567,6 @@ Status PyLocalBuffer::BlockHostUntilReady() {
   if (!device_buffer) {
     return InvalidArgument("BlockHostUntilReady() called on invalid buffer.");
   }
-
-  client_->py_ref_manager().CollectGarbage();
-  py::gil_scoped_release gil_release;
 
   // This code waits at least until the buffer is ready, but it may wait longer
   // if there are other device to host transfers scheduled. If this proves to

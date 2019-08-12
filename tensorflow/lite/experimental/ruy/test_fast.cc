@@ -15,6 +15,8 @@ limitations under the License.
 
 // This test contains cheap test cases, completes in a few seconds.
 
+#include <vector>
+
 #include "tensorflow/lite/experimental/ruy/test.h"
 
 namespace ruy {
@@ -73,7 +75,8 @@ TEST(RuyTest, TestMiscMuls) {
 }
 
 TEST(RuyTest, TestDeepMuls) {
-  TestRCC<TestSetType>(1, 50001, 1);
+  // TODO(b/137649322): clarify what's the max allowed matrix size.
+  TestRCC<TestSetType>(1, 32767, 1);
   TestLinearAllOrders<TestSetType>(5, 5001, 4);
   TestLinearAllOrders<TestSetType>(9, 1025, 10);
 }

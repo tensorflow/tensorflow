@@ -285,6 +285,49 @@ TEST_F(ConditionalSimplifierTest,
   EXPECT_TRUE(ConditionalSimplifier().Run(module.get()).ValueOrDie());
 }
 
+TEST_F(ConditionalSimplifierTest, RemoveDeadRoots) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveDeadRoots
+on_false {
+  t = (f32[20,40], f32[40,40]) parameter(0)
+  lhs = f32[20,40] get-tuple-element(t), index=0
+  rhs = f32[40,40] get-tuple-element(t), index=1
+  dot = f32[20,40] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  after-all = token[] after-all()
+  outfeed = token[] outfeed(dot, after-all)
+  ROOT result = (f32[20,40]) tuple(dot)
+}
+
+on_true {
+  t = (f32[20,40], f32[40,40]) parameter(0)
+  lhs = f32[20,40] get-tuple-element(t), index=0
+  add = f32[20,40] add(lhs, lhs)
+  ROOT result = (f32[20,40]) tuple(add)
+}
+
+ENTRY main {
+  c0_0 = f32[20,40] parameter(0)
+  c0_1 = f32[40,40] parameter(1)
+  p = pred[] parameter(2)
+  t = (f32[20,40], f32[40,40]) tuple(c0_0, c0_1)
+  conditional = (f32[20, 40]) conditional(p,t,t), false_computation=on_false, true_computation=on_true
+  ROOT result = () tuple()
+}
+)";
+  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  TF_ASSERT_OK(status.status());
+  HloVerifier v(false, false);
+  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
+  EXPECT_TRUE(
+      ConditionalSimplifier().Run(status.ValueOrDie().get()).ValueOrDie());
+  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
+  HloInstruction* conditional =
+      FindInstruction(status.ValueOrDie().get(), "conditional");
+  // The conditional root should be replaced with an empty tuple.
+  EXPECT_EQ(ShapeUtil::TupleElementCount(conditional->shape()), 0);
+}
+
 }  // namespace
 
 }  // namespace xla

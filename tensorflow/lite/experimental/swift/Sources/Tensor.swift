@@ -16,8 +16,7 @@ import Foundation
 import TensorFlowLiteC
 
 /// An input or output tensor in a TensorFlow Lite graph.
-public struct Tensor {
-
+public struct Tensor: Equatable, Hashable {
   /// Name of the tensor.
   public let name: String
 
@@ -38,9 +37,10 @@ public struct Tensor {
   /// - Parameters:
   ///   - name: Name of the tensor.
   ///   - dataType: Data type of the tensor.
+  ///   - shape: Shape of the tensor.
   ///   - data: Data in the input tensor.
   ///   - quantizationParameters Quantization parameters for the tensor if using a quantized model.
-  ///       The default is `nil`.
+  ///       Default is `nil`.
   init(
     name: String,
     dataType: TensorDataType,
@@ -57,7 +57,7 @@ public struct Tensor {
 }
 
 /// Supported TensorFlow Lite tensor data types.
-public enum TensorDataType: Equatable {
+public enum TensorDataType: Equatable, Hashable {
   /// Boolean.
   case bool
   /// 8-bit unsigned integer.
@@ -102,7 +102,7 @@ public enum TensorDataType: Equatable {
 }
 
 /// The shape of a TensorFlow Lite tensor.
-public struct TensorShape {
+public struct TensorShape: Equatable, Hashable {
 
   /// The number of dimensions of the tensor.
   public let rank: Int

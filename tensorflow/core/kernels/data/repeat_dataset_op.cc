@@ -89,6 +89,10 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     return count_ * n;
   }
 
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

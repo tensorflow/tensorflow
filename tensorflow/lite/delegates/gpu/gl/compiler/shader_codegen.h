@@ -19,14 +19,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/compiled_node.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/object_accessor.h"
-#include "tensorflow/lite/delegates/gpu/gl/compiler/parameter_accessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/shader_code.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler_options.h"
-#include "tensorflow/lite/delegates/gpu/gl/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
 
 namespace tflite {

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
+
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -255,20 +256,19 @@ TEST_F(ConstantFoldingTest, SimpleFolding) {
 TEST_F(ConstantFoldingTest, AddTree) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
+  Output c1 = ops::Const(s.WithOpName("c1"), 1.0f, {1});
   Output c2 = ops::Const(s.WithOpName("c2"), 2.0f, {2});
   Output c3 = ops::Const(s.WithOpName("c3"), 3.0f, {2});
   Output x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
                               ops::Placeholder::Shape(TensorShape({2, 2})));
   Output add_child = ops::Add(s.WithOpName("add_child"), c2, x);
-  Output c1 = ops::Const(s.WithOpName("c1").WithControlDependencies(add_child),
-                         1.0f, {1});
   Output add_parent = ops::Add(s.WithOpName("add_parent"), c1, add_child);
 
-  Output y = ops::Placeholder(s.WithOpName("y"), DT_FLOAT,
-                              ops::Placeholder::Shape(TensorShape({2, 2})));
   Output c4 = ops::Const(s.WithOpName("c4"), 4.0f, {2});
   Output c5 = ops::Const(s.WithOpName("c5"), 5.0f, {2});
   Output c20 = ops::Const(s.WithOpName("c20"), 20.0f, {2});
+  Output y = ops::Placeholder(s.WithOpName("y"), DT_FLOAT,
+                              ops::Placeholder::Shape(TensorShape({2, 2})));
   Output mul_child = ops::Mul(s.WithOpName("mul_child"), c4, y);
   Output mul_parent = ops::Mul(s.WithOpName("mul_parent"), c5, mul_child);
   Output addmul_child = ops::Add(s.WithOpName("addmul_child"), c4, x);
@@ -298,16 +298,16 @@ TEST_F(ConstantFoldingTest, AddTree) {
   //     / \              / \
   //   5.0  y           4.0 5.0
 
-  EXPECT_EQ(11, output.node_size());
+  EXPECT_EQ(10, output.node_size());
   for (const auto& node : output.node()) {
     if (node.name() == "add_child") {
       EXPECT_EQ("Const", node.op());
       TensorProto t = node.attr().at("value").tensor();
-      EXPECT_EQ(1, t.tensor_shape().dim_size());
+      ASSERT_EQ(1, t.tensor_shape().dim_size());
       EXPECT_EQ(2, t.tensor_shape().dim(0).size());
     } else if (node.name() == "add_parent") {
       EXPECT_EQ("Add", node.op());
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(2, node.input_size());
       EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("add_child", node.input(1));
     } else if (node.name() == "mul_child") {
@@ -317,27 +317,109 @@ TEST_F(ConstantFoldingTest, AddTree) {
       EXPECT_EQ(2, t.tensor_shape().dim(0).size());
     } else if (node.name() == "mul_parent") {
       EXPECT_EQ("Mul", node.op());
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(2, node.input_size());
       EXPECT_EQ("y", node.input(0));
       EXPECT_EQ("mul_child", node.input(1));
     } else if (node.name() == "addmul_child") {
       // Unchanged.
       EXPECT_EQ("Add", node.op());
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(2, node.input_size());
       EXPECT_EQ("c4", node.input(0));
       EXPECT_EQ("x", node.input(1));
     }
   }
 
   // Check that the result nodes have the expected value.
-  std::vector<string> fetch = {"c3", "c20"};
-  auto tensor_expected = EvaluateNodes(item.graph, fetch);
-  EXPECT_EQ(fetch.size(), tensor_expected.size());
-  fetch = {"add_child", "mul_child"};
-  auto tensors = EvaluateNodes(output, fetch);
-  EXPECT_EQ(fetch.size(), tensors.size());
+  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+  auto y_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+
+  std::vector<string> fetch = {"add_parent", "mul_parent"};
+  auto tensor_expected =
+      EvaluateNodes(item.graph, fetch, {{"x", x_t}, {"y", y_t}});
+  ASSERT_EQ(fetch.size(), tensor_expected.size());
+  fetch = {"add_parent", "mul_parent"};
+  auto tensors = EvaluateNodes(output, fetch, {{"x", x_t}, {"y", y_t}});
+  ASSERT_EQ(fetch.size(), tensors.size());
   for (int i = 0; i < fetch.size(); i++) {
     test::ExpectTensorEqual<float>(tensor_expected[i], tensors[i]);
+  }
+}
+
+TEST_F(ConstantFoldingTest, TreeCanonicalization) {
+  for (int is_add : {true, false}) {
+    for (int is_parent_commutative : {true, false}) {
+      for (int is_child_commutative : {true, false}) {
+        // TODO(rmlarsen): Consider enabling for subtractions if we are
+        // comfortable with the potential loss of numerical accuracy due to
+        // re-association. Notice that subtraction is not really different from
+        // addition in this regard.
+        if (is_add && (!is_parent_commutative || !is_child_commutative))
+          continue;
+        for (int is_left_child_const : {true, false}) {
+          for (int is_left_leaf_const : {true, false}) {
+            tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+            Output c2 = ops::Const(s.WithOpName("c2"), 2.0f, {2});
+            Output c3 = ops::Const(s.WithOpName("c3"), 3.0f, {2});
+            Output x =
+                ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
+                                 ops::Placeholder::Shape(TensorShape({2, 2})));
+
+            auto get_op = [&](bool is_commutative, bool is_left_arg_cont,
+                              const string& name, const Output& const_arg,
+                              const Output non_const_arg) -> Output {
+              if (is_add) {
+                if (is_commutative) {
+                  return ops::Add(s.WithOpName(name),
+                                  is_left_arg_cont ? const_arg : non_const_arg,
+                                  is_left_arg_cont ? non_const_arg : const_arg);
+                } else {
+                  return ops::Sub(s.WithOpName(name),
+                                  is_left_arg_cont ? const_arg : non_const_arg,
+                                  is_left_arg_cont ? non_const_arg : const_arg);
+                }
+              } else {
+                if (is_commutative) {
+                  return ops::Mul(s.WithOpName(name),
+                                  is_left_arg_cont ? const_arg : non_const_arg,
+                                  is_left_arg_cont ? non_const_arg : const_arg);
+                } else {
+                  return ops::Div(s.WithOpName(name),
+                                  is_left_arg_cont ? const_arg : non_const_arg,
+                                  is_left_arg_cont ? non_const_arg : const_arg);
+                }
+              }
+            };
+
+            Output child = get_op(is_child_commutative, is_left_leaf_const,
+                                  "child", c2, x);
+            Output parent = get_op(is_parent_commutative, is_left_child_const,
+                                   "parent", c3, child);
+            GrapplerItem item;
+            item.fetch = {"parent"};
+            TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+            ConstantFolding optimizer(/*cpu_device=*/nullptr);
+            GraphDef output;
+            Status status =
+                optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+            TF_EXPECT_OK(status);
+
+            // Check that the result nodes have the expected value.
+            auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({2, 2}));
+            std::vector<string> fetch = {"parent"};
+            auto tensor_expected =
+                EvaluateNodes(item.graph, fetch, {{"x", x_t}});
+            ASSERT_EQ(fetch.size(), tensor_expected.size());
+            fetch = {"parent"};
+            auto tensors = EvaluateNodes(output, fetch, {{"x", x_t}});
+            ASSERT_EQ(fetch.size(), tensors.size());
+            for (int i = 0; i < fetch.size(); i++) {
+              test::ExpectTensorEqual<float>(tensor_expected[i], tensors[i]);
+            }
+          }
+        }
+      }
+    }
   }
 }
 

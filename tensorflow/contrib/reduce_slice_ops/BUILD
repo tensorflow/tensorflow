@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_custom_op_library", "tf_gen_op_libs", "tf_gen_op_wrapper_py", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_kernel_tests_linkstatic")
+load("//tensorflow/core/platform:default/build_config.bzl", "tf_kernel_tests_linkstatic")
 
 package(
     licenses = ["notice"],  # Apache 2.0

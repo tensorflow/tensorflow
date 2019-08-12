@@ -197,7 +197,8 @@ class MultiplyGradientsTest(test.TestCase):
     gradient = constant_op.constant(self._grad_vec, dtype=dtypes.float32)
     variable = variables_lib.Variable(array_ops.zeros_like(gradient))
     multiplier_flag = variables_lib.Variable(True)
-    tensor_multiplier = array_ops.where(multiplier_flag, self._multiplier, 1.0)
+    tensor_multiplier = array_ops.where_v2(multiplier_flag, self._multiplier,
+                                           1.0)
     grad_to_var = (gradient, variable)
     gradient_multipliers = {variable: tensor_multiplier}
 

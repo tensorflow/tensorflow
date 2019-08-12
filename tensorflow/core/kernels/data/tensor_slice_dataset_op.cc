@@ -68,6 +68,8 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
   int64 Cardinality() const override { return tensors_[0].dim_size(0); }
 
+  Status CheckExternalState() const override { return Status::OK(); }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -76,12 +78,12 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     components.reserve(tensors_.size());
     for (const Tensor& t : tensors_) {
       Node* node;
-      if (ctx->optimization_only()) {
+      if (ctx->serialize_data_tensors()) {
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+      } else {
         TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
         DCHECK_NE(ctx->input_list(), nullptr);
         ctx->input_list()->emplace_back(node->name(), t);
-      } else {
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
       }
       components.emplace_back(node);
     }

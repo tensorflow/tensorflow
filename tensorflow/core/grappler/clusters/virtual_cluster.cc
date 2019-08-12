@@ -85,9 +85,8 @@ Status VirtualCluster::Run(const GrapplerItem& item, RunMetadata* metadata) {
   }
 
   TF_RETURN_IF_ERROR(estimator_->Initialize(item));
-  Costs ignored_costs;
   TF_RETURN_IF_ERROR(
-      estimator_->PredictCosts(item.graph, metadata, &ignored_costs));
+      estimator_->PredictCosts(item.graph, metadata, /*cost=*/nullptr));
 
   const std::unordered_map<string, DeviceProperties>& device = GetDevices();
   std::unordered_map<string, int64> peak_mem_usage =

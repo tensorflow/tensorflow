@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <tuple>
 #include <unordered_map>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -50,11 +51,9 @@ class DnnScratchAllocator : public se::ScratchAllocator {
   virtual ~DnnScratchAllocator() {}
   DnnScratchAllocator(int64 memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
-  int64 GetMemoryLimitInBytes(se::Stream* stream) override {
-    return memory_limit_;
-  }
+  int64 GetMemoryLimitInBytes() override { return memory_limit_; }
   se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
-      se::Stream* stream, int64 byte_size) override {
+      int64 byte_size) override {
     Tensor temporary_memory;
     if (byte_size < 0) {
       return se::port::Status{se::port::error::INVALID_ARGUMENT,

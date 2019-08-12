@@ -33,11 +33,3 @@ class QuantizationParametersTests: XCTestCase {
     XCTAssertNotEqual(parameters2, parameters3)
   }
 }
-
-// MARK: - Extensions
-
-extension QuantizationParameters: Equatable {
-  public static func == (lhs: QuantizationParameters, rhs: QuantizationParameters) -> Bool {
-    return lhs.scale == rhs.scale && lhs.zeroPoint == rhs.zeroPoint
-  }
-}

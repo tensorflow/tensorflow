@@ -41,6 +41,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertListEqual(o.shape.as_list(), [None, 4, 5])
     model = keras.models.Model([i1, i2, i3], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     x1 = np.random.random((2, 4, 5))
     x2 = np.random.random((2, 4, 5))
@@ -74,6 +75,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertListEqual(o.shape.as_list(), [None, 4, 5])
     model = keras.models.Model([i1, i2], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     x1 = np.random.random((2, 4, 5))
     x2 = np.random.random((2, 4, 5))
@@ -107,6 +109,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertListEqual(o.shape.as_list(), [None, 4, 5])
     model = keras.models.Model([i1, i2, i3], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     x1 = np.random.random((2, 4, 5))
     x2 = np.random.random((2, 4, 5))
@@ -122,6 +125,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertListEqual(o.shape.as_list(), [None, 4, 5])
     model = keras.models.Model([i1, i2], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     x1 = np.random.random((2, 4, 5))
     x2 = np.random.random((2, 4, 5))
@@ -136,6 +140,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertListEqual(o.shape.as_list(), [None, 4, 5])
     model = keras.models.Model([i1, i2], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     x1 = np.random.random((2, 4, 5))
     x2 = np.random.random((2, 4, 5))
@@ -150,6 +155,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertListEqual(o.shape.as_list(), [None, 4, 5])
     model = keras.models.Model([i1, i2], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     x1 = np.random.random((2, 4, 5))
     x2 = np.random.random((2, 4, 5))
@@ -165,6 +171,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertListEqual(o.shape.as_list(), [None, 8, 5])
     model = keras.models.Model([i1, i2], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     x1 = np.random.random((2, 4, 5))
     x2 = np.random.random((2, 4, 5))
@@ -196,6 +203,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertListEqual(o.shape.as_list(), [None, 1])
     model = keras.models.Model([i1, i2], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
     _ = keras.layers.Dot(axes=1).get_config()
 
     x1 = np.random.random((2, 4))
@@ -212,6 +220,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertListEqual(o.shape.as_list(), [None, 1])
     model = keras.models.Model([i1, i2], o)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
     out = model.predict([x1, x2])
     self.assertEqual(out.shape, (2, 1))
     self.assertAllClose(out, expected, atol=1e-4)

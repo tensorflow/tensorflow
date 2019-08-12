@@ -46,7 +46,7 @@ class HloRematerializationTest : public RematerializationTestBase {
     TF_EXPECT_OK(verifier().Run(module).status());
     HloMemoryScheduler scheduler(
         [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
-        DefaultMemoryScheduler);
+        ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
     TF_EXPECT_OK(scheduler.Run(module).status());
     HloRematerialization remat(ByteSizeOf, memory_limit_bytes,
                                /*sizes=*/nullptr);

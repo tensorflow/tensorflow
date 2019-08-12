@@ -155,7 +155,7 @@ AddBuiltin(BuiltinOperator_CONV_2D, Register_CONV_2D(), 1, 2);
 
 ### Change TOCO TFLite exporter
 
-The last step is to make TOCO populate the minimum version that's required to
+The next step is to make TOCO populate the minimum version that's required to
 execute the op. In this example, it means:
 
 *   Populate version=1 when dilation factors are all 1.
@@ -183,6 +183,21 @@ int GetVersion(const Operator& op) const override {
   return 1;
 }
 ```
+
+### Update the operator version map
+
+The last step is to add the new version info into the operator version map. This
+step is required because we need generate the model's minimum required runtime
+version based on this version map.
+
+To do this, you need to add a new map entry in `lite/toco/tflite/op_version.cc`.
+
+In this example, it means you need to add the following into `op_version_map`:
+```
+{{OperatorType::kConv, 3}, "kPendingReleaseOpVersion"}
+```
+(`kPendingReleaseOpVersion` will be replaced with the appropriate release
+version in the next stable release.)
 
 ### Delegation Implementation
 

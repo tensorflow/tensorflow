@@ -513,6 +513,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
     ],
     tags = ["nomsan"],  # disable to avoid false positives from scipy.
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(

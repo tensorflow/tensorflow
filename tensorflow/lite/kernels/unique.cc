@@ -110,7 +110,7 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
     default:
       context->ReportError(
           context,
-          "Unique index output array can only be Int32 or In64, requested: ",
+          "Unique index output array can only be Int32 or In64, requested: %s",
           TfLiteTypeGetName(params->index_out_type));
   }
   return kTfLiteError;

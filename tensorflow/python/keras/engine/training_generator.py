@@ -80,7 +80,7 @@ def model_iteration(model,
       validation_steps: Total number of steps (batches of samples) before
         declaring validation finished.
       validation_freq: Only relevant if validation data is provided. Integer or
-        `collections.Container` instance (e.g. list, tuple, etc.). If an
+        `collections.abc.Container` instance (e.g. list, tuple, etc.). If an
         integer, specifies how many training epochs to run before a new
         validation run is performed, e.g. `validation_freq=2` runs
         validation every 2 epochs. If a Container, specifies the epochs on
@@ -133,7 +133,7 @@ def model_iteration(model,
     if steps_per_epoch is None:
       reset_dataset_after_each_epoch = True
       steps_per_epoch = training_utils.infer_steps_for_dataset(
-          data, steps_per_epoch, epochs=epochs, steps_name=steps_name)
+          model, data, steps_per_epoch, epochs=epochs, steps_name=steps_name)
 
   # Convert to a format that supports `next(generator)`.
   generator, steps_per_epoch = convert_to_generator_like(
@@ -182,9 +182,9 @@ def model_iteration(model,
   progbar.params['verbose'] = verbose
 
   if mode == ModeKeys.PREDICT:
-    aggregator = training_utils.OutputsAggregator(True, steps_per_epoch)
+    aggregator = training_utils.OutputsAggregator(True, steps=steps_per_epoch)
   else:
-    aggregator = training_utils.MetricsAggregator(True, steps_per_epoch)
+    aggregator = training_utils.MetricsAggregator(True, steps=steps_per_epoch)
 
   should_set_learning_phase = context.executing_eagerly() and model.run_eagerly
   if should_set_learning_phase:
@@ -236,7 +236,7 @@ def model_iteration(model,
                 % (steps_name, steps_per_epoch * epochs))
           elif step > 0:
             steps_per_epoch = step
-            aggregator.num_samples_or_steps = steps_per_epoch
+            aggregator.steps = steps_per_epoch
             if mode == ModeKeys.TRAIN:
               progbar.params['steps'] = steps_per_epoch
               progbar.progbar.target = steps_per_epoch
@@ -318,7 +318,7 @@ def model_iteration(model,
           use_multiprocessing=use_multiprocessing,
           max_queue_size=max_queue_size,
           callbacks=callbacks,
-          verbose=0,
+          verbose=verbose,
           mode=ModeKeys.TEST,
           steps_name='validation_steps')
 

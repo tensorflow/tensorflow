@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -28,15 +29,17 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.util import object_identity
 from tensorflow.python.training.saver import export_meta_graph
 
 
-# TODO(nupurgarg): Handle StatelessIf op.
-_CONTROL_FLOW_OPS = set(["If", "While"])
+_CONDITIONAL_OPS = set(["If", "StatelessIf"])
+_LOOP_OPS = set(["While", "StatelessWhile"])
+_CONTROL_FLOW_OPS = _CONDITIONAL_OPS.union(_LOOP_OPS)
 
 
 def disable_lower_using_switch_merge(graph_def):
-  """Set '_lower_using_switch_merge' attributes to False in If and While ops.
+  """Set '_lower_using_switch_merge' attributes to False.
 
   Sets the attribute to False in the NodeDefs in the main graph and the NodeDefs
   in each function's graph.
@@ -175,13 +178,15 @@ def _get_tensor_data(func):
     Dict
   """
   tensor_data = {}
-  map_index_to_variable = {
-      func.captured_inputs.index(var.handle): var
-      for var in func.graph.variables
-  }
+  map_index_to_variable = {}
+  for var in func.graph.variables:
+    for idx, captured_input in enumerate(func.captured_inputs):
+      if var.handle is captured_input:  # pylint: disable=protected-access
+        map_index_to_variable[idx] = var
+        break
 
   # Iterates through all captures which are represented as Placeholders.
-  for idx, (val_tensor, name_tensor) in enumerate(func.graph.captures.items()):
+  for idx, (val_tensor, name_tensor) in enumerate(func.graph.captures):
     tensor_name = _get_tensor_name(name_tensor.name)
     is_variable = idx in map_index_to_variable
     if is_variable:
@@ -196,37 +201,70 @@ def _get_tensor_data(func):
   return tensor_data
 
 
-def _get_control_flow_function_types(node_defs, tensor_data):
-  """Gets the types for the parameters to the function.
+def _get_control_flow_function_data(node_defs, tensor_data):
+  """Gets the types and shapes for the parameters to the function.
 
-  Creates a map from function name to a list of types that correspond with the
-  function arguments. The type is primarily determined from the corresponding
-  "If" op. If the argument is a resource variable, then the type is determined
-  from the type of the data contained within the Tensor.
+  Creates a map from function name to a list of types and a list of shapes that
+  correspond with the function arguments. The data is primarily determined from
+  the corresponding "If" or "While" op. If the argument is a resource variable,
+  then the type is determined from the type of the data contained within the
+  Tensor. The shape data is only determined in the case of the "While" op.
+
+  `is_also_output_type` is used to identify the "While" bodies that require the
+  output types to be updated at the same time the input types are updated.
 
   Args:
     node_defs: List of NodeDefs.
     tensor_data: {str name : Tensor}.
 
   Returns:
-    {str function name : [int representing DataType]}
+    {str function name : {"types" : [int representing DataType],
+                          "shapes" : [[int] representing TensorShape]],
+                          "is_also_output_type" : bool}
   """
-  # TODO(b/133793620): Support the "While" op.
-  func_types = {}
+  func_data = {}
+
+  def get_resource_type(node_name):
+    numpy_type = tensor_data[node_name]["data"].dtype
+    return dtypes.as_dtype(numpy_type).as_datatype_enum
+
+  def get_resource_shape(node_name):
+    return tensor_shape_pb2.TensorShapeProto(dim=[
+        tensor_shape_pb2.TensorShapeProto.Dim(size=dim)
+        for dim in tensor_data[node_name]["data"].shape
+    ])
+
+  def add_value(func_name, arg_types, output_shapes, is_also_output_type):
+    func_data[func_name] = {
+        "types": arg_types,
+        "shapes": output_shapes,
+        "is_also_output_type": is_also_output_type
+    }
+
   for node in node_defs:
-    if node.op == "If":
+    if node.op in _CONDITIONAL_OPS:
       arg_types = [dtype for dtype in node.attr["Tin"].list.type]
 
       for idx in range(len(arg_types)):
         if arg_types[idx] == dtypes.resource:
           # Skip first index which represents the condition.
-          input_name = node.input[idx + 1]
-          numpy_type = tensor_data[input_name]["data"].dtype
-          arg_types[idx] = dtypes.as_dtype(numpy_type).as_datatype_enum
+          arg_types[idx] = get_resource_type(node.input[idx + 1])
 
-      func_types[node.attr["then_branch"].func.name] = arg_types
-      func_types[node.attr["else_branch"].func.name] = arg_types
-  return func_types
+      add_value(node.attr["then_branch"].func.name, arg_types, None, False)
+      add_value(node.attr["else_branch"].func.name, arg_types, None, False)
+    elif node.op in _LOOP_OPS:
+      arg_types = [dtype for dtype in node.attr["T"].list.type]
+      output_shapes = [shape for shape in node.attr["output_shapes"].list.shape]
+
+      for idx in range(len(arg_types)):
+        if arg_types[idx] == dtypes.resource:
+          input_name = node.input[idx]
+          arg_types[idx] = get_resource_type(input_name)
+          output_shapes[idx] = get_resource_shape(input_name)
+
+      add_value(node.attr["body"].func.name, arg_types, output_shapes, True)
+      add_value(node.attr["cond"].func.name, arg_types, output_shapes, False)
+  return func_data
 
 
 def _populate_const_op(output_node, node_name, dtype, data, data_shape):
@@ -262,13 +300,13 @@ def _populate_identity_op(output_node, input_node):
     output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
 
 
-def _populate_if_op(output_node, input_node, function_types):
-  """Updates the type attributes and the function names of the If op.
+def _populate_if_op(output_node, input_node, function_data):
+  """Updates the type attributes and function names of If or StatelessIf.
 
   Args:
     output_node: TensorFlow NodeDef.
     input_node: TensorFlow NodeDef.
-    function_types: Map of function names to the list of DataTypes that
+    function_data: Map of function names to the list of types and shapes that
       correspond with the function arguments.
   """
   output_node.CopyFrom(input_node)
@@ -277,7 +315,30 @@ def _populate_if_op(output_node, input_node, function_types):
   output_node.attr["else_branch"].func.name = _get_new_function_name(
       input_node.attr["else_branch"].func.name)
   output_node.attr["Tin"].list.CopyFrom(
-      attr_value_pb2.AttrValue.ListValue(type=function_types[then_func]))
+      attr_value_pb2.AttrValue.ListValue(
+          type=function_data[then_func]["types"]))
+
+
+def _populate_while_op(output_node, input_node, function_data):
+  """Updates the type attributes and function names of While or StatelessWhile.
+
+  Args:
+    output_node: TensorFlow NodeDef.
+    input_node: TensorFlow NodeDef.
+    function_data: Map of function names to the list of types and shapes that
+      correspond with the function arguments.
+  """
+  output_node.CopyFrom(input_node)
+  cond_func = input_node.attr["cond"].func.name
+  output_node.attr["cond"].func.name = _get_new_function_name(cond_func)
+  output_node.attr["body"].func.name = _get_new_function_name(
+      input_node.attr["body"].func.name)
+  output_node.attr["T"].list.CopyFrom(
+      attr_value_pb2.AttrValue.ListValue(
+          type=function_data[cond_func]["types"]))
+  output_node.attr["output_shapes"].list.CopyFrom(
+      attr_value_pb2.AttrValue.ListValue(
+          shape=function_data[cond_func]["shapes"]))
 
 
 def _construct_concrete_function(func, output_graph_def,
@@ -294,10 +355,11 @@ def _construct_concrete_function(func, output_graph_def,
     ConcreteFunction.
   """
   # Create a ConcreteFunction from the new GraphDef.
-  input_tensors = list(func.graph.captures.values())
-  converted_inputs = set(
+  input_tensors = func.graph.internal_captures
+  converted_inputs = object_identity.ObjectIdentitySet(
       [input_tensors[index] for index in converted_input_indices])
-  not_converted_inputs = set(func.inputs).difference(converted_inputs)
+  not_converted_inputs = object_identity.ObjectIdentitySet(
+      func.inputs).difference(converted_inputs)
   not_converted_inputs_map = {
       tensor.name: tensor for tensor in not_converted_inputs
   }
@@ -349,7 +411,7 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
   tensor_data = _get_tensor_data(func)
 
   # Get mapping from function name to argument types.
-  function_types = _get_control_flow_function_types(node_defs, tensor_data)
+  function_data = _get_control_flow_function_data(node_defs, tensor_data)
 
   # Get variable data for all nodes in `node_defs`.
   reference_variables = {}
@@ -365,16 +427,36 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
     converted_input_indices.add(tensor_data[node_name]["index"])
 
   for node in node_defs:
-    if node.op == "If":
+    if node.op in _CONDITIONAL_OPS:
       # Get dtype and data for resource Placeholders.
       then_func = node.attr["then_branch"].func.name
-      arg_types = function_types[then_func]
+      arg_types = function_data[then_func]["types"]
       for idx, input_tensor in enumerate(node.input[1:]):
         input_name = _get_tensor_name(input_tensor)
         if input_name in tensor_data:
           dtype = attr_value_pb2.AttrValue(type=arg_types[idx])
           _save_placeholder(_get_tensor_name(input_tensor), dtype)
-    if node.op == "VariableV2":
+    elif node.op in _LOOP_OPS:
+      # Get dtype and data for resource Placeholders.
+      cond_func = node.attr["cond"].func.name
+      arg_types = function_data[cond_func]["types"]
+      for idx, input_tensor in enumerate(node.input):
+        input_name = _get_tensor_name(input_tensor)
+        if input_name in tensor_data:
+          dtype = attr_value_pb2.AttrValue(type=arg_types[idx])
+          _save_placeholder(_get_tensor_name(input_tensor), dtype)
+    elif (node.op == "Identity" and node.attr["T"].type == dtypes.resource and
+          name_to_node[_get_tensor_name(node.input[0])].op in _LOOP_OPS):
+      # Store the dtype for Identity resource ops that are outputs of While ops.
+      while_node = name_to_node[_get_tensor_name(node.input[0])]
+      body_func = while_node.attr["body"].func.name
+      input_data = node.input[0].split(":")
+      idx = 0 if len(input_data) == 1 else int(input_data[1])
+
+      dtype = attr_value_pb2.AttrValue(
+          type=function_data[body_func]["types"][idx])
+      resource_identities[node.name] = dtype
+    elif node.op == "VariableV2":
       # Get data for VariableV2 ops (reference variables) that cannot be lifted.
       with func.graph.as_default():
         identity_node = array_ops.identity(
@@ -421,9 +503,11 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
     # Convert ReadVariableOps to Identity ops.
     elif input_node.op == "ReadVariableOp":
       _populate_identity_op(output_node, input_node)
-    # Update the function names and function's arguments types for the If ops.
-    elif input_node.op == "If":
-      _populate_if_op(output_node, input_node, function_types)
+    # Update the function names and argument types for the conditional ops.
+    elif input_node.op in _CONDITIONAL_OPS:
+      _populate_if_op(output_node, input_node, function_data)
+    elif input_node.op in _LOOP_OPS:
+      _populate_while_op(output_node, input_node, function_data)
     else:
       output_node.CopyFrom(input_node)
 
@@ -437,7 +521,7 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
 
       # Do not copy any functions that aren't being used in the graph. Any
       # functions that are not used by control flow should have been inlined.
-      if orig_func_name not in function_types:
+      if orig_func_name not in function_data:
         continue
 
       output_library_func = library.function.add()
@@ -446,12 +530,17 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
       for key, value in input_library_func.control_ret.items():
         output_library_func.control_ret[key] = value
 
-      # Update the input types in the function signature.
+      # Update the input types in the function signature. Update the output
+      # types for functions that are while loop bodies.
       output_library_func.signature.CopyFrom(input_library_func.signature)
       output_library_func.signature.name = new_func_name
-      for dtype, arg in zip(function_types[orig_func_name],
+      for dtype, arg in zip(function_data[orig_func_name]["types"],
                             output_library_func.signature.input_arg):
         arg.type = dtype
+      if function_data[orig_func_name]["is_also_output_type"]:
+        for dtype, arg in zip(function_data[orig_func_name]["types"],
+                              output_library_func.signature.output_arg):
+          arg.type = dtype
 
       # Update the NodeDefs.
       func_variables = {
@@ -465,8 +554,11 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
         # Convert ReadVariableOps to Identity ops.
         if input_node.op == "ReadVariableOp":
           _populate_identity_op(output_node, input_node)
-        elif input_node.op == "If":
-          _populate_if_op(output_node, input_node, function_types)
+        # Update the function names and argument types for the conditional ops.
+        elif input_node.op in _CONDITIONAL_OPS:
+          _populate_if_op(output_node, input_node, function_data)
+        elif input_node.op in _LOOP_OPS:
+          _populate_while_op(output_node, input_node, function_data)
         else:
           output_node.CopyFrom(input_node)
           # Convert :value to :output for ops that use the ReadVariableOp.

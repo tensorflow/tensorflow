@@ -24,6 +24,7 @@ from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.distribute.cluster_resolver import cluster_resolver
 from tensorflow.python.eager import context
+from tensorflow.python.platform import remote_utils
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -73,11 +74,10 @@ def connect_to_remote_host(remote_host=None, job_name="worker"):
 
 
 @tf_export("config.experimental_connect_to_cluster")
-def connect_to_cluster(
-    cluster_spec_or_resolver,
-    job_name="localhost",
-    task_index=0,
-    protocol="grpc"):
+def connect_to_cluster(cluster_spec_or_resolver,
+                       job_name="localhost",
+                       task_index=0,
+                       protocol=None):
   """Connects to the given cluster.
 
   Will make devices on the cluster available to use. Note that calling this more
@@ -92,8 +92,10 @@ def connect_to_cluster(
       the cluster.
     job_name: The name of the local job.
     task_index: The local task index.
-    protocol: The communication protocol.
+    protocol: The communication protocol, such as `"grpc"`. If unspecified, will
+      use the default from `python/platform/remote_utils.py`.
   """
+  protocol = protocol or remote_utils.get_default_communication_protocol()
   if isinstance(cluster_spec_or_resolver, server_lib.ClusterSpec):
     cluster_spec = cluster_spec_or_resolver
   elif isinstance(cluster_spec_or_resolver, cluster_resolver.ClusterResolver):

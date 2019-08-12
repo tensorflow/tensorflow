@@ -1,0 +1,12 @@
+op {
+  name: "ReaderNumRecordsProduced"
+  input_arg {
+    name: "reader_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "records_produced"
+    type: DT_INT64
+  }
+}

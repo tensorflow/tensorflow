@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/softmax.h"
 
+#include <cmath>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -31,7 +32,7 @@ namespace gpu {
 namespace gl {
 namespace {
 
-TEST(SoftmaxTest, WorksForChannelsAxis) {
+TEST(SoftmaxTest, Softmax) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -42,14 +43,15 @@ TEST(SoftmaxTest, WorksForChannelsAxis) {
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);
 
-  SoftMaxAttributes attr;
+  SoftmaxAttributes attr;
   attr.axis = Axis::CHANNELS;
 
-  SingleOpModel model({ToString(OperationType::SOFT_MAX), attr}, {input},
+  SingleOpModel model({ToString(OperationType::SOFTMAX), attr}, {input},
                       {output});
-  ASSERT_TRUE(model.PopulateTensor(0, {0.1, 0.2, 0.1, 0.2}));
-  ASSERT_OK(model.Invoke(*NewSoftMaxNodeShader()));
-  EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {1, 1, 1, 1}));
+  ASSERT_TRUE(model.PopulateTensor(0, {0.1f, 0.2f, 0.3f, 0.4f}));
+  ASSERT_OK(model.Invoke(*NewSoftmaxNodeShader()));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6f), {1.0f, 1.0f, 1.0f, 1.0f}));
 }
 
 TEST(SoftmaxTest, DoesNotWorkForHeightAxis) {
@@ -63,15 +65,13 @@ TEST(SoftmaxTest, DoesNotWorkForHeightAxis) {
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);
 
-  SoftMaxAttributes attr;
+  SoftmaxAttributes attr;
   attr.axis = Axis::HEIGHT;
 
-  SingleOpModel model({ToString(OperationType::SOFT_MAX), attr}, {input},
+  SingleOpModel model({ToString(OperationType::SOFTMAX), attr}, {input},
                       {output});
-  ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_THAT(
-      model.Invoke(*NewSoftMaxNodeShader()).message(),
-      testing::HasSubstr("Softmax is only supported for channels axis."));
+  ASSERT_TRUE(model.PopulateTensor(0, {0.1f, 0.2f, 0.3f, 0.4f}));
+  EXPECT_FALSE(model.Invoke(*NewSoftmaxNodeShader()).ok());
 }
 
 TEST(SoftmaxTest, DoesNotWorkForWidthAxis) {
@@ -85,15 +85,40 @@ TEST(SoftmaxTest, DoesNotWorkForWidthAxis) {
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);
 
-  SoftMaxAttributes attr;
+  SoftmaxAttributes attr;
   attr.axis = Axis::WIDTH;
 
-  SingleOpModel model({ToString(OperationType::SOFT_MAX), attr}, {input},
+  SingleOpModel model({ToString(OperationType::SOFTMAX), attr}, {input},
                       {output});
-  ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
-  ASSERT_THAT(
-      model.Invoke(*NewSoftMaxNodeShader()).message(),
-      testing::HasSubstr("Softmax is only supported for channels axis."));
+  ASSERT_TRUE(model.PopulateTensor(0, {0.1f, 0.2f, 0.3f, 0.4f}));
+  EXPECT_FALSE(model.Invoke(*NewSoftmaxNodeShader()).ok());
+}
+
+TEST(SoftmaxTest, Softmax1x1) {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 1, 4);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 1;
+  output.shape = BHWC(1, 1, 1, 4);
+
+  SoftmaxAttributes attr;
+  attr.axis = Axis::CHANNELS;
+
+  const float sum =
+      std::exp(0.1f) + std::exp(0.2f) + std::exp(0.3f) + std::exp(0.4f);
+
+  SingleOpModel model({ToString(OperationType::SOFTMAX), attr}, {input},
+                      {output});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.1f, 0.2f, 0.3f, 0.4f}));
+  ASSERT_OK(model.Invoke(*NewSoftmaxNodeShader()));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6f),
+                        {std::exp(0.1f) / sum, std::exp(0.2f) / sum,
+                         std::exp(0.3f) / sum, std::exp(0.4f) / sum}));
 }
 
 }  // namespace

@@ -135,9 +135,10 @@ class DecodeAudioOpV2 : public OpKernel {
                     "channel_count must be a rank-0 tensor but got shape ",
                     channel_count_tensor.shape().DebugString()));
 
-    const tensorflow::StringPiece contents = contents_tensor.scalar<string>()();
+    const tensorflow::StringPiece contents =
+        contents_tensor.scalar<tstring>()();
     const string file_format =
-        absl::AsciiStrToLower(file_format_tensor.scalar<string>()());
+        absl::AsciiStrToLower(file_format_tensor.scalar<tstring>()());
     const int32 samples_per_second =
         samples_per_second_tensor.scalar<int32>()();
     const int32 channel_count = channel_count_tensor.scalar<int32>()();
@@ -243,7 +244,7 @@ class DecodeAudioOp : public OpKernel {
         errors::InvalidArgument("contents must be scalar but got shape ",
                                 contents.shape().DebugString()));
 
-    const tensorflow::StringPiece file_contents = contents.scalar<string>()();
+    const tensorflow::StringPiece file_contents = contents.scalar<tstring>()();
     Decode(context, file_contents, file_format_, samples_per_second_,
            channel_count_, "");
   }

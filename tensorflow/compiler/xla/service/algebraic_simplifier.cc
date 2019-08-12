@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -60,6 +61,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 
@@ -170,6 +172,10 @@ bool IsUnstridedSlice(const HloInstruction* hlo) {
 // more general case a worklist based approach would be needed.
 class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
  public:
+  explicit AlgebraicSimplifierVisitor(const AlgebraicSimplifierOptions& options,
+                                      AlgebraicSimplifier* simplifier)
+      : options_(options), simplifier_(simplifier) {}
+
   Status HandleAdd(HloInstruction* add) override;
 
   Status HandleAnd(HloInstruction* logical_and) override;
@@ -204,9 +210,15 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleDot(HloInstruction* dot) override;
 
+  Status HandleGather(HloInstruction* gather) override;
+
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
 
   Status HandleLog(HloInstruction* log) override;
+
+  Status HandleMaximum(HloInstruction* maximum) override;
+
+  Status HandleMinimum(HloInstruction* minimum) override;
 
   Status HandleMultiply(HloInstruction* multiply) override;
 
@@ -224,7 +236,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleReshape(HloInstruction* reshape) override;
 
-  Status HandleReduce(HloInstruction* reduce) override;
+  Status HandleReduce(HloInstruction* hlo) override;
 
   Status HandleReduceWindow(HloInstruction* reduce_window) override;
 
@@ -246,16 +258,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   Status HandleMap(HloInstruction* map) override;
 
   // Runs the visitor on a computation.
-  static bool Run(HloComputation* computation,
-                  const AlgebraicSimplifierOptions& options,
-                  AlgebraicSimplifier* simplifier);
+  bool Run(HloComputation* computation,
+           const AlgebraicSimplifierOptions& options,
+           AlgebraicSimplifier* simplifier);
 
  private:
-  explicit AlgebraicSimplifierVisitor(HloComputation* computation,
-                                      const AlgebraicSimplifierOptions& options,
-                                      AlgebraicSimplifier* simplifier)
-      : computation_(computation), options_(options), simplifier_(simplifier) {}
-
   // Removes degenerate dimension from dot.
   StatusOr<bool> RemoveDegenerateDimensionFromDot(HloInstruction* dot);
 
@@ -385,6 +392,9 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Tries to convert slice(reshape(X)) into reshape(slice(X))
   StatusOr<bool> TryToReorderSliceAndReshape(HloInstruction* slice);
 
+  // Useful when we want to use the same visitor over multiple computations.
+  void ResetState(HloComputation* computation);
+
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
   HloComputation* computation_;
@@ -403,12 +413,18 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
+void AlgebraicSimplifierVisitor::ResetState(HloComputation* computation) {
+  changed_ = false;
+  ResetVisitStates();
+  computation_ = computation;
+}
+
 bool AlgebraicSimplifierVisitor::Run(HloComputation* computation,
                                      const AlgebraicSimplifierOptions& options,
                                      AlgebraicSimplifier* simplifier) {
-  AlgebraicSimplifierVisitor visitor(computation, options, simplifier);
-  TF_CHECK_OK(computation->Accept(&visitor));
-  return visitor.changed_ || visitor.changed();
+  ResetState(computation);
+  TF_CHECK_OK(computation->Accept(this));
+  return changed_ || changed();
 }
 
 bool AlgebraicSimplifierVisitor::SameShape(const HloInstruction* lhs,
@@ -431,8 +447,8 @@ void AlgebraicSimplifierVisitor::ReplaceWithBitcast(HloInstruction* instruction,
   CHECK_EQ(ShapeUtil::ByteSizeOf(instruction->shape()),
            ShapeUtil::ByteSizeOf(operand->shape()));
 
-  auto bitcast = computation_->AddInstruction(HloInstruction::CreateUnary(
-      instruction->shape(), HloOpcode::kBitcast, operand));
+  auto bitcast = computation_->AddInstruction(
+      HloInstruction::CreateBitcast(instruction->shape(), operand));
   TF_CHECK_OK(ReplaceInstruction(instruction, bitcast));
 }
 
@@ -573,8 +589,7 @@ Status AlgebraicSimplifierVisitor::HandleBitcast(HloInstruction* bitcast) {
   HloInstruction* op;
   if (Match(bitcast, m::Bitcast(m::Bitcast(m::Op(&op))))) {
     return ReplaceWithNewInstruction(
-        bitcast,
-        HloInstruction::CreateUnary(bitcast->shape(), HloOpcode::kBitcast, op));
+        bitcast, HloInstruction::CreateBitcast(bitcast->shape(), op));
   }
   // All bitcasts can be eliminated (assuming layout constraints are
   // satisified).
@@ -1705,7 +1720,8 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
   // If there are no contracting dimensions, a dot can be rewritten as
   // mul(broadcast(transpose(x)),broadcast(transpose(y)))
-  if (dot->dot_dimension_numbers().lhs_contracting_dimensions_size() == 0) {
+  if (options_.enable_dot_to_multiply_rewrite() &&
+      dot->dot_dimension_numbers().lhs_contracting_dimensions_size() == 0) {
     TF_ASSIGN_OR_RETURN(
         HloInstruction * new_lhs,
         NormalizeDotOperandToBatchMajorAndContractingMinor(
@@ -1869,6 +1885,143 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         dot->precision_config()));
     return ReplaceWithNewInstruction(
         dot, HloInstruction::CreateTranspose(dot->shape(), new_dot, {1, 0}));
+  }
+
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
+  const Shape& operand_shape = gather->operand(0)->shape();
+  // If the operand of a gather is very small, it is easier to fuse a
+  // sequence of selects.
+  if (operand_shape.rank() == 1 &&
+      operand_shape.dimensions(0) <= options_.very_small_gather_size() &&
+      gather->gather_dimension_numbers().index_vector_dim() ==
+          gather->operand(1)->shape().rank() &&
+      gather->gather_dimension_numbers().collapsed_slice_dims_size() == 1) {
+    const Shape& index_shape = gather->operand(1)->shape();
+    const int64 operand_elements = operand_shape.dimensions(0);
+    auto get_value = [&](int64 i) {
+      auto slice = computation_->AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(operand_shape.element_type(), {1}),
+          gather->mutable_operand(0), {i}, {i + 1}, {1}));
+      auto scalar = computation_->AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(operand_shape.element_type(), {}), slice));
+      return computation_->AddInstruction(
+          HloInstruction::CreateBroadcast(gather->shape(), scalar, {}));
+    };
+    auto result = get_value(0);
+    auto one = computation_->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::One(index_shape.element_type())));
+    auto index = one;
+    auto pred_shape = ShapeUtil::ChangeElementType(gather->shape(), PRED);
+    auto iter_shape = ShapeUtil::ChangeElementType(gather->shape(),
+                                                   index_shape.element_type());
+    for (int64 i = 1; i < operand_elements; ++i) {
+      auto broadcasted_index = computation_->AddInstruction(
+          HloInstruction::CreateBroadcast(iter_shape, index, {}));
+      auto index_mask =
+          computation_->AddInstruction(HloInstruction::CreateCompare(
+              pred_shape, gather->mutable_operand(1), broadcasted_index,
+              ComparisonDirection::kGe));
+      result = computation_->AddInstruction(
+          HloInstruction::CreateTernary(gather->shape(), HloOpcode::kSelect,
+                                        index_mask, get_value(i), result));
+      index = computation_->AddInstruction(HloInstruction::CreateBinary(
+          index->shape(), HloOpcode::kAdd, index, one));
+    }
+    return ReplaceInstruction(gather, result);
+  }
+  return Status::OK();
+}
+
+namespace {
+StatusOr<std::unique_ptr<HloInstruction>> MinMaxToClamp(
+    HloInstruction* clamp_lower_bound_bcast, HloInstruction* to_clamp,
+    HloInstruction* clamp_upper_bound_bcast) {
+  HloInstruction* clamp_lower_bound;
+  CHECK(Match(clamp_lower_bound_bcast,
+              m::Broadcast(m::ConstantEffectiveScalar(&clamp_lower_bound))))
+      << clamp_lower_bound_bcast->ToString();
+
+  HloInstruction* clamp_upper_bound;
+  CHECK(Match(clamp_upper_bound_bcast,
+              m::Broadcast(m::ConstantEffectiveScalar(&clamp_upper_bound))))
+      << clamp_upper_bound_bcast->ToString();
+
+  const Literal& lower_bound =
+      Cast<HloConstantInstruction>(clamp_lower_bound)->literal();
+  const Literal& upper_bound =
+      Cast<HloConstantInstruction>(clamp_upper_bound)->literal();
+
+  std::unique_ptr<HloInstruction> lower_bound_instr =
+      HloInstruction::CreateConstant(lower_bound.Clone());
+  std::unique_ptr<HloInstruction> upper_bound_instr =
+      HloInstruction::CreateConstant(upper_bound.Clone());
+
+  std::unique_ptr<HloInstruction> cloned_instruction =
+      HloInstruction::CreateCompare(
+          ShapeUtil::ChangeElementType(lower_bound_instr->shape(), PRED),
+          lower_bound_instr.get(), upper_bound_instr.get(),
+          ComparisonDirection::kLt);
+
+  HloEvaluator evaluator;
+  TF_ASSIGN_OR_RETURN(auto result,
+                      evaluator.Evaluate(cloned_instruction.get()));
+  if (result.IsAll(true)) {
+    return HloInstruction::CreateTernary(to_clamp->shape(), HloOpcode::kClamp,
+                                         clamp_lower_bound_bcast, to_clamp,
+                                         clamp_upper_bound_bcast);
+  }
+  return std::unique_ptr<HloInstruction>();
+}
+}  // namespace
+
+Status AlgebraicSimplifierVisitor::HandleMaximum(HloInstruction* maximum) {
+  HloInstruction *lhs, *rhs;
+  CHECK(Match(maximum, m::Maximum(m::Op(&lhs), m::Op(&rhs))));
+
+  HloInstruction* clamp_upper_bound_bcast;
+  HloInstruction* clamp_lower_bound_bcast;
+  HloInstruction* to_clamp;
+  if (Match(maximum, m::MaximumAnyOrder(
+                         m::Broadcast(&clamp_lower_bound_bcast,
+                                      m::ConstantEffectiveScalar()),
+                         m::MinimumAnyOrder(
+                             m::Op(&to_clamp),
+                             m::Broadcast(&clamp_upper_bound_bcast,
+                                          m::ConstantEffectiveScalar()))))) {
+    TF_ASSIGN_OR_RETURN(auto clamp,
+                        MinMaxToClamp(clamp_lower_bound_bcast, to_clamp,
+                                      clamp_upper_bound_bcast));
+    if (clamp) {
+      return ReplaceWithNewInstruction(maximum, std::move(clamp));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleMinimum(HloInstruction* minimum) {
+  HloInstruction *lhs, *rhs;
+  CHECK(Match(minimum, m::Minimum(m::Op(&lhs), m::Op(&rhs))));
+
+  HloInstruction* clamp_upper_bound_bcast;
+  HloInstruction* clamp_lower_bound_bcast;
+  HloInstruction* to_clamp;
+  if (Match(minimum, m::MinimumAnyOrder(
+                         m::Broadcast(&clamp_upper_bound_bcast,
+                                      m::ConstantEffectiveScalar()),
+                         m::MaximumAnyOrder(
+                             m::Op(&to_clamp),
+                             m::Broadcast(&clamp_lower_bound_bcast,
+                                          m::ConstantEffectiveScalar()))))) {
+    TF_ASSIGN_OR_RETURN(auto clamp,
+                        MinMaxToClamp(clamp_lower_bound_bcast, to_clamp,
+                                      clamp_upper_bound_bcast));
+    if (clamp) {
+      return ReplaceWithNewInstruction(minimum, std::move(clamp));
+    }
   }
 
   return Status::OK();
@@ -2384,9 +2537,11 @@ Status AlgebraicSimplifierVisitor::HandlePad(HloInstruction* pad) {
     TF_ASSIGN_OR_RETURN(
         HloInstruction * slice,
         MakeSliceHlo(nonzero_pad, start_indices, end_indices, strides));
+    TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+        pad->shape(), slice->mutable_shape()));
 
     // Verify that the slice shape matches the pad shape.
-    TF_RET_CHECK(ShapeUtil::Compatible(slice->shape(), pad->shape()));
+    TF_RET_CHECK(ShapeUtil::Equal(slice->shape(), pad->shape()));
 
     return ReplaceInstruction(pad, slice);
   }
@@ -2698,9 +2853,9 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
     // this.  But that's OK for our purposes here.)
     int64 iota_upper_bound = iota->shape().dimensions(
         Cast<HloIotaInstruction>(iota)->iota_dimension());
-    StatusOr<int64> divisor_val = divisor->literal().GetIntegralAsS64(
+    absl::optional<int64> divisor_val = divisor->literal().GetIntegralAsS64(
         std::vector<int64>(0, divisor->shape().dimensions_size()));
-    if (divisor_val.ok() && divisor_val.ValueOrDie() >= iota_upper_bound) {
+    if (divisor_val && *divisor_val >= iota_upper_bound) {
       return ReplaceInstruction(remainder, iota);
     }
   }
@@ -2726,12 +2881,12 @@ Status AlgebraicSimplifierVisitor::HandleRemainder(HloInstruction* remainder) {
     // smaller.
     int64 iota_upper_bound = iota->shape().dimensions(
         Cast<HloIotaInstruction>(iota)->iota_dimension());
-    StatusOr<int64> divisor_val = divisor->literal().GetIntegralAsS64(
+    absl::optional<int64> divisor_val = divisor->literal().GetIntegralAsS64(
         std::vector<int64>(0, divisor->shape().dimensions_size()));
-    if (divisor_val.ok()) {
+    if (divisor_val) {
       // Check whether divisor_val + iota_upper_bound - 1 overflows.
       absl::optional<int64> max_val =
-          OverflowSafeAdd(divisor_val.ValueOrDie(), iota_upper_bound);
+          OverflowSafeAdd(*divisor_val, iota_upper_bound);
       if (max_val.has_value() &&
           FitsInIntegralType(*max_val, iota->shape().element_type())) {
         return ReplaceWithNewInstruction(
@@ -3806,7 +3961,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
     std::vector<int64> dims(operand->shape().dimensions_size());
     std::iota(dims.begin(), dims.end(), 0);
     return computation_->AddInstruction(
-        HloInstruction::CreateUnary(shape, HloOpcode::kBitcast, operand));
+        HloInstruction::CreateBitcast(shape, operand));
   };
 
   // Replace it with a dot, with bitcasts around it to get the right shape.
@@ -3945,8 +4100,9 @@ StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
   XLA_VLOG_LINES(2,
                  "AlgebraicSimplifier::Run(), before:\n" + module->ToString());
   bool changed = false;
+  AlgebraicSimplifierVisitor visitor(options_, this);
   for (auto* comp : module->MakeNonfusionComputations()) {
-    if (AlgebraicSimplifierVisitor::Run(comp, options_, this)) {
+    if (visitor.Run(comp, options_, this)) {
       changed = true;
     }
   }

@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_TYPES_H_
 
 #include <string>
+
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/tstring.h"
 
 // Include appropriate platform-dependent implementations
 #if defined(PLATFORM_GOOGLE) || defined(GOOGLE_INTEGRAL_TYPES)

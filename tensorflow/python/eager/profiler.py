@@ -71,14 +71,9 @@ def start():
   with _profiler_lock:
     if _profiler is not None:
       raise ProfilerAlreadyRunningError('Another profiler is running.')
-    profiler_context = pywrap_tensorflow.TFE_NewProfilerContext()
     if context.default_execution_mode == context.EAGER_MODE:
       context.ensure_initialized()
-      pywrap_tensorflow.TFE_ProfilerContextSetEagerContext(
-          profiler_context,
-          context.context()._handle)  # pylint: disable=protected-access
-    _profiler = pywrap_tensorflow.TFE_NewProfiler(profiler_context)
-    pywrap_tensorflow.TFE_DeleteProfilerContext(profiler_context)
+    _profiler = pywrap_tensorflow.TFE_NewProfiler()
     if not pywrap_tensorflow.TFE_ProfilerIsOk(_profiler):
       logging.warning('Another profiler session is running which is probably '
                       'created by profiler server. Please avoid using profiler '
@@ -102,7 +97,7 @@ def stop():
       raise ProfilerNotRunningError(
           'Cannot stop profiling. No profiler is running.')
     if context.default_execution_mode == context.EAGER_MODE:
-      context.async_wait()
+      context.context().executor.wait()
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tensorflow.TFE_ProfilerSerializeToString(
           _profiler,
@@ -161,14 +156,9 @@ def start_profiler_server(port):
   Args:
     port: port profiler server listens to.
   """
-  profiler_context = pywrap_tensorflow.TFE_NewProfilerContext()
   if context.default_execution_mode == context.EAGER_MODE:
     context.ensure_initialized()
-    pywrap_tensorflow.TFE_ProfilerContextSetEagerContext(
-        profiler_context,
-        context.context()._handle)  # pylint: disable=protected-access
-  pywrap_tensorflow.TFE_StartProfilerServer(profiler_context, port)
-  pywrap_tensorflow.TFE_DeleteProfilerContext(profiler_context)
+  pywrap_tensorflow.TFE_StartProfilerServer(port)
 
 
 class Profiler(object):

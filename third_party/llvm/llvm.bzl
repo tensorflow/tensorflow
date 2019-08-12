@@ -354,7 +354,7 @@ llvm_defines = select({
         "UNICODE",
         "_UNICODE",
     ],
-    "//conditions:default": ["_DEBUG"],
+    "//conditions:default": [],
 }) + [
     "LLVM_ENABLE_STATS",
     "__STDC_LIMIT_MACROS",

@@ -34,8 +34,10 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
 #include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/Support/DebugStringHelper.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
@@ -49,10 +51,16 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+
+namespace mlir {
+/// Create a pass to convert from the TFExecutor to the TF control dialect.
+FunctionPassBase* CreateTFExecutorToControlDialectConversion();
+}  // namespace mlir
 
 namespace tensorflow {
 using llvm::cast;
@@ -66,6 +74,12 @@ namespace {
 
 // TODO(jpienaar): unify and move from here to be able to reuse with tflite
 std::string GetName(Operation* inst) {
+  // TODO(prakalps): b/137006652 prevents us from using location info (derived
+  // from experimental_debug_info) to generate node names. Until it is fixed,
+  // first check for "name" attribute to get node name.
+  if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
+    return attr.getValue();
+  }
   if (auto name_loc = inst->getLoc().dyn_cast<mlir::NameLoc>())
     return name_loc.getName().str();
 
@@ -84,7 +98,7 @@ std::string GetName(Operation* inst) {
 // Stateful helper class to export a function into a Graph.
 class Exporter {
  public:
-  // Converts the given Module to a Graph. The give module should only contain
+  // Converts the given Module to a Graph. The given module should only contain
   // one entry function, which is identified by name "main". This entry function
   // is converted to the base of the graph graph. The rest of the functions are
   // converted to the library functions in that graph.
@@ -194,10 +208,8 @@ std::string Exporter::UniqueName(mlir::Operation* op) {
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     mlir::BlockArgument* arg, unsigned index) {
   auto node_def = absl::make_unique<NodeDef>();
-  node_def->set_name(UniqueName(arg->getContainingRegion()
-                                    ->getParentOfType<mlir::FuncOp>()
-                                    .getName()
-                                    .str()));
+  node_def->set_name(UniqueName(
+      arg->getParentRegion()->getParentOfType<mlir::FuncOp>().getName().str()));
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
@@ -319,7 +331,7 @@ Status Exporter::AddArgumentNode(mlir::BlockArgument* arg, unsigned index) {
   // is an input node. We recover the original input node and skip adding the
   // argument node. The new input node will be handled as normal in the
   // following steps.
-  if (arg->getContainingRegion()->getParentOfType<mlir::FuncOp>().getName() ==
+  if (arg->getParentRegion()->getParentOfType<mlir::FuncOp>().getName() ==
       "main") {
     if (!arg->hasOneUse()) {
       return errors::FailedPrecondition(
@@ -401,6 +413,24 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(const ExporterConfigs& confs,
   }
 
   auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+
+  // Extract version info.
+  auto version_attr = function.getParentOfType<mlir::ModuleOp>()
+                          .getAttrOfType<mlir::DictionaryAttr>("tf.versions");
+  if (version_attr) {
+    VersionDef versions;
+    versions.set_producer(
+        version_attr.get("producer").cast<mlir::IntegerAttr>().getInt());
+    versions.set_min_consumer(
+        version_attr.get("min_consumer").cast<mlir::IntegerAttr>().getInt());
+    for (auto bad_consumer :
+         version_attr.get("bad_consumers").cast<mlir::ArrayAttr>()) {
+      versions.mutable_bad_consumers()->Add(
+          bad_consumer.cast<mlir::IntegerAttr>().getInt());
+    }
+    graph->set_versions(versions);
+  }
+
   // We have to add the function library here, so a custom operation, which is
   // defined in the function library can be added to the graph.
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(*flib));
@@ -524,9 +554,14 @@ Status Exporter::ConvertLibFunction(const ExporterConfigs& configs,
     *flib->add_gradient() = grad;
   }
 
-  // Ignore the gradient attribute on the function as it gets converted to
-  // GradientDef.
-  absl::flat_hash_set<string> attrs_to_ignore = {grad_string};
+  auto stateful_string = mlir::TF::TensorFlowDialect::GetStatefulAttrName();
+  if (auto attr = function.getAttrOfType<mlir::UnitAttr>(stateful_string)) {
+    func_def.mutable_signature()->set_is_stateful(true);
+  }
+
+  // Ignore the gradient and is_stateful attribute on the function as they have
+  // been handled above.
+  absl::flat_hash_set<string> attrs_to_ignore = {grad_string, stateful_string};
   llvm::SmallVector<mlir::NamedAttribute, 8> funcAttrs(
       function.getDialectAttrs());
   TF_RETURN_IF_ERROR(
@@ -574,6 +609,12 @@ Status Exporter::Convert(mlir::ModuleOp module, const ExporterConfigs& configs,
 Status ConvertMlirToGraph(mlir::ModuleOp module, const ExporterConfigs& confs,
                           std::unique_ptr<Graph>* graph,
                           FunctionLibraryDefinition* flib_def) {
+  mlir::PassManager pass_manager;
+  pass_manager.addPass(mlir::CreateTFExecutorToControlDialectConversion());
+  if (mlir::failed(pass_manager.run(module))) {
+    return errors::FailedPrecondition(
+        "Failed to convert TFExecutor Dialect to Control Dialect.");
+  }
   return Exporter::Convert(module, confs, graph, flib_def);
 }
 

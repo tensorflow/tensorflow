@@ -79,7 +79,7 @@ TEST(PlacerInspectionRequiredOpCheckerTest, Basic) {
       {func});
 
   VerifyPlacerInspectionRequiredOps(graph_def,
-                                    {{"x", false}, {"f", true}, {"x", false}});
+                                    {{"x", false}, {"f", true}, {"y", false}});
 }
 
 TEST(PlacerInspectionRequiredOpCheckerTest, DirectCallsAreNotDeep) {
@@ -103,7 +103,7 @@ TEST(PlacerInspectionRequiredOpCheckerTest, DirectCallsAreNotDeep) {
       {func});
 
   VerifyPlacerInspectionRequiredOps(graph_def,
-                                    {{"x", false}, {"f", false}, {"x", false}});
+                                    {{"x", false}, {"f", false}, {"y", false}});
 }
 
 TEST(PlacerInspectionRequiredOpCheckerTest,
@@ -112,10 +112,10 @@ TEST(PlacerInspectionRequiredOpCheckerTest,
    *                x (_Arg, DT_RESOURCE)
    *                   |
    *                   v
-   *                f (direct function call to ResourceIdentity)
+   *                f (PartitionedCallOp: ReadResourceVariable))
    *                   |
    *                   v
-   *                y (_Retval, DT_RESOURCE)
+   *                y (_Retval, DT_FLOAT)
    */
   FunctionDef func = test::function::ReadResourceVariable();
   GraphDef graph_def = GDef(
@@ -131,7 +131,7 @@ TEST(PlacerInspectionRequiredOpCheckerTest,
       {func});
 
   VerifyPlacerInspectionRequiredOps(graph_def,
-                                    {{"x", false}, {"f", false}, {"x", false}});
+                                    {{"x", false}, {"f", false}, {"y", false}});
 }
 
 }  // namespace tensorflow

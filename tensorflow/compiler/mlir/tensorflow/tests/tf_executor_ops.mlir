@@ -68,6 +68,30 @@ func @simpleIsland_with_attributes(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: func @simpleIsland_with_multiple_control_inputs(%arg0: tensor<*xf32>)
+func @simpleIsland_with_multiple_control_inputs(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = tf_executor.graph {
+    %1 = tf_executor.island {
+      tf_executor.yield
+    }
+    %2 = tf_executor.island {
+      tf_executor.yield
+    }
+    %3:2 = tf_executor.island(%1, %2) {
+      tf_executor.yield %arg0 : tensor<*xf32>
+    }
+    tf_executor.fetch %3#0 : tensor<*xf32>
+  }
+// CHECK:      %[[ISLAND0:[0-9]*]] = tf_executor.island {
+// CHECK-NEXT:   tf_executor.yield
+// CHECK:      %[[ISLAND1:[0-9]*]] = tf_executor.island {
+// CHECK-NEXT:   tf_executor.yield
+// CHECK:      %[[ISLAND2:[0-9]*]]:2 = tf_executor.island(%[[ISLAND0]], %[[ISLAND1]]) {
+// CHECK:      tf_executor.fetch %[[ISLAND2]]#0 : tensor<*xf32>
+
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: func @fetchWithControlDep(%arg0: tensor<*xf32>)
 func @fetchWithControlDep(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %result = tf_executor.graph {
@@ -208,6 +232,43 @@ func @switch_merge_with_attributes(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> t
     tf_executor.fetch %value : tensor<*xf32>
   }
   return %result : tensor<*xf32>
+}
+
+// Verify that long form printing is used when operand types do not match the
+// result type and then it can be parsed again correctly.
+// CHECK-LABEL: func @merge_different_operand_types
+func @merge_different_operand_types(%arg0: tensor<*xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  %result = tf_executor.graph {
+
+// CHECK: tf_executor.Merge{{.*}}(tensor<*xf32>, tensor<4xf32>) -> (tensor<4xf32>, tensor<i32>, !tf_executor.control)
+    %value, %idx, %ctlMerge = tf_executor.Merge %arg0, %arg1  : (tensor<*xf32>, tensor<4xf32>) -> (tensor<4xf32>, tensor<i32>, !tf_executor.control)
+    tf_executor.fetch %value : tensor<4xf32>
+  }
+  return %result : tensor<4xf32>
+}
+
+// Verify that long form printing is used when there is only one data operand
+// and then it can be parsed again correctly.
+// CHECK-LABEL: func @merge_one_data_operand
+func @merge_one_data_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %result = tf_executor.graph {
+
+// CHECK: tf_executor.Merge{{.*}}(tensor<*xf32>) -> (tensor<*xf32>, tensor<i32>, !tf_executor.control)
+    %value, %idx, %ctlMerge = tf_executor.Merge %arg0  : (tensor<*xf32>) -> (tensor<*xf32>, tensor<i32>, !tf_executor.control)
+    tf_executor.fetch %value : tensor<*xf32>
+  }
+  return %result : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @merge_with_variant_type
+func @merge_with_variant_type(%arg0: tensor<!tf.variant>, %arg1: tensor<!tf.variant<tensor<4xi32>>>) -> tensor<!tf.variant<tensor<8xf32>>> {
+  %result = tf_executor.graph {
+
+// CHECK: tf_executor.Merge{{.*}}(tensor<!tf.variant>, tensor<!tf.variant<tensor<4xi32>>>) -> (tensor<!tf.variant<tensor<8xf32>>>, tensor<i32>, !tf_executor.control)
+    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<!tf.variant>, tensor<!tf.variant<tensor<4xi32>>>) -> (tensor<!tf.variant<tensor<8xf32>>>, tensor<i32>, !tf_executor.control)
+    tf_executor.fetch %value : tensor<!tf.variant<tensor<8xf32>>>
+  }
+  return %result : tensor<!tf.variant<tensor<8xf32>>>
 }
 
 // CHECK-LABEL: func @enter(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {

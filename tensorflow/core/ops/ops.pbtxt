@@ -786,6 +786,68 @@ op {
   is_stateful: true
 }
 op {
+  name: "AnonymousMemoryCache"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
+  name: "AnonymousMultiDeviceIterator"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "devices"
+    type: "list(string)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "AnonymousRandomSeedGenerator"
+  input_arg {
+    name: "seed"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed2"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
   name: "Any"
   input_arg {
     name: "input"
@@ -1107,6 +1169,75 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+}
+op {
+  name: "ApplyAdagradV2"
+  input_arg {
+    name: "var"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "accum"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "out"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
 }
@@ -4844,6 +4975,7 @@ op {
     allowed_values {
       list {
         s: "inequality"
+        s: "equality"
       }
     }
   }
@@ -5042,6 +5174,24 @@ op {
   attr {
     name: "logits_dimension"
     type: "int"
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesFlushQuantileSummaries"
+  input_arg {
+    name: "quantile_stream_resource_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "summaries"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
   }
   is_stateful: true
 }
@@ -5880,6 +6030,38 @@ op {
   }
 }
 op {
+  name: "CacheDatasetV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "cache"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "Case"
   input_arg {
     name: "branch_index"
@@ -5994,6 +6176,7 @@ op {
     name: "message"
     type: "string"
   }
+  is_stateful: true
 }
 op {
   name: "Cholesky"
@@ -6832,6 +7015,14 @@ op {
     default_value {
       b: false
     }
+  }
+  is_stateful: true
+}
+op {
+  name: "ConfigureTPUEmbedding"
+  attr {
+    name: "config"
+    type: "string"
   }
   is_stateful: true
 }
@@ -9469,6 +9660,59 @@ op {
   }
 }
 op {
+  name: "CumulativeLogsumexp"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "axis"
+    type_attr: "Tidx"
+  }
+  output_arg {
+    name: "out"
+    type_attr: "T"
+  }
+  attr {
+    name: "exclusive"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "reverse"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "DataFormatDimMap"
   input_arg {
     name: "x"
@@ -10273,6 +10517,52 @@ op {
 }
 op {
   name: "DeleteIterator"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
+  name: "DeleteMemoryCache"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
+  name: "DeleteMultiDeviceIterator"
+  input_arg {
+    name: "multi_device_iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "iterators"
+    type: DT_RESOURCE
+    number_attr: "N"
+  }
+  input_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
+  name: "DeleteRandomSeedGenerator"
   input_arg {
     name: "handle"
     type: DT_RESOURCE
@@ -13021,7 +13311,7 @@ op {
     type: DT_VARIANT
   }
   input_arg {
-    name: "num_workers"
+    name: "num_replicas"
     type: DT_INT64
   }
   output_arg {
@@ -13039,6 +13329,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "use_fallback"
+    type: "bool"
+    default_value {
+      b: true
+    }
   }
 }
 op {
@@ -25272,6 +25569,13 @@ op {
       i: 0
     }
   }
+  attr {
+    name: "legacy_autotune"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
 }
 op {
   name: "Prelinearize"
@@ -29940,6 +30244,64 @@ op {
   }
 }
 op {
+  name: "RaggedTensorToTensor"
+  input_arg {
+    name: "shape"
+    type_attr: "Tshape"
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "default_value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "row_partition_tensors"
+    type_attr: "Tindex"
+    number_attr: "num_row_partition_tensors"
+  }
+  output_arg {
+    name: "result"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tindex"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    name: "Tshape"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    name: "num_row_partition_tensors"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "row_partition_types"
+    type: "list(string)"
+  }
+}
+op {
   name: "RaggedTensorToVariant"
   input_arg {
     name: "rt_nested_splits"
@@ -30960,7 +31322,7 @@ op {
     type: DT_VARIANT
   }
   input_arg {
-    name: "num_workers"
+    name: "num_replicas"
     type: DT_INT64
   }
   output_arg {
@@ -30978,6 +31340,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "use_fallback"
+    type: "bool"
+    default_value {
+      b: true
+    }
   }
 }
 op {
@@ -32525,6 +32894,69 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "ResourceApplyAdagradV2"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
   is_stateful: true
@@ -34230,6 +34662,83 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "ResourceSparseApplyAdagradV2"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "accum"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
   is_stateful: true
@@ -38300,6 +38809,38 @@ op {
   }
 }
 op {
+  name: "ShuffleDatasetV2"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "buffer_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed_generator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "ShutdownDistributedTPU"
   is_stateful: true
 }
@@ -38723,6 +39264,34 @@ op {
     type: "int"
     default_value {
       i: 86400
+    }
+  }
+  attr {
+    name: "num_reader_threads"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "reader_buffer_size"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "num_writer_threads"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "writer_buffer_size"
+    type: "int"
+    default_value {
+      i: 1
     }
   }
 }
@@ -39494,6 +40063,89 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+}
+op {
+  name: "SparseApplyAdagradV2"
+  input_arg {
+    name: "var"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "accum"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "lr"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "epsilon"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  output_arg {
+    name: "out"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "update_slots"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
 }
@@ -43073,6 +43725,21 @@ op {
     name: "body"
     type: "func"
   }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "parallel_iterations"
+    type: "int"
+    default_value {
+      i: 10
+    }
+  }
 }
 op {
   name: "StaticRegexFullMatch"
@@ -43525,6 +44192,63 @@ op {
     type: "string"
     default_value {
       s: ""
+    }
+  }
+}
+op {
+  name: "StringNGrams"
+  input_arg {
+    name: "data"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "data_splits"
+    type_attr: "Tsplits"
+  }
+  output_arg {
+    name: "ngrams"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "ngrams_splits"
+    type_attr: "Tsplits"
+  }
+  attr {
+    name: "separator"
+    type: "string"
+  }
+  attr {
+    name: "ngram_widths"
+    type: "list(int)"
+    has_minimum: true
+  }
+  attr {
+    name: "left_pad"
+    type: "string"
+  }
+  attr {
+    name: "right_pad"
+    type: "string"
+  }
+  attr {
+    name: "pad_width"
+    type: "int"
+  }
+  attr {
+    name: "preserve_short_sequences"
+    type: "bool"
+  }
+  attr {
+    name: "Tsplits"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
     }
   }
 }
@@ -44170,6 +44894,13 @@ op {
     type: "string"
     default_value {
       s: "STEP_MARK_AT_ENTRY"
+    }
+  }
+  attr {
+    name: "allow_soft_placement"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }

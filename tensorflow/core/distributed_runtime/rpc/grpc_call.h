@@ -425,7 +425,13 @@ class ServerBidirectionalStreamingCall
         stream_(&ctx_),
         grpc_service_(grpc_service),
         cq_(cq),
-        enqueue_function_(enqueue_function) {}
+        enqueue_function_(enqueue_function) {
+    VLOG(3) << "Creating ServerBidirectionalStreamingCall " << this;
+  }
+
+  ~ServerBidirectionalStreamingCall() override {
+    VLOG(3) << "Destroying ServerBidirectionalStreamingCall " << this;
+  }
 
   void CallOpen() override {
     // Let gRPC know that we can accept another call.

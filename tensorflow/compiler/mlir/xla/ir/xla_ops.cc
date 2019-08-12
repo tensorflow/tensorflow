@@ -21,12 +21,12 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
-#include "mlir/Support/TypeUtilities.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 
 using namespace mlir;
 using namespace mlir::XLA;
 
-XLADialect::XLADialect(MLIRContext* context)
+XlaHloDialect::XlaHloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
@@ -37,9 +37,10 @@ XLADialect::XLADialect(MLIRContext* context)
   allowUnknownOperations();
 }
 
-Operation* XLADialect::materializeConstant(OpBuilder& builder, Attribute value,
-                                           Type type, Location loc) {
-  // If this is an opaque elements attribute, then generate an xla.constant.
+Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
+                                              Attribute value, Type type,
+                                              Location loc) {
+  // If this is an opaque elements attribute, then generate an xla_hlo.constant.
   if (value.isa<OpaqueElementsAttr>())
     return builder.create<XLA::ConstOp>(loc, type, value.cast<ElementsAttr>());
   return nullptr;
@@ -74,7 +75,7 @@ void ConstOp::build(Builder* builder, OperationState* result, Attribute value) {
   }
 
   // TODO: support other XLA specific types.
-  assert(type && "unsupported attribute type for building xla.constant");
+  assert(type && "unsupported attribute type for building xla_hlo.constant");
   result->types.push_back(type);
   result->addAttribute("value", value);
 }

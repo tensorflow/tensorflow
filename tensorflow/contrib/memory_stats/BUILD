@@ -102,4 +102,5 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
     ],
+    xla_enable_strict_auto_jit = False,
 )

@@ -25,8 +25,6 @@ extern "C" {
 TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
                                               TF_Status* status);
 
-typedef struct TFE_ProfilerContext TFE_ProfilerContext;
-
 // A profiler which will start profiling when creating the object and will stop
 // when the object is destroyed. It will profile all operations run under the
 // given TFE_Context. Multiple instance of it can be created, but at most one
@@ -34,7 +32,7 @@ typedef struct TFE_ProfilerContext TFE_ProfilerContext;
 // Thread-safety: TFE_Profiler is thread-safe.
 typedef struct TFE_Profiler TFE_Profiler;
 
-TF_CAPI_EXPORT extern TFE_Profiler* TFE_NewProfiler(TFE_ProfilerContext* ctx);
+TF_CAPI_EXPORT extern TFE_Profiler* TFE_NewProfiler();
 TF_CAPI_EXPORT extern bool TFE_ProfilerIsOk(TFE_Profiler* profiler);
 TF_CAPI_EXPORT extern void TFE_DeleteProfiler(TFE_Profiler* profiler);
 
@@ -44,27 +42,14 @@ TF_CAPI_EXPORT extern void TFE_ProfilerSerializeToString(TFE_Profiler* profiler,
                                                          TF_Buffer* buf,
                                                          TF_Status* status);
 
-// Return a new profiler context object.
-TF_CAPI_EXPORT extern TFE_ProfilerContext* TFE_NewProfilerContext(void);
-
-// Set the eager context in TFE_ProfilerServerOptions
-TF_CAPI_EXPORT extern void TFE_ProfilerContextSetEagerContext(
-    TFE_ProfilerContext* profiler_context, TFE_Context* eager_context);
-
-// Destroy a profiler context object.
-TF_CAPI_EXPORT extern void TFE_DeleteProfilerContext(
-    TFE_ProfilerContext* profiler_context);
-
 // Start a profiler grpc server which listens to specified port. It will start
 // the server on its own thread. It can be shutdown by terminating tensorflow.
 // It can be used in both Eager mode and graph mode. Creating multiple profiler
 // server is allowed. The service defined in
 // tensorflow/contrib/tpu/profiler/tpu_profiler.proto. Please use
-// tensorflow/contrib/tpu/profiler/capture_tpu_profile to capture tracable
-// file following
-// https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern void TFE_StartProfilerServer(TFE_ProfilerContext* context,
-                                                   int port);
+// tensorflow/contrib/tpu/profiler/capture_tpu_profile to capture trace file
+// following https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
+TF_CAPI_EXPORT extern void TFE_StartProfilerServer(int port);
 
 // Enables only graph collection in RunMetadata on the functions executed from
 // this context.
@@ -358,6 +343,59 @@ TF_CAPI_EXPORT extern void TFE_CancellationManagerStartCancel(
     TFE_CancellationManager*);
 TF_CAPI_EXPORT extern void TFE_DeleteCancellationManager(
     TFE_CancellationManager*);
+
+// Associates the given `cancellation_manager` with `op`, so that invoking
+// `TFE_CancellationManagerStartCancel(cancellation_manager)` will cancel the
+// execution of `op`.
+typedef struct TFE_CancellationManager TFE_CancellationManager;
+TF_CAPI_EXPORT extern void TFE_OpSetCancellationManager(
+    TFE_Op* op, TFE_CancellationManager* cancellation_manager,
+    TF_Status* status);
+
+// -----------------------------------------------------------------------------
+// Eager Executor APIs.
+typedef struct TFE_Executor TFE_Executor;
+
+// Creates a new eager Executor. Nodes in one executor are guaranteed to be
+// executed in sequence. Assigning nodes to different executors allows executing
+// nodes in parallel.
+TF_CAPI_EXPORT extern TFE_Executor* TFE_NewExecutor(bool is_async);
+
+// Deletes the eager Executor without waiting for enqueued nodes. Please call
+// TFE_ExecutorWaitForAllPendingNodes before calling this API if you want to
+// make sure all nodes are finished.
+TF_CAPI_EXPORT extern void TFE_DeleteExecutor(TFE_Executor*);
+
+// Returns true if the executor is in async mode.
+TF_CAPI_EXPORT extern bool TFE_ExecutorIsAsync(TFE_Executor*);
+
+// Causes the calling thread to block till all ops dispatched in this executor
+// have been executed. Note that "execution" here refers to kernel execution /
+// scheduling of copies, etc. Similar to sync execution, it doesn't guarantee
+// that lower level device queues (like GPU streams) have been flushed.
+//
+// This call may not block for execution of ops enqueued concurrently with this
+// call.
+TF_CAPI_EXPORT extern void TFE_ExecutorWaitForAllPendingNodes(
+    TFE_Executor*, TF_Status* status);
+
+// When an error happens, any pending operations are discarded and newly issued
+// ops return an error. This call clears the error state and re-enables
+// execution of newly issued ops.
+//
+// Note that outputs of discarded ops remain in a corrupt state and should not
+// be used for future calls.
+// TODO(agarwal): mark the affected handles and raise errors if they are used.
+TF_CAPI_EXPORT extern void TFE_ExecutorClearError(TFE_Executor*);
+
+// Sets a custom Executor for current thread. All nodes created by this thread
+// will be added to this Executor. It will override current executor.
+TF_CAPI_EXPORT extern void TFE_ContextSetExecutorForThread(TFE_Context*,
+                                                           TFE_Executor*);
+
+// Returns the Executor for current thread.
+TF_CAPI_EXPORT extern TFE_Executor* TFE_ContextGetExecutorForThread(
+    TFE_Context*);
 
 #ifdef __cplusplus
 } /* end extern "C" */

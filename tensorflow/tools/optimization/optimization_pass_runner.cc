@@ -111,8 +111,8 @@ Status OptimizationPassRunner::Run(absl::string_view pass_to_run,
   GraphConstructorOptions graph_opts;
   graph_opts.expect_device_spec = true;
   graph_opts.allow_internal_ops = true;
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(graph_opts, input, options.graph->get()));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(graph_opts, std::move(input),
+                                            options.graph->get()));
 
   // Add all devices that were previously configured with AddDevice.
   DeviceSet device_set;

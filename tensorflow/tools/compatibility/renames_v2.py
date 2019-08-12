@@ -211,6 +211,8 @@ renames = {
         'tf.math.conj',
     'tf.container':
         'tf.compat.v1.container',
+    'tf.control_flow_v2_enabled':
+        'tf.compat.v1.control_flow_v2_enabled',
     'tf.convert_to_tensor_or_indexed_slices':
         'tf.compat.v1.convert_to_tensor_or_indexed_slices',
     'tf.convert_to_tensor_or_sparse_tensor':
@@ -275,6 +277,8 @@ renames = {
         'tf.compat.v1.disable_eager_execution',
     'tf.disable_resource_variables':
         'tf.compat.v1.disable_resource_variables',
+    'tf.disable_tensor_equality':
+        'tf.compat.v1.disable_tensor_equality',
     'tf.disable_v2_behavior':
         'tf.compat.v1.disable_v2_behavior',
     'tf.disable_v2_tensorshape':
@@ -329,6 +333,8 @@ renames = {
         'tf.compat.v1.enable_eager_execution',
     'tf.enable_resource_variables':
         'tf.compat.v1.enable_resource_variables',
+    'tf.enable_tensor_equality':
+        'tf.compat.v1.enable_tensor_equality',
     'tf.enable_v2_behavior':
         'tf.compat.v1.enable_v2_behavior',
     'tf.enable_v2_tensorshape':
@@ -361,6 +367,8 @@ renames = {
         'tf.compat.v1.estimator.tpu.TPUEstimatorSpec',
     'tf.estimator.tpu.experimental.EmbeddingSpec':
         'tf.compat.v1.estimator.tpu.experimental.EmbeddingSpec',
+    'tf.experimental.output_all_intermediates':
+        'tf.compat.v1.experimental.output_all_intermediates',
     'tf.expm1':
         'tf.math.expm1',
     'tf.fake_quant_with_min_max_args':
@@ -1457,10 +1465,6 @@ renames = {
         'tf.compat.v1.train.do_quantize_training_on_graphdef',
     'tf.train.experimental.MixedPrecisionLossScaleOptimizer':
         'tf.compat.v1.train.experimental.MixedPrecisionLossScaleOptimizer',
-    'tf.train.experimental.disable_mixed_precision_graph_rewrite':
-        'tf.compat.v1.train.experimental.disable_mixed_precision_graph_rewrite',
-    'tf.train.experimental.enable_mixed_precision_graph_rewrite':
-        'tf.compat.v1.train.experimental.enable_mixed_precision_graph_rewrite',
     'tf.train.exponential_decay':
         'tf.compat.v1.train.exponential_decay',
     'tf.train.export_meta_graph':

@@ -63,10 +63,17 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lock_util
 from tensorflow.python.util import memory
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_stack
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+
+ag_ctx = LazyLoader(
+    "ag_ctx", globals(),
+    "tensorflow.python.autograph.core.ag_ctx")
 
 
 # Temporary global switches determining if we should enable the work-in-progress
@@ -81,6 +88,7 @@ _api_usage_gauge = monitoring.BoolGauge(
 
 # pylint: disable=protected-access
 _TensorLike = tensor_like._TensorLike
+_DTYPES_INTERN_TABLE = dtypes._INTERN_TABLE
 # pylint: enable=protected-access
 
 
@@ -256,6 +264,25 @@ def numpy_text(tensor, is_repr=False):
     text = "\n" + text
   return text
 
+@tf_export(v1=["enable_tensor_equality"])
+def enable_tensor_equality():
+  """Compare Tensors with element-wise comparison and thus be unhashable.
+
+  Comparing tensors with element-wise allows comparisons such as
+  tf.Variable(1.0) == 1.0. Element-wise equality implies that tensors are
+  unhashable. Thus tensors can no longer be directly used in sets or as a key in
+  a dictionary.
+  """
+  Tensor._USE_EQUALITY = True  # pylint: disable=protected-access
+
+@tf_export(v1=["disable_tensor_equality"])
+def disable_tensor_equality():
+  """Compare Tensors by their id and be hashable.
+
+  This is a legacy behaviour of TensorFlow and is highly discouraged.
+  """
+  Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
+
 
 @tf_export("Tensor")
 class Tensor(_TensorLike):
@@ -318,6 +345,8 @@ class Tensor(_TensorLike):
       "__le__",
       "__gt__",
       "__ge__",
+      "__ne__",
+      "__eq__",
       "__and__",
       "__rand__",
       "__or__",
@@ -334,6 +363,9 @@ class Tensor(_TensorLike):
       "__matmul__",
       "__rmatmul__"
   }
+
+  # Whether to allow hashing or numpy-style equality
+  _USE_EQUALITY = False
 
   def __init__(self, op, value_index, dtype):
     """Creates a new `Tensor`.
@@ -475,11 +507,45 @@ class Tensor(_TensorLike):
     raise ValueError(
         "Tensor._shape cannot be assigned, use Tensor.set_shape instead.")
 
+  def _disallow_when_autograph_disabled(self, task):
+    raise errors.OperatorNotAllowedInGraphError(
+        "{} is not allowed: AutoGraph is disabled in this function."
+        " Try decorating it directly with @tf.function.".format(task))
+
+  def _disallow_when_autograph_enabled(self, task):
+    raise errors.OperatorNotAllowedInGraphError(
+        "{} is not allowed: AutoGraph did not convert this function. Try"
+        " decorating it directly with @tf.function.".format(task))
+
+  def _disallow_in_graph_mode(self, task):
+    raise errors.OperatorNotAllowedInGraphError(
+        "{} is not allowed in Graph execution. Use Eager execution or decorate"
+        " this function with @tf.function.".format(task))
+
+  def _disallow_bool_casting(self):
+    if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
+      self._disallow_when_autograph_disabled(
+          "using a `tf.Tensor` as a Python `bool`")
+    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
+      self._disallow_when_autograph_enabled(
+          "using a `tf.Tensor` as a Python `bool`")
+    else:
+      # Default: V1-style Graph execution.
+      self._disallow_in_graph_mode("using a `tf.Tensor` as a Python `bool`")
+
+  def _disallow_iteration(self):
+    if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
+      self._disallow_when_autograph_disabled("iterating over `tf.Tensor`")
+    elif ag_ctx.control_status_ctx().status == ag_ctx.Status.ENABLED:
+      self._disallow_when_autograph_enabled("iterating over `tf.Tensor`")
+    else:
+      # Default: V1-style Graph execution.
+      self._disallow_in_graph_mode("iterating over `tf.Tensor`")
+
   def __iter__(self):
     if not context.executing_eagerly():
-      raise TypeError(
-          "Tensor objects are only iterable when eager execution is "
-          "enabled. To iterate over this tensor use tf.map_fn.")
+      self._disallow_iteration()
+
     shape = self._shape_tuple()
     if shape is None:
       raise TypeError("Cannot iterate over a tensor with unknown shape.")
@@ -641,14 +707,13 @@ class Tensor(_TensorLike):
                                                    self._dtype.name)
 
   def __hash__(self):
-    # Necessary to support Python's collection membership operators
-    return id(self)
-
-  def __eq__(self, other):
-    # Necessary to support Python's collection membership operators
-
-    # NOTE(taylorrobie): equivalent to: id(self) == id(other)
-    return self is other
+    g = getattr(self, "graph", None)
+    if (Tensor._USE_EQUALITY and executing_eagerly_outside_functions() and
+        (g is None or g._building_function)):  # pylint: disable=protected-access
+      raise TypeError("Tensor is unhashable if Tensor equality is enabled. "
+                      "Instead, use tensor.experimental_ref() as the key.")
+    else:
+      return id(self)
 
   def __copy__(self):
     # TODO(b/77597810): get rid of Tensor copies.
@@ -666,6 +731,15 @@ class Tensor(_TensorLike):
   # with ndarrays.
   __array_priority__ = 100
 
+  def __array__(self):
+    raise NotImplementedError("Cannot convert a symbolic Tensor ({}) to a numpy"
+                              " array.".format(self.name))
+
+  def __len__(self):
+    raise TypeError("len is not well defined for symbolic Tensors. ({}) "
+                    "Please call `x.shape` rather than `len(x)` for "
+                    "shape information.".format(self.name))
+
   @staticmethod
   def _override_operator(operator, func):
     _override_helper(Tensor, operator, func)
@@ -674,8 +748,8 @@ class Tensor(_TensorLike):
     """Dummy method to prevent a tensor from being used as a Python `bool`.
 
     This overload raises a `TypeError` when the user inadvertently
-    treats a `Tensor` as a boolean (e.g. in an `if` statement). For
-    example:
+    treats a `Tensor` as a boolean (most commonly in an `if` or `while`
+    statement), in code that was not converted by AutoGraph. For example:
 
     ```python
     if tf.constant(True):  # Will raise.
@@ -685,17 +759,10 @@ class Tensor(_TensorLike):
       # ...
     ```
 
-    This disallows ambiguities between testing the Python value vs testing the
-    dynamic condition of the `Tensor`.
-
     Raises:
       `TypeError`.
     """
-    raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
-                    "Use `if t is not None:` instead of `if t:` to test if a "
-                    "tensor is defined, and use TensorFlow ops such as "
-                    "tf.cond to execute subgraphs conditioned on the value of "
-                    "a tensor.")
+    self._disallow_bool_casting()
 
   def __nonzero__(self):
     """Dummy method to prevent a tensor from being used as a Python `bool`.
@@ -705,11 +772,7 @@ class Tensor(_TensorLike):
     Raises:
       `TypeError`.
     """
-    raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
-                    "Use `if t is not None:` instead of `if t:` to test if a "
-                    "tensor is defined, and use TensorFlow ops such as "
-                    "tf.cond to execute subgraphs conditioned on the value of "
-                    "a tensor.")
+    self._disallow_bool_casting()
 
   def eval(self, feed_dict=None, session=None):
     """Evaluates this tensor in a `Session`.
@@ -734,10 +797,117 @@ class Tensor(_TensorLike):
     """
     return _eval_using_default_session(self, feed_dict, self.graph, session)
 
+  def experimental_ref(self):
+    # tf.Variable also has the same experimental_ref() API.  If you update the
+    # documenation here, please update tf.Variable.experimental_ref() as well.
+    """Returns a hashable reference object to this Tensor.
+
+    Warning: Experimental API that could be changed or removed.
+
+    The primary usecase for this API is to put tensors in a set/dictionary.
+    We can't put tensors in a set/dictionary as `tensor.__hash__()` is no longer
+    available starting Tensorflow 2.0.
+
+    ```python
+    import tensorflow as tf
+
+    x = tf.constant(5)
+    y = tf.constant(10)
+    z = tf.constant(10)
+
+    # The followings will raise an exception starting 2.0
+    # TypeError: Tensor is unhashable if Tensor equality is enabled.
+    tensor_set = {x, y, z}
+    tensor_dict = {x: 'five', y: 'ten', z: 'ten'}
+    ```
+
+    Instead, we can use `tensor.experimental_ref()`.
+
+    ```python
+    tensor_set = {x.experimental_ref(),
+                  y.experimental_ref(),
+                  z.experimental_ref()}
+
+    print(x.experimental_ref() in tensor_set)
+    ==> True
+
+    tensor_dict = {x.experimental_ref(): 'five',
+                   y.experimental_ref(): 'ten',
+                   z.experimental_ref(): 'ten'}
+
+    print(tensor_dict[y.experimental_ref()])
+    ==> ten
+    ```
+
+    Also, the reference object provides `.deref()` function that returns the
+    original Tensor.
+
+    ```python
+    x = tf.constant(5)
+    print(x.experimental_ref().deref())
+    ==> tf.Tensor(5, shape=(), dtype=int32)
+    ```
+    """
+    return object_identity.Reference(self)
+
 
 # TODO(agarwal): consider getting rid of this.
 class _EagerTensorBase(Tensor):
   """Base class for EagerTensor."""
+
+  # __int__, __float__ and __index__ may copy the tensor to CPU and
+  # only work for scalars; values are cast as per numpy.
+  def __int__(self):
+    return int(self._numpy())
+
+  def __long__(self):
+    return long(self._numpy())
+
+  def __float__(self):
+    return float(self._numpy())
+
+  def __index__(self):
+    maybe_arr = self._numpy()
+    if isinstance(maybe_arr, np.ndarray):
+      return maybe_arr.__index__()
+    return int(maybe_arr)  # Must be a NumPy scalar.
+
+  def __bool__(self):
+    return bool(self._numpy())
+
+  __nonzero__ = __bool__
+
+  def __format__(self, format_spec):
+    return self._numpy().__format__(format_spec)
+
+  def __reduce__(self):
+    return convert_to_tensor, (self._numpy(),)
+
+  def __copy__(self):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    return self
+
+  def __deepcopy__(self, memo):
+    # Eager Tensors are immutable so it's safe to return themselves as a copy.
+    del memo
+    return self
+
+  def __str__(self):
+    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (numpy_text(self), self.shape,
+                                                  self.dtype.name)
+
+  def __repr__(self):
+    return "<tf.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s>" % (
+        self._id, self.shape, self.dtype.name, numpy_text(self, is_repr=True))
+
+  def __len__(self):
+    """Returns the length of the first dimension in the Tensor."""
+    if not self.shape.ndims:
+      raise TypeError("Scalar tensor has no `len()`")
+    return self._shape_tuple()[0]
+
+  def _numpy(self):
+    raise NotImplementedError()
 
   @property
   def dtype(self):
@@ -763,32 +933,6 @@ class _EagerTensorBase(Tensor):
     maybe_arr = self._numpy()  # pylint: disable=protected-access
     return maybe_arr.copy() if isinstance(maybe_arr, np.ndarray) else maybe_arr
 
-  # __int__, __float__ and __index__ may copy the tensor to CPU and
-  # only work for scalars; values are cast as per numpy.
-  def __int__(self):
-    return int(self._numpy())
-
-  def __long__(self):
-    return long(self._numpy())
-
-  def __float__(self):
-    return float(self._numpy())
-
-  def __index__(self):
-    maybe_arr = self._numpy()
-    if isinstance(maybe_arr, np.ndarray):
-      return maybe_arr.__index__()
-    return int(maybe_arr)  # Must be a NumPy scalar.
-
-  def __format__(self, format_spec):
-    return self._numpy().__format__(format_spec)
-
-  def __reduce__(self):
-    return (convert_to_tensor, (self._numpy(),))
-
-  def _numpy(self):
-    raise NotImplementedError()
-
   @property
   def backing_device(self):
     """Returns the name of the device holding this tensor's memory.
@@ -800,15 +944,6 @@ class _EagerTensorBase(Tensor):
     in host memory).
     """
     raise NotImplementedError()
-
-  def __copy__(self):
-    # Eager Tensors are immutable so it's safe to return themselves as a copy.
-    return self
-
-  def __deepcopy__(self, memo):
-    # Eager Tensors are immutable so it's safe to return themselves as a copy.
-    del memo
-    return self
 
   def _datatype_enum(self):
     raise NotImplementedError()
@@ -853,16 +988,8 @@ class _EagerTensorBase(Tensor):
     """
     raise NotImplementedError()
 
-  def _copy_to_device(self, context, device):  # pylint: disable=redefined-outer-name
+  def _copy_to_device(self, device_name):  # pylint: disable=redefined-outer-name
     raise NotImplementedError()
-
-  def __str__(self):
-    return "tf.Tensor(%s, shape=%s, dtype=%s)" % (numpy_text(self), self.shape,
-                                                  self.dtype.name)
-
-  def __repr__(self):
-    return "<tf.Tensor: id=%s, shape=%s, dtype=%s, numpy=%s>" % (
-        self._id, self.shape, self.dtype.name, numpy_text(self, is_repr=True))
 
   @staticmethod
   def _override_operator(name, func):
@@ -870,7 +997,6 @@ class _EagerTensorBase(Tensor):
 
   def _copy_nograd(self, ctx=None, device_name=None):
     """Copies tensor to dest device, but doesn't record the operation."""
-    # pylint: disable=protected-access
     # Creates a new tensor on the dest device.
     if ctx is None:
       ctx = context.context()
@@ -879,7 +1005,7 @@ class _EagerTensorBase(Tensor):
     # pylint: disable=protected-access
     try:
       ctx.ensure_initialized()
-      new_tensor = self._copy_to_device(context=ctx._handle, device=device_name)
+      new_tensor = self._copy_to_device(device_name)
     except core._NotOkStatusException as e:
       six.raise_from(core._status_to_exception(e.code, e.message), None)
     return new_tensor
@@ -922,12 +1048,6 @@ class _EagerTensorBase(Tensor):
     """Returns the number of Tensor dimensions."""
     return self.shape.ndims
 
-  def __len__(self):
-    """Returns the length of the first dimension in the Tensor."""
-    if not self.shape.ndims:
-      raise TypeError("Scalar tensor has no `len()`")
-    return self._shape_tuple()[0]
-
   @deprecation.deprecated(None, "Use tf.identity instead.")
   def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
@@ -946,12 +1066,6 @@ class _EagerTensorBase(Tensor):
       as this Tensor.
     """
     return self._copy(context.context(), "GPU:" + str(gpu_index))
-
-  def __bool__(self):
-    return bool(self._numpy())
-
-  def __nonzero__(self):
-    return self.__bool__()
 
   def set_shape(self, shape):
     if not self.shape.is_compatible_with(shape):
@@ -1138,19 +1252,21 @@ def internal_convert_to_tensor(value,
                                as_ref=False,
                                preferred_dtype=None,
                                ctx=None,
-                               accept_composite_tensors=False):
+                               accepted_result_types=(Tensor,)):
   """Implementation of the public convert_to_tensor."""
+  if isinstance(value, EagerTensor):
+    if ctx is None:
+      ctx = context.context()
+    if not ctx.executing_eagerly():
+      graph = get_default_graph()
+      if not graph.building_function:
+        raise RuntimeError("Attempting to capture an EagerTensor without "
+                           "building a function.")
+      return graph.capture(value, name=name)
+
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
-  if ctx is None:
-    ctx = context.context()
-  if isinstance(value, EagerTensor) and not ctx.executing_eagerly():
-    graph = get_default_graph()
-    if not graph.building_function:
-      raise RuntimeError("Attempting to capture an EagerTensor without "
-                         "building a function.")
-    return graph.capture(value, name=name)
-  elif isinstance(value, Tensor):
+  if isinstance(value, Tensor):
     if dtype is not None and not dtype.is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
@@ -1159,7 +1275,6 @@ def internal_convert_to_tensor(value,
 
   if preferred_dtype is not None:
     preferred_dtype = dtypes.as_dtype(preferred_dtype)
-
   for base_type, conversion_func in tensor_conversion_registry.get(type(value)):
     # If dtype is None but preferred_dtype is not None, we try to
     # cast to preferred_dtype first.
@@ -1184,11 +1299,7 @@ def internal_convert_to_tensor(value,
     if ret is NotImplemented:
       continue
 
-    is_acceptable_type = (
-        isinstance(ret, Tensor) or
-        (accept_composite_tensors and
-         isinstance(ret, composite_tensor.CompositeTensor)))
-    if not is_acceptable_type:
+    if not isinstance(ret, accepted_result_types):
       raise RuntimeError(
           "%sConversion function %r for type %s returned non-Tensor: %r" %
           (_error_prefix(name), conversion_func, base_type, ret))
@@ -1234,7 +1345,7 @@ def internal_convert_n_to_tensor(values,
     RuntimeError: If a registered conversion function returns an invalid
       value.
   """
-  if not isinstance(values, collections.Sequence):
+  if not isinstance(values, collections_abc.Sequence):
     raise TypeError("values must be a sequence.")
   ret = []
   if ctx is None:
@@ -1342,7 +1453,7 @@ def internal_convert_to_tensor_or_composite(value,
         dtype=dtype,
         name=name,
         as_ref=as_ref,
-        accept_composite_tensors=True)
+        accepted_result_types=(Tensor, composite_tensor.CompositeTensor))
 
 
 def internal_convert_n_to_tensor_or_composite(values,
@@ -1371,7 +1482,7 @@ def internal_convert_n_to_tensor_or_composite(values,
     RuntimeError: If a registered conversion function returns an invalid
       value.
   """
-  if not isinstance(values, collections.Sequence):
+  if not isinstance(values, collections_abc.Sequence):
     raise TypeError("values must be a sequence.")
   ret = []
   for i, value in enumerate(values):
@@ -2021,8 +2132,6 @@ class Operation(object):
     """The list of `Tensor` objects representing the outputs of this op."""
     return self._outputs
 
-# pylint: disable=protected-access
-
   class _InputList(object):
     """Immutable input list wrapper."""
 
@@ -2043,9 +2152,6 @@ class Operation(object):
 
     def __getitem__(self, i):
       return self._inputs[i]
-
-
-# pylint: enable=protected-access
 
   @property
   def inputs(self):
@@ -2294,6 +2400,25 @@ class Operation(object):
       return dtypes.as_dtype(x.type)
     assert oneof_value in fields, "Unsupported field type in " + str(x)
     return getattr(x, oneof_value)
+
+  def _get_attr_type(self, name):
+    """Returns the value of the attr of this op with the given `name`.
+
+    Args:
+      name: The name of the attr to fetch.
+
+    Returns:
+      The value of the attr, as a Python object.
+
+    Raises:
+      ValueError: If this op does not have an attr with the given `name`.
+    """
+    try:
+      dtype_enum = c_api.TF_OperationGetAttrType(self._c_op, name)
+      return _DTYPES_INTERN_TABLE[dtype_enum]
+    except errors.InvalidArgumentError as e:
+      # Convert to ValueError for backwards compatibility.
+      raise ValueError(str(e))
 
   def run(self, feed_dict=None, session=None):
     """Runs this operation in a `Session`.
@@ -2746,7 +2871,7 @@ class Graph(object):
     # self._thread_local._colocation_stack is used instead.
     self._graph_colocation_stack = traceable_stack.TraceableStack()
     # Set of tensors that are dangerous to feed!
-    self._unfeedable_tensors = set()
+    self._unfeedable_tensors = object_identity.ObjectIdentitySet()
     # Set of operations that are dangerous to fetch!
     self._unfetchable_ops = set()
     # A map of tensor handle placeholder to tensor dtype.
@@ -2776,6 +2901,16 @@ class Graph(object):
     # Set to True if this graph is being built in an
     # AutomaticControlDependencies context.
     self._add_control_dependencies = False
+    # Cache for OpDef protobufs retrieved via the C API.
+    self._op_def_cache = {}
+    # Cache for constant results of `broadcast_gradient_args()`. The keys are
+    # tuples of fully-defined shapes: (x_shape_tuple, y_shape_tuple), and the
+    # values are tuples of reduction indices: (rx, ry).
+    self._bcast_grad_args_cache = {}
+    # Cache for constant results of `reduced_shape()`. The keys are pairs of
+    # tuples: (input_shape_tuple, reduction_indices_tuple), and the values
+    # are pairs of tuples: (output_shape_kept_dims, tile_scaling).
+    self._reduced_shape_cache = {}
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
@@ -3676,14 +3811,20 @@ class Graph(object):
 
   def _get_op_def(self, type):  # pylint: disable=redefined-builtin
     """Returns the `OpDef` proto for `type`. `type` is a string."""
-    with c_api_util.tf_buffer() as buf:
-      # pylint: disable=protected-access
-      c_api.TF_GraphGetOpDef(self._c_graph, compat.as_bytes(type), buf)
-      # pylint: enable=protected-access
-      data = c_api.TF_GetBuffer(buf)
-    op_def = op_def_pb2.OpDef()
-    op_def.ParseFromString(compat.as_bytes(data))
-    return op_def
+    # NOTE: No locking is required because the lookup and insertion operations
+    # on Python dictionaries are atomic.
+    try:
+      return self._op_def_cache[type]
+    except KeyError:
+      with c_api_util.tf_buffer() as buf:
+        # pylint: disable=protected-access
+        c_api.TF_GraphGetOpDef(self._c_graph, compat.as_bytes(type), buf)
+        # pylint: enable=protected-access
+        data = c_api.TF_GetBuffer(buf)
+      op_def = op_def_pb2.OpDef()
+      op_def.ParseFromString(compat.as_bytes(data))
+      self._op_def_cache[type] = op_def
+      return op_def
 
   def as_default(self):
     """Returns a context manager that makes this `Graph` the default graph.
@@ -4122,7 +4263,7 @@ class Graph(object):
     if op is None and not ignore_existing:
       raise ValueError("Trying to reset colocation (op is None) but "
                        "ignore_existing is not True")
-    op = _op_to_colocate_with(op)
+    op = _op_to_colocate_with(op, self)
 
     # By default, colocate_with resets the device function stack,
     # since colocate_with is typically used in specific internal
@@ -4914,9 +5055,10 @@ class Graph(object):
     return self._thread_local._auto_cast_variable_read_dtype  # pylint: disable=protected-access
 
   @_auto_cast_variable_read_dtype.setter
-  def _auto_cast_variable_read_dtype(self, _auto_cast_variable_read_dtype):
-    self._thread_local._auto_cast_variable_read_dtype = (  # pylint: disable=protected-access
-        _auto_cast_variable_read_dtype)
+  def _auto_cast_variable_read_dtype(self, dtype):
+    if dtype:
+      dtype = dtypes.as_dtype(dtype)
+    self._thread_local._auto_cast_variable_read_dtype = dtype  # pylint: disable=protected-access
 
   @tf_contextlib.contextmanager
   def _enable_auto_casting_variables(self, dtype):
@@ -5632,28 +5774,29 @@ def enable_eager_execution_internal(config=None,
           "tf.enable_eager_execution must be called at program startup.")
   context.default_execution_mode = context.EAGER_MODE
   # pylint: disable=protected-access
-  if context._context is None:
-    context._context = context.Context(
-        config=config,
-        device_policy=device_policy,
-        execution_mode=execution_mode,
-        server_def=server_def)
-  elif ((config is not None and config is not context._context._config) or
-        (device_policy is not None and
-         device_policy is not context._context._device_policy) or
-        (execution_mode is not None and
-         execution_mode is not context._context._execution_mode)):
-    raise ValueError(
-        "Trying to change the options of an active eager"
-        " execution. Context config: %s, specified config:"
-        " %s. Context device policy: %s, specified device"
-        " policy: %s. Context execution mode: %s, "
-        " specified execution mode %s." %
-        (context._context._config, config, context._context._device_policy,
-         device_policy, context._context._execution_mode, execution_mode))
-  else:
-    # We already created everything, so update the thread local data.
-    context._context._thread_local_data.is_eager = True
+  with context._context_lock:
+    if context._context is None:
+      context._set_context_locked(context.Context(
+          config=config,
+          device_policy=device_policy,
+          execution_mode=execution_mode,
+          server_def=server_def))
+    elif ((config is not None and config is not context._context._config) or
+          (device_policy is not None and
+           device_policy is not context._context._device_policy) or
+          (execution_mode is not None and
+           execution_mode is not context._context._execution_mode)):
+      raise ValueError(
+          "Trying to change the options of an active eager"
+          " execution. Context config: %s, specified config:"
+          " %s. Context device policy: %s, specified device"
+          " policy: %s. Context execution mode: %s, "
+          " specified execution mode %s." %
+          (context._context._config, config, context._context._device_policy,
+           device_policy, context._context._execution_mode, execution_mode))
+    else:
+      # We already created everything, so update the thread local data.
+      context._context._thread_local_data.is_eager = True
 
   # Monkey patch to get rid of an unnecessary conditional since the context is
   # now initialized.
@@ -5799,8 +5942,9 @@ def _get_graph_from_inputs(op_input_list, graph=None):
     The appropriate graph to use for the given inputs.
 
   """
-  if get_default_graph().building_function:
-    return get_default_graph()
+  current_default_graph = get_default_graph()
+  if current_default_graph.building_function:
+    return current_default_graph
 
   op_input_list = tuple(op_input_list)  # Handle generators correctly
   if graph and not isinstance(graph, Graph):
@@ -5833,7 +5977,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
         raise ValueError("%s is not from the passed-in graph." % graph_element)
 
   # 2. If all else fails, we use the default graph, which is always there.
-  return graph or get_default_graph()
+  return graph or current_default_graph
 
 
 @tf_export(v1=["GraphKeys"])
@@ -6178,15 +6322,21 @@ class name_scope(object):  # pylint: disable=invalid-name
         raise ValueError(
             "At least one of name (%s) and default_name (%s) must be provided."
             % (self._name, self._default_name))
-      if self._values is None:
-        self._values = []
-      if self._values:
-        g = _get_graph_from_inputs(self._values)
-        self._g_manager = g.as_default()
-        self._g_manager.__enter__()
+
+      g = get_default_graph()
+      if self._values and not g.building_function:
+        # Specialize based on the knowledge that `_get_graph_from_inputs()`
+        # ignores `inputs` when building a function.
+        g_from_inputs = _get_graph_from_inputs(self._values)
+        if g_from_inputs is not g:
+          g = g_from_inputs
+          self._g_manager = g.as_default()
+          self._g_manager.__enter__()
+        else:
+          self._g_manager = None
       else:
-        g = get_default_graph()
         self._g_manager = None
+
       try:
         self._name_scope = g.name_scope(self._name)
         return self._name_scope.__enter__()
@@ -6426,7 +6576,7 @@ def _operation_conversion_error(op, dtype=None, name=None, as_ref=False):
                   (op.name, dtype, name, as_ref))
 
 
-def _op_to_colocate_with(v):
+def _op_to_colocate_with(v, graph):
   """Operation object corresponding to v to use for colocation constraints."""
   if v is None:
     return None
@@ -6445,7 +6595,10 @@ def _op_to_colocate_with(v):
   # import dependency is acceptable.
   if hasattr(v, "handle") and hasattr(v.handle, "op") and isinstance(
       v.handle.op, Operation):
-    return v.handle.op
+    if graph.building_function:
+      return graph.capture(v.handle).op
+    else:
+      return v.handle.op
   return internal_convert_to_tensor_or_indexed_slices(v, as_ref=True).op
 
 

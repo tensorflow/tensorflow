@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/graph_view_internal.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -815,7 +816,9 @@ Status MutableGraphView::CheckKernelRegisteredForNodes() {
                           attr_to_add.second);
     }
     const string& device = diff.update_device ? diff.device : node->device();
-    if (device.empty()) {
+    DeviceNameUtils::ParsedName name;
+    if (device.empty() || !DeviceNameUtils::ParseFullName(device, &name) ||
+        !name.has_type) {
       continue;
     }
     s = IsKernelRegisteredForNode(diff.update_name ? diff.name : node->name(),
@@ -824,19 +827,20 @@ Status MutableGraphView::CheckKernelRegisteredForNodes() {
                                   diff.update_op ? diff.op : node->op(), device,
                                   AttrSlice(&diff.processed_attrs));
     if (!s.ok()) {
-      return errors::InvalidArgument(kMutableGraphViewApplyError,
-                                     s.error_message());
+      LOG(WARNING) << s.error_message();
     }
   }
   for (const auto& new_node_holder : mutation_.new_nodes_) {
     const auto& new_node_def = new_node_holder.node;
-    if (new_node_def.device().empty()) {
+    DeviceNameUtils::ParsedName name;
+    if (new_node_def.device().empty() ||
+        !DeviceNameUtils::ParseFullName(new_node_def.device(), &name) ||
+        !name.has_type) {
       continue;
     }
     s = IsKernelRegisteredForNode(new_node_def);
     if (!s.ok()) {
-      return errors::InvalidArgument(kMutableGraphViewApplyError,
-                                     s.error_message());
+      LOG(WARNING) << s.error_message();
     }
   }
   return Status::OK();

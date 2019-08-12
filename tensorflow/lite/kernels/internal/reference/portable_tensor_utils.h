@@ -155,10 +155,6 @@ void ClipVector(const float* vector, int v_size, float abs_limit,
   PortableClipVector(vector, v_size, abs_limit, result);
 }
 
-void VectorShiftLeft(float* vector, int v_size, float shift_value) {
-  PortableVectorShiftLeft(vector, v_size, shift_value);
-}
-
 void ReductionSumVector(const float* input_vector, float* output_vector,
                         int output_size, int reduction_size) {
   PortableReductionSumVector(input_vector, output_vector, output_size,

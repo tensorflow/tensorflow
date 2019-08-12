@@ -31,8 +31,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Support/Functional.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/utils/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 
 namespace mlir {
@@ -43,7 +43,7 @@ namespace TFL {
 //
 namespace {
 
-/// Applies quantization on the model in TFL dialect.
+// Applies quantization on the model in TFL dialect.
 struct QuantizePass : public FunctionPass<QuantizePass> {
   void runOnFunction() override;
 };
@@ -55,9 +55,9 @@ void QuantizePass::runOnFunction() {
   auto func = getFunction();
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(ctx, &patterns);
-  mlir::RewriteListBuilder<mlir::TFL::GenericFullQuantizationPattern<
-      mlir::TFL::QuantizeOp, mlir::TFL::DequantizeOp>>::build(patterns, ctx);
-  applyPatternsGreedily(func, std::move(patterns));
+  patterns.insert<mlir::TFL::GenericFullQuantizationPattern<
+      mlir::TFL::QuantizeOp, mlir::TFL::DequantizeOp>>(ctx);
+  applyPatternsGreedily(func, patterns);
 }
 }  // namespace
 

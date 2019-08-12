@@ -32,15 +32,17 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.eager import wrap_function
-from tensorflow.python.feature_column import feature_column_v2
+from tensorflow.python.feature_column import feature_column_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
@@ -57,6 +59,8 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import tag_constants
@@ -66,26 +70,27 @@ from tensorflow.python.training.tracking import util
 from tensorflow.python.util import tf_inspect
 
 
+def cycle(obj, cycles, signatures=None):
+  to_save = obj
+  # TODO(vbardiovsky): It would be nice if exported protos reached a fixed
+  # point w.r.t. saving/restoring, ideally after 2nd saving.
+  for _ in range(cycles):
+    path = tempfile.mkdtemp(prefix=test.get_temp_dir())
+    # If available, we'll run the save and restore preferring the GPU. This
+    # just makes sure we aren't throwing errors and have enough
+    # device("CPU") blocks to satisfy the placer.
+    with test_util.use_gpu():
+      save.save(to_save, path, signatures)
+      loaded = load.load(path)
+    to_save = loaded
+  return loaded
+
+
 @parameterized.named_parameters(
     dict(testcase_name="ReloadOnce", cycles=1),
     dict(testcase_name="ReloadTwice", cycles=2),
     dict(testcase_name="ReloadThrice", cycles=3))
 class LoadTest(test.TestCase, parameterized.TestCase):
-
-  def cycle(self, obj, cycles, signatures=None):
-    to_save = obj
-    # TODO(vbardiovsky): It would be nice if exported protos reached a fixed
-    # point w.r.t. saving/restoring, ideally after 2nd saving.
-    for _ in range(cycles):
-      path = tempfile.mkdtemp(prefix=self.get_temp_dir())
-      # If available, we'll run the save and restore preferring the GPU. This
-      # just makes sure we aren't throwing errors and have enough
-      # device("CPU") blocks to satisfy the placer.
-      with test_util.use_gpu():
-        save.save(to_save, path, signatures)
-        loaded = load.load(path)
-      to_save = loaded
-    return loaded
 
   def test_structure_import(self, cycles):
     root = tracking.AutoTrackable()
@@ -93,7 +98,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.dep_two = tracking.AutoTrackable()
     root.dep_two.dep = tracking.AutoTrackable()
     root.dep_three = root.dep_two.dep
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     self.assertIs(imported.dep_three, imported.dep_two.dep)
     self.assertIsNot(imported.dep_one, imported.dep_two)
 
@@ -101,7 +106,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = tracking.AutoTrackable()
     root.v1 = variables.Variable(1., trainable=True)
     root.v2 = variables.Variable(2., trainable=False)
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     self.assertEqual(imported.v1.numpy(), 1.0)
     self.assertTrue(imported.v1.trainable)
     self.assertEqual(imported.v2.numpy(), 2.0)
@@ -113,13 +118,13 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     # is based on object name and not on variable name.
     root.v1 = variables.Variable(1., trainable=True, name="v1")
     root.v2 = variables.Variable(2., trainable=False, name="v1")
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     self.assertEqual(imported.v1.numpy(), 1.0)
     self.assertEqual(imported.v2.numpy(), 2.0)
     self.assertEqual(imported.v1.name, root.v1.name)
     self.assertEqual(imported.v2.name, root.v2.name)
     with variable_scope.variable_scope("foo"):
-      imported = self.cycle(root, cycles)
+      imported = cycle(root, cycles)
       self.assertTrue(imported.v1.name.startswith("foo/"))
       self.assertTrue(imported.v2.name.startswith("foo/"))
 
@@ -138,7 +143,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     m = MakeVariable()
     m.make_variable([1, 2, 3])
-    m = self.cycle(m, cycles)
+    m = cycle(m, cycles)
     m.v.assign([1, 2, 3, 4])
     self.assertEqual([None], tensor_shape.as_shape(m.v.shape).as_list())
 
@@ -151,7 +156,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         lambda x: root.weights * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
     for _ in range(cycles):
-      imported = self.cycle(root, 1)
+      imported = cycle(root, 1)
       self.evaluate(imported.weights.initializer)
     self.assertEqual(4., self.evaluate(imported.f(constant_op.constant(2.))))
     self.evaluate(imported.weights.assign(4.0))
@@ -164,7 +169,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f = def_function.function(
         lambda x: captured_constant * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     self.assertEqual(4., self.evaluate(imported.f(constant_op.constant(2.))))
 
   def test_control_outputs(self, cycles):
@@ -177,7 +182,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         exported_graph.get_operation_by_name("should_be_control_output"),
         exported_graph.control_outputs)
 
-    imported = self.cycle(exported, cycles)
+    imported = cycle(exported, cycles)
     # Calling get_concrete_function wraps in a second call operation; we want to
     # inspect the original function body for the control output; digging into
     # graph.as_graph_def() and its FunctionDefLibrary is another option.
@@ -243,7 +248,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     root = Adder()
     root.add(constant_op.constant(1.))
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     root.add(constant_op.constant(1.))
 
   def test_capture_assets(self, cycles):
@@ -252,7 +257,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f = def_function.function(
         lambda: root.vocab.asset_path,
         input_signature=[])
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     original_output = root.f().numpy()
     imported_output = imported.f().numpy()
     self.assertNotEqual(original_output, imported_output)
@@ -269,7 +274,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     original_output = root.f().numpy()
 
     if cycles > 1:
-      root = self.cycle(root, cycles - 1)
+      root = cycle(root, cycles - 1)
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
     save.save(root, path)
 
@@ -287,7 +292,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = tracking.AutoTrackable()
     root.asset1 = tracking.TrackableAsset(vocab)
     root.asset2 = tracking.TrackableAsset(vocab)
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     self.assertEqual(imported.asset1.asset_path.numpy(),
                      imported.asset2.asset_path.numpy())
 
@@ -303,7 +308,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f(constant_op.constant(1.))
     root.f(constant_op.constant(1))
 
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
 
     self.assertEqual(4., imported.f(constant_op.constant(2.)).numpy())
     self.assertEqual(14, imported.f(constant_op.constant(7)).numpy())
@@ -317,7 +322,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = tracking.AutoTrackable()
     root.f = func
 
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     self.assertEqual(4., imported.f(constant_op.constant(2.0)).numpy())
 
   def test_explicit_save_signature(self, cycles):
@@ -328,7 +333,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = tracking.AutoTrackable()
     root.f = func
 
-    imported = self.cycle(
+    imported = cycle(
         root, cycles, {
             "f":
                 root.f.get_concrete_function(
@@ -346,7 +351,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     root = tracking.AutoTrackable()
     root.g = g
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     imported.g(constant_op.constant([1.0]))
 
   def test_function_with_default_bool_input(self, cycles):
@@ -364,7 +369,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(7, root.f(constant_op.constant(1)).numpy())
     self.assertEqual(2, root.f(constant_op.constant(1), True).numpy())
 
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
 
     self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
     self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
@@ -394,7 +399,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     concrete_functions = root.f._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
     self.assertEqual(4, len(concrete_functions))
 
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
 
     self.assertAllEqual([0.0, 0.0, 0.0],
                         imported.f(constant_op.constant([1, 2, 3]),
@@ -428,7 +433,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     obj.increase()
     self.assertEqual(16.0, obj.variable.numpy())
 
-    imported = self.cycle(obj, cycles)
+    imported = cycle(obj, cycles)
 
     imported.increase(constant_op.constant(10.0))
     self.assertEqual(26.0, imported.variable.numpy())
@@ -459,7 +464,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     # matching signature will be valid on the loaded model.
     self.assertEqual(31, root.f(input1).numpy())
 
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
 
     with self.assertRaisesRegexp(ValueError,
                                  "Could not find matching function to call"):
@@ -488,7 +493,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(3, result[1].numpy())
     self.assertEqual(0.5, result[2]["x"].numpy())
 
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
 
     result = imported.f(constant_op.constant(2), constant_op.constant(5))
     self.assertEqual(7, result[0].a.numpy())
@@ -523,7 +528,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     train_input = dict(x=constant_op.constant([[1.]]),
                        y=constant_op.constant([[2.]]))
     root.train(**train_input)
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     self.assertAllClose(root.optimizer.learning_rate.numpy(),
                         imported.optimizer.learning_rate.numpy())
     self.assertAllClose(root(constant_op.constant([[-0.5]])),
@@ -551,7 +556,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(2, root.f(constant_op.constant(1), True).numpy())
     self.assertEqual(6, root.f(constant_op.constant(1), defg=7.0).numpy())
 
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
 
     self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
     self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
@@ -571,7 +576,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     x = constant_op.constant(10)
     self.assertEqual(7, root.f(x, learning_rate=0.5, epochs=3).numpy())
 
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
 
     with self.assertRaisesRegexp(ValueError,
                                  "Could not find matching function to call.*"):
@@ -599,7 +604,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(27, root.f(constant_op.constant(1)).numpy())
     self.assertEqual(2, root.f(constant_op.constant(1), True).numpy())
 
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
 
     self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
     self.assertEqual(27, imported.f(constant_op.constant(2)).numpy())
@@ -619,7 +624,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         return x * self.var
 
     m = M()
-    self.cycle(m, cycles)
+    cycle(m, cycles)
     self.assertEqual(4.0, m.f(constant_op.constant(2.0)).numpy())
 
   def test_basic_backprop(self, cycles):
@@ -633,7 +638,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.weight = weight
     root.bias = bias
     root.g = g
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     with backprop.GradientTape() as t:
       x = constant_op.constant([3.5])
       loss = imported.g(x)
@@ -674,7 +679,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.bias = bias
     root.g = h
 
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     with backprop.GradientTape() as t:
       x = constant_op.constant([3.5])
       loss = imported.g(x)
@@ -695,7 +700,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.m2.__call__ = def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])(
             lambda x: x*3.0)
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     x = constant_op.constant(1.0)
 
     self.assertTrue(callable(imported.m1))
@@ -719,7 +724,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.__call__.__call__ = tracking.AutoTrackable()
     root.__call__.__call__.__call__ = func
 
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     self.assertTrue(callable(imported))
     x = constant_op.constant(1.0)
     self.assertAllEqual(imported(x).numpy(), 3.0)
@@ -733,7 +738,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
 
     if cycles > 1:
-      root = self.cycle(root, cycles - 1)
+      root = cycle(root, cycles - 1)
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
     save.save(root, path)
 
@@ -763,7 +768,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
 
     if cycles > 1:
-      root = self.cycle(root, cycles - 1)
+      root = cycle(root, cycles - 1)
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
     save.save(root, path)
 
@@ -793,7 +798,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     concrete_functions = root.f._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
     self.assertEqual(1, len(concrete_functions))
 
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
 
     with self.assertRaisesRegexp(ValueError, "Python inputs incompatible"):
       # We cannot call the function with a constant of shape ().
@@ -823,7 +828,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = tracking.AutoTrackable()
     root.f = func
 
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
 
     concrete = imported.f.get_concrete_function(
         training=True, x=tensor_spec.TensorSpec([None], dtypes.int32))
@@ -851,7 +856,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([2, 4], root.f(constant_op.constant([1, 2])).numpy())
 
     # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
-    imported = self.cycle(root, cycles, signatures={})
+    imported = cycle(root, cycles, signatures={})
 
     self.assertAllEqual([2, 4, 6, 8],
                         imported.f(constant_op.constant([1, 2, 3, 4])).numpy())
@@ -873,14 +878,15 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     root = Root()
     self.assertIn(root.v.handle,
-                  root.use_v.get_concrete_function().graph.captures)
+                  root.use_v.get_concrete_function().graph.external_captures)
     for _ in range(cycles):
-      root = self.cycle(root, 1, signatures=root.use_v.get_concrete_function())
-    func_captures = root.use_v.get_concrete_function().graph.captures
+      root = cycle(root, 1, signatures=root.use_v.get_concrete_function())
+    func_captures = root.use_v.get_concrete_function().graph.external_captures
     self.assertLen(func_captures, 2)
     self.assertIn(root.v.handle, func_captures)
     self.assertIn(root.v1.handle, func_captures)
-    signature_captures = root.signatures["serving_default"].graph.captures
+    signature_captures = root.signatures[
+        "serving_default"].graph.external_captures
     self.assertLen(signature_captures, 2)
     self.assertIn(root.v.handle, signature_captures)
     self.assertIn(root.v1.handle, signature_captures)
@@ -898,7 +904,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
 
     # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
-    imported = self.cycle(root, cycles, signatures={})
+    imported = cycle(root, cycles, signatures={})
 
     self.assertAllEqual([2, 4, 6],
                         imported.f(x=constant_op.constant([1, 2, 3])).numpy())
@@ -912,7 +918,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f = func.get_concrete_function(constant_op.constant([1]))
     self.assertAllEqual([4], root.f(constant_op.constant([2])).numpy())
     # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
-    imported = self.cycle(root, cycles, signatures={})
+    imported = cycle(root, cycles, signatures={})
     self.assertAllEqual([6],
                         imported.f(constant_op.constant([3])).numpy())
 
@@ -933,7 +939,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(2., _compute_gradient(root.f).numpy())
     # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
-    imported = self.cycle(root, cycles, signatures={})
+    imported = cycle(root, cycles, signatures={})
     self.assertEqual(2., _compute_gradient(imported.f).numpy())
 
   def test_revived_concrete_function_kwargs(self, cycles):
@@ -948,7 +954,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(8., root.f(y=constant_op.constant(3.),
                                 x=constant_op.constant(2.)).numpy())
     # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
-    imported = self.cycle(root, cycles, signatures={})
+    imported = cycle(root, cycles, signatures={})
     self.assertEqual(8., imported.f(y=constant_op.constant(3.),
                                     x=constant_op.constant(2.)).numpy())
 
@@ -964,7 +970,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         tensor_spec.TensorSpec([], dtypes.float32, name="y"))
     self.assertEqual(8., root.f(y=constant_op.constant(3.),
                                 x=constant_op.constant(2.)).numpy())
-    imported = self.cycle(root, cycles, signatures={})
+    imported = cycle(root, cycles, signatures={})
     self.assertEqual(8., imported.f(y=constant_op.constant(3.),
                                     x=constant_op.constant(2.)).numpy())
 
@@ -986,7 +992,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f(vsave)
     self.assertEqual(2, vsave.numpy())
     self.assertEqual(-1, capture.numpy())
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
 
     vload = variables.Variable(1)
     imported.f(vload)
@@ -1009,7 +1015,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     one = constant_op.constant(1)
     self.assertEqual(2, root.func(one).numpy())
     self.assertEqual(2, root.concrete_func(one).numpy())
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     self.assertEqual(2, imported.func(one).numpy())
     self.assertEqual(2, imported.concrete_func(one).numpy())
 
@@ -1021,7 +1027,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.funcs = dict(
         a=def_function.function(lambda: constant_op.constant(100.)))
     root.funcs["conc"] = root.funcs["a"].get_concrete_function()
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     self.assertEqual(1., imported.variables["a"].numpy())
     self.assertEqual(2., imported.variables["b"].numpy())
     self.assertEqual(set(["a", "b"]), set(imported.variables.keys()))
@@ -1033,7 +1039,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.variables = [variables.Variable(1.)]
     root.variables.append(1)
     root.variables.append(variables.Variable(3.))
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     self.assertEqual(1., imported.variables[0].numpy())
     self.assertEqual(3., imported.variables[2].numpy())
     self.assertIs(None, imported.variables[1])
@@ -1054,7 +1060,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     root.losses.append(_v2_loss)
     self.assertAllClose([1., 4.], [loss() for loss in root.losses])
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     self.assertAllClose([1., 4.], [loss() for loss in imported.losses])
     imported.variables[0].assign(3.)
     imported.variables[1].assign(4.)
@@ -1067,7 +1073,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.g = def_function.function(lambda: const + 2.)
     self.assertAllClose(array_ops.ones([100]), root.f())
     self.assertAllClose(2. * array_ops.ones([100]), root.g())
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     self.assertAllClose(array_ops.ones([100]), imported.f())
     self.assertAllClose(2. * array_ops.ones([100]), imported.g())
     # TODO(b/123408994): Use the public get_concrete_function.
@@ -1097,14 +1103,14 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         return f
 
     exported = Exported()
-    imported = self.cycle(exported, cycles)
+    imported = cycle(exported, cycles)
     self.assertEqual(0, imported.make_func().numpy())
     self.assertEqual(1, exported.make_func().numpy())
 
   def test_overwritten_signatures_error(self, cycles):
     exported = tracking.AutoTrackable()
     exported.f = def_function.function(lambda: constant_op.constant(1.))
-    imported = self.cycle(
+    imported = cycle(
         exported, cycles,
         signatures={"key": exported.f.get_concrete_function()})
     self.assertEqual(1., imported.signatures["key"]()["output_0"].numpy())
@@ -1124,13 +1130,13 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         return self.v * x
 
     exported = Exported()
-    imported = self.cycle(
+    imported = cycle(
         exported,
         cycles=1,
         signatures=exported.do.get_concrete_function(
             tensor_spec.TensorSpec(None, dtypes.float32)))
     for _ in range(cycles - 1):
-      imported = self.cycle(imported, cycles=1, signatures=imported.signatures)
+      imported = cycle(imported, cycles=1, signatures=imported.signatures)
     self.assertEqual(["serving_default"], list(imported.signatures.keys()))
     imported_function = imported.signatures["serving_default"]
     two = constant_op.constant(2.)
@@ -1151,12 +1157,12 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         return x + y
 
     exported = Exported()
-    imported = self.cycle(
+    imported = cycle(
         exported, cycles=1, signatures=exported.do.get_concrete_function(
             tensor_spec.TensorSpec(None, dtypes.float32),
             tensor_spec.TensorSpec(None, dtypes.float32)))
     for _ in range(cycles - 1):
-      imported = self.cycle(imported, cycles=1, signatures=imported.signatures)
+      imported = cycle(imported, cycles=1, signatures=imported.signatures)
     with self.assertRaises(TypeError):
       imported.signatures["serving_default"](
           constant_op.constant(1.),
@@ -1192,7 +1198,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_table(self, cycles):
     root = self._make_model_with_tables()
-    imported = self.cycle(root, cycles, signatures={})
+    imported = cycle(root, cycles, signatures={})
     keys = constant_op.constant(["brain", "test", "foo", "surgery"])
     self.assertAllEqual([0, -1, -1, 2], imported.lookup1(keys).numpy())
     self.assertAllEqual([2, 0, 1, -1], imported.lookup2(keys).numpy())
@@ -1211,19 +1217,19 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = self._make_model_with_tables()
     # Warm up collections to ignore those that don't expand every iteration,
     # e.g. the __varscope collection.
-    self.cycle(root, 1)
+    cycle(root, 1)
     original_collections = _gather_nonempty_collections()
-    self.cycle(root, cycles)
+    cycle(root, cycles)
     self.assertEqual(original_collections, _gather_nonempty_collections())
 
   def test_table_in_graph(self, cycles):
     root = self._make_model_with_tables()
 
     if cycles > 1:
-      root = self.cycle(root, cycles - 1)
+      root = cycle(root, cycles - 1)
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
     save.save(root, path)
-    imported = self.cycle(root, 1)
+    imported = cycle(root, 1)
 
     with ops.Graph().as_default():
       imported = load.load(path)
@@ -1242,7 +1248,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     root = tracking.AutoTrackable()
     root.f = def_function.function(f)
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
 
     restored_fullargspec = tf_inspect.getfullargspec(imported.f)
     self.assertEqual(original_fullargspec, restored_fullargspec)
@@ -1267,7 +1273,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     root = tracking.AutoTrackable()
     root.f = func
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     self.assertAllEqual(root.f(), [1.0, 2.0, 3.0, True])
     self.assertAllEqual(root.f(-1.0, training=False), [3.0, 2.0, -1.0, False])
 
@@ -1288,7 +1294,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     root = tracking.AutoTrackable()
     root.f = func
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     self.assertAllEqual(2, root.f(2).numpy())
     self.assertAllEqual(4, root.f(3).numpy())
     self.assertAllEqual(3, root.f(constant_op.constant(2)).numpy())
@@ -1305,7 +1311,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f = func
     self.assertAllEqual(root.f(), [1.0])
 
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     self.assertAllEqual(root.f(), [1.0])
 
   def test_partial_with_non_tensor_defaults(self, cycles):
@@ -1319,7 +1325,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f = func
     self.assertAllEqual(root.f(1), 6)
 
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     self.assertAllEqual(root.f(1), 6)
 
   def test_partial_with_positional(self, cycles):
@@ -1332,7 +1338,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f = func
     self.assertAllEqual(root.f(1), 6)
 
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     self.assertAllEqual(root.f(1), 6)
 
   def test_partial_with_positional_captured_tensors(self, cycles):
@@ -1347,7 +1353,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f = func
     self.assertAllEqual(root.f(1), 13)
 
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     self.assertAllEqual(root.f(1), 13)
 
   def test_partial_keyword_hiding_default(self, cycles):
@@ -1365,7 +1371,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(root.f().numpy(), 9)
     self.assertEqual(root.f(training=False).numpy(), 11)
 
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     self.assertEqual(root.f().numpy(), 9)
     self.assertEqual(root.f(training=False).numpy(), 11)
 
@@ -1384,7 +1390,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f = func
     self.assertEqual(root.f(constant_op.constant(4)).numpy(), 44)
 
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     self.assertEqual(root.f(constant_op.constant(5)).numpy(), 45)
 
   def test_partial_bind_only_first_argument(self, cycles):
@@ -1402,7 +1408,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f = tf_func
     self.assertAllEqual(root.f(y=constant_op.constant(7)), 12)
 
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     self.assertAllEqual(root.f(y=constant_op.constant(9)), 14)
 
   def test_partial_with_passed_fn_as_default(self, cycles):
@@ -1419,7 +1425,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.f = func
     self.assertEqual(root.f(constant_op.constant(3)).numpy(), 9)
 
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     self.assertEqual(root.f(constant_op.constant(3)).numpy(), 9)
 
   def test_partial_with_input_signature(self, cycles):
@@ -1438,7 +1444,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     a, b, c = root.f(2.0)
     self.assertAllEqual([a.numpy(), b.numpy(), c.numpy()], (1, 2.0, 4))
 
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     a, b, c = root.f(3.0)
     self.assertAllEqual([a.numpy(), b.numpy(), c.numpy()], (1, 3.0, 4))
 
@@ -1452,7 +1458,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = tracking.AutoTrackable()
     root.f = func
 
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
 
     self.assertEqual([2], root.f([2]).numpy())
 
@@ -1474,7 +1480,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     if sys.version_info.major == 3 and sys.version_info.minor < 5:
       # TODO(allenl): figure out why this doesn't work in Python3.4
       self.skipTest("Not working in Python 3.4")
-    imported = self.cycle(obj, cycles)
+    imported = cycle(obj, cycles)
     self.assertAllClose(3.,
                         imported(NamedTupleType(a=constant_op.constant(1.),
                                                 b=constant_op.constant(2.))))
@@ -1489,7 +1495,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     obj = tracking.AutoTrackable()
     obj.__call__ = f
-    imported = self.cycle(obj, cycles)
+    imported = cycle(obj, cycles)
 
     self.assertEqual(4.0, imported({"a": 3.0}).numpy())
 
@@ -1509,7 +1515,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = tracking.AutoTrackable()
     root.f = func
 
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
 
     imported_graph = root.f.get_concrete_function().graph
     input_x, input_y = imported_graph.inputs
@@ -1529,7 +1535,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     v1 = variables.Variable(1.)
     weak_v1 = weakref.ref(v1)
     root = util.Checkpoint(v=v1)
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     del v1
     self.assertIsNone(weak_v1())
     weak_v2 = weakref.ref(root.v)
@@ -1548,7 +1554,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                      v.aggregation)
     root = tracking.AutoTrackable()
     root.v = v
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     self.assertEqual(False, root.v.trainable)
     self.assertEqual(variables.VariableSynchronization.NONE,
                      root.v.synchronization)
@@ -1576,54 +1582,10 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(
         3 * (1 + 4 + 9 + 16),
         root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     self.assertEqual(
         3 * (1 + 4 + 9 + 16),
         root(constant_op.constant(3, dtype=dtypes.int64)).numpy())
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_dense_features_layer(self, cycles):
-    columns = [feature_column_v2.numeric_column("x"),
-               feature_column_v2.numeric_column("y")]
-    layer = feature_column_v2.DenseFeatures(columns)
-    model = sequential.Sequential([layer])
-    model_input = {"x": constant_op.constant([[1.]]),
-                   "y": constant_op.constant([[2.]])}
-    self.assertAllClose([[1., 2.]], model.predict(model_input, steps=1))
-    loaded = self.cycle(model, cycles)
-    output, = loaded._default_save_signature(model_input).values()
-    self.assertAllClose([[1., 2.]], output)
-    signature_output, = loaded.signatures["serving_default"](
-        **model_input).values()
-    self.assertAllClose([[1., 2.]], signature_output)
-
-  def test_dense_features_layer_fit(self, cycles):
-    columns = [feature_column_v2.numeric_column("x")]
-    model = sequential.Sequential(
-        [feature_column_v2.DenseFeatures(columns),
-         core.Dense(1)])
-    model_input = {"x": constant_op.constant([[1.]])}
-    model.compile(optimizer="adam", loss="mse")
-    model.fit(model_input, constant_op.constant([[3.]]))
-    loaded = self.cycle(model, cycles)
-    loaded._default_save_signature(model_input)
-    loaded.signatures["serving_default"](**model_input)
-
-  def test_multi_output_layer(self, cycles):
-
-    inp = input_layer.Input(name="inp", shape=(None,), dtype=dtypes.float32)
-
-    class _MultiOutput(base_layer.Layer):
-
-      def call(self, x):
-        return x + 1., x + 2.
-
-    out = _MultiOutput(name="out")(inp)
-    model = training_lib.Model(inp, out)
-    loaded = self.cycle(model, cycles)
-    self.assertAllClose(
-        dict(out=2., out_1=3.),
-        loaded.signatures["serving_default"](constant_op.constant(1.)))
 
   def test_tuple_signature(self, cycles):
     root = util.Checkpoint()
@@ -1631,7 +1593,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         lambda: (array_ops.ones([]), array_ops.zeros([])),
         input_signature=())
     for _ in range(cycles):
-      root = self.cycle(root, 1, signatures=root.f)
+      root = cycle(root, 1, signatures=root.f)
     self.assertEqual(({"output_0": 1., "output_1": 0.}),
                      self.evaluate(root.signatures["serving_default"]()))
 
@@ -1645,14 +1607,14 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root.model.traced_call = _use_sequential
 
     original = root.model.traced_call(array_ops.zeros([1, 1])).numpy()
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     self.assertAllEqual(
         original,
         root.model.traced_call(array_ops.zeros([1, 1])).numpy())
 
   def test_version_info(self, cycles):
     root = util.Checkpoint()
-    root = self.cycle(root, cycles)
+    root = cycle(root, cycles)
     self.assertEqual(versions.__version__, root.tensorflow_version)
     self.assertEqual(versions.__git_version__, root.tensorflow_git_version)
 
@@ -1668,18 +1630,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         output = root.g(inp)
         self.assertAllClose(4., output)
       self.assertAllClose(2., tape.gradient(output, inp))
-      root = self.cycle(root, 1)
-
-  def test_functional_model_with_conv(self, cycles):
-    x = input_layer.Input(name="x", shape=(None, None, 3), dtype=dtypes.float32)
-    conved = convolutional.Conv2D(filters=3, kernel_size=3, dilation_rate=2)(x)
-    model = training_lib.Model([x], conved)
-    model_input = array_ops.ones((1, 10, 10, 3))
-    initial_output = model.predict([model_input])
-    model = self.cycle(model, cycles)
-    self.assertAllClose(
-        [initial_output],
-        list(model.signatures["serving_default"](model_input).values()))
+      root = cycle(root, 1)
 
   def test_destroy_resource(self, cycles):
 
@@ -1727,7 +1678,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
             handle, dtypes.float32)
 
     root = MyModel()
-    imported = self.cycle(root, cycles)
+    imported = cycle(root, cycles)
     self.assertEqual(11, imported.increase().numpy())  # Create the resource.
 
     handle = imported.resource.resource_handle
@@ -1741,6 +1692,105 @@ class LoadTest(test.TestCase, parameterized.TestCase):
                                  r"Resource .* does not exist."):
       gen_resource_variable_ops.destroy_resource_op(
           handle, ignore_lookup_error=False)
+
+  def test_function_called_as_operation(self, cycles):
+
+    @framework_function.Defun(dtypes.float32)
+    def inner(x):
+      return x + 1.
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.float32)])
+    def outer(x):
+      return inner(x)
+
+    root = module.Module()
+    root.f = outer
+    imported = cycle(root, cycles)
+    self.assertAllClose(2., imported.f(constant_op.constant(1.)))
+
+  def test_ragged(self, cycles):
+
+    @def_function.function(input_signature=[
+        ragged_tensor.RaggedTensorSpec(shape=[None, None], dtype=dtypes.int32)
+    ])
+    def f(x):
+      return x + 1
+
+    obj = tracking.AutoTrackable()
+    obj.f = f
+
+    imported1 = cycle(obj, cycles, signatures={})
+    rt = ragged_factory_ops.constant([[1, 2], [3]])
+    self.assertAllEqual(imported1.f(rt), [[2, 3], [4]])
+
+    imported2 = cycle(obj, cycles)
+    rt = ragged_factory_ops.constant([[1, 2], [3]])
+    self.assertAllEqual(imported2.f(rt), [[2, 3], [4]])
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+@parameterized.named_parameters(
+    dict(testcase_name="ReloadOnce", cycles=1),
+    dict(testcase_name="ReloadTwice", cycles=2),
+    dict(testcase_name="ReloadThrice", cycles=3))
+class KerasLoadTest(test.TestCase, parameterized.TestCase):
+
+  def test_dense_features_layer(self, cycles):
+    columns = [
+        feature_column_lib.numeric_column("x"),
+        feature_column_lib.numeric_column("y")
+    ]
+    layer = feature_column_lib.DenseFeatures(columns)
+    model = sequential.Sequential([layer])
+    model_input = {"x": constant_op.constant([[1.]]),
+                   "y": constant_op.constant([[2.]])}
+    self.assertAllClose([[1., 2.]], model.predict(model_input, steps=1))
+    loaded = cycle(model, cycles)
+    output, = loaded._default_save_signature(model_input).values()
+    self.assertAllClose([[1., 2.]], output)
+    signature_output, = loaded.signatures["serving_default"](
+        **model_input).values()
+    self.assertAllClose([[1., 2.]], signature_output)
+
+  def test_dense_features_layer_fit(self, cycles):
+    columns = [feature_column_lib.numeric_column("x")]
+    model = sequential.Sequential(
+        [feature_column_lib.DenseFeatures(columns),
+         core.Dense(1)])
+    model_input = {"x": constant_op.constant([[1.]])}
+    model.compile(optimizer="adam", loss="mse", run_eagerly=True,
+                  experimental_run_tf_function=True)
+    model.fit(model_input, constant_op.constant([[3.]]))
+    loaded = cycle(model, cycles)
+    loaded._default_save_signature(model_input)
+    loaded.signatures["serving_default"](**model_input)
+
+  def test_multi_output_layer(self, cycles):
+
+    inp = input_layer.Input(name="inp", shape=(None,), dtype=dtypes.float32)
+
+    class _MultiOutput(base_layer.Layer):
+
+      def call(self, x):
+        return x + 1., x + 2.
+
+    out = _MultiOutput(name="out")(inp)
+    model = training_lib.Model(inp, out)
+    loaded = cycle(model, cycles)
+    self.assertAllClose(
+        dict(out=2., out_1=3.),
+        loaded.signatures["serving_default"](constant_op.constant(1.)))
+
+  def test_functional_model_with_conv(self, cycles):
+    x = input_layer.Input(name="x", shape=(None, None, 3), dtype=dtypes.float32)
+    conved = convolutional.Conv2D(filters=3, kernel_size=3, dilation_rate=2)(x)
+    model = training_lib.Model([x], conved)
+    model_input = array_ops.ones((1, 10, 10, 3))
+    initial_output = model.predict([model_input])
+    model = cycle(model, cycles)
+    self.assertAllClose(
+        [initial_output],
+        list(model.signatures["serving_default"](model_input).values()))
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):

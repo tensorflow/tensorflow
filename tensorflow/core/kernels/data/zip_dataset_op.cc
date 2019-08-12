@@ -87,6 +87,13 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     return result;
   }
 
+  Status CheckExternalState() const override {
+    for (const auto& input : inputs_) {
+      TF_RETURN_IF_ERROR(input->CheckExternalState());
+    }
+    return Status::OK();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

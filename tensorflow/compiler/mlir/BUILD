@@ -38,6 +38,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
         "//tensorflow/core:lib",
         "@llvm//:support",
+        "@local_config_mlir//:AffineDialectRegistration",
         "@local_config_mlir//:MlirOptLib",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:QuantOps",
@@ -52,6 +53,29 @@ tf_cc_binary(
     name = "tf-opt",
     deps = [
         ":tf_mlir_opt_main",
+        "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
+    ],
+)
+
+tf_cc_binary(
+    name = "tf-mlir-translate",
+    srcs = ["tf_mlir_translate_main.cc"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
+        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/compiler/mlir/tensorflow:translate_registration",
+        "//tensorflow/compiler/mlir/tensorflow:translate_tf_dialect_op",
+        "//tensorflow/compiler/mlir/xla:xla_mlir_translate",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_proto_cc",
+        "//tensorflow/stream_executor/lib",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Support",
+        "@local_config_mlir//:TranslateClParser",
+        "@local_config_mlir//:Translation",
     ],
 )
 

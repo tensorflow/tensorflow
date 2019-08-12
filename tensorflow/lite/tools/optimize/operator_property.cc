@@ -59,7 +59,7 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.inputs = {{0, {}}, {1, tensor_property}};
       property.outputs = {{0, {}}};
       property.biases = {2};
-      property.version = 2;
+      property.version = 3;
       break;
     }
     case BuiltinOperator_DEPTHWISE_CONV_2D: {
@@ -101,6 +101,12 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
+    case BuiltinOperator_HARD_SWISH: {
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 1;
+      break;
+    }
     case BuiltinOperator_LOG_SOFTMAX: {
       property.inputs = {{0, {}}};
       // LogSoftmax requires output with 16/256 as scale and 127 as zero point.
@@ -169,7 +175,7 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
     case BuiltinOperator_QUANTIZE:
       property.inputs = {{0, {}}};
       property.outputs = {{0, {}}};
-      property.version = 1;
+      property.version = 2;
       break;
     case BuiltinOperator_RESHAPE:
       property.inputs = {{0, {}}};

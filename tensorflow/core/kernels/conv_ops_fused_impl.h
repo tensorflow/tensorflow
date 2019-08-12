@@ -61,6 +61,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -304,6 +307,7 @@ template <typename T, typename ConvLaunch, typename LogFunc>
 Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
                                  const ConvLaunch launch,
                                  OpKernelContext* context, se::Stream* stream,
+                                 se::DeviceMemory<T> output_ptr,
                                  const LogFunc& log,
                                  se::dnn::AlgorithmConfig* algorithm_config) {
   // Check if we already have an algorithm selected for the given parameters.
@@ -322,14 +326,28 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
         "see if a warning log message was printed above.");
   }
 
+  se::TfAllocatorAdapter tf_allocator_adapter(
+      stream->parent()->platform(), context->device()->GetAllocator({}));
+  se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                          se::cuda::PtxCompilationOptions());
+  se::DeviceMemory<T> output_ptr_rz(
+      WrapRedzoneBestEffort(&rz_allocator, output_ptr));
+
   std::vector<tensorflow::AutotuneResult> results;
   for (auto profile_algorithm : algorithms) {
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
+    se::cuda::RedzoneAllocator rz_scratch_allocator(
+        stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+        /*memory_limit=*/ConvolveScratchSize());
+    se::ScratchAllocator* allocator_used =
+        !RedzoneCheckDisabled()
+            ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
+            : static_cast<se::ScratchAllocator*>(&scratch_allocator);
     se::dnn::ProfileResult profile_result;
 
     bool cudnn_launch_status =
-        launch(se::dnn::AlgorithmConfig(profile_algorithm), &scratch_allocator,
-               &profile_result);
+        launch(se::dnn::AlgorithmConfig(profile_algorithm), allocator_used,
+               output_ptr_rz, &profile_result);
 
     if (cudnn_launch_status && profile_result.is_valid()) {
       results.emplace_back();
@@ -337,9 +355,14 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
       result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
       result.mutable_conv()->set_tensor_ops_enabled(
           profile_algorithm.tensor_ops_enabled());
-      result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+      result.set_scratch_bytes(
+          !RedzoneCheckDisabled()
+              ? rz_scratch_allocator.TotalAllocatedBytesExcludingRedzones()
+              : scratch_allocator.TotalByteSize());
       *result.mutable_run_time() = proto_utils::ToDurationProto(
           absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+      CheckRedzones(rz_scratch_allocator, &result);
+      CheckRedzones(rz_allocator, &result);
     }
   }
   // Only log on an AutoTuneFusedConv cache miss.
@@ -588,7 +611,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     // Launch fused convolution with given parameters and scratch allocator.
     // Record profile result into `profile_result` if it's not nullptr.
     const auto launch = [&](se::dnn::AlgorithmConfig algorithm_config,
-                            DnnScratchAllocator* scratch_allocator,
+                            se::ScratchAllocator* scratch_allocator,
+                            se::DeviceMemory<T> output_ptr_to_use,
                             se::dnn::ProfileResult* profile_result) -> bool {
       return stream
           ->ThenFusedConvolveWithAlgorithm(
@@ -599,7 +623,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
               side_input_ptr, /*side_input_scale=*/0.0,  // side_input
               bias_desc, bias_ptr,                       // bias
               dnn_activation_mode,                       // activation
-              output_desc, &output_ptr,                  // output
+              output_desc, &output_ptr_to_use,           // output
               scratch_allocator, algorithm_config, profile_result)
           .ok();
     };
@@ -607,7 +631,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     se::dnn::AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune) {
       auto status = FindBestConvolveAlgorithm<T>(
-          conv_parameters, launch, context, stream,
+          conv_parameters, launch, context, stream, output_ptr,
           [&](absl::Span<const tensorflow::AutotuneResult> results) {
             LogFusedConvForwardAutotuneResults(
                 se::dnn::ToDataType<T>::value, input_ptr, filter_ptr,
@@ -621,7 +645,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
 
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
     bool cudnn_launch_status = launch(algorithm_config, &scratch_allocator,
-                                      /*profile_result=*/nullptr);
+                                      output_ptr, /*profile_result=*/nullptr);
     OP_REQUIRES(
         context, cudnn_launch_status,
         errors::Internal(absl::Substitute(

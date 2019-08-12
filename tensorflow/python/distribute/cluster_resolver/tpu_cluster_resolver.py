@@ -94,7 +94,7 @@ class TPUClusterResolver(ClusterResolver):
 
     This works around an issue where the underlying HTTP connection sometimes
     times out when the script has been running for too long. Other methods in
-    this object calls this method to get a new API object whenever they need
+    this object call this method to get a new API object whenever they need
     to communicate with the Cloud API.
 
     Returns:
@@ -206,7 +206,7 @@ class TPUClusterResolver(ClusterResolver):
     for the IP addresses and ports of each Cloud TPU listed.
 
     Args:
-      tpu: A string corresponding to the TPU to use. If the string is the empty
+      tpu: A string corresponding to the TPU to use. If the string is an empty
         string, the string 'local', or a string that begins with 'grpc://' or
           '/bns', then it is assumed to not correspond with a Cloud TPU and will
           instead be passed as the session master and no ClusterSpec propagation
@@ -276,6 +276,19 @@ class TPUClusterResolver(ClusterResolver):
     if self._is_google_environment():
       self._environment = 'google'
       self.rpc_layer = None
+
+      # TODO(rsopher): remove this logic when possible
+      if self._tpu and self._tpu.startswith(compat.as_bytes('/bns')):
+        bns_and_port = self._tpu.rsplit(compat.as_bytes(':'), 1)
+        if len(bns_and_port) == 2:
+          try:
+            int(bns_and_port[1])
+          except ValueError:
+            # Leave named ports.
+            pass
+          else:
+            # Strip numerical ports.
+            self._tpu = bns_and_port[0]
     else:
       self._environment = ''
       self.rpc_layer = 'grpc'
@@ -392,7 +405,8 @@ class TPUClusterResolver(ClusterResolver):
     called.
 
     Returns:
-      A ClusterSpec containing host information returned from Cloud TPUs.
+      A ClusterSpec containing host information returned from Cloud TPUs,
+      or None.
 
     Raises:
       RuntimeError: If the provided TPU is not healthy.
@@ -406,7 +420,7 @@ class TPUClusterResolver(ClusterResolver):
     #     tasks and
     #      a. Create a ClusterSpec with the coordinator
     #      b. Create a ClusterSpec without the coordinator
-    #  3. [Other (legacy non-gRPC).] We should return an empty ClusterSpec.
+    #  3. [Other (legacy non-gRPC).] We should return None.
     ############################################################################
 
     if self._should_resolve():
@@ -429,7 +443,8 @@ class TPUClusterResolver(ClusterResolver):
 
       cluster_spec = {self.task_type: worker_list}
     else:
-      if self.rpc_layer is None:
+      is_eager = ops.executing_eagerly_outside_functions()
+      if self.rpc_layer is None and not is_eager:
         # Case 3.
         return None
       # Case 2.

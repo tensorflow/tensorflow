@@ -39,6 +39,7 @@ namespace data {
 /* static */ constexpr const char* const PrefetchDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const PrefetchDatasetOp::kOutputShapes;
 /* static */ constexpr const char* const PrefetchDatasetOp::kSlackPeriod;
+/* static */ constexpr const char* const PrefetchDatasetOp::kLegacyAutotune;
 
 // Determines the fraction of slack time by which to delay prefetching of data.
 constexpr double kSleepFactor = 0.2;
@@ -51,11 +52,12 @@ constexpr char kErrorMessageSuffix[] = ".error_message";
 class PrefetchDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
-          int64 slack_period)
+          int64 slack_period, bool legacy_autotune)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         buffer_size_(buffer_size),
-        slack_period_(slack_period) {
+        slack_period_(slack_period),
+        legacy_autotune_(legacy_autotune) {
     input_->Ref();
   }
 
@@ -80,6 +82,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override { return input_->Cardinality(); }
+
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -330,8 +336,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    // Prefetches elements of the input, storing results in an internal
-    // buffer.
+    // Prefetches elements of the input, storing results in an internal buffer.
     //
     // It owns the iterator context passed to it.
     void PrefetchThread(const std::shared_ptr<IteratorContext>& ctx) {
@@ -452,12 +457,18 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
   // If non-zero, determines the period between injecting "slack" into the
   // execution.
   const int64 slack_period_;
+
+  // Determines whether legacy autotuning should be used.
+  const bool legacy_autotune_ = true;
 };
 
 PrefetchDatasetOp::PrefetchDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
   if (ctx->HasAttr(kSlackPeriod)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kSlackPeriod, &slack_period_));
+  }
+  if (ctx->HasAttr(kLegacyAutotune)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr(kLegacyAutotune, &legacy_autotune_));
   }
 }
 
@@ -475,7 +486,8 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     metrics::RecordTFDataAutotune(kDatasetType);
   }
 
-  *output = new Dataset(ctx, input, buffer_size, slack_period_);
+  *output =
+      new Dataset(ctx, input, buffer_size, slack_period_, legacy_autotune_);
 }
 
 namespace {

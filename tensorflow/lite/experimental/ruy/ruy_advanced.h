@@ -16,7 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_RUY_ADVANCED_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_RUY_ADVANCED_H_
 
+#include <cstddef>
+#include <functional>
+
+#include "tensorflow/lite/experimental/ruy/context.h"
+#include "tensorflow/lite/experimental/ruy/matrix.h"
+#include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/prepack.h"
+#include "tensorflow/lite/experimental/ruy/side_pair.h"
 
 namespace ruy {
 
@@ -40,8 +47,9 @@ void PrePackForMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
                    PrepackedMatrix* prepacked_lhs,
                    PrepackedMatrix* prepacked_rhs,
                    std::function<void*(std::size_t)> alloc_fn) {
-  PrePackForMulInternal<CompiledPaths>(lhs, rhs, spec, context, dst,
-                                       prepacked_lhs, prepacked_rhs, alloc_fn);
+  SidePair<PrepackedMatrix*> prepacked(prepacked_lhs, prepacked_rhs);
+  PrePackForMulInternal<CompiledPaths>(lhs, rhs, spec, context, dst, prepacked,
+                                       alloc_fn);
 }
 
 template <Path CompiledPaths, typename LhsScalar, typename RhsScalar,
@@ -51,8 +59,9 @@ void MulWithPrepacked(const Matrix<LhsScalar>& lhs,
                       Context* context, Matrix<DstScalar>* dst,
                       PrepackedMatrix* prepacked_lhs,
                       PrepackedMatrix* prepacked_rhs) {
+  SidePair<PrepackedMatrix*> prepacked(prepacked_lhs, prepacked_rhs);
   MulWithPrepackedInternal<CompiledPaths>(lhs, rhs, spec, context, dst,
-                                          prepacked_lhs, prepacked_rhs);
+                                          prepacked);
 }
 
 }  // namespace ruy

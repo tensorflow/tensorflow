@@ -160,6 +160,11 @@ def get_pruning_hparams():
        For layers/weights not in this list, sparsity as specified by the
        target_sparsity hyperparameter is used.
        Eg. [conv1:0.9,conv2/kernel:0.8]
+    block_dims_map: list of strings
+       comma separated list of {weight variable name:block_height x block_width}
+       or {regex:block_height x block_width} pairs. For layers/weights not in
+       this list, block dims are specified by the block_height, block_width
+       hyperparameters are used Eg. [dense1:4x4,dense2:1x16,dense3:1x1]
     threshold_decay: float
       the decay factor to use for exponential decay of the thresholds
     pruning_frequency: integer
@@ -167,9 +172,11 @@ def get_pruning_hparams():
     nbins: integer
       number of bins to use for histogram computation
     block_height: integer
-      number of rows in a block (defaults to 1)
+      number of rows in a block (defaults to 1), can be -1 in which
+      case it is set to the size of the corresponding weight tensor.
     block_width: integer
-      number of cols in a block (defaults to 1)
+      number of cols in a block (defaults to 1), can be -1 in which
+      case it is set to the size of the corresponding weight tensor.
     block_pooling_function: string
       Whether to perform average (AVG) or max (MAX) pooling in the block
       (default: AVG)
@@ -207,6 +214,7 @@ def get_pruning_hparams():
       begin_pruning_step=0,
       end_pruning_step=-1,
       weight_sparsity_map=[''],
+      block_dims_map=[''],
       threshold_decay=0.0,
       pruning_frequency=10,
       nbins=256,
@@ -261,10 +269,13 @@ class Pruning(object):
     self._last_update_step = self._setup_last_update_step()
 
     # Block dimensions
-    self._block_dim = [self._spec.block_height, self._spec.block_width]
+    self._block_dims = [self._spec.block_height, self._spec.block_width]
 
     # Block pooling function
     self._block_pooling_function = self._spec.block_pooling_function
+
+    # Mapping of layer/weight names and block dims
+    self._block_dims_map = self._get_block_dims_map()
 
     # Mapping of weight names and target sparsity
     self._weight_sparsity_map = self._get_weight_sparsity_map()
@@ -342,8 +353,39 @@ class Pruning(object):
             'last_mask_update_step', dtype=dtypes.int32)
     return last_update_step
 
+  def _get_block_dims_map(self):
+    """Returns the map of layer name: block dims."""
+    block_dims_map = {}
+    val_list = self._spec.block_dims_map
+    filtered_val_list = [l for l in val_list if l]
+    for val in filtered_val_list:
+      weight_name, block_dims_str = val.split(':')
+      block_dims_str = block_dims_str.split('x')
+      if len(block_dims_str) != 2:
+        raise ValueError('Expected 2 values for block dim for %s, got %s' %
+                         (weight_name, block_dims_str))
+      block_dims = [int(block_dims_str[0]), int(block_dims_str[1])]
+      block_dims_map[re.compile(weight_name)] = block_dims
+
+    return block_dims_map
+
+  def _get_block_dims(self, weight_name):
+    """Returns the block dims for the given layer/weight name."""
+    block_dims_list = [
+        block_dims for regexp, block_dims in self._block_dims_map.items()
+        if regexp.search(weight_name)
+    ]
+    if not block_dims_list:
+      return self._block_dims
+
+    if len(block_dims_list) > 1:
+      raise ValueError('Multiple matches in block_dims_map for weight %s' %
+                       weight_name)
+
+    return block_dims_list[0]
+
   def _get_weight_sparsity_map(self):
-    """Return the map of weight_name:sparsity parsed from the hparams."""
+    """Returns the map of weight_name:sparsity parsed from the hparams."""
     weight_sparsity_map = {}
     val_list = self._spec.weight_sparsity_map
     filtered_val_list = [l for l in val_list if l]
@@ -351,15 +393,15 @@ class Pruning(object):
       weight_name, sparsity = val.split(':')
       if float(sparsity) >= 1.0:
         raise ValueError('Weight sparsity can not exceed 1.0')
-      weight_sparsity_map[weight_name] = float(sparsity)
+      weight_sparsity_map[re.compile(weight_name)] = float(sparsity)
 
     return weight_sparsity_map
 
   def _get_sparsity(self, weight_name):
-    """Return target sparsity for the given layer/weight name."""
+    """Returns target sparsity for the given layer/weight name."""
     target_sparsity = [
         sparsity for regexp, sparsity in self._weight_sparsity_map.items()
-        if re.search(regexp, weight_name)
+        if regexp.search(weight_name)
     ]
     if not target_sparsity:
       return self._sparsity
@@ -444,9 +486,14 @@ class Pruning(object):
     Raises:
       ValueError: if block pooling function is not AVG or MAX
     """
+    block_dims = self._get_block_dims(weights.op.name)
     squeezed_weights = array_ops.squeeze(weights)
-    if squeezed_weights.get_shape().ndims != 2 or self._block_dim == [1, 1]:
+    if squeezed_weights.get_shape().ndims != 2 or block_dims == [1, 1]:
       return self._update_mask(weights, threshold)
+
+    for i in range(2):
+      if block_dims[i] == -1:
+        block_dims[i] = squeezed_weights.get_shape()[i]
 
     if self._block_pooling_function not in ['AVG', 'MAX']:
       raise ValueError('Unknown pooling function for block sparsity: %s' %
@@ -455,7 +502,7 @@ class Pruning(object):
     with ops.name_scope(weights.op.name + '_pruning_ops'):
       abs_weights = math_ops.abs(squeezed_weights)
 
-      pool_window = [self._block_dim[0], self._block_dim[1]]
+      pool_window = block_dims
       pool_fn = pruning_utils.factorized_pool
       squeeze_axis = None
       if not self._spec.use_tpu:
@@ -480,7 +527,7 @@ class Pruning(object):
       smoothed_threshold, new_mask = self._update_mask(pooled_weights,
                                                        threshold)
 
-      updated_mask = pruning_utils.expand_tensor(new_mask, self._block_dim)
+      updated_mask = pruning_utils.expand_tensor(new_mask, block_dims)
       sliced_mask = array_ops.slice(
           updated_mask, [0, 0],
           [squeezed_weights.get_shape()[0],

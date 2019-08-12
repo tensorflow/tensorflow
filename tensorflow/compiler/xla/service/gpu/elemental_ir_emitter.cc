@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
 
 #include <stddef.h>
+
 #include <unordered_map>
 #include <vector>
 
@@ -144,7 +145,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
   // Binary math functions transform are of type [T] -> T.
   for (PrimitiveType input_type : input_types) {
     if (output_type != input_type) {
-      return Unimplemented("Input type ≠ output type: %s ≠ %s",
+      return Unimplemented("Input type != output type: %s != %s",
                            PrimitiveType_Name(input_type),
                            PrimitiveType_Name(output_type));
     }
@@ -269,8 +270,26 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   // Upcast F16 to F32 if necessary.
   llvm::Type* type = prim_type == F16 ? b_->getFloatTy() : value->getType();
   llvm::Value* input = FPCast(value, type);
+
+  // If |value| >= kMaxValue, tanh() is set to -1.0 or 1.0.
+  constexpr double kMaxValue = 20.0;
+  auto max_value = llvm::ConstantFP::get(type, kMaxValue);
+  llvm::Value* abs_value =
+      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {input}, {type}, b_);
+
   llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
-  return FPCast(fast_tanh, value->getType());
+  auto one = llvm::ConstantFP::get(type, 1.0);
+  auto one_with_sign = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::copysign,
+                                                    {one, input}, {type}, b_);
+  return FPCast(Select(FCmpULT(abs_value, max_value), fast_tanh, one_with_sign),
+                value->getType());
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexAbs(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return EmitDeviceMathCall(TargetDeviceFunctionID::kHypot,
+                            {EmitExtractReal(value), EmitExtractImag(value)},
+                            {prim_type, prim_type}, prim_type);
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
@@ -401,7 +420,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
               SDiv(input_multi_index[i],
                    index_typed_const(window.dimensions(i).base_dilation()));
 
-          // We must check whether 0 ≤ input_multi_index[i] < bound, as
+          // We must check whether 0 <= input_multi_index[i] < bound, as
           // otherwise we are in the pad and so can skip the computation. This
           // comparison is equivalent to the unsigned comparison
           // input_multi_index[i] < bound, as a negative value wraps to a large

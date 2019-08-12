@@ -84,3 +84,10 @@ opt<bool> prune_unused_nodes(
     "tf-prune-unused-nodes",
     llvm::cl::desc("Prune unused nodes in the input graphdef "),
     llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> convert_legacy_fed_inputs(
+    "tf-convert-legacy-fed-inputs",
+    llvm::cl::desc(
+        "Eliminate LegacyFedInput nodes by replacing them with Placeholder "),
+    llvm::cl::init(false));

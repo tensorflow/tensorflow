@@ -27,6 +27,7 @@ from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 def concat(values, axis, name=None):
@@ -70,40 +71,41 @@ def concat(values, axis, name=None):
     return _ragged_stack_concat_helper(values, axis, stack_values=False)
 
 
+@tf_export('ragged.stack')
 def stack(values, axis=0, name=None):
-  """Stacks potentially ragged tensors along one dimension.
+  """Stacks a list of rank-`R` tensors into one rank-`(R+1)` `RaggedTensor`.
 
-  Given a list of tensors with the same rank `K` (`K >= axis`), returns a
-  rank-`K+1` `RaggedTensor` `result` such that `result[i0...iaxis]` is the
-  list `[rt[i0...iaxis] for rt in values]`.
-
-  Args:
-    values: A list of potentially ragged tensors.  May not be empty. All
-      `values` must have the same rank and the same dtype; but unlike
-      `tf.concat`, they can have arbitrary shapes.
-    axis: A python integer, indicating the dimension along which to stack.
-      (Note: Unlike `tf.stack`, the `axis` parameter must be statically known.)
-        Negative values are supported only if the rank of at least one
-        `values` value is statically known.
-    name: A name prefix for the returned tensor (optional).
-
-  Returns:
-    A `RaggedTensor` with rank `K+1`.
-    `result.ragged_rank=max(axis, max(rt.ragged_rank for rt in values]))`.
-
-  Raises:
-    ValueError: If `values` is empty, if `axis` is out of bounds or if
-      the input tensors have different ranks.
+  Given a list of tensors or ragged tensors with the same rank `R`
+  (`R >= axis`), returns a rank-`R+1` `RaggedTensor` `result` such that
+  `result[i0...iaxis]` is `[value[i0...iaxis] for value in values]`.
 
   #### Example:
     ```python
     >>> t1 = tf.ragged.constant([[1, 2], [3, 4, 5]])
     >>> t2 = tf.ragged.constant([[6], [7, 8, 9]])
-    >>> ragged.stack([t1, t2], axis=0)
+    >>> tf.ragged.stack([t1, t2], axis=0)
     [[[1, 2], [3, 4, 5]], [[6], [7, 9, 0]]]
-    >>> ragged.stack([t1, t2], axis=1)
+    >>> tf.ragged.stack([t1, t2], axis=1)
     [[[1, 2], [6]], [[3, 4, 5], [7, 8, 9]]]
     ```
+
+  Args:
+    values: A list of `tf.Tensor` or `tf.RaggedTensor`.  May not be empty. All
+      `values` must have the same rank and the same dtype; but unlike
+      `tf.stack`, they can have arbitrary dimension sizes.
+    axis: A python integer, indicating the dimension along which to stack.
+      (Note: Unlike `tf.stack`, the `axis` parameter must be statically known.)
+      Negative values are supported only if the rank of at least one
+      `values` value is statically known.
+    name: A name prefix for the returned tensor (optional).
+
+  Returns:
+    A `RaggedTensor` with rank `R+1`.
+    `result.ragged_rank=1+max(axis, max(rt.ragged_rank for rt in values]))`.
+
+  Raises:
+    ValueError: If `values` is empty, if `axis` is out of bounds or if
+      the input tensors have different ranks.
   """
   if not isinstance(values, (list, tuple)):
     values = [values]

@@ -159,12 +159,16 @@ class TFLiteConverterBase(object):
   """Converter subclass to share functionality between V1 and V2 converters."""
 
   def __init__(self):
-    self.representative_dataset = None
+    self.allow_custom_ops = False
+    self.target_spec = TargetSpec()
     self.optimizations = []
-    self._target_ops = set([OpsSet.TFLITE_BUILTINS])
+    self.representative_dataset = None
+    self.experimental_enable_mlir_converter = False
+    self._debug_info = None
 
   def _grappler_config(self):
-    is_only_flex_enabled = set([OpsSet.SELECT_TF_OPS]) == set(self._target_ops)
+    is_only_flex_enabled = (
+        set([OpsSet.SELECT_TF_OPS]) == set(self.target_spec.supported_ops))
     optimizers = ["constfold"]
     if is_only_flex_enabled:
       # The layout optimizer turns NHCW to NCHW. This provides performance
@@ -193,7 +197,8 @@ class TFLiteConverterBase(object):
                          "type to be INT8.")
 
   def _is_int8_target_required(self):
-    return (set([OpsSet.TFLITE_BUILTINS_INT8]) == set(self._target_ops) or
+    return (set([OpsSet.TFLITE_BUILTINS_INT8]) == set(
+        self.target_spec.supported_ops) or
             self._smallest_supported_type() == constants.INT8)
 
   def _smallest_supported_type(self):
@@ -247,7 +252,7 @@ class TFLiteConverterBase(object):
                                    float16_quantize),
         "quantize_to_float16": float16_quantize,
         "debug_info": self._debug_info,
-        "target_ops": self._target_ops,
+        "target_ops": self.target_spec.supported_ops,
         "enable_mlir_converter": self.experimental_enable_mlir_converter,
     }
     return args
@@ -305,10 +310,6 @@ class TFLiteConverterV2(TFLiteConverterBase):
     super(TFLiteConverterV2, self).__init__()
     self._funcs = funcs
     self._trackable_obj = trackable_obj
-    self.allow_custom_ops = False
-    self.target_spec = TargetSpec()
-    self._debug_info = None
-    self.experimental_enable_mlir_converter = False
 
   @classmethod
   def from_concrete_functions(cls, funcs):
@@ -395,7 +396,6 @@ class TFLiteConverterV2(TFLiteConverterBase):
         Invalid quantization parameters.
     """
     # TODO(b/130297984): Add support for converting multiple function.
-    self._target_ops = self.target_spec.supported_ops
     if len(self._funcs) != 1:
       raise ValueError("This converter can only convert a single "
                        "ConcreteFunction. Converting multiple functions is "
@@ -598,14 +598,10 @@ class TFLiteConverter(TFLiteConverterBase):
     self.drop_control_dependency = True
     self.reorder_across_fake_quant = False
     self.change_concat_input_ranges = False
-    self.allow_custom_ops = False
     self._post_training_quantize = False
     self.dump_graphviz_dir = None
     self.dump_graphviz_video = False
-    self.target_spec = TargetSpec()
     self._debug_info_func = experimental_debug_info_func
-    self._debug_info = None
-    self.experimental_enable_mlir_converter = False
 
     # Attributes are used by models that cannot be loaded into TensorFlow.
     if not self._has_valid_tensors():
@@ -884,8 +880,6 @@ class TFLiteConverter(TFLiteConverterBase):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
-    self._target_ops = self.target_spec.supported_ops
-
     # Checks dimensions in input tensor.
     if self._has_valid_tensors():
       for tensor in self._input_tensors:

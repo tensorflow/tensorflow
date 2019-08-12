@@ -281,7 +281,7 @@ class Deterministic(_BaseDeterministic):
     return constant_op.constant([], dtype=dtypes.int32)
 
   def _event_shape(self):
-    return tensor_shape.scalar()
+    return tensor_shape.TensorShape([])
 
   def _prob(self, x):
     return math_ops.cast(

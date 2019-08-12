@@ -844,9 +844,9 @@ void DumpGraph(StringPiece label, const Graph* g) {
   // TODO(zhifengc): Change Graph to record #nodes.
   VLOG(2) << "Graph " << label << " #nodes " << g->num_nodes() << " #edges "
           << g->num_edges();
-  if (VLOG_IS_ON(4)) {
+  if (VLOG_IS_ON(5)) {
     for (const auto& line : str_util::Split(DebugString(g), '\n')) {
-      VLOG(4) << "|| " << line;
+      VLOG(5) << "|| " << line;
     }
   }
 }
@@ -1246,7 +1246,7 @@ Status FunctionLibraryRuntimeImpl::Clone(
       env_, graph_def_version_, optimizer_.options(), custom_kernel_creator_,
       out_lib_def, out_pflr, skip_flib_def));
   *out_flr = (*out_pflr)->GetFLR(device_->name());
-  if (out_flr != nullptr) {
+  if (*out_flr != nullptr) {
     return Status::OK();
   } else {
     return errors::Internal("Cloning FunctionLibraryRuntime failed.");
@@ -1495,13 +1495,28 @@ namespace {
 
 std::vector<string> InputDevices(const Node& caller) {
   std::vector<string> input_devices(caller.in_edges().size());
+  std::vector<string> input_tensors(caller.in_edges().size());
+
   for (const Edge* edge : caller.in_edges()) {
     if (edge->IsControlEdge()) continue;
     const string& input_device = edge->src()->has_assigned_device_name()
                                      ? edge->src()->assigned_device_name()
                                      : edge->src()->requested_device();
     input_devices[edge->dst_input()] = input_device;
+    input_tensors[edge->dst_input()] =
+        absl::StrCat(edge->src()->name(), ":", edge->src_output());
   }
+
+  if (VLOG_IS_ON(4)) {
+    VLOG(4) << "Function instantiation input devices:";
+    for (int i = 0; i < input_devices.size(); ++i) {
+      if (input_tensors[i].empty()) continue;  // skip control edges
+      VLOG(4) << "    [index " << i << "]"
+              << " device: " << input_devices[i]
+              << " (input: " << input_tensors[i] << ")";
+    }
+  }
+
   return input_devices;
 }
 
@@ -1616,24 +1631,21 @@ class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
 std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::DefaultPlacer(const Graph& graph,
                                          const Node& caller) {
-  VLOG(3) << "Create default placer for inlined function body: "
-          << SummarizeNode(caller);
+  VLOG(3) << "Create default placer for inlined function body.";
   return absl::make_unique<DefaultFunctionBodyPlacer>(caller);
 }
 
 std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::SingleDevicePlacer(const Graph& graph,
                                               const Node& caller) {
-  VLOG(3) << "Create single device placer for inlined function body: "
-          << SummarizeNode(caller);
+  VLOG(3) << "Create single device placer for inlined function body.";
   return absl::make_unique<SingleDeviceFunctionBodyPlacer>(caller);
 }
 
 std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::MultiDevicePlacer(const Graph& graph,
                                              const Node& caller) {
-  VLOG(3) << "Create multi device placer for inlined function body: "
-          << SummarizeNode(caller);
+  VLOG(3) << "Create multi device placer for inlined function body.";
   return absl::make_unique<MultiDeviceFunctionBodyPlacer>(caller);
 }
 
@@ -1642,7 +1654,7 @@ namespace {
 Status ValidateNoInline(const FunctionBody* fbody) {
   const auto attr = AttrSlice(&fbody->fdef.attr());
   bool noinline = false;
-  if (GetNodeAttr(attr, kNoInlineAttr, &noinline).ok() && noinline) {
+  if (TryGetNodeAttr(attr, kNoInlineAttr, &noinline) && noinline) {
     return errors::InvalidArgument(
         "Can't inline function marked with '_noinline'");
   }
@@ -1696,7 +1708,8 @@ string InlineFunctionBodyOptions::DebugString() const {
       ", keep_caller_node=", keep_caller_node_str(), ", output_control_src=",
       output_control_src == OutputControlSrc::kDataOutputs ? "DataOutputs"
                                                            : "ControlOutputs",
-      ", inlined_function_body_placer=", inlined_function_body_placer.name);
+      ", inlined_function_body_placer=", inlined_function_body_placer.name,
+      ", uniquify_frame_names=", true_false(uniquify_frame_names));
 }
 
 Status ValidateInlining(const Node* node, const FunctionBody* fbody,
@@ -1847,7 +1860,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                           const InlineFunctionBodyOptions& options) {
   VLOG(3) << "Inline function call: " << SummarizeNode(*caller) << " ["
           << options.DebugString() << "]";
-  VLOG(4) << "Inlined function definition: " << DebugString(fbody->fdef);
+  VLOG(5) << "Inlined function definition: " << DebugString(fbody->fdef);
 
   Status validation = ValidateInlining(caller, fbody, options);
   if (!validation.ok()) {
@@ -1934,7 +1947,8 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     //  2) to frame name to avoid multiple LoopCond nodes in one frame
     //  3) to colocation attribute
     const string prefix = strings::StrCat(caller->name(), "/");
-    TF_RETURN_IF_ERROR(AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &ndef));
+    TF_RETURN_IF_ERROR(AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &ndef,
+                                                options.uniquify_frame_names));
 
     Status added_node;
     Node* clone = g->AddNode(ndef, &added_node);
@@ -1983,9 +1997,13 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   // identity node.
   //
   // The added identity nodes depend on "input_control_node".
+  VLOG(4) << "Add input Identity nodes for each function argument:";
   for (std::size_t i = 0; i < fbody->arg_nodes.size(); ++i) {
     Node* arg = node_map[fbody->arg_nodes[i]->id()];
     Node* n = input_identity("input", inputs[i], i);
+    VLOG(4) << "    [index " << i << "] " << n->name()
+            << " (input: " << inputs[i].name() << ")";
+
     if (input_control_node) {
       g->AddControlEdge(input_control_node, n, kDoNotCheckDuplicates);
     }

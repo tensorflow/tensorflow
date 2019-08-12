@@ -53,6 +53,11 @@ limitations under the License.
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#endif  // GOOGLE_CUDA
 
 namespace {
 
@@ -408,11 +413,15 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
                 errors::InvalidArgument(
                     "Current implementation does not yet support "
                     "dilations in the batch and depth dimensions."));
-    // TODO(yangzihao): Add a CPU implementation for dilated convolution.
-    OP_REQUIRES(context, (dilations_[1] == 1 && dilations_[2] == 1),
-                errors::InvalidArgument(
-                    "Current libxsmm and customized CPU implementations do "
-                    "not yet support dilation rates larger than 1."));
+    if (std::is_same<Device, CPUDevice>::value ||
+        std::is_same<Device, GPUDevice>::value) {
+      // TODO(yangzihao): Add a CPU implementation for dilated convolution.
+      OP_REQUIRES(context, (dilations_[1] == 1 && dilations_[2] == 1),
+                  errors::InvalidArgument(
+                      "Current libxsmm and customized CPU implementations do "
+                      "not yet support dilation rates larger than 1."));
+      dilations_ = {1, 1, 1, 1};
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -434,8 +443,8 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
         context,
         ConvBackpropComputeDimensionsV2(
             "Conv2DCustomBackpropFilter", /*num_spatial_dims=*/2, input.shape(),
-            filter_shape, out_backprop.shape(), /*dilations=*/{1, 1, 1, 1},
-            strides_, padding_, explicit_paddings_, data_format_, &dims));
+            filter_shape, out_backprop.shape(), dilations_, strides_, padding_,
+            explicit_paddings_, data_format_, &dims));
 
     Tensor* filter_backprop;
     OP_REQUIRES_OK(context,
@@ -929,10 +938,10 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     transformed_input = compatible_input;
   }
 
-  auto out_backprop_ptr =
+  se::DeviceMemory<T> out_backprop_ptr =
       AsDeviceMemory(transformed_out_backprop.template flat<T>().data(),
                      transformed_out_backprop.template flat<T>().size());
-  auto filter_backprop_ptr =
+  se::DeviceMemory<T> filter_backprop_ptr =
       AsDeviceMemory(pre_transformed_filter_backprop.template flat<T>().data(),
                      pre_transformed_filter_backprop.template flat<T>().size());
   auto input_ptr = AsDeviceMemory(transformed_input.template flat<T>().data(),
@@ -966,6 +975,15 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   if (cudnn_use_autotune && !AutoTuneConvBwdFilter::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
+
+    se::TfAllocatorAdapter tf_allocator_adapter(
+        stream->parent()->platform(), ctx->device()->GetAllocator({}));
+    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                            se::cuda::PtxCompilationOptions());
+
+    se::DeviceMemory<T> filter_backprop_ptr_rz(
+        WrapRedzoneBestEffort(&rz_allocator, filter_backprop_ptr));
+
     std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
@@ -976,13 +994,21 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       // accuracy.
       DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                             ctx);
+      se::cuda::RedzoneAllocator rz_scratch_allocator(
+          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+          /*memory_limit=*/ConvolveBackwardFilterScratchSize);
+      se::ScratchAllocator* allocator_used =
+          !RedzoneCheckDisabled()
+              ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
+              : static_cast<se::ScratchAllocator*>(&scratch_allocator);
+
       ProfileResult profile_result;
       bool cudnn_launch_status =
           stream
               ->ThenConvolveBackwardFilterWithAlgorithm(
                   input_desc, input_ptr, output_desc, out_backprop_ptr,
-                  conv_desc, filter_desc, &filter_backprop_ptr,
-                  &scratch_allocator, AlgorithmConfig(profile_algorithm),
+                  conv_desc, filter_desc, &filter_backprop_ptr_rz,
+                  allocator_used, AlgorithmConfig(profile_algorithm),
                   &profile_result)
               .ok();
       if (cudnn_launch_status && profile_result.is_valid()) {
@@ -991,14 +1017,21 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
         result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
         result.mutable_conv()->set_tensor_ops_enabled(
             profile_algorithm.tensor_ops_enabled());
-        result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+
+        result.set_scratch_bytes(
+            !RedzoneCheckDisabled()
+                ? rz_scratch_allocator.TotalAllocatedBytesExcludingRedzones()
+                : scratch_allocator.TotalByteSize());
         *result.mutable_run_time() = proto_utils::ToDurationProto(
             absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+
+        CheckRedzones(rz_scratch_allocator, &result);
+        CheckRedzones(rz_allocator, &result);
       }
     }
     LogConvAutotuneResults(se::dnn::ConvolutionKind::BACKWARD_FILTER,
                            se::dnn::ToDataType<T>::value, input_ptr,
-                           filter_backprop_ptr, out_backprop_ptr, input_desc,
+                           filter_backprop_ptr_rz, out_backprop_ptr, input_desc,
                            filter_desc, output_desc, conv_desc,
                            stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));

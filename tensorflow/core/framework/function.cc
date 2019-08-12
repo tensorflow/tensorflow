@@ -621,7 +621,7 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   strings::StrAppend(&out, "\n(");
   auto get_type_and_device = [](const NodeDef& n) {
     DataType dt;
-    if (!GetNodeAttr(n, "T", &dt).ok()) {
+    if (!TryGetNodeAttr(n, "T", &dt)) {
       dt = DT_INVALID;
     }
     if (!n.device().empty()) {
@@ -1054,9 +1054,7 @@ FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
     : default_registry_(other.default_registry_) {
   tf_shared_lock l(other.mu_);
-  for (const auto& it : other.function_defs_) {
-    TF_CHECK_OK(AddFunctionDef(it.second->fdef));
-  }
+  function_defs_ = other.function_defs_;
   func_grad_ = other.func_grad_;
 }
 
@@ -1084,16 +1082,21 @@ bool FunctionLibraryDefinition::Contains(const string& func) const {
 
 const FunctionDef* FunctionLibraryDefinition::Find(const string& func) const {
   tf_shared_lock l(mu_);
-  return FindHelper(func);
+  auto result = FindHelper(func);
+  if (result) {
+    return &result->fdef;
+  } else {
+    return nullptr;
+  }
 }
 
-const FunctionDef* FunctionLibraryDefinition::FindHelper(
-    const string& func) const {
+std::shared_ptr<FunctionLibraryDefinition::FunctionDefAndOpRegistration>
+FunctionLibraryDefinition::FindHelper(const string& func) const {
   auto iter = function_defs_.find(func);
   if (iter == function_defs_.end()) {
     return nullptr;
   } else {
-    return &iter->second->fdef;
+    return iter->second;
   }
 }
 
@@ -1106,10 +1109,10 @@ Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
 Status FunctionLibraryDefinition::AddFunctionDefHelper(const FunctionDef& fdef,
                                                        bool* added) {
   *added = false;
-  std::unique_ptr<FunctionDefAndOpRegistration>* entry =
-      &function_defs_[fdef.signature().name()];
-  if (*entry != nullptr) {
-    if (!FunctionDefsEqual((*entry)->fdef, fdef)) {
+  std::shared_ptr<FunctionDefAndOpRegistration>& entry =
+      function_defs_[fdef.signature().name()];
+  if (entry) {
+    if (!FunctionDefsEqual(entry->fdef, fdef)) {
       return errors::InvalidArgument(
           "Cannot add function '", fdef.signature().name(),
           "' because a different function with the same name already "
@@ -1124,8 +1127,71 @@ Status FunctionLibraryDefinition::AddFunctionDefHelper(const FunctionDef& fdef,
         "Cannot add function '", fdef.signature().name(),
         "' because an op with the same name already exists.");
   }
-  entry->reset(new FunctionDefAndOpRegistration(fdef));
+  entry = std::make_shared<FunctionDefAndOpRegistration>(fdef);
   *added = true;
+  return Status::OK();
+}
+
+Status FunctionLibraryDefinition::AddHelper(
+    std::shared_ptr<FunctionDefAndOpRegistration> registration, bool* added) {
+  *added = false;
+  std::shared_ptr<FunctionDefAndOpRegistration>& entry =
+      function_defs_[registration->fdef.signature().name()];
+  if (entry) {
+    if (!FunctionDefsEqual(entry->fdef, registration->fdef)) {
+      return errors::InvalidArgument(
+          "Cannot add function '", registration->fdef.signature().name(),
+          "' because a different function with the same name already "
+          "exists.");
+    }
+    // Ignore duplicate FunctionDefs.
+    return Status::OK();
+  }
+  const OpDef* op_def;
+  if (default_registry_
+          ->LookUpOpDef(registration->fdef.signature().name(), &op_def)
+          .ok()) {
+    return errors::InvalidArgument(
+        "Cannot add function '", registration->fdef.signature().name(),
+        "' because an op with the same name already exists.");
+  }
+  entry = std::move(registration);
+  *added = true;
+  return Status::OK();
+}
+
+Status FunctionLibraryDefinition::CopyFunctionDefFrom(
+    const string& func, const FunctionLibraryDefinition& other) {
+  if (default_registry_ != other.default_registry_) {
+    return errors::InvalidArgument(
+        "Cannot copy function '", func,
+        "' because CopyFunctionDefFrom() requires that both libraries have the "
+        "same default registry.");
+  }
+  std::shared_ptr<FunctionDefAndOpRegistration> function_def;
+  {
+    tf_shared_lock l(other.mu_);
+    function_def = other.FindHelper(func);
+  }
+  if (!function_def) {
+    return errors::InvalidArgument(
+        "Cannot copy function '", func,
+        "' because no function with that name exists in the other library.");
+  }
+  {
+    mutex_lock l(mu_);
+    std::shared_ptr<FunctionDefAndOpRegistration>& entry = function_defs_[func];
+    if (entry) {
+      if (!FunctionDefsEqual(entry->fdef, function_def->fdef)) {
+        return errors::InvalidArgument(
+            "Cannot copy function '", func,
+            "' because a different function with the same name already "
+            "exists.");
+      }
+    } else {
+      entry = std::move(function_def);
+    }
+  }
   return Status::OK();
 }
 
@@ -1160,6 +1226,7 @@ Status FunctionLibraryDefinition::AddLibrary(
   // the duration of the function could lead to deadlock).
   FunctionLibraryDefinition clone(other);
   mutex_lock l(mu_);
+  mutex_lock l2(clone.mu_);
   // Remember the funcs and grads that we added successfully so that
   // we can roll them back on error.
   std::vector<string> funcs;
@@ -1167,7 +1234,7 @@ Status FunctionLibraryDefinition::AddLibrary(
   Status s;
   bool added;
   for (auto iter : clone.function_defs_) {
-    s = AddFunctionDefHelper(iter.second->fdef, &added);
+    s = AddHelper(iter.second, &added);
     if (!s.ok()) {
       Remove(funcs, funcs_with_grads);
       return s;
@@ -1322,7 +1389,7 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
   // If ndef is SymbolicGradient[f=Foo], we use Foo's gradient or
   // Foo's attributes.
   const NameAttrList* forward_func_attrs;
-  if (!GetNodeAttr(ndef, kFuncAttr, &forward_func_attrs).ok()) {
+  if (!TryGetNodeAttr(ndef, kFuncAttr, &forward_func_attrs)) {
     return nullptr;
   }
   const string& func_name = forward_func_attrs->name();
@@ -1333,9 +1400,9 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
     // function's attrs to see if noinline is specified. Otherwise,
     // uses func's attrs.
     if (!grad_name.empty()) {
-      return FindHelper(grad_name);
+      return &(FindHelper(grad_name)->fdef);
     }
-    return FindHelper(func_name);
+    return &(FindHelper(func_name)->fdef);
   }
 }
 
@@ -1367,7 +1434,7 @@ template <typename T>
 Status FunctionLibraryDefinition::GetAttr(const NodeDef& ndef,
                                           const string& attr, T* value) const {
   const FunctionDef* fdef = GetAttrImpl(ndef);
-  if (fdef && GetNodeAttr(AttrSlice(&fdef->attr()), attr, value).ok()) {
+  if (fdef && TryGetNodeAttr(AttrSlice(&fdef->attr()), attr, value)) {
     return Status::OK();
   }
   return errors::InvalidArgument("Attr ", attr, " is not defined.");
@@ -1392,11 +1459,11 @@ namespace {
 
 constexpr char kApiImplements[] = "api_implements";
 
-absl::flat_hash_set<string> ReachableFunctions(
+std::set<string> ReachableFunctions(
     const FunctionLibraryDefinition& flib,
     const protobuf::RepeatedPtrField<NodeDef>& nodes) {
   // Functions that are reachable from the graph.
-  absl::flat_hash_set<string> reachable_funcs;
+  std::set<string> reachable_funcs;
 
   // For any functions, if it has attribute "api_implements" =
   // "some_interface" and it is reachable, then it means any other
@@ -1486,18 +1553,16 @@ absl::flat_hash_set<string> ReachableFunctions(
 FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
     const FunctionLibraryDefinition& flib,
     const protobuf::RepeatedPtrField<NodeDef>& nodes) {
-  absl::flat_hash_set<string> reachable_funcs = ReachableFunctions(flib, nodes);
+  std::set<string> reachable_funcs = ReachableFunctions(flib, nodes);
 
   FunctionLibraryDefinition reachable_flib(flib.default_registry(),
                                            FunctionDefLibrary());
 
   for (const string& func_name : reachable_funcs) {
-    const FunctionDef* func = flib.Find(func_name);
-    DCHECK_NE(func, nullptr);
-    // That should never fail, because we copy functions from valid flib and use
-    // the same default registry.
-    const Status added = reachable_flib.AddFunctionDef(*func);
-    DCHECK(added.ok());
+    // This should never fail, because we copy functions from a valid flib and
+    // use the same default registry.
+    Status added = reachable_flib.CopyFunctionDefFrom(func_name, flib);
+    TF_DCHECK_OK(added);
 
     const string grad_func_name = flib.FindGradient(func_name);
     if (!grad_func_name.empty()) {
@@ -1506,7 +1571,7 @@ FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
       grad.set_gradient_func(grad_func_name);
       // It can only fail if function already has a gradient function.
       const Status added_grad = reachable_flib.AddGradientDef(grad);
-      DCHECK(added_grad.ok());
+      TF_DCHECK_OK(added_grad);
     }
   }
 

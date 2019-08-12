@@ -66,7 +66,7 @@ __global__ void ComputePermutationFromTranspositionsKernel(
   // We only parallelize over batches here. Performance is not critical,
   // since this cheap O(num_rows) kernel always follows an O(num_rows^3)
   // LU factorization.
-  CUDA_1D_KERNEL_LOOP(index, config.virtual_thread_count) {
+  GPU_1D_KERNEL_LOOP(index, config.virtual_thread_count) {
     ComputePermutationFromTranspositions(
         num_rows, all_pivots + index * num_rows,
         all_permutation_indices + index * num_rows);

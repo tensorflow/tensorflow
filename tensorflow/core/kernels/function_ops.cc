@@ -318,7 +318,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   string target_device;
   OP_REQUIRES_OK_ASYNC(
       ctx,
-      DeviceNameUtils::CanonicalizeDeviceName(target->scalar<string>()(),
+      DeviceNameUtils::CanonicalizeDeviceName(target->scalar<tstring>()(),
                                               source_device, &target_device),
       done);
 

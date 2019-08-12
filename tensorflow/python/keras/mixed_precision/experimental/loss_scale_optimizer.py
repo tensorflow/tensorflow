@@ -136,6 +136,9 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     self._track_trackable(self._optimizer, 'base_optimizer')
     self._track_trackable(self._loss_scale, 'loss_scale')
 
+    # Needed because the superclass's __getattribute__ checks this.
+    self._hyper = {}
+
   @property
   def loss_scale(self):
     """The `LossScale` instance associated with this optimizer."""

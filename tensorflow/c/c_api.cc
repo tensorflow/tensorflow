@@ -226,7 +226,7 @@ Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
         "Failed to allocate memory to serialize message of type '",
         in.GetTypeName(), "' and size ", proto_size);
   }
-  if (!in.SerializeToArray(buf, proto_size)) {
+  if (!in.SerializeWithCachedSizesToArray(static_cast<uint8*>(buf))) {
     port::Free(buf);
     return InvalidArgument("Unable to serialize ", in.GetTypeName(),
                            " protocol buffer, perhaps the serialized size (",
@@ -1024,7 +1024,7 @@ void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
       desc->colocation_constraints.insert(location);
     }
   } else {
-    desc->node_builder.Attr(attr_name, attr_value);
+    desc->node_builder.Attr(attr_name, std::move(attr_value));
   }
 
   status->status = Status::OK();
@@ -1045,7 +1045,8 @@ static TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
           std::vector<string>(desc->colocation_constraints.begin(),
                               desc->colocation_constraints.end()));
     }
-    status->status = desc->node_builder.Finalize(&desc->graph->graph, &ret);
+    status->status = desc->node_builder.Finalize(&desc->graph->graph, &ret,
+                                                 /*consume=*/true);
 
     if (TF_GetCode(status) == TF_OK) {
       // Run shape inference function for newly added node.

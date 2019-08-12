@@ -24,7 +24,9 @@ import weakref
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.training.adam import AdamOptimizer
@@ -39,16 +41,27 @@ def _get_model(input_dim, num_hidden, output_dim):
   return model
 
 
-class KerasOptimizersTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class KerasOptimizersTest(keras_parameterized.TestCase):
 
+  # After experimental_run_tf_function is turned on, optimizer v1 can no longer
+  # work in eager mode, skipping the test if so.
   def _test_optimizer(self, optimizer, target=0.75):
+    if testing_utils.should_run_tf_function() or context.executing_eagerly():
+      self.skipTest(
+          'v1 optimizer does not run in experimental_run_tf_function mode or '
+          'eager mode')
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
         train_samples=1000, test_samples=200, input_shape=(10,), num_classes=2)
     y_train = keras.utils.to_categorical(y_train)
     model = _get_model(x_train.shape[1], 20, y_train.shape[1])
     model.compile(
-        loss='categorical_crossentropy', optimizer=optimizer, metrics=['acc'])
+        loss='categorical_crossentropy',
+        optimizer=optimizer,
+        metrics=['acc'],
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     np.testing.assert_equal(
         keras.backend.get_value(model.optimizer.iterations), 0)
     history = model.fit(x_train, y_train, epochs=2, batch_size=16, verbose=0)
@@ -84,7 +97,9 @@ class KerasOptimizersTest(test.TestCase):
     model.compile(
         loss='categorical_crossentropy',
         optimizer=optimizer,
-        metrics=['accuracy'])
+        metrics=['accuracy'],
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     np.testing.assert_equal(
         keras.backend.get_value(model.optimizer.iterations),
         126)  # Using same optimizer from before
@@ -150,12 +165,20 @@ class KerasOptimizersTest(test.TestCase):
           keras.optimizers.SGD(lr=0.01, momentum=0.9, clipvalue=0.5))
 
   def test_tf_optimizer(self):
+    if testing_utils.should_run_tf_function() or context.executing_eagerly():
+      self.skipTest(
+          'v1 optimizer does not run in experimental_run_tf_function mode or '
+          'eager mode')
     optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(
         2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
     # This is possible
-    model.compile(loss='mean_squared_error', optimizer=optimizer)
+    model.compile(
+        loss='mean_squared_error',
+        optimizer=optimizer,
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     keras.backend.track_tf_optimizer(optimizer)
     model.fit(np.random.random((5, 3)),
               np.random.random((5, 2)),
@@ -171,6 +194,10 @@ class KerasOptimizersTest(test.TestCase):
       optimizer.from_config(None)
 
   def test_optimizer_garbage_collection(self):
+    if testing_utils.should_run_tf_function() or context.executing_eagerly():
+      self.skipTest(
+          'v1 optimizer does not run in experimental_run_tf_function mode or '
+          'eager mode')
     graph = ops.Graph()
     with graph.as_default():
       optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
@@ -184,12 +211,20 @@ class KerasOptimizersTest(test.TestCase):
     self.assertIs(optimizer_weak(), None)
 
   def test_tf_optimizer_iterations(self):
+    if testing_utils.should_run_tf_function() or context.executing_eagerly():
+      self.skipTest(
+          'v1 optimizer does not run in experimental_run_tf_function mode or '
+          'eager mode')
     with self.cached_session():
       optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(
           2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
-      model.compile(loss='mean_squared_error', optimizer=optimizer)
+      model.compile(
+          loss='mean_squared_error',
+          optimizer=optimizer,
+          run_eagerly=testing_utils.should_run_eagerly(),
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
       keras.backend.track_tf_optimizer(optimizer)
       self.assertEqual(keras.backend.get_value(model.optimizer.iterations), 0)
 

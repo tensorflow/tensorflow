@@ -16,22 +16,33 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_TEST_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_TEST_H_
 
+#include <math.h>
+
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <ctime>
-#include <initializer_list>
 #include <iostream>
+#include <iterator>
 #include <limits>
+#include <memory>
 #include <random>
 #include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <vector>
 
-#include <gtest/gtest.h>
+#include <gtest/gtest.h>  // IWYU pragma: export
+#include "tensorflow/lite/experimental/ruy/matrix.h"  // IWYU pragma: export
+#include "tensorflow/lite/experimental/ruy/platform.h"
 #include "tensorflow/lite/experimental/ruy/pmu.h"
 #include "tensorflow/lite/experimental/ruy/ruy.h"
 #include "tensorflow/lite/experimental/ruy/ruy_advanced.h"
+#include "tensorflow/lite/experimental/ruy/spec.h"  // IWYU pragma: export
 #include "tensorflow/lite/experimental/ruy/time.h"
 
 #ifdef RUY_TEST_EXTERNAL_PATHS
@@ -65,8 +76,12 @@ const char* PathName(Path path) {
   switch (path) {
     RUY_PATHNAME_CASE(kReference)
     RUY_PATHNAME_CASE(kStandardCpp)
+#if RUY_PLATFORM(NEON)
     RUY_PATHNAME_CASE(kNeon)
     RUY_PATHNAME_CASE(kNeonDotprod)
+#elif RUY_PLATFORM(AVX512)
+    RUY_PATHNAME_CASE(kAvx512)
+#endif
     default:
       RUY_CHECK(false);
       return nullptr;
@@ -244,7 +259,7 @@ struct RandomRangeBounds<Scalar, false> {
 inline std::default_random_engine& global_random_engine() {
   static std::default_random_engine engine;
   return engine;
-};
+}
 
 template <typename Scalar>
 struct UniformRandomDistribution {
@@ -659,7 +674,7 @@ void EvalGemmlowp(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
           LhsScalar, DstScalar, gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
           &GlobalGemmlowpContext(), gemmlowp_lhs, gemmlowp_rhs, &gemmlowp_dst,
           -lhs.zero_point, -rhs.zero_point, output_pipeline);
-    } else
+    } else  // NOLINT[readability/braces]
 #endif
     {
       const auto& output_pipeline =
@@ -679,7 +694,7 @@ void EvalGemmlowp(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
           LhsScalar, DstScalar, gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
           &GlobalGemmlowpContext(), gemmlowp_lhs, gemmlowp_rhs, &gemmlowp_dst,
           -lhs.zero_point, -rhs.zero_point, output_pipeline);
-    } else
+    } else  // NOLINT[readability/braces]
 #endif
     {
       const auto& output_pipeline = std::make_tuple(
@@ -1651,7 +1666,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
       }
 // We link against a generic BLAS target that only maps to OpenBLAS on specific
 // architectures.
-#if defined __aarch64__ || defined __arm__
+#if RUY_PLATFORM(ARM_32) || RUY_PLATFORM(ARM_64)
       // OpenBLAS multi-threading is disabled, so avoid mixing single-threaded
       // and multi-threaded benchmark results.
       if (max_num_threads == 1) {
@@ -1865,11 +1880,11 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
     if (record_pmu) {
       pmu_events.StartRecording();
     }
-    TimePoint time_start = Clock::now();
+    TimePoint time_start = Now();
     TimePoint t = time_start;
     int iters = 0;
     int iters_at_a_time = 1;
-    while (ToSeconds(t - time_start) < benchmark_min_secs) {
+    while (ToFloatSeconds(t - time_start) < benchmark_min_secs) {
       for (int i = 0; i < iters_at_a_time; i++) {
         if (cold) {
           lhs.matrix.data = cold_lhs.Next();
@@ -1886,10 +1901,10 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
         iters++;
       }
       iters_at_a_time *= 2;
-      t = Clock::now();
+      t = Now();
     }
-    latency = std::min(latency,
-                       static_cast<float>(ToSeconds(t - time_start) / iters));
+    latency = std::min(
+        latency, static_cast<float>(ToFloatSeconds(t - time_start) / iters));
     if (record_pmu) {
       pmu_events.StopRecording();
       const float normalization_factor =

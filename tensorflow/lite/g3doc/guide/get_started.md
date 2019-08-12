@@ -4,22 +4,27 @@ TensorFlow Lite provides all the tools you need to convert and run TensorFlow
 models on mobile, embedded, and IoT devices. The following guide walks through
 each step of the developer workflow and provides links to further instructions.
 
+[TOC]
+
 ## 1. Choose a model
 
 <a id="1_choose_a_model"></a>
 
-TensorFlow Lite allows you to run TensorFlow models on a wide range of devices.
 A TensorFlow model is a data structure that contains the logic and knowledge of
 a machine learning network trained to solve a particular problem.
-
 There are many ways to obtain a TensorFlow model, from using pre-trained models
-to training your own. To use a model with TensorFlow Lite it must be converted
-into a special format. This is explained in section 2,
-[Convert the model](#2_convert_the_model_format).
+to training your own.
 
-Note: Not all TensorFlow models will work with TensorFlow Lite, since the
-interpreter supports a limited subset of TensorFlow operations. See section 2,
-[Convert the model](#2_convert_the_model_format) to learn about compatibility.
+To use a model with TensorFlow Lite, you must convert a
+full TensorFlow model into the TensorFlow Lite format—you
+cannot create or train a model using TensorFlow Lite. So you must start with a
+regular TensorFlow model, and then
+[convert the model](#2_convert_the_model_format).
+
+Note: TensorFlow Lite supports a limited subset of TensorFlow operations, so not
+all models can be converted. For details, read about the
+[TensorFlow Lite operator compatibility](ops_compatibility.md).
+
 
 ### Use a pre-trained model
 
@@ -60,35 +65,37 @@ flowers with TensorFlow</a> codelab.
 ### Train a custom model
 
 If you have designed and trained your own TensorFlow model, or you have trained
-a model obtained from another source, you should convert it to the TensorFlow
-Lite format before use.
+a model obtained from another source, you must
+[convert it to the TensorFlow Lite format](#2_convert_the_model_format).
 
 ## 2. Convert the model
 
 <a id="2_convert_the_model_format"></a>
 
-TensorFlow Lite is designed to execute models efficiently on devices. Some of
+TensorFlow Lite is designed to execute models efficiently on mobile and other
+embedded devices with limited compute and memory resources. Some of
 this efficiency comes from the use of a special format for storing models.
 TensorFlow models must be converted into this format before they can be used by
 TensorFlow Lite.
 
 Converting models reduces their file size and introduces optimizations that do
-not affect accuracy. Developers can opt to further reduce file size and increase
-speed of execution in exchange for some trade-offs. You can use the TensorFlow
-Lite converter to choose which optimizations to apply.
+not affect accuracy. The TensorFlow Lite converter provides options
+that allow you to further reduce file size and increase speed of execution, with
+some trade-offs.
 
-TensorFlow Lite supports a limited subset of TensorFlow operations, so not all
-models can be converted. See [Ops compatibility](#ops-compatibility) for more
-information.
+Note: TensorFlow Lite supports a limited subset of TensorFlow operations, so not
+all models can be converted. For details, read about the
+[TensorFlow Lite operator compatibility](ops_compatibility.md).
+
 
 ### TensorFlow Lite converter
 
-The [TensorFlow Lite converter](../convert) is a tool that converts trained
-TensorFlow models into the TensorFlow Lite format. It can also introduce
-optimizations, which are covered in section 4,
+The [TensorFlow Lite converter](../convert) is a tool available as a Python API
+that converts trained TensorFlow models into the TensorFlow Lite format. It can
+also introduce optimizations, which are covered in section 4,
 [Optimize your model](#4_optimize_your_model_optional).
 
-The converter is available as a Python API. The following example shows a
+The following example shows a
 TensorFlow `SavedModel` being converted into the TensorFlow Lite format:
 
 ```python
@@ -128,9 +135,9 @@ performance or reduce file size. This is covered in section 4,
 
 ### Ops compatibility
 
-TensorFlow Lite currently supports a [limited subset](ops_compatibility.md) of
-TensorFlow operations. The long term goal is for all TensorFlow operations to be
-supported.
+TensorFlow Lite currently supports a [limited subset of TensorFlow
+operations](ops_compatibility.md). The long term goal is for all TensorFlow
+operations to be supported.
 
 If the model you wish to convert contains unsupported operations, you can use
 [TensorFlow Select](ops_select.md) to include operations from TensorFlow. This
@@ -204,9 +211,15 @@ developers should use the
 
 ### Linux
 
-Embedded Linux is an important platform for deploying machine learning. We
-provide build instructions for both [Raspberry Pi](build_rpi.md) and
-[Arm64-based boards](build_arm64.md) such as Odroid C2, Pine64, and NanoPi.
+Embedded Linux is an important platform for deploying machine learning. To get
+started using Python to perform inference with your TensorFlow Lite models,
+follow the [Python quickstart](python.md).
+
+To instead install the C++ library, see the
+build instructions for [Raspberry Pi](build_rpi.md) or
+[Arm64-based boards](build_arm64.md) (for boards such as Odroid C2, Pine64, and
+NanoPi).
+
 
 ### Microcontrollers
 
@@ -259,10 +272,15 @@ following Python code quantizes a `SavedModel` and saves it to disk:
 import tensorflow as tf
 
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-converter.optimizations = [tf.lite.Optimize.OPTIMIZE_FOR_SIZE]
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
 tflite_quant_model = converter.convert()
 open("converted_model.tflite", "wb").write(tflite_quantized_model)
 ```
+
+TensorFlow Lite supports reducing precision of values from full floating point
+to half-precision floats (float16) or 8-bit integers. There are trade-offs in
+model size and accuracy for each choice, and some operations have optimized
+implementations for these reduced precision types.
 
 To learn more about quantization, see
 [Post-training quantization](../performance/post_training_quantization.md).
@@ -282,5 +300,8 @@ resources:
 
 *   If you're a mobile developer, visit [Android quickstart](android.md) or
     [iOS quickstart](ios.md).
+*   If you're building Linux embedded devices, see the [Python quickstart](
+    python.md) or C++ build instructions for [Raspberry Pi](build_rpi.md) and
+    [Arm64-based boards](build_arm64.md).
 *   Explore our [pre-trained models](../models).
 *   Try our [example apps](https://www.tensorflow.org/lite/examples).

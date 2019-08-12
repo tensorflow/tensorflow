@@ -99,6 +99,10 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     return cardinality;
   }
 
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

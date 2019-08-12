@@ -51,7 +51,6 @@ def tflite_linkopts_unstripped():
     return select({
         "//tensorflow:android": [
             "-Wl,--no-export-dynamic",  # Only inc syms referenced by dynamic obj.
-            "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export.
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
@@ -110,6 +109,7 @@ def tflite_jni_binary(
         linkstatic = 1,
         testonly = 0,
         deps = [],
+        tags = [],
         srcs = []):
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + select({
@@ -130,6 +130,7 @@ def tflite_jni_binary(
         linkstatic = linkstatic,
         deps = deps + [linkscript, exported_symbols],
         srcs = srcs,
+        tags = tags,
         linkopts = linkopts,
         testonly = testonly,
     )
@@ -265,6 +266,7 @@ def generated_test_models():
         "global_batch_norm",
         "greater",
         "greater_equal",
+        "hardswish",
         "identity",
         "sum",
         "l2norm",
@@ -330,11 +332,13 @@ def generated_test_models():
         "squeeze",
         "strided_slice",
         "strided_slice_1d_exhaustive",
+        "strided_slice_np_style",
         "sub",
         "tile",
         "topk",
         "transpose",
         "transpose_conv",
+        "uint8_hardswish",
         "unfused_gru",
         "unidirectional_sequence_lstm",
         "unidirectional_sequence_rnn",
@@ -497,6 +501,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
             ] + args,
             data = data,
             srcs_version = "PY2AND3",
+            python_version = "PY2",
             tags = [
                 "no_oss",
                 "no_windows",

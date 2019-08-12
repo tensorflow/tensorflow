@@ -44,12 +44,13 @@ int main(int argc, char* argv[]) {
   // Finding the minimum value for your model may require some trial and error.
   const int tensor_arena_size = 2 * 1024;
   uint8_t tensor_arena[tensor_arena_size];
-  tflite::SimpleTensorAllocator tensor_allocator(tensor_arena,
-                                                 tensor_arena_size);
 
   // Build an interpreter to run the model with
-  tflite::MicroInterpreter interpreter(model, resolver, &tensor_allocator,
-                                       error_reporter);
+  tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
+                                       tensor_arena_size, error_reporter);
+
+  // Allocate memory from the tensor_arena for the model's tensors
+  interpreter.AllocateTensors();
 
   // Obtain pointers to the model's input and output tensors
   TfLiteTensor* input = interpreter.input(0);

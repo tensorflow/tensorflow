@@ -37,7 +37,6 @@ from tensorflow.python.client import session as session_module
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
@@ -64,7 +63,6 @@ from tensorflow.python.ops import map_fn as map_fn_lib
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
@@ -73,6 +71,7 @@ from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -272,10 +271,13 @@ def learning_phase():
   Returns:
       Learning phase (scalar integer tensor or Python integer).
   """
-  if ops.get_default_graph() is _GRAPH:
+  graph = ops.get_default_graph()
+  if graph is _GRAPH:
     # Don't enter an init_scope for the learning phase if eager execution
     # is enabled but we're inside the Keras workspace graph.
-    return symbolic_learning_phase()
+    learning_phase = symbolic_learning_phase()
+    _mark_func_graph_as_unsaveable(graph, learning_phase)
+    return learning_phase
   with ops.init_scope():
     # We always check & set the learning phase inside the init_scope,
     # otherwise the wrong default_graph will be used to look up the learning
@@ -289,11 +291,32 @@ def learning_phase():
         # Fallback to inference mode as default.
         return 0
       return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
-    return symbolic_learning_phase()
+    learning_phase = symbolic_learning_phase()
+    _mark_func_graph_as_unsaveable(graph, learning_phase)
+    return learning_phase
 
 
 def global_learning_phase_is_set():
   return _DUMMY_EAGER_GRAPH in _GRAPH_LEARNING_PHASES
+
+
+def _mark_func_graph_as_unsaveable(graph, learning_phase):
+  """Mark func graph as unsaveable due to use of symbolic keras learning phase.
+
+  Functions that capture the symbolic learning phase cannot be exported to
+  SavedModel. Mark the funcgraph as unsaveable, so that an error will be raised
+  if it is exported.
+
+  Args:
+    graph: Graph or FuncGraph object.
+    learning_phase: Learning phase placeholder or int defined in the graph.
+  """
+  if graph.building_function and is_placeholder(learning_phase):
+    graph.mark_as_unsaveable(
+        'The keras learning phase placeholder was used inside a function. '
+        'Exporting placeholders is not supported when saving out a SavedModel. '
+        'Please call `tf.keras.backend.set_learning_phase(0)` in the function '
+        'to set the learning phase to a constant value.')
 
 
 def symbolic_learning_phase():
@@ -775,7 +798,7 @@ def variable(value, dtype=None, name=None, constraint=None):
         indices=indices, values=sparse_coo.data, dense_shape=sparse_coo.shape)
     v._keras_shape = sparse_coo.shape
     return v
-  v = resource_variable_ops.ResourceVariable(
+  v = variables_module.Variable(
       value,
       dtype=dtypes_module.as_dtype(dtype),
       name=name,
@@ -803,7 +826,7 @@ def track_variable(v):
     return
   graph = v.graph if hasattr(v, 'graph') else get_graph()
   if graph not in _GRAPH_VARIABLES:
-    _GRAPH_VARIABLES[graph] = weakref.WeakSet()
+    _GRAPH_VARIABLES[graph] = object_identity.ObjectIdentityWeakSet()
   _GRAPH_VARIABLES[graph].add(v)
 
 
@@ -1091,7 +1114,7 @@ def freezable_variable(value, shape=None, name=None):
 
     global _FREEZABLE_VARS
     if graph not in _FREEZABLE_VARS:
-      _FREEZABLE_VARS[graph] = weakref.WeakSet()
+      _FREEZABLE_VARS[graph] = object_identity.ObjectIdentityWeakSet()
     _FREEZABLE_VARS[graph].add(x)
   return x
 
@@ -2545,6 +2568,17 @@ def concatenate(tensors, axis=-1):
 
   Returns:
       A tensor.
+
+  Example:
+      ```python
+      >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+      >>> b = tf.constant([[10, 20, 30], [40, 50, 60], [70, 80, 90]])
+      >>> tf.keras.backend.concatenate((a, b), axis=-1)
+      <tf.Tensor: id=14, shape=(3, 6), dtype=int32, numpy=
+      array([[ 1,  2,  3, 10, 20, 30],
+             [ 4,  5,  6, 40, 50, 60],
+             [ 7,  8,  9, 70, 80, 90]], dtype=int32)>
+      ```
   """
   if axis < 0:
     rank = ndim(tensors[0])
@@ -2569,6 +2603,21 @@ def reshape(x, shape):
 
   Returns:
       A tensor.
+
+  Example:
+    ```python
+      >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])
+      >>> a
+      <tf.Tensor: id=32, shape=(4, 3), dtype=int32, numpy=
+      array([[ 1,  2,  3],
+             [ 4,  5,  6],
+             [ 7,  8,  9],
+             [10, 11, 12]], dtype=int32)>
+      >>> tf.keras.backend.reshape(a, shape=(2, 6))
+      <tf.Tensor: id=35, shape=(2, 6), dtype=int32, numpy=
+      array([[ 1,  2,  3,  4,  5,  6],
+             [ 7,  8,  9, 10, 11, 12]], dtype=int32)>
+    ```
   """
   return array_ops.reshape(x, shape)
 
@@ -2584,6 +2633,22 @@ def permute_dimensions(x, pattern):
 
   Returns:
       A tensor.
+
+  Example:
+    ```python
+      >>> a = tf.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])
+      >>> a
+      <tf.Tensor: id=49, shape=(4, 3), dtype=int32, numpy=
+      array([[ 1,  2,  3],
+             [ 4,  5,  6],
+             [ 7,  8,  9],
+             [10, 11, 12]], dtype=int32)>
+      >>> tf.keras.backend.permute_dimensions(a, pattern=(1, 0))
+      <tf.Tensor: id=52, shape=(3, 4), dtype=int32, numpy=
+      array([[ 1,  4,  7, 10],
+             [ 2,  5,  8, 11],
+             [ 3,  6,  9, 12]], dtype=int32)>
+    ```
   """
   return array_ops.transpose(x, perm=pattern)
 
@@ -2697,6 +2762,14 @@ def repeat_elements(x, rep, axis):
 
   Returns:
       A tensor.
+
+  Example:
+      ```python
+        >>> b = tf.constant([1, 2, 3])
+        >>> tf.keras.backend.repeat_elements(b, rep=2, axis=0)
+        <tf.Tensor: id=70, shape=(6,), dtype=int32,
+            numpy=array([1, 1, 2, 2, 3, 3], dtype=int32)>
+      ```
   """
   x_shape = x.shape.as_list()
   # For static axis
@@ -2749,6 +2822,21 @@ def repeat(x, n):
 
   Returns:
       A tensor.
+
+  Example:
+      ```python
+        >>> b = tf.constant([[1, 2], [3, 4]])
+        >>> b
+        <tf.Tensor: id=78, shape=(2, 2), dtype=int32, numpy=
+        array([[1, 2],
+               [3, 4]], dtype=int32)>
+        >>> tf.keras.backend.repeat(b, n=2)
+        <tf.Tensor: id=82, shape=(2, 2, 2), dtype=int32, numpy=
+        array([[[1, 2],
+                [1, 2]],
+               [[3, 4],
+                [3, 4]]], dtype=int32)>
+      ```
   """
   assert ndim(x) == 2
   x = array_ops.expand_dims(x, 1)
@@ -2775,6 +2863,14 @@ def arange(start, stop=None, step=1, dtype='int32'):
 
   Returns:
       An integer tensor.
+
+  Example:
+      ```python
+        >>> tf.keras.backend.arange(start=0, stop=10, step=1.5)
+        <tf.Tensor: id=96, shape=(7,), dtype=float32,
+            numpy=array([0. , 1.5, 3. , 4.5, 6. , 7.5, 9. ], dtype=float32)>
+
+      ```
 
   """
   # Match the behavior of numpy and Theano by returning an empty sequence.
@@ -2812,6 +2908,18 @@ def flatten(x):
 
   Returns:
       A tensor, reshaped into 1-D
+
+  Example:
+      ```python
+        >>> b = tf.constant([[1, 2], [3, 4]])
+        >>> b
+        <tf.Tensor: id=102, shape=(2, 2), dtype=int32, numpy=
+        array([[1, 2],
+               [3, 4]], dtype=int32)>
+        >>> tf.keras.backend.flatten(b)
+        <tf.Tensor: id=105, shape=(4,), dtype=int32,
+            numpy=array([1, 2, 3, 4], dtype=int32)>
+      ```
   """
   return array_ops.reshape(x, [-1])
 
@@ -2973,6 +3081,18 @@ def stack(x, axis=0):
 
   Returns:
       A tensor.
+
+  Example:
+      ```python
+        >>> a = tf.constant([[1, 2],[3, 4]])
+        >>> b = tf.constant([[10, 20],[30, 40]])
+        >>> tf.keras.backend.stack((a, b))
+        <tf.Tensor: id=146, shape=(2, 2, 2), dtype=int32, numpy=
+        array([[[ 1,  2],
+                [ 3,  4]],
+               [[10, 20],
+                [30, 40]]], dtype=int32)>
+      ```
   """
   return array_ops.stack(x, axis=axis)
 
@@ -3413,7 +3533,8 @@ class EagerExecutionFunction(object):
 
     self._freezable_vars_to_feed = []
     self._freezable_vars_values = []
-    freezable_vars_from_keras_graph = _FREEZABLE_VARS.get(global_graph, {})
+    freezable_vars_from_keras_graph = object_identity.ObjectIdentitySet(
+        _FREEZABLE_VARS.get(global_graph, {}))
     with _scratch_graph() as exec_graph:
       global_graph = get_graph()
       if source_graph not in (exec_graph, global_graph):
@@ -3425,8 +3546,12 @@ class EagerExecutionFunction(object):
             [p_new for [_, p_new] in legacy_update_ops
              if isinstance(p_new, ops.Tensor)])
         lifted_map = lift_to_graph.lift_to_graph(
-            init_tensors=init_tensors, graph=exec_graph, sources=inputs,
-            add_sources=True, handle_captures=True, base_graph=source_graph)
+            tensors=init_tensors,
+            graph=exec_graph,
+            sources=inputs,
+            add_sources=True,
+            handle_captures=True,
+            base_graph=source_graph)
 
         inputs = [lifted_map[i] for i in inputs]
         outputs = [lifted_map[i] for i in outputs]
@@ -3458,8 +3583,7 @@ class EagerExecutionFunction(object):
       with ops.control_dependencies(updates_ops):
         self.outputs[0] = array_ops.identity(self.outputs[0])
 
-      exec_graph.inputs = self._input_references + list(
-          exec_graph.captures.values())
+      exec_graph.inputs = self._input_references + exec_graph.internal_captures
       exec_graph.outputs = self.outputs
       graph_fn = eager_function.ConcreteFunction(exec_graph)
 
@@ -3473,8 +3597,8 @@ class EagerExecutionFunction(object):
     with exec_graph.as_default():
       for x in self.inputs:
         if x.op.type == 'PlaceholderWithDefault':
-          self._placeholder_default_values[x] = tensor_util.constant_value(
-              x.op.inputs[0])
+          self._placeholder_default_values[ops.tensor_id(
+              x)] = tensor_util.constant_value(x.op.inputs[0])
 
   def __call__(self, inputs):
     input_values = nest.flatten(inputs, expand_composites=True)
@@ -3485,7 +3609,8 @@ class EagerExecutionFunction(object):
     for tensor, value in zip(self._input_references, input_values):
       if value is None:
         # Assume `value` is a placeholder with default
-        value = self._placeholder_default_values.get(tensor, None)
+        value = self._placeholder_default_values.get(
+            ops.tensor_id(tensor), None)
         if value is None:
           raise ValueError(
               'You must feed a value for placeholder %s' % (tensor,))
@@ -3796,6 +3921,7 @@ def rnn(step_function,
         tensor_array_ops.TensorArray(
             dtype=out.dtype,
             size=time_steps_t,
+            element_shape=out.shape,
             tensor_array_name='output_ta_%s' % i)
         for i, out in enumerate(nest.flatten(output_time_zero)))
 
@@ -4025,17 +4151,19 @@ def in_train_phase(x, alt, training=None):
   if training is None:
     training = learning_phase()
 
-  if training == 1 or training is True:
-    if callable(x):
-      return x()
-    else:
-      return x
+  # TODO(b/138862903): Handle the case when training is tensor.
+  if not tensor_util.is_tensor(training):
+    if training == 1 or training is True:
+      if callable(x):
+        return x()
+      else:
+        return x
 
-  elif training == 0 or training is False:
-    if callable(alt):
-      return alt()
-    else:
-      return alt
+    elif training == 0 or training is False:
+      if callable(alt):
+        return alt()
+      else:
+        return alt
 
   # else: assume learning phase is a placeholder tensor.
   x = switch(training, x, alt)
@@ -4198,7 +4326,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
 
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
-      
+
   Example:
   ```python:
       import tensorflow as tf
@@ -5677,7 +5805,7 @@ def configure_and_create_distributed_session(distribution_strategy):
 
     set_session(session)
 
-  if multi_worker_util.in_multi_worker_mode():
+  if distribution_strategy._in_multi_worker_mode():
     dc.run_distribute_coordinator(
         _create_session,
         distribution_strategy,

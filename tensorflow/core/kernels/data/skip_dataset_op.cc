@@ -75,6 +75,10 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     return count_ < 0 ? 0 : std::max(0LL, n - count_);
   }
 
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

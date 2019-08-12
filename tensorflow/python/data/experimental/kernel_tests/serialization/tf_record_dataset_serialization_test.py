@@ -70,10 +70,9 @@ class TFRecordDatasetSerializationTest(
     self.run_core_tests(
         lambda: self._build_iterator_graph(num_epochs, batch_size,
                                            buffer_size=0),
-        lambda: self._build_iterator_graph(num_epochs * 2, batch_size),
         num_outputs)
     self.run_core_tests(
-        lambda: self._build_iterator_graph(num_epochs, buffer_size=0), None,
+        lambda: self._build_iterator_graph(num_epochs, buffer_size=0),
         num_outputs * batch_size)
     # pylint: enable=g-long-lambda
 
@@ -81,7 +80,6 @@ class TFRecordDatasetSerializationTest(
     num_epochs = 5
     num_outputs = num_epochs * self._num_files * self._num_records
     self.run_core_tests(lambda: self._build_iterator_graph(num_epochs),
-                        lambda: self._build_iterator_graph(num_epochs * 2),
                         num_outputs)
 
   def testTFRecordWithCompressionCore(self):
@@ -89,10 +87,10 @@ class TFRecordDatasetSerializationTest(
     num_outputs = num_epochs * self._num_files * self._num_records
     self.run_core_tests(
         lambda: self._build_iterator_graph(num_epochs, compression_type="ZLIB"),
-        lambda: self._build_iterator_graph(num_epochs * 2), num_outputs)
+        num_outputs)
     self.run_core_tests(
         lambda: self._build_iterator_graph(num_epochs, compression_type="GZIP"),
-        lambda: self._build_iterator_graph(num_epochs * 2), num_outputs)
+        num_outputs)
 
 
 if __name__ == "__main__":
