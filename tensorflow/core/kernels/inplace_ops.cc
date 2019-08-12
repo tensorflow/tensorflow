@@ -51,7 +51,7 @@ Status DoParallelConcat(const CPUDevice& d, const Tensor& value, int32 loc,
   case DataTypeToEnum<type>::value: \
     return DoParallelConcatUpdate<CPUDevice, type>(d, value, loc, output);
     TF_CALL_POD_TYPES(CASE);
-    TF_CALL_string(CASE);
+    TF_CALL_tstring(CASE);
     TF_CALL_variant(CASE);
 #undef CASE
     default:
@@ -416,7 +416,7 @@ Status DoCopy(const CPUDevice& device, const Tensor& x, Tensor* y) {
 
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_bool(CASE);
-    TF_CALL_string(CASE);
+    TF_CALL_tstring(CASE);
 #undef CASE
     default:
       return errors::InvalidArgument("Unsupported data type: ",
@@ -477,7 +477,7 @@ REGISTER_KERNEL_BUILDER(Name("DeepCopy").Device(DEVICE_CPU), CopyOp<CPUDevice>);
 REGISTER_EMPTY(float, CPU)
 REGISTER_EMPTY(double, CPU)
 REGISTER_EMPTY(Eigen::half, CPU)
-REGISTER_EMPTY(string, CPU)
+REGISTER_EMPTY(tstring, CPU)
 REGISTER_EMPTY(int32, CPU)
 REGISTER_EMPTY(int64, CPU)
 REGISTER_EMPTY(bool, CPU)

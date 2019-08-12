@@ -950,7 +950,7 @@ class ResourceScatterUpdateOp : public OpKernel {
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ARITHMETIC_CPU);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_MINMAX_CPU);
 
-REGISTER_SCATTER_KERNEL(string, CPU, "ResourceScatterUpdate",
+REGISTER_SCATTER_KERNEL(tstring, CPU, "ResourceScatterUpdate",
                         scatter_op::UpdateOp::ASSIGN);
 REGISTER_SCATTER_KERNEL(bool, CPU, "ResourceScatterUpdate",
                         scatter_op::UpdateOp::ASSIGN);
