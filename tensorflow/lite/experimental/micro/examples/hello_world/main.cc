@@ -75,7 +75,8 @@ int main(int argc, char* argv[]) {
     // Run inference, and report any error
     TfLiteStatus invoke_status = interpreter.Invoke();
     if (invoke_status != kTfLiteOk) {
-      error_reporter->Report("Invoke failed on x_val: %f\n", x_val);
+      error_reporter->Report("Invoke failed on x_val: %f\n",
+                             static_cast<double>(x_val));
       continue;
     }
 
