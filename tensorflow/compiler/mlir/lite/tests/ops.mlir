@@ -1156,3 +1156,9 @@ func @testEmbeddingLookupValueAndResultElementTypeTraitFailed(%arg0 : tensor<?xi
 }
 
 // -----
+
+func @testQuantizedLocalResponseNormalization(%arg0 : tensor<1x56x56x192x!quant.uniform<u8:f32, 0.02>>) -> tensor<1x56x56x192x!quant.uniform<u8:f32, 0.02>> {
+  %0 = "tfl.local_response_normalization"(%arg0) {alpha = 9.99999974E-5 : f32, beta = 5.000000e-01 : f32, bias = 2.000000e+00 : f32, radius = 5 : i32} : (tensor<1x56x56x192x!quant.uniform<u8:f32, 0.02>>) -> tensor<1x56x56x192x!quant.uniform<u8:f32, 0.02>>
+  return %0 : tensor<1x56x56x192x!quant.uniform<u8:f32, 0.02>>
+}
+
