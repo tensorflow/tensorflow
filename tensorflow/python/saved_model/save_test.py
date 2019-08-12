@@ -124,6 +124,39 @@ class SaveTest(test.TestCase):
     root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
     save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
 
+  def test_captured_symbolic_tensor_exception(self):
+    root = module.Module()
+    symbolic_tensor = []
+
+    @def_function.function
+    def captured_intermediate(x):
+      symbolic_tensor.append(math_ops.add(x, x, name="a_tensor"))
+      return symbolic_tensor[-1] * 2
+
+    captured_intermediate(constant_op.constant(1.))
+
+    root.f = def_function.function(lambda: symbolic_tensor[-1],
+                                   input_signature=[])
+    with self.assertRaisesRegexp(ValueError, "a_tensor"):
+      save.save(root, os.path.join(self.get_temp_dir(), "saved_model"),
+                signatures=root.f)
+
+  def test_unsaveable_func_graph(self):
+    root = module.Module()
+
+    @def_function.function(input_signature=[])
+    def nested_f():
+      ops.get_default_graph().mark_as_unsaveable("ERROR MSG")
+      return 1
+
+    @def_function.function(input_signature=[])
+    def f():
+      return nested_f()
+
+    root.f = f
+    with self.assertRaisesRegexp(ValueError, "ERROR MSG"):
+      save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
+
   def test_version_information_included(self):
     root = tracking.AutoTrackable()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")

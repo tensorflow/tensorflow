@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -28,41 +29,78 @@ namespace gpu {
 
 using TaskId = size_t;
 
-// Record, containing tensor size and IDs of the first and the last task, that
-// use this tensor as input or output.
-// For example: tensor #3 with size tensor_size=65536 is first introduced in
-// program #2 (first_task=2) and used for the last time in program #7
-// (last_task=7).
+// Record, containing tensor size/shape and IDs of the first and the last task,
+// that use this tensor as input or output. For example: tensor #3 with size
+// tensor_size=65536 is first introduced in program #2 (first_task=2) and used
+// for the last time in program #7 (last_task=7).
+template <typename TensorSizeT>
 struct TensorUsageRecord {
-  uint32_t tensor_size;
+  TensorSizeT tensor_size;
   TaskId first_task;
   TaskId last_task;
 
-  TensorUsageRecord(uint32_t size, TaskId first, TaskId last)
+  TensorUsageRecord(TensorSizeT size, TaskId first, TaskId last)
       : tensor_size(size), first_task(first), last_task(last) {}
 
   // Default order of tensor usage records is increasing order of first_task.
-  bool operator<(const TensorUsageRecord& other) const {
+  bool operator<(const TensorUsageRecord<TensorSizeT>& other) const {
     return first_task < other.first_task;
   }
 };
 
+template <typename TensorSizeT>
+struct TensorUsageWithIndex {
+  const TensorUsageRecord<TensorSizeT>* usage_record;
+  size_t idx;
+
+  TensorUsageWithIndex(const TensorUsageRecord<TensorSizeT>* usage_record,
+                       size_t idx)
+      : usage_record(usage_record), idx(idx) {}
+};
+
+bool CompareBySize(const TensorUsageWithIndex<size_t>& first,
+                   const TensorUsageWithIndex<size_t>& second);
+
 // Information about assignment of tensors to shared objects
+template <typename TensorSizeT>
 struct ObjectsAssignment {
   // shared_object_ids_[i] is ID of shared object, that tensor i will be using.
   std::vector<size_t> object_ids;
   // shared_object_sizes_[i] is a size of shared object with ID equal to i.
-  std::vector<uint32_t> object_sizes;
+  std::vector<TensorSizeT> object_sizes;
 };
+
+// Information about assignment of tensors to offsets for the case, when all of
+// them are going to be allocated in one continuous memory block.
+struct OffsetsAssignment {
+  std::vector<size_t> offsets;
+  size_t total_size;
+};
+
+// Converts given assignment of tensors to shared objects to the assignment of
+// the same tensors to offsets in continuous memory block.
+OffsetsAssignment ObjectsToOffsets(
+    const ObjectsAssignment<size_t>& obj_assignment);
 
 enum class MemoryStrategy {
   // Naive strategy is to allocate each object separately.
   // Can be useful for debugging to see all intermediate outputs.
   NAIVE,
 
-  // Greedy strategy uses greedy algorithm to reuse memory from tensors, that
+  // Equality strategy allows to reuse the same part of memory for several
+  // tensors with the same size, but non-intersecting usage intervals.
+  EQUALITY,
+
+  // Greedy strategy uses greedy algorithm, iterating through all the tensors in
+  // order of their first_task, to reuse memory from tensors, that
   // won't be used anymore, for new ones.
   GREEDY,
+
+  // Greedy by size strategy uses greedy algorithm, iterating through all the
+  // tensors in
+  // non-increasing of their size, to reuse memory from tensors, that
+  // won't be used anymore, for new ones.
+  GREEDY_BY_SIZE,
 
   // Mincostflow strategy consists of building auxiliary flow graph and solving
   // the minimum-cost flow problem in it. In the end edges with zero residual
@@ -71,10 +109,24 @@ enum class MemoryStrategy {
 };
 
 // Calculates the assignement of shared objects to given tensors, including
-// objects' sizes.
+// objects' sizes. Initial tensor sizes are given as size_t. This function is
+// intended to use with GPU buffers.
 Status AssignObjectsToTensors(
-    const std::vector<TensorUsageRecord>& usage_records,
-    const MemoryStrategy& strategy, ObjectsAssignment* assignment);
+    const std::vector<TensorUsageRecord<size_t>>& usage_records,
+    const MemoryStrategy& strategy, ObjectsAssignment<size_t>* assignment);
+
+// Calculates the assignement of shared objects to given tensors, including
+// objects' sizes. Initial tensor sizes are given as BHWC. This function is
+// intended to use with GPU textures.
+Status AssignObjectsToTensors(
+    const std::vector<TensorUsageRecord<BHWC>>& usage_records,
+    const MemoryStrategy& strategy, ObjectsAssignment<BHWC>* assignment);
+
+// Calculates the assignement of tensors to offsets, considering those tensors
+// are going to be allocated in one continuous memory block.
+Status AssignOffsetsToTensors(
+    const std::vector<TensorUsageRecord<size_t>>& usage_records,
+    const MemoryStrategy& strategy, OffsetsAssignment* assignment);
 
 }  // namespace gpu
 }  // namespace tflite

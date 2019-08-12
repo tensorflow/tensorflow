@@ -40,15 +40,15 @@ constexpr const char* const kXlaClusterAttr = "_xla_compile_id";
 // Checks if boolean attribute is defined and it's value is 'true'.
 bool CheckBoolAttr(const Node* n, absl::string_view attr_name) {
   bool match;
-  Status s = GetNodeAttr(n->attrs(), attr_name, &match);
-  return s.ok() && match;
+  bool found = TryGetNodeAttr(n->attrs(), attr_name, &match);
+  return found && match;
 }
 
 // Checks if string attribute is defined and it's not empty.
 bool CheckStringAttr(const Node* n, absl::string_view attr_name) {
   string match;
-  Status s = GetNodeAttr(n->attrs(), attr_name, &match);
-  return s.ok() && !match.empty();
+  bool found = TryGetNodeAttr(n->attrs(), attr_name, &match);
+  return found && !match.empty();
 }
 
 bool LowerUsingSwitchMergeIsOn(const Node* n) {
@@ -137,15 +137,13 @@ Status LowerFunctionalOpsPass::Run(
     }
 
     if (LowerUsingSwitchMergeIsOn(n)) {
-      if (n->type_string() == "If") {
-        TF_RETURN_IF_ERROR(
-            RewriteIfNode(n, g, *flib_def, keep_lowered_nodes_fetchable));
+      if (n->IsIfNode()) {
+        TF_RETURN_IF_ERROR(RewriteIfNode(n, g, keep_lowered_nodes_fetchable));
       } else if (n->type_string() == "Case") {
+        TF_RETURN_IF_ERROR(RewriteCaseNode(n, g, keep_lowered_nodes_fetchable));
+      } else if (n->IsWhileNode()) {
         TF_RETURN_IF_ERROR(
-            RewriteCaseNode(n, g, *flib_def, keep_lowered_nodes_fetchable));
-      } else if (n->type_string() == "While") {
-        TF_RETURN_IF_ERROR(
-            RewriteWhileNode(n, g, *flib_def, keep_lowered_nodes_fetchable));
+            RewriteWhileNode(n, g, keep_lowered_nodes_fetchable));
       } else {
         return errors::Internal(
             "Node ", FormatNodeForError(*n), " of type ", n->type_string(),

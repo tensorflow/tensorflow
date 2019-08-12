@@ -67,9 +67,13 @@ message DebugOptions {
   // Instrument the computation to collect per-HLO cycle counts.
   bool xla_hlo_profile = 9;
 
-  // List of HLO passes to disable. These names must exactly match the pass
-  // names as specified by the HloPassInterface::name() method.
+  // List of HLO passes to disable/enable. These names must exactly match the
+  // pass names as specified by the HloPassInterface::name() method.
+  //
+  // At least one of xla_disable_hlo_passes and xla_enable_hlo_passes_only must
+  // be empty.
   repeated string xla_disable_hlo_passes = 30;
+  repeated string xla_enable_hlo_passes_only = 124;
 
   // Disables all HLO passes.  Notes that some passes are necessary for
   // correctness and the invariants that must be satisfied by "fully optimized"
@@ -167,9 +171,14 @@ message DebugOptions {
   bool xla_cpu_fast_math_honor_nans = 120;
 
   // When xla_cpu_enable_fast_math is true then this controls whether we allow
-  // operations to produce infinites.  Ignored when xla_cpu_enable_fast_math is
+  // operations to produce infinites. Ignored when xla_cpu_enable_fast_math is
   // false.
   bool xla_cpu_fast_math_honor_infs = 121;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
+  // to use the reciprocal of an argument instead of division. Ignored when
+  // xla_cpu_enable_fast_math is false.
+  bool xla_cpu_fast_math_honor_division = 126;
 
   // When true we lower the Minimum and Maximum hlos in the GPU backend such
   // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
@@ -271,7 +280,15 @@ message DebugOptions {
   // END flags controlling dumping HLO modules.
   //
 
-  // Next id: 124
+  bool xla_gpu_force_conv_nchw = 125;
+
+  // Paths to files with ptx code.
+  repeated string xla_gpu_ptx_file = 127;
+
+  // Blacklist for cuDNN convolutions.
+  string xla_gpu_cudnn_conv_blacklist_path = 128;
+
+  // Next id: 129
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

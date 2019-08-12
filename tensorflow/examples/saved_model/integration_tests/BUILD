@@ -1,10 +1,10 @@
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 package(
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "integration_scripts",
@@ -23,6 +23,7 @@ py_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":distribution_strategy_utils",
         ":mnist_util",
         "//tensorflow:tensorflow_py",
         "@absl_py//absl/testing:parameterized",
@@ -38,14 +39,26 @@ py_library(
     ],
 )
 
+py_library(
+    name = "distribution_strategy_utils",
+    srcs = ["distribution_strategy_utils.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python/distribute:strategy_combinations",
+    ],
+)
+
 cuda_py_test(
     name = "saved_model_test",
     srcs = [
         "saved_model_test.py",
     ],
     additional_deps = [
+        ":distribution_strategy_utils",
         ":integration_scripts",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/distribute:combinations",
     ],
     shard_count = 4,
     tags = [

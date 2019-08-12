@@ -38,10 +38,17 @@ limitations under the License.
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
 using stream_executor::dnn::DimIndex;
-#endif
+#include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/core/util/proto/proto_utils.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#endif  // GOOGLE_CUDA
 
 namespace {
 
@@ -1049,7 +1056,7 @@ TF_CALL_half(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
 // GPU definitions of both ops.
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 // This ensures that the custom implementation is used instead of the default
 // Eigen one (which is used for CPU).
@@ -1357,6 +1364,13 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ && !AutoTuneConv3dBwdData::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
+#if GOOGLE_CUDA
+      se::TfAllocatorAdapter tf_allocator_adapter(
+          stream->parent()->platform(), context->device()->GetAllocator({}));
+      se::cuda::RedzoneAllocator rz_allocator(
+          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions());
+      se::DeviceMemory<T> in_backprop_ptr_rz(
+          WrapRedzoneBestEffort(&rz_allocator, in_backprop_ptr));
       std::vector<AlgorithmDesc> algorithms;
       CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(
           conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
@@ -1364,21 +1378,42 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
           &algorithms));
       ProfileResult best_result;
       ProfileResult best_result_no_scratch;
+      std::vector<tensorflow::AutotuneResult> results;
       for (auto profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
         DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                               context);
+        se::cuda::RedzoneAllocator rz_scratch_allocator(
+            stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+            /*memory_limit=*/ConvolveBackwardDataScratchSize);
+        se::ScratchAllocator* allocator_used =
+            !RedzoneCheckDisabled()
+                ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
+                : static_cast<se::ScratchAllocator*>(&scratch_allocator);
         ProfileResult profile_result;
         bool cudnn_launch_status =
             stream
                 ->ThenConvolveBackwardDataWithAlgorithm(
                     filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
+                    conv_desc, input_desc, &in_backprop_ptr_rz, allocator_used,
                     AlgorithmConfig(profile_algorithm), &profile_result)
                 .ok();
         if (cudnn_launch_status) {
           if (profile_result.is_valid()) {
+            results.emplace_back();
+            auto& result = results.back();
+            result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+            result.mutable_conv()->set_tensor_ops_enabled(
+                profile_algorithm.tensor_ops_enabled());
+            result.set_scratch_bytes(
+                !RedzoneCheckDisabled()
+                    ? rz_scratch_allocator
+                          .TotalAllocatedBytesExcludingRedzones()
+                    : scratch_allocator.TotalByteSize());
+            *result.mutable_run_time() = proto_utils::ToDurationProto(
+                absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+
             if (profile_result.elapsed_time_in_ms() <
                 best_result.elapsed_time_in_ms()) {
               best_result = profile_result;
@@ -1388,9 +1423,17 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
                     best_result_no_scratch.elapsed_time_in_ms()) {
               best_result_no_scratch = profile_result;
             }
+            // TODO(george): they don't do results at all??
+            CheckRedzones(rz_scratch_allocator, &result);
+            CheckRedzones(rz_allocator, &result);
           }
         }
       }
+      LogConvAutotuneResults(se::dnn::ConvolutionKind::BACKWARD_DATA,
+                             se::dnn::ToDataType<T>::value, in_backprop_ptr,
+                             filter_ptr, out_backprop_ptr, input_desc,
+                             filter_desc, output_desc, conv_desc,
+                             stream->parent(), results);
       OP_REQUIRES(context,
                   best_result.is_valid() || best_result_no_scratch.is_valid(),
                   errors::NotFound("No algorithm worked!"));
@@ -1401,6 +1444,22 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
         algorithm_config.set_algorithm_no_scratch(
             best_result_no_scratch.algorithm());
       }
+#elif TENSORFLOW_USE_ROCM
+      DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
+                                            context);
+      ProfileResult best_result;
+      bool miopen_find_status =
+          stream
+              ->ThenConvolveBackwardDataWithAlgorithm(
+                  filter_desc, filter_ptr, output_desc, out_backprop_ptr,
+                  conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
+                  AlgorithmConfig(), &best_result)
+              .ok();
+      OP_REQUIRES(context, miopen_find_status && best_result.is_valid(),
+                  errors::NotFound("Failed to find backward data algorithm!"));
+      algorithm_config.set_algorithm(best_result.algorithm());
+      algorithm_config.set_scratch_size(best_result.scratch_size());
+#endif
       AutoTuneConv3dBwdData::GetInstance()->Insert(conv_parameters,
                                                    algorithm_config);
     }
@@ -1763,6 +1822,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ && !AutoTuneConv3dBwdFilter::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
+#if GOOGLE_CUDA
       std::vector<AlgorithmDesc> algorithms;
       CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(
           conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
@@ -1808,6 +1868,23 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         algorithm_config.set_algorithm_no_scratch(
             best_result_no_scratch.algorithm());
       }
+#elif TENSORFLOW_USE_ROCM
+      DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+                                            context);
+      ProfileResult best_result;
+      bool miopen_find_status =
+          stream
+              ->ThenConvolveBackwardFilterWithAlgorithm(
+                  input_desc, input_ptr, output_desc, out_backprop_ptr,
+                  conv_desc, filter_desc, &filter_backprop_ptr,
+                  &scratch_allocator, AlgorithmConfig(), &best_result)
+              .ok();
+      OP_REQUIRES(
+          context, miopen_find_status && best_result.is_valid(),
+          errors::NotFound("Failed to find backward filter algorithm!"));
+      algorithm_config.set_algorithm(best_result.algorithm());
+      algorithm_config.set_scratch_size(best_result.scratch_size());
+#endif
       AutoTuneConv3dBwdFilter::GetInstance()->Insert(conv_parameters,
                                                      algorithm_config);
     }
@@ -1866,6 +1943,6 @@ TF_CALL_float(REGISTER_GPU_KERNEL);
 TF_CALL_double(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

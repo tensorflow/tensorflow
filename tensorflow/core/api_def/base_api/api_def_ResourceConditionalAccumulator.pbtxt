@@ -1,0 +1,47 @@
+op {
+  graph_op_name: "ResourceConditionalAccumulator"
+  visibility: HIDDEN
+  out_arg {
+    name: "handle"
+    description: <<END
+The handle to the accumulator.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of the value being accumulated.
+END
+  }
+  attr {
+    name: "shape"
+    description: <<END
+The shape of the values, can be [], in which case shape is unknown.
+END
+  }
+  attr {
+    name: "container"
+    description: <<END
+If non-empty, this accumulator is placed in the given container.
+Otherwise, a default container is used.
+END
+  }
+  attr {
+    name: "shared_name"
+    description: <<END
+If non-empty, this accumulator will be shared under the
+given name across multiple sessions.
+END
+  }
+  summary: "A conditional accumulator for aggregating gradients."
+  description: <<END
+The accumulator accepts gradients marked with local_step greater or
+equal to the most recent global_step known to the accumulator. The
+average can be extracted from the accumulator, provided sufficient
+gradients have been accumulated. Extracting the average automatically
+resets the aggregate to 0, and increments the global_step recorded by
+the accumulator.
+This is a resource version of ConditionalAccumulator that will work in TF2.0
+with tf.cond version 2.
+END
+}

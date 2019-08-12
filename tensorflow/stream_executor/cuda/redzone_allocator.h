@@ -39,35 +39,55 @@ namespace cuda {
 // memory for cudnn convolutions.
 class RedzoneAllocator : public ScratchAllocator {
  public:
-  RedzoneAllocator(int device_ordinal, DeviceMemoryAllocator* memory_allocator,
+  static const int64 kDefaultMemoryLimit = 1LL << 32;  // 4GB
+  static const int64 kDefaultRedzoneSize =
+      1LL << 23;  // 8MiB per side, 16MiB total.
+  static const uint8 kDefaultRedzonePattern = -1;
+  RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,
                    cuda::PtxCompilationOptions ptx_compilation_opts,
-                   uint64 redzone_size = 1 << 23,  // 8MiB per side, 16MiB total
-                   uint8 redzone_pattern = -1);
+                   int64 memory_limit = kDefaultMemoryLimit,
+                   int64 redzone_size = kDefaultRedzoneSize,
+                   uint8 redzone_pattern = kDefaultRedzonePattern);
 
   // Redzones don't count towards the memory limit.
-  int64 GetMemoryLimitInBytes(Stream* stream) override {
-    return 1LL << 32;  // 4GB.  TODO(jlebar): Tune this?
-  }
+  int64 GetMemoryLimitInBytes() override { return memory_limit_; }
+
   int64 TotalAllocatedBytesExcludingRedzones() const {
     return allocated_bytes_excluding_redzones_;
   }
 
-  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(Stream* stream,
-                                                    int64 byte_size) override;
+  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override;
 
   // Non-empty redzone check status implies that there was a write into a
   // redzone, with a string communicating the location of the write.
   struct RedzoneCheckStatus {
-    std::string redzone_failure_msg;
+    RedzoneCheckStatus() = default;
+
+    RedzoneCheckStatus(absl::string_view buffer_name, void* user_buffer_address,
+                       int64 offset, uint64 expected_value, uint64 actual_value)
+        : buffer_name(buffer_name),
+          user_buffer_address(user_buffer_address),
+          offset(offset),
+          expected_value(expected_value),
+          actual_value(actual_value) {}
 
     static RedzoneCheckStatus OK() { return {}; }
 
-    static RedzoneCheckStatus WithFailureMsg(std::string msg) { return {msg}; }
+    bool ok() { return user_buffer_address == nullptr; }
 
-    bool ok() { return redzone_failure_msg.empty(); }
+    std::string RedzoneFailureMsg() const;
+
+    string buffer_name = {};
+    void* user_buffer_address = nullptr;
+    int64 offset = 0;
+    uint64 expected_value = 0;
+    uint64 actual_value = 0;
   };
 
   // Determines whether redzones around all allocated buffers are unmodified.
+  //
+  // Reinitializes redzones to the expected value, so that the same buffer
+  // could be reused for multiple checks.
   //
   // Returns:
   //
@@ -75,12 +95,16 @@ class RedzoneAllocator : public ScratchAllocator {
   //  - RedzoneCheckStatus with a non-empty error message iff a write into a
   //    redzone has been detected.
   //  - A stream error, if loading or launching the kernel has failed.
-  port::StatusOr<RedzoneCheckStatus> CheckRedzones(Stream* stream) const;
+  port::StatusOr<RedzoneCheckStatus> CheckRedzones() const;
 
  private:
   const int device_ordinal_;
+  Stream* stream_;
 
-  // Redzone size on *one side* of allocation.
+  // Memory limit of the allocator in bytes.
+  const int64 memory_limit_;
+
+  // Redzone size on *one side* of allocation in bytes.
   //
   // Must be a multiple of kXlaAllocatedBufferAlignBytes, otherwise the buffers
   // returned to users will be misaligned.

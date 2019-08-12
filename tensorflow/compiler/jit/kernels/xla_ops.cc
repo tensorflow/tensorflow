@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
 // OP_REQUIRES_OK_RETURN is the same as OP_REQUIRES_OK except that
@@ -365,7 +367,12 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
-  auto run_result = executable->Run(launch_context.arguments(), run_options);
+  xla::StatusOr<xla::ScopedShapedBuffer> run_result;
+  if (!stream || platform_info_.platform_id() == se::host::kHostPlatformId) {
+    run_result = executable->Run(launch_context.arguments(), run_options);
+  } else {
+    run_result = executable->RunAsync(launch_context.arguments(), run_options);
+  }
   OP_REQUIRES(ctx, run_result.ok(), run_result.status());
 
   auto elapsed = env->NowMicros() - start_time;
@@ -466,6 +473,10 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     if (status.code() == error::UNIMPLEMENTED) {
       LOG(WARNING) << "Compilation failed:" << status.ToString()
                    << ".  Falling back to TF function call.";
+
+      BroadcastOptimizationRemark(
+          XlaOptimizationRemark::UNIMPLEMENTED_OPERATION, status.ToString())
+          .IgnoreError();
       executable = nullptr;
       mutex_lock guard(cannot_compile_cluster_mu_);
       cannot_compile_cluster_ = true;
@@ -497,7 +508,7 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
           client, executable, kernel, std::move(variables), constants_.size()));
 
   Tensor compilation_key(cpu_allocator, DT_STRING, TensorShape({}));
-  compilation_key.flat<string>()(0) = key;
+  compilation_key.flat<tstring>()(0) = key;
 
   Tensor compilation_successful(cpu_allocator, DT_BOOL, TensorShape({}));
   compilation_successful.flat<bool>()(0) = true;
@@ -512,7 +523,7 @@ XlaRunOp::XlaRunOp(OpKernelConstruction* ctx)
 void XlaRunOp::Compute(OpKernelContext* ctx) {
   VLOG(3) << "XlaRunOp " << def().name();
   Tensor key_tensor = ctx->input(ctx->num_inputs() - 1);
-  const XlaExecutableClosureStore::KeyT& key = key_tensor.flat<string>()(0);
+  const XlaExecutableClosureStore::KeyT& key = key_tensor.flat<tstring>()(0);
 
   XlaExecutableClosure closure =
       XlaExecutableClosureStore::Global()->Consume(key);
@@ -525,9 +536,19 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   // We're missing the must-be-constant inputs, tell `PopulateInputs`
   // about this.  We don't actually need these inputs because they've
   // already been baked into the compiled kernel.
-  launch_context.PopulateInputs(
-      ctx, closure.compilation_result(), closure.resource_var_snapshots(),
-      /*missing_ctx_input_prefix=*/closure.num_constant_args());
+  {
+    tensorflow::profiler::TraceMe hlo_module_activity(
+        [&] {
+          return absl::StrCat(
+              "Populate Inputs (",
+              closure.compilation_result()->xla_input_shapes.size(), ")");
+        },
+        tensorflow::profiler::TraceMeLevel::kInfo);
+
+    launch_context.PopulateInputs(
+        ctx, closure.compilation_result(), closure.resource_var_snapshots(),
+        /*missing_ctx_input_prefix=*/closure.num_constant_args());
+  }
 
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
@@ -539,12 +560,24 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   Env* env = Env::Default();
   auto start_time = env->NowMicros();
 
-  auto run_result =
-      closure.executable()->Run(launch_context.arguments(), run_options);
+  xla::StatusOr<xla::ScopedShapedBuffer> run_result;
+  if (!stream || platform_info_.platform_id() == se::host::kHostPlatformId) {
+    run_result =
+        closure.executable()->Run(launch_context.arguments(), run_options);
+  } else {
+    run_result =
+        closure.executable()->RunAsync(launch_context.arguments(), run_options);
+  }
   OP_REQUIRES(ctx, run_result.ok(), run_result.status());
 
   auto elapsed = env->NowMicros() - start_time;
   VLOG(2) << "Elapsed time in computation: " << elapsed << "us";
+
+  tensorflow::profiler::TraceMe hlo_module_activity(
+      [&] {
+        return absl::StrCat("Populate Outputs (", ctx->num_outputs(), ")");
+      },
+      tensorflow::profiler::TraceMeLevel::kInfo);
 
   OP_REQUIRES_OK(
       ctx,

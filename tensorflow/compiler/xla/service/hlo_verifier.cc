@@ -19,12 +19,16 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
@@ -402,6 +406,19 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
   return Status::OK();
 }
 
+Status ShapeVerifier::HandleRngGetAndUpdateState(HloInstruction* instruction) {
+  TF_RETURN_IF_ERROR(CheckOperandCount(instruction, 0));
+  const Shape& result_shape = instruction->shape();
+  const Shape expected_shape = ShapeUtil::MakeShape(U64, {2});
+  if (!ShapeUtil::Compatible(result_shape, expected_shape)) {
+    return InternalError(
+        "Invalid RngGetAndUpdateState, expect result to have shape %s, got %s ",
+        StringifyShape(expected_shape), StringifyShape(result_shape));
+  }
+
+  return Status::OK();
+}
+
 Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
   return CheckShape(
       reverse, ShapeInference::InferReverseShape(reverse->operand(0)->shape(),
@@ -486,6 +503,17 @@ Status ShapeVerifier::HandleIota(HloInstruction* instruction) {
         "The iota dimension cannot go beyond the operation rank or be "
         "negative.");
   }
+
+  PrimitiveType primitive_type = iota->shape().element_type();
+  if (!primitive_util::IsIntegralType(primitive_type) &&
+      !primitive_util::IsFloatingPointType(primitive_type) &&
+      !primitive_util::IsComplexType(primitive_type)) {
+    return InvalidArgument(
+        "Only support iota of integral, floating point or complex primitive "
+        "types, got %s",
+        PrimitiveType_Name(primitive_type));
+  }
+
   return Status::OK();
 }
 
@@ -587,6 +615,19 @@ Status ShapeVerifier::HandleParameter(HloInstruction* hlo) {
 }
 
 Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
+  if (fusion->called_computations().size() != 1) {
+    return InternalError(
+        "Fusion has a non-unary number of called computations (%s)",
+        fusion->ToString().c_str());
+  }
+  const Shape& root_computation_shape =
+      fusion->called_computations()[0]->root_instruction()->shape();
+  if (!ShapesSame(fusion->shape(), root_computation_shape)) {
+    return InternalError(
+        "Fused computation shape (%s) is not equal to the fusion shape (%s)",
+        root_computation_shape.ToString(true), fusion->shape().ToString(true));
+  }
+
   auto& fused_parameters = fusion->fused_parameters();
   if (fused_parameters.size() != fusion->operand_count()) {
     return InternalError(
@@ -782,6 +823,18 @@ Status ShapeVerifier::HandlePad(HloInstruction* pad) {
                                                        pad->padding_config()));
 }
 
+Status ShapeVerifier::HandleCopyStart(HloInstruction* copy_start) {
+  return CheckShape(copy_start,
+                    ShapeUtil::MakeTupleShape({copy_start->operand(0)->shape(),
+                                               ShapeUtil::MakeShape(U32, {})}),
+                    /*only_compare_minor_to_major_in_layout=*/true);
+}
+
+Status ShapeVerifier::HandleCopyDone(HloInstruction* copy_done) {
+  return CheckShape(copy_done, ShapeUtil::GetTupleElementShape(
+                                   copy_done->operand(0)->shape(), 0));
+}
+
 Status ShapeVerifier::HandleSend(HloInstruction* send) {
   return CheckShape(send,
                     ShapeUtil::MakeTupleShape({send->operand(0)->shape(),
@@ -856,6 +909,8 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kConditional:
     case HloOpcode::kConstant:
     case HloOpcode::kAllReduce:
+    case HloOpcode::kCopyDone:
+    case HloOpcode::kCopyStart:
     case HloOpcode::kCustomCall:
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
@@ -960,6 +1015,8 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kCall:
       case HloOpcode::kConditional:
       case HloOpcode::kConstant:
+      case HloOpcode::kCopyDone:
+      case HloOpcode::kCopyStart:
       case HloOpcode::kCustomCall:
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kInfeed:
@@ -1180,8 +1237,8 @@ Status CheckSameChannel(const HloInstruction* instr1,
     return InternalError(
         "Expected to have the same channel id, actual channel ids are: %s "
         "(%d), %s (%d)",
-        instr1->ToString(), instr1->channel_id(), instr2->ToString(),
-        instr2->channel_id());
+        instr1->ToString(), *instr1->channel_id(), instr2->ToString(),
+        *instr2->channel_id());
   }
   return Status::OK();
 }
@@ -1207,6 +1264,42 @@ Status CheckSameIsHostTransfer(const HloInstruction* instr1,
   return Status::OK();
 }
 
+// Checks CopyStart and CopyDone nodes.
+Status VerifyAsynchronousCopies(const HloModule& module) {
+  // CopyStart must have a single CopyDone user.
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      switch (instruction->opcode()) {
+        case HloOpcode::kCopyStart: {
+          TF_RET_CHECK(instruction->users().size() == 1)
+              << "CopyStart instruction requires one consumer, found "
+              << instruction->users().size();
+          const HloInstruction* copy_done = instruction->users().front();
+          TF_RET_CHECK(copy_done->opcode() == HloOpcode::kCopyDone)
+              << "The consumer of a CopyStart instruction needs to be "
+                 "CopyDone, found "
+              << HloOpcodeString(copy_done->opcode());
+          break;
+        }
+        case HloOpcode::kCopyDone: {
+          TF_RET_CHECK(instruction->operands().size() == 1)
+              << "CopyDone instruction requires one operand, found "
+              << instruction->operands().size();
+          const HloInstruction* copy_start = instruction->operand(0);
+          TF_RET_CHECK(copy_start->opcode() == HloOpcode::kCopyStart)
+              << "The operand of a CopyDone instruction needs to be CopyStart, "
+                 "found "
+              << HloOpcodeString(copy_start->opcode());
+          break;
+        }
+        default:
+          break;
+      }
+    }
+  }
+  return Status::OK();
+}
+
 // Checks various invariants of send and recv instructions.
 Status VerifySendsAndRecvs(const HloModule& module) {
   absl::flat_hash_map<int64, const HloInstruction*> host_channels;
@@ -1216,14 +1309,14 @@ Status VerifySendsAndRecvs(const HloModule& module) {
         DynCast<const HloSendRecvInstruction>(instruction);
     if (sendrecv->is_host_transfer()) {
       auto it_inserted =
-          host_channels.insert({sendrecv->channel_id(), sendrecv});
+          host_channels.insert({*sendrecv->channel_id(), sendrecv});
       if (!it_inserted.second) {
         return FailedPrecondition(
             "Channel %d is used for multiple host send/recv instructions: "
             "%s "
             "and "
             "%s",
-            sendrecv->channel_id(), sendrecv->ToString(),
+            *sendrecv->channel_id(), sendrecv->ToString(),
             it_inserted.first->second->ToString());
       }
     }
@@ -1508,9 +1601,9 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status HandleAllReduce(HloInstruction* crs) override {
-    if (crs->all_reduce_id().has_value()) {
-      TF_RET_CHECK(crs->all_reduce_id().value() > 0)
-          << "All reduce id must be greater than 0 for "
+    if (crs->channel_id().has_value()) {
+      TF_RET_CHECK(crs->channel_id().value() > 0)
+          << "All reduce channel id must be greater than 0 for "
           << crs->ToShortString();
     }
     return Status::OK();
@@ -1569,6 +1662,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   }
 
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
+  TF_RETURN_IF_ERROR(VerifyAsynchronousCopies(*module));
   TF_RETURN_IF_ERROR(VerifySendsAndRecvs(*module));
 
   std::unique_ptr<ShapeVerifier> shape_verifier =

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Multi-GPU tests for MirroredStrategy."""
+"""Tests for MirroredStrategy."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -49,6 +49,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -342,14 +343,33 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       self.assertEqual(in_scope, unwrapped[0])
       self.assertEqual(in_scope, originally)
 
-  def testFunctionInCallForEachReplicaNoMergeCall(self, distribution):
+  def testFunctionInCallForEachReplica(self, distribution):
+    traces = []
     @def_function.function
     def model_fn():
-      return 0.
+      traces.append(1)
+      return ds_context.get_replica_context().replica_id_in_sync_group
 
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(model_fn)
-      self.assertEqual((0., 0.), self.evaluate(result.values))
+      self.assertEqual((0, 1), self.evaluate(result.values))
+      self.assertLen(traces, distribution.num_replicas_in_sync)
+
+  def testFunctionInCallForEachReplicaInsideAnotherFunction(self, distribution):
+    traces = []
+    @def_function.function
+    def model_fn():
+      traces.append(1)
+      return ds_context.get_replica_context().replica_id_in_sync_group
+
+    @def_function.function
+    def step():
+      return distribution.extended.call_for_each_replica(model_fn)
+
+    with distribution.scope():
+      result = step()
+      self.assertEqual((0, 1), self.evaluate(result.values))
+      self.assertLen(traces, distribution.num_replicas_in_sync)
 
   def testFunctionInCallForEachReplicaWithMergeCall(self, distribution):
     def merge_fn(_):
@@ -595,6 +615,7 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertIsInstance(mirrored_var, values.MirroredVariable)
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1.0, self.evaluate(mirrored_var))
+      self.assertIsNotNone(ops.tensor_id(mirrored_var))
       mirrored_var_result = self.evaluate(mirrored_var.assign(6.0))
       self.assertEqual(6.0, mirrored_var_result)
 
@@ -1143,45 +1164,68 @@ class MultiWorkerMirroredStrategyTestWithChief(
         context.num_gpus())
 
   def testMinimizeLossGraph(self):
-    strategy = mirrored_strategy.MirroredStrategy(
-        cross_device_ops=self._make_cross_device_ops())
-    strategy.configure(cluster_spec=self._cluster_spec)
-    self._test_minimize_loss_graph(strategy, learning_rate=0.05)
-
-  def testMinimizeLossGraphMirroredStrategy(self):
-    strategy = mirrored_strategy.MirroredStrategy(
-        mirrored_strategy.all_local_devices(),
-        cross_device_ops=self._make_cross_device_ops())
-    strategy.configure(cluster_spec=self._cluster_spec)
-    self._test_minimize_loss_graph(strategy, learning_rate=0.05)
-
-  def testMinimizeLossGraphMirroredStrategyWithOneNode(self):
-    cluster_spec = {}
-    cluster_spec["chief"] = self._cluster_spec["chief"]
-    tf_config = {"cluster": cluster_spec}
-    with test.mock.patch.dict("os.environ",
-                              {"TF_CONFIG": json.dumps(tf_config)}):
-      strategy = mirrored_strategy.MirroredStrategy()
-      self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
-                            cross_device_ops_lib.NcclAllReduce)
-    self.skipTest('b/130551176, run the following once fixed.')
-    self._test_minimize_loss_graph(strategy, learning_rate=0.05)
-
-  def testInitializeFromTFConfig(self):
-    tf_config = {"cluster": self._cluster_spec}
-    with test.mock.patch.dict("os.environ",
-                              {"TF_CONFIG": json.dumps(tf_config)}):
+    with context.graph_mode():
       strategy = mirrored_strategy.MirroredStrategy(
           cross_device_ops=self._make_cross_device_ops())
-      self.assertEqual(
-          max(context.num_gpus(), 1) * 3, strategy.num_replicas_in_sync)
+      strategy.configure(cluster_spec=self._cluster_spec)
+      self._test_minimize_loss_graph(strategy, learning_rate=0.05)
+
+  def testMinimizeLossGraphMirroredStrategy(self):
+    with context.graph_mode():
+      strategy = mirrored_strategy.MirroredStrategy(
+          mirrored_strategy.all_local_devices(),
+          cross_device_ops=self._make_cross_device_ops())
+      strategy.configure(cluster_spec=self._cluster_spec)
+      self._test_minimize_loss_graph(strategy, learning_rate=0.05)
+
+  def testMinimizeLossGraphMirroredStrategyWithOneNode(self):
+    with context.graph_mode():
+      cluster_spec = {}
+      cluster_spec["chief"] = self._cluster_spec["chief"]
+      tf_config = {"cluster": cluster_spec}
+      with test.mock.patch.dict("os.environ",
+                                {"TF_CONFIG": json.dumps(tf_config)}):
+        strategy = mirrored_strategy.MirroredStrategy()
+        self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
+                              cross_device_ops_lib.NcclAllReduce)
+      self.skipTest("b/130551176, run the following once fixed.")
+      self._test_minimize_loss_graph(strategy, learning_rate=0.05)
+
+  def testInitializeFromTFConfig(self):
+    with context.graph_mode():
+      tf_config = {"cluster": self._cluster_spec}
+      with test.mock.patch.dict("os.environ",
+                                {"TF_CONFIG": json.dumps(tf_config)}):
+        strategy = mirrored_strategy.MirroredStrategy(
+            cross_device_ops=self._make_cross_device_ops())
+        self.assertEqual(
+            max(context.num_gpus(), 1) * 3, strategy.num_replicas_in_sync)
 
   def testSummaryForReplicaZeroOnly(self):
-    strategy = mirrored_strategy.MirroredStrategy(
-        mirrored_strategy.all_local_devices(),
-        cross_device_ops=self._make_cross_device_ops())
-    strategy.configure(cluster_spec=self._cluster_spec)
-    self._test_summary_for_replica_zero_only(strategy)
+    with context.graph_mode():
+      strategy = mirrored_strategy.MirroredStrategy(
+          mirrored_strategy.all_local_devices(),
+          cross_device_ops=self._make_cross_device_ops())
+      strategy.configure(cluster_spec=self._cluster_spec)
+      self._test_summary_for_replica_zero_only(strategy)
+
+
+class MirroredVariableStopGradientTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_one_gpu,
+          ],
+          mode=["graph"]))
+  def testMirroredVariableAsStopGradient(self, distribution):
+    with distribution.scope():
+      inp = constant_op.constant(1.0)
+      x = variables.Variable(1.0)
+      y = inp*x
+      grads = gradients.gradients(x, y, stop_gradients=x)
+      self.assertIsNone(grads[0])
 
 
 def _replica_id():

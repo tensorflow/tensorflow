@@ -24,8 +24,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
@@ -46,6 +44,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -63,7 +62,7 @@ _restore_sparse = sparse_ops._take_many_sparse_from_tensors_map
 def match_filenames_once(pattern, name=None):
   """Save the list of files matching pattern, so it is only computed once.
 
-  NOTE: The order of the files returned can be non-deterministic.
+  NOTE: The order of the files returned is deterministic.
 
   Args:
     pattern: A file pattern (glob), or 1D tensor of file patterns.
@@ -600,7 +599,7 @@ def _store_sparse_tensors_join(tensor_list_list, enqueue_many, keep_input):
 
 def _restore_sparse_tensors(stored_list, sparse_info_list):
   """Restore SparseTensors after dequeue in batch, batch_join, etc."""
-  received_sequence = isinstance(stored_list, collections.Sequence)
+  received_sequence = isinstance(stored_list, collections_abc.Sequence)
   if not received_sequence:
     stored_list = (stored_list,)
   tensors = [

@@ -1,6 +1,10 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_custom_op_library", "tf_gen_op_libs", "tf_gen_op_wrapper_py", "tf_kernel_library")
+
 package(
     default_visibility = [
         "//learning/brain:__subpackages__",
@@ -11,14 +15,6 @@ package(
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 tf_custom_op_library(
     # TODO(sibyl-Mooth6ku,ptucker): Understand why 'python/ops/_' is needed and fix it.
@@ -81,8 +77,11 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     visibility = [
         "//learning/brain:__subpackages__",
+        "//learning/lib/ami/simple_ml/link_other_ml_tools/tensorflow:__subpackages__",
+        "//storage/d/analysis/prefetch:__pkg__",
         "//tensorflow:__subpackages__",
         "//tensorflow_model_optimization:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
         "//video/youtube/personalization:__subpackages__",
     ],
     deps = [
@@ -157,6 +156,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/ops/losses:losses",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 py_test(

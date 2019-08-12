@@ -64,7 +64,7 @@ class HloModule {
   // only be used for HloModules used outside of the XLA service (eg
   // tests). The versioned handle is used by the service in the compilation
   // cache. A default configuration is created for this module.
-  explicit HloModule(const string& name, const HloModuleConfig& config);
+  explicit HloModule(const string& name, HloModuleConfig config);
   virtual ~HloModule() {}
 
   // Adds an entry computation to the module. A module can only have one entry
@@ -72,12 +72,20 @@ class HloModule {
   HloComputation* AddEntryComputation(
       std::unique_ptr<HloComputation> computation);
 
+  // Replaces the current entry computation with another computation.
+  // The new entry computation must be a computation that is already in the
+  // module.
+  void ReplaceEntryComputation(HloComputation* entry_computation);
+
   // Adds an embedded computation to the module.
   HloComputation* AddEmbeddedComputation(
       std::unique_ptr<HloComputation> computation);
 
   // Removes an embedded computation.
   Status RemoveEmbeddedComputation(HloComputation* to_remove);
+
+  // Removes unused computations.
+  Status RemoveUnusedComputations();
 
   // Replaces all uses of computations that are keys of 'replacements' with
   // the corresponding values in 'replacements'. Replaces the entry computation,
@@ -194,6 +202,9 @@ class HloModule {
   // MakeNonfusionComputations().
   std::vector<HloComputation*> MakeNonfusionComputations() const;
 
+  // Same as MakeNonfusionComputations() but sorting the computations by names.
+  std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
+
   const HloModuleConfig& config() const { return config_; }
   void set_config(HloModuleConfig& config) { config_ = config; }
 
@@ -285,6 +296,42 @@ class HloModule {
 
   Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
 
+  std::vector<std::vector<bool>>* mutable_fusion_config() {
+    return &fusion_config_;
+  }
+
+  // Checks if this config has a list of entry parameters' HLO shardings for
+  // SPMD.
+  bool has_spmd_parameters_shardings() const {
+    return spmd_parameters_shardings_.has_value();
+  }
+
+  // Getter and setter for the list of entry parameters' HLO shardings for SPMD.
+  const std::vector<HloSharding>& spmd_parameters_shardings() const {
+    CHECK(spmd_parameters_shardings_.has_value());
+    return *spmd_parameters_shardings_;
+  }
+  void set_spmd_parameters_shardings(
+      const std::vector<HloSharding>& shardings) {
+    spmd_parameters_shardings_ = shardings;
+  }
+
+  // Checks if this config has the entry computation output's HLO sharding for
+  // SPMD.
+  bool has_spmd_output_sharding() const {
+    return spmd_output_sharding_.has_value();
+  }
+
+  // Getter and setter for the entry computation output's HLO shardings for
+  // SPMD.
+  const HloSharding& spmd_output_sharding() const {
+    CHECK(spmd_output_sharding_.has_value());
+    return *spmd_output_sharding_;
+  }
+  void set_spmd_output_sharding(const HloSharding& sharding) {
+    spmd_output_sharding_ = sharding;
+  }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -324,6 +371,17 @@ class HloModule {
 
   // Bindings for dynamic parameter mapping.
   DynamicParameterBinding dynamic_parameter_binding_;
+
+  // Fusion configuration.
+  std::vector<std::vector<bool>> fusion_config_;
+
+  // The HLO shardings of the entry computation's parameters for
+  // SPMD-partitioned programs.
+  absl::optional<std::vector<HloSharding>> spmd_parameters_shardings_;
+
+  // The HLO sharding of the entry computation's output (root) for
+  // SPMD-partitioned programs.
+  absl::optional<HloSharding> spmd_output_sharding_;
 };
 
 }  // namespace xla

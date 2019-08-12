@@ -227,9 +227,6 @@ def _block_lstm(seq_len_max,
   # pylint: enable=invalid-name
 
 
-_lstm_block_cell_grad_outputs = ["cs_prev_grad", "dicfo"]
-
-
 @ops.RegisterGradient("LSTMBlockCell")
 def _LSTMBlockCellGrad(op, *grad):
   """Gradient for LSTMBlockCell."""
@@ -247,7 +244,7 @@ def _LSTMBlockCellGrad(op, *grad):
   if cell_size is None:
     raise ValueError("cell_size from `cs_prev` should not be None.")
 
-  (cs_prev_grad, dicfo, wci_grad, wcf_grad,
+  (cs_prev_grad, dgates, wci_grad, wcf_grad,
    wco_grad) = gen_rnn_ops.lstm_block_cell_grad(
        x=x,
        cs_prev=cs_prev,
@@ -267,8 +264,8 @@ def _LSTMBlockCellGrad(op, *grad):
        h_grad=h_grad,
        use_peephole=op.get_attr("use_peephole"))
 
-  # Backprop from dicfo to xh.
-  xh_grad = math_ops.matmul(dicfo, w, transpose_b=True)
+  # Backprop from dgates to xh.
+  xh_grad = math_ops.matmul(dgates, w, transpose_b=True)
 
   x_grad = array_ops.slice(xh_grad, (0, 0), (batch_size, input_size))
   x_grad.get_shape().merge_with(x.get_shape())
@@ -277,54 +274,17 @@ def _LSTMBlockCellGrad(op, *grad):
                                 (batch_size, cell_size))
   h_prev_grad.get_shape().merge_with(h_prev.get_shape())
 
-  # Backprop from dicfo to w.
+  # Backprop from dgates to w.
   xh = array_ops.concat([x, h_prev], 1)
-  w_grad = math_ops.matmul(xh, dicfo, transpose_a=True)
+  w_grad = math_ops.matmul(xh, dgates, transpose_a=True)
   w_grad.get_shape().merge_with(w.get_shape())
 
-  # Backprop from dicfo to b.
-  b_grad = nn_ops.bias_add_grad(dicfo)
+  # Backprop from dgates to b.
+  b_grad = nn_ops.bias_add_grad(dgates)
   b_grad.get_shape().merge_with(b.get_shape())
 
   return (x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wcf_grad,
           wco_grad, b_grad)
-
-
-@ops.RegisterGradient("BlockLSTM")
-def _BlockLSTMGrad(op, *grad):
-  """Gradient for BlockLSTM."""
-  seq_len_max, x, cs_prev, h_prev, w, wci, wcf, wco, b = op.inputs
-  i, cs, f, o, ci, co, h = op.outputs
-
-  cs_grad = grad[1]
-  h_grad = grad[6]
-
-  (x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wcf_grad, wco_grad,
-   b_grad) = gen_rnn_ops.block_lstm_grad(
-       seq_len_max=seq_len_max,
-       x=x,
-       cs_prev=cs_prev,
-       h_prev=h_prev,
-       w=w,
-       wci=wci,
-       wcf=wcf,
-       wco=wco,
-       b=b,
-       i=i,
-       cs=cs,
-       f=f,
-       o=o,
-       ci=ci,
-       co=co,
-       h=h,
-       cs_grad=cs_grad,
-       h_grad=h_grad,
-       use_peephole=op.get_attr("use_peephole"))
-
-  return [
-      None, x_grad, cs_prev_grad, h_prev_grad, w_grad, wci_grad, wcf_grad,
-      wco_grad, b_grad
-  ]
 
 
 class LSTMBlockCell(LayerRNNCell):

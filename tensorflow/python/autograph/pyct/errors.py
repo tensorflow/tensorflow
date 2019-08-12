@@ -197,15 +197,18 @@ class ErrorMetadataBase(object):
 
     return '\n'.join(lines)
 
-  def create_exception(self, preferred_type):
+  def create_exception(self, source_error):
+    preferred_type = type(source_error)
+    if preferred_type.__init__ is Exception.__init__:
+      return preferred_type(self.get_message())
     if preferred_type in KNOWN_STRING_CONSTRUCTOR_ERRORS:
       return preferred_type(self.get_message())
     elif preferred_type is KeyError:
       return MultilineMessageKeyError(self.get_message(), self.cause_message)
     return None
 
-  def to_exception(self, preferred_type):
-    exc = self.create_exception(preferred_type)
+  def to_exception(self, source_error):
+    exc = self.create_exception(source_error)
     exc.__suppress_context__ = True
     exc.ag_error_metadata = self
     return exc

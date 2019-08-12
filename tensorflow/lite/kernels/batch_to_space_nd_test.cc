@@ -121,6 +121,14 @@ TEST(BatchToSpaceNDOpTest, SimpleConstTestInt8) {
                   {1, 5, 2, 6, 9, 13, 10, 14, 3, 7, 4, 8, 11, 15, 12, 16}));
 }
 
+TEST(BatchToSpaceNDOpTest, BatchOneConstTest) {
+  BatchToSpaceNDOpConstModel m({1, 2, 2, 1}, {1, 1}, {0, 0, 0, 0});
+  m.SetInput<float>({1, 2, 3, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 2, 1}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray({1, 2, 3, 4}));
+}
+
 TEST(BatchToSpaceNDOpTest, SimpleDynamicTest) {
   BatchToSpaceNDOpDynamicModel m({4, 2, 2, 1});
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});

@@ -187,11 +187,13 @@ TfLiteStatus InferenceProfilerStage::Run() {
 
 EvaluationStageMetrics InferenceProfilerStage::LatestMetrics() {
   EvaluationStageMetrics metrics;
+  const auto& reference_metrics = reference_stage_->LatestMetrics();
+  metrics.set_num_runs(reference_metrics.num_runs());
   auto* inference_profiler_metrics =
       metrics.mutable_process_metrics()->mutable_inference_profiler_metrics();
 
   *inference_profiler_metrics->mutable_reference_latency() =
-      reference_stage_->LatestMetrics().process_metrics().total_latency();
+      reference_metrics.process_metrics().total_latency();
   *inference_profiler_metrics->mutable_test_latency() =
       test_stage_->LatestMetrics().process_metrics().total_latency();
 

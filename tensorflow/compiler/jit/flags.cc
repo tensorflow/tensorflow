@@ -92,7 +92,12 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            &mark_for_compilation_flags
                 ->tf_xla_disable_deadness_safety_checks_for_debugging,
            "Disable deadness related safety checks when clustering (this is "
-           "unsound).")};
+           "unsound)."),
+      Flag("tf_xla_disable_resource_variable_safety_checks_for_debugging",
+           &mark_for_compilation_flags
+                ->tf_xla_disable_resource_variable_safety_checks_for_debugging,
+           "Disable resource variables related safety checks when clustering "
+           "(this is unsound).")};
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
 }
 
@@ -100,6 +105,8 @@ void AllocateAndParseFlags() {
   build_ops_flags = new BuildXlaOpsPassFlags;
   build_ops_flags->tf_xla_enable_lazy_compilation = true;
   build_ops_flags->tf_xla_print_cluster_outputs = false;
+  build_ops_flags->tf_xla_check_cluster_input_numerics = false;
+  build_ops_flags->tf_xla_check_cluster_output_numerics = false;
   build_ops_flags->tf_xla_disable_constant_folding = false;
 
   mark_for_compilation_flags = new MarkForCompilationPassFlags;
@@ -115,6 +122,8 @@ void AllocateAndParseFlags() {
       std::numeric_limits<int64>::max();
   mark_for_compilation_flags
       ->tf_xla_disable_deadness_safety_checks_for_debugging = false;
+  mark_for_compilation_flags
+      ->tf_xla_disable_resource_variable_safety_checks_for_debugging = false;
 
   device_flags = new XlaDeviceFlags;
   device_flags->tf_xla_compile_on_demand = false;
@@ -137,6 +146,14 @@ void AllocateAndParseFlags() {
             &build_ops_flags->tf_xla_print_cluster_outputs,
             "If true then insert Print nodes to print out values produced by "
             "XLA clusters."),
+       Flag("tf_xla_check_cluster_input_numerics",
+            &build_ops_flags->tf_xla_check_cluster_input_numerics,
+            "If true then insert CheckNumerics nodes to to check all cluster "
+            "inputs."),
+       Flag("tf_xla_check_cluster_output_numerics",
+            &build_ops_flags->tf_xla_check_cluster_output_numerics,
+            "If true then insert CheckNumerics nodes to to check all cluster "
+            "outputs."),
 
        Flag("tf_xla_compile_on_demand", &device_flags->tf_xla_compile_on_demand,
             "Switch a device into 'on-demand' mode, where instead of "

@@ -363,7 +363,7 @@ void TestSomeGemm(int rows, int depth, int cols,
                   const std::vector<DstScalar>& golden) {
   CpuBackendContext cpu_backend_context;
   std::default_random_engine random_engine;
-  cpu_backend_context.set_max_num_threads(1 + (random_engine() % 8));
+  cpu_backend_context.SetMaxNumThreads(1 + (random_engine() % 8));
 
   const bool use_golden = !golden.empty();
 
@@ -416,8 +416,7 @@ void TestSomeGemm(int rows, int depth, int cols,
   }
 
   GemmParams<AccumScalar, DstScalar> params;
-  if (use_golden || !std::is_floating_point<AccumScalar>::value ||
-      (random_engine() % 2)) {
+  if (use_golden || (random_engine() % 2)) {
     // cpu_backend_gemm supports bias=null only in the float path. Test that
     // in 50% of float testcases.
     params.bias = bias_data.data();

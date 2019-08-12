@@ -1,12 +1,12 @@
 # Description:
 # Python APIs for various Tensorflow backends.
 
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 exports_files(["LICENSE"])
 

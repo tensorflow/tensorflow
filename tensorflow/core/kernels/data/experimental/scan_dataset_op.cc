@@ -26,10 +26,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class ScanDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -103,6 +101,11 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override { return "ScanDatasetOp::Dataset"; }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    Status CheckExternalState() const override {
+      TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -290,11 +293,14 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
   bool preserve_cardinality_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("ScanDataset").Device(DEVICE_CPU), ScanDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalScanDataset").Device(DEVICE_CPU),
                         ScanDatasetOp);
 
+REGISTER_INPUT_COLOCATION_EXEMPTION("ScanDataset");
 REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalScanDataset");
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

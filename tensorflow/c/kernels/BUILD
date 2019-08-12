@@ -2,6 +2,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_kernel_library",
+    "tf_gen_op_libs",
 )
 
 package(
@@ -14,8 +15,23 @@ tf_kernel_library(
     prefix = "bitcast_op",
     deps = [
         "//tensorflow/c:kernels",
+        "//tensorflow/c:ops",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
-        "//tensorflow/core:ops",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_gen_op_libs(
+    op_lib_names = ["bitcast"],
+    deps = [
+        "//tensorflow/c:ops",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_tensor",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -28,6 +44,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -39,9 +56,14 @@ tf_cc_test(
 #
 # LINT.IfChange
 filegroup(
-    name = "android_all_ops",
+    name = "android_all_op_kernels",
     srcs = [
         "bitcast_op.cc",
     ],
 )
 # LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
+
+filegroup(
+    name = "android_all_ops",
+    srcs = ["ops/bitcast.cc"],
+)

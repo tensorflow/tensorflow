@@ -46,7 +46,7 @@ class CreateTreeEnsembleVariableOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input("tree_ensemble_config",
                                            &tree_ensemble_config_t));
     auto* result = new DecisionTreeEnsembleResource();
-    if (!result->InitFromSerialized(tree_ensemble_config_t->scalar<string>()(),
+    if (!result->InitFromSerialized(tree_ensemble_config_t->scalar<tstring>()(),
                                     stamp_token)) {
       result->Unref();
       OP_REQUIRES(
@@ -99,7 +99,7 @@ class TreeEnsembleSerializeOp : public OpKernel {
     Tensor* output_config_t = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(1, TensorShape(), &output_config_t));
-    output_config_t->scalar<string>()() =
+    output_config_t->scalar<tstring>()() =
         ensemble_resource->SerializeAsString();
   }
 };
@@ -130,7 +130,7 @@ class TreeEnsembleDeserializeOp : public OpKernel {
     OP_REQUIRES(
         context,
         ensemble_resource->InitFromSerialized(
-            tree_ensemble_config_t->scalar<string>()(), stamp_token),
+            tree_ensemble_config_t->scalar<tstring>()(), stamp_token),
         errors::InvalidArgument("Unable to parse tree ensemble config."));
   }
 };

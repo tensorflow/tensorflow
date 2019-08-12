@@ -13,6 +13,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "loss_scale"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "lr"
     mtype: "<type \'property\'>"
   }
@@ -49,12 +53,20 @@ tf_class {
     argspec: "args=[\'self\', \'loss\', \'params\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get_scaled_loss"
+    argspec: "args=[\'self\', \'loss\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_slot"
     argspec: "args=[\'self\', \'var\', \'slot_name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_slot_names"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_unscaled_gradients"
+    argspec: "args=[\'self\', \'grads\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_updates"

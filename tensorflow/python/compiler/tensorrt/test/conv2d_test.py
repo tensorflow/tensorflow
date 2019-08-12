@@ -102,6 +102,18 @@ class Conv2DNCHWTest(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to build."""
     return ["TRTEngineOp_0"]
 
+  def ExpectedAbsoluteTolerance(self, run_params):
+    """The absolute tolerance to compare floating point results."""
+    if trt_test.IsQuantizationWithCalibration(run_params):
+      return 4e-02
+    return super(Conv2DNCHWTest, self).ExpectedAbsoluteTolerance(run_params)
+
+  def ExpectedRelativeTolerance(self, run_params):
+    """The relative tolerance to compare floating point results."""
+    if trt_test.IsQuantizationWithCalibration(run_params):
+      return 4e-02
+    return super(Conv2DNCHWTest, self).ExpectedRelativeTolerance(run_params)
+
 
 class Conv2DNHWCTest(trt_test.TfTrtIntegrationTestBase):
   """Testing conversion of Conv2D (data_format=NCHW) in TF-TRT conversion."""

@@ -2,19 +2,19 @@
 #   Contains ops to train linear models on top of TensorFlow.
 #   APIs here are meant to evolve over time.
 
-package(
-    default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
-)
-
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_kernel_library",
     "tf_py_test",
 )
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 py_library(
     name = "rnn_py",

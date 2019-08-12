@@ -382,7 +382,7 @@ TfLiteStatus QuantizeOpInput(
   }
   const int32_t tensor_idx = op->inputs[input_idx];
   TensorT* tensor = subgraph->tensors[tensor_idx].get();
-  const bool is_input_quantized = utils::IsQuantized(subgraph, tensor_idx);
+  const bool is_input_quantized = utils::QuantizationParametersExist(tensor);
   if (property.quantizable && !is_input_quantized) {
     // The operation is quantizable, but the input isn't yet quantized.
     if (utils::HasBuffer(model, subgraph, tensor_idx)) {
@@ -510,7 +510,7 @@ TfLiteStatus QuantizeOpOutput(
         printf(
             "Note the output min/max is different from the input min/max "
             "for op %s at index %d in subgraph %d. This is legal but "
-            "should happens rarely.",
+            "should happens rarely.\n",
             EnumNameBuiltinOperator(op_code), op_idx, subgraph_idx);
       }
     }
@@ -607,10 +607,9 @@ TfLiteStatus QuantizeBiases(ModelT* model, ErrorReporter* error_reporter) {
         }
         // Quantize if it is not quantized already as the
         // output of another op or input of another op.
-        if (!utils::IsQuantized(subgraph, op->inputs[bias_idx])) {
+        TensorT* bias_tensor = subgraph->tensors[op->inputs[bias_idx]].get();
+        if (!utils::QuantizationParametersExist(bias_tensor)) {
           if (utils::HasBuffer(model, subgraph, op->inputs[bias_idx])) {
-            TensorT* bias_tensor =
-                subgraph->tensors[op->inputs[bias_idx]].get();
             if (property.inputs.size() != 2) {
               error_reporter->Report(
                   "Expect the input length of "

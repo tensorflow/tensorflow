@@ -141,7 +141,7 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
      * <p>{@link DevicePlacementPolicy#SILENT} is used by default.
      *
      * @param value policy to apply
-     * @see {@link DevicePlacementPolicy}
+     * @see DevicePlacementPolicy
      */
     public Options devicePlacementPolicy(DevicePlacementPolicy value) {
       devicePlacementPolicy = value;
@@ -154,7 +154,7 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
      * <p>{@link ResourceCleanupStrategy#IN_BACKGROUND} is used by default.
      *
      * @param value strategy to use
-     * @see {@link ResourceCleanupStrategy}
+     * @see ResourceCleanupStrategy
      */
     public Options resourceCleanupStrategy(ResourceCleanupStrategy value) {
       resourceCleanupStrategy = value;
@@ -169,8 +169,8 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
      * not be supported on public endpoints in the future.
      *
      * @param value a serialized config proto
-     * @see
-     *     https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/config.proto
+     * @see <a
+     *     href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/config.proto"/>
      */
     public Options config(byte[] value) {
       config = value;
@@ -179,7 +179,12 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
 
     /** Builds an eager session with the selected options. */
     public EagerSession build() {
-      return new EagerSession(this);
+      return new EagerSession(this, new ReferenceQueue<Object>());
+    }
+
+    // For garbage-collection tests only
+    EagerSession buildForGcTest(ReferenceQueue<Object> gcQueue) {
+      return new EagerSession(this, gcQueue);
     }
 
     private boolean async;
@@ -226,7 +231,7 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
    * @param options options to use to build default session
    * @return default eager session
    * @throws IllegalStateException if the default session is already initialized
-   * @see {@link #getDefault()}
+   * @see #getDefault()
    */
   public static EagerSession initDefault(Options options) {
     synchronized (EagerSession.class) {
@@ -257,12 +262,12 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
    * Ops tf = Ops.create();
    *
    * // Starting to build eager operations using default session, by calling
-   * // EagerSession.getDefault() explictly
+   * // EagerSession.getDefault() explicitly
    * Ops tf = Ops.create(EagerSession.getDefault());
    * }</pre>
    *
    * @return default eager session
-   * @see {@link #initDefault(Options)}
+   * @see #initDefault
    */
   public static EagerSession getDefault() {
     if (defaultSession == null) {
@@ -344,6 +349,10 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
     return nativeHandle;
   }
 
+  ResourceCleanupStrategy resourceCleanupStrategy() {
+    return resourceCleanupStrategy;
+  }
+
   /**
    * A reference to one or more allocated native resources.
    *
@@ -411,6 +420,10 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
    * longer needed.
    */
   private static class NativeResourceCollector {
+
+    NativeResourceCollector(ReferenceQueue<Object> garbageQueue) {
+      this.garbageQueue = garbageQueue;
+    }
 
     void attach(NativeReference nativeRef) {
       synchronized (nativeRefs) {
@@ -484,17 +497,18 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
 
     private final ExecutorService cleanupService = Executors.newSingleThreadExecutor();
     private final Map<NativeReference, Void> nativeRefs = new IdentityHashMap<>();
-    private final ReferenceQueue<Object> garbageQueue = new ReferenceQueue<>();
+    private final ReferenceQueue<Object> garbageQueue;
     private volatile boolean cleanupInBackground = false;
   }
 
   private static volatile EagerSession defaultSession = null;
 
-  private final NativeResourceCollector nativeResources = new NativeResourceCollector();
+  private final NativeResourceCollector nativeResources;
   private final ResourceCleanupStrategy resourceCleanupStrategy;
   private long nativeHandle;
 
-  private EagerSession(Options options) {
+  private EagerSession(Options options, ReferenceQueue<Object> garbageQueue) {
+    this.nativeResources = new NativeResourceCollector(garbageQueue);
     this.nativeHandle = allocate(options.async, options.devicePlacementPolicy.code, options.config);
     this.resourceCleanupStrategy = options.resourceCleanupStrategy;
 
@@ -507,11 +521,6 @@ public final class EagerSession implements ExecutionEnvironment, AutoCloseable {
     if (nativeHandle == 0L) {
       throw new IllegalStateException("Eager session has been closed");
     }
-  }
-
-  // For tests
-  ResourceCleanupStrategy resourceCleanupStrategy() {
-    return resourceCleanupStrategy;
   }
 
   private static native long allocate(boolean async, int devicePlacementPolicy, byte[] config);

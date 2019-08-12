@@ -9,6 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/shuffle_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -17,9 +18,7 @@ namespace data {
 namespace {
 
 constexpr char kShuffleNodeName[] = "shuffle_dataset";
-constexpr char kShuffleOpName[] = "ShuffleDataset";
 constexpr char kShuffleAndRepeatNodeName[] = "shuffle_and_repeat_dataset";
-constexpr char kShuffleAndRepeatOpName[] = "ShuffleAndRepeatDataset";
 
 class ShuffleDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -32,16 +31,23 @@ class ShuffleDatasetOpTest : public DatasetOpsTestBase {
     NodeDef node_def;
     if (count == 1) {
       node_def = test::function::NDef(
-          kShuffleNodeName, kShuffleOpName,
-          {"input_dataset", "buffer_size", "seed", "seed2"},
-          {{"reshuffle_each_iteration", reshuffle_each_iteration},
-           {"output_types", output_types},
-           {"output_shapes", output_shapes}});
+          kShuffleNodeName, name_utils::OpName(ShuffleDatasetOp::kDatasetType),
+          {ShuffleDatasetOp::kInputDataset, ShuffleDatasetOp::kBufferSize,
+           ShuffleDatasetOp::kSeed, ShuffleDatasetOp::kSeed2},
+          {{ShuffleDatasetOp::kReshuffleEachIteration,
+            reshuffle_each_iteration},
+           {ShuffleDatasetOp::kOutputTypes, output_types},
+           {ShuffleDatasetOp::kOutputShapes, output_shapes}});
     } else {
       node_def = test::function::NDef(
-          kShuffleAndRepeatNodeName, kShuffleAndRepeatOpName,
-          {"input_dataset", "buffer_size", "seed", "seed2", "count"},
-          {{"output_types", output_types}, {"output_shapes", output_shapes}});
+          kShuffleAndRepeatNodeName,
+          name_utils::OpName(ShuffleAndRepeatDatasetOp::kDatasetType),
+          {ShuffleAndRepeatDatasetOp::kInputDataset,
+           ShuffleAndRepeatDatasetOp::kBufferSize,
+           ShuffleAndRepeatDatasetOp::kSeed, ShuffleAndRepeatDatasetOp::kSeed2,
+           ShuffleAndRepeatDatasetOp::kCount},
+          {{ShuffleAndRepeatDatasetOp::kOutputTypes, output_types},
+           {ShuffleAndRepeatDatasetOp::kOutputShapes, output_shapes}});
     }
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, shuffle_dataset_kernel));
     return Status::OK();
@@ -83,231 +89,219 @@ std::vector<Tensor> ConvertToTensorVec(std::vector<T> values) {
   std::vector<Tensor> tensors;
   tensors.reserve(values.size());
   for (auto& value : values) {
-    tensors.emplace_back(
-        DatasetOpsTestBase::CreateTensor<T>(TensorShape({}), {value}));
+    tensors.emplace_back(CreateTensor<T>(TensorShape({}), {value}));
   }
   return tensors;
 }
 
 // Test case 1: test shuffle_dataset with reshuffle_each_iteration = false.
 TestCase TestCase1() {
-  return {
-      /*range_data_param*/ {0, 10, 1},
-      /*buffer_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
-      /*seed*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*seed2*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*count*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*reshuffle_each_iteration*/ false,
-      /*expected_shuffle_outputs*/
-      ConvertToTensorVec<int64>({2, 3, 0, 5, 6, 4, 7, 8, 9, 1}),
-      /*expected_reshuffle_outputs*/
-      ConvertToTensorVec<int64>({2, 3, 0, 5, 6, 4, 7, 8, 9, 1}),
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 10,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 10, 1},
+          /*buffer_size*/
+          CreateTensor<int64>(TensorShape({}), {3}),
+          /*seed*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*seed2*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*count*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*reshuffle_each_iteration*/ false,
+          /*expected_shuffle_outputs*/
+          ConvertToTensorVec<int64>({2, 3, 0, 5, 6, 4, 7, 8, 9, 1}),
+          /*expected_reshuffle_outputs*/
+          ConvertToTensorVec<int64>({2, 3, 0, 5, 6, 4, 7, 8, 9, 1}),
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 10,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 2: test shuffle_dataset with reshuffle_each_iteration = true.
 TestCase TestCase2() {
-  return {
-      /*range_data_param*/ {0, 10, 1},
-      /*buffer_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {10}),
-      /*seed*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*seed2*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*count*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*reshuffle_each_iteration*/ true,
-      /*expected_shuffle_outputs*/
-      ConvertToTensorVec<int64>({2, 6, 1, 3, 9, 5, 0, 8, 7, 4}),
-      /*expected_reshuffle_outputs*/
-      ConvertToTensorVec<int64>({1, 6, 0, 5, 2, 7, 4, 3, 9, 8}),
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 10,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 10, 1},
+          /*buffer_size*/
+          CreateTensor<int64>(TensorShape({}), {10}),
+          /*seed*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*seed2*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*count*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*reshuffle_each_iteration*/ true,
+          /*expected_shuffle_outputs*/
+          ConvertToTensorVec<int64>({2, 6, 1, 3, 9, 5, 0, 8, 7, 4}),
+          /*expected_reshuffle_outputs*/
+          ConvertToTensorVec<int64>({1, 6, 0, 5, 2, 7, 4, 3, 9, 8}),
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 10,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 3: similar with the test case 2 but a smaller buffer size than
 // the input dataset.
 TestCase TestCase3() {
-  return {
-      /*range_data_param*/ {0, 10, 1},
-      /*buffer_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*seed*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*seed2*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*count*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*reshuffle_each_iteration*/ true,
-      /*expected_shuffle_outputs*/
-      ConvertToTensorVec<int64>({0, 2, 1, 3, 5, 6, 4, 7, 8, 9}),
-      /*expected_reshuffle_outputs*/
-      ConvertToTensorVec<int64>({1, 0, 2, 3, 4, 5, 6, 7, 9, 8}),
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 10,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 10, 1},
+          /*buffer_size*/
+          CreateTensor<int64>(TensorShape({}), {2}),
+          /*seed*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*seed2*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*count*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*reshuffle_each_iteration*/ true,
+          /*expected_shuffle_outputs*/
+          ConvertToTensorVec<int64>({0, 2, 1, 3, 5, 6, 4, 7, 8, 9}),
+          /*expected_reshuffle_outputs*/
+          ConvertToTensorVec<int64>({1, 0, 2, 3, 4, 5, 6, 7, 9, 8}),
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 10,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 4: similar with the test case 2 but has different seeds.
 TestCase TestCase4() {
-  return {
-      /*range_data_param*/ {0, 10, 1},
-      /*buffer_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {10}),
-      /*seed*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*seed2*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*count*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*reshuffle_each_iteration*/ true,
-      /*expected_shuffle_outputs*/
-      ConvertToTensorVec<int64>({3, 0, 8, 1, 5, 4, 7, 2, 6, 9}),
-      /*expected_reshuffle_outputs*/
-      ConvertToTensorVec<int64>({4, 6, 9, 0, 1, 8, 2, 7, 3, 5}),
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 10,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 10, 1},
+          /*buffer_size*/
+          CreateTensor<int64>(TensorShape({}), {10}),
+          /*seed*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*seed2*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*count*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*reshuffle_each_iteration*/ true,
+          /*expected_shuffle_outputs*/
+          ConvertToTensorVec<int64>({3, 0, 8, 1, 5, 4, 7, 2, 6, 9}),
+          /*expected_reshuffle_outputs*/
+          ConvertToTensorVec<int64>({4, 6, 9, 0, 1, 8, 2, 7, 3, 5}),
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 10,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 5: test shuffle_dataset with buffer_size = 1 &
 // reshuffle_each_iteration = true.
 TestCase TestCase5() {
-  return {
-      /*range_data_param*/ {0, 10, 1},
-      /*buffer_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*seed*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*seed2*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*count*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*reshuffle_each_iteration*/ true,
-      /*expected_shuffle_outputs*/
-      ConvertToTensorVec<int64>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}),
-      /*expected_reshuffle_outputs*/
-      ConvertToTensorVec<int64>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}),
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 10,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 10, 1},
+          /*buffer_size*/
+          CreateTensor<int64>(TensorShape({}), {1}),
+          /*seed*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*seed2*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*count*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*reshuffle_each_iteration*/ true,
+          /*expected_shuffle_outputs*/
+          ConvertToTensorVec<int64>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}),
+          /*expected_reshuffle_outputs*/
+          ConvertToTensorVec<int64>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}),
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 10,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 6: test shuffle_dataset with an empty input dataset.
 TestCase TestCase6() {
-  return {
-      /*range_data_param*/ {0, 0, 1},
-      /*buffer_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {10}),
-      /*seed*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*seed2*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*count*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*reshuffle_each_iteration*/ true,
-      /*expected_shuffle_outputs*/
-      ConvertToTensorVec<int64>({}),
-      /*expected_reshuffle_outputs*/
-      ConvertToTensorVec<int64>({}),
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 0,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 0, 1},
+          /*buffer_size*/
+          CreateTensor<int64>(TensorShape({}), {10}),
+          /*seed*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*seed2*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*count*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*reshuffle_each_iteration*/ true,
+          /*expected_shuffle_outputs*/
+          ConvertToTensorVec<int64>({}),
+          /*expected_reshuffle_outputs*/
+          ConvertToTensorVec<int64>({}),
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 0,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 // Test case 7: test shuffle_and_repeat_dataset with buffer_size = 10 &
 // count = 2.
 TestCase TestCase7() {
-  return {
-      /*range_data_param*/ {0, 10, 1},
-      /*buffer_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {10}),
-      /*seed*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*seed2*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*count*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*reshuffle_each_iteration*/ false,
-      /*expected_shuffle_outputs*/
-      ConvertToTensorVec<int64>(
-          {9, 0, 8, 6, 1, 3, 7, 2, 4, 5, 4, 3, 0, 5, 8, 2, 6, 9, 7, 1}),
-      /*expected_reshuffle_outputs*/
-      ConvertToTensorVec<int64>(
-          {9, 0, 8, 6, 1, 3, 7, 2, 4, 5, 4, 3, 0, 5, 8, 2, 6, 9, 7, 1}),
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 20,
-      /*breakpoints*/ {0, 5, 22}};
+  return {/*range_data_param*/ {0, 10, 1},
+          /*buffer_size*/
+          CreateTensor<int64>(TensorShape({}), {10}),
+          /*seed*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*seed2*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*count*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*reshuffle_each_iteration*/ false,
+          /*expected_shuffle_outputs*/
+          ConvertToTensorVec<int64>(
+              {9, 0, 8, 6, 1, 3, 7, 2, 4, 5, 4, 3, 0, 5, 8, 2, 6, 9, 7, 1}),
+          /*expected_reshuffle_outputs*/
+          ConvertToTensorVec<int64>(
+              {9, 0, 8, 6, 1, 3, 7, 2, 4, 5, 4, 3, 0, 5, 8, 2, 6, 9, 7, 1}),
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 20,
+          /*breakpoints*/ {0, 5, 22}};
 }
 
 // Test case 8: test shuffle_and_repeat_dataset with buffer_size = 10 &
 // count = -1
 TestCase TestCase8() {
-  return {
-      /*range_data_param*/ {0, 3, 1},
-      /*buffer_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {10}),
-      /*seed*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*seed2*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*count*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {-1}),
-      /*reshuffle_each_iteration*/ false,
-      /*expected_shuffle_outputs*/
-      ConvertToTensorVec<int64>(
-          {2, 0, 1, 2, 0, 1, 1, 2, 0, 1, 0, 2, 2, 0, 1, 1, 0, 2, 2, 1, 0}),
-      /*expected_reshuffle_outputs*/
-      ConvertToTensorVec<int64>(
-          {2, 0, 1, 2, 0, 1, 1, 2, 0, 1, 0, 2, 2, 0, 1, 1, 0, 2, 2, 1, 0}),
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ kInfiniteCardinality,
-      /*breakpoints*/ {0, 5, 20}};
+  return {/*range_data_param*/ {0, 3, 1},
+          /*buffer_size*/
+          CreateTensor<int64>(TensorShape({}), {10}),
+          /*seed*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*seed2*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*count*/ CreateTensor<int64>(TensorShape({}), {-1}),
+          /*reshuffle_each_iteration*/ false,
+          /*expected_shuffle_outputs*/
+          ConvertToTensorVec<int64>(
+              {2, 0, 1, 2, 0, 1, 1, 2, 0, 1, 0, 2, 2, 0, 1, 1, 0, 2, 2, 1, 0}),
+          /*expected_reshuffle_outputs*/
+          ConvertToTensorVec<int64>(
+              {2, 0, 1, 2, 0, 1, 1, 2, 0, 1, 0, 2, 2, 0, 1, 1, 0, 2, 2, 1, 0}),
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ kInfiniteCardinality,
+          /*breakpoints*/ {0, 5, 20}};
 }
 
 TestCase InvalidBufferSizeTestCaseForShuffleDataset() {
-  return {
-      /*range_data_param*/ {0, 10, 1},
-      /*buffer_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {-1}),
-      /*seed*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*seed2*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*count*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*reshuffle_each_iteration*/ true,
-      /*expected_shuffle_outputs*/ ConvertToTensorVec<int64>({}),
-      /*expected_reshuffle_outputs*/ ConvertToTensorVec<int64>({}),
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 0,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 10, 1},
+          /*buffer_size*/
+          CreateTensor<int64>(TensorShape({}), {-1}),
+          /*seed*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*seed2*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*count*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*reshuffle_each_iteration*/ true,
+          /*expected_shuffle_outputs*/ ConvertToTensorVec<int64>({}),
+          /*expected_reshuffle_outputs*/ ConvertToTensorVec<int64>({}),
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 0,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 TestCase InvalidBufferSizeTestCaseForShuffleAndRepeatDataset() {
-  return {
-      /*range_data_param*/ {0, 10, 1},
-      /*buffer_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {-1}),
-      /*seed*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*seed2*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*count*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*reshuffle_each_iteration*/ true,
-      /*expected_shuffle_outputs*/ ConvertToTensorVec<int64>({}),
-      /*expected_reshuffle_outputs*/ ConvertToTensorVec<int64>({}),
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 0,
-      /*breakpoints*/ {0, 1, 9}};
+  return {/*range_data_param*/ {0, 10, 1},
+          /*buffer_size*/
+          CreateTensor<int64>(TensorShape({}), {-1}),
+          /*seed*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*seed2*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*count*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*reshuffle_each_iteration*/ true,
+          /*expected_shuffle_outputs*/ ConvertToTensorVec<int64>({}),
+          /*expected_reshuffle_outputs*/ ConvertToTensorVec<int64>({}),
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 0,
+          /*breakpoints*/ {0, 1, 9}};
 }
 
 TestCase InvalidCountTestCaseForShuffleAndRepeatDataset() {
-  return {
-      /*range_data_param*/ {0, 3, 1},
-      /*buffer_size*/
-      DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {10}),
-      /*seed*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
-      /*seed2*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-      /*count*/ DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-      /*reshuffle_each_iteration*/ false,
-      /*expected_shuffle_outputs*/
-      ConvertToTensorVec<int64>({}),
-      /*expected_reshuffle_outputs*/
-      ConvertToTensorVec<int64>({}),
-      /*expected_output_dtypes*/ {DT_INT64},
-      /*expected_output_shapes*/ {PartialTensorShape({})},
-      /*expected_cardinality*/ 0,
-      /*breakpoints*/ {0, 5, 20}};
+  return {/*range_data_param*/ {0, 3, 1},
+          /*buffer_size*/
+          CreateTensor<int64>(TensorShape({}), {10}),
+          /*seed*/ CreateTensor<int64>(TensorShape({}), {1}),
+          /*seed2*/ CreateTensor<int64>(TensorShape({}), {2}),
+          /*count*/ CreateTensor<int64>(TensorShape({}), {0}),
+          /*reshuffle_each_iteration*/ false,
+          /*expected_shuffle_outputs*/
+          ConvertToTensorVec<int64>({}),
+          /*expected_reshuffle_outputs*/
+          ConvertToTensorVec<int64>({}),
+          /*expected_output_dtypes*/ {DT_INT64},
+          /*expected_output_shapes*/ {PartialTensorShape({})},
+          /*expected_cardinality*/ 0,
+          /*breakpoints*/ {0, 5, 20}};
 }
 
 class ParameterizedShuffleDatasetOpTest
@@ -482,9 +476,11 @@ TEST_P(ParameterizedShuffleDatasetOpTest, DatasetTypeString) {
   core::ScopedUnref scoped_unref_dataset(dataset);
 
   if (count_value == 1) {
-    EXPECT_EQ(dataset->type_string(), kShuffleOpName);
+    EXPECT_EQ(dataset->type_string(),
+              name_utils::OpName(ShuffleDatasetOp::kDatasetType));
   } else {
-    EXPECT_EQ(dataset->type_string(), kShuffleAndRepeatOpName);
+    EXPECT_EQ(dataset->type_string(),
+              name_utils::OpName(ShuffleAndRepeatDatasetOp::kDatasetType));
   }
 }
 
@@ -608,51 +604,6 @@ TEST_P(ParameterizedShuffleDatasetOpTest, Cardinality) {
   core::ScopedUnref scoped_unref_dataset(dataset);
 
   EXPECT_EQ(dataset->Cardinality(), test_case.expected_cardinality);
-}
-
-TEST_P(ParameterizedShuffleDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  Tensor count = test_case.count;
-  int64 count_value = count.flat<int64>()(0);
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(
-      CreateDatasetOpKernel(count_value, test_case.reshuffle_each_iteration,
-                            test_case.expected_output_dtypes,
-                            test_case.expected_output_shapes, &dataset_kernel));
-
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateRangeDataset<int64>(
-      test_case.range_data_param.start, test_case.range_data_param.end,
-      test_case.range_data_param.step, "range", &range_dataset));
-  Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  TF_ASSERT_OK(
-      StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
-  Tensor buffer_size = test_case.buffer_size;
-  Tensor seed = test_case.seed;
-  Tensor seed2 = test_case.seed2;
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&range_dataset_tensor), TensorValue(&buffer_size),
-       TensorValue(&seed), TensorValue(&seed2)});
-  if (count_value != 1) inputs.push_back(TensorValue(&count));
-
-  std::unique_ptr<OpKernelContext> dataset_context;
-  TF_ASSERT_OK(
-      CreateDatasetContext(dataset_kernel.get(), &inputs, &dataset_context));
-  DatasetBase* dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_context.get(), &dataset));
-  core::ScopedUnref scoped_unref_dataset(dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
 }
 
 TEST_P(ParameterizedShuffleDatasetOpTest, IteratorOutputDtypes) {
@@ -793,9 +744,13 @@ TEST_P(ParameterizedShuffleDatasetOpTest, IteratorOutputPrefix) {
       dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
 
   if (count_value == 1) {
-    EXPECT_EQ(iterator->prefix(), "Iterator::Shuffle");
+    EXPECT_EQ(
+        iterator->prefix(),
+        name_utils::IteratorPrefix(ShuffleDatasetOp::kDatasetType, "Iterator"));
   } else {
-    EXPECT_EQ(iterator->prefix(), "Iterator::ShuffleAndRepeat");
+    EXPECT_EQ(iterator->prefix(),
+              name_utils::IteratorPrefix(
+                  ShuffleAndRepeatDatasetOp::kDatasetType, "Iterator"));
   }
 }
 

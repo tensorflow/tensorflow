@@ -77,7 +77,7 @@ class ConstantFolding : public GraphOptimizer {
                                  const GraphProperties& properties);
   Status MaterializeConstants(const GraphProperties& properties);
 
-  bool IsFoldable(const NodeDef& node) const;
+  bool IsFoldable(const NodeDef& node, const GraphProperties* properties) const;
 
   Status EvaluateNode(const NodeDef& node,
                       const gtl::InlinedVector<TensorValue, 4>& inputs,
@@ -112,7 +112,7 @@ class ConstantFolding : public GraphOptimizer {
                                             NodeDef* node, GraphDef* graph);
 
   void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
-  Status FoldGraph(GraphDef* output,
+  Status FoldGraph(const GraphProperties& properties, GraphDef* output,
                    absl::flat_hash_set<string>* nodes_to_not_simplify);
 
   bool IsSimplifiableReshape(const NodeDef& node,

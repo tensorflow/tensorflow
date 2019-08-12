@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import textwrap
 
+import gast
+
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import transformer
@@ -66,22 +68,12 @@ def exec_expected_result():
   exec(tmp_1002, tmp_1003, tmp_1004)
 
 
-class AnfTransformerTest(test.TestCase):
+class AnfTestBase(test.TestCase):
 
   def _simple_context(self):
     entity_info = transformer.EntityInfo(
         source_code=None, source_file=None, future_features=(), namespace=None)
     return transformer.Context(entity_info)
-
-  def test_basic(self):
-    def test_function():
-      a = 0
-      return a
-
-    node, _ = parser.parse_entity(test_function, future_features=())
-    node = anf.transform(node, self._simple_context())
-    result, _, _ = compiler.ast_to_object(node)
-    self.assertEqual(test_function(), result.test_function())
 
   def assert_same_ast(self, expected_node, node, msg=None):
     expected_source = compiler.ast_to_source(expected_node, indentation='  ')
@@ -90,14 +82,15 @@ class AnfTransformerTest(test.TestCase):
     got_str = textwrap.dedent(got_source).strip()
     self.assertEqual(expected_str, got_str, msg=msg)
 
-  def assert_body_anfs_as_expected(self, expected_fn, test_fn):
+  def assert_body_anfs_as_expected(self, expected_fn, test_fn, config=None):
     # Testing the code bodies only.  Wrapping them in functions so the
     # syntax highlights nicely, but Python doesn't try to execute the
     # statements.
     exp_node, _ = parser.parse_entity(expected_fn, future_features=())
     node, _ = parser.parse_entity(test_fn, future_features=())
     node = anf.transform(
-        node, self._simple_context(), gensym_source=DummyGensym)
+        node, self._simple_context(),
+        config=config, gensym_source=DummyGensym)
     exp_name = exp_node.name
     # Ignoring the function names in the result because they can't be
     # the same (because both functions have to exist in the same scope
@@ -108,6 +101,19 @@ class AnfTransformerTest(test.TestCase):
     node_repeated = anf.transform(
         node, self._simple_context(), gensym_source=DummyGensym)
     self.assert_same_ast(node_repeated, node)
+
+
+class AnfTransformerTest(AnfTestBase):
+
+  def test_basic(self):
+    def test_function():
+      a = 0
+      return a
+
+    node, _ = parser.parse_entity(test_function, future_features=())
+    node = anf.transform(node, self._simple_context())
+    result, _, _ = compiler.ast_to_object(node)
+    self.assertEqual(test_function(), result.test_function())
 
   def test_binop_basic(self):
 
@@ -443,6 +449,88 @@ class AnfTransformerTest(test.TestCase):
       a[tmp_1002] = tmp_1003(tmp_1004)  # Or should be a[tmp1] = tmp2?
 
     self.assert_body_anfs_as_expected(expected_result, test_function)
+
+
+class AnfNonTransformationTest(AnfTransformerTest):
+  """Test that specifying "no transformation" does nothing.
+
+  Reuses all the examples of AnfTransformerTest by overriding
+  `assert_body_anfs_as_expected_`.
+  """
+
+  def assert_body_anfs_as_expected(self, expected_fn, test_fn):
+    # Testing the code bodies only.  Wrapping them in functions so the
+    # syntax highlights nicely, but Python doesn't try to execute the
+    # statements.
+    node, _ = parser.parse_entity(test_fn, future_features=())
+    orig_source = compiler.ast_to_source(node, indentation='  ')
+    orig_str = textwrap.dedent(orig_source).strip()
+    config = [(anf.ANY, anf.LEAVE)]  # Configuration to trasform nothing
+    node = anf.transform(
+        node, self._simple_context(),
+        config=config, gensym_source=DummyGensym)
+    new_source = compiler.ast_to_source(node, indentation='  ')
+    new_str = textwrap.dedent(new_source).strip()
+    self.assertEqual(orig_str, new_str)
+
+
+class AnfConfiguredTest(AnfTestBase):
+
+  def test_constants_in_function_calls(self):
+    # An example specific configuration that differs from the default: Moving
+    # literals out of being directly passed to functions, but nothing else.
+    literals = (gast.Num, gast.Str, gast.Bytes, gast.NameConstant, gast.Name)
+    config = [(anf.ASTEdgePattern(gast.Call, anf.ANY, literals), anf.REPLACE)]
+
+    def test_function(x, frob):
+      return frob(x, x+1, 2)
+
+    def expected_result(x, frob):
+      tmp_1001 = 2
+      return frob(x, x+1, tmp_1001)
+
+    self.assert_body_anfs_as_expected(expected_result, test_function, config)
+
+  def test_anf_some_function_calls(self):
+    # Another example specific configuration that differs from the default:
+    # Moving all arguments out of some function calls but leaving others be.
+    whitelist = ['foo']
+    def transform(parent, field, child):
+      del field
+      del child
+      func_name = parent.func.id
+      return str(func_name) in whitelist
+    config = [(anf.ASTEdgePattern(gast.Call, anf.ANY, anf.ANY), transform)]
+
+    def test_function(x, foo, bar):
+      y = foo(x, x+1, 2)
+      return bar(y, y+1, 2)
+
+    def expected_result(x, foo, bar):
+      tmp_1001 = x+1
+      tmp_1002 = 2
+      y = foo(x, tmp_1001, tmp_1002)
+      return bar(y, y+1, 2)
+
+    self.assert_body_anfs_as_expected(expected_result, test_function, config)
+
+  def test_touching_name_constant(self):
+    # Checking that the nodes for `True`, `False`, and `None` can be manipulated
+    # by a configuration.  This is non-trivial, because in Python 2 those are
+    # represented as `Name`, which is the same node type as variable references.
+    specials = (gast.Name, gast.NameConstant)
+    config = [(anf.ASTEdgePattern(gast.Call, anf.ANY, specials), anf.REPLACE)]
+
+    def test_function(f):
+      return f(True, False, None)
+
+    def expected_result(f):
+      tmp_1001 = True
+      tmp_1002 = False
+      tmp_1003 = None
+      return f(tmp_1001, tmp_1002, tmp_1003)
+
+    self.assert_body_anfs_as_expected(expected_result, test_function, config)
 
 
 if __name__ == '__main__':

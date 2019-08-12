@@ -53,8 +53,6 @@ using gpuStream_t = hipStream_t;
 using gpuError_t = hipError_t;
 #endif
 
-#define GetGPUStream(context) context->eigen_gpu_device().stream()
-
 // macro wrapper to declare dynamic shared memory
 #if GOOGLE_CUDA
 
@@ -69,6 +67,31 @@ using gpuError_t = hipError_t;
 #endif
 
 namespace tensorflow {
+
+#if GOOGLE_CUDA
+// cudaGetErrorString is available to both host and device
+__host__ __device__ inline const char* GpuGetErrorString(cudaError_t error) {
+  return cudaGetErrorString(error);
+}
+#elif TENSORFLOW_USE_ROCM
+// hipGetErrorString is available on host side only
+inline const char* GpuGetErrorString(hipError_t error) {
+  return hipGetErrorString(error);
+}
+#endif
+
+// Returns a raw reference to the current cuda stream. Required by a
+// number of kernel calls (for which StreamInterface* does not work),
+// i.e. CUB and certain cublas primitives.
+inline const gpuStream_t& GetGpuStream(OpKernelContext* context) {
+  const gpuStream_t* ptr = CHECK_NOTNULL(
+      reinterpret_cast<const gpuStream_t*>(context->op_device_context()
+                                               ->stream()
+                                               ->implementation()
+                                               ->GpuStreamMemberHack()));
+  return *ptr;
+}
+
 // Launches a GPU kernel through cudaLaunchKernel in CUDA environment, or
 // hipLaunchKernel in ROCm environment with the given arguments.
 //

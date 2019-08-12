@@ -63,7 +63,10 @@ py_test(
     python_version = "PY2",
     shard_count = 50,
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "no_oss",
+        "notsan",
+    ],
     deps = [
         ":namedtuples",
         ":random_tensor_pool",
@@ -528,7 +531,10 @@ py_test(
     python_version = "PY2",
     shard_count = 1,
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
+    tags = [
+        "no_oss",
+        "notsan",
+    ],
     deps = [
         ":gan_estimator",
         ":namedtuples",

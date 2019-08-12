@@ -25,6 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
@@ -137,6 +138,10 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -211,9 +216,13 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("SetStatsAggregatorDataset").Device(DEVICE_CPU),
+                        SetStatsAggregatorDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalSetStatsAggregatorDataset").Device(DEVICE_CPU),
     SetStatsAggregatorDatasetOp);
+
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

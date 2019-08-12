@@ -65,12 +65,8 @@ REGISTER_KERNEL_BUILDER(Name("Const")
 // HostConst: forced to generate output on the host.
 REGISTER_KERNEL_BUILDER(Name("HostConst").Device(DEVICE_CPU), _HostConstantOp);
 REGISTER_KERNEL_BUILDER(
-    Name("HostConst").Device(DEVICE_GPU).HostMemory("output"), _HostConstantOp);
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("HostConst").Device(DEVICE_SYCL).HostMemory("output"),
+    Name("HostConst").Device(DEVICE_DEFAULT).HostMemory("output"),
     _HostConstantOp);
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow
 

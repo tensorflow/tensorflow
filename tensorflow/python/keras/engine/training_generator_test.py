@@ -151,7 +151,8 @@ class TestGeneratorMethods(ForkRobustTestCase):
         loss='mse',
         optimizer=rmsprop.RMSprop(1e-3),
         metrics=['mae', metrics_module.CategoricalAccuracy()],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     self._sleep_at_end = True
     model.evaluate_generator(custom_generator(),
@@ -179,6 +180,7 @@ class TestGeneratorMethods(ForkRobustTestCase):
     model = testing_utils.get_small_mlp(
         num_hidden=3, num_classes=4, input_dim=2)
     model.run_eagerly = testing_utils.should_run_eagerly()
+    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     self._sleep_at_end = True
     model.predict_generator(custom_generator(),
@@ -218,7 +220,8 @@ class TestGeneratorMethods(ForkRobustTestCase):
         loss='mse',
         optimizer=rmsprop.RMSprop(1e-3),
         metrics=['mae', metrics_module.CategoricalAccuracy()],
-        run_eagerly=testing_utils.should_run_eagerly())
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
     model.fit_generator(custom_generator(mode=3),
                         steps_per_epoch=5,
@@ -246,24 +249,27 @@ class TestGeneratorMethods(ForkRobustTestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_generator_methods_invalid_use_case(self):
-
     def invalid_generator():
       while 1:
-        yield 0
+        yield (0, 0, 0, 0)
 
     model = testing_utils.get_small_mlp(
         num_hidden=3, num_classes=4, input_dim=2)
-    model.compile(loss='mse', optimizer=rmsprop.RMSprop(1e-3),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer=rmsprop.RMSprop(1e-3),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
-    with self.assertRaises(ValueError):
+    err_msg = 'Output of generator should be a tuple of 1 or 2 or 3 elements'
+    with self.assertRaisesRegex(ValueError, err_msg):
       model.fit_generator(invalid_generator(),
                           steps_per_epoch=5,
                           epochs=1,
                           verbose=1,
                           max_queue_size=10,
                           use_multiprocessing=False)
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegex(ValueError, err_msg):
       model.fit_generator(custom_generator(),
                           steps_per_epoch=5,
                           epochs=1,
@@ -272,12 +278,12 @@ class TestGeneratorMethods(ForkRobustTestCase):
                           use_multiprocessing=False,
                           validation_data=invalid_generator(),
                           validation_steps=10)
-    with self.assertRaises(AttributeError):
+    with self.assertRaisesRegex(ValueError, err_msg):
       model.predict_generator(invalid_generator(),
                               steps=5,
                               max_queue_size=10,
                               use_multiprocessing=False)
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegex(ValueError, err_msg):
       model.evaluate_generator(invalid_generator(),
                                steps=5,
                                max_queue_size=10,
@@ -295,8 +301,11 @@ class TestGeneratorMethods(ForkRobustTestCase):
     model = testing_utils.get_small_mlp(
         num_hidden=10, num_classes=1, input_dim=10)
 
-    model.compile(rmsprop.RMSprop(0.001), 'binary_crossentropy',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        rmsprop.RMSprop(0.001),
+        'binary_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(
         ones_generator(),
         steps_per_epoch=2,

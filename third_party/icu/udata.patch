@@ -1,5 +1,5 @@
---- /icu4c/source/common/unicode/uconfig.h	2018-06-19 22:34:56.000000000 -0700
-+++ /ice4c/source/common/unicode/uconfig.h.new	2019-03-12 10:12:35.896095657 -0700
+--- a/icu4c/source/common/unicode/uconfig.h
++++ b/icu4c/source/common/unicode/uconfig.h
 @@ -55,6 +55,11 @@
  #include "uconfig_local.h"
  #endif
@@ -13,8 +13,8 @@
   * \def U_DEBUG
   * Determines whether to include debugging code.
 
---- /icu4c/source/common/udata.cpp.old	2018-06-19 22:34:56.000000000 -0700
-+++ /icu4c/source/common/udata.cpp	2018-10-19 14:26:09.778950855 -0700
+--- a/icu4c/source/common/udata.cpp
++++ b/icu4c/source/common/udata.cpp
 @@ -18,15 +18,15 @@
  
  #include "unicode/utypes.h"  /* U_PLATFORM etc. */

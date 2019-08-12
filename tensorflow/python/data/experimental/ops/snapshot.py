@@ -35,13 +35,32 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
                path,
                compression=None,
                reader_path_prefix=None,
-               writer_path_prefix=None):
+               writer_path_prefix=None,
+               shard_size_bytes=None,
+               pending_snapshot_expiry_seconds=None,
+               num_reader_threads=None,
+               reader_buffer_size=None,
+               num_writer_threads=None,
+               writer_buffer_size=None):
 
     self._compression = compression if compression is not None else ""
     self._reader_path_prefix = (
         reader_path_prefix if reader_path_prefix is not None else "")
     self._writer_path_prefix = (
         writer_path_prefix if writer_path_prefix is not None else "")
+    self._shard_size_bytes = (
+        shard_size_bytes if shard_size_bytes is not None else -1)
+    self._pending_snapshot_expiry_seconds = (
+        pending_snapshot_expiry_seconds
+        if pending_snapshot_expiry_seconds is not None else -1)
+    self._num_reader_threads = (
+        num_reader_threads if num_reader_threads is not None else -1)
+    self._reader_buffer_size = (
+        reader_buffer_size if reader_buffer_size is not None else -1)
+    self._num_writer_threads = (
+        num_writer_threads if num_writer_threads is not None else -1)
+    self._writer_buffer_size = (
+        writer_buffer_size if writer_buffer_size is not None else -1)
 
     self._input_dataset = input_dataset
     self._path = ops.convert_to_tensor(path, dtype=dtypes.string, name="path")
@@ -52,14 +71,26 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
         compression=self._compression,
         reader_path_prefix=self._reader_path_prefix,
         writer_path_prefix=self._writer_path_prefix,
-        **dataset_ops.flat_structure(self))
+        shard_size_bytes=self._shard_size_bytes,
+        pending_snapshot_expiry_seconds=self._pending_snapshot_expiry_seconds,
+        num_reader_threads=self._num_reader_threads,
+        reader_buffer_size=self._reader_buffer_size,
+        num_writer_threads=self._num_writer_threads,
+        writer_buffer_size=self._writer_buffer_size,
+        **self._flat_structure)
     super(_SnapshotDataset, self).__init__(input_dataset, variant_tensor)
 
 
 def snapshot(path,
              compression=None,
              reader_path_prefix=None,
-             writer_path_prefix=None):
+             writer_path_prefix=None,
+             shard_size_bytes=None,
+             pending_snapshot_expiry_seconds=None,
+             num_reader_threads=None,
+             reader_buffer_size=None,
+             num_writer_threads=None,
+             writer_buffer_size=None):
   """Writes to/reads from a snapshot of a dataset.
 
   This function attempts to determine whether a valid snapshot exists at the
@@ -76,6 +107,27 @@ def snapshot(path,
       Defaults to None.
     writer_path_prefix: A prefix to add to the path when writing to snapshots.
       Defaults to None.
+    shard_size_bytes: The size of each shard to be written by the snapshot
+      dataset op. Defaults to 10 GiB.
+    pending_snapshot_expiry_seconds: How long to wait (in seconds) before
+      the snapshot op considers a previously unfinished snapshot to be stale.
+    num_reader_threads: Number of threads to parallelize reading from snapshot.
+      Especially useful if compression is turned on since the decompression
+      operation tends to be intensive. Defaults to 1. If > 1, then this might
+      introduce non-determinism i.e. the order in which the elements are
+      read from the snapshot are different from the order they're written.
+    reader_buffer_size: Maximum number of elements we can prefetch reading from
+      the snapshot. Defaults to 1. Increasing this might improve performance
+      but will increase memory consumption.
+    num_writer_threads: Number of threads to parallelize writing from snapshot.
+      We'll open up `num_writer_threads` files and write to them in parallel.
+      Especially useful if compression is turned on since the compression
+      operation tends to be intensive. Defaults to 1. If > 1, then this might
+      introduce non-determinism i.e. the order in which the elements are
+      read from the upstream iterator are different from the order they're
+      written.
+    writer_buffer_size: Maximum number of pipeline elements to fill up the
+      buffer before writing them out using `num_writer_threads`.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -84,6 +136,9 @@ def snapshot(path,
 
   def _apply_fn(dataset):
     return _SnapshotDataset(dataset, path, compression, reader_path_prefix,
-                            writer_path_prefix)
+                            writer_path_prefix, shard_size_bytes,
+                            pending_snapshot_expiry_seconds, num_reader_threads,
+                            reader_buffer_size, num_writer_threads,
+                            writer_buffer_size)
 
   return _apply_fn

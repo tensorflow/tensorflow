@@ -207,8 +207,77 @@ Status CreateFunctionLibraryDefinition(
   }
   *result = absl::make_unique<FunctionLibraryDefinition>(
       lib_def->ReachableDefinitions(*fdef));
-  TF_RETURN_IF_ERROR((*result)->AddFunctionDef(*fdef));
+  return (*result)->CopyFunctionDefFrom(func_name, *lib_def);
+}
+
+Status IsNodeStateful(const FunctionLibraryDefinition& library,
+                      const NodeDef& node);
+
+Status IsFunctionStateful(const FunctionLibraryDefinition& library,
+                          const FunctionDef& function_def) {
+  if (!function_def.signature().is_stateful()) {
+    return Status::OK();
+  }
+
+  for (const NodeDef& node_def : function_def.node_def()) {
+    TF_RETURN_IF_ERROR(IsNodeStateful(library, node_def));
+  }
   return Status::OK();
+}
+
+// Returns whether an op has been whitelisted as stateless. Uses a heuristic to
+// whitelist source dataset ops which have been marked stateful due to
+// b/65524810. Also looks up the `op_def->name` in the global
+// `WhitelistedStatefulOpRegistry`.
+bool IsOpWhitelisted(const OpDef* op_def) {
+  return (op_def->output_arg_size() == 1 &&
+          op_def->output_arg(0).type() == DT_VARIANT &&
+          (absl::EndsWith(op_def->name(), "Dataset") ||
+           absl::EndsWith(op_def->name(), "DatasetV2"))) ||
+         WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());
+}
+
+Status IsNodeStateful(const FunctionLibraryDefinition& library,
+                      const NodeDef& node) {
+  const OpDef* op_def;
+
+  // TODO(jsimsa): Fix C++ unit tests so that we do not have to ignore
+  // `LookUpOpDef` errors here.
+  if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok() ||
+      IsOpWhitelisted(op_def) || !op_def->is_stateful() ||
+      op_def->name() == "Assert") {
+    return Status::OK();
+  }
+
+  if (op_def->name() == "If") {
+    const FunctionDef* then_func =
+        library.Find(node.attr().at("then_branch").func().name());
+    const FunctionDef* else_func =
+        library.Find(node.attr().at("else_branch").func().name());
+    if (then_func != nullptr) {
+      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *then_func));
+    }
+    if (else_func != nullptr) {
+      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *else_func));
+    }
+    return Status::OK();
+  }
+
+  if (op_def->name() == "While") {
+    const FunctionDef* cond_func =
+        library.Find(node.attr().at("cond").func().name());
+    const FunctionDef* body_func =
+        library.Find(node.attr().at("body").func().name());
+    if (cond_func != nullptr) {
+      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *cond_func));
+    }
+    if (body_func != nullptr) {
+      TF_RETURN_IF_ERROR(IsFunctionStateful(library, *body_func));
+    }
+    return Status::OK();
+  }
+
+  return errors::FailedPrecondition(op_def->name(), " is stateful.");
 }
 
 }  // namespace
@@ -256,7 +325,36 @@ Status FunctionMetadata::Create(
       (*out_metadata)->func_.name(), &(*out_metadata)->lib_def_));
   TF_RETURN_IF_ERROR(CreateShortCircuitInfo(
       ctx, (*out_metadata)->func_, &(*out_metadata)->short_circuit_info_));
+  (*out_metadata)->ValidateMultiDevice();
   return Status::OK();
+}
+
+void FunctionMetadata::ValidateMultiDevice() {
+  const FunctionDef* fdef = lib_def_->Find(func_.name());
+  if (is_multi_device_function_) {
+    auto attr = fdef->attr().find(FunctionLibraryDefinition::kIntsOnDeviceAttr);
+    if (attr != fdef->attr().end() && attr->second.b()) {
+      LOG(WARNING)
+          << "Disabling multi-device execution for a function that uses the "
+          << FunctionLibraryDefinition::kIntsOnDeviceAttr << " attribute.";
+      is_multi_device_function_ = false;
+      return;
+    }
+    auto validate_arg = [this](const OpDef::ArgDef& arg) {
+      if (!arg.number_attr().empty() || !arg.type_list_attr().empty()) {
+        LOG(WARNING) << "Disabling multi-device execution for a function with "
+                        "a vector argument "
+                     << arg.name() << ".";
+        is_multi_device_function_ = false;
+      }
+    };
+    for (const auto& arg : fdef->signature().input_arg()) {
+      validate_arg(arg);
+    }
+    for (const auto& arg : fdef->signature().output_arg()) {
+      validate_arg(arg);
+    }
+  }
 }
 
 /* static */
@@ -344,11 +442,22 @@ Status CapturedFunction::Instantiate(
     // TODO(jsimsa): Correctly handle tensors on devices other than CPU:0.
     Device* cpu_device;
     TF_RETURN_IF_ERROR(lib->device_mgr()->LookupDevice("CPU:0", &cpu_device));
-    for (auto& input : captured_inputs_) {
+    std::unordered_map<int, DtypeAndPartialTensorShape>&
+        input_resource_variable_dtypes_and_shapes =
+            inst_opts.input_resource_dtypes_and_shapes;
+    for (size_t i = 0; i < captured_inputs_.size(); ++i) {
+      const auto& input = captured_inputs_[i];
       DataType dtype = input.dtype();
       if (dtype == DT_RESOURCE) {
         const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
         inst_opts.input_devices.push_back(handle.device());
+        const auto& dtypes_and_shapes = handle.dtypes_and_shapes();
+        // Set dtypes and shapes for resource variable inputs.
+        if (!dtypes_and_shapes.empty()) {
+          input_resource_variable_dtypes_and_shapes[num_non_captured_inputs +
+                                                    i] =
+              dtypes_and_shapes.at(0);
+        }
       } else if (MTypeFromDType(dtype) == HOST_MEMORY) {
         inst_opts.input_devices.push_back(cpu_device->name());
       } else {
@@ -373,7 +482,18 @@ Status CapturedFunction::Instantiate(
   *instantiated_captured_function =
       absl::WrapUnique<InstantiatedCapturedFunction>(
           new InstantiatedCapturedFunction(lib, f_handle, std::move(ret_types),
-                                           *ctx->runner(), this));
+                                           *ctx->runner(),
+                                           ctx->cancellation_manager(), this));
+  return Status::OK();
+}
+
+bool CapturedFunction::IsStateful() const { return !CheckExternalState().ok(); }
+
+Status CapturedFunction::CheckExternalState() const {
+  for (const auto& name : lib_def()->ListFunctionNames()) {
+    TF_RETURN_IF_ERROR(
+        IsFunctionStateful(*lib_def(), *(lib_def()->Find(name))));
+  }
   return Status::OK();
 }
 
@@ -494,11 +614,12 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 InstantiatedCapturedFunction::InstantiatedCapturedFunction(
     FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
     DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
-    CapturedFunction* captured_func)
+    CancellationManager* cancellation_manager, CapturedFunction* captured_func)
     : lib_(lib),
       f_handle_(f_handle),
       ret_types_(std::move(ret_types)),
       captured_runner_(std::move(runner)),
+      cancellation_manager_(cancellation_manager),
       captured_func_(captured_func) {}
 
 // NOTE: We don't release f_handle_ here and instead delegate the function
@@ -523,18 +644,13 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
       });
   f_opts.step_container = &step_container;
   f_opts.runner = ctx->runner();
-  if (lib_->device()->device_type() != DEVICE_CPU ||
-      captured_func_->is_multi_device_function()) {
-    f_opts.create_rendezvous = true;
-  }
-  // TODO(mrry): Add cancellation manager support to IteratorContext
-  // so that we can cancel running map functions. The local
-  // cancellation manager here is created so that we can run kernels
-  // (such as queue kernels) that depend on the non-nullness of
-  // `OpKernelContext::cancellation_manager()`, but additional effort
-  // will be required to plumb it through the `IteratorContext`.
-  CancellationManager c_mgr;
-  f_opts.cancellation_manager = &c_mgr;
+  f_opts.create_rendezvous = ShouldCreateRendezvous();
+  CancellationManager cancellation_manager;
+  f_opts.cancellation_manager = &cancellation_manager;
+  std::function<void()> deregister_fn;
+  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
+      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
                            ret_types_);
@@ -564,17 +680,13 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
       });
   f_opts.step_container = &step_container;
   f_opts.runner = ctx->runner();
-  if (lib_->device()->device_type() != DEVICE_CPU) {
-    f_opts.create_rendezvous = true;
-  }
-  // TODO(mrry): Add cancellation manager support to IteratorContext
-  // so that we can cancel running map functions. The local
-  // cancellation manager here is created so that we can run kernels
-  // (such as queue kernels) that depend on the non-nullness of
-  // `OpKernelContext::cancellation_manager()`, but additional effort
-  // will be required to plumb it through the `IteratorContext`.
-  CancellationManager c_mgr;
-  f_opts.cancellation_manager = &c_mgr;
+  f_opts.create_rendezvous = ShouldCreateRendezvous();
+  CancellationManager cancellation_manager;
+  f_opts.cancellation_manager = &cancellation_manager;
+  std::function<void()> deregister_fn;
+  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
+      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
@@ -604,17 +716,13 @@ Status InstantiatedCapturedFunction::RunInstantiated(
       });
   f_opts.step_container = &step_container;
   f_opts.runner = &captured_runner_;
-  if (lib_->device()->device_type() != DEVICE_CPU) {
-    f_opts.create_rendezvous = true;
-  }
-  // TODO(mrry): Add cancellation manager support to IteratorContext
-  // so that we can cancel running map functions. The local
-  // cancellation manager here is created so that we can run kernels
-  // (such as queue kernels) that depend on the non-nullness of
-  // `OpKernelContext::cancellation_manager()`, but additional effort
-  // will be required to plumb it through the `IteratorContext`.
-  CancellationManager c_mgr;
-  f_opts.cancellation_manager = &c_mgr;
+  f_opts.create_rendezvous = ShouldCreateRendezvous();
+  CancellationManager cancellation_manager;
+  f_opts.cancellation_manager = &cancellation_manager;
+  std::function<void()> deregister_fn;
+  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
+      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
                               ret_types_);
@@ -659,65 +767,74 @@ void InstantiatedCapturedFunction::RunAsync(
       });
   f_opts.step_container = step_container;
   f_opts.runner = ctx->runner();
-  if (lib_->device()->device_type() != DEVICE_CPU) {
-    f_opts.create_rendezvous = true;
+  f_opts.create_rendezvous = ShouldCreateRendezvous();
+  auto cancellation_manager = absl::make_unique<CancellationManager>();
+  f_opts.cancellation_manager = cancellation_manager.get();
+  std::function<void()> deregister_fn;
+  Status s = ConnectCancellationManagers(
+      ctx->cancellation_manager(), cancellation_manager.get(), &deregister_fn);
+  if (!s.ok()) {
+    done(s);
+    return;
   }
-  // TODO(mrry): Add cancellation manager support to IteratorContext
-  // so that we can cancel running map functions. The local
-  // cancellation manager here is created so that we can run kernels
-  // (such as queue kernels) that depend on the non-nullness of
-  // `OpKernelContext::cancellation_manager()`, but additional effort
-  // will be required to plumb it through the `IteratorContext`.
-  CancellationManager* c_mgr = new CancellationManager();
-  f_opts.cancellation_manager = c_mgr;
+
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (ctx->model() || ctx->stats_aggregator()) {
     stats_collector = absl::make_unique<SimpleStepStatsCollector>();
   }
   f_opts.stats_collector = stats_collector.get();
 
+  // Transfer ownership of the cancellation manager to `callback`.
+  CancellationManager* raw_cancellation_manager =
+      cancellation_manager.release();
   auto callback = std::bind(
-      [this, rets, step_container, c_mgr, frame](
+      [this, rets, step_container, raw_cancellation_manager, frame](
           const FunctionLibraryRuntime::DoneCallback& done,
-          const std::shared_ptr<model::Model>& model,
-          const std::shared_ptr<StatsAggregator>& stats_aggregator,
+          IteratorContext* ctx, const std::function<void()>& deregister_fn,
           const string& prefix,
           const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
           // Begin unbound arguments.
           Status s) {
         delete step_container;
-        delete c_mgr;
+        deregister_fn();
+        delete raw_cancellation_manager;
         if (s.ok()) {
           s = frame->ConsumeRetvals(rets);
         }
         delete frame;
-        // TODO(b/129085499) Utilize the `node_name` which would be unique than
-        // the prefix for the function execution time statistics.
-        // prefix_with_func_name would then be node_name + func_name.
-        if (stats_aggregator) {
-          string prefix_end =
-              str_util::Split(prefix, "::", str_util::SkipEmpty()).back();
-          string prefix_with_func_name =
-              strings::StrCat(prefix_end, stats_utils::kDelimiter,
-                              captured_func_->func().name());
-          stats_aggregator->AddToHistogram(
-              stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
-              {static_cast<float>(stats_collector->processing_time())},
-              model->NumElements(prefix));
-        }
-        if (model) {
-          model->AddProcessingTime(prefix, stats_collector->processing_time());
-          model->RecordStart(prefix, false /* stop_output */);
+        if (ctx->model()) {
+          // TODO(b/129085499) Utilize the `node_name` which would be unique
+          // than the prefix for the function execution time statistics.
+          // prefix_with_func_name would then be node_name + func_name.
+          if (ctx->stats_aggregator()) {
+            string prefix_end =
+                str_util::Split(prefix, "::", str_util::SkipEmpty()).back();
+            string prefix_with_func_name =
+                strings::StrCat(prefix_end, stats_utils::kDelimiter,
+                                captured_func_->func().name());
+            ctx->stats_aggregator()->AddToHistogram(
+                stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
+                {static_cast<float>(stats_collector->processing_time())},
+                ctx->model()->NumElements(prefix));
+          }
+          ctx->model()->AddProcessingTime(prefix,
+                                          stats_collector->processing_time());
+          ctx->model()->RecordStart(prefix, false /* stop_output */);
         }
         done(s);
-        if (model) {
-          model->RecordStop(prefix, false /* start_output */);
+        if (ctx->model()) {
+          ctx->model()->RecordStop(prefix, false /* start_output */);
         }
       },
-      std::move(done), ctx->model(), ctx->stats_aggregator(), prefix,
+      std::move(done), ctx, std::move(deregister_fn), prefix,
       std::move(stats_collector), std::placeholders::_1);
 
   lib_->Run(f_opts, f_handle_, frame, std::move(callback));
+}
+
+bool InstantiatedCapturedFunction::ShouldCreateRendezvous() const {
+  return lib_->device()->device_type() != DEVICE_CPU ||
+         captured_func_->is_multi_device_function();
 }
 
 CapturedFunction::CapturedFunction(

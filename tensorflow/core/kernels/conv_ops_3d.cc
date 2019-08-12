@@ -31,12 +31,17 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 using stream_executor::dnn::DimIndex;
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -186,7 +191,7 @@ TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // A dummy type to group forward convolution autotune results together.
 struct Conv3dAutoTuneGroup {
@@ -435,6 +440,13 @@ struct LaunchConvOp<GPUDevice, T> {
 
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
+#if GOOGLE_CUDA
+      se::TfAllocatorAdapter tf_allocator_adapter(
+          stream->parent()->platform(), ctx->device()->GetAllocator({}));
+      se::cuda::RedzoneAllocator rz_allocator(
+          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions());
+      se::DeviceMemory<T> output_ptr_rz(
+          WrapRedzoneBestEffort(&rz_allocator, output_ptr));
       std::vector<AlgorithmDesc> algorithms;
       OP_REQUIRES(ctx,
                   stream->parent()->GetConvolveAlgorithms(
@@ -451,12 +463,19 @@ struct LaunchConvOp<GPUDevice, T> {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
         DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+        se::cuda::RedzoneAllocator rz_scratch_allocator(
+            stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+            /*memory_limit=*/ConvolveScratchSize);
+        se::ScratchAllocator* allocator_used =
+            !RedzoneCheckDisabled()
+                ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
+                : static_cast<se::ScratchAllocator*>(&scratch_allocator);
         ProfileResult profile_result;
         bool cudnn_launch_status =
             stream
                 ->ThenConvolveWithAlgorithm(
                     input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                    output_desc, &output_ptr, &scratch_allocator,
+                    output_desc, &output_ptr_rz, allocator_used,
                     AlgorithmConfig(profile_algorithm), &profile_result)
                 .ok();
         if (cudnn_launch_status) {
@@ -466,17 +485,38 @@ struct LaunchConvOp<GPUDevice, T> {
             result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
             result.mutable_conv()->set_tensor_ops_enabled(
                 profile_algorithm.tensor_ops_enabled());
-            result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+            result.set_scratch_bytes(
+                !RedzoneCheckDisabled()
+                    ? rz_scratch_allocator
+                          .TotalAllocatedBytesExcludingRedzones()
+                    : scratch_allocator.TotalByteSize());
             *result.mutable_run_time() = proto_utils::ToDurationProto(
                 absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+            CheckRedzones(rz_scratch_allocator, &result);
+            CheckRedzones(rz_allocator, &result);
           }
         }
       }
       LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,
-                             se::dnn::ToDataType<T>::value, input_desc,
-                             filter_desc, output_desc, conv_desc,
-                             stream->parent(), results);
+                             se::dnn::ToDataType<T>::value, input_ptr,
+                             filter_ptr, output_ptr, input_desc, filter_desc,
+                             output_desc, conv_desc, stream->parent(), results);
       OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
+#elif TENSORFLOW_USE_ROCM
+      ProfileResult best_result;
+      DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+      bool miopen_find_status =
+          stream
+              ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
+                                          filter_ptr, conv_desc, output_desc,
+                                          &output_ptr, &scratch_allocator,
+                                          AlgorithmConfig(), &best_result)
+              .ok();
+      OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
+                  errors::NotFound("Failed to find conv algorithm!"));
+      algorithm_config.set_algorithm(best_result.algorithm());
+      algorithm_config.set_scratch_size(best_result.scratch_size());
+#endif
       AutoTuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
     }
 
@@ -555,6 +595,6 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<double>("T"),
     Conv3DOp<GPUDevice, double>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

@@ -28,12 +28,16 @@ from tensorflow.python.tools import module_util as _module_util
 
 # API IMPORTS PLACEHOLDER
 
+# WRAPPER_PLACEHOLDER
+
 # Hook external TensorFlow modules.
 _current_module = _sys.modules[__name__]
 try:
   from tensorboard.summary._tf import summary
   _current_module.__path__ = (
       [_module_util.get_parent_dir(summary)] + _current_module.__path__)
+  # Make sure we get the correct summary module with lazy loading
+  setattr(_current_module, "summary", summary)
 except ImportError:
   _logging.warning(
       "Limited tf.compat.v2.summary API due to missing TensorBoard "
@@ -43,6 +47,7 @@ try:
   from tensorflow_estimator.python.estimator.api._v2 import estimator
   _current_module.__path__ = (
       [_module_util.get_parent_dir(estimator)] + _current_module.__path__)
+  setattr(_current_module, "estimator", estimator)
 except ImportError:
   pass
 
@@ -50,6 +55,7 @@ try:
   from tensorflow.python.keras.api._v2 import keras
   _current_module.__path__ = (
       [_module_util.get_parent_dir(keras)] + _current_module.__path__)
+  setattr(_current_module, "keras", keras)
 except ImportError:
   pass
 
@@ -61,11 +67,15 @@ except ImportError:
 #
 # This make this one symbol available directly.
 from tensorflow.python.compat.v2_compat import enable_v2_behavior  # pylint: disable=g-import-not-at-top
+setattr(_current_module, "enable_v2_behavior", enable_v2_behavior)
 
 # Add module aliases
-_current_module = _sys.modules[__name__]
 if hasattr(_current_module, 'keras'):
   losses = keras.losses
   metrics = keras.metrics
   optimizers = keras.optimizers
   initializers = keras.initializers
+  setattr(_current_module, "losses", losses)
+  setattr(_current_module, "metrics", metrics)
+  setattr(_current_module, "optimizers", optimizers)
+  setattr(_current_module, "initializers", initializers)

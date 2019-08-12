@@ -69,6 +69,12 @@ struct MarkForCompilationPassFlags {
   // we do not do deadness related safety checks.  This is unsound in general,
   // but can be used as a debugging aid.
   bool tf_xla_disable_deadness_safety_checks_for_debugging;
+
+  // If tf_xla_disable_resource_variable_safety_checks_for_debugging is set to
+  // true then we do not do safety checks to preserve TensorFlow's resource
+  // variable concurrency semantics.  This is unsound in general, but can be
+  // used as a debugging aid.
+  bool tf_xla_disable_resource_variable_safety_checks_for_debugging;
 };
 
 // Flags associated with the XLA bridge's xla_device module.
@@ -96,6 +102,14 @@ struct BuildXlaOpsPassFlags {
   // If true then insert Print nodes to print out values produced by XLA
   // clusters.  Useful for debugging.
   bool tf_xla_print_cluster_outputs;
+
+  // If true, insert CheckNumerics nodes for every floating point typed input to
+  // an XLA cluster.
+  bool tf_xla_check_cluster_input_numerics;
+
+  // If true, insert CheckNumerics nodes for every floating point typed output
+  // from an XLA cluster.
+  bool tf_xla_check_cluster_output_numerics;
 
   // Disables all constant folding. The primary use for this is for testing to
   // guarantee that tests are run on XLA and not on TF's CPU implementation.

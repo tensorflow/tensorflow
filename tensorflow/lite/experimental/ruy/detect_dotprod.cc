@@ -78,12 +78,19 @@ bool try_asm_snippet(bool (*asm_snippet)()) {
 
 #include <setjmp.h>
 #include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 
-#include <mutex>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <mutex>  // NOLINT(build/c++11)
+
+// Intentionally keep checking for __linux__ here in case we want to
+// extend RUY_IMPLEMENT_DETECT_DOTPROD outside of linux in the future.
+#ifdef __linux__
+#include <sys/auxv.h>
+#include <sys/utsname.h>
+#endif
 
 #endif
 
@@ -106,7 +113,7 @@ void wait_until_no_pending_sigill() {
 sigjmp_buf& global_sigjmp_buf_just_before_trying_snippet() {
   static sigjmp_buf g;
   return g;
-};
+}
 
 // SIGILL signal handler. Long-jumps to just before
 // we ran the snippet that we know is the only thing that could have generated
@@ -166,11 +173,47 @@ bool dotprod_asm_snippet() {
       : "x0", "v0", "v1");
   // Expecting 100 (input accumulator value) + 100 * 100 + ... (repeat 4 times)
   return result == 40100;
-};
+}
+
+bool DetectDotprodBySigIllMethod() {
+  return try_asm_snippet(dotprod_asm_snippet);
+}
+
+// Intentionally keep checking for __linux__ here in case we want to
+// extend RUY_IMPLEMENT_DETECT_DOTPROD outside of linux in the future.
+#ifdef __linux__
+bool IsLinuxAuxvMethodAvailable() {
+  struct utsname utsbuf;
+  uname(&utsbuf);
+  int major, minor, patch;
+  if (3 != sscanf(utsbuf.release, "%d.%d.%d", &major, &minor, &patch)) {
+    return false;
+  }
+  // This is implemented in linux 4.14.111, not in 4.14.105.
+  return major > 4 ||
+         (major == 4 && (minor > 14 || (minor == 14 && patch >= 111)));
+}
+
+bool DetectDotprodByLinuxAuxvMethod() {
+  // This is the value of HWCAP_ASIMDDP in sufficiently recent Linux headers,
+  // however we need to support building against older headers for the time
+  // being.
+  const int kLocalHwcapAsimddp = 1 << 20;
+  return getauxval(AT_HWCAP) & kLocalHwcapAsimddp;
+}
+#endif
 
 }  // namespace
 
-bool DetectDotprod() { return try_asm_snippet(dotprod_asm_snippet); }
+bool DetectDotprod() {
+#ifdef __linux__
+  if (IsLinuxAuxvMethodAvailable()) {
+    return DetectDotprodByLinuxAuxvMethod();
+  }
+#endif
+
+  return DetectDotprodBySigIllMethod();
+}
 
 #else
 bool DetectDotprod() { return false; }

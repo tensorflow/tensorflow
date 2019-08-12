@@ -117,6 +117,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 

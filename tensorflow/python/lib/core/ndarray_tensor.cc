@@ -168,6 +168,16 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       if (pyarray_type == Bfloat16NumpyType()) {
         *out_tf_datatype = TF_BFLOAT16;
         break;
+      } else if (pyarray_type == NPY_ULONGLONG) {
+        // NPY_ULONGLONG is equivalent to NPY_UINT64, while their enum values
+        // might be different on certain platforms.
+        *out_tf_datatype = TF_UINT64;
+        break;
+      } else if (pyarray_type == NPY_LONGLONG) {
+        // NPY_LONGLONG is equivalent to NPY_INT64, while their enum values
+        // might be different on certain platforms.
+        *out_tf_datatype = TF_INT64;
+        break;
       }
       return errors::Internal("Unsupported numpy type: ",
                               numpy_type_name(pyarray_type));
@@ -178,28 +188,31 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
 Status PyObjectToString(PyObject* obj, const char** ptr, Py_ssize_t* len,
                         PyObject** ptr_owner) {
   *ptr_owner = nullptr;
-  if (!PyUnicode_Check(obj)) {
+  if (PyBytes_Check(obj)) {
     char* buf;
     if (PyBytes_AsStringAndSize(obj, &buf, len) != 0) {
       return errors::Internal("Unable to get element as bytes.");
     }
     *ptr = buf;
     return Status::OK();
-  }
+  } else if (PyUnicode_Check(obj)) {
 #if (PY_MAJOR_VERSION > 3 || (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION >= 3))
-  *ptr = PyUnicode_AsUTF8AndSize(obj, len);
-  if (*ptr != nullptr) return Status::OK();
+    *ptr = PyUnicode_AsUTF8AndSize(obj, len);
+    if (*ptr != nullptr) return Status::OK();
 #else
-  PyObject* utemp = PyUnicode_AsUTF8String(obj);
-  char* buf;
-  if (utemp != nullptr && PyBytes_AsStringAndSize(utemp, &buf, len) != -1) {
-    *ptr = buf;
-    *ptr_owner = utemp;
-    return Status::OK();
-  }
-  Py_XDECREF(utemp);
+    PyObject* utemp = PyUnicode_AsUTF8String(obj);
+    char* buf;
+    if (utemp != nullptr && PyBytes_AsStringAndSize(utemp, &buf, len) != -1) {
+      *ptr = buf;
+      *ptr_owner = utemp;
+      return Status::OK();
+    }
+    Py_XDECREF(utemp);
 #endif
-  return errors::Internal("Unable to convert element to UTF-8.");
+    return errors::Internal("Unable to convert element to UTF-8");
+  } else {
+    return errors::Internal("Unsupported object type ", obj->ob_type->tp_name);
+  }
 }
 
 // Iterate over the string array 'array', extract the ptr and len of each string
@@ -216,7 +229,7 @@ Status PyBytesArrayMap(PyArrayObject* array, F f) {
     }
     Py_ssize_t len;
     const char* ptr;
-    PyObject* ptr_owner;
+    PyObject* ptr_owner = nullptr;
     TF_RETURN_IF_ERROR(PyObjectToString(item.get(), &ptr, &len, &ptr_owner));
     f(ptr, len);
     Py_XDECREF(ptr_owner);
@@ -393,6 +406,25 @@ inline void FastMemcpy(void* dst, const void* src, size_t size) {
 }
 
 }  // namespace
+
+// TODO(slebedev): revise TF_TensorToPyArray usages and switch to the
+// aliased version where appropriate.
+Status TF_TensorToMaybeAliasedPyArray(Safe_TF_TensorPtr tensor,
+                                      PyObject** out_ndarray) {
+  auto dtype = TF_TensorType(tensor.get());
+  if (dtype == TF_STRING || dtype == TF_RESOURCE) {
+    return TF_TensorToPyArray(std::move(tensor), out_ndarray);
+  }
+
+  TF_Tensor* moved = tensor.release();
+  int64 nelems = -1;
+  gtl::InlinedVector<npy_intp, 4> dims =
+      GetPyArrayDimensionsForTensor(moved, &nelems);
+  return ArrayFromMemory(
+      dims.size(), dims.data(), TF_TensorData(moved),
+      static_cast<DataType>(dtype), [moved] { TF_DeleteTensor(moved); },
+      out_ndarray);
+}
 
 // Converts the given TF_Tensor to a numpy ndarray.
 // If the returned status is OK, the caller becomes the owner of *out_array.

@@ -26,6 +26,35 @@ from tensorflow.python.platform import test
 
 class ErrorMetadataBaseTest(test.TestCase):
 
+  def test_create_exception_default_constructor(self):
+
+    class CustomError(Exception):
+      pass
+
+    em = errors.ErrorMetadataBase(
+        callsite_tb=(),
+        cause_metadata=None,
+        cause_message='test message',
+        source_map={})
+    exc = em.create_exception(CustomError())
+    self.assertIsInstance(exc, CustomError)
+    self.assertIn('test message', str(exc))
+
+  def test_create_exception_custom_constructor(self):
+
+    class CustomError(Exception):
+
+      def __init__(self):
+        super(CustomError, self).__init__('test_message')
+
+    em = errors.ErrorMetadataBase(
+        callsite_tb=(),
+        cause_metadata=None,
+        cause_message='test message',
+        source_map={})
+    exc = em.create_exception(CustomError())
+    self.assertIsNone(exc)
+
   def test_get_message_when_frame_info_code_is_none(self):
     callsite_tb = [
         ('/path/one.py', 11, 'test_fn_1', None),

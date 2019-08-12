@@ -1,10 +1,9 @@
+load("//tensorflow/lite:build_def.bzl", "tf_to_tflite")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow/lite:build_def.bzl", "tf_to_tflite")
 
 exports_files(glob(["*.pb"]))
 

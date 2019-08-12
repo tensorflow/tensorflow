@@ -29,6 +29,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import datetime
 import functools
 import itertools
 import operator
@@ -36,7 +37,6 @@ import os
 import random
 import re
 import string
-import tempfile
 import traceback
 import zipfile
 import numpy as np
@@ -50,12 +50,15 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import tensorflow as tf
 from google.protobuf import text_format
 # TODO(aselle): switch to TensorFlow's resource_loader
+from tensorflow.contrib.quantize.python import quantize_graph
+
 from tensorflow.lite.testing import generate_examples_report as report_lib
 from tensorflow.lite.testing import string_util_wrapper
-from tensorflow.python.framework import test_util
 from tensorflow.python.framework import graph_util as tf_graph_util
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import spectral_ops_test_util
 
 
 RANDOM_SEED = 342
@@ -68,14 +71,14 @@ KNOWN_BUGS = {
     # TOCO doesn't support scalars as input.
     # Concat doesn't work with a single input tensor
     r"concat.*num_tensors=1": "67378344",
-    # Transposition in MatMul is not fully supported.
-    "fully_connected.*transpose_a=True": "67586970",
     # Softmax graphs are too complex.
     r"softmax.*dim=0": "67749831",
     # BatchToSpaceND only supports 4D tensors.
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
     # Div will use floordiv.
     r"div.*int32": "72051395",
+    # Strided slice cannot handle new_axis_mask.
+    r"strided_slice.*spec=\[None": "137470173",
 }
 
 
@@ -98,14 +101,16 @@ class Options(object):
     self.save_graphdefs = False
     # Whether the TFLite Flex converter is being used.
     self.run_with_flex = False
+    # Whether to generate test cases for edgetpu.
+    self.make_edgetpu_tests = False
     # The function to convert a TensorFLow model to TFLite model.
     # See the document for `toco_convert` function for its required signature.
-    # TODO(ycling): Decouple `toco_convert` function from this module, and
-    # remove the `toco` attribute in this class.
-    self.tflite_convert_function = toco_convert
+    self.tflite_convert_function = None
     # A map from regular expression to bug number. Any test failure with label
     # matching the expression will be considered due to the corresponding bug.
     self.known_bugs = KNOWN_BUGS
+    # Make tests by setting TF forward compatibility horizon to the future.
+    self.make_forward_compat_test = False
 
 
 # A map from names to functions which make test cases.
@@ -144,49 +149,12 @@ class ExtraTocoOptions(object):
     self.rnn_states = None
     # Split the LSTM inputs from 5 inoputs to 18 inputs for TFLite.
     self.split_tflite_lstm_inputs = None
+    # The inference input type passed to TFLiteConvert.
+    self.inference_input_type = None
+    # The inference output type passed to TFLiteConvert.
+    self.inference_output_type = None
 
 
-def toco_options(data_types,
-                 input_arrays,
-                 output_arrays,
-                 shapes,
-                 extra_toco_options=ExtraTocoOptions()):
-  """Create TOCO options to process a model.
-
-  Args:
-    data_types: input and inference types used by TOCO.
-    input_arrays: names of the input tensors
-    output_arrays: name of the output tensors
-    shapes: shapes of the input tensors
-    extra_toco_options: additional toco options
-  Returns:
-    the options in a string.
-  """
-  shape_str = ":".join([",".join(str(y) for y in x) for x in shapes if x])
-  inference_type = "FLOAT"
-  # TODO(ahentz): if we get multi-input quantization to work we need this
-  # to change
-  if data_types[0] == "QUANTIZED_UINT8":
-    inference_type = "QUANTIZED_UINT8"
-  s = (" --input_data_types=%s" % ",".join(data_types) +
-       " --inference_type=%s" % inference_type +
-       " --input_format=TENSORFLOW_GRAPHDEF" + " --output_format=TFLITE" +
-       " --input_arrays=%s" % ",".join(input_arrays) +
-       " --output_arrays=%s" % ",".join(output_arrays))
-  if shape_str:
-    s += (" --input_shapes=%s" % shape_str)
-  if extra_toco_options.drop_control_dependency:
-    s += " --drop_control_dependency"
-  if extra_toco_options.allow_custom_ops:
-    s += " --allow_custom_ops"
-  if extra_toco_options.rnn_states:
-    s += (" --rnn_states='" + extra_toco_options.rnn_states + "'")
-  if extra_toco_options.split_tflite_lstm_inputs is not None:
-    if extra_toco_options.split_tflite_lstm_inputs:
-      s += " --split_tflite_lstm_inputs=true"
-    else:
-      s += " --split_tflite_lstm_inputs=false"
-  return s
 
 
 def format_result(t):
@@ -256,7 +224,7 @@ def write_test_cases(fp, model_name, examples):
     fp.write("}\n")
 
 
-_TF_TYPE_INFO = {
+TF_TYPE_INFO = {
     tf.float32: (np.float32, "FLOAT"),
     tf.float16: (np.float16, "FLOAT"),
     tf.int32: (np.int32, "INT32"),
@@ -271,8 +239,8 @@ _TF_TYPE_INFO = {
 def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
   """Build tensor data spreading the range [min_value, max_value)."""
 
-  if dtype in _TF_TYPE_INFO:
-    dtype = _TF_TYPE_INFO[dtype][0]
+  if dtype in TF_TYPE_INFO:
+    dtype = TF_TYPE_INFO[dtype][0]
 
   if dtype in (tf.float32, tf.float16):
     value = (max_value-min_value)*np.random.random_sample(shape)+min_value
@@ -291,8 +259,8 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
 def create_scalar_data(dtype, min_value=-100, max_value=100):
   """Build scalar tensor data range from min_value to max_value exclusively."""
 
-  if dtype in _TF_TYPE_INFO:
-    dtype = _TF_TYPE_INFO[dtype][0]
+  if dtype in TF_TYPE_INFO:
+    dtype = TF_TYPE_INFO[dtype][0]
 
   if dtype in (tf.float32, tf.float16):
     value = (max_value - min_value) * np.random.random() + min_value
@@ -347,97 +315,6 @@ def make_control_dep_tests(options):
       build_inputs,
       extra_toco_options,
       expected_tf_failures=3)
-
-
-def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
-  """Convert a model's graph def into a tflite model.
-
-  NOTE: this currently shells out to the toco binary, but we would like
-  convert to Python API tooling in the future.
-
-  Args:
-    options: An Options instance.
-    graph_def: A GraphDef object.
-    input_tensors: List of input tensor tuples `(name, shape, type)`.
-    output_tensors: List of output tensors (names).
-    **kwargs: Extra options to be passed.
-
-  Returns:
-    output tflite model, log_txt from conversion
-    or None, log_txt if it did not convert properly.
-  """
-  # Convert ophint ops if presented.
-  graph_def = tf.lite.experimental.convert_op_hints_to_stubs(
-      graph_def=graph_def)
-  graph_def_str = graph_def.SerializeToString()
-
-  extra_toco_options = kwargs.get("extra_toco_options", ExtraTocoOptions())
-  test_params = kwargs.get("test_params", {})
-  input_arrays = [x[0] for x in input_tensors]
-  data_types = [_TF_TYPE_INFO[x[2]][1] for x in input_tensors]
-
-  if test_params.get("fully_quantize", False):
-    with tempfile.NamedTemporaryFile() as graphdef_file:
-      graphdef_file.write(graph_def_str)
-      graphdef_file.flush()
-
-      input_shapes = get_input_shapes_map(input_tensors)
-      converter = tf.lite.TocoConverter.from_frozen_graph(
-          graphdef_file.name, input_arrays, output_tensors, input_shapes)
-
-      def representative_dataset(input_tensors):
-        calibration_inputs = []
-        for _, shape, _ in input_tensors:
-          if shape:
-            dims = [dim.value for dim in shape.dims]
-            calibration_inputs.append(
-                np.random.uniform(-1, 1, tuple(dims)).astype(np.float32))
-        return calibration_inputs
-
-      def representative_dataset_gen():
-        for _ in range(100):
-          yield representative_dataset(input_tensors)
-
-      converter.target_spec.supported_ops = [
-          tf.lite.OpsSet.TFLITE_BUILTINS_INT8
-      ]
-      converter.representative_dataset = representative_dataset_gen
-
-      try:
-        tflite_model = converter.convert()
-        return tflite_model, ""
-      except Exception as e:
-        log = "{0}\n{1}".format(str(e), traceback.format_exc())
-        return None, log
-
-  else:
-    opts = toco_options(
-        data_types=data_types,
-        input_arrays=input_arrays,
-        shapes=[x[1] for x in input_tensors],
-        output_arrays=output_tensors,
-        extra_toco_options=extra_toco_options)
-
-    with tempfile.NamedTemporaryFile() as graphdef_file, \
-         tempfile.NamedTemporaryFile() as output_file, \
-         tempfile.NamedTemporaryFile("w+") as stdout_file:
-      graphdef_file.write(graph_def_str)
-      graphdef_file.flush()
-
-      # TODO(aselle): Switch this to subprocess at some point.
-      if "pb2lite" in bin_path and options.run_with_flex:
-        opts = ("--input_arrays={0} --output_arrays={1}".format(
-            ",".join(input_arrays), ",".join(output_tensors)))
-      elif options.run_with_flex:
-        opts += " --enable_select_tf_ops --force_select_tf_ops"
-      cmd = ("%s --input_file=%s --output_file=%s %s > %s 2>&1" %
-             (bin_path, graphdef_file.name, output_file.name, opts,
-              stdout_file.name))
-      exit_code = os.system(cmd)
-      log = (
-          cmd + "exited with code %d" % exit_code + "\n------------------\n" +
-          stdout_file.read())
-      return (None if exit_code != 0 else output_file.read()), log
 
 
 def get_input_shapes_map(input_tensors):
@@ -531,6 +408,11 @@ def make_zip_of_tests(options,
   toco_errors = 0
 
   processed_labels = set()
+
+  if options.make_edgetpu_tests:
+    extra_toco_options.inference_input_type = tf.lite.constants.QUANTIZED_UINT8
+    extra_toco_options.inference_output_type = tf.lite.constants.QUANTIZED_UINT8
+
   for parameters in test_parameters:
     keys = parameters.keys()
     for curr in itertools.product(*parameters.values()):
@@ -545,6 +427,36 @@ def make_zip_of_tests(options,
       processed_labels.add(label)
 
       param_dict = dict(zip(keys, curr))
+
+      if options.make_edgetpu_tests and not param_dict.get(
+          "fully_quantize", False):
+        continue
+
+      def build_tflite_inputs(tflite_model_binary):
+        # Build input values and output values of the given tflite model.
+        interpreter = tf.lite.Interpreter(model_content=tflite_model_binary)
+        interpreter.allocate_tensors()
+
+        input_details = interpreter.get_input_details()
+        input_values = []
+        for input_detail in input_details:
+          # TODO(yunluli): Set proper min max value according to dtype.
+          input_value = create_tensor_data(
+              input_detail["dtype"],
+              input_detail["shape"],
+              min_value=0,
+              max_value=255)
+          interpreter.set_tensor(input_detail["index"], input_value)
+          input_values.append(input_value)
+
+        interpreter.invoke()
+
+        output_details = interpreter.get_output_details()
+        output_values = []
+        for output_detail in output_details:
+          output_values.append(interpreter.get_tensor(output_detail["index"]))
+
+        return input_values, output_values
 
       def build_example(label, param_dict_real):
         """Build the model with parameter values set in param_dict_real.
@@ -577,7 +489,7 @@ def make_zip_of_tests(options,
             report["tf_log"] += traceback.format_exc()
             return None, report
 
-        sess = tf.Session()
+        sess = tf.compat.v1.Session()
         try:
           baseline_inputs, baseline_outputs = (make_test_inputs(
               param_dict_real, sess, inputs, outputs))
@@ -599,7 +511,6 @@ def make_zip_of_tests(options,
         if "split_tflite_lstm_inputs" in param_dict_real:
           extra_toco_options.split_tflite_lstm_inputs = param_dict_real[
               "split_tflite_lstm_inputs"]
-
         tflite_model_binary, toco_log = options.tflite_convert_function(
             options,
             graph_def,
@@ -611,12 +522,15 @@ def make_zip_of_tests(options,
                           else report_lib.FAILED)
         report["toco_log"] = toco_log
 
-        if True or options.save_graphdefs:
+        if options.save_graphdefs:
           archive.writestr(label + ".pbtxt",
                            text_format.MessageToString(graph_def),
                            zipfile.ZIP_DEFLATED)
 
         if tflite_model_binary:
+          if options.make_edgetpu_tests:
+            baseline_inputs, baseline_outputs = build_tflite_inputs(
+                tflite_model_binary)
           archive.writestr(label + ".bin", tflite_model_binary,
                            zipfile.ZIP_DEFLATED)
           example = {"inputs": baseline_inputs, "outputs": baseline_outputs}
@@ -677,7 +591,7 @@ def make_zip_of_tests(options,
                         "TensorFlow fails in %d percent of the cases.") %
                        (zip_path, int(100 * tf_failures / parameter_count)))
 
-  if tf_failures != expected_tf_failures:
+  if not options.make_edgetpu_tests and tf_failures != expected_tf_failures:
     raise RuntimeError(("Expected TF to fail %d times while generating '%s', "
                         "but that happened %d times") % (expected_tf_failures,
                                                          zip_path, tf_failures))
@@ -685,7 +599,6 @@ def make_zip_of_tests(options,
   if not options.ignore_converter_errors and toco_errors > 0:
     raise RuntimeError(
         "Found %d errors while generating toco models" % toco_errors)
-
 
 def make_pool_tests(pool_op_in):
   """Make a set of tests to do average pooling.
@@ -782,6 +695,7 @@ def make_abs_tests(options):
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
+
 @register_make_test_function()
 def make_elu_tests(options):
   """Make a set of tests to do (float) tf.nn.elu."""
@@ -812,13 +726,113 @@ def make_elu_tests(options):
 
 
 @register_make_test_function()
+def make_hardswish_tests(options):
+  """Make a set of tests to do hardswish."""
+
+  # Chose a set of parameters
+  test_parameters = [{
+      "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
+                      [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
+  }]
+
+  def build_graph(parameters):
+    inp = tf.placeholder(
+        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+
+    out = inp * tf.nn.relu6(inp + np.float32(3)) * np.float32(1. / 6.)
+
+    return [inp], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(
+        np.float32, parameters["input_shape"], min_value=-10, max_value=10)
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  # Add additional validation if we are using toco.
+  # Flex and mlir doesn't yet support this. TODO(b/139193008): Fix
+  if not options.run_with_flex:
+    options.tflite_convert_function = functools.partial(
+        _tflite_convert_verify_num_ops,
+        options.tflite_convert_function,
+        num_ops=2)
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
+def _tflite_convert_verify_num_ops(tflite_convert_function, *args, **kwargs):
+  """Verifies that the result of the conversion is a single op."""
+  num_ops = kwargs.pop("num_ops", 2)
+  result = tflite_convert_function(*args, **kwargs)
+  tflite_model_binary = result[0]
+  if not result[0]:
+    tf.logging.error(result[1])  # stderr from running tflite_convert.
+    raise RuntimeError("Failed to bulid model: \n\n" + result[1])
+  interpreter = tf.lite.Interpreter(model_content=tflite_model_binary)
+  interpreter.allocate_tensors()
+  if len(interpreter.get_tensor_details()) != num_ops:
+    raise RuntimeError("Expected to generate two node graph got %r " %
+                       interpreter.get_tensor_details())
+  return result
+
+
+@register_make_test_function()
+def make_uint8_hardswish_tests(options):
+  """Make a set of tests to do hardswish."""
+  # Chose a set of parameters.
+  test_parameters = [{
+      "input_shape": [[2, 3]],
+      "fully_quantize": [True],
+  }]
+  def build_graph(parameters):
+    """Builds tensorflow graph."""
+    inp = tf.placeholder(dtype=tf.float32, name="input",
+                         shape=parameters["input_shape"])
+
+    # Note: there is some magic about the inputs being in the range [-1,1]
+    # or else some quantization range need to be fixed.
+    qinp = array_ops.fake_quant_with_min_max_args(
+        inp, min=-1, max=1, num_bits=8)
+    relu6 = tf.nn.relu6(qinp + np.float32(3)) * np.float32(1. / 6.)
+    out = qinp * relu6
+    quantize_graph.experimental_create_eval_graph(
+        inp.graph, weight_bits=8, activation_bits=8)
+    return [qinp], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(
+        np.float32, parameters["input_shape"], min_value=-1, max_value=1)
+    output_values = sess.run(outputs,
+                             feed_dict=dict(zip(inputs, [input_values])))
+    return [input_values], output_values
+
+  # Add additional validation if we are using toco.
+  # Flex, doesn't yet support this. TODO(b/139193008): Remove this constraitn
+  if not options.run_with_flex:
+    # Expect 2 quantize operators and one hard swish resulting in 4 tensors.
+    options.tflite_convert_function = functools.partial(
+        _tflite_convert_verify_num_ops,
+        options.tflite_convert_function,
+        num_ops=4)
+  extra_toco_options = ExtraTocoOptions()
+  extra_toco_options.inference_input_type = tf.lite.constants.QUANTIZED_UINT8
+  extra_toco_options.inference_output_type = tf.lite.constants.QUANTIZED_UINT8
+  make_zip_of_tests(
+      options,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      extra_toco_options=extra_toco_options,
+      use_frozen_graph=True)
+
+
+@register_make_test_function()
 def make_identity_tests(options):
   """Make a set of tests to do identity."""
 
   # Chose a set of parameters
   test_parameters = [{
       "input_shape": [[], [1], [3, 3]],
-      "use_snapshot": [False, True],
+      "op_to_use": ["identity", "identity_n", "snapshot"],
   }]
 
   def build_graph(parameters):
@@ -832,10 +846,13 @@ def make_identity_tests(options):
     # shape, this conversion still fails.
     # TODO(b/129197312), remove the walk-around code once the bug is fixed.
     input_doubled = input_tensor * 2.0
-    if parameters["use_snapshot"]:
-      identity_output = array_ops.snapshot(input_doubled)
-    else:
+    if parameters["op_to_use"] == "identity":
       identity_output = tf.identity(input_doubled)
+    elif parameters["op_to_use"] == "identity_n":
+      # Testing `IdentityN` with a single tensor.
+      identity_output = tf.identity_n([input_doubled])[0]
+    elif parameters["op_to_use"] == "snapshot":
+      identity_output = array_ops.snapshot(input_doubled)
     return [input_tensor], [identity_output]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -1048,7 +1065,7 @@ def make_constant_tests(options):
 
   def build_inputs(parameters, sess, inputs, outputs):
     dummy_input = np.zeros(
-        parameters["input_shape"], dtype=_TF_TYPE_INFO[parameters["dtype"]][0])
+        parameters["input_shape"], dtype=TF_TYPE_INFO[parameters["dtype"]][0])
     return [dummy_input], sess.run(outputs, feed_dict={inputs[0]: dummy_input})
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
@@ -2261,6 +2278,12 @@ def make_fully_connected_tests(options):
       "transpose_a": [False],
       "transpose_b": [True],
       "constant_filter": [True, False],
+  }, {
+      "shape1": [[5, 3]],
+      "shape2": [[5, 3]],
+      "transpose_a": [True],
+      "transpose_b": [False],
+      "constant_filter": [True, False],
   }]
 
   def build_graph(parameters):
@@ -2875,7 +2898,16 @@ def make_batch_to_space_nd_tests(options):
           "constant_block_shape": [True, False],
           "constant_crops": [True, False],
       },
-      # Non-4D use case: 1 bath dimension, 3 spatial dimensions, 2 others.
+      # Single batch (no-op)
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 3, 3, 1]],
+          "block_shape": [[1, 1]],
+          "crops": [[[0, 0], [0, 0]], [[1, 1], [1, 1]]],
+          "constant_block_shape": [True],
+          "constant_crops": [True],
+      },
+      # Non-4D use case: 1 batch dimension, 3 spatial dimensions, 2 others.
       {
           "dtype": [tf.float32],
           "input_shape": [[8, 2, 2, 2, 1, 1]],
@@ -3105,7 +3137,7 @@ def _make_strided_slice_tests(options, test_parameters,
     """Build inputs for stride_slice test."""
     input_values = create_tensor_data(parameters["dtype"],
                                       parameters["input_shape"])
-    index_type = _TF_TYPE_INFO[parameters["index_type"]][0]
+    index_type = TF_TYPE_INFO[parameters["index_type"]][0]
     values = [input_values]
     if not parameters["constant_indices"]:
       begin_values = np.array(parameters["begin"]).astype(index_type)
@@ -3222,6 +3254,74 @@ def make_strided_slice_1d_exhaustive_tests(options):
       },
   ]
   _make_strided_slice_tests(options, test_parameters)
+
+
+# TODO(b/137615945): Expand the test coverage of this one and remove the old
+# ones.
+@register_make_test_function()
+def make_strided_slice_np_style_tests(options):
+  """Make a set of tests to test strided_slice in np style."""
+
+  test_parameters = [
+      {
+          "dtype": [tf.float32],
+          "shape": [[12, 7], [33, 1]],
+          "spec": [[slice(3, 7, 2), slice(None)],
+                   [tf.newaxis,
+                    slice(3, 7, 1), tf.newaxis,
+                    slice(None)], [slice(1, 5, 1), slice(None)]],
+      },
+      # 1-D case
+      {
+          "dtype": [tf.float32],
+          "shape": [[44]],
+          "spec": [[slice(3, 7, 2)], [tf.newaxis, slice(None)]],
+      },
+      # Shrink mask.
+      {
+          "dtype": [tf.float32],
+          "shape": [[21, 15, 7]],
+          "spec": [[slice(3, 7, 2), slice(None), 2]],
+      },
+      # Ellipsis.
+      {
+          "dtype": [tf.float32],
+          "shape": [[21, 15, 7]],
+          "spec": [[slice(3, 7, 2), Ellipsis]],
+      },
+      # All combinations.
+      {
+          "dtype": [tf.float32],
+          "shape": [[21, 15, 7]],
+          "spec": [[tf.newaxis,
+                    slice(3, 7, 2),
+                    slice(None), Ellipsis]],
+      },
+  ]
+
+  def build_strided_slice_spec(parameters):
+    """Build strided_slice spec.
+
+    Args:
+      parameters: Test configurations.
+
+    Returns:
+      strided_slice spec, e.g., [2:3, :] or [tf.newaxis, :, tf.newaxis].
+    """
+
+  def build_graph(parameters):
+    """Build a simple graph with np style strided_slice."""
+    input_value = tf.placeholder(
+        dtype=parameters["dtype"], shape=parameters["shape"])
+    out = input_value.__getitem__(parameters["spec"])
+    return [input_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["dtype"], parameters["shape"])
+    return [input_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value])))
+
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
 # For verifying https://github.com/tensorflow/tensorflow/issues/23599
@@ -3797,6 +3897,33 @@ def make_zeros_like_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function()
+def make_cast_tests(options):
+  """Generate examples for cast."""
+  test_parameters = [{
+      "input_dtype": [tf.int32],
+      "output_dtype": [tf.float32],
+      "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+  }]
+
+  def build_graph(parameters):
+    """Build the cast testing graph."""
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.cast(input_value, parameters["output_dtype"])
+    return [input_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value])))
+
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
 def _make_elementwise_tests(op):
   """Make a set of tests to do element-wise operations."""
 
@@ -3931,6 +4058,14 @@ def make_slice_tests(options):
                     [0, 0, 0, 1]],
           "size": [[-1, 1, 1, 1], [1, -1, 1, 1], [1, 1, -1, 1], [1, 1, 1, -1]],
       },
+      # last dimension out of index
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[4, 4, 4]],
+          "begin": [[3, 3, 4]],
+          "size": [[-1, -1, -1]],
+      },
   ]
 
   def build_graph(parameters):
@@ -3955,7 +4090,7 @@ def make_slice_tests(options):
     """Build inputs for slice test."""
     input_values = create_tensor_data(parameters["dtype"],
                                       parameters["input_shape"])
-    index_type = _TF_TYPE_INFO[parameters["index_type"]][0]
+    index_type = TF_TYPE_INFO[parameters["index_type"]][0]
 
     begin_values = np.array(parameters["begin"]).astype(index_type)
     size_values = np.array(parameters["size"]).astype(index_type)
@@ -4632,7 +4767,7 @@ def make_placeholder_with_default_tests(options):
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    numpy_type = _TF_TYPE_INFO[parameters["dtype"]][0]
+    numpy_type = TF_TYPE_INFO[parameters["dtype"]][0]
     input_value = np.array([[1, 0], [2, 1]], numpy_type)
     return [input_value], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value])))
@@ -5061,13 +5196,41 @@ def make_unfused_gru_tests(options):
       build_inputs,
       use_frozen_graph=True)
 
-# Toco binary path provided by the generate rule.
-bin_path = None
+
+@register_make_test_function()
+def make_rfft2d_tests(options):
+  """Make a set of tests to do rfft2d."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32],
+      "input_shape": [[8, 8], [3, 8, 8]],
+      "fft_length": [
+          None, [4, 4], [4, 8], [8, 4], [8, 8], [8, 16], [16, 8], [16, 16]
+      ]
+  }]
+
+  def build_graph(parameters):
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    with spectral_ops_test_util.fft_kernel_label_map():
+      outs = tf.signal.rfft2d(input_value, fft_length=parameters["fft_length"])
+    return [input_value], [outs]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value])))
+
+  extra_toco_options = ExtraTocoOptions()
+  extra_toco_options.allow_custom_ops = True
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs,
+                    extra_toco_options)
 
 
 def generate_examples(options):
-  global bin_path
-
   def mkdir_if_not_exist(x):
     if not os.path.isdir(x):
       os.mkdir(x)
@@ -5078,14 +5241,24 @@ def generate_examples(options):
   mkdir_if_not_exist(opstest_path)
 
   out = options.zip_to_output
-  bin_path = options.toco
   # Some zip filenames contain a postfix identifying the conversion mode. The
   # list of valid conversion modes is defined in
   # generated_test_conversion_modes() in build_def.bzl.
-  test_function = ("make_%s_tests" % (out.replace(".zip", "").replace(
-      "pb2lite", "").replace("toco-flex", "").rstrip("_")))
-  if test_function not in _MAKE_TEST_FUNCTIONS_MAP:
-    raise RuntimeError("Can't find a test function to create %r. Tried %r" %
-                       (out, test_function))
 
-  _MAKE_TEST_FUNCTIONS_MAP[test_function](options)
+  # Remove suffixes to extract the test name from the output name.
+  test_name = re.sub(r"(_(|toco-flex|forward-compat))?\.zip$", "", out, count=1)
+
+  test_function_name = "make_%s_tests" % test_name
+  if test_function_name not in _MAKE_TEST_FUNCTIONS_MAP:
+    raise RuntimeError("Can't find a test function to create %r. Tried %r" %
+                       (out, test_function_name))
+  test_function = _MAKE_TEST_FUNCTIONS_MAP[test_function_name]
+
+  if options.make_forward_compat_test:
+    future_date = datetime.date.today() + datetime.timedelta(days=30)
+    with tf.compat.forward_compatibility_horizon(future_date.year,
+                                                 future_date.month,
+                                                 future_date.day):
+      test_function(options)
+  else:
+    test_function(options)

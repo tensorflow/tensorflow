@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_TYPES_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <initializer_list>
 
@@ -265,9 +266,7 @@ class RuntimeShape {
     int buffer_size = 1;
     const int* dims_data = reinterpret_cast<const int*>(DimsData());
     for (int i = 0; i < size_; i++) {
-      const int dim = dims_data[i];
-      TFLITE_DCHECK_GE(dim, 1);
-      buffer_size *= dim;
+      buffer_size *= dims_data[i];
     }
     return buffer_size;
   }
@@ -874,6 +873,27 @@ struct LocalResponseNormalizationParams {
   double beta;
 };
 
+struct HardSwishParams {
+  // zero_point of the input activations.
+  int16_t input_zero_point;
+  // zero_point of the output activations.
+  int16_t output_zero_point;
+  // 16bit fixed-point component of the multiplier to apply to go from the
+  // "high-res input scale", which is the input scale multiplied by 2^7, to the
+  // "relu-ish scale", which 3.0/32768.
+  // See the implementation of HardSwishPrepare.
+  int16_t reluish_multiplier_fixedpoint_int16;
+  // exponent/bit-shift component of the aforementioned multiplier.
+  int reluish_multiplier_exponent;
+  // 16bit fixed-point component of the multiplier to apply to go from the
+  // "high-res input scale", which is the input scale multiplied by 2^7, to the
+  // output scale.
+  // See the implementation of HardSwishPrepare.
+  int16_t output_multiplier_fixedpoint_int16;
+  // exponent/bit-shift component of the aforementioned multiplier.
+  int output_multiplier_exponent;
+};
+
 struct LogisticParams {
   // uint8 inference params.
   int32 input_zero_point;
@@ -966,6 +986,9 @@ struct SoftmaxParams {
   int32 reverse_scaling_divisor;
   int32 reverse_scaling_right_shift;
   int diff_min;
+  int32_t zero_point;
+  float scale;
+  float* table;
 };
 
 struct SpaceToBatchParams {

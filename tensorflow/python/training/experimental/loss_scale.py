@@ -31,6 +31,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -93,10 +94,10 @@ class LossScale(trackable.Trackable):
     cross-replica context.
 
     Args:
-      grads: A list of unscaled gradients, each which is the gradient of the
-        loss with respect to a weight. The gradients should have already been
-        divided by the loss scale being before passed to this function. 'None'
-        gradients are accepted, and are ignored.
+      grads: A nested structure of unscaled gradients, each which is the
+        gradient of the loss with respect to a weight. The gradients should have
+        already been divided by the loss scale being before passed to this
+        function. 'None' gradients are accepted, and are ignored.
 
     Returns:
       update_op: In eager mode, None. In graph mode, an op to update the loss
@@ -204,7 +205,7 @@ class FixedLossScale(LossScale):
         number as long as no nan or inf is encountered in training.
 
     Raises:
-      ValueError: If loss_scale is less than 1.
+      ValueError: If loss_scale_value is less than 1.
     """
     super(FixedLossScale, self).__init__()
     if not isinstance(loss_scale_value, six.integer_types + (float,)):
@@ -225,6 +226,9 @@ class FixedLossScale(LossScale):
   def update(self, grads):
     del grads
     return control_flow_ops.no_op(), True
+
+  def __repr__(self):
+    return 'FixedLossScale(%s)' % self._loss_scale_value
 
   def get_config(self):
     return {'loss_scale_value': self._loss_scale_value}
@@ -324,10 +328,11 @@ class DynamicLossScale(LossScale):
     return self._multiplier
 
   def __call__(self):
-    return self._current_loss_scale
+    return ops.convert_to_tensor(self._current_loss_scale)
 
   def update(self, grads):
     """Updates loss scale based on if gradients are finite in current step."""
+    grads = nest.flatten(grads)
     if distribution_strategy_context.has_strategy():
       distribution = distribution_strategy_context.get_cross_replica_context()
 
@@ -373,6 +378,17 @@ class DynamicLossScale(LossScale):
                                       update_if_not_finite_grads)
     should_apply_gradients = is_finite
     return update_op, should_apply_gradients
+
+  def __repr__(self):
+    if context.executing_eagerly():
+      return ('DynamicLossScale(current_loss_scale=%s, num_good_steps=%s, '
+              'initial_loss_scale=%s, increment_period=%s, multiplier=%s)' %
+              (self._current_loss_scale.numpy(), self._num_good_steps.numpy(),
+               self.initial_loss_scale, self.increment_period, self.multiplier))
+    else:
+      return ('DynamicLossScale(initial_loss_scale=%s, increment_period=%s, '
+              'multiplier=%s)' %
+              (self.initial_loss_scale, self.increment_period, self.multiplier))
 
   def get_config(self):
     return {

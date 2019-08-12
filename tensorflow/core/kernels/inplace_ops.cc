@@ -319,8 +319,8 @@ void DoInplaceOp(const CPUDevice& d, InplaceOpType op, const Tensor& i,
 void DoInplaceStringUpdateOp(const CPUDevice& d, const Tensor& i,
                              const Tensor& v, Tensor* y) {
   auto Ti = i.flat<int32>();
-  auto Tv = v.flat_outer_dims<string>();
-  auto Ty = y->flat_outer_dims<string>();
+  auto Tv = v.flat_outer_dims<tstring>();
+  auto Ty = y->flat_outer_dims<tstring>();
   auto nrows = Ty.dimension(0);
   for (int64 j = 0; j < Ti.size(); ++j) {
     auto r = (Ti(j) % nrows + nrows) % nrows;  // Guard index range.
@@ -416,6 +416,7 @@ Status DoCopy(const CPUDevice& device, const Tensor& x, Tensor* y) {
 
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_bool(CASE);
+    TF_CALL_string(CASE);
 #undef CASE
     default:
       return errors::InvalidArgument("Unsupported data type: ",

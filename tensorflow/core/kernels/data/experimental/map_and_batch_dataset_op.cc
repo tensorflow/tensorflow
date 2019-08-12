@@ -12,12 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#define EIGEN_USE_THREADS
-
 #include <atomic>
 #include <utility>
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -37,6 +36,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 constexpr char kDatasetName[] = "MapAndBatch";
@@ -44,14 +44,14 @@ constexpr char kDatasetName[] = "MapAndBatch";
 // Maximum number of batch results to buffer.
 constexpr int64 kMaxBatchResults = 16;
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit MapAndBatchDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "f", /*params=*/{},
-                                                 &func_metadata_));
+    FunctionMetadata::Params params;
+    params.is_multi_device_function = true;
+    OP_REQUIRES_OK(ctx,
+                   FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(
@@ -71,7 +71,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
     OP_REQUIRES(
-        ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutoTune,
+        ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
         errors::InvalidArgument(
             "num_parallel_calls must be greater than zero."));
 
@@ -84,7 +84,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         ctx, CapturedFunction::Create(ctx, func_metadata_, "other_arguments",
                                       &captured_func));
 
-    if (num_parallel_calls == model::kAutoTune) {
+    if (num_parallel_calls == model::kAutotune) {
       metrics::RecordTFDataAutotune(kDatasetName);
     }
 
@@ -141,6 +141,11 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
       return n / batch_size_ +
              (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
+    }
+
+    Status CheckExternalState() const override {
+      TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
+      return input_->CheckExternalState();
     }
 
    protected:
@@ -216,7 +221,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
-        if (num_parallel_calls_->value == model::kAutoTune) {
+        if (num_parallel_calls_->value == model::kAutotune) {
           num_parallel_calls_->value = ctx->runner_threadpool_size();
         }
         TF_RETURN_IF_ERROR(
@@ -761,10 +766,16 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
   bool preserve_cardinality_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("MapAndBatchDataset").Device(DEVICE_CPU),
+                        MapAndBatchDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalMapAndBatchDataset").Device(DEVICE_CPU),
     MapAndBatchDatasetOp);
 
+REGISTER_INPUT_COLOCATION_EXEMPTION("MapAndBatchDataset");
+REGISTER_INPUT_COLOCATION_EXEMPTION("ExperimentalMapAndBatchDataset");
+
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

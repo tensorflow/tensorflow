@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/flat_map_dataset_op.h"
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
@@ -72,6 +73,11 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
   string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
+  }
+
+  Status CheckExternalState() const override {
+    TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
+    return input_->CheckExternalState();
   }
 
  protected:
@@ -248,8 +254,10 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
 FlatMapDatasetOp::FlatMapDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
-  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kFunc, /*params=*/{},
-                                               &func_metadata_));
+  FunctionMetadata::Params params;
+  params.is_multi_device_function = true;
+  OP_REQUIRES_OK(ctx,
+                 FunctionMetadata::Create(ctx, kFunc, params, &func_metadata_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
 }
@@ -265,8 +273,11 @@ void FlatMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 }
 
 namespace {
+
 REGISTER_KERNEL_BUILDER(Name("FlatMapDataset").Device(DEVICE_CPU),
                         FlatMapDatasetOp);
+REGISTER_INPUT_COLOCATION_EXEMPTION("FlatMapDataset");
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

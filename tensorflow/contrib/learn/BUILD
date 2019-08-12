@@ -1,6 +1,8 @@
 # Description:
 #   Contains TF Learn (aka Scikit Flow) sub-project with high level tensorflow API.
 
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+
 package(
     default_visibility = [
         "//engedu/ml/tf_from_scratch:__pkg__",
@@ -10,9 +12,6 @@ package(
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 
 py_library(
     name = "learn",
@@ -26,6 +25,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = [
         "//learning/brain:__subpackages__",
+        "//storage/d/analysis/prefetch:__pkg__",
         "//tensorflow:__subpackages__",
         "//video/youtube/personalization:__subpackages__",
     ],
@@ -603,6 +603,9 @@ py_test(
     srcs = ["python/learn/estimators/svm_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",  # b/134605801
+    ],
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",

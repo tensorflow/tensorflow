@@ -59,6 +59,9 @@ namespace tensorflow {
 namespace grappler {
 using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 
+// We only fold/materialize constants smaller than 10 MiB.
+static const int64 kMaxConstantSize = 10 * 1024 * 1024;
+
 namespace {
 template <typename T>
 bool AllValuesAre(const TensorProto& proto, const T& value) {
@@ -867,7 +870,8 @@ Status ConstantFolding::MaterializeOutputValues(
     NodeDef* node, const GraphProperties& properties) {
   const std::vector<OpInfo::TensorProperties>& output =
       properties.GetOutputProperties(node->name());
-  if (output.size() != 1 || !output[0].has_value() || !IsFoldable(*node)) {
+  if (output.size() != 1 || !output[0].has_value() ||
+      !IsFoldable(*node, &properties)) {
     return Status::OK();
   }
 
@@ -908,7 +912,8 @@ Status ConstantFolding::MaterializeConstants(
   return Status::OK();
 }
 
-bool ConstantFolding::IsFoldable(const NodeDef& node) const {
+bool ConstantFolding::IsFoldable(const NodeDef& node,
+                                 const GraphProperties* properties) const {
   // Folding not applicable to ops with no inputs.
   if (node.input().empty()) {
     return false;
@@ -984,11 +989,10 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
     }
   }
 
-  // No need to (and don't) fold nodes that have no outgoing edges except
-  // whitelisted nodes. Such nodes could be introduced by an earlier constant
-  // folding pass and are preserved in case users want to fetch their values;
-  // re-processing them would lead to an error of adding a duplicated node
-  // to graph.
+  // Don't fold nodes that have no outgoing edges except whitelisted nodes.
+  // Such nodes could be introduced by an earlier constant folding pass and are
+  // preserved in case users want to fetch their values; re-processing them
+  // would lead to an error of adding a duplicated node to graph.
   const auto& outputs = node_map_->GetOutputs(node.name());
   if (outputs.empty() &&
       nodes_whitelist_.find(node.name()) == nodes_whitelist_.end()) {
@@ -1024,7 +1028,29 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
       return false;
     }
   }
-  return !is_merge || merge_has_constant_input;
+  if (is_merge && !merge_has_constant_input) return false;
+
+  // If we know the output shapes, make sure that the outputs are small enough
+  // to materialize.
+  if (properties != nullptr && properties->HasOutputProperties(node.name())) {
+    const std::vector<OpInfo::TensorProperties>& output_props =
+        properties->GetOutputProperties(node.name());
+    for (const auto& output_prop : output_props) {
+      const PartialTensorShape output_shape(output_prop.shape());
+      if (output_shape.IsFullyDefined()) {
+        const int64 num_bytes =
+            output_shape.num_elements() * DataTypeSize(output_prop.dtype());
+        if (num_bytes > kMaxConstantSize) {
+          // Do not fold nodes if the in-memory size of output is too large.
+          // Notice that this is not exactly the same check used in
+          // CreateNodeDef() where the actual encoded size is checked.
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
 }
 
 namespace {
@@ -1064,7 +1090,9 @@ Status CreateConstantTensorAttrValue(DataType type, double value,
       SET_TENSOR_VAL_CASE(DT_QUINT8, int32, int);
       SET_TENSOR_VAL_CASE(DT_BOOL, bool, bool);
     default:
-      return errors::InvalidArgument("Unsupported type: ", type);
+      return errors::InvalidArgument(
+          "Unsupported type in CreateConstantTensorAttrValue: ",
+          DataTypeString(type));
   }
   return Status::OK();
 }
@@ -1145,28 +1173,28 @@ Status ConstantFolding::CreateNodeDef(const string& name,
   // Use the packed representation whenever possible to avoid generating large
   // graphdefs. Moreover, avoid repeating the last values if they're equal.
   if (tensor->NumElements() > 4) {
-#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, NAME)                      \
-  {                                                                       \
-    const auto* val_ptr = tensor->flat<TYPE>().data();                    \
-    auto last = *val_ptr;                                                 \
-    int64 last_index = 0;                                                 \
-    for (int64 i = 0; i < tensor->NumElements(); ++i) {                   \
-      TYPE cur = *val_ptr++;                                              \
-      if (PackedValuesNotEqual(cur, last)) {                              \
-        last = cur;                                                       \
-        last_index = i;                                                   \
-      }                                                                   \
-    }                                                                     \
-    if (last_index < kint32max) {                                         \
-      optimized = true;                                                   \
-      encoded_size = (last_index + 1) * sizeof(NAME);                     \
-      t->mutable_##NAME##_val()->Reserve(last_index + 1);                 \
-      const auto* src_ptr = tensor->flat<TYPE>().data();                  \
-      auto* dst_ptr =                                                     \
-          t->mutable_##NAME##_val()->AddNAlreadyReserved(last_index + 1); \
-      std::copy(src_ptr, src_ptr + last_index + 1, dst_ptr);              \
-    }                                                                     \
-  }                                                                       \
+#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, FIELDTYPE)                      \
+  {                                                                            \
+    const auto* val_ptr = tensor->flat<TYPE>().data();                         \
+    auto last = *val_ptr;                                                      \
+    int64 last_index = 0;                                                      \
+    for (int64 i = 0; i < tensor->NumElements(); ++i) {                        \
+      TYPE cur = *val_ptr++;                                                   \
+      if (PackedValuesNotEqual(cur, last)) {                                   \
+        last = cur;                                                            \
+        last_index = i;                                                        \
+      }                                                                        \
+    }                                                                          \
+    encoded_size = (last_index + 1) * sizeof(FIELDTYPE);                       \
+    if (encoded_size < kint32max) {                                            \
+      optimized = true;                                                        \
+      t->mutable_##FIELDTYPE##_val()->Reserve(last_index + 1);                 \
+      const auto* src_ptr = tensor->flat<TYPE>().data();                       \
+      auto* dst_ptr =                                                          \
+          t->mutable_##FIELDTYPE##_val()->AddNAlreadyReserved(last_index + 1); \
+      std::copy(src_ptr, src_ptr + last_index + 1, dst_ptr);                   \
+    }                                                                          \
+  }                                                                            \
   break
 
     switch (tensor->dtype()) {
@@ -1177,11 +1205,11 @@ Status ConstantFolding::CreateNodeDef(const string& name,
       case DT_INT64:
         POPULATE_TENSOR_PROTO(tensor, t, int64, int64);
       case DT_UINT64:
-        POPULATE_TENSOR_PROTO(tensor, t, uint64, int64);
+        POPULATE_TENSOR_PROTO(tensor, t, uint64, uint64);
       case DT_INT32:
         POPULATE_TENSOR_PROTO(tensor, t, int32, int);
       case DT_UINT32:
-        POPULATE_TENSOR_PROTO(tensor, t, uint32, int);
+        POPULATE_TENSOR_PROTO(tensor, t, uint32, uint32);
       case DT_INT16:
         POPULATE_TENSOR_PROTO(tensor, t, int16, int);
       case DT_UINT16:
@@ -1209,10 +1237,10 @@ Status ConstantFolding::CreateNodeDef(const string& name,
   }
   node->mutable_attr()->insert({"value", attr_tensor});
 
-  if (encoded_size > original_size && encoded_size >= 10 * 1024 * 1024) {
+  if (encoded_size > original_size && encoded_size >= kMaxConstantSize) {
     return errors::InvalidArgument(
         strings::StrCat("Can't fold ", name, ", its size would be too large (",
-                        encoded_size, " >= ", 10 * 1024 * 1024, " bytes)"));
+                        encoded_size, " >= ", kMaxConstantSize, " bytes)"));
   }
   return Status::OK();
 }
@@ -1389,12 +1417,12 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
   std::vector<NodeDef> const_nodes;
   TF_RETURN_IF_ERROR(
       EvaluateOneFoldable(*node, &const_nodes, result_too_large));
-  VLOG(1) << "Folded node:\n" << node->DebugString();
+  VLOG(2) << "Folded node: " << SummarizeNodeDef(*node);
 
   NodeDef* constant_output = nullptr;
   for (int i = 0; i < const_nodes.size(); i++) {
     NodeDef* const_node = &const_nodes[i];
-    VLOG(1) << "Generated constant node:\n" << const_node->DebugString();
+    VLOG(3) << "Generated constant node: " << SummarizeNodeDef(*const_node);
     if (const_node->name().empty()) {
       // Dead output: we can't create a constant to encode its value, so we'll
       // just skip it. We'll preserve the edges that originate from that
@@ -1403,18 +1431,26 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
       continue;
     }
 
+    // Returns `true` iff `const_node` already has control input named `input`.
+    const auto is_duplicate_control_input = [&](const string& input) -> bool {
+      auto it = absl::c_find(const_node->input(), input);
+      return it != const_node->input().end();
+    };
+
     // Forward control dependencies.
-    for (const auto& input : node->input()) {
-      if (IsControlInput(input) &&
-          std::find(const_node->input().begin(), const_node->input().end(),
-                    input) == const_node->input().end()) {
-        *const_node->add_input() = input;
-      } else {
+    for (const string& input : node->input()) {
+      // Forward control dependencies from folded node.
+      if (IsControlInput(input)) {
+        if (!is_duplicate_control_input(input)) {
+          *const_node->add_input() = input;
+        }
+      }
+
+      // Forward control dependencies from constant inputs to folded node.
+      if (!IsControlInput(input)) {
         NodeDef* input_node = node_map_->GetNode(input);
-        for (const auto& fanin_of_input : input_node->input()) {
-          if (IsControlInput(fanin_of_input) &&
-              std::find(const_node->input().begin(), const_node->input().end(),
-                        fanin_of_input) == const_node->input().end()) {
+        for (const string& fanin_of_input : input_node->input()) {
+          if (!is_duplicate_control_input(fanin_of_input)) {
             *const_node->add_input() = fanin_of_input;
           }
         }
@@ -1479,7 +1515,7 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
             *output->mutable_input(i) = const_nodes[port].name();
           } else {
             // Leave this edge alone.
-            VLOG(1) << "Preserving edge from " << node->name() << ":" << port
+            VLOG(3) << "Preserving edge from " << node->name() << ":" << port
                     << "[" << node->op() << "] to " << output->name() << ":"
                     << i << "[" << output->op() << "]";
           }
@@ -1497,11 +1533,12 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
 }
 
 Status ConstantFolding::FoldGraph(
-    GraphDef* output, absl::flat_hash_set<string>* nodes_to_not_simplify) {
+    const GraphProperties& properties, GraphDef* output,
+    absl::flat_hash_set<string>* nodes_to_not_simplify) {
   std::unordered_set<string> processed_nodes;
   std::deque<NodeDef*> queue;
   for (int i = 0; i < graph_->node_size(); i++) {
-    if (IsFoldable(graph_->node(i))) {
+    if (IsFoldable(graph_->node(i), &properties)) {
       queue.push_back(graph_->mutable_node(i));
     }
   }
@@ -1531,7 +1568,7 @@ Status ConstantFolding::FoldGraph(
       }
     } else {
       for (auto& output : fanout) {
-        if (IsFoldable(*output)) {
+        if (IsFoldable(*output, &properties)) {
           queue.push_back(output);
         }
       }
@@ -1861,13 +1898,15 @@ Status ConstantFolding::ReplaceOperationWithConstant(
     double value, const GraphProperties& properties,
     const TensorShapeProto& shape, NodeDef* node, GraphDef* graph) {
   const DataType dtype = GetDataTypeFromNodeOrProps(*node, properties);
-  if (dtype == DT_INVALID) {
+  AttrValue tensor_attr;
+  Status s = CreateConstantTensorAttrValue(dtype, value, shape, &tensor_attr);
+  if (!s.ok()) {
+    // Fail gracefully without mutating the graph.
+    VLOG(1) << "Failed to replace node " << node->name() << " of type "
+            << DataTypeString(dtype) << " with constant tensor of value "
+            << value;
     return Status::OK();
   }
-
-  AttrValue tensor_attr;
-  TF_RETURN_IF_ERROR(
-      CreateConstantTensorAttrValue(dtype, value, shape, &tensor_attr));
   return ReplaceOperationWithConstantTensor(dtype, tensor_attr.mutable_tensor(),
                                             node, graph);
 }
@@ -2792,6 +2831,9 @@ bool ConstantFolding::ReduceDivToReciprocalMul(GraphDef* optimized_graph,
 
 bool ConstantFolding::ConstantPushDown(GraphDef* optimized_graph,
                                        NodeDef* node) {
+  // TODO(rmlarsen): Consider enabling for subtractions if we are comfortable
+  // with the potential loss of numerical accuracy due to re-association.
+  //
   // Consider the transformation
   //
   //                      +                +       = parent
@@ -2800,83 +2842,170 @@ bool ConstantFolding::ConstantPushDown(GraphDef* optimized_graph,
   //                       / \              / \
   //                      X   Y            C   Y   = leaves
   //
-  // where C is constant and X is non-constant, and '+' denotes an
-  // associative and commutative operator like addition or multiplication.
-  // This optimization pushes constants down in the tree to canonicalize it.
-  // Moreoever, in cases where the child node has a second constant input Y
-  // we will create a leaf node that can be folded, e.g.
+  // where C is constant, X is non-constant, Y may be constant or non-constant,
+  // and '+' denotes an associative and commutative operator like addition or
+  // multiplication. This optimization pushes constants down in the tree to
+  // canonicalize it. Moreoever, in cases where the child node has a second
+  // constant input Y we will create a leaf node that can be folded, e.g.
   //
   //    Add(C1, Add(C2, X)) -> Add(X, Add(C1, C2)) -> Add(X, C1 + C2)
   //
-  // TODO(rmlarsen): Handle non-associative/non-commutative operators like
-  // subtraction and division, as well as mixed subtraction/addition,
-  // division/multiplication.
-  // Don't touch BiasAdd since they can't handle vectors as their first
+  // We also handle the non-commutative cases of subtraction and division
+  // by rotating the tree locally, e.g.
+  //    Sub(C, Add(X, Y)) -> Sub(Sub(C, Y), X)
+  //    Mul(C, Div(X, Y)) -> Mul(X, Div(C, Y)).
+  //
+  // Note: Don't touch BiasAdd since they can't handle vectors as their first
   // inputs.
-  if (has_fetch_ && (IsAdd(*node) || IsMul(*node)) &&
-      NumNonControlInputs(*node) == 2) {
-    NodeDef* left_child = node_map_->GetNode(node->input(0));
-    NodeDef* right_child = node_map_->GetNode(node->input(1));
-    // One child must be constant, and the other the same op as the parent.
-    if (node->op() != left_child->op() && node->op() != right_child->op()) {
-      return false;
-    }
-    const bool left_child_is_constant = IsReallyConstant(*left_child);
-    const bool right_child_is_constant = IsReallyConstant(*right_child);
-    if (!left_child_is_constant && !right_child_is_constant) {
-      return false;
-    }
-    if (node->device() != left_child->device() ||
-        node->device() != right_child->device()) {
-      return false;
-    }
-    NodeDef* op_child_node = left_child_is_constant ? right_child : left_child;
-    NodeDef* const_child_node =
-        left_child_is_constant ? left_child : right_child;
-    // Make sure that it is safe to change the value of the child node->
-    if (op_child_node->input_size() < 2 ||
-        nodes_to_preserve_.find(op_child_node->name()) !=
-            nodes_to_preserve_.end() ||
-        NumNonControlOutputs(*op_child_node, *node_map_) > 1) {
-      return false;
-    }
 
-    // Identify the nodes to swap.
-    NodeDef* left_leaf = node_map_->GetNode(op_child_node->input(0));
-    NodeDef* right_leaf = node_map_->GetNode(op_child_node->input(1));
-    const bool left_leaf_is_constant = IsReallyConstant(*left_leaf);
-    const bool right_leaf_is_constant = IsReallyConstant(*right_leaf);
-    if (left_leaf_is_constant && right_leaf_is_constant) {
-      // Child is already foldable, leave it alone.
-      return false;
-    }
-    const int non_const_leaf_input = left_leaf_is_constant ? 1 : 0;
-    const int parent_const_input = left_child_is_constant ? 0 : 1;
-    const auto& child_output = node_map_->GetOutputs(op_child_node->name());
-    if (child_output.find(const_child_node) != child_output.end()) {
-      // If there is a control edge from the child op to C, the transformation
-      // would create a cycle in the graph. We know that it must be a control
-      // edge. We can replace such a control edge with a control edge from A
-      // to C.
-      CHECK(MaybeRemoveControlInput(op_child_node->name(), const_child_node,
-                                    optimized_graph, node_map_.get()));
-      string other_leaf_input = left_leaf_is_constant ? op_child_node->input(0)
-                                                      : op_child_node->input(1);
-      MaybeAddControlInput(other_leaf_input, const_child_node, optimized_graph,
-                           node_map_.get());
-    }
-
-    // Swap the constant child with a non-constant leaf node.
-    node_map_->UpdateInput(node->name(), node->input(parent_const_input),
-                           op_child_node->input(non_const_leaf_input));
-    node_map_->UpdateInput(op_child_node->name(),
-                           op_child_node->input(non_const_leaf_input),
-                           node->input(parent_const_input));
-    std::swap(*node->mutable_input(parent_const_input),
-              *op_child_node->mutable_input(non_const_leaf_input));
-    return true;
+  // Get parent op type.
+  const bool is_add = IsAdd(*node);
+  const bool is_mul = IsMul(*node);
+  const bool is_sub = IsSub(*node);
+  const bool is_div = IsDiv(*node);
+  const bool is_symmetric = is_add || is_mul;
+  if (!has_fetch_ || !(is_add || is_sub || is_mul || is_div) ||
+      NumNonControlInputs(*node) != 2) {
+    return false;
   }
-  return false;
+
+  NodeDef* left_child = node_map_->GetNode(node->input(0));
+  NodeDef* right_child = node_map_->GetNode(node->input(1));
+
+  const bool left_child_is_constant = IsReallyConstant(*left_child);
+  const bool right_child_is_constant = IsReallyConstant(*right_child);
+  if (!left_child_is_constant && !right_child_is_constant) {
+    return false;
+  }
+  // Don't move nodes across devices.
+  if (node->device() != left_child->device() ||
+      node->device() != right_child->device()) {
+    return false;
+  }
+  NodeDef* op_child = left_child_is_constant ? right_child : left_child;
+  NodeDef* const_child = left_child_is_constant ? left_child : right_child;
+  // Don't rewrite the tree if it might create cycles.
+  // TODO(rmlarsen): Add back handling of control dependency from op to C.
+  const auto& child_output = node_map_->GetOutputs(op_child->name());
+  if (child_output.find(const_child) != child_output.end()) {
+    return false;
+  }
+  // Get child op type.
+  const bool is_child_add = IsAdd(*op_child);
+  const bool is_child_mul = IsMul(*op_child);
+  const bool is_child_sub = IsSub(*op_child);
+  const bool is_child_div = IsDiv(*op_child);
+  const bool is_add_sub = (is_add || is_sub) && (is_child_add || is_child_sub);
+  const bool is_mul_div = (is_mul || is_div) && (is_child_mul || is_child_div);
+  if (!is_add_sub && !is_mul_div) {
+    return false;
+  }
+
+  // TODO(rmlarsen): Consider enabling for subtractions if we are comfortable
+  // with the potential loss of numerical accuracy due to re-association.
+  // Notice that subtraction is not really different from addition in this
+  // regard.
+  if (is_sub || is_child_sub) {
+    return false;
+  }
+  const bool is_child_symmetric = is_child_add || is_child_mul;
+  // Make sure that it is safe to change the value of the child node result.
+  if (op_child->input_size() < 2 ||
+      nodes_to_preserve_.find(op_child->name()) != nodes_to_preserve_.end() ||
+      NumNonControlOutputs(*op_child, *node_map_) > 1) {
+    return false;
+  }
+  // Do not rewrite integer expressions with subtraction or division.
+  if (!CheckAttrExists(*node, "T").ok()) return false;
+  DataType dtype = node->attr().at("T").type();
+  if (!(is_symmetric && is_child_symmetric) &&
+      !(DataTypeIsFloating(dtype) || DataTypeIsComplex(dtype))) {
+    return false;
+  }
+
+  // Identify the nodes to swap.
+  NodeDef* left_leaf = node_map_->GetNode(op_child->input(0));
+  NodeDef* right_leaf = node_map_->GetNode(op_child->input(1));
+  const bool left_leaf_is_constant = IsReallyConstant(*left_leaf);
+  const bool right_leaf_is_constant = IsReallyConstant(*right_leaf);
+  if (left_leaf_is_constant && right_leaf_is_constant) {
+    // Child is already foldable, leave it alone.
+    return false;
+  }
+  // Don't move nodes across devices.
+  if (node->device() != left_leaf->device() ||
+      node->device() != right_leaf->device()) {
+    return false;
+  }
+  // Get the node names corresponding to X, Y, and C.
+  const string input_x =
+      left_leaf_is_constant ? op_child->input(1) : op_child->input(0);
+  const string input_y =
+      input_x == op_child->input(0) ? op_child->input(1) : op_child->input(0);
+  const string input_c =
+      left_child_is_constant ? node->input(0) : node->input(1);
+  const string input_op =
+      left_child_is_constant ? node->input(1) : node->input(0);
+
+  // Now we have identified the nodes to swap (non_const_leaf_input and
+  // const_child).
+  node_map_->UpdateInput(node->name(), input_c, input_x);
+  node_map_->AddOutput(input_c, op_child->name());
+  if (input_x != input_y) {
+    node_map_->RemoveOutput(input_x, op_child->name());
+  }
+
+  if (is_symmetric && is_child_symmetric) {
+    // Easy case (only commutative ops). We always write this as one of
+    //   +
+    //  / \
+    // X   +
+    //    / \
+    //   C   Y
+    node->set_input(0, input_x);
+    node->set_input(1, input_op);
+    op_child->set_input(0, input_c);
+    op_child->set_input(1, input_y);
+  } else {
+    // More complicated case: When there are non-commutative operations like
+    // subtractions or divisions involved, we may have to rotate the tree
+    // and/or change op types. There are 6 non-trivial cases depending on
+    // the effective generalized "sign" of each of the three terms C, Y, and X.
+    // Here are the final trees we want to generate for those 6 cases:
+    //
+    // (CYX signs):   ++-      +--      -+-    --+     +-+      -++
+    //                 -        -        -      -       +        +
+    //                / \      / \      / \    / \     / \      / \
+    //               +   X    -   X    -   X  X   +   X   -    X   -
+    //              / \      / \      / \        / \     / \      / \
+    //             C   Y    C   Y    Y   C      Y   C   C   Y    Y   C
+    //
+    NodeDef* non_const_leaf = left_leaf_is_constant ? right_leaf : left_leaf;
+    NodeDef* maybe_const_leaf =
+        non_const_leaf == right_leaf ? left_leaf : right_leaf;
+
+    // First, let's determine the effective sign of each term in the original
+    // expression
+    auto is_leaf_negated = [&](const NodeDef* node) -> bool {
+      bool leaf_negated = !is_child_symmetric && (node == right_leaf);
+      bool child_negated = !is_symmetric && (op_child == right_child);
+      return leaf_negated != child_negated;
+    };
+    const string symmetric_op = (is_add || is_sub) ? "Add" : "Mul";
+    const string nonsymmetric_op = (is_add || is_sub) ? "Sub" : "Div";
+    bool neg_c = !is_symmetric && (const_child == right_child);
+    bool neg_x = is_leaf_negated(non_const_leaf);
+    bool neg_y = is_leaf_negated(maybe_const_leaf);
+    // Rewrite the parent node.
+    node->set_op((neg_x || (neg_c && neg_y)) ? nonsymmetric_op : symmetric_op);
+    node->set_input(0, neg_x ? input_op : input_x);
+    node->set_input(1, neg_x ? input_x : input_op);
+    // Rewrite the child node.
+    op_child->set_op(neg_c != neg_y ? nonsymmetric_op : symmetric_op);
+    op_child->set_input(0, neg_c ? input_y : input_c);
+    op_child->set_input(1, neg_c ? input_c : input_y);
+  }
+  return true;
 }
 
 bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
@@ -3182,7 +3311,7 @@ bool ConstantFolding::PartialConcatConstFolding(GraphDef* optimized_graph,
     // child node.
     node->set_input(interval.first, added_node->name());
   }
-  if (!constant_input_runs.empty() && !inputs_to_delete.empty()) {
+  if (!inputs_to_delete.empty()) {
     // Fix up the inputs to the original node.
     protobuf::RepeatedPtrField<string> tmp;
     tmp.Swap(node->mutable_input());
@@ -3371,7 +3500,8 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
     TF_RETURN_IF_ERROR(MaterializeConstants(properties));
   }
   absl::flat_hash_set<string> nodes_to_not_simplify;
-  TF_RETURN_IF_ERROR(FoldGraph(optimized_graph, &nodes_to_not_simplify));
+  TF_RETURN_IF_ERROR(
+      FoldGraph(properties, optimized_graph, &nodes_to_not_simplify));
   node_map_.reset(new NodeMap(optimized_graph));
   TF_RETURN_IF_ERROR(SimplifyGraph(can_use_shape_info, optimized_graph,
                                    &properties, &nodes_to_not_simplify));

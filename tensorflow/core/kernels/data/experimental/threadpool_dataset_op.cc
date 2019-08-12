@@ -24,6 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class ThreadPoolResource : public ResourceBase {
@@ -171,6 +172,10 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -278,6 +283,10 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -378,6 +387,10 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -431,18 +444,30 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
+REGISTER_KERNEL_BUILDER(Name("MaxIntraOpParallelismDataset").Device(DEVICE_CPU),
+                        MaxIntraOpParallelismDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalMaxIntraOpParallelismDataset").Device(DEVICE_CPU),
     MaxIntraOpParallelismDatasetOp);
+
+REGISTER_KERNEL_BUILDER(Name("PrivateThreadPoolDataset").Device(DEVICE_CPU),
+                        PrivateThreadPoolDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalPrivateThreadPoolDataset").Device(DEVICE_CPU),
     PrivateThreadPoolDatasetOp);
+
+REGISTER_KERNEL_BUILDER(Name("ThreadPoolHandle").Device(DEVICE_CPU),
+                        ThreadPoolHandleOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalThreadPoolHandle").Device(DEVICE_CPU),
                         ThreadPoolHandleOp);
+
+REGISTER_KERNEL_BUILDER(Name("ThreadPoolDataset").Device(DEVICE_CPU),
+                        ThreadPoolDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalThreadPoolDataset").Device(DEVICE_CPU),
     ThreadPoolDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

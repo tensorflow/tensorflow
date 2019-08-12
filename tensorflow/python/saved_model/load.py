@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import function_deserialization
@@ -81,9 +82,7 @@ class _WrapperFunction(function.ConcreteFunction):
     # Shallow copy the concrete_function
     self.__dict__.update(vars(concrete_function))
 
-  def _call_flat(self, args, captured_inputs):
-    assert captured_inputs is self._captured_inputs
-    del captured_inputs
+  def _call_flat(self, args, captured_inputs, cancellation_manager=None):
 
     def get_in_replica_handle(x):
       return x.handle if ds_values.is_distributed_variable(x) else x
@@ -92,11 +91,12 @@ class _WrapperFunction(function.ConcreteFunction):
       return _unused_handle() if ds_values.is_distributed_variable(x) else x
 
     if ds_context.get_replica_context() is not None:  # in-replica context
-      captured_inputs = list(map(get_in_replica_handle, self._captured_inputs))
+      captured_inputs = list(map(get_in_replica_handle, captured_inputs))
     else:  # cross-replica context
       captured_inputs = list(
-          map(get_cross_replica_handle, self._captured_inputs))
-    return super(_WrapperFunction, self)._call_flat(args, captured_inputs)
+          map(get_cross_replica_handle, captured_inputs))
+    return super(_WrapperFunction, self)._call_flat(args, captured_inputs,
+                                                    cancellation_manager)
 
 
 class Loader(object):
@@ -176,10 +176,27 @@ class Loader(object):
       if bound_inputs:
         for bound_input, internal_capture in zip(
             bound_inputs, concrete_function.inputs[-len(bound_inputs):]):
-          concrete_function.graph.captures[bound_input] = internal_capture
-          # Setting "captures" first means "capture" won't create a new
-          # placeholder for this input.
-          concrete_function.graph.capture(bound_input)
+          if ds_values.is_distributed_variable(bound_input):
+            concrete_function.graph.capture_distributed_variable(
+                bound_input, internal_capture)
+          else:
+            concrete_function.graph._captures[ops.tensor_id(bound_input)] = (  # pylint: disable=protected-access
+                bound_input, internal_capture)
+            if internal_capture.dtype == dtypes.resource:
+              if resource_variable_ops.is_resource_variable(bound_input):
+                try:
+                  handle = bound_input.handle
+                except ValueError:
+                  # For mirrored variables we'll copy handle data for components
+                  # as they get captured.
+                  pass
+                else:
+                  custom_gradient.copy_handle_data(handle, internal_capture)
+              else:
+                custom_gradient.copy_handle_data(bound_input, internal_capture)
+            # Setting "captures" first means "capture" won't create a new
+            # placeholder for this input.
+            concrete_function.graph.capture(bound_input)
 
   def _get_tensor_from_node(self, node_id):
     """Resolves a node id into a tensor to be captured for a function."""
@@ -384,11 +401,25 @@ class Loader(object):
 class _RestoredResource(tracking.TrackableResource):
   """Restored SavedResource."""
 
+  def __init__(self, device=""):
+    super(_RestoredResource, self).__init__(device=device)
+    self._destroy_resource_fn = None
+
   def _create_resource(self):
     raise RuntimeError()
 
   def _initialize(self):
     raise RuntimeError()
+
+  @property
+  def _destroy_resource(self):
+    return self._destroy_resource_fn
+
+  @_destroy_resource.setter
+  def _destroy_resource(self, destroy_resource_fn):
+    self._resource_deleter = tracking.CapturableResourceDeleter(
+        destroy_resource_fn)
+    self._destroy_resource_fn = destroy_resource_fn
 
   def _list_functions_for_serialization(self, unused_serialization_cache):
     # Overwrite this method to avoid the implementation of
@@ -397,6 +428,7 @@ class _RestoredResource(tracking.TrackableResource):
     return {
         "_create_resource": self._create_resource,
         "_initialize": self._initialize,
+        "_destroy_resource": self._destroy_resource,
     }
 
 

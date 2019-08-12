@@ -34,15 +34,17 @@ _TPU_FC_TO_SCOPE = '_tpu_feature_column_scope'
 _SUPPORTED_SEQUENCE_COLUMNS = (fc._SequenceCategoricalColumn,
                                fc_lib.SequenceCategoricalColumn)
 
+_SUPPORTED_CATEGORICAL_COLUMNS_V2 = (fc_lib.IdentityCategoricalColumn,
+                                     fc_lib.VocabularyFileCategoricalColumn,
+                                     fc_lib.VocabularyListCategoricalColumn,
+                                     fc_lib.WeightedCategoricalColumn,
+                                     fc_lib.SequenceCategoricalColumn)
 _SUPPORTED_CATEGORICAL_COLUMNS = (fc._IdentityCategoricalColumn,
                                   fc._VocabularyFileCategoricalColumn,
                                   fc._VocabularyListCategoricalColumn,
                                   fc._WeightedCategoricalColumn,
-                                  fc_lib.IdentityCategoricalColumn,
-                                  fc_lib.VocabularyFileCategoricalColumn,
-                                  fc_lib.VocabularyListCategoricalColumn,
-                                  fc_lib.WeightedCategoricalColumn
-                                 ) + _SUPPORTED_SEQUENCE_COLUMNS
+                                  fc._SequenceCategoricalColumn
+                                 ) + _SUPPORTED_CATEGORICAL_COLUMNS_V2
 _SEQUENCE_FEATURE_LENGTH_POSTFIX = '_seq_length_'
 
 

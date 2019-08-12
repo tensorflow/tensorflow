@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc.
 #include "tensorflow/core/kernels/identity_n_op.h"
 
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -23,12 +24,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_KERNEL_BUILDER(Name("IdentityN").Device(DEVICE_CPU), IdentityNOp);
-
-#if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("IdentityN").Device(DEVICE_SYCL), IdentityNOp);
-#endif
-
-REGISTER_KERNEL_BUILDER(Name("IdentityN").Device(DEVICE_GPU), IdentityNOp);
+REGISTER_KERNEL_BUILDER(Name("IdentityN").Device(DEVICE_DEFAULT), IdentityNOp);
+// Do not worry about colocating IdentityN op with its resource inputs since
+// it just forwards it's inputs anyway. This is needed because we create
+// IdentityN nodes to club "all" outputs of functional ops while lowering to
+// make the original functional op fetchable.
+REGISTER_INPUT_COLOCATION_EXEMPTION("IdentityN");
 
 }  // namespace tensorflow

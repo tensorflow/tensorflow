@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
@@ -201,10 +202,7 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
   }
 
   auto kernel_base = absl::make_unique<se::KernelBase>(stream_exec);
-  if (!stream_exec->GetKernel(loader_spec, kernel_base.get())) {
-    return InternalError("Unable to load kernel '%s'", kernel_name);
-  }
-
+  TF_RETURN_IF_ERROR(stream_exec->GetKernel(loader_spec, kernel_base.get()));
   return std::move(kernel_base);
 }
 
@@ -217,13 +215,9 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
   for (const se::DeviceMemoryBase& buf : args) {
     kernel_args->add_device_memory_argument(buf);
   }
-
-  if (!stream->parent()->Launch(stream, se::ThreadDim(threads_per_block),
-                                se::BlockDim(block_count), kernel,
-                                *kernel_args)) {
-    return InternalError("Unable to launch kernel");
-  }
-  return Status::OK();
+  return stream->parent()->Launch(stream, se::ThreadDim(threads_per_block),
+                                  se::BlockDim(block_count), kernel,
+                                  *kernel_args);
 }
 
 se::cuda::PtxCompilationOptions PtxOptsFromConfig(
@@ -231,6 +225,84 @@ se::cuda::PtxCompilationOptions PtxOptsFromConfig(
   return se::cuda::PtxCompilationOptions(
       hlo_module_config.debug_options().xla_gpu_disable_ptxas_optimizations(),
       hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
+}
+
+// Unimplemented for integers yet.
+template <typename T, typename Generator>
+typename std::enable_if<std::is_integral<T>::value,
+                        T>::type static UniformDistribution(T lhs, T rhs,
+                                                            Generator* gen) =
+    delete;
+
+template <typename T, typename Generator>
+typename std::enable_if<std::is_floating_point<T>::value,
+                        T>::type static UniformDistribution(T lhs, T rhs,
+                                                            Generator* gen) {
+  return std::uniform_real_distribution<T>(lhs, rhs)(*gen);
+}
+
+template <typename T>
+static void InitializeTypedBuffer(se::Stream* stream,
+                                  se::DeviceMemoryBase buffer,
+                                  int64* rng_state) {
+  static_assert(
+      std::is_floating_point<T>::value || std::is_same<T, Eigen::half>::value,
+      "Unimplemented for integers yet.");
+
+  // Accesses to static variables are not locked, since the caller is already
+  // in a critical section.
+  static std::vector<T>* host_buffer = [] {
+    // Use a large prime number to fragment the accesses.
+    auto* ret = new std::vector<T>(10069);
+    // Default-seeded random numbers.
+    std::mt19937 gen;
+    for (auto& element : *ret) {
+      using RandomType =
+          typename std::conditional<std::is_same<T, Eigen::half>::value, float,
+                                    T>::type;
+      // Scale down the values for fp16 to have less overflows.
+      auto upper_bound =
+          RandomType(std::is_same<T, Eigen::half>::value ? 0.1 : 1.0);
+      element = T(UniformDistribution(RandomType(0), upper_bound, &gen));
+    }
+    return ret;
+  }();
+
+  int64& host_index = *rng_state;
+
+  char* current_addr = static_cast<char*>(buffer.opaque());
+  CHECK_EQ(0, buffer.size() % sizeof(T));
+  int64 elements_left = buffer.size() / sizeof(T);
+  while (elements_left > 0) {
+    CHECK_LE(host_index, host_buffer->size());
+    if (host_buffer->size() == host_index) {
+      host_index = 0;
+    }
+    int64 elements_copied =
+        std::min<int64>(host_buffer->size() - host_index, elements_left);
+    se::DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
+    stream->ThenMemcpy(&mem, host_buffer->data() + host_index,
+                       elements_copied * sizeof(T));
+    current_addr += elements_copied * sizeof(T);
+    elements_left -= elements_copied;
+    host_index += elements_copied;
+  }
+}
+
+void InitializeFloatBuffer(se::Stream* stream, PrimitiveType buffer_type,
+                           int64* rng_state, se::DeviceMemoryBase buffer) {
+  switch (buffer_type) {
+    case xla::F16:
+      return InitializeTypedBuffer<Eigen::half>(stream, buffer, rng_state);
+    case xla::F32:
+    case xla::C64:
+      return InitializeTypedBuffer<float>(stream, buffer, rng_state);
+    case xla::F64:
+    case xla::C128:
+      return InitializeTypedBuffer<double>(stream, buffer, rng_state);
+    default:
+      LOG(FATAL) << "Unexpected type";
+  }
 }
 
 }  // namespace gpu

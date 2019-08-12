@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_blacklist.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
@@ -142,17 +143,17 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
   XLA_SCOPED_LOGGING_TIMER_LEVEL("CudnnConvAlgorithmPicker checking redzones",
                                  2);
   using RedzoneCheckStatus = se::cuda::RedzoneAllocator::RedzoneCheckStatus;
-
   TF_ASSIGN_OR_RETURN(RedzoneCheckStatus redzone_check,
-                      allocator.CheckRedzones(stream));
-
+                      allocator.CheckRedzones());
   if (redzone_check.ok()) {
     return true;
   }
 
   auto* fail = result->mutable_failure();
   fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
-  *fail->mutable_msg() = redzone_check.redzone_failure_msg;
+  *fail->mutable_msg() = redzone_check.RedzoneFailureMsg();
+  fail->set_buffer_address(
+      reinterpret_cast<uint64>(redzone_check.user_buffer_address));
 
   LOG(ERROR) << absl::StreamFormat(
       "Detected cudnn out-of-bounds write in conv %s buffer! This is likely a "
@@ -163,15 +164,15 @@ StatusOr<bool> CheckRedzones(const se::cuda::RedzoneAllocator& allocator,
       "the problem, please file a bug with this full error message and we'll "
       "contact nvidia.",
       name);
-  LOG(ERROR) << redzone_check.redzone_failure_msg;
+  LOG(ERROR) << redzone_check.RedzoneFailureMsg();
   LOG(ERROR) << "HloInstruction " << instr->ToString();
   PrintPlatformInfo(stream);
   return false;
 }
 
 using ConvCacheKey =
-    std::tuple<se::StreamExecutor*, std::string, std::string, Shape,
-               std::vector<Shape>, std::string, std::string, int64>;
+    std::tuple<se::StreamExecutor*,
+               /* conv->ToString(HloPrintOptions::Canonical()) */ std::string>;
 
 struct ConvCacheStats {
   int64 cache_hits = 0;
@@ -183,20 +184,11 @@ struct ConvCacheStats {
   }
 };
 
-StatusOr<ConvCacheKey> AutotuneCacheKeyfromInstruction(
+ConvCacheKey AutotuneCacheKeyfromInstruction(
     const HloCustomCallInstruction* conv, se::StreamExecutor* se) {
-  TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
-                      conv->backend_config<CudnnConvBackendConfig>());
-  std::vector<Shape> operand_shapes;
-  absl::c_transform(conv->operands(), std::back_inserter(operand_shapes),
-                    [&](const HloInstruction* op) { return op->shape(); });
-
-  return std::make_tuple(
-      se, backend_config.SerializeAsString(), conv->custom_call_target(),
-      conv->shape(), std::move(operand_shapes),
-      conv->window().SerializeAsString(),
-      conv->convolution_dimension_numbers().SerializeAsString(),
-      conv->feature_group_count());
+  auto options = HloPrintOptions::Canonical();
+  options.set_print_backend_config(true);
+  return std::make_tuple(se, conv->ToString(options));
 }
 
 tensorflow::mutex autotune_cache_lock(tensorflow::LINKER_INITIALIZED);
@@ -223,8 +215,7 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   // which can greatly improve both stability (deterministic numeric results
   // within a process for a given input) and performance (2x speedup on some
   // models).
-  TF_ASSIGN_OR_RETURN(ConvCacheKey key,
-                      AutotuneCacheKeyfromInstruction(instr, stream_exec_));
+  ConvCacheKey key = AutotuneCacheKeyfromInstruction(instr, stream_exec_);
   {
     tensorflow::mutex_lock lock(autotune_cache_lock);
     auto it = autotune_cache.find(key);
@@ -241,64 +232,6 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
     CHECK(autotune_cache.insert({key, result_or.ValueOrDie()}).second);
   }
   return result_or;
-}
-
-// Unimplemented for integers yet.
-template <typename T, typename Generator>
-typename std::enable_if<std::is_integral<T>::value, T>::type
-UniformDistribution(T lhs, T rhs, Generator* gen) = delete;
-
-template <typename T, typename Generator>
-typename std::enable_if<std::is_floating_point<T>::value, T>::type
-UniformDistribution(T lhs, T rhs, Generator* gen) {
-  return std::uniform_real_distribution<T>(lhs, rhs)(*gen);
-}
-
-template <typename T>
-void InitializeTypedBuffer(se::Stream* stream, se::DeviceMemory<T> buffer,
-                           int64* rng_state) {
-  static_assert(
-      std::is_floating_point<T>::value || std::is_same<T, Eigen::half>::value,
-      "Unimplemented for integers yet.");
-
-  // Accesses to static variables are not locked, since the caller is already
-  // in a critical section.
-  static std::vector<T>* host_buffer = [] {
-    // Use a large prime number to fragment the accesses.
-    auto* ret = new std::vector<T>(10069);
-    // Default-seeded random numbers.
-    std::mt19937 gen;
-    for (auto& element : *ret) {
-      using RandomType =
-          typename std::conditional<std::is_same<T, Eigen::half>::value, float,
-                                    T>::type;
-      // Scale down the values for fp16 to have less overflows.
-      auto upper_bound =
-          RandomType(std::is_same<T, Eigen::half>::value ? 0.1 : 1.0);
-      element = T(UniformDistribution(RandomType(0), upper_bound, &gen));
-    }
-    return ret;
-  }();
-
-  int64& host_index = *rng_state;
-
-  char* current_addr = static_cast<char*>(buffer.opaque());
-  CHECK_EQ(0, buffer.size() % sizeof(T));
-  int64 elements_left = buffer.size() / sizeof(T);
-  while (elements_left > 0) {
-    CHECK_LE(host_index, host_buffer->size());
-    if (host_buffer->size() == host_index) {
-      host_index = 0;
-    }
-    int64 elements_copied =
-        std::min<int64>(host_buffer->size() - host_index, elements_left);
-    DeviceMemoryBase mem(current_addr, elements_copied * sizeof(T));
-    stream->ThenMemcpy(&mem, host_buffer->data() + host_index,
-                       elements_copied * sizeof(T));
-    current_addr += elements_copied * sizeof(T);
-    elements_left -= elements_copied;
-    host_index += elements_copied;
-  }
 }
 
 StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
@@ -318,8 +251,6 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   // Create a stream for us to do our work on.
   se::Stream stream{stream_exec_};
   stream.Init();
-  const auto device_ordinal = stream_exec_->device_ordinal();
-
   // allocator either points to this->allocator_ or, if that's null, to a
   // se::StreamExecutorMemoryAllocator for stream_exec_.
   se::DeviceMemoryAllocator* allocator;
@@ -335,40 +266,26 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
   const auto initialize_buffer = [&stream, &result_shape,
                                   &rng_state](DeviceMemoryBase buffer) {
-    switch (result_shape.element_type()) {
-      case xla::F16:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<Eigen::half>(buffer),
-                              &rng_state);
-        break;
-      case xla::F32:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<float>(buffer),
-                              &rng_state);
-        break;
-      case xla::F64:
-        InitializeTypedBuffer(&stream, se::DeviceMemory<double>(buffer),
-                              &rng_state);
-        break;
-      default:
-        stream.ThenMemZero(&buffer, buffer.size());
-    }
+    InitializeFloatBuffer(&stream, result_shape.element_type(), &rng_state,
+                          buffer);
   };
 
   const HloModuleConfig& hlo_module_config = instr->GetModule()->config();
 
   // Allocate space for the input, filter, and output of the convolution.
   se::cuda::RedzoneAllocator input_output_allocator(
-      device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
+      &stream, allocator, PtxOptsFromConfig(hlo_module_config));
   std::vector<se::DeviceMemoryBase> operand_buffers;
   for (const auto* operand : instr->operands()) {
     TF_ASSIGN_OR_RETURN(auto buffer,
                         input_output_allocator.AllocateBytes(
-                            &stream, ShapeUtil::ByteSizeOf(operand->shape())));
+                            ShapeUtil::ByteSizeOf(operand->shape())));
     initialize_buffer(buffer);
     operand_buffers.push_back(buffer);
   }
   TF_ASSIGN_OR_RETURN(auto result_buffer,
                       input_output_allocator.AllocateBytes(
-                          &stream, ShapeUtil::ByteSizeOf(result_shape)));
+                          ShapeUtil::ByteSizeOf(result_shape)));
   initialize_buffer(result_buffer);
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
@@ -390,14 +307,27 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
   const bool crash_on_checking_failure =
       debug_options.xla_gpu_crash_on_verification_failures();
 
+  const auto canonical_hlo =
+      std::get<1>(AutotuneCacheKeyfromInstruction(instr, stream_exec_));
+
+  absl::Span<const AlgorithmDesc> blacklisted_algos =
+      GetBlacklistedAlgorithms(GetComputeCapability(stream_exec_),
+                               GetCudnnVersion(stream_exec_), canonical_hlo);
+
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
         absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
                      AlgorithmToString(alg)),
         2);
 
+    if (absl::c_linear_search(blacklisted_algos, alg)) {
+      LOG(INFO) << "Omitted potentially buggy algorithm "
+                << AlgorithmToString(alg) << " for conv " << instr->ToString();
+      continue;
+    }
+
     se::cuda::RedzoneAllocator scratch_allocator(
-        device_ordinal, allocator, PtxOptsFromConfig(hlo_module_config));
+        &stream, allocator, PtxOptsFromConfig(hlo_module_config));
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
@@ -440,6 +370,22 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
 
     if (!input_output_allocator_redzone_clear ||
         !scratch_allocator_redzone_clear) {
+      CudnnConvolutionList proto;
+      auto entry = proto.add_entries();
+      entry->set_hlo(canonical_hlo);
+      *entry->mutable_cc() = GetComputeCapability(stream_exec_);
+      *entry->add_cudnn_versions() = GetCudnnVersion(stream_exec_);
+      auto algo = entry->add_algos();
+      algo->set_id(alg.algo_id());
+      algo->set_tensor_ops(alg.tensor_ops_enabled());
+
+      LOG(ERROR)
+          << "To blacklist this algorithm for this convolution, "
+             "copy-paste the following "
+             "proto to the blacklist file pointed by XLA_FLAGS "
+             "--xla_gpu_cudnn_conv_blacklist_path="
+          << GetDebugOptionsFromFlags().xla_gpu_cudnn_conv_blacklist_path()
+          << " : " << proto.ShortDebugString();
       continue;
     }
 
@@ -469,6 +415,8 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
                 << instr->GetModule()->ToString();
         auto* fail = result.mutable_failure();
         fail->set_kind(AutotuneResult::WRONG_RESULT);
+        fail->set_buffer_address(
+            reinterpret_cast<uint64>(result_buffer.opaque()));
         auto* reference_conv = fail->mutable_reference_conv();
         reference_conv->set_algorithm(first_algorithm.algo_id());
         reference_conv->set_tensor_ops_enabled(
@@ -477,11 +425,11 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     } else {
       XLA_SCOPED_LOGGING_TIMER_LEVEL("BufferComparator::Create", 2);
       comparator.emplace(result_shape, hlo_module_config);
-      reference_result_buffer = result_buffer;
-      TF_ASSIGN_OR_RETURN(result_buffer,
-                          input_output_allocator.AllocateBytes(
-                              &stream, reference_result_buffer.size()));
-      initialize_buffer(result_buffer);
+      TF_ASSIGN_OR_RETURN(
+          reference_result_buffer,
+          input_output_allocator.AllocateBytes(result_buffer.size()));
+      stream.ThenMemcpy(&reference_result_buffer, result_buffer,
+                        result_buffer.size());
       first_algorithm = alg;
     }
   }
@@ -492,9 +440,13 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     {
       ConvInstructionLog instr_log;
       *instr_log.mutable_instruction() = instr->ToProto();
-      for (const auto* op : instr->operands()) {
-        *instr_log.add_operand_shapes() = op->shape().ToProto();
+      for (int i = 0; i < instr->operand_count(); i++) {
+        *instr_log.add_operand_shapes() = instr->operand(i)->shape().ToProto();
+        instr_log.add_operand_addresses(
+            reinterpret_cast<uint64>(operand_buffers[i].opaque()));
       }
+      instr_log.set_result_address(
+          reinterpret_cast<uint64>(result_buffer.opaque()));
       log.mutable_instr()->PackFrom(instr_log);
     }
     for (const auto& profile : profile_results) {
@@ -504,11 +456,19 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
     log.set_device_pci_bus_id(
         stream_exec_->GetDeviceDescription().pci_bus_id());
+    {
+      string blas_version;
+      if (auto* blas = stream_exec_->AsBlas()) {
+        if (blas->GetVersion(&blas_version).ok()) {
+          log.set_blas_version(blas_version);
+        }
+      }
+    }
     VLOG(1) << "Autotuning result: " << log.ShortDebugString();
     // If we crash on checking failure, we are in a testing/benchmark mode, thus
     // omitting logging through the logger.
     if (!crash_on_checking_failure) {
-      tensorflow::Logger::Singleton()->LogProto(log);
+      tensorflow::Logger::GetSingleton()->LogProto(log);
     }
   }
 

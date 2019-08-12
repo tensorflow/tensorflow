@@ -228,16 +228,6 @@ bool SplitAndParseAsInts(StringPiece text, char delim,
   return SplitAndParseAsInts<int64>(text, delim, strings::safe_strto64, result);
 }
 
-bool SplitAndParseAsFloats(StringPiece text, char delim,
-                           std::vector<float>* result) {
-  return SplitAndParseAsInts<float>(
-      text, delim,
-      [](StringPiece str, float* value) {
-        return strings::safe_strtof(str, value);
-      },
-      result);
-}
-
 size_t Strnlen(const char* str, const size_t string_max_len) {
   size_t len = 0;
   while (len < string_max_len && str[len] != '\0') {

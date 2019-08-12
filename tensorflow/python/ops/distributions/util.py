@@ -647,7 +647,7 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
       # Finally, we transform shift by modulo length so it can be specified
       # independently from the array upon which it operates (like python).
       ndims = array_ops.rank(x)
-      shift = array_ops.where(
+      shift = array_ops.where_v2(
           math_ops.less(shift, 0), math_ops.mod(-shift, ndims),
           ndims - math_ops.mod(shift, ndims))
       first = math_ops.range(0, shift)
@@ -699,7 +699,7 @@ def pick_vector(cond, true_vector, false_vector, name="pick_vector"):
     n = array_ops.shape(true_vector)[0]
     return array_ops.slice(
         array_ops.concat([true_vector, false_vector], 0),
-        [array_ops.where(cond, 0, n)], [array_ops.where(cond, n, -1)])
+        [array_ops.where_v2(cond, 0, n)], [array_ops.where(cond, n, -1)])
 
 
 def prefer_static_broadcast_shape(shape1,
@@ -1125,7 +1125,7 @@ def reduce_weighted_logsumexp(logx,
     # off the max. We do this because otherwise we'd get `inf - inf = NaN`. That
     # this is ok follows from the fact that we're actually free to subtract any
     # value we like, so long as we add it back after taking the `log(sum(...))`.
-    max_log_absw_x = array_ops.where(
+    max_log_absw_x = array_ops.where_v2(
         math_ops.is_inf(max_log_absw_x), array_ops.zeros_like(max_log_absw_x),
         max_log_absw_x)
     wx_over_max_absw_x = (
@@ -1191,12 +1191,13 @@ def softplus_inverse(x, name=None):
     too_large_value = x
     # This `where` will ultimately be a NOP because we won't select this
     # codepath whenever we used the surrogate `ones_like`.
-    x = array_ops.where(
+    x = array_ops.where_v2(
         math_ops.logical_or(is_too_small, is_too_large), array_ops.ones_like(x),
         x)
     y = x + math_ops.log(-math_ops.expm1(-x))  # == log(expm1(x))
-    return array_ops.where(is_too_small, too_small_value,
-                           array_ops.where(is_too_large, too_large_value, y))
+    return array_ops.where_v2(
+        is_too_small, too_small_value,
+        array_ops.where_v2(is_too_large, too_large_value, y))
 
 
 # TODO(b/35290280): Add unit-tests.
@@ -1332,7 +1333,7 @@ def pad(x, axis, front=False, back=False, value=0, count=1, name=None):
       else:
         final_shape = None
     else:
-      axis = array_ops.where(axis < 0, ndims + axis, axis)
+      axis = array_ops.where_v2(axis < 0, ndims + axis, axis)
       final_shape = None
     x = array_ops.pad(
         x,

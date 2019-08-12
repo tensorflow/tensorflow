@@ -19,13 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import numpy as np
 
 from tensorflow.python.eager.backprop import GradientTape
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
@@ -57,16 +54,24 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
   """
   outputs = nest.flatten(outputs)
   targets = nest.flatten(targets)
-  # TODO(psv): Consider supporting skip target indices in eager mode?
   # Invoke all(weighted and unweighted) metrics.
   metric_results = []
   if targets:
+    # Insert None values corresponding to the targets that need to be skipped
+    # on the model.
+    if len(model._targets) != len(targets):
+      new_targets = [
+          None if t is None else targets.pop(0) for t in model._targets
+      ]
+      targets = new_targets
+
     metric_results = model._handle_metrics(
         outputs,
         targets=targets,
         sample_weights=sample_weights,
         masks=masks,
-        return_weighted_and_unweighted_metrics=True)
+        return_weighted_and_unweighted_metrics=True,
+        skip_target_masks=model._prepare_skip_target_masks())
 
   # Add metric results from the `add_metric` metrics.
   metric_results.extend([
@@ -120,8 +125,17 @@ def _model_loss(model,
     inputs = nest.map_structure(ops.convert_to_tensor, inputs)
 
   outs = model(inputs, **kwargs)
-
   outs = nest.flatten(outs)
+
+  if targets:
+    targets = training_utils.cast_if_floating_dtype_and_mismatch(targets, outs)
+  # TODO(sallymatson/psv): check if we should do same mismatch fix for weights
+  if sample_weights:
+    sample_weights = [
+        training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
+        if val is not None else None for val in sample_weights
+    ]
+
   masks = [getattr(t, '_keras_mask', None) for t in outs]
   targets = nest.flatten(targets)
 
@@ -171,6 +185,7 @@ def _model_loss(model,
           # differentiate between use case where a custom optimizer
           # expects a vector loss value vs unreduced per-sample loss value.
           output_loss = loss_fn(targets[i], outs[i], sample_weight=weights)
+          loss_reduction = losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE
 
       # If the number of outputs is 1 then we don't append the loss metric
       # associated with each model output. When there are multiple outputs
@@ -182,9 +197,7 @@ def _model_loss(model,
 
       # Scale output loss for distribution. For custom losses we assume
       # reduction was mean.
-      if (getattr(loss_fn, 'reduction',
-                  losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE) ==
-          losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE):
+      if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
         output_loss = losses_utils.scale_loss_for_distribution(output_loss)
       total_loss += model._loss_weights_list[i] * output_loss
 
@@ -226,6 +239,8 @@ def _process_single_batch(model,
       ValueError: If the model has no loss to optimize.
   """
   with backend.eager_learning_phase_scope(1 if training else 0):
+    current_trainable_state = model._get_trainable_state()
+    model._set_trainable_state(model._compiled_trainable_state)
     with GradientTape() as tape:
       outs, total_loss, output_losses, masks = (
           _model_loss(
@@ -239,25 +254,27 @@ def _process_single_batch(model,
         raise ValueError('The model cannot be run '
                          'because it has no loss to optimize.')
       if isinstance(model.optimizer, loss_scale_optimizer.LossScaleOptimizer):
-        # TODO(reedwm): Make loss_scale public instead of accessing private
-        # _loss_scale attribute.
-        loss_scale = model.optimizer._loss_scale()
-        scaled_total_loss = loss_scale_optimizer.scale_loss(total_loss,
-                                                            loss_scale)
+        scaled_total_loss = model.optimizer.get_scaled_loss(total_loss)
       else:
-        loss_scale = None
         scaled_total_loss = total_loss
     if training:
-      if not model.trainable_weights:
+      trainable_weights = model._unique_trainable_weights
+      if trainable_weights:
+        # TODO(tanzheny) b/132690565: Provide mechanism for user to override
+        # model.train_on_batch.
+        if hasattr(model, '_backwards'):
+          model._backwards(tape, scaled_total_loss)
+        else:
+          grads = tape.gradient(scaled_total_loss, trainable_weights)
+          if isinstance(model.optimizer,
+                        loss_scale_optimizer.LossScaleOptimizer):
+            grads = model.optimizer.get_unscaled_gradients(grads)
+          model.optimizer.apply_gradients(zip(grads, trainable_weights))
+      else:
         logging.warning('The list of trainable weights is empty. Make sure that'
                         ' you are not setting model.trainable to False before '
                         'compiling the model.')
-      else:
-        grads = tape.gradient(scaled_total_loss, model.trainable_weights)
-        if loss_scale is not None:
-          grads = loss_scale_optimizer.unscale_grads(grads, loss_scale)
-        model.optimizer.apply_gradients(zip(grads,
-                                            model.trainable_weights))
+    model._set_trainable_state(current_trainable_state)
     return outs, total_loss, output_losses, masks
 
 
@@ -277,26 +294,13 @@ def train_on_batch(model,
         loss values.
 
   Returns:
-      total loss and the loss associated with each output.
+      Dict with three items:
+        'total_loss': list with a single tensor for overall loss,
+        'output_losses': list of tensors for loss corresponding to each of the
+          model output. Could be a empty list when model has only one output.
+        'metrics': list of tensors for metric specified.
   """
-  if isinstance(inputs, collections.Sequence):
-    if len(inputs) and tensor_util.is_tensor(inputs[0]):
-      inputs = training_utils.cast_if_floating_to_model_input_dtypes(inputs,
-                                                                     model)
-      if targets:
-        targets = training_utils.cast_if_floating_dtype(targets)
-    else:
-      inputs = training_utils.cast_if_floating_to_model_input_dtypes(
-          [ops.convert_to_tensor(val) for val in inputs], model)
-      if targets:
-        targets = training_utils.cast_if_floating_dtype(
-            [ops.convert_to_tensor(val) for val in targets])
-  if sample_weights:
-    sample_weights = [
-        training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
-        if val is not None else None for val in sample_weights
-    ]
-
+  inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
   outs, total_loss, output_losses, masks = (
       _process_single_batch(
           model,
@@ -310,14 +314,9 @@ def train_on_batch(model,
   metrics_results = _eager_metrics_fn(
       model, outs, targets, sample_weights=sample_weights, masks=masks)
   total_loss = nest.flatten(total_loss)
-  results = total_loss + output_losses + metrics_results
-
-  return [_non_none_constant_value(v) for v in results]
-
-
-def _non_none_constant_value(v):
-  constant_value = tensor_util.constant_value(v)
-  return constant_value if constant_value is not None else v
+  return {'total_loss': total_loss,
+          'output_losses': output_losses,
+          'metrics': metrics_results}
 
 
 def test_on_batch(model,
@@ -336,38 +335,29 @@ def test_on_batch(model,
         loss values.
 
   Returns:
-      total loss, loss and metrics associated with each output.
+      Dict with three items:
+        'total_loss': single tensor for overall loss,
+        'output_losses': list of tensors for loss corresponding to each of the
+          model output. Could be a empty list when model has only one output.
+        'metrics': list of tensors for metric specified.
   """
-  if isinstance(inputs, collections.Sequence):
-    if len(inputs) and tensor_util.is_tensor(inputs[0]):
-      inputs = training_utils.cast_if_floating_to_model_input_dtypes(inputs,
-                                                                     model)
-      if targets:
-        targets = training_utils.cast_if_floating_dtype(targets)
-    else:
-      inputs = training_utils.cast_if_floating_to_model_input_dtypes(
-          [ops.convert_to_tensor(val) for val in inputs], model)
-      if targets:
-        targets = training_utils.cast_if_floating_dtype(
-            [ops.convert_to_tensor(val) for val in targets])
-  if sample_weights:
-    sample_weights = [
-        training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
-        if val is not None else None for val in sample_weights
-    ]
-  outs, total_loss, output_losses, masks = (
-      _model_loss(
-          model,
-          inputs,
-          targets,
-          sample_weights=sample_weights,
-          training=False,
-          output_loss_metrics=output_loss_metrics))
+  inputs = training_utils.cast_to_model_input_dtypes(inputs, model)
+
+  with backend.eager_learning_phase_scope(0):
+    outs, total_loss, output_losses, masks = (
+        _model_loss(
+            model,
+            inputs,
+            targets,
+            sample_weights=sample_weights,
+            training=False,
+            output_loss_metrics=output_loss_metrics))
   if not isinstance(outs, list):
     outs = [outs]
   metrics_results = _eager_metrics_fn(
       model, outs, targets, sample_weights=sample_weights, masks=masks)
   total_loss = nest.flatten(total_loss)
-  results = total_loss + output_losses + metrics_results
 
-  return [_non_none_constant_value(v) for v in results]
+  return {'total_loss': total_loss,
+          'output_losses': output_losses,
+          'metrics': metrics_results}

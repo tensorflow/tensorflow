@@ -20,6 +20,7 @@ limitations under the License.
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
@@ -27,6 +28,8 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/experimental/resource_variable/resource_variable.h"
+#include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
@@ -325,7 +328,7 @@ class Interpreter {
   }
 
   /// Change the dimensionality of a given tensor. Note, this is only acceptable
-  /// for tensor indices that are inputs.
+  /// for tensor indices that are inputs or variables.
   /// Returns status of failure or success.
   /// TODO(aselle): Consider implementing ArraySlice equivalent to make this
   ///   more adept at accepting data without an extra copy. Use absl::ArraySlice
@@ -373,15 +376,22 @@ class Interpreter {
   /// WARNING: This is an experimental API and subject to change.
   void SetCancellationFunction(void* data, bool (*check_cancelled_func)(void*));
 
+  /// Allow a delegate to look at the graph and modify the graph to handle
+  /// parts of the graph themselves. After this is called, the graph may
+  /// contain new nodes that replace 1 more nodes.
+  /// 'delegate' must outlive the interpreter.
+  /// WARNING: This is an experimental API and subject to change.
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
       std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
 
-  /// Allow a delegate to look at the graph and modify the graph to handle
-  /// parts of the graph themselves. After this is called, the graph may
-  /// contain new nodes that replace 1 more nodes.
+  /// Same as ModifyGraphWithDelegate except this interpreter takes
+  /// ownership of the provided delegate. Be sure to construct the unique_ptr
+  /// with a suitable destruction function.
   /// WARNING: This is an experimental API and subject to change.
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegatePtr delegate);
 
   /// Ensure the data in `tensor.data` is readable. In case delegate is used,
   /// it might require to copy the data from delegate buffer to raw memory.
@@ -453,7 +463,9 @@ class Interpreter {
     return op_reg.profiling_string(context_, node);
   }
 
-  /// Set the value of an external context.
+  // Set the value of an external context. TFLite interpreter doesn't take the
+  // memory ownership of this external context 'ctx', and the context should
+  // outlive the TFLite interpreter.
   void SetExternalContext(TfLiteExternalContextType type,
                           TfLiteExternalContext* ctx);
 
@@ -499,16 +511,6 @@ class Interpreter {
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
 
-  /// Variant of the public ModifyGraphWithDelegate method that additionally
-  /// Assumes ownership of the provided delegate.
-  /// WARNING: This is an experimental API and subject to change.
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
-    // Note that we retain ownership of the delegate even if graph modification
-    // fails, as delegate use will be in an indeterminate state at that point.
-    owned_delegates_.push_back(std::move(delegate));
-    return ModifyGraphWithDelegate(owned_delegates_.back().get());
-  }
-
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
@@ -529,8 +531,19 @@ class Interpreter {
   // List of active external contexts.
   TfLiteExternalContext* external_contexts_[kTfLiteMaxExternalContexts];
 
+  // The default external cpu backend context. After an TFLite interpreter is
+  // initialized, 'external_contexts_[kTfLiteCpuBackendContext]' is set to point
+  // to this object. However, if this element value is overwritten via calling
+  // 'SetExternalContext(kTfLiteCpuBackendContext, ...)', we will reset this to
+  // nullptr if necessary.
+  std::unique_ptr<ExternalCpuBackendContext> own_external_cpu_backend_context_;
+
   // Subgraphs
   std::vector<std::unique_ptr<Subgraph>> subgraphs_;
+
+  // A map of resource variables. Owned by interpreter and shared by multiple
+  // subgraphs.
+  ResourceVariableMap resource_variables_;
 };
 
 }  // namespace tflite

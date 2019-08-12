@@ -28,12 +28,16 @@ from tensorflow.python.distribute import model_combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import array_ops
+from tensorflow.python.saved_model import saved_model
 
 _RANDOM_SEED = 1337
-_IN_SCOPE_SAVE_DIR = 'in_scope/'
-_OUT_OF_SCOPE_SAVE_DIR = 'out_of_scope/'
+_DEFAULT_FUNCTION_KEY = 'serving_default'
 
 _TOLERANCE = 1e-30
+# TPU uses bfloat16 for computation in hardware underlying, so it has less
+# precision than CPU/GPU.
+_TPU_TOLERANCE = 1e-7
 
 PREDICT_STEPS = 1
 
@@ -46,36 +50,84 @@ simple_models = [
 ]
 
 
-strategies_minus_tpu = [
+strategies = [
     # TODO(b/132702156): include default strategy
     strategy_combinations.one_device_strategy,
     strategy_combinations.one_device_strategy_gpu,
+    strategy_combinations.mirrored_strategy_with_one_cpu,
+    strategy_combinations.mirrored_strategy_with_one_gpu,
     strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-    strategy_combinations.mirrored_strategy_with_two_gpus
+    strategy_combinations.mirrored_strategy_with_two_gpus,
+    strategy_combinations.tpu_strategy
 ]
 
 
-def get_strategy_cross_product():
-  result = []
-  for strategy_1 in strategies_minus_tpu:
-    for strategy_2 in strategies_minus_tpu:
-      result.append(combinations.NamedDistributionPair(strategy_1, strategy_2))
+def is_tpu_strategy(distribution):
+  return (distribution is not None and
+          distribution.__class__.__name__.startswith('TPUStrategy'))
 
-  return result
+
+def get_tolerance(save_distribution, restore_distribution):
+  if is_tpu_strategy(save_distribution) or is_tpu_strategy(
+      restore_distribution):
+    return _TPU_TOLERANCE
+  return _TOLERANCE
 
 
 def simple_models_with_strategies():
   return combinations.combine(
       model_and_input=simple_models,
-      distribution=strategies_minus_tpu,
-      mode=['eager'])
+      distribution=strategies,
+      mode=['eager'],
+      experimental_run_tf_function=[True, False])
 
 
 def simple_models_with_strategy_pairs():
   return combinations.combine(
       model_and_input=simple_models,
-      distribution_pair=get_strategy_cross_product(),
-      mode=['eager'])
+      distribution_for_saving=strategies,
+      distribution_for_restoring=strategies,
+      mode=['eager'],
+      experimental_run_tf_function=[True, False])
+
+
+def tfmodule_models_with_strategies():
+  return combinations.combine(
+      model_and_input=[model_combinations.simple_tfmodule_model],
+      distribution=strategies,
+      mode=['eager'],
+      experimental_run_tf_function=[True])
+
+
+def tfmodule_models_with_strategy_pairs():
+  return combinations.combine(
+      model_and_input=[model_combinations.simple_tfmodule_model],
+      distribution_for_saving=strategies,
+      distribution_for_restoring=strategies,
+      mode=['eager'],
+      experimental_run_tf_function=[True])
+
+
+def load_and_run_with_saved_model_api(distribution, saved_dir, predict_dataset,
+                                      output_name):
+  """Loads a saved_model using tf.saved_model API, and runs it."""
+  func = saved_model.load(saved_dir)
+  if distribution:
+    dist_predict_dataset = distribution.experimental_distribute_dataset(
+        predict_dataset)
+    per_replica_predict_data = next(iter(dist_predict_dataset))
+    result = distribution.experimental_run_v2(
+        func.signatures[_DEFAULT_FUNCTION_KEY],
+        args=(per_replica_predict_data,))
+    result = result[output_name]
+
+    # Convert the per_replica value to a list, then concatenate them
+    reduced = distribution.experimental_local_results(result)
+    concat = array_ops.concat(reduced, 0)
+    return concat
+  else:
+    result = func.signatures[_DEFAULT_FUNCTION_KEY](next(iter(predict_dataset)))
+    return result[output_name]
 
 
 class TestSavedModelBase(test.TestCase, parameterized.TestCase):
@@ -99,7 +151,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
     raise NotImplementedError('must be implemented in descendants')
 
   def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
-                          output_name):
+                          output_name, experimental_run_tf_function):
     """Load the model and run 1 step of predict with it.
 
     This method must be implemented by the subclasses.
@@ -112,6 +164,8 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
         cross_replica context.
       output_name: the string representing the name of the output layer of the
         model.
+      experimental_run_tf_function: Whether to use the single execution path
+        for models.
     """
 
     raise NotImplementedError('must be implemented in descendants')
@@ -125,6 +179,9 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
     # Train the model for 1 epoch
     model.fit(x=training_dataset, epochs=1, steps_per_epoch=100)
 
+  def _predict_with_model(self, distribution, model, predict_dataset):
+    return model.predict(predict_dataset, steps=PREDICT_STEPS)
+
   def _get_predict_dataset(self, x_predict, batch_size):
     predict_dataset = dataset_ops.Dataset.from_tensor_slices(x_predict)
     predict_dataset = predict_dataset.repeat()
@@ -132,19 +189,20 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
     return predict_dataset
 
   def run_test_save_no_strategy_restore_strategy(self, model_and_input,
-                                                 distribution):
+                                                 distribution,
+                                                 experimental_run_tf_function):
     """Save a model without DS, and restore it with DS."""
 
-    saved_dir = os.path.join(self.get_temp_dir(), self._root_dir,
-                             'test_save_no_dist_restore_dist')
+    saved_dir = os.path.join(self.get_temp_dir(), '0')
 
-    model, output_name = model_and_input.get_model()
+    model, output_name = model_and_input.get_model(
+        experimental_run_tf_function=experimental_run_tf_function)
     x_train, y_train, x_predict = model_and_input.get_data()
     batch_size = model_and_input.get_batch_size()
+    predict_dataset = self._get_predict_dataset(x_predict, batch_size)
 
     self._train_model(model, x_train, y_train, batch_size)
-    predict_dataset = self._get_predict_dataset(x_predict, batch_size)
-    result_before_save = model.predict(predict_dataset, steps=PREDICT_STEPS)
+    result_before_save = self._predict_with_model(None, model, predict_dataset)
 
     self._save_model(model, saved_dir)
 
@@ -153,90 +211,80 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
           distribution=distribution,
           saved_dir=saved_dir,
           predict_dataset=predict_dataset,
-          output_name=output_name)
+          output_name=output_name,
+          experimental_run_tf_function=experimental_run_tf_function)
 
-    self.assertAllClose(result_before_save, result_after_save, atol=_TOLERANCE)
+    tolerance = get_tolerance(None, distribution)
+    self.assertAllClose(result_before_save, result_after_save, atol=tolerance)
 
   def run_test_save_strategy_restore_no_strategy(self, model_and_input,
-                                                 distribution):
+                                                 distribution, save_in_scope,
+                                                 experimental_run_tf_function):
     """Save a model with DS, and restore it without DS."""
 
-    saved_dir = os.path.join(self.get_temp_dir(), self._root_dir,
-                             'test_save_no_dist_restore_dist')
-    saved_dir_in_scope = os.path.join(saved_dir, _IN_SCOPE_SAVE_DIR)
-    saved_dir_out_of_scope = os.path.join(saved_dir, _OUT_OF_SCOPE_SAVE_DIR)
+    saved_dir = os.path.join(self.get_temp_dir(), '1')
 
     with distribution.scope():
-      model, output_name = model_and_input.get_model()
+      model, output_name = model_and_input.get_model(
+          experimental_run_tf_function=experimental_run_tf_function)
       x_train, y_train, x_predict = model_and_input.get_data()
       batch_size = model_and_input.get_batch_size()
 
       self._train_model(model, x_train, y_train, batch_size)
       predict_dataset = self._get_predict_dataset(x_predict, batch_size)
-      result_before_save = model.predict(predict_dataset, steps=PREDICT_STEPS)
+      result_before_save = self._predict_with_model(
+          distribution, model, predict_dataset)
 
-      # save the model both in and out of the DS scope
-      self._save_model(model, saved_dir_in_scope)
-    self._save_model(model, saved_dir_out_of_scope)
+    if save_in_scope:
+      with distribution.scope():
+        self._save_model(model, saved_dir)
+    else:
+      self._save_model(model, saved_dir)
 
-    result_load_from_save_in_scope = self._load_and_run_model(
+    load_result = self._load_and_run_model(
         distribution=None,
-        saved_dir=saved_dir_in_scope,
+        saved_dir=saved_dir,
         predict_dataset=predict_dataset,
-        output_name=output_name)
-    result_load_from_save_out_of_scope = self._load_and_run_model(
-        distribution=None,
-        saved_dir=saved_dir_out_of_scope,
-        predict_dataset=predict_dataset,
-        output_name=output_name)
+        output_name=output_name,
+        experimental_run_tf_function=experimental_run_tf_function)
 
-    self.assertAllClose(
-        result_before_save, result_load_from_save_in_scope, atol=_TOLERANCE)
-    self.assertAllClose(
-        result_before_save, result_load_from_save_out_of_scope, atol=_TOLERANCE)
+    tolerance = get_tolerance(distribution, None)
+    self.assertAllClose(result_before_save, load_result, atol=tolerance)
 
   def run_test_save_strategy_restore_strategy(self, model_and_input,
-                                              distribution_pair):
+                                              distribution_for_saving,
+                                              distribution_for_restoring,
+                                              save_in_scope,
+                                              experimental_run_tf_function):
     """Save a model with DS, and restore it with potentially different DS."""
+    saved_dir = os.path.join(self.get_temp_dir(), '2')
 
-    combinations.maybe_skip_test(self, distribution_pair.is_tpu_required,
-                                 distribution_pair.num_gpus_required)
-
-    saved_dir = os.path.join(self.get_temp_dir(), self._root_dir,
-                             'test_save_dist_restore_dist')
-    saved_dir_in_scope = os.path.join(saved_dir, _IN_SCOPE_SAVE_DIR)
-    saved_dir_out_of_scope = os.path.join(saved_dir, _OUT_OF_SCOPE_SAVE_DIR)
-
-    dist_for_save = distribution_pair.strategy_1
-    dist_for_restore = distribution_pair.strategy_2
-
-    with dist_for_save.scope():
-      model, output_name = model_and_input.get_model()
+    with distribution_for_saving.scope():
+      model, output_name = model_and_input.get_model(
+          experimental_run_tf_function=experimental_run_tf_function)
       x_train, y_train, x_predict = model_and_input.get_data()
       batch_size = model_and_input.get_batch_size()
 
       self._train_model(model, x_train, y_train, batch_size)
       predict_dataset = self._get_predict_dataset(x_predict, batch_size)
-      result_before_save = model.predict(predict_dataset, steps=PREDICT_STEPS)
+      result_before_save = self._predict_with_model(
+          distribution_for_saving, model, predict_dataset)
 
-      # save the model both in and out of the DS scope
-      self._save_model(model, saved_dir_in_scope)
-    self._save_model(model, saved_dir_out_of_scope)
+    if save_in_scope:
+      with distribution_for_saving.scope():
+        self._save_model(model, saved_dir)
+    else:
+      self._save_model(model, saved_dir)
 
-    with dist_for_restore.scope():
+    with distribution_for_restoring.scope():
 
-      result_load_from_save_in_scope = self._load_and_run_model(
-          distribution=dist_for_restore,
-          saved_dir=saved_dir_in_scope,
+      load_result = self._load_and_run_model(
+          distribution=distribution_for_restoring,
+          saved_dir=saved_dir,
           predict_dataset=predict_dataset,
-          output_name=output_name)
-      result_load_from_save_out_of_scope = self._load_and_run_model(
-          distribution=dist_for_restore,
-          saved_dir=saved_dir_out_of_scope,
-          predict_dataset=predict_dataset,
-          output_name=output_name)
+          output_name=output_name,
+          experimental_run_tf_function=experimental_run_tf_function)
 
-    self.assertAllClose(
-        result_before_save, result_load_from_save_in_scope, atol=_TOLERANCE)
-    self.assertAllClose(
-        result_before_save, result_load_from_save_out_of_scope, atol=_TOLERANCE)
+    tolerance = get_tolerance(distribution_for_saving,
+                              distribution_for_restoring)
+    self.assertAllClose(result_before_save, load_result, atol=tolerance)

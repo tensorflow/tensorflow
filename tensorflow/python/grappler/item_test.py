@@ -80,7 +80,7 @@ class ItemTest(test.TestCase):
         else:
           self.assertEqual(1, len(node_prop))
           self.assertEqual(dtypes.int32, node_prop[0].dtype)
-          self.assertEqual(tensor_shape.scalar(), node_prop[0].shape)
+          self.assertEqual(tensor_shape.TensorShape([]), node_prop[0].shape)
 
   def testUpdates(self):
     with ops.Graph().as_default() as g:

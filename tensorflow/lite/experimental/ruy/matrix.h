@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_MATRIX_H_
 
 #include <cstddef>
-#include <cstdint>
+#include <cstdint>  // IWYU pragma: keep
 #include <type_traits>
 
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
@@ -147,6 +147,19 @@ StreamType& operator<<(StreamType& stream, const Matrix<Scalar>& mat) {
   }
   return stream;
 }
+
+// Compile-time version of KernelLayout, used to declare kernel layouts in a
+// way that can be consumed by compile-time logic.
+// See how partial specializations of Kernel use it to declare their layouts.
+// The only reason why this is currently part of the public API is to
+// allow testing various layouts for the Path::kStandardCpp kernel, as a
+// testing-only feature. See Spec::StandardCppKernelLhsLayout.
+template <Order tOrder, int tRows, int tCols>
+struct FixedKernelLayout {
+  static constexpr Order kOrder = tOrder;
+  static constexpr int kRows = tRows;
+  static constexpr int kCols = tCols;
+};
 
 }  // namespace ruy
 

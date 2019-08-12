@@ -87,6 +87,16 @@ class FixedLossScaleTest(test.TestCase):
     loss_scale = loss_scale_module.FixedLossScale.from_config(config)
     self.assertEqual(self.evaluate(loss_scale()), 123.)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_call_type(self):
+    scalar = loss_scale_module.FixedLossScale(123)
+    self.assertIsInstance(scalar(), ops.Tensor)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_repr(self):
+    loss_scale = loss_scale_module.FixedLossScale(123)
+    self.assertEqual(repr(loss_scale), 'FixedLossScale(123.0)')
+
 
 def _get_example_iter(inputs):
   dataset = dataset_ops.Dataset.from_tensor_slices(inputs)
@@ -259,6 +269,15 @@ class DynamicLossScaleTest(test.TestCase, parameterized.TestCase):
       expected_outputs = [2, 2, 4, 4, 2, 2, 1, 1, 2, 2, 1]
       self._test_helper(inputs, expected_outputs, init_loss_scale)
 
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
+  def test_single_tensor_gradient(self, strategy_fn):
+    with strategy_fn().scope():
+      loss_scale = loss_scale_module.DynamicLossScale()
+      grad = constant_op.constant(4.0)
+      _, should_apply = loss_scale.update(grad)
+      self.assertTrue(self.evaluate(should_apply))
+
   @test_util.run_in_graph_and_eager_modes
   def test_serialization(self):
     loss_scale = loss_scale_module.DynamicLossScale(
@@ -282,6 +301,27 @@ class DynamicLossScaleTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(scalar.initial_loss_scale, scalar2.initial_loss_scale)
     self.assertEqual(scalar.increment_period, scalar2.increment_period)
     self.assertEqual(scalar.multiplier, scalar2.multiplier)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_call_type(self):
+    scalar = loss_scale_module.DynamicLossScale()
+    self.assertIsInstance(scalar(), ops.Tensor)
+
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
+  def test_repr(self, strategy_fn):
+    with strategy_fn().scope():
+      loss_scale = loss_scale_module.DynamicLossScale(
+          initial_loss_scale=1, increment_period=2, multiplier=3)
+      if context.executing_eagerly():
+        self.assertEqual(repr(loss_scale),
+                         'DynamicLossScale(current_loss_scale=1.0, '
+                         'num_good_steps=0, initial_loss_scale=1.0, '
+                         'increment_period=2, multiplier=3.0)')
+      else:
+        self.assertEqual(repr(loss_scale),
+                         'DynamicLossScale(initial_loss_scale=1.0, '
+                         'increment_period=2, multiplier=3.0)')
 
 
 if __name__ == '__main__':

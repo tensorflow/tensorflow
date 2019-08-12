@@ -9,6 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/kernels/data/shard_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
@@ -17,7 +18,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "shard_dataset";
-constexpr char kOpName[] = "ShardDataset";
 
 class ShardDatasetOpTest : public DatasetOpsTestBase {
  protected:
@@ -27,10 +27,12 @@ class ShardDatasetOpTest : public DatasetOpsTestBase {
       const std::vector<PartialTensorShape>& output_shapes,
       std::unique_ptr<OpKernel>* op_kernel) {
     NodeDef node_def = test::function::NDef(
-        kNodeName, kOpName, {"input_dataset", "num_shards", "index"},
-        {{"require_non_empty", require_non_empty},
-         {"output_types", output_types},
-         {"output_shapes", output_shapes}});
+        kNodeName, name_utils::OpName(ShardDatasetOp::kDatasetType),
+        {ShardDatasetOp::kInputDataset, ShardDatasetOp::kNumShards,
+         ShardDatasetOp::kIndex},
+        {{ShardDatasetOp::kRequireNonEmpty, require_non_empty},
+         {ShardDatasetOp::kOutputTypes, output_types},
+         {ShardDatasetOp::kOutputShapes, output_shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
@@ -68,13 +70,13 @@ struct TestCase {
 TestCase TestCase1() {
   return {/*range_data_param*/ {0, 10, 1},
           /*num_shards*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
+          CreateTensor<int64>(TensorShape({}), {5}),
           /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
+          CreateTensor<int64>(TensorShape({}), {2}),
           /*require_non_empty*/ true,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {7})},
+          {CreateTensor<int64>(TensorShape({}), {2}),
+           CreateTensor<int64>(TensorShape({}), {7})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 2,
@@ -85,13 +87,13 @@ TestCase TestCase1() {
 TestCase TestCase2() {
   return {/*range_data_param*/ {0, 10, 1},
           /*num_shards*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
+          CreateTensor<int64>(TensorShape({}), {5}),
           /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
+          CreateTensor<int64>(TensorShape({}), {0}),
           /*require_non_empty*/ true,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5})},
+          {CreateTensor<int64>(TensorShape({}), {0}),
+           CreateTensor<int64>(TensorShape({}), {5})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 2,
@@ -102,9 +104,9 @@ TestCase TestCase2() {
 TestCase TestCase3() {
   return {/*range_data_param*/ {0, 1, 1},
           /*num_shards*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
+          CreateTensor<int64>(TensorShape({}), {5}),
           /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {2}),
+          CreateTensor<int64>(TensorShape({}), {2}),
           /*require_non_empty*/ true,
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
@@ -117,12 +119,12 @@ TestCase TestCase3() {
 TestCase TestCase4() {
   return {/*range_data_param*/ {0, 10, 1},
           /*num_shards*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {7}),
+          CreateTensor<int64>(TensorShape({}), {7}),
           /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
+          CreateTensor<int64>(TensorShape({}), {5}),
           /*require_non_empty*/ true,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5})},
+          {CreateTensor<int64>(TensorShape({}), {5})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 1,
@@ -133,13 +135,13 @@ TestCase TestCase4() {
 TestCase TestCase5() {
   return {/*range_data_param*/ {0, 10, 1},
           /*num_shards*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
+          CreateTensor<int64>(TensorShape({}), {5}),
           /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
+          CreateTensor<int64>(TensorShape({}), {4}),
           /*require_non_empty*/ true,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {9})},
+          {CreateTensor<int64>(TensorShape({}), {4}),
+           CreateTensor<int64>(TensorShape({}), {9})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 2,
@@ -151,13 +153,13 @@ TestCase TestCase5() {
 TestCase TestCase6() {
   return {/*range_data_param*/ {0, 10, 1},
           /*num_shards*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {4}),
+          CreateTensor<int64>(TensorShape({}), {4}),
           /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
+          CreateTensor<int64>(TensorShape({}), {3}),
           /*require_non_empty*/ true,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {3}),
-           DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {7})},
+          {CreateTensor<int64>(TensorShape({}), {3}),
+           CreateTensor<int64>(TensorShape({}), {7})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 2,
@@ -169,12 +171,12 @@ TestCase TestCase6() {
 TestCase TestCase7() {
   return {/*range_data_param*/ {0, 10, 1},
           /*num_shards*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {20}),
+          CreateTensor<int64>(TensorShape({}), {20}),
           /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
+          CreateTensor<int64>(TensorShape({}), {5}),
           /*require_non_empty*/ false,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5})},
+          {CreateTensor<int64>(TensorShape({}), {5})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 1,
@@ -185,12 +187,12 @@ TestCase TestCase7() {
 TestCase NoElemForEachShardTestCase() {
   return {/*range_data_param*/ {0, 10, 1},
           /*num_shards*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {20}),
+          CreateTensor<int64>(TensorShape({}), {20}),
           /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
+          CreateTensor<int64>(TensorShape({}), {5}),
           /*require_non_empty*/ true,
           /*expected_outputs*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5})},
+          {CreateTensor<int64>(TensorShape({}), {5})},
           /*expected_output_dtypes*/ {DT_INT64},
           /*expected_output_shapes*/ {PartialTensorShape({})},
           /*expected_cardinality*/ 1,
@@ -200,9 +202,9 @@ TestCase NoElemForEachShardTestCase() {
 TestCase IndexGreaterNumShardsCase() {
   return {/*range_data_param*/ {0, 10, 1},
           /*num_shards*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
+          CreateTensor<int64>(TensorShape({}), {5}),
           /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {7}),
+          CreateTensor<int64>(TensorShape({}), {7}),
           /*require_non_empty*/ true,
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
@@ -214,9 +216,9 @@ TestCase IndexGreaterNumShardsCase() {
 TestCase NegativeIndexTestCase() {
   return {/*range_data_param*/ {0, 10, 1},
           /*num_shards*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {5}),
+          CreateTensor<int64>(TensorShape({}), {5}),
           /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {-3}),
+          CreateTensor<int64>(TensorShape({}), {-3}),
           /*require_non_empty*/ true,
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
@@ -228,9 +230,9 @@ TestCase NegativeIndexTestCase() {
 TestCase NegativeNumShardsTestCase() {
   return {/*range_data_param*/ {0, 10, 1},
           /*num_shards*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {-3}),
+          CreateTensor<int64>(TensorShape({}), {-3}),
           /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
+          CreateTensor<int64>(TensorShape({}), {1}),
           /*require_non_empty*/ true,
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
@@ -242,9 +244,9 @@ TestCase NegativeNumShardsTestCase() {
 TestCase ZeroNumShardsTestCase() {
   return {/*range_data_param*/ {0, 10, 1},
           /*num_shards*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {0}),
+          CreateTensor<int64>(TensorShape({}), {0}),
           /*index*/
-          DatasetOpsTestBase::CreateTensor<int64>(TensorShape({}), {1}),
+          CreateTensor<int64>(TensorShape({}), {1}),
           /*require_non_empty*/ true,
           /*expected_outputs*/ {},
           /*expected_output_dtypes*/ {DT_INT64},
@@ -381,7 +383,8 @@ TEST_F(ShardDatasetOpTest, DatasetTypeString) {
                              shard_dataset_context.get(), &shard_dataset));
   core::ScopedUnref scoped_unref_batch_dataset(shard_dataset);
 
-  EXPECT_EQ(shard_dataset->type_string(), kOpName);
+  EXPECT_EQ(shard_dataset->type_string(),
+            name_utils::OpName(ShardDatasetOp::kDatasetType));
 }
 
 TEST_P(ParameterizedShardDatasetOpTest, DatasetOutputDtypes) {
@@ -492,47 +495,6 @@ TEST_P(ParameterizedShardDatasetOpTest, Cardinality) {
   core::ScopedUnref scoped_unref_batch_dataset(shard_dataset);
 
   EXPECT_EQ(shard_dataset->Cardinality(), test_case.expected_cardinality);
-}
-
-TEST_P(ParameterizedShardDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  std::unique_ptr<OpKernel> shard_dataset_kernel;
-  TF_ASSERT_OK(CreateShardDatasetOpKernel(
-      test_case.require_non_empty, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &shard_dataset_kernel));
-
-  DatasetBase* range_dataset;
-  TF_ASSERT_OK(CreateRangeDataset<int64>(
-      test_case.range_dataset_param.start, test_case.range_dataset_param.end,
-      test_case.range_dataset_param.step, "range", &range_dataset));
-  Tensor range_dataset_tensor(DT_VARIANT, TensorShape({}));
-  TF_ASSERT_OK(
-      StoreDatasetInVariantTensor(range_dataset, &range_dataset_tensor));
-
-  Tensor num_shards = test_case.num_shards;
-  Tensor index = test_case.index;
-  gtl::InlinedVector<TensorValue, 4> inputs({TensorValue(&range_dataset_tensor),
-                                             TensorValue(&num_shards),
-                                             TensorValue(&index)});
-  std::unique_ptr<OpKernelContext> shard_dataset_context;
-  TF_ASSERT_OK(CreateShardDatasetContext(shard_dataset_kernel.get(), &inputs,
-                                         &shard_dataset_context));
-
-  DatasetBase* shard_dataset;
-  TF_ASSERT_OK(CreateDataset(shard_dataset_kernel.get(),
-                             shard_dataset_context.get(), &shard_dataset));
-  core::ScopedUnref scoped_unref_batch_dataset(shard_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(shard_dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
 }
 
 TEST_P(ParameterizedShardDatasetOpTest, IteratorOutputDtypes) {
@@ -663,7 +625,8 @@ TEST_F(ShardDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(
       shard_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
 
-  EXPECT_EQ(iterator->prefix(), "Iterator::Shard");
+  EXPECT_EQ(iterator->prefix(), name_utils::IteratorPrefix(
+                                    ShardDatasetOp::kDatasetType, "Iterator"));
 }
 
 TEST_P(ParameterizedShardDatasetOpTest, Roundtrip) {

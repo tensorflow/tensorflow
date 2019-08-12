@@ -539,7 +539,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::LaunchKernel(
+/* static */ port::Status GpuDriver::LaunchKernel(
     GpuContext* context, CUfunction function, unsigned int grid_dim_x,
     unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,
     unsigned int block_dim_y, unsigned int block_dim_z,
@@ -554,12 +554,12 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                 block_dim_x, block_dim_y, block_dim_z,
                                 shared_mem_bytes, stream, kernel_params, extra);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to launch CUDA kernel: " << function
-               << "; result: " << ToString(res);
-    return false;
+    return port::InternalError(absl::StrCat(
+        "Failed to launch CUDA kernel: ", reinterpret_cast<uint64>(function),
+        "; result: ", ToString(res)));
   }
   VLOG(2) << "successfully launched kernel";
-  return true;
+  return port::Status::OK();
 }
 
 /* static */ port::Status GpuDriver::LoadCubin(GpuContext* context,
@@ -575,11 +575,11 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::LoadPtx(GpuContext* context,
-                                     const char* ptx_contents,
-                                     CUmodule* module) {
+/* static */ port::Status GpuDriver::LoadPtx(GpuContext* context,
+                                             const char* ptx_contents,
+                                             CUmodule* module) {
   absl::Notification notification;
-  bool ret = true;
+  port::Status ret = port::Status::OK();
   GetDriverExecutor()->Schedule([context, ptx_contents, module, &ret,
                                  &notification]() {
     ScopedActivateContext activation(context);
@@ -629,7 +629,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                               : 0] = '\0';
       LOG(ERROR) << "error log buffer (" << error_log_buffer_bytes
                  << " bytes): " << error_log_buffer.data();
-      ret = false;
+      ret = port::InternalError(
+          absl::StrCat("Failed to load PTX text as a module: ", ToString(res)));
       notification.Notify();
     }
 
@@ -825,9 +826,11 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   CUdeviceptr result = 0;
   CUresult res = cuMemAlloc(&result, bytes);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "failed to allocate "
-               << port::HumanReadableNumBytes::ToString(bytes) << " (" << bytes
-               << " bytes) from device: " << ToString(res);
+    // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator
+    // implements a retry if the first allocation fails).
+    LOG(INFO) << "failed to allocate "
+              << port::HumanReadableNumBytes::ToString(bytes) << " (" << bytes
+              << " bytes) from device: " << ToString(res);
     return nullptr;
   }
   void* ptr = reinterpret_cast<void*>(result);

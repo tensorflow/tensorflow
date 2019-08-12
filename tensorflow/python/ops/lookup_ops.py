@@ -166,11 +166,16 @@ class InitializableLookupTableBase(LookupInterface):
                                                        initializer.value_dtype)
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)
-    self._default_value.get_shape().merge_with(tensor_shape.scalar())
+    self._default_value.get_shape().merge_with(tensor_shape.TensorShape([]))
     if isinstance(initializer, trackable_base.Trackable):
       self._initializer = self._track_trackable(initializer, "_initializer")
     with ops.init_scope():
       self._resource_handle = self._create_resource()
+    if (not context.executing_eagerly() and
+        ops.get_default_graph()._get_control_flow_context() is not None):  # pylint: disable=protected-access
+      with ops.init_scope():
+        self._init_op = self._initialize()
+    else:
       self._init_op = self._initialize()
 
   def _initialize(self):
@@ -240,16 +245,17 @@ class InitializableLookupTableBaseV1(InitializableLookupTableBase):
 
 @tf_export("lookup.StaticHashTable", v1=[])
 class StaticHashTable(InitializableLookupTableBase):
-  """A generic hash table implementation.
+  """A generic hash table that is immutable once initialized.
 
   Example usage:
 
   ```python
+  keys_tensor = tf.constant([1, 2])
+  vals_tensor = tf.constant([3, 4])
+  input_tensor = tf.constant([1, 5])
   table = tf.lookup.StaticHashTable(
-      tf.KeyValueTensorInitializer(keys, values), -1)
-  out = table.lookup(input_tensor)
-  table.init.run()
-  print(out.eval())
+      tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1)
+  print(table.lookup(input_tensor))
   ```
   """
 
@@ -321,6 +327,37 @@ class StaticHashTable(InitializableLookupTableBase):
 
 @tf_export(v1=["lookup.StaticHashTable"])
 class StaticHashTableV1(StaticHashTable):
+  """A generic hash table that is immutable once initialized.
+
+  When running in graph mode, you must evaluate the tensor returned by
+  `tf.tables_initializer()` before evaluating the tensor returned by
+  this class's `lookup()` method. Example usage in graph mode:
+
+  ```python
+  keys_tensor = tf.constant([1, 2])
+  vals_tensor = tf.constant([3, 4])
+  input_tensor = tf.constant([1, 5])
+  table = tf.lookup.StaticHashTable(
+      tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1)
+  out = table.lookup(input_tensor)
+  with tf.Session() as sess:
+      sess.run(tf.tables_initializer())
+      print(sess.run(out))
+  ```
+
+  In eager mode, no special code is needed to initialize the table.
+  Example usage in eager mode:
+
+  ```python
+  tf.enable_eager_execution()
+  keys_tensor = tf.constant([1, 2])
+  vals_tensor = tf.constant([3, 4])
+  input_tensor = tf.constant([1, 5])
+  table = tf.lookup.StaticHashTable(
+      tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1)
+  print(table.lookup(input_tensor))
+  ```
+  """
 
   @property
   def initializer(self):
@@ -388,7 +425,13 @@ class KeyValueTensorInitializer(TableInitializerBase):
       value_dtype: The `values` data type. Used when `values` is a python array.
       name: A name for the operation (optional).
     """
-    with ops.init_scope():
+    if (not context.executing_eagerly() and
+        ops.get_default_graph()._get_control_flow_context() is not None):  # pylint: disable=protected-access
+      with ops.init_scope():
+        self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
+        self._values = ops.convert_to_tensor(
+            values, dtype=value_dtype, name="values")
+    else:
       self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
       self._values = ops.convert_to_tensor(
           values, dtype=value_dtype, name="values")
@@ -982,7 +1025,7 @@ class IdTableWithHashBuckets(LookupInterface):
           ids = self._table.lookup(values)
           buckets = math_ops.add(buckets, self._table.size())
           is_id_non_default = math_ops.not_equal(ids, self._table.default_value)
-          ids = array_ops.where(is_id_non_default, ids, buckets)
+          ids = array_ops.where_v2(is_id_non_default, ids, buckets)
         else:
           ids = buckets
     if isinstance(keys, sparse_tensor.SparseTensor):
@@ -1156,7 +1199,7 @@ class StaticVocabularyTable(LookupInterface):
         ids = self._table.lookup(values)
         buckets = math_ops.add(buckets, self._table.size())
         is_id_non_default = math_ops.not_equal(ids, self._table.default_value)
-        ids = array_ops.where(is_id_non_default, ids, buckets)
+        ids = array_ops.where_v2(is_id_non_default, ids, buckets)
       else:
         ids = buckets
     if isinstance(keys, sparse_tensor.SparseTensor):
@@ -1199,8 +1242,8 @@ def index_table_from_file(vocabulary_file=None,
   `[vocabulary size, vocabulary size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
-  `session.run(tf.compat.v1.tables_initializer)` or `session.run(table.init)`
-  once.
+  `session.run(tf.compat.v1.tables_initializer())` or
+  `session.run(table.init())` once.
 
   To specify multi-column vocabulary files, use key_column_index and
   value_column_index and delimiter.
@@ -1315,8 +1358,8 @@ def index_table_from_tensor(vocabulary_list,
   `[vocabulary list size, vocabulary list size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
-  `session.run(tf.compat.v1.tables_initializer)` or `session.run(table.init)`
-  once.
+  `session.run(tf.compat.v1.tables_initializer())` or
+  `session.run(table.init())` once.
 
   Elements in `vocabulary_list` cannot have duplicates, otherwise when executing
   the table initializer op, it will throw a `FailedPreconditionError`.
@@ -1413,8 +1456,8 @@ def index_to_string_table_from_file(vocabulary_file,
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
-  `session.run(tf.compat.v1.tables_initializer)` or `session.run(table.init)`
-  once.
+  `session.run(tf.compat.v1.tables_initializer())` or
+  `session.run(table.init())` once.
 
   To specify multi-column vocabulary files, use key_column_index and
   value_column_index and delimiter.
@@ -1500,8 +1543,8 @@ def index_to_string_table_from_tensor(vocabulary_list,
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
-  `session.run(tf.compat.v1.tables_initializer)` or `session.run(table.init)`
-  once.
+  `session.run(tf.compat.v1.tables_initializer())` or
+  `session.run(table.init())` once.
 
   Elements in `vocabulary_list` cannot have duplicates, otherwise when executing
   the table initializer op, it will throw a `FailedPreconditionError`.

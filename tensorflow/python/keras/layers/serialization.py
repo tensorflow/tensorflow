@@ -23,6 +23,7 @@ from __future__ import print_function
 
 from tensorflow.python import tf2
 from tensorflow.python.keras.engine.base_layer import AddLoss
+from tensorflow.python.keras.engine.base_layer import AddMetric
 from tensorflow.python.keras.engine.base_layer import TensorFlowOpLayer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
@@ -76,7 +77,7 @@ def deserialize(config, custom_objects=None):
   """
   # Prevent circular dependencies.
   from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.feature_column import feature_column_v2  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.feature_column import dense_features  # pylint: disable=g-import-not-at-top
 
   globs = globals()  # All layers.
   globs['Network'] = models.Network
@@ -84,7 +85,7 @@ def deserialize(config, custom_objects=None):
   globs['Sequential'] = models.Sequential
 
   # Prevent circular dependencies with FeatureColumn serialization.
-  globs['DenseFeatures'] = feature_column_v2.DenseFeatures
+  globs['DenseFeatures'] = dense_features.DenseFeatures
 
   layer_class_name = config['class_name']
   if layer_class_name in _DESERIALIZATION_TABLE:

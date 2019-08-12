@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -25,7 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
-#include "tensorflow/lite/kernels/cpu_backend_support.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
@@ -115,7 +116,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // This is a builtin op, so we don't use the contents in 'buffer', if any.
   // Instead, we allocate a new object to carry information from Prepare() to
   // Eval().
-  cpu_backend_support::IncrementUsageCounter(context);
   auto* op_data = new OpData();
   context->AddTensors(context, /*tensors_to_add=*/2,
                       &op_data->scratch_tensor_index);
@@ -123,7 +123,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 void Free(TfLiteContext* context, void* buffer) {
-  cpu_backend_support::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
 
@@ -133,7 +132,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   // Check we have all the inputs and outputs we need.
-  TF_LITE_ENSURE_EQ(context, node->inputs->size, 3);
+  TF_LITE_ENSURE(context, node->inputs->size == 2 || node->inputs->size == 3);
   // Shuffled formats need a workspace to store the shuffled input activations.
   const int expected_outputs_count =
       params->weights_format == kTfLiteFullyConnectedWeightsFormatDefault ? 1
@@ -142,7 +141,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
-  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* bias =
+      (node->inputs->size == 3)
+          ? GetOptionalInputTensor(context, node, kBiasTensor)
+          : nullptr;
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Check proper datatype match among all Input Tensors
@@ -398,13 +400,13 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
               GetTensorShape(filter), GetTensorData<uint8_t>(filter),
               GetTensorShape(bias), GetTensorData<int32_t>(bias),
               GetTensorShape(output), GetTensorData<uint8_t>(output),
-              cpu_backend_support::GetFromContext(context));
+              CpuBackendContext::GetFromContext(context));
         }
         break;
       case kTfLiteInt8:
         FullyConnectedInt8<kernel_type>(
             data, input, filter, bias, output,
-            cpu_backend_support::GetFromContext(context));
+            CpuBackendContext::GetFromContext(context));
         break;
       case kTfLiteInt16:
         if (kernel_type == kReference) {
@@ -419,7 +421,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
               GetTensorShape(filter), GetTensorData<uint8_t>(filter),
               GetTensorShape(bias), GetTensorData<int32_t>(bias),
               GetTensorShape(output), GetTensorData<int16_t>(output),
-              cpu_backend_support::GetFromContext(context));
+              CpuBackendContext::GetFromContext(context));
         }
         break;
       default:
@@ -456,7 +458,7 @@ TfLiteStatus EvalShuffledQuantized(TfLiteContext* context, TfLiteNode* node,
         GetTensorShape(bias), GetTensorData<int32_t>(bias),              \
         GetTensorShape(output), GetTensorData<int16_t>(output),          \
         GetTensorData<uint8_t>(shuffled_input_workspace),                \
-        cpu_backend_support::GetFromContext(context));                   \
+        CpuBackendContext::GetFromContext(context));                     \
   }
   FullyConnectedParams op_params;
   op_params.output_multiplier = data->output_multiplier;
@@ -477,7 +479,7 @@ TfLiteStatus EvalShuffledQuantized(TfLiteContext* context, TfLiteNode* node,
         GetTensorShape(bias), GetTensorData<int32_t>(bias),
         GetTensorShape(output), GetTensorData<int16_t>(output),
         GetTensorData<uint8_t>(shuffled_input_workspace),
-        cpu_backend_support::GetFromContext(context));
+        CpuBackendContext::GetFromContext(context));
   }
 #undef TF_LITE_SHUFFLED_FULLY_CONNECTED
 
@@ -512,7 +514,7 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
         GetTensorShape(filter), GetTensorData<float>(filter),
         GetTensorShape(bias), GetTensorData<float>(bias),
         GetTensorShape(output), GetTensorData<float>(output),
-        cpu_backend_support::GetFromContext(context));
+        CpuBackendContext::GetFromContext(context));
   }
 
   return kTfLiteOk;
@@ -526,7 +528,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
-  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* bias =
+      (node->inputs->size == 3)
+          ? GetOptionalInputTensor(context, node, kBiasTensor)
+          : nullptr;
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   switch (filter->type) {

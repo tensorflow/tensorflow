@@ -1,8 +1,8 @@
-Clustered nodes: 1988
-Unclustered nodes: 3960
+Clustered nodes: 1962
+Unclustered nodes: 3974
 Number of clusters: 29
 
-unclustered size 3960
+unclustered size 3974
  Add 17
  AddN 1
  ApplyAdam 38
@@ -14,7 +14,7 @@ unclustered size 3960
  Cast 8
  ConcatOffset 10
  ConcatV2 2
- Const 704
+ Const 708
  ControlTrigger 5
  DynamicStitch 1
  Enter 874
@@ -24,7 +24,7 @@ unclustered size 3960
  FloorDiv 1
  FloorMod 1
  GreaterEqual 7
- Identity 105
+ Identity 113
  IsVariableInitialized 1
  IteratorGetNext 1
  IteratorV2 1
@@ -42,7 +42,7 @@ unclustered size 3960
  RefSwitch 166
  Reshape 2
  ScatterAdd 4
- Shape 4
+ Shape 6
  ShapeN 10
  Size 2
  Snapshot 1
@@ -169,15 +169,13 @@ cluster 7 size 11
  Mul 2
  Pow 1
  Sub 1
-cluster 10 size 14
- Add 2
+cluster 10 size 8
+ Add 1
  All 2
- Const 4
+ Const 2
  GreaterEqual 1
- Identity 1
  Less 1
  LogicalOr 1
- Shape 2
 cluster 11 size 226
  Add 24
  BatchMatMulV2 1
@@ -226,13 +224,12 @@ cluster 12 size 430
  TanhGrad 17
  Tile 2
  ZerosLike 1
-cluster 13 size 25
- Add 3
+cluster 13 size 20
+ Add 2
  BiasAdd 1
  ConcatV2 1
- Const 3
+ Const 1
  GreaterEqual 1
- Identity 2
  MatMul 1
  Mul 3
  Select 3
@@ -256,13 +253,12 @@ cluster 14 size 52
  Slice 2
  Sum 9
  TanhGrad 2
-cluster 15 size 25
- Add 3
+cluster 15 size 20
+ Add 2
  BiasAdd 1
  ConcatV2 1
- Const 3
+ Const 1
  GreaterEqual 1
- Identity 2
  MatMul 1
  Mul 3
  Select 3
@@ -290,14 +286,13 @@ cluster 17 size 52
  Slice 2
  Sum 9
  TanhGrad 2
-cluster 19 size 30
- Add 3
+cluster 19 size 25
+ Add 2
  BiasAdd 1
  Cast 1
  ConcatV2 1
- Const 5
+ Const 3
  GreaterEqual 2
- Identity 2
  MatMul 1
  Mul 5
  Select 2
@@ -305,77 +300,7 @@ cluster 19 size 30
  Snapshot 1
  Split 1
  Tanh 2
-cluster 20 size 23
- Add 3
- BiasAdd 1
- Cast 1
- ConcatV2 1
- GreaterEqual 1
- Identity 1
- MatMul 1
- Mul 5
- Select 2
- Sigmoid 3
- Snapshot 1
- Split 1
- Tanh 2
-cluster 21 size 23
- Add 3
- BiasAdd 1
- Cast 1
- ConcatV2 1
- GreaterEqual 1
- Identity 1
- MatMul 1
- Mul 5
- Select 2
- Sigmoid 3
- Snapshot 1
- Split 1
- Tanh 2
-cluster 22 size 23
- Add 3
- BiasAdd 1
- Cast 1
- ConcatV2 1
- GreaterEqual 1
- Identity 1
- MatMul 1
- Mul 5
- Select 2
- Sigmoid 3
- Snapshot 1
- Split 1
- Tanh 2
-cluster 23 size 23
- Add 3
- BiasAdd 1
- Cast 1
- ConcatV2 1
- GreaterEqual 1
- Identity 1
- MatMul 1
- Mul 5
- Select 2
- Sigmoid 3
- Snapshot 1
- Split 1
- Tanh 2
-cluster 24 size 24
- Add 3
- BiasAdd 1
- Cast 1
- ConcatV2 1
- GreaterEqual 1
- Identity 1
- MatMul 1
- Mul 5
- Select 3
- Sigmoid 3
- Snapshot 1
- Split 1
- Tanh 2
-cluster 25 size 363
+cluster 20 size 363
  Add 12
  AddN 28
  BiasAddGrad 6
@@ -391,6 +316,71 @@ cluster 25 size 363
  Slice 12
  Sum 76
  TanhGrad 12
+cluster 21 size 22
+ Add 3
+ BiasAdd 1
+ Cast 1
+ ConcatV2 1
+ GreaterEqual 1
+ MatMul 1
+ Mul 5
+ Select 2
+ Sigmoid 3
+ Snapshot 1
+ Split 1
+ Tanh 2
+cluster 22 size 22
+ Add 3
+ BiasAdd 1
+ Cast 1
+ ConcatV2 1
+ GreaterEqual 1
+ MatMul 1
+ Mul 5
+ Select 2
+ Sigmoid 3
+ Snapshot 1
+ Split 1
+ Tanh 2
+cluster 23 size 22
+ Add 3
+ BiasAdd 1
+ Cast 1
+ ConcatV2 1
+ GreaterEqual 1
+ MatMul 1
+ Mul 5
+ Select 2
+ Sigmoid 3
+ Snapshot 1
+ Split 1
+ Tanh 2
+cluster 24 size 22
+ Add 3
+ BiasAdd 1
+ Cast 1
+ ConcatV2 1
+ GreaterEqual 1
+ MatMul 1
+ Mul 5
+ Select 2
+ Sigmoid 3
+ Snapshot 1
+ Split 1
+ Tanh 2
+cluster 25 size 23
+ Add 3
+ BiasAdd 1
+ Cast 1
+ ConcatV2 1
+ GreaterEqual 1
+ MatMul 1
+ Mul 5
+ Select 3
+ Sigmoid 3
+ Snapshot 1
+ Split 1
+ Tanh 2
 cluster 26 size 9
  AddN 1
  MatMul 2

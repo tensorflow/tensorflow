@@ -1,11 +1,13 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_binary(
     name = "upgrade_schema",
@@ -58,8 +60,6 @@ exports_files([
     "schema_v3.fbs",
 ])
 
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-
 # Generic schema for inference on device.
 flatbuffer_cc_library(
     name = "schema_fbs",
@@ -95,7 +95,7 @@ cc_test(
         "tflite_not_portable_ios",
     ],
     deps = [
-        "//tensorflow/core:lib_platform",
+        "//tensorflow/core/platform",
         "@com_google_googletest//:gtest",
         "@flatbuffers//:flatc_library",
     ],

@@ -74,6 +74,24 @@ py_test(
 )
 
 py_test(
+    name = "restructured_dataset_test",
+    size = "medium",
+    srcs = ["restructured_dataset_test.py"],
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:batching",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+    ],
+)
+
+py_test(
     name = "slide_dataset_op_test",
     size = "small",
     srcs = ["slide_dataset_op_test.py"],

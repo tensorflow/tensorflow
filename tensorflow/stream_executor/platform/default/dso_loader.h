@@ -43,6 +43,8 @@ port::StatusOr<void*> GetCusolverDsoHandle();
 port::StatusOr<void*> GetCusparseDsoHandle();
 port::StatusOr<void*> GetCuptiDsoHandle();
 port::StatusOr<void*> GetCudnnDsoHandle();
+port::StatusOr<void*> GetNvInferDsoHandle();
+port::StatusOr<void*> GetNvInferPluginDsoHandle();
 
 port::StatusOr<void*> GetRocblasDsoHandle();
 port::StatusOr<void*> GetMiopenDsoHandle();

@@ -389,20 +389,25 @@ class FusedBatchNormExOpTestBase : public OpsTestBase {
               is_training ? empty : var, side_input, &fbn_ex_forward,
               &fbn_ex_backward);
 
-    std::vector<std::pair<Tensor, Tensor>> tensor_pairs = {
-        {fbn_forward.y, fbn_ex_forward.y},
-        {fbn_forward.batch_mean, fbn_ex_forward.batch_mean},
-        {fbn_forward.batch_variance, fbn_ex_forward.batch_variance},
-        {fbn_forward.reserve_space_1, fbn_ex_forward.reserve_space_1},
-        {fbn_forward.reserve_space_2, fbn_ex_forward.reserve_space_2},
-        // NOTE(ezhulenev): We deliberately do not check `reserved_space_3`
-        // because BatchNormEx with fused side input has different data in it,
-        // but we make sure that final gradients are the same.
-        {fbn_backward.y_backprop, fbn_ex_backward.y_backprop},
-        {fbn_backward.x_backprop, fbn_ex_backward.x_backprop},
-        {fbn_backward.scale_backprop, fbn_ex_backward.scale_backprop},
-        {fbn_backward.offset_backprop, fbn_ex_backward.offset_backprop},
-    };
+    std::vector<std::pair<Tensor, Tensor>> tensor_pairs;
+    if (is_training) {
+      tensor_pairs = {
+          {fbn_forward.y, fbn_ex_forward.y},
+          {fbn_forward.batch_mean, fbn_ex_forward.batch_mean},
+          {fbn_forward.batch_variance, fbn_ex_forward.batch_variance},
+          {fbn_forward.reserve_space_1, fbn_ex_forward.reserve_space_1},
+          {fbn_forward.reserve_space_2, fbn_ex_forward.reserve_space_2},
+          // NOTE(ezhulenev): We deliberately do not check `reserved_space_3`
+          // because BatchNormEx with fused side input has different data in it,
+          // but we make sure that final gradients are the same.
+          {fbn_backward.y_backprop, fbn_ex_backward.y_backprop},
+          {fbn_backward.x_backprop, fbn_ex_backward.x_backprop},
+          {fbn_backward.scale_backprop, fbn_ex_backward.scale_backprop},
+          {fbn_backward.offset_backprop, fbn_ex_backward.offset_backprop},
+      };
+    } else {
+      tensor_pairs = {{fbn_forward.y, fbn_ex_forward.y}};
+    }
 
     for (auto& pair : tensor_pairs) {
       const Tensor& fbn = pair.first;
@@ -450,47 +455,89 @@ class FusedBatchNormExOpTestBase : public OpsTestBase {
   }
 };
 
-template <typename T>
-using FusedBatchNormExOpTest =
-    FusedBatchNormExOpTestBase<T, float>;  // scale is always float
-
 constexpr bool kInTraining = true;     // is_training == true
+constexpr bool kInInference = false;   // is_training == false
 constexpr bool kNoSideInput = false;   // side_input == false
 constexpr bool kWithSideInput = true;  // side_input == true
 
-TYPED_TEST_SUITE_P(FusedBatchNormExOpTest);
+// -------------------------------------------------------------------------- //
+// FusedBatchNormEx[is_training=true].
 
-TYPED_TEST_P(FusedBatchNormExOpTest, TrainingInNHWCTest) {
+template <typename T>
+using FusedBatchNormExOpTrainingTest =
+    FusedBatchNormExOpTestBase<T, float>;  // scale is always float
+
+TYPED_TEST_SUITE_P(FusedBatchNormExOpTrainingTest);
+
+TYPED_TEST_P(FusedBatchNormExOpTrainingTest, TrainingInNHWCTest) {
   this->VerifyFusedBatchNormEx(4, 28, 28, 256, FORMAT_NHWC, kInTraining,
                                kNoSideInput, "Identity");
 }
 
-TYPED_TEST_P(FusedBatchNormExOpTest, TrainingWithReluInNHWCTest) {
+TYPED_TEST_P(FusedBatchNormExOpTrainingTest, TrainingWithReluInNHWCTest) {
   this->VerifyFusedBatchNormEx(4, 28, 28, 256, FORMAT_NHWC, kInTraining,
                                kNoSideInput, "Relu");
 }
 
-TYPED_TEST_P(FusedBatchNormExOpTest, TrainingWithSideInputAndReluInNHWCTest) {
+TYPED_TEST_P(FusedBatchNormExOpTrainingTest,
+             TrainingWithSideInputAndReluInNHWCTest) {
   this->VerifyFusedBatchNormEx(4, 28, 28, 256, FORMAT_NHWC, kInTraining,
                                kWithSideInput, "Relu");
 }
 
-REGISTER_TYPED_TEST_SUITE_P(FusedBatchNormExOpTest,      //
-                            TrainingInNHWCTest,          //
-                            TrainingWithReluInNHWCTest,  //
+REGISTER_TYPED_TEST_SUITE_P(FusedBatchNormExOpTrainingTest,  //
+                            TrainingInNHWCTest,              //
+                            TrainingWithReluInNHWCTest,      //
                             TrainingWithSideInputAndReluInNHWCTest);
 
 #if defined(GOOGLE_CUDA) && (CUDNN_VERSION >= 7402)
-using FusedBatchNormExDataTypes = ::testing::Types<Eigen::half>;
-INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedBatchNormExOpTest,
-                               FusedBatchNormExDataTypes);
+using FusedBatchNormExTrainingDataTypes = ::testing::Types<Eigen::half>;
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedBatchNormExOpTrainingTest,
+                               FusedBatchNormExTrainingDataTypes);
 #endif  // defined(GOOGLE_CUDA) && (CUDNN_VERSION >= 7402)
+
+// -------------------------------------------------------------------------- //
+// FusedBatchNormEx[is_training=false].
+
+template <typename T>
+using FusedBatchNormExOpInferenceTest =
+    FusedBatchNormExOpTestBase<T, float>;  // scale is always float
+
+TYPED_TEST_SUITE_P(FusedBatchNormExOpInferenceTest);
+
+TYPED_TEST_P(FusedBatchNormExOpInferenceTest, InferenceInNHWCTest) {
+  this->VerifyFusedBatchNormEx(4, 28, 28, 256, FORMAT_NHWC, kInInference,
+                               kNoSideInput, "Identity");
+}
+
+TYPED_TEST_P(FusedBatchNormExOpInferenceTest, InferenceWithReluInNHWCTest) {
+  this->VerifyFusedBatchNormEx(4, 28, 28, 256, FORMAT_NHWC, kInInference,
+                               kNoSideInput, "Relu");
+}
+
+TYPED_TEST_P(FusedBatchNormExOpInferenceTest,
+             InferenceWithSideInputAndReluInNHWCTest) {
+  this->VerifyFusedBatchNormEx(4, 28, 28, 256, FORMAT_NHWC, kInInference,
+                               kWithSideInput, "Relu");
+}
+
+REGISTER_TYPED_TEST_SUITE_P(FusedBatchNormExOpInferenceTest,  //
+                            InferenceInNHWCTest,              //
+                            InferenceWithReluInNHWCTest,      //
+                            InferenceWithSideInputAndReluInNHWCTest);
+
+#if defined(GOOGLE_CUDA)
+using FusedBatchNormExInferenceDataTypes = ::testing::Types<Eigen::half, float>;
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedBatchNormExOpInferenceTest,
+                               FusedBatchNormExInferenceDataTypes);
+#endif  // defined(GOOGLE_CUDA)
 
 // -------------------------------------------------------------------------- //
 // Performance benchmarks are below.                                          //
 // -------------------------------------------------------------------------- //
 
 using fp16 = Eigen::half;
+using fp32 = float;
 using SideInputAndActivation = std::pair<bool, string>;
 
 SideInputAndActivation Identity() { return {false, "Identity"}; }
@@ -499,7 +546,7 @@ SideInputAndActivation AddAndRelu() { return {true, "Relu"}; }
 
 template <typename T>
 static Graph* FusedBatchNormEx(int n, int h, int w, int c,
-                               TensorFormat data_format,
+                               TensorFormat data_format, bool is_training,
                                std::function<SideInputAndActivation()> fn) {
   Graph* g = new Graph(OpRegistry::Global());
 
@@ -530,40 +577,63 @@ static Graph* FusedBatchNormEx(int n, int h, int w, int c,
   Node* fused_batch_norm;
   TF_CHECK_OK(NodeBuilder(g->NewName("fused_batch_norm"), "_FusedBatchNormEx")
                   .Input(x)
-                  .Input(other)        // scale
-                  .Input(other)        // offset
-                  .Input(empty)        // mean
-                  .Input(empty)        // variance
-                  .Input(side_inputs)  // side_input
+                  .Input(other)                        // scale
+                  .Input(other)                        // offset
+                  .Input(is_training ? empty : other)  // mean
+                  .Input(is_training ? empty : other)  // variance
+                  .Input(side_inputs)                  // side_input
                   .Attr("T", dtype)
                   .Attr("U", DT_FLOAT)
                   .Attr("epsilon", 0.001)
                   .Attr("data_format", ToString(data_format))
                   .Attr("activation_mode", activation_mode)
                   .Attr("num_side_inputs", num_side_inputs)
-                  .Attr("is_training", true)
+                  .Attr("is_training", is_training)
                   .Finalize(g, &fused_batch_norm));
 
   return g;
 }
 
-#define BM_NAME(N, H, W, C, T, FORMAT, A, DEVICE) \
-  BM_FusedBatchNorm##_##N##_##H##_##W##_##C##_##FORMAT##_##A##_##T##_##DEVICE
+#define BM_CONCAT(a, b) a##_##b
 
-#define BM_FusedBatchNorm(N, H, W, C, T, FORMAT, ACTIVATION, DEVICE)          \
-  static void BM_NAME(N, H, W, C, T, FORMAT, ACTIVATION, DEVICE)(int iters) { \
+#define BM_NAME(N, H, W, C, T, FORMAT, IS_TRAINING, A, DEVICE)          \
+  BM_CONCAT(BM_FusedBatchNorm##_##DEVICE##_##T##_##N##_##H##_##W##_##C, \
+            FORMAT##_##IS_TRAINING##_##A)
+
+#define BM_FusedBatchNorm(N, H, W, C, T, FORMAT, IS_TRAINING, ACTIVATION,     \
+                          DEVICE)                                             \
+  static void BM_NAME(N, H, W, C, T, FORMAT, IS_TRAINING, ACTIVATION,         \
+                      DEVICE)(int iters) {                                    \
     testing::UseRealTime();                                                   \
     testing::ItemsProcessed(static_cast<int64>(iters) * N * H * W * C);       \
     test::Benchmark(#DEVICE, FusedBatchNormEx<T>(N, H, W, C, FORMAT_##FORMAT, \
-                                                 {ACTIVATION}))               \
+                                                 IS_TRAINING, {ACTIVATION}))  \
         .Run(iters);                                                          \
   }                                                                           \
-  BENCHMARK(BM_NAME(N, H, W, C, T, FORMAT, ACTIVATION, DEVICE));
+  BENCHMARK(BM_NAME(N, H, W, C, T, FORMAT, IS_TRAINING, ACTIVATION, DEVICE));
 
 #if defined(GOOGLE_CUDA) && (CUDNN_VERSION >= 7402)
-BM_FusedBatchNorm(64, 14, 14, 256, fp16, NHWC, Identity, gpu);
-BM_FusedBatchNorm(64, 14, 14, 256, fp16, NHWC, Relu, gpu);
-BM_FusedBatchNorm(64, 14, 14, 256, fp16, NHWC, AddAndRelu, gpu);
+BM_FusedBatchNorm(64, 14, 14, 256, fp16, NHWC, true, Identity, gpu);
+BM_FusedBatchNorm(64, 14, 14, 256, fp16, NHWC, true, Relu, gpu);
+BM_FusedBatchNorm(64, 14, 14, 256, fp16, NHWC, true, AddAndRelu, gpu);
 #endif  // defined(GOOGLE_CUDA) && (CUDNN_VERSION >= 7402)
+
+#if defined(GOOGLE_CUDA)
+BM_FusedBatchNorm(64, 14, 14, 256, fp16, NHWC, false, Identity, gpu);
+BM_FusedBatchNorm(64, 14, 14, 256, fp16, NHWC, false, Relu, gpu);
+BM_FusedBatchNorm(64, 14, 14, 256, fp16, NHWC, false, AddAndRelu, gpu);
+
+BM_FusedBatchNorm(64, 14, 14, 256, fp16, NCHW, false, Identity, gpu);
+BM_FusedBatchNorm(64, 14, 14, 256, fp16, NCHW, false, Relu, gpu);
+BM_FusedBatchNorm(64, 14, 14, 256, fp16, NCHW, false, AddAndRelu, gpu);
+
+BM_FusedBatchNorm(64, 14, 14, 256, fp32, NHWC, false, Identity, gpu);
+BM_FusedBatchNorm(64, 14, 14, 256, fp32, NHWC, false, Relu, gpu);
+BM_FusedBatchNorm(64, 14, 14, 256, fp32, NHWC, false, AddAndRelu, gpu);
+
+BM_FusedBatchNorm(64, 14, 14, 256, fp32, NCHW, false, Identity, gpu);
+BM_FusedBatchNorm(64, 14, 14, 256, fp32, NCHW, false, Relu, gpu);
+BM_FusedBatchNorm(64, 14, 14, 256, fp32, NCHW, false, AddAndRelu, gpu);
+#endif  // defined(GOOGLE_CUDA)
 
 }  // namespace tensorflow

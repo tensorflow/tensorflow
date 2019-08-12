@@ -35,7 +35,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 66
+// Next ID: 67
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -52,6 +52,9 @@ message HloInstructionProto {
   // Use backend_config instead for custom_call_opaque.
   reserved 53;
   reserved "custom_call_opaque";
+  // Use backend_config instead for all_reduce_barrier.
+  reserved 46;
+  reserved "all_reduce_barrier";
 
   string name = 1;
   string opcode = 2;
@@ -123,8 +126,9 @@ message HloInstructionProto {
   // Only present for kBatchNormTraining.
   int64 feature_index = 25;
 
-  // Represents a unique identifier for each Send/Recv instruction pair.
-  // Only present for kSend or kRecv.
+  // Represents a unique identifier for each Send/Recv instruction pair or
+  // optionally for collective instructions (AllReduce, CollectivePermute,
+  // AllToAll). Non-positive channel_id is equivalent to no channel id.
   int64 channel_id = 26;
 
   // The string representation of the infeed configuration.
@@ -171,8 +175,9 @@ message HloInstructionProto {
 
   // Cross replica op fields.
   repeated ReplicaGroup replica_groups = 49;
-  int64 all_reduce_id = 45;
-  string all_reduce_barrier = 46;
+  // Deprecated, but keeping it for backward compatibility. Use channel_id.
+  // Non-positive all_reduce_id is equivalent to no all_reduce_id.
+  int64 all_reduce_id = 45 [deprecated = true];
 
   // Whether this Send/Recv instruction transfers data to/from the host. Only
   // present for Send and Recv instructions and their SendDone and RecvDone
@@ -222,6 +227,9 @@ message HloInstructionProto {
   // Whether the kCustomCall instruction has side-effects, only present for
   // kCustomCall.
   bool custom_call_has_side_effect = 65;
+
+  // The delta value for kRngGetAndUpdateState.
+  int64 delta = 66;
 }
 
 // Serialization of HloComputation.

@@ -177,7 +177,7 @@ class XRTAllocateOp : public OpKernel {
     xrt::XLAAllocation allocation_proto;
     OP_REQUIRES(
         ctx,
-        allocation_proto.ParseFromString(allocation_info.scalar<string>()()),
+        allocation_proto.ParseFromString(allocation_info.scalar<tstring>()()),
         errors::InvalidArgument(
             "Unable to parse allocation input to XLAAllocation"));
 
@@ -203,6 +203,50 @@ class XRTAllocateOp : public OpKernel {
     output.scalar<int64>()() = memory_manager->Register(allocation);
     ctx->set_output(0, output);
   }
+};
+
+// Op that allocates uninitialized memory on the device for a tensor of
+// a particular shape.
+template <class DeviceAccessor>
+class XRTAllocateUninitializedOp : public OpKernel {
+ public:
+  explicit XRTAllocateUninitializedOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &tf_shape_));
+    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, tf_shape_, &xla_shape_));
+  }
+  ~XRTAllocateUninitializedOp() override = default;
+  XRTAllocateUninitializedOp(const XRTAllocateUninitializedOp&) = delete;
+  XRTAllocateUninitializedOp& operator=(const XRTAllocateUninitializedOp&) =
+      delete;
+
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "XRTAllocateUninitializedOp::Compute";
+    ResourceMgr* rm;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
+
+    // We are guaranteed that the underlying device object won't be deleted out
+    // from under us, while the ScopedRef is live.
+    class DeviceAccessor::ScopedRef device_ref;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(ctx, &device_ref));
+
+    RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
+    XRTTupleAllocation* allocation;
+    OP_REQUIRES_OK(ctx,
+                   XRTTupleAllocation::CreateUninitialized(
+                       xla_shape_, memory_manager.get(), device_ref.backend(),
+                       device_ref.device_ordinal(), &allocation));
+
+    Tensor output(DT_INT64, TensorShape({}));
+    output.scalar<int64>()() = memory_manager->Register(allocation);
+    ctx->set_output(0, output);
+  }
+
+ private:
+  DataType dtype_;
+  TensorShape tf_shape_;
+  xla::Shape xla_shape_;
 };
 
 // Op that allocates memory for a tensor (with optional layout) and transfers it
@@ -375,7 +419,7 @@ class XRTMakeTupleOp : public OpKernel {
         errors::Internal("tuple description input should be a string scalar"));
     xrt::XLATupleNode tuple_proto;
     OP_REQUIRES(
-        ctx, tuple_proto.ParseFromString(tuple_info.scalar<string>()()),
+        ctx, tuple_proto.ParseFromString(tuple_info.scalar<tstring>()()),
         errors::InvalidArgument("Unable to parse tuple input to XLATupleNode"));
 
     OpInputList arg_list;
@@ -583,7 +627,7 @@ class XRTWriteLiteralOp : public OpKernel {
                 errors::Internal("literal input should be a string scalar"));
     xla::LiteralProto literal_proto;
     OP_REQUIRES(ctx,
-                literal_proto.ParseFromString(literal_info.scalar<string>()()),
+                literal_proto.ParseFromString(literal_info.scalar<tstring>()()),
                 errors::InvalidArgument(
                     "Unable to parse allocation input to LiteralProto"));
     xla::Literal literal;

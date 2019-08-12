@@ -748,14 +748,14 @@ class DecodeProtoOp : public OpKernel {
     if (is_binary_ && !sanitize_) {
       // Fast path.
       for (int mi = 0; mi < message_count; ++mi) {
-        const string* buf = &buf_tensor.flat<string>()(mi);
+        const tstring* buf = &buf_tensor.flat<tstring>()(mi);
         bufs.push_back(buf);
       }
     } else {
       // We will have to allocate a copy, either to convert from text to binary
       // or to sanitize a binary proto.
       for (int mi = 0; mi < message_count; ++mi) {
-        ReserializeMessage(ctx, buf_tensor.flat<string>()(mi),
+        ReserializeMessage(ctx, buf_tensor.flat<tstring>()(mi),
                            &tmp_binary_bufs[mi]);
         if (!ctx->status().ok()) {
           return;
@@ -895,8 +895,8 @@ class DecodeProtoOp : public OpKernel {
           data = tensor->bit_casted_shaped<uint8, 1>(flatshape).data();
         } else {
           // DataTypeSize() returns 0 for string types.
-          stride = last_dim_size * sizeof(string);
-          data = reinterpret_cast<uint8*>(tensor->flat<string>().data());
+          stride = last_dim_size * sizeof(tstring);
+          data = reinterpret_cast<uint8*>(tensor->flat<tstring>().data());
         }
       }
 

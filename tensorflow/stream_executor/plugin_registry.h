@@ -160,6 +160,21 @@ class PluginRegistry {
   SE_DISALLOW_COPY_AND_ASSIGN(PluginRegistry);
 };
 
+// Explicit specializations are defined in plugin_registry.cc.
+#define DECLARE_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE)                       \
+  template <>                                                              \
+  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory( \
+      Platform::Id platform_id, PluginId plugin_id);                       \
+  template <>                                                              \
+  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory( \
+      PlatformKind platform_kind, PluginId plugin_id)
+
+DECLARE_PLUGIN_SPECIALIZATIONS(BlasFactory);
+DECLARE_PLUGIN_SPECIALIZATIONS(DnnFactory);
+DECLARE_PLUGIN_SPECIALIZATIONS(FftFactory);
+DECLARE_PLUGIN_SPECIALIZATIONS(RngFactory);
+#undef DECL_PLUGIN_SPECIALIZATIONS
+
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_PLUGIN_REGISTRY_H_

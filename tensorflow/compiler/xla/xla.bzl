@@ -1,15 +1,15 @@
 """Wrapper around cc_proto_library used inside the XLA codebase."""
 
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "cc_proto_library",
 )
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "if_static",
 )
 load(
-    "//tensorflow/core:platform/default/cuda_build_defs.bzl",
+    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 
@@ -22,12 +22,12 @@ def xla_proto_library(name, srcs = [], deps = [], visibility = None, testonly = 
         srcs = srcs,
         # Append well-known proto dep. As far as I know this is the only way
         # for xla_proto_library to access google.protobuf.{Any,Duration,...}.
-        deps = deps + ["@protobuf_archive//:cc_wkt_protos"],
+        deps = deps + ["@com_google_protobuf//:cc_wkt_protos"],
         cc_libs = if_static(
-            ["@protobuf_archive//:protobuf"],
-            otherwise = ["@protobuf_archive//:protobuf_headers"],
+            ["@com_google_protobuf//:protobuf"],
+            otherwise = ["@com_google_protobuf//:protobuf_headers"],
         ),
-        protoc = "@protobuf_archive//:protoc",
+        protoc = "@com_google_protobuf//:protoc",
         testonly = testonly,
         visibility = visibility,
         **kwargs
@@ -48,3 +48,6 @@ ORC_JIT_MEMORY_MAPPER_TARGETS = []
 # We link the GPU plugin into the XLA Python extension if CUDA is enabled.
 def xla_python_default_plugins():
     return if_cuda_is_configured(["//tensorflow/compiler/xla/service:gpu_plugin"])
+
+def xla_py_test_deps():
+    return []

@@ -1,6 +1,8 @@
 # Description:
 #   This directory contains common utilities used in boosted_trees.
 
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_binary", "tf_cc_test")
+
 package(
     default_visibility = [
         "//tensorflow/contrib/boosted_trees:__subpackages__",
@@ -10,10 +12,6 @@ package(
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 # Utils
 

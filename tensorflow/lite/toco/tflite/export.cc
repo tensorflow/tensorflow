@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/toco/tflite/op_version.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -38,9 +39,11 @@ using ::tflite::BuiltinOperator_CUSTOM;
 using ::tflite::BuiltinOperator_MAX;
 using ::tflite::BuiltinOperator_MIN;
 using ::tflite::CreateBuffer;
+using ::tflite::CreateMetadata;
 using ::tflite::CreateModel;
 using ::tflite::CreateOperator;
 using ::tflite::CreateTensor;
+using ::tflite::Metadata;
 using ::tflite::Operator;
 using ::tflite::OperatorCode;
 using ::tflite::SubGraph;
@@ -207,7 +210,8 @@ void LoadOperatorsMap(
 
 Offset<Vector<Offset<Tensor>>> ExportTensors(
     const Model& model, const details::TensorsMap& tensors_map,
-    FlatBufferBuilder* builder, std::vector<const Array*>* buffers_to_write,
+    FlatBufferBuilder* builder,
+    std::vector<Offset<Vector<uint8_t>>>* buffers_to_write,
     const std::set<int32_t>& variable_tensor_indices) {
   // In the end we will need to produce a vector sorted by the indices of the
   // tensors in the tensors_map.
@@ -219,7 +223,7 @@ Offset<Vector<Offset<Tensor>>> ExportTensors(
 
     int buffer_index = buffers_to_write->size();
     auto type = DataType::Serialize(array.data_type);
-    buffers_to_write->push_back(&array);
+    buffers_to_write->push_back(DataBuffer::Serialize(array, builder));
 
     std::vector<int> shape;
     if (array.has_shape()) {
@@ -413,13 +417,13 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
 }
 
 Offset<Vector<Offset<Buffer>>> ExportBuffers(
-    const Model& model, const std::vector<const Array*>& buffers_to_write,
+    const Model& model,
+    const std::vector<Offset<Vector<uint8_t>>>& buffers_to_write,
     FlatBufferBuilder* builder) {
   std::vector<Offset<Buffer>> buffer_vector;
-  for (const Array* array_ptr : buffers_to_write) {
-    const Array& array = *array_ptr;
-    Offset<Vector<uint8_t>> data_buffer = DataBuffer::Serialize(array, builder);
-    buffer_vector.push_back(CreateBuffer(*builder, data_buffer));
+  buffer_vector.reserve(buffers_to_write.size());
+  for (const auto buffer : buffers_to_write) {
+    buffer_vector.push_back(CreateBuffer(*builder, buffer));
   }
   return builder->CreateVector(buffer_vector);
 }
@@ -455,6 +459,17 @@ void ParseControlFlowErrors(std::set<string>* custom_ops,
   }
 }
 
+// Exports a string buffer that contains the model's minimum required runtime
+// version.
+void ExportModelVersionBuffer(
+    const Model& model, std::vector<Offset<Vector<uint8_t>>>* buffers_to_write,
+    FlatBufferBuilder* builder) {
+  const std::string min_runtime = GetMinimumRuntimeVersionForModel(model);
+  buffers_to_write->push_back(builder->CreateVector(
+      reinterpret_cast<const uint8_t*>(min_runtime.data()),
+      min_runtime.size()));
+}
+
 tensorflow::Status Export(
     const Model& model, string* output_file_contents,
     const ExportParams& params,
@@ -475,9 +490,9 @@ tensorflow::Status Export(
   details::LoadOperatorsMap(model, &operators_map, ops_by_type,
                             params.enable_select_tf_ops);
 
-  std::vector<const Array*> buffers_to_write;
-  Array empty_array;
-  buffers_to_write.push_back(&empty_array);
+  std::vector<Offset<Vector<uint8_t>>> buffers_to_write;
+  // Insert an empty buffer to the beginning of the list.
+  buffers_to_write.push_back(0);
 
   auto op_codes =
       ExportOperatorCodes(model, ops_by_type, operators_map, &builder, params);
@@ -604,11 +619,27 @@ tensorflow::Status Export(
                                  /* name */ 0);
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs = {subgraph};
 
+  // TODO(wangtz): offline memory planning for activation Tensors.
+  if (!params.allow_dynamic_tensors) {
+    return tensorflow::errors::Unimplemented(
+        "Unsupported flag: allow_dynamic_tensors. Offline memory planning is "
+        "not implemented yet.");
+  }
+
+  // Write the minimum required runtime version into metadata.
+  auto metadata =
+      CreateMetadata(builder, builder.CreateString("min_runtime_version"),
+                     buffers_to_write.size());
+  ExportModelVersionBuffer(model, &buffers_to_write, &builder);
+  std::vector<flatbuffers::Offset<Metadata>> metadatas = {metadata};
+
   auto buffers = ExportBuffers(model, buffers_to_write, &builder);
   auto description = builder.CreateString("TOCO Converted.");
+
   auto new_model_location =
       CreateModel(builder, TFLITE_SCHEMA_VERSION, op_codes,
-                  builder.CreateVector(subgraphs), description, buffers);
+                  builder.CreateVector(subgraphs), description, buffers,
+                  /* metadata_buffer */ 0, builder.CreateVector(metadatas));
   ::tflite::FinishModelBuffer(builder, new_model_location);
 
   if (params.quantize_weights == QuantizedBufferType::NONE) {

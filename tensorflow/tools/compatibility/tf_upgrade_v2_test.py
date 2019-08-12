@@ -684,7 +684,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     for c in classes:
       ns = "tf.estimator." + c
       text = ns + "()"
-      expected_text = ns + "(loss_reduction=tf.compat.v1.losses.Reduction.SUM)"
+      expected_text = ns + "(loss_reduction=tf.keras.losses.Reduction.SUM)"
       _, report, errors, new_text = self._upgrade(text)
       self.assertEqual(expected_text, new_text)
 
@@ -703,7 +703,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     text = "tf.estimator.BaselineClassifier(model_dir=model_dir)"
     expected_text = ("tf.estimator.BaselineClassifier(" +
                      "model_dir=model_dir, "
-                     "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+                     "loss_reduction=tf.keras.losses.Reduction.SUM)")
     _, report, errors, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
@@ -728,7 +728,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       suffix = "(input_layer_partitioner=TEST)"
       text = ns + suffix
       suffix = ("(input_layer_partitioner=TEST, "
-                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+                "loss_reduction=tf.keras.losses.Reduction.SUM)")
       expected_text = "tf.compat.v1.estimator." + c + suffix
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(new_text, expected_text)
@@ -764,7 +764,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       suffix = "(optimizer=TEST)"
       text = ns + suffix
       suffix = ("(optimizer=TEST, "
-                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+                "loss_reduction=tf.keras.losses.Reduction.SUM)")
       expected_text = "tf.compat.v1.estimator." + c + suffix
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(new_text, expected_text)
@@ -779,7 +779,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       suffix = "(dnn_optimizer=TEST, linear_optimizer=Test)"
       text = ns + suffix
       suffix = ("(dnn_optimizer=TEST, linear_optimizer=Test, "
-                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+                "loss_reduction=tf.keras.losses.Reduction.SUM)")
       expected_text = "tf.compat.v1.estimator." + c + suffix
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(new_text, expected_text)
@@ -815,7 +815,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       suffix = "(input_layer_partitioner=TEST, optimizer=TEST)"
       text = ns + suffix
       suffix = ("(input_layer_partitioner=TEST, optimizer=TEST, "
-                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+                "loss_reduction=tf.keras.losses.Reduction.SUM)")
       expected_text = "tf.compat.v1.estimator." + c + suffix
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(new_text, expected_text)
@@ -833,7 +833,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       text = ns + suffix
       suffix = ("(input_layer_partitioner=TEST, dnn_optimizer=TEST, "
                 "linear_optimizer=TEST, "
-                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+                "loss_reduction=tf.keras.losses.Reduction.SUM)")
       expected_text = "tf.compat.v1.estimator." + c + suffix
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       self.assertEqual(new_text, expected_text)
@@ -1489,6 +1489,19 @@ tf.print('abc')
       _, unused_report, unused_errors, actual = self._upgrade(text)
       self.assertEqual(actual, expected)
 
+  def testStructure(self):
+    for (text, expected) in [
+        ("tf.data.experimental.DatasetStructure", "tf.data.DatasetSpec"),
+        ("tf.data.experimental.OptionalStructure", "tf.OptionalSpec"),
+        ("tf.data.experimental.RaggedTensorStructure", "tf.RaggedTensorSpec"),
+        ("tf.data.experimental.SparseTensorStructure", "tf.SparseTensorSpec"),
+        ("tf.data.experimental.Structure", "tf.TypeSpec"),
+        ("tf.data.experimental.TensorArrayStructure", "tf.TensorArraySpec"),
+        ("tf.data.experimental.TensorStructure", "tf.TensorSpec"),
+    ]:
+      _, unused_report, unused_errors, actual = self._upgrade(text)
+      self.assertEqual(actual, expected)
+
   def testMapAndBatch(self):
     suffix = ".data.experimental.map_and_batch_with_legacy_function(args)"
     text = "tf" + suffix
@@ -1645,6 +1658,15 @@ def _log_prob(self, x):
   def test_flags_flags(self):
     _, _, errors, _ = self._upgrade("tf.flags.FLAGS")
     self.assertIn("tf.flags has been removed", errors[0])
+
+  def test_contrib_estimator_head_deprecation(self):
+    api_symbols = ["binary_classification_head", "logistic_regression_head",
+                   "multi_class_head", "multi_head", "multi_label_head",
+                   "poisson_regression_head", "regression_head"]
+    for symbol in api_symbols:
+      text = "tf.contrib.estimator." + symbol
+      _, report, _, _ = self._upgrade(text)
+      self.assertIn("`tf.contrib.estimator.*_head` has been deprecated", report)
 
   def test_contrib_layers_layer_norm_deprecation(self):
     _, report, _, _ = self._upgrade("tf.contrib.layers.layer_norm")
@@ -2014,6 +2036,22 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
+  def test_contrib_to_addons_move(self):
+    small_mapping = {
+        "tf.contrib.layers.poincare_normalize":
+            "tfa.layers.PoincareNormalize",
+        "tf.contrib.layers.maxout":
+            "tfa.layers.Maxout",
+        "tf.contrib.layers.group_norm":
+            "tfa.layers.GroupNormalization",
+        "tf.contrib.layers.instance_norm":
+            "tfa.layers.InstanceNormalization",
+    }
+    for symbol, replacement in small_mapping.items():
+      text = "{}('stuff', *args, **kwargs)".format(symbol)
+      _, report, _, _ = self._upgrade(text)
+      self.assertIn(replacement, report)
+
   def testXlaExperimental(self):
     text = "tf.xla.experimental.jit_scope(0)"
     expected_text = "tf.xla.experimental.jit_scope(0)"
@@ -2028,6 +2066,12 @@ def _log_prob(self, x):
   def testNnErosion2d(self):
     text = "tf.nn.erosion2d(v, k, s, r, p)"
     expected_text = "tf.nn.erosion2d(v, k, s, r, p, data_format='NHWC')"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testNnDilation2d(self):
+    text = "tf.nn.dilation2d(v, k, s, r, p)"
+    expected_text = "tf.nn.dilation2d(v, k, s, r, p, data_format='NHWC')"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
@@ -72,6 +73,11 @@ class MapDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override { return input_->Cardinality(); }
+
+  Status CheckExternalState() const override {
+    TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
+    return input_->CheckExternalState();
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -196,6 +202,7 @@ MapDatasetOp::MapDatasetOp(OpKernelConstruction* ctx)
   FunctionMetadata::Params params;
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kUseInterOpParallelism,
                                    &params.use_inter_op_parallelism));
+  params.is_multi_device_function = true;
   OP_REQUIRES_OK(ctx,
                  FunctionMetadata::Create(ctx, kFunc, params, &func_metadata_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
@@ -216,12 +223,15 @@ void MapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 }
 
 namespace {
+
 REGISTER_KERNEL_BUILDER(Name("MapDataset").Device(DEVICE_CPU), MapDatasetOp);
 REGISTER_KERNEL_BUILDER(Name("ExperimentalMapDataset")
                             .Device(DEVICE_GPU)
                             .HostMemory("input_dataset")
                             .HostMemory("handle"),
                         MapDatasetOp);
+REGISTER_INPUT_COLOCATION_EXEMPTION("MapDataset");
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

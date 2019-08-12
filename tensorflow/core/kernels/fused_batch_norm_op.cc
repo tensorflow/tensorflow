@@ -15,13 +15,16 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
+#if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
+#endif  // GOOGLE_CUDA
+
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
+#include "tensorflow/core/kernels/redux_functor.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -38,8 +42,6 @@ using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
 namespace functor {
-
-enum class FusedBatchNormActivationMode { kIdentity, kRelu };
 
 string ToString(FusedBatchNormActivationMode activation_mode) {
   switch (activation_mode) {
@@ -75,7 +77,7 @@ struct FusedBatchNorm;
 template <typename Device, typename T, typename U>
 struct FusedBatchNormGrad;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 using se::DeviceMemory;
 using se::ScratchAllocator;
 using se::Stream;
@@ -99,12 +101,11 @@ class CudnnBatchNormAllocatorInTemp : public ScratchAllocator {
   explicit CudnnBatchNormAllocatorInTemp(OpKernelContext* context)
       : context_(context) {}
 
-  int64 GetMemoryLimitInBytes(Stream* stream) override {
+  int64 GetMemoryLimitInBytes() override {
     return std::numeric_limits<int64>::max();
   }
 
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(Stream* stream,
-                                              int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
     Tensor temporary_memory;
     const DataType tf_data_type = DataTypeToEnum<T>::v();
     int64 allocate_count =
@@ -153,12 +154,11 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
   CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index)
       : context_(context), output_index_(output_index) {}
 
-  int64 GetMemoryLimitInBytes(Stream* stream) override {
+  int64 GetMemoryLimitInBytes() override {
     return std::numeric_limits<int64>::max();
   }
 
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(Stream* stream,
-                                              int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
     output_allocated = true;
     DCHECK(total_byte_size_ == 0)
         << "Reserve space allocator can only be called once";
@@ -208,6 +208,8 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
     Tensor* dummy_reserve_space = nullptr;
     OP_REQUIRES_OK(context_, context_->allocate_output(output_index_, {},
                                                        &dummy_reserve_space));
+    // Initialize the memory, to avoid sanitizer alerts.
+    dummy_reserve_space->flat<T>()(0) = T();
   }
   CudnnBatchNormAllocatorInOutput(OpKernelContext* context, int output_index)
       : context_(context), output_index_(output_index) {}
@@ -216,7 +218,7 @@ class CudnnBatchNormAllocatorInOutput : public ScratchAllocator {
   OpKernelContext* context_;  // not owned
   int output_index_;
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <bool IsSame, typename Y, typename X, typename T>
 struct CastIfNecessary {
@@ -355,7 +357,6 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
     typename TTypes<U>::ConstVec mean(mean_input.vec<U>());
     typename TTypes<U>::ConstVec variance(variance_input.vec<U>());
     typename TTypes<T, 4>::Tensor x_backprop(x_backprop_output->tensor<T, 4>());
-    typename TTypes<U>::Vec scale_backprop(scale_backprop_output->vec<U>());
     typename TTypes<U>::Vec offset_backprop(offset_backprop_output->vec<U>());
 
     // Note: the following formulas are used to compute the gradients for
@@ -375,12 +376,10 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
 
 #if !defined(EIGEN_HAS_INDEX_LIST)
     Eigen::DSizes<Eigen::Index, 2> one_by_depth(1, depth);
-    Eigen::array<int, 1> reduce_dims({0});
     Eigen::array<int, 2> bcast_spec({rest_size, 1});
 #else
     Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
     one_by_depth.set(1, depth);
-    Eigen::IndexList<Eigen::type2index<0>> reduce_dims;
     Eigen::IndexList<Eigen::Index, Eigen::type2index<1>> bcast_spec;
     bcast_spec.set(0, rest_size);
 #endif
@@ -388,49 +387,190 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
     auto x_rest_by_depth = x.reshape(rest_by_depth).template cast<U>();
     U rest_size_inv = static_cast<U>(1.0f / static_cast<U>(rest_size));
 
+    // Eigen is notoriously bad at reducing outer dimension, so we materialize
+    // all temporary tensors that require reduction, and then use Eigen redux
+    // functor, that is optimized for this particular task.
+    //
+    // All reductions are of this type: [rest_size, depth] -> [depth].
+    using ScalarSum = Eigen::internal::scalar_sum_op<U>;
+    const functor::ReduceOuterDimensions<T, U, U, ScalarSum> redux_sum_t;
+    const functor::ReduceOuterDimensions<U, U, U, ScalarSum> redux_sum_u;
+
+    auto scratch_dtype = DataTypeToEnum<U>::value;
+
+    // Allocate a temporary workspace of [depth] shape.
+    Tensor scratch_one_by_depth;
+    OP_REQUIRES_OK(context, context->allocate_temp(scratch_dtype, {depth},
+                                                   &scratch_one_by_depth));
+
+    // Maybe allocate a temporary workspace of [rest_size, depth] shape.
+    Tensor scratch_rest_by_depth;
+    if (std::is_same<T, U>::value) {
+      OP_REQUIRES(context,
+                  scratch_rest_by_depth.CopyFrom(*x_backprop_output,
+                                                 {rest_size, depth}),
+                  errors::Internal("Failed to copy a tensor"));
+    } else {
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(scratch_dtype, {rest_size, depth},
+                                            &scratch_rest_by_depth));
+    }
+
+    typename TTypes<U, 2>::Tensor scratch_tensor(
+        scratch_rest_by_depth.tensor<U, 2>());
+    typename TTypes<U>::Vec scratch_vector(scratch_one_by_depth.vec<U>());
+
     auto x_mean_rest_by_depth =
         mean.reshape(one_by_depth).broadcast(bcast_spec);
-    auto x_centered = (x_rest_by_depth - x_mean_rest_by_depth).eval();
+    auto x_centered = (x_rest_by_depth - x_mean_rest_by_depth);
     auto coef0 = (variance + epsilon).rsqrt();
     auto coef0_rest_by_depth =
-        coef0.eval().reshape(one_by_depth).broadcast(bcast_spec);
+        coef0.reshape(one_by_depth).broadcast(bcast_spec);
     auto x_scaled = x_centered * coef0_rest_by_depth;
 
     auto y_backprop_rest_by_depth =
-        y_backprop.eval().reshape(rest_by_depth).template cast<U>();
-    scale_backprop.device(d) =
-        (y_backprop_rest_by_depth * x_scaled).sum(reduce_dims);
-    auto y_backprop_sum = y_backprop_rest_by_depth.sum(reduce_dims);
-    offset_backprop.device(d) = y_backprop_sum;
+        y_backprop.reshape(rest_by_depth).template cast<U>();
 
-    auto y_backprop_sum_one_by_depth =
-        y_backprop_sum.eval().reshape(one_by_depth);
+    // Compute `scale_backprop_output`:
+    //   scale_backprop =
+    //     (y_backprop_rest_by_depth * x_scaled).sum(reduce_dims)
+    scratch_tensor.device(d) = y_backprop_rest_by_depth * x_scaled;
+    redux_sum_u(d, rest_by_depth, scratch_rest_by_depth, scale_backprop_output);
+
+    // Compute 'offset_backprop_output':
+    //   offset_backprop =
+    //     y_backprop_rest_by_depth.sum(reduce_dims)
+    redux_sum_t(d, rest_by_depth, y_backprop_input, offset_backprop_output);
+    auto y_backprop_sum = offset_backprop;
+
+    auto y_backprop_sum_one_by_depth = y_backprop_sum.reshape(one_by_depth);
     auto y_backprop_mean_one_by_depth =
         y_backprop_sum_one_by_depth * rest_size_inv;
     auto y_backprop_mean_rest_by_depth =
         y_backprop_mean_one_by_depth.broadcast(bcast_spec);
     auto y_backprop_centered =
         y_backprop_rest_by_depth - y_backprop_mean_rest_by_depth;
-    auto coef1 =
-        (scale * coef0).eval().reshape(one_by_depth).broadcast(bcast_spec);
-    auto coef2 = (coef0.square() *
-                  (y_backprop_rest_by_depth * x_centered).mean(reduce_dims))
-                     .eval()
+
+    // Compute expression:
+    //   y_backprop_centered_mean =
+    //     (y_backprop_rest_by_depth * x_centered).mean(reduce_dims)
+    scratch_tensor.device(d) = y_backprop_rest_by_depth * x_centered;
+    redux_sum_u(d, rest_by_depth, scratch_rest_by_depth, &scratch_one_by_depth);
+    auto y_backprop_centered_mean = scratch_vector / static_cast<U>(rest_size);
+
+    auto coef1 = (scale * coef0).reshape(one_by_depth).broadcast(bcast_spec);
+    auto coef2 = (coef0.square() * y_backprop_centered_mean)
                      .reshape(one_by_depth)
+                     .eval()
                      .broadcast(bcast_spec);
+
     x_backprop.reshape(rest_by_depth).device(d) =
         (coef1 * (y_backprop_centered - x_centered * coef2)).template cast<T>();
   }
 };
 
-#ifndef GOOGLE_CUDA
+template <typename T, typename U>
+struct FusedBatchNormFreezeGrad<CPUDevice, T, U> {
+  void operator()(OpKernelContext* context, const Tensor& y_backprop_input,
+                  const Tensor& x_input, const Tensor& scale_input,
+                  const Tensor& pop_mean_input,
+                  const Tensor& pop_variance_input, U epsilon,
+                  Tensor* x_backprop_output, Tensor* scale_backprop_output,
+                  Tensor* offset_backprop_output) {
+    typename TTypes<T, 4>::ConstTensor y_backprop(
+        y_backprop_input.tensor<T, 4>());
+    typename TTypes<T, 4>::ConstTensor input(x_input.tensor<T, 4>());
+    typename TTypes<U>::ConstVec scale(scale_input.vec<U>());
+    typename TTypes<U>::ConstVec pop_mean(pop_mean_input.vec<U>());
+    typename TTypes<U>::ConstVec pop_var(pop_variance_input.vec<U>());
+    typename TTypes<T, 4>::Tensor x_backprop(x_backprop_output->tensor<T, 4>());
+    typename TTypes<U>::Vec scale_backprop(scale_backprop_output->vec<U>());
+
+    const int depth = pop_mean.dimension(0);
+    const int rest_size = input.size() / depth;
+
+    const CPUDevice& d = context->eigen_device<CPUDevice>();
+
+    // Allocate two temporary workspaces of [depth] shape.
+    Tensor scratch1_vec, scratch2_vec;
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<U>::value,
+                                                   {depth}, &scratch1_vec));
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<U>::value,
+                                                   {depth}, &scratch2_vec));
+
+    // Maybe allocate a temporary workspace of [rest_size, depth] shape.
+    Tensor scratch3_tensor;
+    if (std::is_same<T, U>::value) {
+      OP_REQUIRES(
+          context,
+          scratch3_tensor.CopyFrom(*x_backprop_output, {rest_size, depth}),
+          errors::Internal("Failed to copy a tensor"));
+    } else {
+      OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<U>::value,
+                                                     {rest_size, depth},
+                                                     &scratch3_tensor));
+    }
+
+    typename TTypes<U>::Vec scratch1(scratch1_vec.vec<U>());
+    typename TTypes<U>::Vec scratch2(scratch2_vec.vec<U>());
+    typename TTypes<U, 2>::Tensor scratch3(scratch3_tensor.tensor<U, 2>());
+
+    Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
+#if !defined(EIGEN_HAS_INDEX_LIST)
+    Eigen::DSizes<Eigen::Index, 2> one_by_depth(1, depth);
+    Eigen::array<int, 2> rest_by_one({rest_size, 1});
+#else
+    Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
+    one_by_depth.set(1, depth);
+    Eigen::IndexList<Eigen::Index, Eigen::type2index<1>> rest_by_one;
+    rest_by_one.set(0, rest_size);
+#endif
+
+    // Sum reduction along the 0th dimension using custom CPU functor.
+    using ScalarSum = Eigen::internal::scalar_sum_op<U>;
+    const functor::ReduceOuterDimensions<T, U, U, ScalarSum> redux_sum_t;
+    const functor::ReduceOuterDimensions<U, U, U, ScalarSum> redux_sum_u;
+
+    // offset_backprop  = sum(y_backprop)
+    // scale_backprop = y_backprop * ((x - pop_mean) * rsqrt(pop_var + epsilon))
+    // x_backprop = y_backprop * (scale * rsqrt(pop_var + epsilon))
+
+    // NOTE: DEFAULT DEVICE comment is added to expression assignments that
+    // we don't want to be executed in a thread pool.
+
+    auto y_backprop_rest_by_depth =
+        y_backprop.reshape(rest_by_depth).template cast<U>();
+    auto input_rest_by_depth = input.reshape(rest_by_depth).template cast<U>();
+
+    // offset_backprop  = sum(y_backprop)
+    redux_sum_t(d, rest_by_depth, y_backprop_input, offset_backprop_output);
+
+    // scratch1 = rsqrt(pop_var + epsilon)
+    scratch1 = (pop_var + pop_var.constant(epsilon)).rsqrt();  // DEFAULT DEVICE
+
+    // scratch2 = sum(y_backprop * (x - mean))
+    scratch3.device(d) =
+        y_backprop_rest_by_depth *
+        (input_rest_by_depth -
+         pop_mean.reshape(one_by_depth).broadcast(rest_by_one));
+    redux_sum_u(d, rest_by_depth, scratch3_tensor, &scratch2_vec);
+
+    x_backprop.reshape(rest_by_depth).device(d) =
+        (y_backprop_rest_by_depth *
+         ((scratch1 * scale).reshape(one_by_depth).broadcast(rest_by_one)))
+            .template cast<T>();
+    scale_backprop = scratch2 * scratch1;  // DEFAULT DEVICE
+  }
+};
+
+#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
 namespace {
 // See implementation under GOOGLE_CUDA #ifdef below.
 bool BatchnormSpatialPersistentEnabled() { return false; }
 }  // namespace
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
 
@@ -477,20 +617,6 @@ struct FusedBatchNorm<GPUDevice, T, U> {
     auto* stream = context->op_device_context()->stream();
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available"));
 
-    // TODO(ezhulenev): cuDNN doesn't support side input and activation in
-    // inference mode. Write custom cuda kernel for that.
-    if (!is_training) {
-      OP_REQUIRES(
-          context, side_input.dim_size(0) == 0,
-          errors::Internal(
-              "The GPU implementation of FusedBatchNorm does not support "
-              "side input in inference mode."));
-      OP_REQUIRES(
-          context, activation_mode == FusedBatchNormActivationMode::kIdentity,
-          errors::Internal("The GPU implementation of FusedBatchNorm "
-                           "does not support activations in inference mode."));
-    }
-
     const int64 batch_size = GetTensorDim(x, tensor_format, 'N');
     const int64 channels = GetTensorDim(x, tensor_format, 'C');
     const int64 height = GetTensorDim(x, tensor_format, 'H');
@@ -532,6 +658,33 @@ struct FusedBatchNorm<GPUDevice, T, U> {
       functor::SetNanFunctor<U> f;
       f(context->eigen_device<GPUDevice>(), batch_mean->flat<U>());
       f(context->eigen_device<GPUDevice>(), batch_var->flat<U>());
+      return;
+    }
+
+    // In inference mode we use custom CUDA kernel, because cuDNN does not
+    // support side input and activations for inference.
+    const bool has_side_input = side_input.dim_size(0) != 0;
+    const bool has_activation =
+        activation_mode != FusedBatchNormActivationMode::kIdentity;
+
+    if (!is_training && (has_side_input || has_activation)) {
+      FusedBatchNormInferenceFunctor<GPUDevice, T, U> inference_functor;
+
+      if (has_side_input) {
+        inference_functor(context, tensor_format, x.tensor<T, 4>(),
+                          scale.vec<U>(), offset.vec<U>(),
+                          estimated_mean.vec<U>(), estimated_variance.vec<U>(),
+                          side_input.tensor<T, 4>(), epsilon, activation_mode,
+                          y->tensor<T, 4>());
+      } else {
+        typename TTypes<T, 4>::ConstTensor empty_tensor(nullptr, 0, 0, 0, 0);
+        inference_functor(context, tensor_format, x.tensor<T, 4>(),
+                          scale.vec<U>(), offset.vec<U>(),
+                          estimated_mean.vec<U>(), estimated_variance.vec<U>(),
+                          empty_tensor, epsilon, activation_mode,
+                          y->tensor<T, 4>());
+      }
+
       return;
     }
 
@@ -808,20 +961,33 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
 };
 
 // Forward declarations of the functor specializations for GPU.
-#define DECLARE_GPU_SPEC(T, U)                                           \
-  template <>                                                            \
-  void FusedBatchNormFreezeGrad<GPUDevice, T, U>::operator()(            \
-      const GPUDevice& d, const Tensor& y_backprop_input,                \
-      const Tensor& x_input, const Tensor& scale_input,                  \
-      const Tensor& mean_input, const Tensor& variance_input, U epsilon, \
-      Tensor* x_backprop_output, Tensor* scale_backprop_output,          \
-      Tensor* offset_backprop_output, typename TTypes<U>::Vec scratch1,  \
-      typename TTypes<U>::Vec scratch2);                                 \
-  extern template struct FusedBatchNormFreezeGrad<GPUDevice, T, U>;
+#define DECLARE_GPU_SPEC(T, U)                                                 \
+  template <>                                                                  \
+  void FusedBatchNormFreezeGrad<GPUDevice, T, U>::operator()(                  \
+      OpKernelContext* context, const Tensor& y_backprop_input,                \
+      const Tensor& x_input, const Tensor& scale_input,                        \
+      const Tensor& mean_input, const Tensor& variance_input, U epsilon,       \
+      Tensor* x_backprop_output, Tensor* scale_backprop_output,                \
+      Tensor* offset_backprop_output);                                         \
+  extern template struct FusedBatchNormFreezeGrad<GPUDevice, T, U>;            \
+  template <>                                                                  \
+  void FusedBatchNormInferenceFunctor<GPUDevice, T, U>::operator()(            \
+      OpKernelContext* context, TensorFormat tensor_format,                    \
+      typename TTypes<T, 4>::ConstTensor in,                                   \
+      typename TTypes<U>::ConstVec scale, typename TTypes<U>::ConstVec offset, \
+      typename TTypes<U>::ConstVec estimated_mean,                             \
+      typename TTypes<U>::ConstVec estimated_variance,                         \
+      typename TTypes<T, 4>::ConstTensor side_input, U epsilon,                \
+      FusedBatchNormActivationMode activation_mode,                            \
+      typename TTypes<T, 4>::Tensor out);                                      \
+  extern template struct FusedBatchNormInferenceFunctor<GPUDevice, T, U>;
+
 DECLARE_GPU_SPEC(float, float);
 DECLARE_GPU_SPEC(Eigen::half, float);
 
-#endif  // GOOGLE_CUDA
+#undef DECLARE_GPU_SPEC
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }  // namespace functor
 
 template <typename Device, typename T, typename U>
@@ -854,7 +1020,7 @@ class FusedBatchNormOpBase : public OpKernel {
                   errors::InvalidArgument(
                       "FusedBatchNorm accepts at most one side input."));
       has_side_input_ = (num_side_inputs == 1);
-      if (has_side_input_) {
+      if (has_side_input_ && is_training_) {
         OP_REQUIRES(
             context, activation_mode_ != FbnActivationMode::kIdentity,
             errors::InvalidArgument("Identity activation is not supported with "
@@ -862,13 +1028,11 @@ class FusedBatchNormOpBase : public OpKernel {
       }
     }
 
-    if (activation_mode_ != FbnActivationMode::kIdentity) {
-      OP_REQUIRES(
-          context, is_training_,
-          errors::InvalidArgument("FusedBatchNorm with activation supported "
-                                  "only for is_training=True."));
+    if (activation_mode_ != FbnActivationMode::kIdentity && is_training_) {
       // NOTE(ezhulenev): Following requirements are coming from implementation
-      // details of cudnnBatchNormalizationForwardTrainingEx.
+      // details of cudnnBatchNormalizationForwardTrainingEx used in training
+      // mode. In inference mode we call custom CUDA kernel that supports all
+      // data formats and data types.
       OP_REQUIRES(context, DataTypeToEnum<T>::value == DT_HALF,
                   errors::InvalidArgument("FusedBatchNorm with activation "
                                           "supports only DT_HALF data type."));
@@ -923,7 +1087,7 @@ class FusedBatchNormOpBase : public OpKernel {
       // NOTE(ezhulenev): This requirement is coming from implementation
       // details of cudnnBatchNormalizationForwardTrainingEx.
       OP_REQUIRES(
-          context, x.dim_size(3) % 4 == 0,
+          context, !is_training_ || x.dim_size(3) % 4 == 0,
           errors::InvalidArgument("FusedBatchNorm with activation requires "
                                   "channel dimension to be a multiple of 4."));
     }
@@ -1124,18 +1288,10 @@ class FusedBatchNormGradOpBase : public OpKernel {
           << "The implementation of FusedBatchNormGrad with is_training=False "
              "only support "
           << "NHWC tensor format for now.";
-      Tensor scratch1, scratch2;
-      OP_REQUIRES_OK(context,
-                     context->allocate_temp(DataTypeToEnum<U>::value,
-                                            scale_offset_shape, &scratch1));
-      OP_REQUIRES_OK(context,
-                     context->allocate_temp(DataTypeToEnum<U>::value,
-                                            scale_offset_shape, &scratch2));
       functor::FusedBatchNormFreezeGrad<Device, T, U>()(
-          context->eigen_device<Device>(), y_backprop, x, scale,
-          saved_mean_or_pop_mean, saved_maybe_inv_var_or_pop_var, epsilon_,
-          x_backprop, scale_backprop, offset_backprop, scratch1.vec<U>(),
-          scratch2.vec<U>());
+          context, y_backprop, x, scale, saved_mean_or_pop_mean,
+          saved_maybe_inv_var_or_pop_var, epsilon_, x_backprop, scale_backprop,
+          offset_backprop);
     }
   }
 
@@ -1225,7 +1381,7 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOpV3<CPUDevice, Eigen::half, float>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_KERNEL_BUILDER(
     Name("FusedBatchNorm").Device(DEVICE_GPU).TypeConstraint<float>("T"),

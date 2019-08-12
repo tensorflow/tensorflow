@@ -213,6 +213,129 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
   }
 }
 
+TEST(CommonShapeFnsTest, Einsum_ShapeFn) {
+  ShapeInferenceTestOp op("Einsum");
+  auto set_equation = [&op](int n, string equation) {
+    std::vector<NodeDefBuilder::NodeOut> input_list;
+    input_list.reserve(n);
+    for (int i = 0; i < n; ++i) {
+      input_list.emplace_back("a", 0, DT_FLOAT);
+    }
+    TF_ASSERT_OK(NodeDefBuilder("test", "Einsum")
+                     .Input(input_list)
+                     .Attr("equation", equation)
+                     .Finalize(&op.node_def));
+  };
+
+  // Unary cases.
+  set_equation(1, "abc->c");
+  INFER_OK(op, "[?,?,?]", "[d0_2]");
+  set_equation(1, "abc->aabbcc");
+  INFER_OK(op, "[?,?,?]", "[d0_0,d0_0,d0_1,d0_1,d0_2,d0_2]");
+  set_equation(1, "abc->");
+  INFER_OK(op, "[?,?,?]", "[]");
+  set_equation(1, "->");
+  INFER_OK(op, "[]", "[]");
+
+  // Binary cases.
+  set_equation(2, "ij,jk->ik");
+  INFER_OK(op, "[?,?];[?,?]", "[d0_0,d1_1]");
+  set_equation(2, "ij,jk->ik");
+  INFER_OK(op, "[?,?];[?,?]", "[d0_0,d1_1]");
+  set_equation(2, "ab,ab->");
+  INFER_OK(op, "[?,?];[?,?]", "[]");
+  set_equation(2, "ab,->b");
+  INFER_OK(op, "[?,?];[]", "[d0_1]");
+  set_equation(2, ",->");
+  INFER_OK(op, "[];[]", "[]");
+  set_equation(2, "aaa,b->abbb");
+  INFER_OK(op, "[?,?,?];[?]", "[d0_0,d1_0,d1_0,d1_0]");
+  set_equation(2, ",abcd->badc");
+  INFER_OK(op, "[];[?,?,?,?]", "[d1_1,d1_0,d1_3,d1_2]");
+
+  // Ellipsis cases.
+  set_equation(1, "a...bc->c...");
+  INFER_OK(op, "[?,?,?,?,?]", "[d0_4,d0_1,d0_2]");
+  set_equation(2, "...ij,...jk->...ik");
+  INFER_OK(op, "[?,?,?,?,?];[1,?,?]", "[d0_0,d0_1,d0_2,d0_3,d1_2]");
+  INFER_OK(op, "[1,?,?];[?,?,?,?,?]", "[d1_0,d1_1,d1_2,d0_1,d1_4]");
+
+  // Unknown rank.
+  set_equation(1, "abc->c");
+  INFER_OK(op, "?", "[?]");
+  set_equation(1, "a...bc->c");
+  INFER_OK(op, "?", "[?]");
+  set_equation(1, "a...bc->c...");
+  INFER_OK(op, "?", "?");
+
+  set_equation(2, "...ij,...jk->...ik");
+  INFER_OK(op, "?;?", "?");
+  INFER_OK(op, "[?,?,?];?", "?");
+  INFER_OK(op, "?;[?,?,?]", "?");
+  set_equation(2, "...ij,...jk->ik");
+  INFER_OK(op, "?;?", "[?,?]");
+  set_equation(2, "abd,b...c->...cad");
+  INFER_OK(op, "[?,?,?];[?,?,?,?]", "[d1_1,d1_2,d1_3,d0_0,d0_2]");
+  set_equation(2, "...ab,b...c->ac...");
+  INFER_OK(op, "[?,1,?,?];[?,?,?]", "[d0_2,d1_2,d0_0,d1_1]");
+
+  // Wrong number of inputs.
+  set_equation(2, "ab->b");
+  INFER_ERROR("got: 2", op, "[?,?];[?,?]");
+  set_equation(1, "ab,a->b");
+  INFER_ERROR("got: 1", op, "[?,?]");
+
+  // Invalid format. Implicit form is not supported.
+  set_equation(1, "a");
+  INFER_ERROR("equation", op, "[2]");
+  set_equation(2, "ab,bc");
+  INFER_ERROR("equation", op, "[2,2];[2,2]");
+
+  // Wrong number of ellipsis or periods outside of ellipsis.
+  set_equation(1, "..a.->a...");
+  INFER_ERROR("ellipsis", op, "[1,1,2,1]");
+  set_equation(1, "...a->.a..");
+  INFER_ERROR("ellipsis", op, "[1,1,1,2]");
+  set_equation(1, "...a...->...a");
+  INFER_ERROR("ellipsis", op, "[1,1,1,2]");
+  set_equation(1, "..a..b..->...ab");
+  INFER_ERROR("ellipsis", op, "[1,1,2,1]");
+  set_equation(2, "...a...,ab->a");
+  INFER_ERROR("ellipsis", op, "[1,2,1];[2,1]");
+  set_equation(2, "a,...ab...->a");
+  INFER_ERROR("ellipsis", op, "[2];[1,2,1,1]");
+  set_equation(2, "a,ab->a......");
+  INFER_ERROR("ellipsis", op, "[2];[2,1]");
+
+  // Output label doesn't appear in input.
+  set_equation(1, "abc->d");
+  INFER_ERROR("'d'", op, "[?,?,?]");
+
+  // Mismatch in input rank.
+  set_equation(1, "abc->c");
+  INFER_ERROR("4", op, "[?,?,?,?]");
+  INFER_ERROR("2", op, "[?,?]");
+  set_equation(1, "...abc->...c");
+  INFER_ERROR("2", op, "[?,?]");
+
+  // Input dimensions are not consistent.
+  set_equation(2, "ab,ab->a");
+  INFER_ERROR("are 1 and 2", op, "[1,2];[2,1]");
+  set_equation(2, "aa,bb->a");
+  INFER_ERROR("are 1 and 2", op, "[1,2];[2,2]");
+
+  // Invalid broadcasting dimensions.
+  set_equation(2, "...ij,...jk->...ik");
+  INFER_ERROR("are 2 and 3", op, "[2,?,?];[3,?,?]");
+  set_equation(2, "i...j,jk...->...ik");
+  INFER_ERROR("are 2 and 3", op, "[?,2,?];[?,?,3]");
+  set_equation(2, "...ij,...jk->ik");
+  set_equation(2, "i...j,jk...->ik");
+  INFER_ERROR("non-empty broadcasting", op, "[?,2,?];[?,?]");
+  set_equation(2, "...ab,b...c->ac...");
+  INFER_OK(op, "?;[4,5,3]", "?");
+}
+
 TEST(CommonShapeFnsTest, BatchMatMulV2_ShapeFn) {
   ShapeInferenceTestOp op("BatchMatMulV2");
   auto set_adj = [&op](bool adj_x, bool adj_y) {

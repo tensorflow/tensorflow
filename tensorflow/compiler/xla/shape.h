@@ -176,6 +176,7 @@ class Shape {
     Equal& MinorToMajorOnlyInLayout() {
       ignore_tiles_in_layout_ = true;
       ignore_element_size_in_layout_ = true;
+      ignore_memory_space_in_layout_ = true;
       return *this;
     }
     Equal& IgnoreElementType() {

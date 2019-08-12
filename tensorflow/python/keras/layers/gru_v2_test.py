@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for UnifiedGRU layer."""
+"""Tests for GRU V2 layer."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -42,8 +43,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import variables
-from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
@@ -138,9 +137,8 @@ class GRUV2Test(keras_parameterized.TestCase):
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
 
-  # Due to b/120160788
   @test_util.run_v2_only
-  def test_unified_gru_feature_parity_with_canonical_gru(self):
+  def test_gru_v2_feature_parity_with_canonical_gru(self):
     input_shape = 10
     rnn_state_size = 8
     timestep = 4
@@ -192,7 +190,7 @@ class GRUV2Test(keras_parameterized.TestCase):
       ('no_bias', False, 'zeros'),
       ('random_bias', True, 'random_uniform'),
   )
-  def test_unified_gru_model_save_load(self, use_bias, bias_initializer):
+  def test_gru_v2_model_save_load(self, use_bias, bias_initializer):
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir)
     h5_path = os.path.join(temp_dir, 'test.h5')
@@ -225,7 +223,7 @@ class GRUV2Test(keras_parameterized.TestCase):
     self.assertAllClose(y, y_ref)
     self.assertAllClose(layer.get_weights(), new_layer.get_weights())
 
-  def test_unified_gru_output_on_multiple_kernel(self):
+  def test_gru_v2_output_on_multiple_kernel(self):
     input_shape = 10
     rnn_state_size = 8
     timestep = 4
@@ -249,7 +247,7 @@ class GRUV2Test(keras_parameterized.TestCase):
       gpu_model.set_weights(weights)
       y_2 = gpu_model.predict(x_train)
 
-    # Note that CuDNN uses 'sigmoid' as activation, so the unified GRU uses
+    # Note that CuDNN uses 'sigmoid' as activation, so the GRU V2 uses
     # 'sigmoid' as default. Construct the canonical GRU with sigmoid to achieve
     # the same output.
     with test_util.device(use_gpu=True):
@@ -261,8 +259,8 @@ class GRUV2Test(keras_parameterized.TestCase):
       canonical_model.set_weights(weights)
       y_3 = canonical_model.predict(x_train)
 
-    self.assertAllClose(y_1, y_2)
-    self.assertAllClose(y_2, y_3)
+    self.assertAllClose(y_1, y_2, rtol=1e-5, atol=1e-5)
+    self.assertAllClose(y_2, y_3, rtol=1e-5, atol=1e-5)
 
   @parameterized.named_parameters(
       # test_name, time_major, go_backwards
@@ -302,9 +300,9 @@ class GRUV2Test(keras_parameterized.TestCase):
     y_ref = gru_model.predict(x_train)
     weights = gru_model.get_weights()
 
-    unified_gru_model = build_model(rnn.GRU)
-    unified_gru_model.set_weights(weights)
-    y = unified_gru_model.predict(x_train)
+    gru_v2_model = build_model(rnn.GRU)
+    gru_v2_model.set_weights(weights)
+    y = gru_v2_model.predict(x_train)
 
     self.assertAllClose(y, y_ref)
 
@@ -343,6 +341,19 @@ class GRUV2Test(keras_parameterized.TestCase):
         kwargs={'units': units,
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
+
+  def test_float64_GRU(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        rnn.GRU,
+        kwargs={'units': units,
+                'return_sequences': True,
+                'dtype': 'float64'},
+        input_shape=(num_samples, timesteps, embedding_dim),
+        input_dtype='float64')
 
   def test_return_states_GRU(self):
     layer_class = rnn.GRU
@@ -424,8 +435,6 @@ class GRUV2Test(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
-  # Run in V2 only due to b/120160788.
-  @test_util.run_v2_only
   def test_statefulness_GRU(self):
     num_samples = 2
     timesteps = 3
@@ -443,8 +452,11 @@ class GRUV2Test(keras_parameterized.TestCase):
     layer = layer_class(
         units, return_sequences=False, stateful=True, weights=None)
     model.add(layer)
-    model.compile(optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                  loss='mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 
@@ -513,10 +525,54 @@ class GRUV2Test(keras_parameterized.TestCase):
         rnn.GRU(units, return_sequences=True, stateful=True),
         keras.layers.Dense(vocab_size)
     ])
-    model.compile(optimizer='adam',
-                  loss='sparse_categorical_crossentropy',
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        optimizer='adam',
+        loss='sparse_categorical_crossentropy',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.fit(x, y, epochs=1, shuffle=False)
+
+  @test_util.run_v2_only
+  def test_explicit_device_with_go_backward_and_mask(self):
+    batch_size = 8
+    timestep = 7
+    masksteps = 5
+    units = 4
+
+    inputs = np.random.randn(batch_size, timestep, units).astype(np.float32)
+    mask = np.ones((batch_size, timestep)).astype(np.bool)
+    mask[:, masksteps:] = 0
+
+    # Test for V1 behavior.
+    lstm_v1 = rnn_v1.GRU(units, return_sequences=True, go_backwards=True)
+    with test_util.device(use_gpu=True):
+      outputs_masked_v1 = lstm_v1(inputs, mask=constant_op.constant(mask))
+      outputs_trimmed_v1 = lstm_v1(inputs[:, :masksteps])
+    self.assertAllClose(outputs_masked_v1[:, -masksteps:], outputs_trimmed_v1)
+
+    # Test for V2 behavior.
+    lstm = rnn.GRU(units, return_sequences=True, go_backwards=True)
+    with test_util.device(use_gpu=True):
+      outputs_masked = lstm(inputs, mask=constant_op.constant(mask))
+      outputs_trimmed = lstm(inputs[:, :masksteps])
+    self.assertAllClose(outputs_masked[:, -masksteps:], outputs_trimmed)
+
+  @test_util.run_deprecated_v1
+  def test_v1_session_behavior(self):
+    # See b/139132348 for more details.
+    x = np.random.uniform(size=(100, 4, 8))
+    y = np.random.uniform(size=(100, 1))
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        (x, y)).shuffle(100).batch(32)
+
+    inp = keras.layers.Input(shape=(4, 8))
+    layer = rnn.GRU(1)(inp)
+    layer = keras.layers.Dense(1)(layer)
+
+    model = keras.models.Model(inp, layer)
+
+    model.compile(loss='mse', optimizer='sgd')
+    model.fit(dataset)
 
 
 class GRULayerGradientTapeTest(test.TestCase):
@@ -547,111 +603,142 @@ class GRULayerGradientTapeTest(test.TestCase):
     tape.gradient(loss, gru.variables)
 
 
-class GRULayerGraphOnlyTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes(config=_config)
+class GRUGraphRewriteTest(keras_parameterized.TestCase):
 
-  # Need session for test
-  @test_util.run_deprecated_v1
-  def test_unifiedGRU(self):
-    input_shape = 10
-    rnn_state_size = 8
-    output_shape = 8
-    timestep = 4
-    batch = 100
-    epoch = 1
+  input_shape = 10
+  output_shape = 8
+  rnn_state_size = 8
+  timestep = 4
+  batch = 100
+  epoch = 1
 
-    with self.cached_session(config=_config, use_gpu=True) as sess:
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=batch,
-          test_samples=0,
-          input_shape=(timestep, input_shape),
-          num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train, output_shape)
+  def _test_runtime_with_model(self, model):
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=self.batch,
+        test_samples=0,
+        input_shape=(self.timestep, self.input_shape),
+        num_classes=self.output_shape)
+    y_train = keras.utils.to_categorical(y_train, self.output_shape)
 
-      layer = rnn.GRU(rnn_state_size, return_runtime=True)
+    model.compile(
+        optimizer='sgd',
+        loss=['categorical_crossentropy', None],
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
 
-      inputs = array_ops.placeholder(
-          dtypes.float32, shape=(None, timestep, input_shape), name='inputs')
-      predict = array_ops.placeholder(
-          dtypes.float32, shape=(None, output_shape), name='predict')
+    existing_loss = 0
+    for _ in range(self.epoch):
+      history = model.fit(x_train, y_train)
+      loss_value = history.history['loss'][0]
 
-      outputs, runtime = layer(inputs)
-      loss = losses.softmax_cross_entropy(predict, outputs)
-      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
-      train_op = optimizer.minimize(loss)
+      self.assertNotEqual(existing_loss, loss_value)
+      existing_loss = loss_value
 
-      sess.run([variables.global_variables_initializer()])
-      existing_loss = 0
-      for _ in range(epoch):
-        loss_value, _, runtime_value = sess.run([loss, train_op, runtime], {
-            inputs: x_train,
-            predict: y_train
-        })
-        if test.is_gpu_available():
-          self.assertEqual(runtime_value, rnn._RUNTIME_GPU)
-        else:
-          self.assertEqual(runtime_value, rnn._RUNTIME_CPU)
-        # Make sure the loss is updated for every epoch
-        # (layer weights properly updated).
-        self.assertNotEqual(existing_loss, loss_value)
-        existing_loss = loss_value
+    _, runtime_value = model.predict(x_train)
+    if test.is_gpu_available():
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_GPU)
+    else:
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
 
-  # Need session for test
-  @test_util.run_deprecated_v1
-  def test_UnifiedGRU_with_cond(self):
+  @test_util.run_v2_only
+  def test_GRU_runtime(self):
+    layer = rnn.GRU(self.rnn_state_size, return_runtime=True)
+
+    inputs = keras.layers.Input(
+        shape=[self.timestep, self.input_shape], dtype=dtypes.float32)
+
+    outputs, runtime = layer(inputs)
+    # Expand the runtime so that it is a 1D tensor instead of scalar.
+    # TF model does not work with scalar model output, specially during
+    # aggregation.
+    runtime = keras.layers.Lambda(
+        lambda x: array_ops.expand_dims(x, axis=-1))(runtime)
+    model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
+    self._test_runtime_with_model(model)
+
+  @test_util.run_v2_only
+  def test_GRU_runtime_with_mask(self):
+    # Masking will affect which backend is selected based on whether the mask
+    # is strictly right padded.
+    layer = rnn.GRU(self.rnn_state_size, return_runtime=True)
+
+    inputs = keras.layers.Input(
+        shape=[self.timestep, self.input_shape], dtype=dtypes.float32)
+    masked_inputs = keras.layers.Masking()(inputs)
+
+    outputs, runtime = layer(masked_inputs)
+    # Expand the runtime so that it is a 1D tensor instead of scalar.
+    # TF model does not work with scalar model output, specially during
+    # aggregation.
+    runtime = keras.layers.Lambda(
+        lambda x: array_ops.expand_dims(x, axis=-1))(runtime)
+    model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
+
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=self.batch,
+        test_samples=0,
+        input_shape=(self.timestep, self.input_shape),
+        num_classes=self.output_shape)
+    y_train = keras.utils.to_categorical(y_train, self.output_shape)
+
+    model.compile(
+        optimizer='sgd',
+        loss=['categorical_crossentropy', None],
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    model.fit(x_train, y_train)
+
+    # Verify unpadded data.
+    _, runtime_value = model.predict(x_train)
+    if test.is_gpu_available():
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_GPU)
+    else:
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
+
+    # Update x/y to be right padded by setting the last timestep to 0
+    x_train[:, -1, :] = 0
+    y_train[:, -1] = 0
+    _, runtime_value = model.predict(x_train)
+    if test.is_gpu_available():
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_GPU)
+    else:
+      self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
+
+    # Further update x/y to be mix padded (masks in the middle), and verify
+    # only cpu kernel can be selected.
+    x_train[:, -3, :] = 0
+    y_train[:, -3] = 0
+    _, runtime_value = model.predict(x_train)
+    self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
+
+  @test_util.run_v2_only
+  def test_GRU_runtime_with_cond(self):
     # This test is to demonstrate the graph rewrite of grappler plugin under
     # the condition that the function returns different number of internal
     # states.
-    input_shape = 10
-    rnn_state_size = 8
-    output_shape = 8
-    timestep = 4
-    batch = 100
-    epoch = 1
+    layer = rnn.GRU(self.rnn_state_size, return_runtime=True)
 
-    with self.cached_session(config=_config, use_gpu=True) as sess:
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=batch,
-          test_samples=0,
-          input_shape=(timestep, input_shape),
-          num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train, output_shape)
+    inputs = keras.layers.Input(
+        shape=[self.timestep, self.input_shape], dtype=dtypes.float32)
 
-      layer = rnn.GRU(rnn_state_size, return_runtime=True)
+    zeros = array_ops.zeros([self.batch, self.output_shape])
+    dummy_runtime = rnn._runtime(rnn._RUNTIME_UNKNOWN)
+    a = constant_op.constant(0)
+    b = constant_op.constant(1)
+    # Will always run the GRU layer.
+    outputs, runtime = control_flow_ops.cond(
+        gen_math_ops.less(a, b),
+        lambda: layer(inputs),
+        lambda: (zeros, dummy_runtime))
 
-      inputs = array_ops.placeholder(
-          dtypes.float32, shape=(None, timestep, input_shape), name='inputs')
-      predict = array_ops.placeholder(
-          dtypes.float32, shape=(None, output_shape), name='predict')
-
-      zeros = array_ops.zeros([batch, output_shape])
-      dummy_runtime = rnn._runtime(rnn._RUNTIME_UNKNOWN)
-      a = constant_op.constant(0)
-      b = constant_op.constant(1)
-      # Will always run the GRU layer.
-      outputs, runtime = control_flow_ops.cond(
-          gen_math_ops.less(a, b),
-          lambda: layer(inputs),
-          lambda: (zeros, dummy_runtime))
-      loss = losses.softmax_cross_entropy(predict, outputs)
-      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
-      train_op = optimizer.minimize(loss)
-
-      sess.run([variables.global_variables_initializer()])
-      existing_loss = 0
-
-      for _ in range(epoch):
-        loss_value, _, runtime_value = sess.run([loss, train_op, runtime], {
-            inputs: x_train,
-            predict: y_train
-        })
-        if test.is_gpu_available():
-          self.assertEqual(runtime_value, rnn._RUNTIME_GPU)
-        else:
-          self.assertEqual(runtime_value, rnn._RUNTIME_CPU)
-        # Make sure the loss is updated for every epoch
-        # (layer weights properly updated).
-        self.assertNotEqual(existing_loss, loss_value)
-        existing_loss = loss_value
+    # Expand the runtime so that it is a 1D tensor instead of scalar.
+    # TF model does not work with scalar model output, specially during
+    # aggregation.
+    runtime = keras.layers.Lambda(
+        lambda x: array_ops.expand_dims(x, axis=-1))(runtime)
+    model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
+    self._test_runtime_with_model(model)
 
 
 if __name__ == '__main__':

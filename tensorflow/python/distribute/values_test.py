@@ -18,17 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import itertools
 import os
 from absl.testing import parameterized
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
-from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -37,8 +41,12 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.saved_model.model_utils import mode_keys
+from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
@@ -322,14 +330,29 @@ class RegroupAndSelectDeviceTest(test.TestCase):
     result = values.regroup(device_map, (v,))
     self.assertIs(mirrored, result)
 
-  def testNamedTupleEstimatorSpec(self):
+  def testNamedTuple(self):
+
+    # We include toy implementations of Scaffold and EstimatorSpec to
+    # avoid a dependency on Estimator here.
+
+    class Scaffold(object):
+      pass
+
+    class EstimatorSpec(collections.namedtuple(
+        "EstimatorSpec", ["mode", "loss", "train_op", "scaffold"])):
+
+      def __new__(cls, mode, loss, train_op, scaffold=None):
+        return super(EstimatorSpec, cls).__new__(
+            cls, mode=mode, loss=loss, train_op=train_op,
+            scaffold=scaffold or Scaffold())
+
     with context.graph_mode(), ops.Graph().as_default():
       devices = []
       created_estimator_specs = []
 
       for device_id in range(3):
-        spec = model_fn_lib.EstimatorSpec(
-            mode=model_fn_lib.ModeKeys.TRAIN,
+        spec = EstimatorSpec(
+            mode=mode_keys.EstimatorModeKeys.TRAIN,
             loss=constant_op.constant(device_id / 2),
             train_op=array_ops.identity(constant_op.constant(device_id)))
         devices.append(_device_str(device_id))
@@ -339,9 +362,9 @@ class RegroupAndSelectDeviceTest(test.TestCase):
       merged_estimator_spec = values.regroup(
           device_map, created_estimator_specs)
 
-      self.assertTrue(
-          isinstance(merged_estimator_spec, model_fn_lib.EstimatorSpec))
-      self.assertEqual(model_fn_lib.ModeKeys.TRAIN, merged_estimator_spec.mode)
+      self.assertIsInstance(merged_estimator_spec, EstimatorSpec)
+      self.assertEqual(mode_keys.EstimatorModeKeys.TRAIN,
+                       merged_estimator_spec.mode)
       for device_id in range(3):
         d = _device_str(device_id)
         self.assertEqual(created_estimator_specs[device_id].loss,
@@ -351,6 +374,8 @@ class RegroupAndSelectDeviceTest(test.TestCase):
         # Scaffold is populated by `EstimatorSpec.__new__`.
         self.assertEqual(created_estimator_specs[device_id].scaffold,
                          merged_estimator_spec.scaffold.get(d))
+        self.assertIsInstance(created_estimator_specs[device_id].scaffold,
+                              Scaffold)
         # Also test that we can undo the merge using select_replica()
         self.assertEqual(created_estimator_specs[device_id],
                          values.select_replica(device_id,
@@ -622,18 +647,68 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     after_restore = self.evaluate(v)
     self.assertAllClose(before_save, after_restore)
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["graph"]))
+  def testTraceback(self, distribution):
+    with distribution.scope():
+      variable_scope.get_variable(
+          name="testVar", initializer=1., use_resource=True)
+      with self.assertRaisesRegex(
+          ValueError, "Variable testVar already exists"):
+        variable_scope.get_variable(
+            name="testVar", initializer=1., use_resource=True)
 
-_devices = ("/device:GPU:0", "/device:CPU:0")
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["eager"]))
+  def testInitializedToSameValueInsideEagerRun(self, distribution):
+    v = [None]
+    @def_function.function
+    def step():
+      def f():
+        if v[0] is None:
+          v[0] = variables_lib.Variable(random_ops.random_normal([]))
+      distribution.experimental_run_v2(f)
+
+    context.set_global_seed(None)
+    step()
+    vals = self.evaluate(v[0].values)
+    self.assertAllEqual(vals[0], vals[1])
+
+
+_TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
 
 
 def _make_replica_local(method, strategy=None):
-  device_map = values.ReplicaDeviceMap(_devices)
+  if strategy is None:
+    devices = ("/device:GPU:0", "/device:CPU:0")
+  else:
+    devices = strategy.extended.worker_devices
+
+  device_map = values.ReplicaDeviceMap(devices)
   v = []
-  for d, n, init in zip(_devices, ["v", "v/replica"], [1., 2.]):
+  for d, n, init in zip(devices, ["v", "v/replica"], [1., 2.]):
     with ops.device(d):
       v.append(variable_scope.get_variable(
           name=n, initializer=init, use_resource=True))
-  replica_local = values.SyncOnReadVariable(strategy, device_map, v, method)
+
+  if (strategy is not None) and isinstance(strategy, _TPU_STRATEGIES):
+    var_cls = values.TPUSyncOnReadVariable
+  else:
+    var_cls = values.SyncOnReadVariable
+  replica_local = var_cls(strategy, device_map, v, method)
   return v, replica_local
 
 
@@ -682,18 +757,32 @@ class SyncOnReadVariablePropertiesTest(test.TestCase):
       self.assertIsInstance(converted, ops.Tensor)
       self.assertEqual(converted.dtype, replica_local.dtype)
 
+  @test_util.run_v2_only
+  def testCanPassToDefFun(self):
+    @def_function.function
+    def add1(x):
+      return x + 1
+
+    v = variable_scope.get_variable(
+        name="v", initializer=[1.], use_resource=True)
+    device_map = values.ReplicaDeviceMap(("/job:foo/device:CPU:0",))
+    replica_local = values.SyncOnReadVariable(
+        None, device_map, (v,), variable_scope.VariableAggregation.MEAN)
+    self.assertEqual(2., self.evaluate(add1(replica_local)))
+
 
 @combinations.generate(
     combinations.combine(
         distribution=[
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+            strategy_combinations.tpu_strategy,
         ],
         mode=["graph", "eager"]))
 class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
 
-  def _assign_replica_local(self, devices, v, new):
-    for d, var, n in zip(devices, v, new):
-      with ops.device(d):
+  def _assign_replica_local(self, v, new):
+    for var, n in zip(v, new):
+      with ops.device(var.device):
         self.evaluate(var.assign(n))
 
   def _save_return_saver(self, sess, var):
@@ -712,14 +801,14 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
           variable_scope.VariableAggregation.SUM, distribution)
 
       # Overwrite the initial values.
-      self._assign_replica_local(_devices, v, [3., 4.])
+      self._assign_replica_local(v, [3., 4.])
 
       with distribution.scope():
         # Saves the current value of v[0] + v[1], 7.
         save_path, saver = self._save_return_saver(sess, replica_local)
 
         # Change the values between save and restore.
-        self._assign_replica_local(_devices, v, [5., 6.])
+        self._assign_replica_local(v, [5., 6.])
 
         # Restores the saved value of 7. which gets divided equally
         # between the variables.
@@ -735,14 +824,14 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
           variable_scope.VariableAggregation.MEAN, distribution)
 
       # Overwrite the initial values.
-      self._assign_replica_local(_devices, v, [3., 4.])
+      self._assign_replica_local(v, [3., 4.])
 
       with distribution.scope():
         # Saves the current value of (v[0] + v[1])/2, 3.5.
         save_path, saver = self._save_return_saver(sess, replica_local)
 
         # Change the values between save and restore.
-        self._assign_replica_local(_devices, v, [5., 6.])
+        self._assign_replica_local(v, [5., 6.])
 
         # Restores the saved value of 3.5 to both variables.
         saver.restore(sess, save_path)
@@ -755,14 +844,14 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
           variable_scope.VariableAggregation.MEAN, distribution)
 
       # Overwrite the initial values.
-      self._assign_replica_local(_devices, v, [3., 4.])
+      self._assign_replica_local(v, [3., 4.])
 
       with distribution.scope():
         # Saves the current value of (v[0] + v[1])/2, 3.5
         save_path = self._save(sess, replica_local)
 
         # Change the values between save and restore.
-        self._assign_replica_local(_devices, v, [5., 6.])
+        self._assign_replica_local(v, [5., 6.])
     return save_path
 
   def _save_replica_local_sum(self, distribution):
@@ -772,14 +861,14 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
           variable_scope.VariableAggregation.SUM, distribution)
 
       # Overwrite the initial values.
-      self._assign_replica_local(_devices, v, [1.5, 2.])
+      self._assign_replica_local(v, [1.5, 2.])
 
       with distribution.scope():
         # Saves the current value of v[0] + v[1], 3.5
         save_path = self._save(sess, replica_local)
 
         # Change the values between save and restore.
-        self._assign_replica_local(_devices, v, [5., 6.])
+        self._assign_replica_local(v, [5., 6.])
     return save_path
 
   def _save_normal(self):
@@ -819,7 +908,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
           variable_scope.VariableAggregation.MEAN, distribution)
 
       # Overwrite the initial values.
-      self._assign_replica_local(_devices, v, [7., 8.])
+      self._assign_replica_local(v, [7., 8.])
 
       with distribution.scope():
         # Restores the saved value of 3.5 to both variables.
@@ -834,7 +923,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
           variable_scope.VariableAggregation.SUM, distribution)
 
       # Overwrite the initial values.
-      self._assign_replica_local(_devices, v, [7., 8.])
+      self._assign_replica_local(v, [7., 8.])
 
       with distribution.scope():
         # Restores the saved value of 3.5 to both variables.
@@ -865,6 +954,175 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
   def testSaveNormalRestoreReplicaLocalSum(self, distribution):
     save_path = self._save_normal()
     self._restore_replica_local_sum(save_path, distribution)
+
+  def testAssign(self, distribution):
+    def assign(fn, v, update_value, cross_replica):
+      update_fn = lambda: getattr(v, fn)(update_value)
+      if cross_replica:
+        return update_fn()
+      else:
+        return distribution.experimental_local_results(
+            distribution.experimental_run_v2(update_fn))
+    updates = [("assign", 1.), ("assign_add", 1.), ("assign_sub", -1.)]
+    aggregations = [
+        variables_lib.VariableAggregation.NONE,
+        variables_lib.VariableAggregation.SUM,
+        variables_lib.VariableAggregation.MEAN,
+        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+    ]
+    options = (  # VariableAggregation.SUM in cross-replica mode is tested below
+        [x for x in itertools.product(updates, aggregations, [True, False])
+         if not(x[1] == variables_lib.VariableAggregation.SUM and x[2])])
+    for update, aggregation, cross_replica in options:
+      with distribution.scope():
+        v = variable_scope.variable(
+            0.,
+            synchronization=variables_lib.VariableSynchronization.ON_READ,
+            aggregation=aggregation)
+      self.evaluate(variables_lib.global_variables_initializer())
+      fn, update_value = update
+      self.evaluate(assign(fn, v, update_value, cross_replica))
+      for component in v._values:
+        self.assertAllEqual(self.evaluate(component.read_value()),
+                            self.evaluate(array_ops.ones_like(component)))
+
+  def testAssignDtypeConversion(self, distribution):
+    def assign(fn, v, update_value, cross_replica):
+      update_fn = lambda: getattr(v, fn)(update_value)
+      if cross_replica:
+        return update_fn()
+      else:
+        return distribution.experimental_local_results(
+            distribution.experimental_run_v2(update_fn))
+    updates = [("assign", 1), ("assign_add", 1), ("assign_sub", -1)]
+    aggregations = [
+        variables_lib.VariableAggregation.NONE,
+        variables_lib.VariableAggregation.SUM,
+        variables_lib.VariableAggregation.MEAN,
+        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+    ]
+    options = (  # VariableAggregation.SUM in cross-replica mode is tested below
+        [x for x in itertools.product(updates, aggregations, [True, False])
+         if not(x[1] == variables_lib.VariableAggregation.SUM and x[2])])
+    for update, aggregation, cross_replica in options:
+      with distribution.scope():
+        v = variable_scope.variable(
+            0.,
+            synchronization=variables_lib.VariableSynchronization.ON_READ,
+            aggregation=aggregation)
+      self.evaluate(variables_lib.global_variables_initializer())
+      fn, update_value = update
+      self.evaluate(assign(fn, v, update_value, cross_replica))
+      for component in v._values:
+        self.assertAllEqual(self.evaluate(component.read_value()),
+                            self.evaluate(array_ops.ones_like(component)))
+
+  def testAssignWithAggregationSum(self, distribution):
+    with distribution.scope():
+      v = variable_scope.variable(
+          0.,
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=variables_lib.VariableAggregation.SUM)
+    self.evaluate(variables_lib.global_variables_initializer())
+    self.evaluate(v.assign(1. * distribution.num_replicas_in_sync))
+    for component in v._values:
+      self.assertAllEqual(self.evaluate(component.read_value()),
+                          self.evaluate(array_ops.ones_like(component)))
+
+  def testAssignAddSubWithAggregationSum(self, distribution):
+    with distribution.scope():
+      v = variable_scope.variable(
+          0.,
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=variables_lib.VariableAggregation.SUM)
+    self.evaluate(variables_lib.global_variables_initializer())
+    with self.assertRaisesRegex(
+        ValueError, "SyncOnReadVariable does not support "):
+      self.evaluate(v.assign_add(1.))
+    with self.assertRaisesRegex(
+        ValueError, "SyncOnReadVariable does not support "):
+      self.evaluate(v.assign_sub(1.))
+
+  def testReadValueInReplicaContext(self, distribution):
+    aggregations = [
+        variables_lib.VariableAggregation.NONE,
+        variables_lib.VariableAggregation.SUM,
+        variables_lib.VariableAggregation.MEAN,
+        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+    ]
+    for aggregation in aggregations:
+      with distribution.scope():
+        v = variable_scope.variable(
+            0.,
+            synchronization=variables_lib.VariableSynchronization.ON_READ,
+            aggregation=aggregation)
+      self.evaluate(variables_lib.global_variables_initializer())
+      results = self.evaluate(distribution.experimental_local_results(
+          distribution.experimental_run_v2(v.read_value)))
+      for component, value in zip(v._values, results):
+        self.assertAllEqual(self.evaluate(component.read_value()), value)
+
+  def testReadValueInCrossReplicaContext(self, distribution):
+    aggregations = [
+        variables_lib.VariableAggregation.SUM,
+        variables_lib.VariableAggregation.MEAN,
+        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+    ]
+    for aggregation in aggregations:
+      if isinstance(distribution, _TPU_STRATEGIES):
+        resolver = tpu_cluster_resolver.TPUClusterResolver('')
+        tpu_strategy_util.initialize_tpu_system(resolver)
+      with distribution.scope():
+        v = variable_scope.variable(
+            0.,
+            synchronization=variables_lib.VariableSynchronization.ON_READ,
+            aggregation=aggregation)
+      self.evaluate(variables_lib.global_variables_initializer())
+      def assign(v=v):
+        ctx = distribution_strategy_context.get_replica_context()
+        replica_id = ctx.replica_id_in_sync_group
+        return v.assign(math_ops.cast(replica_id, dtypes.float32))
+      self.evaluate(distribution.experimental_local_results(
+          distribution.experimental_run_v2(assign)))
+      result = self.evaluate(v.read_value())
+      num_replicas = distribution.num_replicas_in_sync
+      sum_of_replica_values = num_replicas * (num_replicas - 1) / 2.
+      if aggregation == variables_lib.VariableAggregation.SUM:
+        expected = sum_of_replica_values
+      elif aggregation == variables_lib.VariableAggregation.MEAN:
+        expected = sum_of_replica_values / num_replicas
+      else:
+        expected = 0
+      self.assertEqual(expected, result, aggregation)
+
+  def testReadValueWithAggregationNoneInCrossReplicaContext(self, distribution):
+    with distribution.scope():
+      v = variable_scope.variable(
+          0.,
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=variables_lib.VariableAggregation.NONE)
+    self.evaluate(variables_lib.global_variables_initializer())
+    with self.assertRaisesRegex(
+        ValueError, "Could not convert from .* VariableAggregation\\.NONE"):
+      self.evaluate(v.read_value())
+
+  def testInitializedToSameValueInsideEagerRun(self, distribution):
+    if not context.executing_eagerly(): self.skipTest("eager only")
+
+    v = [None]
+    @def_function.function
+    def step():
+      def f():
+        if v[0] is None:
+          v[0] = variables_lib.Variable(
+              random_ops.random_normal([]),
+              synchronization=variables_lib.VariableSynchronization.ON_READ)
+      distribution.experimental_run_v2(f)
+
+    context.set_global_seed(None)
+    step()
+    vals = self.evaluate(v[0].values)
+    self.assertAllEqual(vals[0], vals[1])
 
 
 class PerReplicaTest(test.TestCase, parameterized.TestCase):

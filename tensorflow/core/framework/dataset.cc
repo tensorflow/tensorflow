@@ -264,9 +264,6 @@ Status GraphDefBuilderWrapper::AddFunction(
             << " the graph. It will not be added again.";
     return Status::OK();
   }
-  if (!ctx->optimization_only()) {
-    TF_RETURN_IF_ERROR(EnsureFunctionIsStateless(function_name, lib_def));
-  }
   const FunctionDef* f_def = lib_def.Find(function_name);
   if (f_def == nullptr) {
     return errors::InvalidArgument("Unable to find FunctionDef for ",
@@ -369,29 +366,10 @@ Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
   return Status::OK();
 }
 
-Status DatasetBase::Save(SerializationContext* ctx,
-                         IteratorStateWriter* writer) const {
-  string serialized_graph_def;
-  string output_node;
-  GraphDefBuilder b;
-  DatasetGraphDefBuilder db(&b);
-  Node* node = nullptr;
-  TF_RETURN_IF_ERROR(AsGraphDefInternal(ctx, &db, &node));
-  output_node = node->name();
-  GraphDef graph_def;
-  TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
-  graph_def.SerializeToString(&serialized_graph_def);
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(kDatasetGraphKey, serialized_graph_def));
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(kDatasetGraphOutputNodeKey, output_node));
-  return Status::OK();
-}
-
 Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     SerializationContext* ctx, const DatasetBase* dataset, Node** output) {
   Status status = dataset->AsGraphDefInternal(ctx, this, output);
-  if (ctx->optimization_only() && errors::IsUnimplemented(status)) {
+  if (errors::IsUnimplemented(status) && !ctx->fail_if_unimplemented()) {
     Tensor t(DT_VARIANT, TensorShape({}));
     // `StoreDatasetInVariantTensor` will transfer ownership of `dataset`. We
     // increment the refcount of `dataset` here to retain ownership.
@@ -419,12 +397,12 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
   if (s.ok() && !*end_of_sequence) RecordElement(ctx);
   RecordStop(ctx, /*start_output=*/true);
-  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
-    s = errors::Internal(
-        "Iterator \"", params_.prefix,
-        "\" returned OutOfRange without setting `*end_of_sequence`. This "
-        "indicates that an error may have occurred. Original message: ",
-        s.error_message());
+  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
+    s = errors::Internal("Iterator \"", params_.prefix,
+                         "\" returned `OutOfRange`. This indicates an "
+                         "implementation error as `OutOfRange` errors are not "
+                         "expected to be returned here. Original message: ",
+                         s.error_message());
     LOG(ERROR) << s;
   }
   return s;

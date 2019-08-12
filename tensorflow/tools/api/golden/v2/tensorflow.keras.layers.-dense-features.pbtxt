@@ -1,6 +1,7 @@
 path: "tensorflow.keras.layers.DenseFeatures"
 tf_class {
-  is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2.DenseFeatures\'>"
+  is_instance: "<class \'tensorflow.python.feature_column.dense_features_v2.DenseFeatures\'>"
+  is_instance: "<class \'tensorflow.python.feature_column.dense_features.DenseFeatures\'>"
   is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2._BaseFeaturesLayer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
@@ -33,6 +34,10 @@ tf_class {
   }
   member {
     name: "input_shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "input_spec"
     mtype: "<type \'property\'>"
   }
   member {

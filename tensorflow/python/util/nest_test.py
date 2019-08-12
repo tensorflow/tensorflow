@@ -32,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 
 try:
   import attr  # pylint:disable=g-import-not-at-top
@@ -39,7 +40,7 @@ except ImportError:
   attr = None
 
 
-class _CustomMapping(collections.Mapping):
+class _CustomMapping(collections_abc.Mapping):
 
   def __init__(self, *args, **kwargs):
     self._wrapped = dict(*args, **kwargs)
@@ -436,6 +437,16 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
     self.assertEqual(7, nest.map_structure(lambda x, y: x + y, 3, 4))
 
+    structure3 = collections.defaultdict(list)
+    structure3["a"] = [1, 2, 3, 4]
+    structure3["b"] = [2, 3, 4, 5]
+
+    expected_structure3 = collections.defaultdict(list)
+    expected_structure3["a"] = [2, 3, 4, 5]
+    expected_structure3["b"] = [3, 4, 5, 6]
+    self.assertEqual(expected_structure3,
+                     nest.map_structure(lambda x: x + 1, structure3))
+
     # Empty structures
     self.assertEqual((), nest.map_structure(lambda x: x + 1, ()))
     self.assertEqual([], nest.map_structure(lambda x: x + 1, []))
@@ -475,10 +486,12 @@ class NestTest(parameterized.TestCase, test.TestCase):
       nest.map_structure(lambda x, y: None, ((3, 4), 5), (3, (4, 5)),
                          check_types=False)
 
-    with self.assertRaisesRegexp(ValueError, "Only valid keyword argument"):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Only valid keyword argument.*foo"):
       nest.map_structure(lambda x: None, structure1, foo="a")
 
-    with self.assertRaisesRegexp(ValueError, "Only valid keyword argument"):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Only valid keyword argument.*foo"):
       nest.map_structure(lambda x: None, structure1, check_types=False, foo="a")
 
   ABTuple = collections.namedtuple("ab_tuple", "a, b")  # pylint: disable=invalid-name

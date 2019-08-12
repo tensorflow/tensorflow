@@ -25,8 +25,6 @@ extern "C" {
 TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
                                               TF_Status* status);
 
-typedef struct TFE_ProfilerContext TFE_ProfilerContext;
-
 // A profiler which will start profiling when creating the object and will stop
 // when the object is destroyed. It will profile all operations run under the
 // given TFE_Context. Multiple instance of it can be created, but at most one
@@ -34,38 +32,24 @@ typedef struct TFE_ProfilerContext TFE_ProfilerContext;
 // Thread-safety: TFE_Profiler is thread-safe.
 typedef struct TFE_Profiler TFE_Profiler;
 
-TF_CAPI_EXPORT extern TFE_Profiler* TFE_NewProfiler(TFE_ProfilerContext* ctx);
+TF_CAPI_EXPORT extern TFE_Profiler* TFE_NewProfiler();
 TF_CAPI_EXPORT extern bool TFE_ProfilerIsOk(TFE_Profiler* profiler);
 TF_CAPI_EXPORT extern void TFE_DeleteProfiler(TFE_Profiler* profiler);
 
 // The output string is a binary string of tensorflow.tpu.Trace. User can write
 // the string to file for offline analysis by tensorboard.
-TF_CAPI_EXPORT extern void TFE_ProfilerSerializeToString(TFE_Context* ctx,
-                                                         TFE_Profiler* profiler,
+TF_CAPI_EXPORT extern void TFE_ProfilerSerializeToString(TFE_Profiler* profiler,
                                                          TF_Buffer* buf,
                                                          TF_Status* status);
-
-// Return a new profiler context object.
-TF_CAPI_EXPORT extern TFE_ProfilerContext* TFE_NewProfilerContext(void);
-
-// Set the eager context in TFE_ProfilerServerOptions
-TF_CAPI_EXPORT extern void TFE_ProfilerContextSetEagerContext(
-    TFE_ProfilerContext* profiler_context, TFE_Context* eager_context);
-
-// Destroy a profiler context object.
-TF_CAPI_EXPORT extern void TFE_DeleteProfilerContext(
-    TFE_ProfilerContext* profiler_context);
 
 // Start a profiler grpc server which listens to specified port. It will start
 // the server on its own thread. It can be shutdown by terminating tensorflow.
 // It can be used in both Eager mode and graph mode. Creating multiple profiler
 // server is allowed. The service defined in
 // tensorflow/contrib/tpu/profiler/tpu_profiler.proto. Please use
-// tensorflow/contrib/tpu/profiler/capture_tpu_profile to capture tracable
-// file following
-// https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern void TFE_StartProfilerServer(TFE_ProfilerContext* context,
-                                                   int port);
+// tensorflow/contrib/tpu/profiler/capture_tpu_profile to capture trace file
+// following https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
+TF_CAPI_EXPORT extern void TFE_StartProfilerServer(int port);
 
 // Enables only graph collection in RunMetadata on the functions executed from
 // this context.
@@ -87,6 +71,16 @@ TF_CAPI_EXPORT extern bool TFE_ProfilerClientStartTracing(
     const char* service_addr, const char* logdir, const char* worker_list,
     bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
     TF_Status* status);
+
+// Send a grpc request to profiler server (service_addr) to perform on-demand
+// monitoring and return the result in a string. It will block the
+// caller thread until receiving the monitoring result.
+// This API is designed for TensorBoard, for end user, please use
+// tensorflow/contrib/tpu/profiler/capture_tpu_profile instead following
+// https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
+TF_CAPI_EXPORT extern void TFE_ProfilerClientMonitor(
+    const char* service_addr, int duration_ms, int monitoring_level,
+    bool display_timestamp, TF_Buffer* result, TF_Status* status);
 
 // TODO(fishx): Move these monitoring APIs into a separate file.
 // -----------------------------------------------------------------------------
@@ -310,6 +304,98 @@ TF_CAPI_EXPORT extern void TFE_MonitoringDeleteSampler2(
     TFE_MonitoringSampler2* sampler);
 TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
     TFE_MonitoringSampler2* sampler, const char* label1, const char* label2);
+
+// LINT.IfChange
+// Note: Keep in sync with internal copy of enum in eager/context.h.
+typedef enum TFE_ContextMirroringPolicy {
+  // Do not maintain mirrors in a TensorHandle, instead make new TensorHandle
+  // copies with their own lifetime.
+  TFE_MIRRORING_NONE = 0,
+  // Mirroring any remote tensor handles, associating them with the lifetime of
+  // the local TensorHandle.
+  TFE_MIRRORING_ALL = 1,
+} TFE_ContextMirroringPolicy;
+// LINT.ThenChange(//tensorflow/core/common_runtime/eager/context.h)
+
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetMirroringPolicy(
+    TFE_ContextOptions*, TFE_ContextMirroringPolicy);
+
+// Sets a thread-local mirroring policy. After this call, other calls to
+// TFE_Execute in the same thread will use the mirroring policy specified here
+// instead of the mirroring policy used to construct the context. This has no
+// effect on the mirroring policy used by other program threads.
+TF_CAPI_EXPORT extern void TFE_ContextSetThreadLocalMirroringPolicy(
+    TFE_Context*, TFE_ContextMirroringPolicy);
+
+// Returns the mirroring policy to be used by this context in the current
+// thread.
+TF_CAPI_EXPORT extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
+    TFE_Context*);
+
+// -----------------------------------------------------------------------------
+// Cancellation APIs.
+
+typedef struct TFE_CancellationManager TFE_CancellationManager;
+TF_CAPI_EXPORT extern TFE_CancellationManager* TFE_NewCancellationManager();
+TF_CAPI_EXPORT extern bool TFE_CancellationManagerIsCancelled(
+    TFE_CancellationManager*);
+TF_CAPI_EXPORT extern void TFE_CancellationManagerStartCancel(
+    TFE_CancellationManager*);
+TF_CAPI_EXPORT extern void TFE_DeleteCancellationManager(
+    TFE_CancellationManager*);
+
+// Associates the given `cancellation_manager` with `op`, so that invoking
+// `TFE_CancellationManagerStartCancel(cancellation_manager)` will cancel the
+// execution of `op`.
+typedef struct TFE_CancellationManager TFE_CancellationManager;
+TF_CAPI_EXPORT extern void TFE_OpSetCancellationManager(
+    TFE_Op* op, TFE_CancellationManager* cancellation_manager,
+    TF_Status* status);
+
+// -----------------------------------------------------------------------------
+// Eager Executor APIs.
+typedef struct TFE_Executor TFE_Executor;
+
+// Creates a new eager Executor. Nodes in one executor are guaranteed to be
+// executed in sequence. Assigning nodes to different executors allows executing
+// nodes in parallel.
+TF_CAPI_EXPORT extern TFE_Executor* TFE_NewExecutor(bool is_async);
+
+// Deletes the eager Executor without waiting for enqueued nodes. Please call
+// TFE_ExecutorWaitForAllPendingNodes before calling this API if you want to
+// make sure all nodes are finished.
+TF_CAPI_EXPORT extern void TFE_DeleteExecutor(TFE_Executor*);
+
+// Returns true if the executor is in async mode.
+TF_CAPI_EXPORT extern bool TFE_ExecutorIsAsync(TFE_Executor*);
+
+// Causes the calling thread to block till all ops dispatched in this executor
+// have been executed. Note that "execution" here refers to kernel execution /
+// scheduling of copies, etc. Similar to sync execution, it doesn't guarantee
+// that lower level device queues (like GPU streams) have been flushed.
+//
+// This call may not block for execution of ops enqueued concurrently with this
+// call.
+TF_CAPI_EXPORT extern void TFE_ExecutorWaitForAllPendingNodes(
+    TFE_Executor*, TF_Status* status);
+
+// When an error happens, any pending operations are discarded and newly issued
+// ops return an error. This call clears the error state and re-enables
+// execution of newly issued ops.
+//
+// Note that outputs of discarded ops remain in a corrupt state and should not
+// be used for future calls.
+// TODO(agarwal): mark the affected handles and raise errors if they are used.
+TF_CAPI_EXPORT extern void TFE_ExecutorClearError(TFE_Executor*);
+
+// Sets a custom Executor for current thread. All nodes created by this thread
+// will be added to this Executor. It will override current executor.
+TF_CAPI_EXPORT extern void TFE_ContextSetExecutorForThread(TFE_Context*,
+                                                           TFE_Executor*);
+
+// Returns the Executor for current thread.
+TF_CAPI_EXPORT extern TFE_Executor* TFE_ContextGetExecutorForThread(
+    TFE_Context*);
 
 #ifdef __cplusplus
 } /* end extern "C" */

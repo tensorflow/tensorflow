@@ -41,7 +41,6 @@ from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.util import nest
 
 
 def _per_replica_execution_function(model, mode):
@@ -150,7 +149,7 @@ def experimental_tpu_fit_loop(model,
           (only if doing validation from data tensors).
           Ignored with the default value of `None`.
       validation_freq: Only relevant if validation data is provided. Integer or
-          `collections.Container` instance (e.g. list, tuple, etc.). If an
+          `collections.abc.Container` instance (e.g. list, tuple, etc.). If an
           integer, specifies how many training epochs to run before a new
           validation run is performed, e.g. `validation_freq=2` runs
           validation every 2 epochs. If a Container, specifies the epochs on
@@ -164,8 +163,16 @@ def experimental_tpu_fit_loop(model,
       ValueError: in case of invalid arguments.
   """
   mode = ModeKeys.TRAIN
-  # TODO(fchollet): add support for `steps_per_epoch=None` in TPU loops.
+
   current_strategy = model._distribution_strategy
+  iteration_value = min(steps_per_epoch,
+                        current_strategy.extended.steps_per_run)
+  steps_per_run = K.variable(
+      value=iteration_value,
+      dtype='int32',
+      name='steps_per_run')
+
+  # TODO(fchollet): add support for `steps_per_epoch=None` in TPU loops.
   iterator = dist_utils.get_iterator(dataset, current_strategy)
 
   scope = dist_utils.distributed_scope(
@@ -180,17 +187,10 @@ def experimental_tpu_fit_loop(model,
   # Add initial dummy values for loss and other metric tensors.
   initial_loop_values = {}
   initial_loop_values['loss'] = constant_op.constant(1e7)
-  for name in model.metrics_names[1:]:
-    tensor = model._all_metrics_tensors[name]
-    initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
+  for m in model._get_training_eval_metrics():
+    tensor = m.result()
+    initial_loop_values[m.name] = array_ops.zeros(tensor.shape, tensor.dtype)
 
-  iteration_value = min(steps_per_epoch,
-                        current_strategy.extended.steps_per_run)
-
-  steps_per_run = K.variable(
-      value=iteration_value,
-      dtype='int32',
-      name='steps_per_run')
   ctx = current_strategy.extended.experimental_run_steps_on_iterator(
       step_fn, iterator, iterations=steps_per_run,
       initial_loop_values=initial_loop_values)
@@ -237,7 +237,7 @@ def experimental_tpu_fit_loop(model,
       batch_logs = {'batch': step_index, 'size': 1, 'num_steps': step_count}
       callbacks._call_batch_hook(mode, 'begin', step_index, batch_logs)
       if prev_step_count is None or step_count != prev_step_count:
-        steps_per_run.load(step_count, K.get_session())
+        K.get_session().run(steps_per_run.assign(step_count))
         prev_step_count = step_count
       try:
         _, outputs = K.batch_get_value([train_op, output_tensors])
@@ -335,7 +335,7 @@ def experimental_tpu_test_loop(model,
     (_, outputs, updates, _) = _per_replica_execution_function(
         dist_utils.get_distributed_model(model, mode), mode)
     with ops.control_dependencies([updates]):
-      return outputs
+      return [array_ops.identity(out) for out in outputs]
 
   test_input_data = iterator.get_next()
   per_replica_outputs = current_strategy.experimental_run_v2(
@@ -375,7 +375,7 @@ def experimental_tpu_test_loop(model,
   if steps is not None:
     target_steps = steps
   else:
-    raise ValueError('Number of steps could not be infered from the data, '
+    raise ValueError('Number of steps could not be inferred from the data, '
                      'please pass the steps argument.')
 
   current_step = 0
@@ -482,7 +482,7 @@ def experimental_tpu_predict_loop(model,
         dist_utils.get_distributed_model(model, mode), mode)
 
     with ops.control_dependencies([updates]):
-      return outputs
+      return [array_ops.identity(out) for out in outputs]
 
   # TODO(hongjunchoi): When numpy array is passed as an input to `predict()`
   # use numpy arrays directly to avoid cumulating unnecessary input pipeline
@@ -520,7 +520,7 @@ def experimental_tpu_predict_loop(model,
   if steps is not None:
     target_steps = steps
   else:
-    raise ValueError('Number of steps could not be infered from the data, '
+    raise ValueError('Number of steps could not be inferred from the data, '
                      'please pass the steps argument.')
 
   current_step = 0
@@ -565,8 +565,7 @@ def experimental_tpu_predict_loop(model,
     prediction_result = np.concatenate(unconcatenated_outs[0], axis=0)
   else:
     prediction_result = [
-        np.concatenate(unconcatenated_outs[i], axis=0)
-        for i in range(len(unconcatenated_outs))
+        np.concatenate(out, axis=0) for out in unconcatenated_outs
     ]
 
   if padding_handler:
@@ -601,8 +600,9 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
                                   optimizer=model.optimizer)
     dist_utils.validate_inputs(x, y)
 
-    batch_size, steps_per_epoch = self._process_batch_and_step_size(
-        model, x, batch_size, steps_per_epoch, ModeKeys.TRAIN)
+    batch_size, steps_per_epoch = dist_utils.process_batch_and_step_size(
+        model._distribution_strategy, x, batch_size, steps_per_epoch,
+        ModeKeys.TRAIN)
     batch_size = model._validate_or_infer_batch_size(
         batch_size, steps_per_epoch, x)
     dataset = model._distribution_standardize_user_data(
@@ -625,11 +625,12 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
 
     val_dataset = None
     if validation_data:
-      val_x, val_y, val_sample_weights = model._unpack_validation_data(
+      val_x, val_y, val_sample_weights = training_utils.unpack_validation_data(
           validation_data)
       dist_utils.validate_inputs(val_x, val_y)
-      _, validation_steps = self._process_batch_and_step_size(
-          model, val_x, batch_size, validation_steps, ModeKeys.TEST)
+      _, validation_steps = dist_utils.process_batch_and_step_size(
+          model._distribution_strategy, val_x, batch_size, validation_steps,
+          ModeKeys.TEST)
 
       val_dataset = model._distribution_standardize_user_data(
           val_x, val_y,
@@ -645,9 +646,9 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
 
     if dist_utils.is_tpu_strategy(model._distribution_strategy):
       steps_per_epoch = training_utils.infer_steps_for_dataset(
-          dataset, steps_per_epoch, epochs, steps_name='steps_per_epoch')
+          model, dataset, steps_per_epoch, epochs, steps_name='steps_per_epoch')
       if steps_per_epoch is None:
-        raise ValueError('Number of steps could not be infered from the data, '
+        raise ValueError('Number of steps could not be inferred from the data, '
                          'please pass the steps_per_epoch argument.')
 
       if not context.executing_eagerly():
@@ -691,8 +692,8 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
                **kwargs):
     """Evaluate loop for Distribution Strategies."""
     dist_utils.validate_inputs(x, y)
-    batch_size, steps = self._process_batch_and_step_size(
-        model, x, batch_size, steps, ModeKeys.TEST)
+    batch_size, steps = dist_utils.process_batch_and_step_size(
+        model._distribution_strategy, x, batch_size, steps, ModeKeys.TEST)
     batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
     dataset = model._distribution_standardize_user_data(
         x, y,
@@ -702,9 +703,9 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
 
     if dist_utils.is_tpu_strategy(model._distribution_strategy):
       steps = training_utils.infer_steps_for_dataset(
-          dataset, steps, steps_name='steps')
+          model, dataset, steps, steps_name='steps')
       if steps is None:
-        raise ValueError('Number of steps could not be infered from the data, '
+        raise ValueError('Number of steps could not be inferred from the data, '
                          'please pass the steps argument.')
 
       if not context.executing_eagerly():
@@ -730,8 +731,8 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
               **kwargs):
     """Predict loop for Distribution Strategies."""
     dist_utils.validate_inputs(x=x, y=None)
-    batch_size, steps = self._process_batch_and_step_size(
-        model, x, batch_size, steps, ModeKeys.PREDICT)
+    batch_size, steps = dist_utils.process_batch_and_step_size(
+        model._distribution_strategy, x, batch_size, steps, ModeKeys.PREDICT)
     batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
     dataset = model._distribution_standardize_user_data(
         x,
@@ -739,9 +740,9 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
         allow_partial_batch=True)
     if dist_utils.is_tpu_strategy(model._distribution_strategy):
       steps = training_utils.infer_steps_for_dataset(
-          dataset, steps, steps_name='steps')
+          model, dataset, steps, steps_name='steps')
       if steps is None:
-        raise ValueError('Number of steps could not be infered from the data, '
+        raise ValueError('Number of steps could not be inferred from the data, '
                          'please pass the steps argument.')
       if not context.executing_eagerly():
         return experimental_tpu_predict_loop(
@@ -754,33 +755,17 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
         steps=steps,
         callbacks=callbacks)
 
-  def _process_batch_and_step_size(
-      self, model, inputs, batch_size, steps_per_epoch, mode):
-    first_x_value = nest.flatten(inputs)[0]
-    if isinstance(first_x_value, np.ndarray):
-      # Until support for partial batch is implemented across all
-      # functions and distribution strategy, we pass `mode` to selectively
-      # relax the constraint to consume all the training samples.
-      steps_per_epoch, batch_size = (
-          dist_utils.get_input_params(
-              model._distribution_strategy,
-              first_x_value,
-              steps_per_epoch,
-              batch_size,
-              mode=mode))
-    return batch_size, steps_per_epoch
 
-
-def train_with_multi_worker(fn):
+def train_with_multi_worker(method):
   """Decorator that handles multi worker training with distribution strategy."""
 
-  def wrapper(instance, model, **kwargs):
-
+  def wrapper(model, **kwargs):
     def _worker_fn(_):
       callbacks = kwargs.pop('callbacks', None)
-      filtered_callbacks = dist_utils.filter_distributed_callbacks(callbacks)
+      filtered_callbacks = dist_utils.filter_distributed_callbacks(
+          callbacks, model)
       kwargs['callbacks'] = filtered_callbacks
-      return fn(instance, model, **kwargs)
+      return method(model, **kwargs)
 
     return dc.run_distribute_coordinator(
         _worker_fn,
@@ -790,11 +775,20 @@ def train_with_multi_worker(fn):
   return wrapper
 
 
-class DistributionMultiWorkerTrainingLoop(DistributionSingleWorkerTrainingLoop):
+class DistributionMultiWorkerTrainingLoop(training_utils.TrainingLoop):
   """Training loop for distribution strategy with multiple worker."""
 
-  fit = train_with_multi_worker(DistributionSingleWorkerTrainingLoop.fit)
-  evaluate = train_with_multi_worker(
-      DistributionSingleWorkerTrainingLoop.evaluate)
-  # Currently predict is still using the single worker implementation.
+  def __init__(self, single_worker_loop):
+    self._single_worker_loop = single_worker_loop
 
+  def fit(self, *args, **kwargs):
+    return train_with_multi_worker(self._single_worker_loop.fit)(
+        *args, **kwargs)
+
+  def evaluate(self, *args, **kwargs):
+    return train_with_multi_worker(self._single_worker_loop.evaluate)(
+        *args, **kwargs)
+
+  def predict(self, *args, **kwargs):
+    # Currently predict is still using the single worker implementation.
+    return self._single_worker_loop.predict(*args, **kwargs)

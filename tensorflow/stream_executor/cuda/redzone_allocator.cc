@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/redzone_allocator.h"
 
+#include "absl/container/fixed_array.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -44,26 +45,28 @@ constexpr int64 kRhsRedzoneAlign = 4;
 using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 
 RedzoneAllocator::RedzoneAllocator(
-    int device_ordinal, DeviceMemoryAllocator* memory_allocator,
-    cuda::PtxCompilationOptions ptx_compilation_opts, uint64 redzone_size,
-    uint8 redzone_pattern)
-    : device_ordinal_(device_ordinal),
+    Stream* stream, DeviceMemoryAllocator* memory_allocator,
+    cuda::PtxCompilationOptions ptx_compilation_opts, int64 memory_limit,
+    int64 redzone_size, uint8 redzone_pattern)
+    : device_ordinal_(stream->parent()->device_ordinal()),
+      stream_(stream),
+      memory_limit_(memory_limit),
       redzone_size_(RoundUpToNearest(
           redzone_size,
-          static_cast<uint64>(tensorflow::Allocator::kAllocatorAlignment))),
+          static_cast<int64>(tensorflow::Allocator::kAllocatorAlignment))),
       redzone_pattern_(redzone_pattern),
       memory_allocator_(memory_allocator),
       ptx_compilation_opts_(ptx_compilation_opts) {}
 
 port::StatusOr<DeviceMemory<uint8>> RedzoneAllocator::AllocateBytes(
-    Stream* stream, int64 byte_size) {
+    int64 byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
-  if (byte_size > GetMemoryLimitInBytes(stream)) {
+  if (byte_size > GetMemoryLimitInBytes()) {
     return port::Status(
         port::error::RESOURCE_EXHAUSTED,
         absl::StrFormat(
             "Allocating %d bytes exceeds the memory limit of %d bytes.",
-            byte_size, GetMemoryLimitInBytes(stream)));
+            byte_size, GetMemoryLimitInBytes()));
   }
 
   int64 rhs_slop = RoundUpToNearest(byte_size, kRhsRedzoneAlign) - byte_size;
@@ -77,10 +80,10 @@ port::StatusOr<DeviceMemory<uint8>> RedzoneAllocator::AllocateBytes(
   static_assert(sizeof(uint8) == 1, "Unexpected size");
   DeviceMemory<uint8> allocated_buffer_memory(*allocated_buffer);
 
-  DeviceMemory<uint8> lhs_redzone = stream->parent()->GetSubBuffer(
+  DeviceMemory<uint8> lhs_redzone = stream_->parent()->GetSubBuffer(
       &allocated_buffer_memory, 0, redzone_size_);
 
-  DeviceMemory<uint8> data_chunk = stream->parent()->GetSubBuffer(
+  DeviceMemory<uint8> data_chunk = stream_->parent()->GetSubBuffer(
       &allocated_buffer_memory, redzone_size_, byte_size);
 
   // Split up the RHS redzone into two pieces:
@@ -88,10 +91,10 @@ port::StatusOr<DeviceMemory<uint8>> RedzoneAllocator::AllocateBytes(
   //  - redzone_size_ bytes.
   // We do this because Stream::ThenMemset32 requires the buffer address and
   // size to be aligned to 4 bytes.
-  DeviceMemory<uint8> rhs_redzone_slop = stream->parent()->GetSubBuffer(
+  DeviceMemory<uint8> rhs_redzone_slop = stream_->parent()->GetSubBuffer(
       &allocated_buffer_memory, redzone_size_ + byte_size, rhs_slop);
 
-  DeviceMemory<uint8> rhs_redzone_nonslop = stream->parent()->GetSubBuffer(
+  DeviceMemory<uint8> rhs_redzone_nonslop = stream_->parent()->GetSubBuffer(
       &allocated_buffer_memory, redzone_size_ + byte_size + rhs_slop,
       redzone_size_);
 
@@ -99,11 +102,11 @@ port::StatusOr<DeviceMemory<uint8>> RedzoneAllocator::AllocateBytes(
                          redzone_pattern_};
   uint32 pattern32;
   std::memcpy(&pattern32, pattern_arr, sizeof(pattern32));
-  stream->ThenMemset32(&lhs_redzone, pattern32, redzone_size_);
+  stream_->ThenMemset32(&lhs_redzone, pattern32, redzone_size_);
   if (rhs_slop != 0) {
-    stream->ThenMemcpy(&rhs_redzone_slop, &pattern32, rhs_slop);
+    stream_->ThenMemcpy(&rhs_redzone_slop, &pattern32, rhs_slop);
   }
-  stream->ThenMemset32(&rhs_redzone_nonslop, pattern32, redzone_size_);
+  stream_->ThenMemset32(&rhs_redzone_nonslop, pattern32, redzone_size_);
 
   allocated_buffers_.emplace_back(std::move(allocated_buffer), byte_size);
   return data_chunk;
@@ -175,8 +178,7 @@ using ComparisonKernelT =
 // Slower, but gives a more useful error message.
 static port::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
     DeviceMemoryBase redzone, DeviceMemoryBase user_allocation,
-    absl::string_view name, Stream* stream, uint8 redzone_pattern,
-    int64 redzone_size) {
+    absl::string_view name, Stream* stream, uint8 redzone_pattern) {
   uint64 size = redzone.size();
   auto redzone_data = absl::make_unique<uint8[]>(size);
   TF_RETURN_IF_ERROR(stream->ThenMemcpy(redzone_data.get(), redzone, size)
@@ -191,19 +193,15 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
   for (i = 0; i + 7 < size; i += sizeof(uint64)) {
     uint64 rz_value = *reinterpret_cast<uint64*>(&redzone_data[i]);
     if (rz_value != pattern64) {
-      return RedzoneCheckStatus::WithFailureMsg(absl::StrFormat(
-          "Redzone mismatch in %s redzone of buffer %p at offset %d; "
-          "expected %08x but was %08x.",
-          name, user_allocation.opaque(), i, pattern64, rz_value));
+      return RedzoneCheckStatus(name, user_allocation.opaque(), i, pattern64,
+                                rz_value);
     }
   }
   for (; i < size; ++i) {
     uint8 rz_value = redzone_data[i];
     if (rz_value != redzone_pattern) {
-      return RedzoneCheckStatus::WithFailureMsg(absl::StrFormat(
-          "Redzone mismatch in %s redzone of buffer %p at offset %d; "
-          "expected %08x but was %08x.",
-          name, user_allocation.opaque(), i, redzone_pattern, rz_value));
+      return RedzoneCheckStatus(name, user_allocation.opaque(), i,
+                                redzone_pattern, rz_value);
     }
   }
   return RedzoneCheckStatus::OK();
@@ -230,6 +228,20 @@ static void RunRedzoneChecker(Stream* stream,
                      redzone.size(), out_param);
 }
 
+// Since we reuse the same buffer for multiple checks, we re-initialize redzone
+// with a NaN pattern after a failed check.
+//
+// This function is blocking, since redzone failing is a rare event.
+static port::Status ReinitializeRedzone(Stream* stream,
+                                        DeviceMemoryBase redzone,
+                                        uint8 redzone_pattern) {
+  absl::FixedArray<uint8> redzone_array(redzone.size());
+  redzone_array.fill(redzone_pattern);
+  stream->ThenMemcpy(&redzone, redzone_array.data(), redzone.size());
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  return port::Status::OK();
+}
+
 // Check redzones around the user allocation.
 //
 // Precondition: the memory pointed out by out_param is zeroed.
@@ -246,12 +258,14 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
 
   DeviceMemory<uint8> buffer_uint8(memory);
   DeviceMemory<uint8> lhs_redzone =
-      executor->GetSubBuffer(&buffer_uint8, 0, redzone_size);
+      executor->GetSubBuffer(&buffer_uint8, 0,
+                             /*element_count=*/redzone_size);
   DeviceMemory<uint8> user_allocation =
-      executor->GetSubBuffer(&buffer_uint8, redzone_size, user_allocation_size);
+      executor->GetSubBuffer(&buffer_uint8, redzone_size,
+                             /*element_count=*/user_allocation_size);
   DeviceMemory<uint8> rhs_redzone =
       executor->GetSubBuffer(&buffer_uint8, redzone_size + user_allocation_size,
-                             redzone_size + rhs_slop);
+                             /*element_count=*/redzone_size + rhs_slop);
 
   RunRedzoneChecker(stream, lhs_redzone, redzone_pattern, out_param,
                     comparison_kernel);
@@ -263,26 +277,28 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   if (result != 0) {
-    TF_ASSIGN_OR_RETURN(
-        RedzoneCheckStatus lhs_check,
-        CheckRedzoneHost(lhs_redzone, user_allocation, "LHS", stream,
-                         redzone_pattern, redzone_size));
-    TF_ASSIGN_OR_RETURN(
-        RedzoneCheckStatus rhs_check,
-        CheckRedzoneHost(rhs_redzone, user_allocation, "RHS", stream,
-                         redzone_pattern, redzone_size));
+    TF_ASSIGN_OR_RETURN(RedzoneCheckStatus lhs_check,
+                        CheckRedzoneHost(lhs_redzone, user_allocation, "LHS",
+                                         stream, redzone_pattern));
+    TF_ASSIGN_OR_RETURN(RedzoneCheckStatus rhs_check,
+                        CheckRedzoneHost(rhs_redzone, user_allocation, "RHS",
+                                         stream, redzone_pattern));
 
     CHECK(!lhs_check.ok() || !rhs_check.ok())
         << "Mismatched results with host and device comparison";
+
+    TF_RETURN_IF_ERROR(
+        ReinitializeRedzone(stream, lhs_redzone, redzone_pattern));
+    TF_RETURN_IF_ERROR(
+        ReinitializeRedzone(stream, rhs_redzone, redzone_pattern));
     return !lhs_check.ok() ? lhs_check : rhs_check;
   }
 
   return RedzoneCheckStatus::OK();
 }
 
-port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
-    Stream* stream) const {
-  StreamExecutor* executor = stream->parent();
+port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
+  StreamExecutor* executor = stream_->parent();
 
   absl::Span<const uint8> compiled_ptx = {};
   port::StatusOr<absl::Span<const uint8>> compiled_ptx_or =
@@ -291,13 +307,17 @@ port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
   if (compiled_ptx_or.ok()) {
     compiled_ptx = compiled_ptx_or.ValueOrDie();
   } else {
-    LOG(WARNING) << compiled_ptx_or.status().ToString()
-                 << "\nRelying on driver to perform ptx compilation";
+    static std::once_flag ptxas_not_found_logged;
+    std::call_once(ptxas_not_found_logged, [&]() {
+      LOG(WARNING) << compiled_ptx_or.status().ToString()
+                   << "\nRelying on driver to perform ptx compilation. "
+                   << "This message will be only logged once.";
+    });
   }
 
   ScopedDeviceMemory<uint64> out_param =
       executor->AllocateOwnedScalar<uint64>();
-  stream->ThenMemZero(out_param.ptr(), sizeof(uint64));
+  stream_->ThenMemZero(out_param.ptr(), sizeof(uint64));
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ComparisonKernelT> comparison_kernel,
@@ -308,7 +328,7 @@ port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
   for (const auto& buf_and_size : allocated_buffers_) {
     TF_ASSIGN_OR_RETURN(
         RedzoneCheckStatus redzone_status,
-        CheckRedzonesForBuffer(stream, *buf_and_size.first, out_param.cref(),
+        CheckRedzonesForBuffer(stream_, *buf_and_size.first, out_param.cref(),
                                *comparison_kernel, buf_and_size.second,
                                redzone_size_, redzone_pattern_));
     if (!redzone_status.ok()) {
@@ -317,6 +337,13 @@ port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones(
   }
 
   return RedzoneCheckStatus::OK();
+}
+
+std::string RedzoneCheckStatus::RedzoneFailureMsg() const {
+  return absl::StrFormat(
+      "Redzone mismatch in %s redzone of buffer %p at offset %d; "
+      "expected %08x but was %08x.",
+      buffer_name, user_buffer_address, offset, expected_value, actual_value);
 }
 
 }  // namespace cuda

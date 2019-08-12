@@ -31,7 +31,7 @@ namespace gl {
 namespace {
 
 TEST(FullyConnectedTest, MatrixByVectorMultiplication) {
-  TensorRefFloat32 input;
+  TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 1, 1, 2);
@@ -50,7 +50,7 @@ TEST(FullyConnectedTest, MatrixByVectorMultiplication) {
   weights.data = {1, 2, 3, 4, 5, 6, 7, 8};
   attr.weights = std::move(weights);
 
-  TensorRefFloat32 output;
+  TensorRef<BHWC> output;
   output.type = DataType::FLOAT32;
   output.ref = 2;
   output.shape = BHWC(1, 1, 1, 4);
@@ -58,7 +58,7 @@ TEST(FullyConnectedTest, MatrixByVectorMultiplication) {
   SingleOpModel model({ToString(OperationType::FULLY_CONNECTED), attr}, {input},
                       {output});
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2}));
-  ASSERT_TRUE(model.Invoke(*NewFullyConnectedNodeShader()));
+  ASSERT_OK(model.Invoke(*NewFullyConnectedNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {6, 13, 20, 27}));
 }
 

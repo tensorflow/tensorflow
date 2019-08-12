@@ -36,7 +36,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 struct ConvParametersPeer {
   template <typename T>
@@ -91,7 +91,7 @@ TEST(ConvParameters, WinogradNonfusedAlgoSize) {
       conv_params_large.ShouldIncludeWinogradNonfusedAlgoPreCudnn7<float>());
 }
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class FusedResizePadConvOpTest : public OpsTestBase {
  protected:
@@ -1001,6 +1001,10 @@ class FusedConv2DWithBatchNormOpTest : public FusedConv2DOpTest<T> {};
 TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest);
 TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest);
 
+// ROCm does not yet support the _FusedConv2D op,
+// Therefore disable tests that check _FusedConv2D, when building with ROCm
+
+#ifndef TENSORFLOW_USE_ROCM
 // -------------------------------------------------------------------------- //
 // Conv2D + BiasAdd + {Activation}                                            //
 // -------------------------------------------------------------------------- //
@@ -1165,4 +1169,5 @@ using FusedBatchNormDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBatchNormOpTest,
                                FusedBatchNormDataTypes);
 
+#endif  // TENSORFLOW_USE_ROCM
 }  // namespace tensorflow

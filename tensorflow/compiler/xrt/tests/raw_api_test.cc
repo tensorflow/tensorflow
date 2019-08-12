@@ -127,7 +127,7 @@ xla::LiteralProto FloatMatrix(
 
 xla::Literal ReadOutputLiteral(const std::vector<Tensor>& outputs, size_t idx) {
   xla::LiteralProto response;
-  CHECK(response.ParseFromString(outputs[idx].scalar<string>()()));
+  CHECK(response.ParseFromString(outputs[idx].scalar<tstring>()()));
   return xla::Literal::CreateFromProto(response).ValueOrDie();
 }
 
@@ -316,8 +316,74 @@ TEST(RawApiTest, AllocFromTensor) {
   EXPECT_EQ(outputs.size(), 1);
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralToLiteralProto(literal, response));
+}
+
+TEST(RawApiTest, AllocUninitialized) {
+  xla::Literal literal =
+      xla::LiteralUtil::CreateR2<float>({{4.0f, 5.0f}, {6.0f, 7.0f}});
+  Tensor tensor;
+  TF_ASSERT_OK(LiteralToHostTensor(literal, DT_FLOAT, &tensor));
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  std::vector<int> layout =
+      GetAttrLayout(literal.shape().layout().minor_to_major());
+
+  auto allocate_op =
+      ops::XRTAllocateUninitialized(root, DT_FLOAT, tensor.shape());
+
+  Tensor handle;
+  std::vector<Tensor> outputs;
+  XrtClientSession session(root);
+  // Allocate the tensor
+  {
+    TF_EXPECT_OK(session.Run({allocate_op}, &outputs));
+    handle = outputs[0];
+  }
+
+  // Make sure it has the expected shape
+  {
+    auto read_back_op = ops::XRTReadLiteral(root, handle);
+    TF_ASSERT_OK(root.status());
+
+    TF_EXPECT_OK(session.Run({read_back_op}, &outputs));
+    EXPECT_EQ(outputs.size(), 1);
+    xla::LiteralProto read_back_literal;
+    EXPECT_TRUE(
+        read_back_literal.ParseFromString(outputs[0].scalar<tstring>()()));
+    Tensor read_back_tensor;
+    TF_ASSERT_OK(LiteralToHostTensor(
+        xla::Literal::CreateFromProto(read_back_literal).ValueOrDie(), DT_FLOAT,
+        &read_back_tensor));
+
+    // The shape should be the same as 'tensor', but we don't have any
+    // expectation about the value of the tensors yet since it is uninitialized
+    EXPECT_EQ(tensor.shape(), read_back_tensor.shape());
+  }
+
+  // Make sure we can write to it
+  xla::LiteralProto new_literal =
+      xla::LiteralUtil::CreateR2({{9.0f, 2.0f}, {4.0f, 1.0f}}).ToProto();
+  {
+    auto new_value = ops::Const(root.WithDevice("/device:CPU:0"),
+                                new_literal.SerializeAsString());
+    auto write_op = ops::XRTWriteLiteral(root, Input(handle), new_value);
+    TF_ASSERT_OK(root.status());
+    TF_EXPECT_OK(session.Run({write_op}, &outputs));
+  }
+
+  // Now read it back
+  {
+    auto read_back_op = ops::XRTReadLiteralAndRelease(root, handle);
+    TF_ASSERT_OK(root.status());
+    TF_EXPECT_OK(session.Run({read_back_op}, &outputs));
+    EXPECT_EQ(outputs.size(), 1);
+
+    xla::LiteralProto response;
+    EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
+    EXPECT_TRUE(CompareLiteralProtos(response, new_literal));
+  }
 }
 
 TEST(RawApiTest, AllocFromTensorTuple) {
@@ -347,7 +413,7 @@ TEST(RawApiTest, AllocFromTensorTuple) {
   EXPECT_EQ(outputs.size(), 1);
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralToLiteralProto(literal, response));
 }
 
@@ -373,7 +439,7 @@ TEST(RawApiTest, AllocFromTensorTupleSingle) {
   EXPECT_EQ(outputs.size(), 1);
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralToLiteralProto(literal, response));
 }
 
@@ -399,7 +465,7 @@ TEST(RawApiTest, AllocFromTensorRelayout) {
   EXPECT_EQ(outputs.size(), 1);
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
   // We have sent literal's data (in array layout) with a attribute layout
   // {0,1}, so the expected literal read from device needs to be changed
   // accordingly.
@@ -427,7 +493,7 @@ TEST(RawApiTest, AllocAndRewrite) {
 
   int64 allocation_handle = outputs[1].scalar<int64>()();
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralProtos(alloc.value(), response));
 
   xla::LiteralProto new_literal =
@@ -446,7 +512,7 @@ TEST(RawApiTest, AllocAndRewrite) {
   EXPECT_EQ(outputs.size(), 1);
 
   xla::LiteralProto new_response;
-  EXPECT_TRUE(new_response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(new_response.ParseFromString(outputs[0].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralProtos(new_literal, new_response));
 
   Tensor release_tensor(DT_INT64, TensorShape({1}));
@@ -586,7 +652,7 @@ TEST(RawApiTest, ReadAndWriteState) {
       session.Run(ClientSession::FeedType(), {read_back}, {release}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   EXPECT_TRUE(CompareLiteralProtos(alloc.value(), response));
 }
@@ -607,7 +673,7 @@ TEST(RawApiTest, ReadAndWriteStateAutoFree) {
   TF_EXPECT_OK(session.Run({read_back}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralProtos(alloc.value(), response));
 }
 
@@ -641,13 +707,13 @@ TEST(RawApiTest, SubBuffer) {
   auto base_elements = base_literal.DecomposeTuple();
   auto nested_0_elements = base_elements[0].Clone().DecomposeTuple();
   xla::LiteralProto response_0;
-  EXPECT_TRUE(response_0.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response_0.ParseFromString(outputs[0].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralToLiteralProto(base_elements[0], response_0));
   xla::LiteralProto response_1;
-  EXPECT_TRUE(response_1.ParseFromString(outputs[1].scalar<string>()()));
+  EXPECT_TRUE(response_1.ParseFromString(outputs[1].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralToLiteralProto(base_elements[1], response_1));
   xla::LiteralProto response_00;
-  EXPECT_TRUE(response_00.ParseFromString(outputs[2].scalar<string>()()));
+  EXPECT_TRUE(response_00.ParseFromString(outputs[2].scalar<tstring>()()));
   EXPECT_TRUE(CompareLiteralToLiteralProto(nested_0_elements[0], response_00));
 }
 
@@ -713,9 +779,9 @@ TEST(RawApiTest, MakeTuple) {
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({res_0, res_1}, &outputs));
   xla::LiteralProto response_0;
-  EXPECT_TRUE(response_0.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response_0.ParseFromString(outputs[0].scalar<tstring>()()));
   xla::LiteralProto response_1;
-  EXPECT_TRUE(response_1.ParseFromString(outputs[1].scalar<string>()()));
+  EXPECT_TRUE(response_1.ParseFromString(outputs[1].scalar<tstring>()()));
 
   auto expected_0 = MakeTuple0();
   EXPECT_TRUE(CompareLiteralProtos(response_0, expected_0));
@@ -787,7 +853,7 @@ TEST(RawApiTest, ExecuteChainedOpByOp) {
   TF_EXPECT_OK(session.Run({read_back}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected = xla::LiteralUtil::CreateR1<float>({-150.0f, -36.0f});
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
@@ -907,7 +973,7 @@ TEST(RawApiTest, ExecuteChained) {
   EXPECT_EQ(outputs.size(), 1);
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected = xla::LiteralUtil::CreateR1<float>({-150.0f, -36.0f});
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
@@ -956,13 +1022,13 @@ TEST(RawApiTest, CompileAndExecute) {
   TF_EXPECT_OK(session.Run({read_back, c_handle.program_shape}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected = xla::LiteralUtil::CreateR1<float>({27.0f, 21.0f});
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 
   xla::ProgramShapeProto program_shape;
-  EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<string>()(0)));
+  EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<tstring>()(0)));
   EXPECT_EQ(program_shape.parameters_size(), 2);
 }
 
@@ -1011,13 +1077,13 @@ TEST(RawApiTest, CompileAndExecuteWithArgumentVector) {
   TF_EXPECT_OK(session.Run({read_back, c_handle.program_shape}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected = xla::LiteralUtil::CreateR1<float>({27.0f, 21.0f});
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 
   xla::ProgramShapeProto program_shape;
-  EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<string>()(0)));
+  EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<tstring>()(0)));
   EXPECT_EQ(program_shape.parameters_size(), 2);
 }
 
@@ -1062,7 +1128,8 @@ TEST(RawApiTest, CompileWithXlaReturnShapes) {
                            {release}, &outputs));
 
   xla::ProgramShapeProto program_shape_proto;
-  EXPECT_TRUE(program_shape_proto.ParseFromString(outputs[0].vec<string>()(0)));
+  EXPECT_TRUE(
+      program_shape_proto.ParseFromString(outputs[0].vec<tstring>()(0)));
   xla::ProgramShape program_shape(program_shape_proto);
   EXPECT_EQ(program_shape.parameters_size(), 1);
 
@@ -1130,7 +1197,7 @@ TEST(RawApiTest, DotGeneralWithLayoutTest) {
   TF_EXPECT_OK(session.Run({read_back}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected =
       xla::LiteralUtil::CreateR2WithLayout<float>({{18.0f}, {44.0f}}, layout);
@@ -1165,7 +1232,7 @@ TEST(RawApiTest, CompileAndExecuteZeroArg) {
   TF_EXPECT_OK(session.Run({read_back}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected = xla::LiteralUtil::CreateR0<float>(3.0f);
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
@@ -1215,7 +1282,7 @@ TEST(RawApiTest, CompileAndExecuteReturnTuple) {
   TF_EXPECT_OK(session.Run({read_back}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto sum = xla::LiteralUtil::CreateR1<float>({9.0f, 7.0f});
   auto expected = xla::LiteralUtil::MakeTuple({&sum});
@@ -1277,7 +1344,7 @@ TEST(RawApiTest, CompileAndExecuteReturnExplodedTuple) {
     EXPECT_EQ(voutputs.size(), 1);
 
     xla::LiteralProto response;
-    EXPECT_TRUE(response.ParseFromString(voutputs[0].scalar<string>()()));
+    EXPECT_TRUE(response.ParseFromString(voutputs[0].scalar<tstring>()()));
 
     auto expected = xla::LiteralUtil::CreateR0<float>(kResults[i]);
     EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
@@ -1448,13 +1515,13 @@ TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
   TF_EXPECT_OK(session.Run({read_back, c_handle.program_shape}, &outputs));
 
   xla::LiteralProto response;
-  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
 
   auto expected = xla::LiteralUtil::CreateR0<int64>(15123899);
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 
   xla::ProgramShapeProto program_shape;
-  EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<string>()(0)));
+  EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<tstring>()(0)));
   EXPECT_EQ(program_shape.parameters_size(), 2);
   EXPECT_TRUE(xla::ShapeUtil::HasPrimitiveType(
       xla::Shape(program_shape.result()), xla::S64));
@@ -1514,7 +1581,7 @@ TEST(RawApiTest, TestDeviceMemoryCompaction) {
   // we have on record.
   for (size_t i = 1, j = 0; i < handles.size(); i += 2, ++j) {
     xla::LiteralProto response;
-    EXPECT_TRUE(response.ParseFromString(outputs[j].scalar<string>()()));
+    EXPECT_TRUE(response.ParseFromString(outputs[j].scalar<tstring>()()));
     EXPECT_TRUE(CompareLiteralProtos(allocs[i].value(), response));
   }
 }
@@ -1602,7 +1669,7 @@ TEST(RawApiTest, TestDeviceMemorySwap) {
     EXPECT_EQ(outputs.size(), 1);
 
     xla::LiteralProto response;
-    EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+    EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<tstring>()()));
     auto literal = xla::Literal::CreateFromProto(response).ValueOrDie();
     EXPECT_EQ(literal, zero_literal);
   }

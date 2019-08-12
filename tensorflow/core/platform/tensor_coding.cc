@@ -33,7 +33,7 @@ void AssignRefCounted(StringPiece src, core::RefCounted* obj, string* out) {
   out->assign(src.data(), src.size());
 }
 
-void EncodeStringList(const string* strings, int64 n, string* out) {
+void EncodeStringList(const tstring* strings, int64 n, string* out) {
   out->clear();
   for (int i = 0; i < n; ++i) {
     core::PutVarint32(out, strings[i].size());
@@ -43,7 +43,7 @@ void EncodeStringList(const string* strings, int64 n, string* out) {
   }
 }
 
-bool DecodeStringList(const string& src, string* strings, int64 n) {
+bool DecodeStringList(const string& src, tstring* strings, int64 n) {
   std::vector<uint32> sizes(n);
   StringPiece reader(src);
   int64 tot = 0;
@@ -55,7 +55,7 @@ bool DecodeStringList(const string& src, string* strings, int64 n) {
     return false;
   }
 
-  string* data = strings;
+  tstring* data = strings;
   for (int64 i = 0; i < n; ++i, ++data) {
     auto size = sizes[i];
     if (size > reader.size()) {
@@ -144,7 +144,7 @@ void AssignRefCounted(StringPiece src, core::RefCounted* obj, Cord* out) {
                             cleanup);
 }
 
-void EncodeStringList(const string* strings, int64 n, Cord* out) {
+void EncodeStringList(const tstring* strings, int64 n, Cord* out) {
   out->Clear();
   for (int i = 0; i < n; ++i) {
     ::strings::CordAppendVarint(strings[i].size(), out);
@@ -154,7 +154,7 @@ void EncodeStringList(const string* strings, int64 n, Cord* out) {
   }
 }
 
-bool DecodeStringList(const Cord& src, string* strings, int64 n) {
+bool DecodeStringList(const Cord& src, tstring* strings, int64 n) {
   std::vector<uint32> sizes(n);
   CordReader reader(src);
   int64 tot = 0;
@@ -165,14 +165,27 @@ bool DecodeStringList(const Cord& src, string* strings, int64 n) {
   if (tot != reader.Available()) {
     return false;
   }
-  string* data = strings;
+  tstring* data = strings;
   for (int i = 0; i < n; ++i, ++data) {
     auto size = sizes[i];
     if (size > reader.Available()) {
       return false;
     }
+#ifdef USE_TSTRING
+    // TODO(dero): Consider adding resize_uninitialized() to tstring once the
+    // tstring placeholder is replaced with the actual implementation.
+    //
+    // Currently, in the case of USE_TSTRING, the placeholder tstring class
+    // encapsulates a single std::string.  We avoid using
+    // gtl::STLStringResizeUninitialized (and its associated header-include) in
+    // tstring.h as we have no intention in using it in the actual
+    // implementation. Thus, in the interim, we resort to resize().
+    data->resize(size);
+    reader.ReadN(size, data->data());
+#else   // USE_TSTRING
     gtl::STLStringResizeUninitialized(data, size);
     reader.ReadN(size, gtl::string_as_array(data));
+#endif  // USE_TSTRING
   }
   return true;
 }

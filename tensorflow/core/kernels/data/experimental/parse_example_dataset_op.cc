@@ -16,16 +16,15 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
-#include "tensorflow/core/kernels/data/parallel_map_iterator.h"
+#include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ParseExampleDatasetOp(OpKernelConstruction* ctx)
@@ -75,9 +74,10 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     int64 num_parallel_calls = 0;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
-    OP_REQUIRES(ctx, num_parallel_calls > 0,
-                errors::InvalidArgument(
-                    "num_parallel_calls must be greater than zero."));
+    OP_REQUIRES(
+        ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
+        errors::InvalidArgument(
+            "num_parallel_calls must be greater than zero."));
 
     OpInputList dense_default_tensors;
     OP_REQUIRES_OK(ctx,
@@ -205,6 +205,10 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -396,10 +400,13 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
   std::vector<std::size_t> elements_per_stride_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("ParseExampleDataset").Device(DEVICE_CPU),
+                        ParseExampleDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalParseExampleDataset").Device(DEVICE_CPU),
     ParseExampleDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

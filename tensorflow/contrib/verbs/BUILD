@@ -1,14 +1,20 @@
 # Description:
 #   Verbs RDMA communication interfaces and implementations for TensorFlow.
 
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+
+# For platform specific build config
+load(
+    "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_proto_library_cc",
+)
+
 package(
     default_visibility = [
         "//tensorflow:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 
 exports_files(["LICENSE"])
 
@@ -18,12 +24,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-)
-
-# For platform specific build config
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library_cc",
 )
 
 tf_proto_library_cc(

@@ -46,13 +46,22 @@ from tensorflow.python.util.tf_export import tf_export
 # TODO(yuefengz): support in-graph replication.
 @tf_export("distribute.experimental.MultiWorkerMirroredStrategy", v1=[])
 class CollectiveAllReduceStrategy(distribute_lib.Strategy):
-  """Distribution strategy that uses collective ops for all-reduce.
+  """A distribution strategy for synchronous training on multiple workers.
 
-  It is similar to MirroredStrategy but it uses collective ops for reduction.
+  This strategy implements synchronous distributed training across multiple
+  workers, each with potentially multiple GPUs. Similar to
+  `tf.distribute.MirroredStrategy`, it creates copies of all variables in the
+  model on each device across all workers.
+
+  It uses CollectiveOps's implementation of multi-worker all-reduce to
+  to keep variables in sync. A collective op is a single op in the
+  TensorFlow graph which can automatically choose an all-reduce algorithm in
+  the TensorFlow runtime according to hardware, network topology and tensor
+  sizes.
 
   By default it uses all local GPUs or CPU for single-worker training.
 
-  When 'TF_CONFIG' environment variable is given, it parses cluster_spec,
+  When 'TF_CONFIG' environment variable is set, it parses cluster_spec,
   task_type and task_id from 'TF_CONFIG' and turns into a multi-worker strategy
   which mirrores models on GPUs of all machines in a cluster. In the current
   implementation, it uses all GPUs in a cluster and it assumes all workers have
@@ -62,17 +71,19 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   set up the eager context in its constructor and therefore all ops in eager
   mode have to run after the strategy object is created.
 
-  Args:
-    communication: optional Enum of type
-      `distribute.experimental.CollectiveCommunication`.  This provides a way
-      for the user to override the choice of collective op communication.
-      Possible values include `AUTO`, `RING`, and `NCCL`.
   """
 
   def __init__(
       self,
       communication=cross_device_ops_lib.CollectiveCommunication.AUTO):
-    """Initializes the object."""
+    """Creates the strategy.
+
+    Args:
+      communication: optional Enum of type
+        `distribute.experimental.CollectiveCommunication`.  This provides a way
+        for the user to override the choice of collective op communication.
+        Possible values include `AUTO`, `RING`, and `NCCL`.
+    """
     super(CollectiveAllReduceStrategy, self).__init__(
         CollectiveAllReduceExtended(
             self,
@@ -84,6 +95,23 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
     obj = cls()
     obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
     return obj
+
+  def scope(self):  # pylint: disable=useless-super-delegation
+    """Returns a context manager selecting this Strategy as current.
+
+    Inside a `with strategy.scope():` code block, this thread
+    will use a variable creator set by `strategy`, and will
+    enter its "cross-replica context".
+
+    In `MultiWorkerMirroredStrategy`, all variables created inside
+    `strategy.scope() will be mirrored on all replicas of each worker.
+    Moreover, it also sets a default device scope so that ops without
+    specified devices will end up on the correct worker.
+
+    Returns:
+      A context manager to use for creating variables with this strategy.
+    """
+    return super(CollectiveAllReduceStrategy, self).scope()
 
 
 @tf_export(v1=["distribute.experimental.MultiWorkerMirroredStrategy"])
@@ -157,12 +185,12 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._host_input_device = numpy_dataset.SingleDevice(self._worker_device)
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
-    super(CollectiveAllReduceExtended, self)._initialize_local(local_devices)
     # TODO(yuefengz): remove num_gpus_per_worker from CollectiveAllReduce.
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         num_workers=self._num_workers,
         num_gpus_per_worker=num_gpus,
         collective_keys=self._collective_keys)
+    super(CollectiveAllReduceExtended, self)._initialize_local(local_devices)
 
     self._cluster_spec = None
     self._task_type = None
@@ -257,13 +285,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       local_devices = (self._worker_device,)
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
-    super(CollectiveAllReduceExtended, self)._initialize_local(local_devices)
-    self._input_workers = input_lib.InputWorkers(
-        self._device_map, [(self._worker_device, self.worker_devices)])
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         num_workers=self._num_workers,
         num_gpus_per_worker=num_gpus,
         collective_keys=self._collective_keys)
+    super(CollectiveAllReduceExtended, self)._initialize_local(local_devices)
+    self._input_workers = input_lib.InputWorkers(
+        self._device_map, [(self._worker_device, self.worker_devices)])
 
     # Add a default device so that ops without specified devices will not end up
     # on other workers.
@@ -282,9 +310,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         self._communication)
 
   def _get_variable_creator_initial_value(self,
-                                          replica_id=0,
-                                          device=None,
-                                          primary_var=None,
+                                          replica_id,
+                                          device,
+                                          primary_var,
                                           **kwargs):
     if replica_id == 0:  # First replica on each worker.
       assert device is not None

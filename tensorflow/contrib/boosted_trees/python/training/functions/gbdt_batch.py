@@ -368,8 +368,8 @@ class GradientBoostedDecisionTreeModel(object):
 
     if logits_dimension == 1 or learner_config.multi_class_strategy == (
         learner_pb2.LearnerConfig.TREE_PER_CLASS):
-      self._gradient_shape = tensor_shape.scalar()
-      self._hessian_shape = tensor_shape.scalar()
+      self._gradient_shape = tensor_shape.TensorShape([])
+      self._hessian_shape = tensor_shape.TensorShape([])
     else:
       if center_bias:
         raise ValueError("Center bias should be False for multiclass.")
@@ -838,8 +838,8 @@ class GradientBoostedDecisionTreeModel(object):
       # Create steps accumulator.
       steps_accumulator = stats_accumulator_ops.StatsAccumulator(
           stamp_token=0,
-          gradient_shape=tensor_shape.scalar(),
-          hessian_shape=tensor_shape.scalar(),
+          gradient_shape=tensor_shape.TensorShape([]),
+          hessian_shape=tensor_shape.TensorShape([]),
           name="StepsAccumulator")
     # Create ensemble stats summaries.
     summary.scalar("layer_stats/num_examples", num_layer_examples)
@@ -1212,7 +1212,7 @@ class GradientBoostedDecisionTreeModel(object):
 
   def _get_weights(self, hessian_shape, hessians):
     """Derives weights to be used based on hessians and multiclass strategy."""
-    if hessian_shape == tensor_shape.scalar():
+    if hessian_shape.rank == 0:
       # This is tree per class.
       weights = hessians
     elif len(hessian_shape.dims) == 1:
