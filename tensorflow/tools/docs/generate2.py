@@ -250,8 +250,13 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
       "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
   )
 
+  if LooseVersion(tf.__version__) < LooseVersion('2'):
+    root_title = 'TensorFlow'
+  elif LooseVersion(tf.__version__) >= LooseVersion('2'):
+    root_title = 'TensorFlow 2.0'
+
   doc_generator = generate_lib.DocGenerator(
-      root_title="TensorFlow 2.0 Preview",
+      root_title=root_title,
       py_modules=[("tf", tf)],
       base_dir=base_dirs,
       search_hints=search_hints,
