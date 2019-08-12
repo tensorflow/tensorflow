@@ -1090,7 +1090,7 @@ tf_module {
   }
   member_method {
     name: "EagerPyFunc"
-    argspec: "args=[\'input\', \'token\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'token\', \'Tout\', \'is_async\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "EditDistance"
