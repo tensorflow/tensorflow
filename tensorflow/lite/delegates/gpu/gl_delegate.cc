@@ -462,11 +462,18 @@ TfLiteStatus DelegateCopyToBufferHandle(TfLiteContext* context,
 }  // namespace gpu
 }  // namespace tflite
 
-TfLiteGlCompileOptions DefaultTfLiteGlCompileOptions() {
+TfLiteGlCompileOptions TfLiteGlCompileOptionsDefault() {
   TfLiteGlCompileOptions options;
   options.precision_loss_allowed = 0;
   options.preferred_gl_object_type = TFLITE_GL_OBJECT_TYPE_FASTEST;
   options.dynamic_batch_enabled = 0;
+  return options;
+}
+
+TfLiteGpuDelegateOptions TfLiteGpuDelegateOptionsDefault() {
+  TfLiteGpuDelegateOptions options;
+  options.metadata = nullptr;
+  options.compile_options = TfLiteGlCompileOptionsDefault();
   return options;
 }
 

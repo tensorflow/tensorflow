@@ -47,7 +47,7 @@ enum TfLiteGlObjectType {
 };
 
 // Shader compilation options.
-// Always use DefaultTfLiteGlCompileOptions() method to create new instance
+// Always use TfLiteGlCompileOptionsDefault() method to create new instance
 // of TfLiteGlCompileOptions, otherwise every new added option may break
 // inference.
 // TODO(impjdi): Unify with opengl::CompilationOptions.
@@ -78,12 +78,21 @@ struct TFL_CAPI_EXPORT TfLiteGlCompileOptions {
 //   precision_loss_allowed = 0;
 //   preferred_gl_object_type = TFLITE_GL_OBJECT_TYPE_FASTEST;
 //   dynamic_batch_enabled = 0;
-TFL_CAPI_EXPORT TfLiteGlCompileOptions DefaultTfLiteGlCompileOptions();
+TFL_CAPI_EXPORT TfLiteGlCompileOptions TfLiteGlCompileOptionsDefault();
 
+// Always use TfLiteGpuDelegateOptionsDefault() method to create new instance
+// of TfLiteGpuDelegateOptions, otherwise every new added option may break
+// inference.
 struct TFL_CAPI_EXPORT TfLiteGpuDelegateOptions {
   const uint8_t* metadata;  // Internal.
   TfLiteGlCompileOptions compile_options;
 };
+
+// Populates TfLiteGlCompileOptions as follows:
+//   metadata = nullptr;
+//   compile_options = TfLiteGlCompileOptionsDefault();
+TFL_CAPI_EXPORT TfLiteGpuDelegateOptions TfLiteGpuDelegateOptionsDefault();
+
 // LINT.ThenChange(//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu/GpuDelegate.java)
 
 // Creates a new delegate instance that need to be destroyed with
