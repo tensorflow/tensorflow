@@ -255,6 +255,27 @@ Selection: `select <condition>, <lhs>, <rhs>`.
 These operations do not have LLVM IR counterparts but are necessary to map LLVM
 IR into MLIR.
 
+#### `llvm.addressof`
+
+Creates an SSA value containing a pointer to a global variable or constant
+defined by `llvm.global`.  The global value can be defined after its first
+referenced.  If the global value is a constant, storing into it is not allowed.
+
+Examples:
+
+```mlir {.mlir}
+func @foo() {
+  // Get the address of a global.
+  %0 = llvm.addressof @const : !llvm<"i32*">
+
+  // Use it as a regular pointer.
+  %1 = llvm.load %0 : !llvm<"i32*">
+}
+
+// Define the global.
+llvm.global @const(42 : i32) : !llvm.i32
+```
+
 #### `llvm.constant`
 
 Unlike LLVM IR, MLIR does not have first-class constant values. Therefore, all

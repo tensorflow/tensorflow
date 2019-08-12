@@ -247,6 +247,18 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
     return success();
   }
 
+  // Emit addressof.  We need to look up the global value referenced by the
+  // operation and store it in the MLIR-to-LLVM value mapping.  This does not
+  // emit any LLVM instruction.
+  if (auto addressOfOp = dyn_cast<LLVM::AddressOfOp>(opInst)) {
+    LLVM::GlobalOp global = addressOfOp.getGlobal();
+    // The verifier should not have allowed this.
+    assert(global && "referencing an undefined global");
+
+    valueMapping[addressOfOp.getResult()] = globalsMapping.lookup(global);
+    return success();
+  }
+
   return opInst.emitError("unsupported or non-LLVM operation: ")
          << opInst.getName();
 }
@@ -290,21 +302,23 @@ LogicalResult ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
 // Create named global variables that correspond to llvm.global definitions.
 void ModuleTranslation::convertGlobals() {
   for (auto op : mlirModule.getOps<LLVM::GlobalOp>()) {
+    llvm::Constant *cst;
+    llvm::Type *type;
     // String attributes are treated separately because they cannot appear as
     // in-function constants and are thus not supported by getLLVMConstant.
     if (auto strAttr = op.value().dyn_cast<StringAttr>()) {
-      llvm::Constant *cst = llvm::ConstantDataArray::getString(
+      cst = llvm::ConstantDataArray::getString(
           llvmModule->getContext(), strAttr.getValue(), /*AddNull=*/false);
-      new llvm::GlobalVariable(*llvmModule, cst->getType(), op.constant(),
-                               llvm::GlobalValue::InternalLinkage, cst,
-                               op.sym_name());
-      return;
+      type = cst->getType();
+    } else {
+      type = op.getType().getUnderlyingType();
+      cst = getLLVMConstant(type, op.value(), op.getLoc());
     }
 
-    llvm::Type *type = op.getType().getUnderlyingType();
-    new llvm::GlobalVariable(
-        *llvmModule, type, op.constant(), llvm::GlobalValue::InternalLinkage,
-        getLLVMConstant(type, op.value(), op.getLoc()), op.sym_name());
+    auto *var = new llvm::GlobalVariable(*llvmModule, type, op.constant(),
+                                         llvm::GlobalValue::InternalLinkage,
+                                         cst, op.sym_name());
+    globalsMapping.try_emplace(op, var);
   }
 }
 

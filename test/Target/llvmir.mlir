@@ -33,6 +33,23 @@ func @empty() {
   llvm.return
 }
 
+// CHECK-LABEL: @global_refs
+func @global_refs() {
+  // Check load from globals.
+  // CHECK: load i32, i32* @i32_global
+  %0 = llvm.addressof @i32_global : !llvm<"i32*">
+  %1 = llvm.load %0 : !llvm<"i32*">
+
+  // Check the contracted form of load from array constants.
+  // CHECK: load i8, i8* getelementptr inbounds ([6 x i8], [6 x i8]* @string_const, i64 0, i64 0)
+  %2 = llvm.addressof @string_const : !llvm<"[6 x i8]*">
+  %c0 = llvm.constant(0 : index) : !llvm.i64
+  %3 = llvm.getelementptr %2[%c0, %c0] : (!llvm<"[6 x i8]*">, !llvm.i64, !llvm.i64) -> !llvm<"i8*">
+  %4 = llvm.load %3 : !llvm<"i8*">
+
+  llvm.return
+}
+
 // CHECK-LABEL: declare void @body(i64)
 func @body(!llvm.i64)
 

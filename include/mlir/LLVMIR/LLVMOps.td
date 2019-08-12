@@ -192,7 +192,7 @@ def FCmpPredicate : I64EnumAttr<
     [FCmpPredicateFALSE, FCmpPredicateOEQ, FCmpPredicateOGT, FCmpPredicateOGE,
      FCmpPredicateOLT, FCmpPredicateOLE, FCmpPredicateONE, FCmpPredicateORD,
      FCmpPredicateUEQ, FCmpPredicateUGT, FCmpPredicateUGE, FCmpPredicateULT,
-     FCmpPredicateULE, FCmpPredicateUNE, FCmpPredicateUNO, FCmpPredicateTRUE 
+     FCmpPredicateULE, FCmpPredicateUNE, FCmpPredicateUNO, FCmpPredicateTRUE
     ]> {
   let cppNamespace = "mlir::LLVM";
 
@@ -394,6 +394,32 @@ def LLVM_UnreachableOp : LLVM_TerminatorOp<"unreachable", []> {
 
 // Pseudo-operations (do not appear in LLVM IR but necessary for the dialect to
 // work correctly).
+def LLVM_AddressOfOp
+    : LLVM_OneResultOp<"addressof">,
+      Arguments<(ins SymbolRefAttr:$global_name)> {
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState *result, LLVMType resType, "
+              "StringRef name, ArrayRef<NamedAttribute> attrs = {}", [{
+      result->addAttribute("global_name", builder->getSymbolRefAttr(name));
+      result->addAttributes(attrs);
+      result->addTypes(resType);}]>,
+
+    OpBuilder<"Builder *builder, OperationState *result, GlobalOp global, "
+              "ArrayRef<NamedAttribute> attrs = {}", [{
+      build(builder, result, global.getType().getPointerTo(), global.sym_name(),
+            attrs);}]>
+  ];
+
+  let extraClassDeclaration = [{
+    /// Return the llvm.global operation that defined the value referenced here.
+    GlobalOp getGlobal();
+  }];
+
+  let printer = "printAddressOfOp(p, *this);";
+  let parser = "return parseAddressOfOp(parser, result);";
+  let verifier = "return ::verify(*this);";
+}
+
 def LLVM_GlobalOp
     : LLVM_ZeroResultOp<"global">,
       Arguments<(ins TypeAttr:$type, UnitAttr:$constant, StrAttr:$sym_name,
