@@ -17,9 +17,6 @@ END
   }
   summary: "A transformation that asserts which transformations happen next."
   description: <<END
-Core C++ implementation of the transformation `assert_next()`, which is
-an internal component of `tf.data`'s Python API.
-
 This transformation checks whether the camel-case names (i.e. "FlatMap", not
 "flat_map") of the transformations following this transformation match the list
 of names in the `transformations` argument. If there is a mismatch, the
