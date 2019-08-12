@@ -338,9 +338,9 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCallFindDevice) {
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
   Tensor y;
   TF_CHECK_OK(Run("FindDevice", opts, {}, instantiate_opts, {}, {&y}));
-  test::ExpectTensorEqual<string>(
-      y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:0"},
-                                TensorShape({})));
+  test::ExpectTensorEqual<tstring>(
+      y, test::AsTensor<tstring>({"/job:a/replica:0/task:0/device:CPU:0"},
+                                 TensorShape({})));
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceXTimes) {
@@ -371,13 +371,13 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceFindDevice) {
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:1";
   Tensor y;
   TF_CHECK_OK(Run("FindDevice", opts, {}, instantiate_opts, {}, {&y}));
-  test::ExpectTensorEqual<string>(
-      y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:1"},
-                                TensorShape({})));
+  test::ExpectTensorEqual<tstring>(
+      y, test::AsTensor<tstring>({"/job:a/replica:0/task:0/device:CPU:1"},
+                                 TensorShape({})));
   TF_CHECK_OK(Run("FindDevice", opts, {}, instantiate_opts, {}, {&y}));
-  test::ExpectTensorEqual<string>(
-      y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:1"},
-                                TensorShape({})));
+  test::ExpectTensorEqual<tstring>(
+      y, test::AsTensor<tstring>({"/job:a/replica:0/task:0/device:CPU:1"},
+                                 TensorShape({})));
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsDiffDeviceFindDevice) {
@@ -390,15 +390,15 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsDiffDeviceFindDevice) {
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts_0;
   instantiate_opts_0.target = "/job:a/replica:0/task:0/device:CPU:0";
   TF_CHECK_OK(Run("FindDevice", opts, {}, instantiate_opts_0, {}, {&y}));
-  test::ExpectTensorEqual<string>(
-      y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:0"},
-                                TensorShape({})));
+  test::ExpectTensorEqual<tstring>(
+      y, test::AsTensor<tstring>({"/job:a/replica:0/task:0/device:CPU:0"},
+                                 TensorShape({})));
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts_1;
   instantiate_opts_1.target = "/job:a/replica:0/task:0/device:CPU:1";
   TF_CHECK_OK(Run("FindDevice", opts, {}, instantiate_opts_1, {}, {&y}));
-  test::ExpectTensorEqual<string>(
-      y, test::AsTensor<string>({"/job:a/replica:0/task:0/device:CPU:1"},
-                                TensorShape({})));
+  test::ExpectTensorEqual<tstring>(
+      y, test::AsTensor<tstring>({"/job:a/replica:0/task:0/device:CPU:1"},
+                                 TensorShape({})));
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, ClusterFLRSerialTest) {
