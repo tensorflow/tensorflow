@@ -861,8 +861,6 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
     ],
-    # TODO(b/128347673): Re-enable.
-    tags = ["no_windows"],
     xla_enable_strict_auto_jit = True,
 )
 
