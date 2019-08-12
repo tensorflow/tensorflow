@@ -1810,13 +1810,16 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
     if (attr.strides.h < 0 || attr.strides.w < 0 || attr.strides.c < 0) {
       return UnimplementedError("Reverse slices are not supported.");
     }
-    if (attr.ends.h - attr.starts.h != out_shape.h) {
+    if ((attr.ends.h - attr.starts.h + attr.strides.h - 1) / attr.strides.h !=
+        out_shape.h) {
       return UnimplementedError("Output height doesn't match");
     }
-    if (attr.ends.w - attr.starts.w != out_shape.w) {
+    if ((attr.ends.w - attr.starts.w + attr.strides.w - 1) / attr.strides.w !=
+        out_shape.w) {
       return UnimplementedError("Output width doesn't match");
     }
-    if (attr.ends.c - attr.starts.c != out_shape.c) {
+    if ((attr.ends.c - attr.starts.c + attr.strides.c - 1) / attr.strides.c !=
+        out_shape.c) {
       return UnimplementedError("Output channels don't match");
     }
     node->operation.attributes = attr;
