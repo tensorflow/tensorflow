@@ -633,6 +633,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )
