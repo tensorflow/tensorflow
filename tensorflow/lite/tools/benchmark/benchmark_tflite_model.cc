@@ -56,9 +56,7 @@ constexpr int kOpProfilingEnabledDefault = false;
 class ProfilingListener : public BenchmarkListener {
  public:
   explicit ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
-      : interpreter_(interpreter),
-        profiler_(max_num_entries),
-        has_profiles_(false) {
+      : interpreter_(interpreter), profiler_(max_num_entries) {
     TFLITE_BENCHMARK_CHECK(interpreter);
     interpreter_->SetProfiler(&profiler_);
   }
@@ -73,7 +71,6 @@ class ProfilingListener : public BenchmarkListener {
   Interpreter* interpreter_;
   profiling::BufferedProfiler profiler_;
   profiling::ProfileSummarizer summarizer_;
-  bool has_profiles_;
 };
 
 // Dumps gemmlowp profiling events if gemmlowp profiling is enabled.
@@ -92,7 +89,7 @@ void ProfilingListener::OnSingleRunStart(RunType run_type) {
 }
 
 void ProfilingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
-  if (has_profiles_) {
+  if (summarizer_.HasProfiles()) {
     TFLITE_LOG(INFO) << summarizer_.GetOutputString();
   }
 }
@@ -100,7 +97,6 @@ void ProfilingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
 void ProfilingListener::OnSingleRunEnd() {
   profiler_.StopProfiling();
   auto profile_events = profiler_.GetProfileEvents();
-  has_profiles_ = !profile_events.empty();
   summarizer_.ProcessProfiles(profile_events, *interpreter_);
 }
 
