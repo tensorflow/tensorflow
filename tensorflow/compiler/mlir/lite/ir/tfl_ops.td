@@ -828,6 +828,25 @@ def TFL_EluOp: TFL_Op<"elu", [NoSideEffect, SameOperandsAndResultType]> {
   let hasOptions = 0;
 }
 
+def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
+    [NoSideEffect,
+     PredOpTrait<"value and output must have same element type",
+       TCresVTEtIsSameAsOp<0, 1>>
+    ]> {
+  let summary = "Embedding lookup operator";
+
+  let description = [{
+    Looks up ids in a list of embedding tensors.
+  }];
+
+  let arguments = (ins
+    TensorOf<[I32]>:$lookup,
+    TensorOf<[F32, I8, TFL_Uint8]>:$value
+   );
+
+  let results = (outs TensorOf<[F32, I8, TFL_Uint8]>:$output);
+}
+
 def TFL_EqualOp: TFL_Op<"equal", [Commutative, Broadcastable,
     TFL_NoQuantizableResult,
     PredOpTrait<"Operands have same value type", TCopVTEtIsSameAs<0, 1>>]> {

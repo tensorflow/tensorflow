@@ -80,7 +80,6 @@ func @testGatherUnsupportedRank(%arg0 : tensor<f32>, %arg1 : tensor<1xi32>) -> t
   return %0 : tensor<?xf32>
 }
 
-
 // -----
 
 // CHECK-LABEL: testAbs
@@ -1132,3 +1131,28 @@ func @testRelu6WithQuantizedTypes(%arg0 : tensor<10x!quant.uniform<u8:f32, 1.0>>
   %0 = "tfl.relu6"(%arg0) : (tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 1.0>>
   return %0 : tensor<10x!quant.uniform<u8:f32, 1.0>>
 }
+
+// -----
+
+func @testEmbeddingLookup(%arg0 : tensor<?xi32>, %arg1 : tensor<?xf32>) -> tensor<?xf32> {
+  %0 = "tfl.embedding_lookup"(%arg0, %arg1) : (tensor<?xi32>,tensor<?xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
+
+func @testEmbeddingLookupInvalidResultType(%arg0 : tensor<?xi32>, %arg1 : tensor<?xf32>) -> tensor<?xi32> {
+  // expected-error @+1 {{'tfl.embedding_lookup' op result #0 must be tensor of 32-bit float or 8-bit integer or TFLite uint8 type values}}
+  %0 = "tfl.embedding_lookup"(%arg0, %arg1) : (tensor<?xi32>,tensor<?xf32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}
+
+// -----
+
+func @testEmbeddingLookupValueAndResultElementTypeTraitFailed(%arg0 : tensor<?xi32>, %arg1 : tensor<?xi8>) -> tensor<?xf32> {
+  // expected-error @+1 {{'tfl.embedding_lookup' op failed to verify that value and output must have same element type}}
+  %0 = "tfl.embedding_lookup"(%arg0, %arg1) : (tensor<?xi32>,tensor<?xi8>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+// -----
