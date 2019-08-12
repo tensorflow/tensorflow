@@ -1005,7 +1005,7 @@ Example:
 ```mlir {.mlir}
 func $@accelerator_compute(i64, i1) -> i64 {
 ^bb0(%a: i64, %cond: i1): // Code dominated by ^bb0 may refer to %a
-  br_cond %cond, ^bb1, ^bb2
+  cond_br %cond, ^bb1, ^bb2
 
 ^bb1:
   // This def for %value does not dominate ^bb2
@@ -1115,7 +1115,7 @@ arguments:
 ```mlir {.mlir}
 func @simple(i64, i1) -> i64 {
 ^bb0(%a: i64, %cond: i1): // Code dominated by ^bb0 may refer to %a
-  br_cond %cond, ^bb1, ^bb2
+  cond_br %cond, ^bb1, ^bb2
 
 ^bb1:
   br ^bb3(%a: i64)    // Branch passes %a as the argument
@@ -1196,7 +1196,7 @@ Example:
 ```mlir {.mlir}
 // Branch to ^bb1 or ^bb2 depending on the condition %cond.
 // Pass value %v to ^bb2, but not to ^bb1.
-"br_cond"(%cond)[^bb1, ^bb2(%v : index)] : (i1) -> ()
+"cond_br"(%cond)[^bb1, ^bb2(%v : index)] : (i1) -> ()
 ```
 
 In addition to the basic syntax above, dialects may register tables of known

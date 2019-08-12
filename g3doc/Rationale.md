@@ -363,7 +363,7 @@ select %cond, %t, %f` is equivalent to
 
 ```mlir
 ^bb0:
-  br_cond %cond, ^bb1(%t), ^bb1(%f)
+  cond_br %cond, ^bb1(%t), ^bb1(%f)
 ^bb1(%r):
 ```
 
@@ -621,12 +621,12 @@ func @search_body(%A: memref<?x?xi32>, %S: memref<?xi32>, %key: i32) {
 
 ^bb1(%j: i32)
   %p1 = cmpi "lt", %j, %nj : i32
-  br_cond %p1, ^bb2, ^bb5
+  cond_br %p1, ^bb2, ^bb5
 
 ^bb2:
   %v = load %A[%i, %j] : memref<?x?xi32>
   %p2 = cmpi "eq", %v, %key : i32
-  br_cond %p2, ^bb3(%j), ^bb4
+  cond_br %p2, ^bb3(%j), ^bb4
 
 ^bb3(%j: i32)
   store %j, %S[%i] : memref<?xi32>
