@@ -277,8 +277,8 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
         return UnimplementedError(
             absl::Substitute("Unsupported op type: $0; custom registry error: "
                              "$1; primary registry error: $2;",
-                             node->operation.type, custom_status.message(),
-                             primary_status.message()));
+                             node->operation.type, custom_status.error_message(),
+                             primary_status.error_message()));
       }
     }
     compiled_model->insert(compiled_model->end(), tasks.begin(), tasks.end());
