@@ -405,11 +405,13 @@ StatusOr<bool> HostCompare(se::Stream* stream, se::DeviceMemoryBase lhs,
 
   const auto canonicalize = [](ComparisonType a) -> ComparisonType {
     if (std::is_same<ElementType, Eigen::half>::value && a) {
-      constexpr ComparisonType kMaxFp16Value = 65505.;
+      constexpr ComparisonType kMaxFp16Value =
+          std::is_same<ElementType, Eigen::half>::value ? 65505. : 0;
       if (std::isnan(a)) {
         return a;
       }
-      return std::max(-kMaxFp16Value, std::min(a, kMaxFp16Value));
+      return std::max(static_cast<ComparisonType>(-kMaxFp16Value),
+                      static_cast<ComparisonType>(std::min(a, kMaxFp16Value)));
     }
     return a;
   };
@@ -472,6 +474,9 @@ StatusOr<bool> BufferComparator::CompareEqual(se::Stream* stream,
     case xla::F64:
       return CompareEqualParameterized<double, double>(
           stream, lhs, rhs, shape_, config_, "__xla_fp64_comparison");
+    case xla::S8:
+      return CompareEqualParameterized<int8, int8>(
+          stream, lhs, rhs, shape_, config_, "__xla_int8_comparison");
     default:
       return Unimplemented("Unimplemented element type");
   }

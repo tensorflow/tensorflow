@@ -712,8 +712,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+	"//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/core:test",
-        "//tensorflow/compiler/jit:xla_gpu_jit",
     ],
 )
 

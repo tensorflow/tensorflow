@@ -85,7 +85,7 @@ se::cuda::PtxCompilationOptions PtxOptsFromConfig(
 // Precondition: `buffer_type` is a floating point type, `rng_state` needs to be
 // initalized to zero on the first use.
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
-                           int64* rng_state, se::DeviceMemoryBase buffer);
+                      int64* rng_state, se::DeviceMemoryBase buffer);
 
 }  // namespace gpu
 }  // namespace xla

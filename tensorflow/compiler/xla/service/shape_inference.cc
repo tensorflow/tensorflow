@@ -1598,6 +1598,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         batch_group_count, feature_group_count);
   }
 
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
+    return InvalidArgument(
+        "Convolution with different element types: %s and %s.",
+        ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs));
+  }
   if (dnums.input_spatial_dimensions_size() !=
       dnums.kernel_spatial_dimensions_size()) {
     return InvalidArgument(
