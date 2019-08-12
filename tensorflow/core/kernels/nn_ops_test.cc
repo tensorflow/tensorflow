@@ -1277,7 +1277,7 @@ static void BM_SoftplusFloat(int iters, int batch_size, int rows, int cols,
   gtl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape1({batch_size, rows, cols, depth});
   Tensor input1(DT_FLOAT, shape1);
-  test::FillIota<float>(&input1, 1.0);
+  input1.flat<float>().setRandom();
   inputs.push_back({nullptr, &input1});
 
   // Softplusing op.
