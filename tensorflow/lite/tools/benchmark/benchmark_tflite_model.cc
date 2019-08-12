@@ -147,6 +147,7 @@ void FillRandomString(tflite::DynamicBuffer* buffer,
 bool PopulateInputLayerInfo(
     const string& names_string, const string& shapes_string,
     std::vector<BenchmarkTfLiteModel::InputLayerInfo>* info) {
+  info->clear();
   std::vector<std::string> names = Split(names_string, ',');
   std::vector<std::string> shapes = Split(shapes_string, ':');
 
