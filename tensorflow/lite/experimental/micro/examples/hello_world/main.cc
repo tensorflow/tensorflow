@@ -35,6 +35,7 @@ int main(int argc, char* argv[]) {
         "Model provided is schema version %d not equal "
         "to supported version %d.\n",
         model->version(), TFLITE_SCHEMA_VERSION);
+    return 1;
   }
 
   // This pulls in all the operation implementations we need
