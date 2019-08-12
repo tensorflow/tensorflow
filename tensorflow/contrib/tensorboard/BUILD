@@ -2,7 +2,7 @@
 # TensorBoard module containing volatile or experimental code.
 
 # For platform specific build config
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(

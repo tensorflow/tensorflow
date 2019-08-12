@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PASSES_H_
 
+#include "llvm/ADT/ArrayRef.h"
+
 namespace mlir {
 class FunctionPassBase;
 class ModulePassBase;
@@ -46,6 +48,12 @@ FunctionPassBase *CreatePrepareQuantizePass(bool quantize_sign);
 
 // Creates a instance of the TensorFlow Lite dialect PostQuantize pass.
 FunctionPassBase *CreatePostQuantizePass(bool emit_quant_adaptor_ops);
+
+// Creates an instance of the TensorFlow Lite dialect PruneUnexportedFunctions
+// pass.
+ModulePassBase *CreateTrimFunctionsPass(
+    llvm::ArrayRef<std::string> trim_funcs_whitelist);
+
 }  // namespace TFL
 
 }  // namespace mlir

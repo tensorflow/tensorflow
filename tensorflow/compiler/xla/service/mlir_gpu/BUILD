@@ -49,3 +49,16 @@ cc_library(
     ],
     alwayslink = True,  # Contains compiler registration
 )
+
+cc_library(
+    name = "hlo_dialect_emitter",
+    srcs = ["hlo_dialect_emitter.cc"],
+    hdrs = ["hlo_dialect_emitter.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:hlo",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@local_config_mlir//:IR",
+    ],
+)

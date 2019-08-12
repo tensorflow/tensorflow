@@ -118,7 +118,7 @@ ForOp mlir::loop::getForInductionVarOwner(Value *val) {
   if (!ivArg)
     return ForOp();
   assert(ivArg->getOwner() && "unlinked block argument");
-  auto *containingInst = ivArg->getOwner()->getContainingOp();
+  auto *containingInst = ivArg->getOwner()->getParentOp();
   return dyn_cast_or_null<ForOp>(containingInst);
 }
 

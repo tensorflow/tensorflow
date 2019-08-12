@@ -62,8 +62,7 @@ def TfeTokenType : Type<CPred<"$_self.isa<TokenType>()">, "token">;
 // TensorFlow Executor Type Constraint
 //===----------------------------------------------------------------------===//
 
-// Predicate to verify that the opId'th operand can be broadcasted to the type
-// of the  resId'th result.
+// Predicate to verify all control inputs appear after any non-control inputs.
 def ControlOperandsAfterAllData :
     PredOpTrait<"all control inputs must appear after any non-control input",
                 CPred<"succeeded(VerifyControlOperandsAfterAllData(&$_op))">>;
@@ -121,6 +120,8 @@ def TfExecutor_GraphOp : TfExecutor_Op<"graph",
   );
 
   let regions = (region SizedRegion<1>:$body);
+
+  let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }

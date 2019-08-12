@@ -2407,6 +2407,11 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
              << "for the \"complex<double>\" dataype";
   return false;
 }
+
+port::Status ROCMBlas::GetVersion(string *version) {
+  return port::UnimplementedError("");
+}
+
 }  // namespace gpu
 
 void initialize_rocblas() {

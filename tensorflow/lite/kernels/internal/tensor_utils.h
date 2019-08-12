@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_TENSOR_UTILS_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_TENSOR_UTILS_H_
 
+#include <algorithm>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 
 #if defined(_MSC_VER)
@@ -179,7 +181,13 @@ void ClipVector(const float* vector, int v_size, float abs_limit,
                 float* result);
 
 // Shift left a vector in place with v_size size.
-void VectorShiftLeft(float* vector, int v_size, float shift_value);
+template <typename T>
+void VectorShiftLeft(T* vector, int v_size, const T& shift_value) {
+  // When copying overlapping ranges, std::copy is appropriate when beginning of
+  // the destination range is outside the source range.
+  std::copy(vector + 1, vector + v_size, vector);
+  vector[v_size - 1] = shift_value;
+}
 
 // Reduce-sum on a float input vector:
 // input_vector: float pointer to input vector.

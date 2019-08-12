@@ -19,4 +19,4 @@
 using namespace mlir;
 
 // Static initialization for VectorOps dialect registration.
-static DialectRegistration<VectorOpsDialect> VectorOps;
+static DialectRegistration<vector::VectorOpsDialect> VectorOps;

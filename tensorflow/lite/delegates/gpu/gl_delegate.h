@@ -47,6 +47,9 @@ enum TfLiteGlObjectType {
 };
 
 // Shader compilation options.
+// Always use DefaultTfLiteGlCompileOptions() method to create new instance
+// of TfLiteGlCompileOptions, otherwise every new added option may break
+// inference.
 // TODO(impjdi): Unify with opengl::CompilationOptions.
 struct TFL_CAPI_EXPORT TfLiteGlCompileOptions {
   // When set to zero, computations are carried out in 32-bit floating point.
@@ -70,6 +73,12 @@ struct TFL_CAPI_EXPORT TfLiteGlCompileOptions {
   // batch size greater than 1.
   int32_t dynamic_batch_enabled;
 };
+
+// Populates TfLiteGlCompileOptions as follows:
+//   precision_loss_allowed = 0;
+//   preferred_gl_object_type = TFLITE_GL_OBJECT_TYPE_FASTEST;
+//   dynamic_batch_enabled = 0;
+TFL_CAPI_EXPORT TfLiteGlCompileOptions DefaultTfLiteGlCompileOptions();
 
 struct TFL_CAPI_EXPORT TfLiteGpuDelegateOptions {
   const uint8_t* metadata;  // Internal.

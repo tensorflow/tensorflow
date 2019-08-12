@@ -95,7 +95,7 @@ cc_test(
         "tflite_not_portable_ios",
     ],
     deps = [
-        "//tensorflow/core:lib_platform",
+        "//tensorflow/core/platform",
         "@com_google_googletest//:gtest",
         "@flatbuffers//:flatc_library",
     ],

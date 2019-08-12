@@ -317,9 +317,6 @@ class DatasetOpsTestBase : public ::testing::Test {
   Status CheckDatasetCardinality(const DatasetBase& dataset,
                                  int64 expected_cardinality);
 
-  // Checks `DatasetBase::Save()`.
-  Status CheckDatasetSave(const DatasetBase& dataset);
-
   // Checks `DatasetBase::IsStateful()`.
   Status CheckDatasetIsStateful(const DatasetBase& dataset,
                                 bool expected_stateful);

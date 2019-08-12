@@ -378,10 +378,15 @@ TF_CAPI_EXPORT extern void TF_DeleteShapeAndTypeList(
 TF_CAPI_EXPORT extern void TF_DeleteShapeAndTypeListArray(
     TF_ShapeAndTypeList** shape_list_array, int num_items);
 
-// Infer shapes for the given `node_def`. The arguments mimic the arguments of
-// the `shape_inference::InferenceContext` constructor. The types need not be
-// set in `input_shapes` as it is not used for shape inference. The number of
-// `input_tensors` should be the same as the number of items in `input_shapes`.
+// Infer shapes for the given `op`. The arguments mimic the arguments of the
+// `shape_inference::InferenceContext` constructor. Note the following:
+//   - The inputs of the `op` are not used for shape inference. So, it is
+//     OK to not have the inputs properly set in `op`. See `input_tensors`
+//     if you want shape inference to consider the input tensors of the
+//     op for shape inference.
+//   - The types need not be set in `input_shapes` as it is not used.
+//   - The number of `input_tensors` should be the same as the number of items
+//     in `input_shapes`.
 //
 // The results are returned in `output_shapes` and
 // `output_resource_shapes_and_types`. The caller is responsible for freeing the

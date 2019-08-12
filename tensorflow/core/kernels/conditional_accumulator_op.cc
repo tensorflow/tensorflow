@@ -85,7 +85,7 @@ class ResourceConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
 
   void SetHandleToOutput(OpKernelContext* ctx)
       SHARED_LOCKS_REQUIRED(mu_) override {
-    auto h = accumulator_handle_.AccessTensor(ctx)->template flat<string>();
+    auto h = accumulator_handle_.AccessTensor(ctx)->template flat<tstring>();
     h(0) = cinfo_.container();
     h(1) = cinfo_.name();
     OP_REQUIRES_OK(ctx, MakeResourceHandleToOutput(

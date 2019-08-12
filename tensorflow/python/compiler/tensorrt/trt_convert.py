@@ -582,6 +582,13 @@ class TrtGraphConverter(object):
       raise ValueError(
           "Should specify one and only one of feed_dict_fn and input_map_fn.")
 
+    if input_map_fn:
+      for k, v in input_map_fn().items():
+        if not isinstance(k, str):
+          raise ValueError("Keys of input_map_fn must be of type str")
+        if not isinstance(v, tf.Tensor):
+          raise ValueError("Values of input_map_fn must be of type tf.Tensor")
+
     self._calibration_graph = ops.Graph()
     with self._calibration_graph.as_default():
       fetches = importer.import_graph_def(

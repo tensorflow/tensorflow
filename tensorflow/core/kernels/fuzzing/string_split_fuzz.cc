@@ -42,9 +42,9 @@ class FuzzStringSplit : public FuzzSession {
       if (delim_len > size) {
         delim_len = size - 1;
       }
-      delimiter_tensor.scalar<string>()() =
+      delimiter_tensor.scalar<tstring>()() =
           string(reinterpret_cast<const char*>(data), delim_len);
-      input_tensor.scalar<string>()() = string(
+      input_tensor.scalar<tstring>()() = string(
           reinterpret_cast<const char*>(data + delim_len), size - delim_len);
 
       RunInputs({{"input", input_tensor}, {"delimiter", delimiter_tensor}});

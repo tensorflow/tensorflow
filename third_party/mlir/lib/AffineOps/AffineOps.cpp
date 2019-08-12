@@ -47,7 +47,7 @@ AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
 
 /// A utility function to check if a given region is attached to a function.
 static bool isFunctionRegion(Region *region) {
-  return llvm::isa<FuncOp>(region->getContainingOp());
+  return llvm::isa<FuncOp>(region->getParentOp());
 }
 
 /// A utility function to check if a value is defined at the top level of a
@@ -55,7 +55,7 @@ static bool isFunctionRegion(Region *region) {
 bool mlir::isTopLevelSymbol(Value *value) {
   if (auto *arg = dyn_cast<BlockArgument>(value))
     return isFunctionRegion(arg->getOwner()->getParent());
-  return isFunctionRegion(value->getDefiningOp()->getContainingRegion());
+  return isFunctionRegion(value->getDefiningOp()->getParentRegion());
 }
 
 // Value can be used as a dimension id if it is valid as a symbol, or
@@ -68,7 +68,7 @@ bool mlir::isValidDim(Value *value) {
 
   if (auto *op = value->getDefiningOp()) {
     // Top level operation or constant operation is ok.
-    if (isFunctionRegion(op->getContainingRegion()) || isa<ConstantOp>(op))
+    if (isFunctionRegion(op->getParentRegion()) || isa<ConstantOp>(op))
       return true;
     // Affine apply operation is ok if all of its operands are ok.
     if (auto applyOp = dyn_cast<AffineApplyOp>(op))
@@ -93,7 +93,7 @@ bool mlir::isValidSymbol(Value *value) {
 
   if (auto *op = value->getDefiningOp()) {
     // Top level operation or constant operation is ok.
-    if (isFunctionRegion(op->getContainingRegion()) || isa<ConstantOp>(op))
+    if (isFunctionRegion(op->getParentRegion()) || isa<ConstantOp>(op))
       return true;
     // Affine apply operation is ok if all of its operands are ok.
     if (auto applyOp = dyn_cast<AffineApplyOp>(op))
@@ -708,7 +708,7 @@ struct SimplifyAffineApply : public OpRewritePattern<AffineApplyOp> {
 
 void AffineApplyOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  results.push_back(llvm::make_unique<SimplifyAffineApply>(context));
+  results.insert<SimplifyAffineApply>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -912,8 +912,7 @@ LogicalResult AffineDmaStartOp::verify() {
 void AffineDmaStartOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   /// dma_start(memrefcast) -> dma_start
-  results.push_back(
-      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
+  results.insert<MemRefCastFolder>(getOperationName(), context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -989,8 +988,7 @@ LogicalResult AffineDmaWaitOp::verify() {
 void AffineDmaWaitOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   /// dma_wait(memrefcast) -> dma_wait
-  results.push_back(
-      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
+  results.insert<MemRefCastFolder>(getOperationName(), context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1333,7 +1331,7 @@ struct AffineForLoopBoundFolder : public OpRewritePattern<AffineForOp> {
 
 void AffineForOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                               MLIRContext *context) {
-  results.push_back(llvm::make_unique<AffineForLoopBoundFolder>(context));
+  results.insert<AffineForLoopBoundFolder>(context);
 }
 
 AffineBound AffineForOp::getLowerBound() {
@@ -1449,7 +1447,7 @@ AffineForOp mlir::getForInductionVarOwner(Value *val) {
   auto *ivArg = dyn_cast<BlockArgument>(val);
   if (!ivArg || !ivArg->getOwner())
     return AffineForOp();
-  auto *containingInst = ivArg->getOwner()->getParent()->getContainingOp();
+  auto *containingInst = ivArg->getOwner()->getParent()->getParentOp();
   return dyn_cast<AffineForOp>(containingInst);
 }
 
@@ -1593,7 +1591,11 @@ void AffineLoadOp::build(Builder *builder, OperationState *result,
   result->addOperands(memref);
   result->addOperands(indices);
   auto memrefType = memref->getType().cast<MemRefType>();
-  auto map = builder->getMultiDimIdentityMap(memrefType.getRank());
+  auto rank = memrefType.getRank();
+  // Create identity map for memrefs with at least one dimension or () -> ()
+  // for zero-dimensional memrefs.
+  auto map = rank ? builder->getMultiDimIdentityMap(rank)
+                  : builder->getEmptyAffineMap();
   result->addAttribute(getMapAttrName(), builder->getAffineMapAttr(map));
   result->types.push_back(memrefType.getElementType());
 }
@@ -1659,8 +1661,7 @@ LogicalResult AffineLoadOp::verify() {
 void AffineLoadOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   /// load(memrefcast) -> load
-  results.push_back(
-      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
+  results.insert<MemRefCastFolder>(getOperationName(), context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1752,8 +1753,7 @@ LogicalResult AffineStoreOp::verify() {
 void AffineStoreOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   /// load(memrefcast) -> load
-  results.push_back(
-      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
+  results.insert<MemRefCastFolder>(getOperationName(), context);
 }
 
 #define GET_OP_CLASSES

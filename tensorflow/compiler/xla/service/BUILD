@@ -4,12 +4,23 @@
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_proto_library_py",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+<<<<<<< HEAD
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+=======
+load(
+    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
+>>>>>>> upstream/master
 
 package(
     default_visibility = [":friends"],
@@ -922,12 +933,22 @@ cc_library(
     name = "gpu_plugin",
     deps = [
         ":service",
+        "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
+<<<<<<< HEAD
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/core:stream_executor_no_cuda",
     ]
     + if_cuda_is_configured(["//tensorflow/core/platform/default/build_config:stream_executor_cuda",])
     + if_rocm_is_configured(["//tensorflow/core/platform/default/build_config:stream_executor_rocm",]),
+=======
+        "//tensorflow/core:stream_executor_no_cuda",
+    ] + if_cuda_is_configured([
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+    ]) + if_rocm_is_configured([
+        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
+    ]),
+>>>>>>> upstream/master
 )
 
 cc_library(
@@ -1013,6 +1034,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:device_description",
         "//tensorflow/stream_executor:device_memory_allocator",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",

@@ -3,7 +3,7 @@ load(
     "tf_cuda_library",
 )
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_additional_profiler_lib_deps",
 )
 

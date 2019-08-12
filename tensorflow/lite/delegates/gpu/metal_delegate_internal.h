@@ -26,7 +26,7 @@ limitations under the License.
 // into this encoder instead of the internal encoder.
 // The callback is a user-defined function to take control over encoder and
 // command buffer. Can be nullptr.
-bool TFLSetCommandEncoder(
+bool TFLGpuDelegateSetCommandEncoder(
     TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder,
     std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder);
 

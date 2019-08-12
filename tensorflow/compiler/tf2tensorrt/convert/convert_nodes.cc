@@ -3905,6 +3905,7 @@ Status ConvertPad(OpConverterParams* params) {
       *tensor, pre_padding, post_padding);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  params->converter->MarkQuantizationRangesAsInferrable(tensor, output_tensor);
 
   if (!legit_pad) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(

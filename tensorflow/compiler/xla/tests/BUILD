@@ -3,8 +3,13 @@
 
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
 load(
+<<<<<<< HEAD
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags", "tf_gpu_tests_tags",
+=======
+    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+>>>>>>> upstream/master
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
@@ -778,6 +783,86 @@ xla_test(
         "cpu",
     ],
     copts = ["-DUNARY_TEST_TARGET_COMPLEX"],
+    real_hardware_only = True,  # Very slow on the interpreter.
+    shard_count = 48,
+    tags = [
+        "optonly",
+        # This is a big test that we skip for capacity reasons in OSS testing.
+        "no_oss",
+    ],
+    deps = [
+        ":exhaustive_op_test_utils",
+    ],
+)
+
+xla_test(
+    name = "exhaustive_binary_test_f16",
+    srcs = ["exhaustive_binary_test.cc"],
+    backends = [
+        "gpu",
+        "cpu",
+    ],
+    copts = ["-DBINARY_TEST_TARGET_F16"],
+    real_hardware_only = True,  # Very slow on the interpreter.
+    shard_count = 48,
+    tags = [
+        "optonly",
+        # This is a big test that we skip for capacity reasons in OSS testing.
+        "no_oss",
+    ],
+    deps = [
+        ":exhaustive_op_test_utils",
+    ],
+)
+
+xla_test(
+    name = "exhaustive_binary_test_bf16",
+    srcs = ["exhaustive_binary_test.cc"],
+    backends = [
+        "gpu",
+        "cpu",
+    ],
+    copts = ["-DBINARY_TEST_TARGET_BF16"],
+    real_hardware_only = True,  # Very slow on the interpreter.
+    shard_count = 48,
+    tags = [
+        "optonly",
+        # This is a big test that we skip for capacity reasons in OSS testing.
+        "no_oss",
+    ],
+    deps = [
+        ":exhaustive_op_test_utils",
+    ],
+)
+
+xla_test(
+    name = "exhaustive_binary_test_f32",
+    srcs = ["exhaustive_binary_test.cc"],
+    backends = [
+        "gpu",
+        "cpu",
+    ],
+    copts = ["-DBINARY_TEST_TARGET_F32"],
+    real_hardware_only = True,  # Very slow on the interpreter.
+    shard_count = 48,
+    tags = [
+        "optonly",
+        # This is a big test that we skip for capacity reasons in OSS testing.
+        "no_oss",
+    ],
+    deps = [
+        ":exhaustive_op_test_utils",
+    ],
+)
+
+xla_test(
+    name = "exhaustive_binary_test_f64",
+    srcs = ["exhaustive_binary_test.cc"],
+    backends = [
+        "gpu",
+        "cpu",
+    ],
+    copts = ["-DBINARY_TEST_TARGET_F64"],
     real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
@@ -2024,8 +2109,12 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+<<<<<<< HEAD
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler_impl",
+=======
+        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
+>>>>>>> upstream/master
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:stream_executor_no_cuda",

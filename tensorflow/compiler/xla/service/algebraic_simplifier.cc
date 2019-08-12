@@ -172,6 +172,10 @@ bool IsUnstridedSlice(const HloInstruction* hlo) {
 // more general case a worklist based approach would be needed.
 class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
  public:
+  explicit AlgebraicSimplifierVisitor(const AlgebraicSimplifierOptions& options,
+                                      AlgebraicSimplifier* simplifier)
+      : options_(options), simplifier_(simplifier) {}
+
   Status HandleAdd(HloInstruction* add) override;
 
   Status HandleAnd(HloInstruction* logical_and) override;
@@ -206,6 +210,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleDot(HloInstruction* dot) override;
 
+  Status HandleGather(HloInstruction* gather) override;
+
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
 
   Status HandleLog(HloInstruction* log) override;
@@ -230,7 +236,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleReshape(HloInstruction* reshape) override;
 
-  Status HandleReduce(HloInstruction* reduce) override;
+  Status HandleReduce(HloInstruction* hlo) override;
 
   Status HandleReduceWindow(HloInstruction* reduce_window) override;
 
@@ -252,16 +258,11 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   Status HandleMap(HloInstruction* map) override;
 
   // Runs the visitor on a computation.
-  static bool Run(HloComputation* computation,
-                  const AlgebraicSimplifierOptions& options,
-                  AlgebraicSimplifier* simplifier);
+  bool Run(HloComputation* computation,
+           const AlgebraicSimplifierOptions& options,
+           AlgebraicSimplifier* simplifier);
 
  private:
-  explicit AlgebraicSimplifierVisitor(HloComputation* computation,
-                                      const AlgebraicSimplifierOptions& options,
-                                      AlgebraicSimplifier* simplifier)
-      : computation_(computation), options_(options), simplifier_(simplifier) {}
-
   // Removes degenerate dimension from dot.
   StatusOr<bool> RemoveDegenerateDimensionFromDot(HloInstruction* dot);
 
@@ -391,6 +392,9 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Tries to convert slice(reshape(X)) into reshape(slice(X))
   StatusOr<bool> TryToReorderSliceAndReshape(HloInstruction* slice);
 
+  // Useful when we want to use the same visitor over multiple computations.
+  void ResetState(HloComputation* computation);
+
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
   HloComputation* computation_;
@@ -409,12 +413,18 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
+void AlgebraicSimplifierVisitor::ResetState(HloComputation* computation) {
+  changed_ = false;
+  ResetVisitStates();
+  computation_ = computation;
+}
+
 bool AlgebraicSimplifierVisitor::Run(HloComputation* computation,
                                      const AlgebraicSimplifierOptions& options,
                                      AlgebraicSimplifier* simplifier) {
-  AlgebraicSimplifierVisitor visitor(computation, options, simplifier);
-  TF_CHECK_OK(computation->Accept(&visitor));
-  return visitor.changed_ || visitor.changed();
+  ResetState(computation);
+  TF_CHECK_OK(computation->Accept(this));
+  return changed_ || changed();
 }
 
 bool AlgebraicSimplifierVisitor::SameShape(const HloInstruction* lhs,
@@ -1877,6 +1887,51 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
         dot, HloInstruction::CreateTranspose(dot->shape(), new_dot, {1, 0}));
   }
 
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
+  const Shape& operand_shape = gather->operand(0)->shape();
+  // If the operand of a gather is very small, it is easier to fuse a
+  // sequence of selects.
+  if (operand_shape.rank() == 1 &&
+      operand_shape.dimensions(0) <= options_.very_small_gather_size() &&
+      gather->gather_dimension_numbers().index_vector_dim() ==
+          gather->operand(1)->shape().rank() &&
+      gather->gather_dimension_numbers().collapsed_slice_dims_size() == 1) {
+    const Shape& index_shape = gather->operand(1)->shape();
+    const int64 operand_elements = operand_shape.dimensions(0);
+    auto get_value = [&](int64 i) {
+      auto slice = computation_->AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(operand_shape.element_type(), {1}),
+          gather->mutable_operand(0), {i}, {i + 1}, {1}));
+      auto scalar = computation_->AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(operand_shape.element_type(), {}), slice));
+      return computation_->AddInstruction(
+          HloInstruction::CreateBroadcast(gather->shape(), scalar, {}));
+    };
+    auto result = get_value(0);
+    auto one = computation_->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::One(index_shape.element_type())));
+    auto index = one;
+    auto pred_shape = ShapeUtil::ChangeElementType(gather->shape(), PRED);
+    auto iter_shape = ShapeUtil::ChangeElementType(gather->shape(),
+                                                   index_shape.element_type());
+    for (int64 i = 1; i < operand_elements; ++i) {
+      auto broadcasted_index = computation_->AddInstruction(
+          HloInstruction::CreateBroadcast(iter_shape, index, {}));
+      auto index_mask =
+          computation_->AddInstruction(HloInstruction::CreateCompare(
+              pred_shape, gather->mutable_operand(1), broadcasted_index,
+              ComparisonDirection::kGe));
+      result = computation_->AddInstruction(
+          HloInstruction::CreateTernary(gather->shape(), HloOpcode::kSelect,
+                                        index_mask, get_value(i), result));
+      index = computation_->AddInstruction(HloInstruction::CreateBinary(
+          index->shape(), HloOpcode::kAdd, index, one));
+    }
+    return ReplaceInstruction(gather, result);
+  }
   return Status::OK();
 }
 
@@ -4045,8 +4100,9 @@ StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
   XLA_VLOG_LINES(2,
                  "AlgebraicSimplifier::Run(), before:\n" + module->ToString());
   bool changed = false;
+  AlgebraicSimplifierVisitor visitor(options_, this);
   for (auto* comp : module->MakeNonfusionComputations()) {
-    if (AlgebraicSimplifierVisitor::Run(comp, options_, this)) {
+    if (visitor.Run(comp, options_, this)) {
       changed = true;
     }
   }

@@ -375,13 +375,16 @@ uint64 HashSubgraphFunctionImpl(
 Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
                   SerializationContext&& serialization_ctx,
                   GraphDef* graph_def) {
+  if (serialization_ctx.check_external_state()) {
+    TF_RETURN_IF_ERROR(dataset->CheckExternalState());
+  }
   GraphDefBuilder b;
   DatasetBase::DatasetGraphDefBuilder db(&b);
   Node* output_node = nullptr;
   TF_RETURN_IF_ERROR(
       db.AddInputDataset(&serialization_ctx, dataset, &output_node));
-  // Insert a purely symbolic _Retval node to indicate to consumers which Tensor
-  // represents this Dataset.
+  // Insert a purely symbolic _Retval node to indicate to consumers which node
+  // represents `dataset`.
   ops::UnaryOp("_Retval", output_node,
                b.opts()
                    .WithName("dataset")
@@ -415,7 +418,9 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
   SerializationContext::Params params;
   std::vector<std::pair<string, Tensor>> input_list;
   params.input_list = &input_list;
-  params.optimization_only = true;
+  params.check_external_state = false;
+  params.fail_if_unimplemented = false;
+  params.serialize_data_tensors = false;
   SerializationContext serialization_ctx(params);
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(

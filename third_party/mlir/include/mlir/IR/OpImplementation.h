@@ -260,6 +260,9 @@ public:
   /// Parse a `]` token if present.
   virtual ParseResult parseOptionalRSquare() = 0;
 
+  /// Parse a `...` token if present;
+  virtual ParseResult parseOptionalEllipsis() = 0;
+
   //===--------------------------------------------------------------------===//
   // Attribute Parsing
   //===--------------------------------------------------------------------===//
@@ -300,6 +303,14 @@ public:
   /// Parse a named dictionary into 'result' if it is present.
   virtual ParseResult
   parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result) = 0;
+
+  //===--------------------------------------------------------------------===//
+  // Identifier Parsing
+  //===--------------------------------------------------------------------===//
+
+  virtual ParseResult
+  parseSymbolName(StringAttr &result, StringRef attrName,
+                  SmallVectorImpl<NamedAttribute> &attrs) = 0;
 
   //===--------------------------------------------------------------------===//
   // Operand Parsing

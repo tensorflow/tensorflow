@@ -45,7 +45,7 @@ InterpreterExecutable::InterpreterExecutable(
 
 InterpreterExecutable::~InterpreterExecutable() {}
 
-StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -120,13 +120,6 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
   }
 
   return std::move(result);
-}
-
-StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteAsyncOnStream(
-    const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments) {
-  return tensorflow::errors::Unimplemented(
-      "ExecuteAsyncOnStream is not yet supported on Interpreter.");
 }
 
 /*static*/ int64 InterpreterExecutable::ShapeSizeBytes(const Shape& shape) {

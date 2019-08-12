@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tensor.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "structmember.h"  // NOLINT // For PyMemberDef
 #include "tensorflow/c/c_api.h"
@@ -372,9 +373,12 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
   // The approximation is not exact there are GPU kernels which do not require
   // host memory for int32 tensors. This will lead to a discrepancy between
   // eager and graph execution.
+  //
+  // To support remote execution copy int32 tensors to another CPU device.
   // TODO(ashankar): Fix this.
   if (device_name != nullptr &&
-      TFE_TensorHandleDataType(handle.get()) != TF_INT32) {
+      (TFE_TensorHandleDataType(handle.get()) != TF_INT32 ||
+       strstr(device_name, "/device:CPU:0") != nullptr)) {
     // Note that this is a shallow copy and will share the underlying buffer
     // if copying to the same device.
     handle = make_safe(TFE_TensorHandleCopyToDevice(handle.get(), ctx,

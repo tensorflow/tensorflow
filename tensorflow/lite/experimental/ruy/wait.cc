@@ -15,11 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/wait.h"
 
-#include <condition_variable>  // NOLINT(build/c++11)
-#include <functional>
-#include <mutex>  // NOLINT(build/c++11)
-
-#include "tensorflow/lite/experimental/ruy/time.h"
+#include <chrono>  // NOLINT(build/c++11)
 
 namespace ruy {
 

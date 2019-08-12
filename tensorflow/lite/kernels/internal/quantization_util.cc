@@ -72,6 +72,20 @@ void QuantizeMultiplier(double double_multiplier, int32_t* quantized_multiplier,
     ++*shift;
   }
   TFLITE_CHECK_LE(q_fixed, std::numeric_limits<int32_t>::max());
+  // A shift amount smaller than -31 would cause all bits to be shifted out
+  // and thus all results would be zero. We implement that instead with
+  // q_fixed==0, so as to avoid hitting issues with right-shift
+  // operations with shift amounts greater than 31. Note that this happens
+  // roughly when abs(double_multiplier) < 2^-31 and the present handling means
+  // that we're effectively flushing tiny double_multiplier's to zero.
+  // We could conceivably handle values in the range (roughly) [32, 63]
+  // as 'denormals' i.e. (shift==0, q_fixed < 2^30). In that point of view
+  // the present handling is just doing 'flush denormals to zero'. We could
+  // reconsider and actually generate nonzero denormals if a need arises.
+  if (*shift < -31) {
+    *shift = 0;
+    q_fixed = 0;
+  }
   *quantized_multiplier = static_cast<int32_t>(q_fixed);
 }
 

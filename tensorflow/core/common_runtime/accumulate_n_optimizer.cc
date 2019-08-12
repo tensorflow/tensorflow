@@ -85,8 +85,8 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
       // With `parallel_iterations == 1` it's safe to use TemporaryVariable.
       if (is_in_while_loop) {
         int parallel_iterations;
-        bool found = GetNodeAttrSimple(
-            frame->attrs(), kParallelIterationsAttrName, &parallel_iterations);
+        bool found = TryGetNodeAttr(frame->attrs(), kParallelIterationsAttrName,
+                                    &parallel_iterations);
         if (found && parallel_iterations == 1) {
           is_in_while_loop = false;
         }

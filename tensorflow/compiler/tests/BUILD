@@ -4,7 +4,7 @@ load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -1197,6 +1197,7 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -1222,11 +1223,12 @@ cuda_py_test(
         "nogpu",
         "no_cuda_on_cpu_tap",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
     name = "dense_layer_test",
-    size = "small",
+    size = "medium",
     srcs = ["dense_layer_test.py"],
     additional_deps = [
         ":test_utils",
@@ -1237,6 +1239,7 @@ cuda_py_test(
         "//tensorflow/python:layers",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 cc_library(
@@ -1322,6 +1325,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,
 )
 
 # An example of ahead-of-time compilation using tfcompile.  The

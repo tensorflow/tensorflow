@@ -30,7 +30,7 @@ class ObtainNextOp : public OpKernel {
     const Tensor* list;
     OP_REQUIRES_OK(ctx, ctx->input("list", &list));
     int64 num_elements = list->NumElements();
-    auto list_flat = list->flat<string>();
+    auto list_flat = list->flat<tstring>();
 
     // Allocate output.
     Tensor* output_tensor = nullptr;
@@ -48,7 +48,7 @@ class ObtainNextOp : public OpKernel {
     *pos = (*pos + 1) % num_elements;
 
     // Assign value to output.
-    output_tensor->scalar<string>()() = list_flat(*pos);
+    output_tensor->scalar<tstring>()() = list_flat(*pos);
   }
 };
 

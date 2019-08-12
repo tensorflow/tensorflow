@@ -133,6 +133,8 @@ def constant_value(pylist, dtype=None, ragged_rank=None, inner_shape=None,
     ValueError: If the scalar values in `pylist` have inconsistent nesting
       depth; or if ragged_rank or inner_shape are incompatible with `pylist`.
   """
+  if dtype is not None and isinstance(dtype, dtypes.DType):
+    dtype = dtype.as_numpy_dtype
   row_splits_dtype = dtypes.as_dtype(row_splits_dtype).as_numpy_dtype
   def _ragged_factory(values, row_splits):
     row_splits = np.array(row_splits, dtype=row_splits_dtype)

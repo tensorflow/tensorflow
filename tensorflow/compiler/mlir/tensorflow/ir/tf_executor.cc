@@ -16,11 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
 #include <algorithm>
+#include <iterator>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Traits.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
@@ -873,6 +876,96 @@ ParseResult ParseLoopCondOp(OpAsmParser *parser, OperationState *result) {
 }
 
 }  // namespace
+
+//===----------------------------------------------------------------------===//
+// Canonicalization patterns
+//===----------------------------------------------------------------------===//
+
+// TODO(lyandy): Add canonicalization for dedupping control inputs.
+
+//===----------------------------------------------------------------------===//
+// tf_executor.graph
+//===----------------------------------------------------------------------===//
+
+namespace {
+// Finds in a block if the op of type `InnerOpT` is the first operation and
+// optionally followed by a terminator.
+template <typename InnerOpT>
+bool HasSingleOpInBlock(Block *block) {
+  if (block->empty()) return false;
+  if (!llvm::isa<InnerOpT>(block->front())) return false;
+  // Either InnerOpT is the only instruction in the block, or there is a
+  // possible terminator.
+  return std::next(block->begin()) == block->end() ||
+         std::next(block->begin(), 2) == block->end();
+}
+
+// This pattern matches GraphOps with only one FetchOp (empty) and remaps the
+// results of the GraphOp to the operands of the FetchOp.
+struct DropEmptyGraph : public OpRewritePattern<GraphOp> {
+  using OpRewritePattern<GraphOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(GraphOp op,
+                                     PatternRewriter &rewriter) const override {
+    Block &block = op.GetBody();
+    // Check if graph only has one fetch.
+    auto fetch_op = llvm::dyn_cast<FetchOp>(block.front());
+    if (!fetch_op) return matchFailure();
+
+    // Map graph results to fetch operands.
+    llvm::SmallVector<Value *, 8> new_rets(fetch_op.fetches());
+    rewriter.replaceOp(op, new_rets);
+
+    return matchSuccess();
+  }
+};
+
+// This pattern matches GraphOps with only one island, pulls out all inner ops
+// of the island to the block containing the GraphOp, and then removes the
+// GraphOp.
+struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
+  using OpRewritePattern<GraphOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(GraphOp op,
+                                     PatternRewriter &rewriter) const override {
+    Block &block = op.GetBody();
+    // Check if graph only has one island.
+    if (!HasSingleOpInBlock<IslandOp>(&block)) return matchFailure();
+
+    auto fetch_op = llvm::cast<FetchOp>(block.back());
+    auto island_op = llvm::cast<IslandOp>(block.front());
+    Operation &yield_op = island_op.GetBody().back();
+
+    // Map graph results to inner ops results of single island.
+    llvm::SmallVector<Value *, 8> new_rets;
+    for (Value *operand : fetch_op.fetches()) {
+      if (operand->getDefiningOp() != island_op) {
+        // Operand is not from island, simply propagate it out.
+        new_rets.push_back(operand);
+      } else {
+        // Lookup yield operand in island for inner op result.
+        auto result = llvm::cast<OpResult>(operand);
+        new_rets.push_back(yield_op.getOperand(result->getResultNumber()));
+      }
+    }
+
+    // Move inner ops from island to block containing graph.
+    auto &island_body = island_op.GetBody().getOperations();
+    Operation *operation = op.getOperation();
+    operation->getBlock()->getOperations().splice(
+        operation->getIterator(), island_body, island_body.begin(),
+        std::prev(island_body.end()));
+    rewriter.replaceOp(op, new_rets);
+
+    return matchSuccess();
+  }
+};
+}  // anonymous namespace
+
+void GraphOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<DropEmptyGraph, HoistInnerOpsSingleIslandGraph>(context);
+}
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions

@@ -33,6 +33,12 @@ namespace ops {
 namespace builtin {
 namespace dequantize {
 
+// This file has two implementation of Dequantize.
+enum KernelType {
+  kReference,
+  kGenericOptimized,
+};
+
 struct OpContext {
   OpContext(TfLiteContext* context, TfLiteNode* node) {
     input = GetInput(context, node, 0);
@@ -78,6 +84,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                TfLiteIntArrayCopy(op_context.input->dims));
 }
 
+template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   OpContext op_context(context, node);
@@ -91,22 +98,45 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   op_params.scale = op_context.input->params.scale;
   switch (op_context.input->type) {
     case kTfLiteUInt8:
-      optimized_ops::Dequantize(op_params, GetTensorShape(op_context.input),
-                                GetTensorData<uint8_t>(op_context.input),
-                                GetTensorShape(op_context.output),
-                                GetTensorData<float>(op_context.output));
+      if (kernel_type == kReference) {
+        reference_ops::Dequantize(op_params, GetTensorShape(op_context.input),
+                                  GetTensorData<uint8_t>(op_context.input),
+                                  GetTensorShape(op_context.output),
+                                  GetTensorData<float>(op_context.output));
+      } else {
+        optimized_ops::Dequantize(op_params, GetTensorShape(op_context.input),
+                                  GetTensorData<uint8_t>(op_context.input),
+                                  GetTensorShape(op_context.output),
+                                  GetTensorData<float>(op_context.output));
+      }
       break;
     case kTfLiteInt8:
-      optimized_ops::Dequantize(op_params, GetTensorShape(op_context.input),
-                                GetTensorData<int8_t>(op_context.input),
-                                GetTensorShape(op_context.output),
-                                GetTensorData<float>(op_context.output));
+      if (kernel_type == kReference) {
+        reference_integer_ops::Dequantize<int8_t>(
+            op_params, GetTensorShape(op_context.input),
+            GetTensorData<int8_t>(op_context.input),
+            GetTensorShape(op_context.output),
+            GetTensorData<float>(op_context.output));
+      } else {
+        optimized_ops::Dequantize(op_params, GetTensorShape(op_context.input),
+                                  GetTensorData<int8_t>(op_context.input),
+                                  GetTensorShape(op_context.output),
+                                  GetTensorData<float>(op_context.output));
+      }
       break;
     case kTfLiteInt16:
-      optimized_ops::Dequantize(op_params, GetTensorShape(op_context.input),
-                                GetTensorData<int16_t>(op_context.input),
-                                GetTensorShape(op_context.output),
-                                GetTensorData<float>(op_context.output));
+      if (kernel_type == kReference) {
+        reference_integer_ops::Dequantize<int16_t>(
+            op_params, GetTensorShape(op_context.input),
+            GetTensorData<int16_t>(op_context.input),
+            GetTensorShape(op_context.output),
+            GetTensorData<float>(op_context.output));
+      } else {
+        optimized_ops::Dequantize(op_params, GetTensorShape(op_context.input),
+                                  GetTensorData<int16_t>(op_context.input),
+                                  GetTensorShape(op_context.output),
+                                  GetTensorData<float>(op_context.output));
+      }
       break;
     case kTfLiteFloat16: {
       const Eigen::half* half_data = reinterpret_cast<const Eigen::half*>(
@@ -132,12 +162,26 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace dequantize
 
 TfLiteRegistration* Register_DEQUANTIZE_OPT() {
-  static TfLiteRegistration r = {dequantize::Init, dequantize::Free,
-                                 dequantize::Prepare, dequantize::Eval};
+  static TfLiteRegistration r = {
+      dequantize::Init, dequantize::Free, dequantize::Prepare,
+      dequantize::Eval<dequantize::kGenericOptimized>};
   return &r;
 }
 
-TfLiteRegistration* Register_DEQUANTIZE() { return Register_DEQUANTIZE_OPT(); }
+TfLiteRegistration* Register_DEQUANTIZE_REF() {
+  static TfLiteRegistration r = {dequantize::Init, dequantize::Free,
+                                 dequantize::Prepare,
+                                 dequantize::Eval<dequantize::kReference>};
+  return &r;
+}
+
+TfLiteRegistration* Register_DEQUANTIZE() {
+#ifdef USE_NEON
+  return Register_DEQUANTIZE_OPT();
+#else
+  return Register_DEQUANTIZE_REF();
+#endif
+}
 
 }  // namespace builtin
 }  // namespace ops

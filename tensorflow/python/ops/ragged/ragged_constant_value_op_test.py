@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor_value
@@ -175,6 +176,8 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
       dict(
           pylist=[[b'a', b'b'], [b'c'], [b'd', b'e', b'f']],
           dtype=np.dtype('S1')),
+      dict(pylist=[], dtype=dtypes.float32, expected_dtype=np.float32),
+      dict(pylist=[], dtype=dtypes.int32, expected_dtype=np.int32),
   )
   def testRaggedValues(self,
                        pylist,
@@ -190,10 +193,10 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
     # E.g., [np.array((1,2))] --> [[1,2]]
     pylist = _normalize_pylist(pylist)
     # If dtype was explicitly specified, check it.
-    if dtype is not None:
-      self.assertEqual(rt.dtype, dtype)
     if expected_dtype is not None:
       self.assertEqual(rt.dtype, expected_dtype)
+    elif dtype is not None:
+      self.assertEqual(rt.dtype, dtype)
 
     # If ragged_rank was explicitly specified, check it.
     if ragged_rank is not None:

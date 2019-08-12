@@ -324,7 +324,7 @@ class QuantileAccumulatorAddSummariesOp : public OpKernel {
                 context,
                 ParseProtoUnlimited(
                     summary_proto,
-                    summary_list[resource_handle_idx].scalar<string>()()),
+                    summary_list[resource_handle_idx].scalar<tstring>()()),
                 errors::InvalidArgument("Unable to parse quantile summary."));
             std::vector<QuantileSummaryEntry> entries;
             entries.reserve(summary_proto->entries_size());
@@ -543,7 +543,7 @@ class QuantileAccumulatorDeserializeOp : public OpKernel {
     ::boosted_trees::QuantileStreamState state_proto;
     OP_REQUIRES(
         context,
-        ParseProtoUnlimited(&state_proto, stream_state_t->scalar<string>()()),
+        ParseProtoUnlimited(&state_proto, stream_state_t->scalar<tstring>()()),
         errors::InvalidArgument("Unabnle to parse quantile stream state."));
     std::vector<QuantileSummary> summaries;
     summaries.reserve(state_proto.summaries_size());

@@ -15,17 +15,26 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/trmul.h"
 
+#include <atomic>
+#include <cstdint>
 #include <cstring>
+#include <memory>
+#include <vector>
 
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/allocator.h"
 #include "tensorflow/lite/experimental/ruy/block_map.h"
+#include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
+#include "tensorflow/lite/experimental/ruy/internal_matrix.h"
+#include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/side_pair.h"
+#include "tensorflow/lite/experimental/ruy/size_util.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
 #include "tensorflow/lite/experimental/ruy/thread_pool.h"
 #include "tensorflow/lite/experimental/ruy/trace.h"
+#include "tensorflow/lite/experimental/ruy/tune.h"
 
 namespace ruy {
 

@@ -385,9 +385,6 @@ DirectSession::~DirectSession() {
   for (auto d : device_mgr_->ListDevices()) {
     d->op_segment()->RemoveHold(session_handle_);
   }
-  for (auto d : device_mgr_->ListDevices()) {
-    d->ClearResourceMgr();
-  }
   functions_.clear();
   delete cancellation_manager_;
   for (const auto& p_and_owned : thread_pools_) {
@@ -500,7 +497,17 @@ Status DirectSession::RunInternal(
   RunState run_state(step_id, &devices_);
 
   profiler::TraceMe activity(
-      [&] { return strings::StrCat("SessionRun #id=", step_id, "#"); },
+      [&] {
+        if (options_.config.experimental().has_session_metadata()) {
+          const auto& model_metadata =
+              options_.config.experimental().session_metadata();
+          return strings::StrCat("SessionRun #id=", step_id,
+                                 ",model_id=", model_metadata.name(), ":",
+                                 model_metadata.version(), "#");
+        } else {
+          return strings::StrCat("SessionRun #id=", step_id, "#");
+        }
+      },
       profiler::TraceMeLevel::kInfo);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;

@@ -516,6 +516,20 @@ class TPUClusterResolverTest(test.TestCase):
     cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/ab/cd/ef')
     self.assertEqual(cluster_resolver.environment, 'google')
     self.assertEqual(cluster_resolver.rpc_layer, None)
+    self.assertEqual(cluster_resolver._tpu, compat.as_bytes('/bns/ab/cd/ef'))
+
+  def testEnvironmentAndRpcDetectionForGoogleNumericalPort(self):
+    cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/ab/cd/ef:1234')
+    self.assertEqual(cluster_resolver.environment, 'google')
+    self.assertEqual(cluster_resolver.rpc_layer, None)
+    self.assertEqual(cluster_resolver._tpu, compat.as_bytes('/bns/ab/cd/ef'))
+
+  def testEnvironmentAndRpcDetectionForGoogleNamedPort(self):
+    cluster_resolver = resolver.TPUClusterResolver(tpu='/bns/ab/cd/ef:port')
+    self.assertEqual(cluster_resolver.environment, 'google')
+    self.assertEqual(cluster_resolver.rpc_layer, None)
+    self.assertEqual(cluster_resolver._tpu,
+                     compat.as_bytes('/bns/ab/cd/ef:port'))
 
   def testEnvironmentAndRpcDetectionForGrpcString(self):
     cluster_resolver = resolver.TPUClusterResolver(

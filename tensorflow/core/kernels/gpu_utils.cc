@@ -26,7 +26,11 @@ limitations under the License.
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/cuda/ptxas_utils.h"
+<<<<<<< HEAD
 #include "tensorflow/stream_executor/redzone_allocator.h"
+=======
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+>>>>>>> upstream/master
 
 namespace tensorflow {
 
@@ -35,8 +39,13 @@ bool RedzoneCheckDisabled() {
   return disable_rz_str != nullptr && std::strcmp(disable_rz_str, "1") == 0;
 }
 
+<<<<<<< HEAD
 se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
                                            se::DeviceMemoryBase buffer) {
+=======
+se::DeviceMemoryBase WrapRedzoneBestEffort(
+    se::cuda::RedzoneAllocator* rz_allocator, se::DeviceMemoryBase buffer) {
+>>>>>>> upstream/master
   if (RedzoneCheckDisabled()) {
     return buffer;
   }
@@ -55,9 +64,15 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
   return se::DeviceMemoryBase(output_rz_or.ValueOrDie());
 }
 
+<<<<<<< HEAD
 void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
                    tensorflow::AutotuneResult* autotune_result) {
   se::port::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
+=======
+void CheckRedzones(const se::cuda::RedzoneAllocator& rz_allocator,
+                   tensorflow::AutotuneResult* autotune_result) {
+  se::port::StatusOr<se::cuda::RedzoneAllocator::RedzoneCheckStatus> rz_status =
+>>>>>>> upstream/master
       rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {
     static std::once_flag failure_logged;
@@ -148,6 +163,14 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
   *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
   *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
   log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
+  {
+    string blas_version;
+    if (auto* blas = stream_exec->AsBlas()) {
+      if (blas->GetVersion(&blas_version).ok()) {
+        log.set_blas_version(blas_version);
+      }
+    }
+  }
   for (const auto& result : results) {
     *log.add_results() = result;
   }
@@ -186,6 +209,14 @@ void LogFusedConvForwardAutotuneResults(
   *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
   *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
   log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
+  {
+    string blas_version;
+    if (auto* blas = stream_exec->AsBlas()) {
+      if (blas->GetVersion(&blas_version).ok()) {
+        log.set_blas_version(blas_version);
+      }
+    }
+  }
   for (const auto& result : results) {
     *log.add_results() = result;
   }
