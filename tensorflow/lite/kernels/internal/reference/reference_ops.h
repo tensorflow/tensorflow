@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/add.h"
 #include "tensorflow/lite/kernels/internal/reference/arg_min_max.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
+#include "tensorflow/lite/kernels/internal/reference/ceil.h"
 #include "tensorflow/lite/kernels/internal/reference/comparisons.h"
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
@@ -2156,16 +2157,6 @@ T FloorMod(T input1, T input2) {
   return (trunc_mod != 0) && ((input2 < 0) != (trunc_mod < 0))
              ? (trunc_mod + input2)
              : trunc_mod;
-}
-
-inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    int offset = i;
-    output_data[offset] = std::ceil(input_data[offset]);
-  }
 }
 
 inline float RoundToNearest(float value) {

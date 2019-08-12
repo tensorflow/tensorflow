@@ -15,6 +15,7 @@ cc_library(
     name = "micro_ops",
     srcs = [
         "arg_min_max.cc",
+        "ceil.cc",
         "comparisons.cc",
         "conv.cc",
         "depthwise_conv.cc",
@@ -63,6 +64,7 @@ cc_library(
     name = "portable_optimized_micro_ops",
     srcs = [
         "arg_min_max.cc",
+        "ceil.cc",
         "comparisons.cc",
         "conv.cc",
         "elementwise.cc",
@@ -272,6 +274,19 @@ tflite_micro_cc_test(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/kernels:micro_utils",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "ceil_test",
+    srcs = [
+        "ceil_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )
