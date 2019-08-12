@@ -199,6 +199,18 @@ func @testTanh(tensor<? x f32>) -> tensor<? x f32> {
   return %0 : tensor<? x f32>
 }
 
+// CHECK-LABEL: testTanhWithQI8
+func @testTanhWithQI8(%arg0: tensor<? x !quant.uniform<i8:f32, 0.1>>) -> tensor<? x !quant.uniform<i8:f32, 0.1>> {
+  %0 = "tfl.tanh"(%arg0): (tensor<? x !quant.uniform<i8:f32, 0.1>>) -> tensor<? x !quant.uniform<i8:f32, 0.1>>
+  return %0 : tensor<? x !quant.uniform<i8:f32, 0.1>>
+}
+
+// CHECK-LABEL: testTanhWithQUI8
+func @testTanhWithQUI8(%arg0: tensor<? x !quant.uniform<u8:f32, 0.1>>) -> tensor<? x !quant.uniform<u8:f32, 0.1>> {
+  %0 = "tfl.tanh"(%arg0): (tensor<? x !quant.uniform<u8:f32, 0.1>>) -> tensor<? x !quant.uniform<u8:f32, 0.1>>
+  return %0 : tensor<? x !quant.uniform<u8:f32, 0.1>>
+}
+
 // CHECK-LABEL: testZerosLike
 func @testZerosLike(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):
