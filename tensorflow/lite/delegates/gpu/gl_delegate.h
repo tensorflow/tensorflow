@@ -72,12 +72,17 @@ struct TFL_CAPI_EXPORT TfLiteGlCompileOptions {
   // Otherwise, enables dynamic batching and input/output tensor can have a
   // batch size greater than 1.
   int32_t dynamic_batch_enabled;
+
+  // Parameters will be inlined into a shader. This in turn will generated more
+  // unique shaders where each will need to be compiled.
+  int32_t inline_parameters;
 };
 
 // Populates TfLiteGlCompileOptions as follows:
 //   precision_loss_allowed = 0;
 //   preferred_gl_object_type = TFLITE_GL_OBJECT_TYPE_FASTEST;
 //   dynamic_batch_enabled = 0;
+//   inline_parameters = 0;
 TFL_CAPI_EXPORT TfLiteGlCompileOptions TfLiteGlCompileOptionsDefault();
 
 // Always use TfLiteGpuDelegateOptionsDefault() method to create new instance
