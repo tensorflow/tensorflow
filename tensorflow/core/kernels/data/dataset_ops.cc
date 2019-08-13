@@ -117,9 +117,6 @@ void DatasetFromGraphOp::Compute(OpKernelContext* ctx) {
 REGISTER_KERNEL_BUILDER(Name("DatasetToGraph").Device(DEVICE_CPU),
                         DatasetToGraphOp);
 
-REGISTER_KERNEL_BUILDER(Name("DatasetToGraphV2").Device(DEVICE_CPU),
-                        DatasetToGraphOp);
-
 REGISTER_KERNEL_BUILDER(Name("DatasetCardinality").Device(DEVICE_CPU),
                         DatasetCardinalityOp);
 REGISTER_KERNEL_BUILDER(
