@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
@@ -119,20 +120,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       slack_us_ = 0;
     }
 
-    ~Iterator() override {
-      // Signal the prefetch thread to terminate it. We will then
-      // join that thread when we delete `this->prefetch_thread_`.
-      //
-      // TODO(mrry): Replace this cancellation logic with a
-      // CancellationManager. The syntax would be more heavyweight,
-      // but it would be possible to thread a cancellation manager
-      // through the IteratorContext to upstream,
-      // potentially-blocking iterators, when we add these.
-      {
-        mutex_lock l(*mu_);
-        cancelled_ = true;
-        cond_var_->notify_all();
-      }
+    ~Iterator() override { deregister_fn_(); }
+
+    // Signal the prefetch thread to terminate it. We will then join that
+    // thread when we delete `this->prefetch_thread_`.
+    void Cancel() {
+      cancelled_ = true;
+      cond_var_->notify_all();
     }
 
     string BuildTraceMeName() override {
@@ -155,6 +149,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(*mu_);
       if (buffer_size_->value == model::kAutotune) {
         buffer_size_->value = 0;
+      TF_RETURN_IF_ERROR(
+          ConnectCancellationManagers(ctx->cancellation_manager(),
+                                      &cancellation_manager_, &deregister_fn_));
+      CancellationToken token = cancellation_manager_.get_cancellation_token();
+      if (!cancellation_manager_.RegisterCallback(token,
+                                                  [this]() { Cancel(); })) {
+        return errors::Cancelled("Operation was cancelled");
       }
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
@@ -487,6 +488,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     // If legacy_autotune_ is false, identifies the maximum size of the buffer.
     const std::shared_ptr<model::SharedState> buffer_size_;
+
+    CancellationManager cancellation_manager_;
+    std::function<void()> deregister_fn_;
   };
   const DatasetBase* const input_;
   const int64 buffer_size_;
