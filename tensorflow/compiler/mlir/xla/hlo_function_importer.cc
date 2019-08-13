@@ -354,6 +354,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kMaximum, MaxOp);
       NoAttributeCase(kMinimum, MinOp);
       NoAttributeCase(kMultiply, MulOp);
+      // The dimensions attribute is not present on the HLO Reshape instruction.
+      // If dimensions are non-default, the XLA builder implementes it as a
+      // separate transpose.
+      NoAttributeCase(kReshape, ReshapeOp);
       NoAttributeCase(kSelect, SelectOp);
       NoAttributeCase(kSubtract, SubOp);
       NoAttributeCase(kTanh, TanhOp);
@@ -365,7 +369,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kCopy, CopyOp);
       // TODO(b/129422361) Ops below need additional work to handle attributes.
       NoAttributeCase(kConvolution, ConvOp);
-      NoAttributeCase(kReshape, ReshapeOp);
 #undef NoAttributeCase
 #undef MakeAndReturn
     case HloOpcode::kAddDependency:
