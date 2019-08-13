@@ -61,6 +61,8 @@ struct NodeSpecs {
   // output, so if both outputs of the LegacyFedInput ops are used then returns
   // an error.
   bool convert_legacy_fed_inputs = false;
+  // If true, the main graph will be treated as a function.
+  bool graph_as_function = false;
 };
 
 struct ExporterConfigs {
