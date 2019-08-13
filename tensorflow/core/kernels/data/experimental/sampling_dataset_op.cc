@@ -73,8 +73,6 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     return input_->CheckExternalState();
   }
 
-  bool IsStateful() const override { return input_->IsStateful(); }
-
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
