@@ -282,7 +282,7 @@ def get_tensorrt_rewriter_config(
 # this will result in the same TRTEngineOp being initialized multiple times
 # with different cache and duplicate TRT engines.
 # TODO(laigd): this may be caused by the fact that TRTEngineOp is not
-# stataful, need to investigate.
+# stateful, need to investigate.
 # TODO(laigd): we rely on the fact that all functions are fully inlined
 # before TF-TRT optimizer is called, as otherwise it may generate the same
 # name when optimizing a different function graph. Fix this.
@@ -721,11 +721,11 @@ def _get_resource_handle(name, device):
     return gen_trt_ops.create_trt_resource_handle(resource_name=name)
 
 
-class TRTEngineResourceDeleter(tracking.CapturableResourceDeleter):
+class _TRTEngineResourceDeleter(tracking.CapturableResourceDeleter):
   """Resource deleter for destroying TRT engine cache resource."""
 
   def __init__(self, resource_name, device):
-    super(TRTEngineResourceDeleter, self).__init__()
+    super(_TRTEngineResourceDeleter, self).__init__()
     self._resource_name = resource_name
     self._device = device
 
@@ -736,7 +736,7 @@ class TRTEngineResourceDeleter(tracking.CapturableResourceDeleter):
           handle, ignore_lookup_error=True)
 
 
-class TRTEngineResource(tracking.TrackableResource):
+class _TRTEngineResource(tracking.TrackableResource):
   """Class to track the serialized engines resource."""
 
   def __init__(self,
@@ -744,8 +744,8 @@ class TRTEngineResource(tracking.TrackableResource):
                filename,
                maximum_cached_engines,
                device="GPU"):
-    super(TRTEngineResource, self).__init__(
-        device=device, deleter=TRTEngineResourceDeleter(resource_name, device))
+    super(_TRTEngineResource, self).__init__(
+        device=device, deleter=_TRTEngineResourceDeleter(resource_name, device))
     self._resource_name = resource_name
     # Track the serialized engine file in the SavedModel.
     self._filename = self._track_trackable(
@@ -791,8 +791,8 @@ class TrtGraphConverterV2(object):
       input_saved_model_dir="my_dir", conversion_params=params)
   converted_func = converter.convert()
   for data in my_input_data:
-    converted_func(my_input_data)
-  converter.save(output_saved_model_dir)
+    converted_func(my_input_data)  # Generate corresponding TRT engines.
+  converter.save(output_saved_model_dir)  # Generated engines will be saved.
   ```
 
   In this way, for each unique shapes of the inputs to the TRTEngineOp, if it
@@ -805,8 +805,28 @@ class TrtGraphConverterV2(object):
   need to run `converted_func` in an environment that is similar to production
   (at least with same type of GPU).
 
-  TODO(laigd/hinsu): running conversion with calibration in INT8 mode should
-  follow exactly the same steps.
+  To run the conversion in INT8 mode with calibration:
+
+  ```python
+  params = DEFAULT_TRT_CONVERSION_PARAMS._replace(
+      precision_mode='INT8',
+      is_dynamic_op=True,
+      # Currently only one INT8 engine is supported.
+      maximum_cached_engines=1,
+      use_calibration=True)
+  converter = TrtGraphConverterV2(
+      input_saved_model_dir="my_dir", conversion_params=params)
+  converted_func = converter.convert()
+
+  # Run INT8 calibration.
+  for data in my_input_data:
+    converted_func(my_input_data)
+
+  # Finalize the calibration, and generate and save the TRT engine.
+  converter.save(output_saved_model_dir)
+  ```
+
+  This is similar to the steps above for generating pre-built TRT engines.
   """
 
   def __init__(self,
@@ -941,7 +961,7 @@ class TrtGraphConverterV2(object):
         return
 
       # TODO(laigd): add an option for the user to choose the device.
-      resource_map[canonical_engine_name] = TRTEngineResource(
+      resource_map[canonical_engine_name] = _TRTEngineResource(
           canonical_engine_name, filename,
           self._conversion_params.maximum_cached_engines)
 
