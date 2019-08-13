@@ -177,7 +177,7 @@ class Scope {
   /// Note: The status object is shared between all children of this scope.
   /// If the resulting status is not Status::OK() and exit_on_error_ is set on
   /// this scope, this function exits by calling LOG(FATAL).
-  void UpdateStatus(const Status s) const;
+  void UpdateStatus(const Status& s) const;
 
   // START_SKIP_DOXYGEN
 

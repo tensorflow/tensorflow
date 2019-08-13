@@ -37,7 +37,6 @@ from tensorflow.python.client import session as session_module
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
@@ -48,6 +47,7 @@ from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
 from tensorflow.python.ops import array_ops
@@ -272,10 +272,13 @@ def learning_phase():
   Returns:
       Learning phase (scalar integer tensor or Python integer).
   """
-  if ops.get_default_graph() is _GRAPH:
+  graph = ops.get_default_graph()
+  if graph is _GRAPH:
     # Don't enter an init_scope for the learning phase if eager execution
     # is enabled but we're inside the Keras workspace graph.
-    return symbolic_learning_phase()
+    learning_phase = symbolic_learning_phase()
+    _mark_func_graph_as_unsaveable(graph, learning_phase)
+    return learning_phase
   with ops.init_scope():
     # We always check & set the learning phase inside the init_scope,
     # otherwise the wrong default_graph will be used to look up the learning
@@ -289,11 +292,32 @@ def learning_phase():
         # Fallback to inference mode as default.
         return 0
       return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
-    return symbolic_learning_phase()
+    learning_phase = symbolic_learning_phase()
+    _mark_func_graph_as_unsaveable(graph, learning_phase)
+    return learning_phase
 
 
 def global_learning_phase_is_set():
   return _DUMMY_EAGER_GRAPH in _GRAPH_LEARNING_PHASES
+
+
+def _mark_func_graph_as_unsaveable(graph, learning_phase):
+  """Mark func graph as unsaveable due to use of symbolic keras learning phase.
+
+  Functions that capture the symbolic learning phase cannot be exported to
+  SavedModel. Mark the funcgraph as unsaveable, so that an error will be raised
+  if it is exported.
+
+  Args:
+    graph: Graph or FuncGraph object.
+    learning_phase: Learning phase placeholder or int defined in the graph.
+  """
+  if graph.building_function and is_placeholder(learning_phase):
+    graph.mark_as_unsaveable(
+        'The keras learning phase placeholder was used inside a function. '
+        'Exporting placeholders is not supported when saving out a SavedModel. '
+        'Please call `tf.keras.backend.set_learning_phase(0)` in the function '
+        'to set the learning phase to a constant value.')
 
 
 def symbolic_learning_phase():
@@ -3183,7 +3207,13 @@ def set_value(x, value):
         assign_placeholder = x._assign_placeholder
         assign_op = x._assign_op
       else:
-        assign_placeholder = array_ops.placeholder(tf_dtype, shape=value.shape)
+        # In order to support assigning weights to resizable variables in
+        # Keras, we make a placeholder with the correct number of dimensions
+        # but with None in each dimension. This way, we can assign weights
+        # of any size (as long as they have the correct dimensionality).
+        placeholder_shape = tensor_shape.TensorShape([None] * value.ndim)
+        assign_placeholder = array_ops.placeholder(
+            tf_dtype, shape=placeholder_shape)
         assign_op = x.assign(assign_placeholder)
         x._assign_placeholder = assign_placeholder
         x._assign_op = assign_op
@@ -3214,8 +3244,13 @@ def batch_set_value(tuples):
             assign_placeholder = x._assign_placeholder
             assign_op = x._assign_op
           else:
-            assign_placeholder = array_ops.placeholder(tf_dtype,
-                                                       shape=value.shape)
+            # In order to support assigning weights to resizable variables in
+            # Keras, we make a placeholder with the correct number of dimensions
+            # but with None in each dimension. This way, we can assign weights
+            # of any size (as long as they have the correct dimensionality).
+            placeholder_shape = tensor_shape.TensorShape([None] * value.ndim)
+            assign_placeholder = array_ops.placeholder(
+                tf_dtype, shape=placeholder_shape)
             assign_op = x.assign(assign_placeholder)
             x._assign_placeholder = assign_placeholder
             x._assign_op = assign_op
@@ -5782,7 +5817,7 @@ def configure_and_create_distributed_session(distribution_strategy):
 
     set_session(session)
 
-  if multi_worker_util.in_multi_worker_mode():
+  if distribution_strategy._in_multi_worker_mode():
     dc.run_distribute_coordinator(
         _create_session,
         distribution_strategy,

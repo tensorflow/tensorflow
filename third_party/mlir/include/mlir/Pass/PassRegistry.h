@@ -29,6 +29,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
 #include <functional>
+#include <memory>
 
 namespace mlir {
 class Pass;
@@ -37,7 +38,7 @@ class PassManager;
 /// A registry function that adds passes to the given pass manager.
 using PassRegistryFunction = std::function<void(PassManager &)>;
 
-using PassAllocatorFunction = std::function<Pass *()>;
+using PassAllocatorFunction = std::function<std::unique_ptr<Pass>()>;
 
 /// A special type used by transformation passes to provide an address that can
 /// act as a unique identifier during pass registration.
@@ -120,7 +121,9 @@ template <typename ConcretePass> struct PassRegistration {
   }
 
   PassRegistration(StringRef arg, StringRef description) {
-    PassAllocatorFunction constructor = [] { return new ConcretePass(); };
+    PassAllocatorFunction constructor = [] {
+      return llvm::make_unique<ConcretePass>();
+    };
     registerPass(arg, description, PassID::getID<ConcretePass>(), constructor);
   }
 };

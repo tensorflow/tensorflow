@@ -26,7 +26,6 @@ from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
@@ -52,6 +51,8 @@ from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine import training_v2
 from tensorflow.python.keras.engine import training_v2_utils
+from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -65,8 +66,8 @@ from tensorflow.python.training.tracking import layer_utils as trackable_layer_u
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.tf_export import keras_export
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.tf_export import keras_export
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -248,13 +249,9 @@ class Model(network.Network):
     self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', True)
 
-    if isinstance(optimizer, (list, tuple)):
-      self.optimizer = [optimizers.get(opt) for opt in optimizer]
-      is_any_optimizer_v1 = any(
-          isinstance(opt, optimizers.Optimizer) for opt in self.optimizer)
-    else:
-      self.optimizer = optimizers.get(optimizer)
-      is_any_optimizer_v1 = isinstance(self.optimizer, optimizers.Optimizer)
+    self._set_optimizer(optimizer)
+    is_any_optimizer_v1 = any(isinstance(opt, optimizers.Optimizer)
+                              for opt in nest.flatten(self.optimizer))
 
     if ((sample_weight_mode is not None)
         or (target_tensors is not None)
@@ -511,7 +508,7 @@ class Model(network.Network):
         logging.warning('Falling back from v2 loop because of error: '
                         '%s' % data_failure_exception)
       if valid_adapter:
-        if multi_worker_util.in_multi_worker_mode():
+        if self._in_multi_worker_mode():
           return training_distributed.DistributionMultiWorkerTrainingLoop(
               training_v2.Loop())
         else:
@@ -519,7 +516,7 @@ class Model(network.Network):
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
-      if multi_worker_util.in_multi_worker_mode():
+      if self._in_multi_worker_mode():
         return training_distributed.DistributionMultiWorkerTrainingLoop(
             training_distributed.DistributionSingleWorkerTrainingLoop())
       else:
@@ -1438,6 +1435,47 @@ class Model(network.Network):
           'Models passed to `' + method_name + '` can only have `training` '
           'and the first argument in `call` as positional arguments, '
           'found: ' + str(extra_args) + '.')
+
+  def _set_optimizer(self, optimizer):
+    """Sets self.optimizer.
+
+    Sets self.optimizer to `optimizer`, potentially wrapping it with a
+    LossScaleOptimizer.
+
+    Args:
+      optimizer: The optimizer(s) to assign to self.optimizer.
+    """
+    if isinstance(optimizer, (list, tuple)):
+      self.optimizer = [optimizers.get(opt) for opt in optimizer]
+    else:
+      self.optimizer = optimizers.get(optimizer)
+
+    if (self._dtype_policy.loss_scale is not None and
+        not isinstance(self.optimizer,
+                       loss_scale_optimizer.LossScaleOptimizer)):
+      if isinstance(self.optimizer, list):
+        raise ValueError('When a dtype policy with a loss scale is used, you '
+                         'can only pass a single optimizer. Using policy %s '
+                         'and got optimizers: %s' %
+                         self._dtype_policy, self.optimizer)
+      if not isinstance(self.optimizer, optimizer_v2.OptimizerV2):
+        raise ValueError('"optimizer" must be an instance of '
+                         'tf.keras.optimizers.Optimizer when a dype policy '
+                         'with a loss scale  used, but got: %s. Using policy: '
+                         '%s' %
+                         (self.optimizer, self._dtype_policy))
+      self.optimizer = loss_scale_optimizer.LossScaleOptimizer(
+          self.optimizer, self._dtype_policy.loss_scale)
+    if (isinstance(self.optimizer, loss_scale_optimizer.LossScaleOptimizer) and
+        self._dtype_policy.loss_scale and
+        self.optimizer.loss_scale != self._dtype_policy.loss_scale):
+      logging.warning('LossScale of LossScaleOptimizer passed to compile (%s) '
+                      'is not the same as the dtype policy\'s loss scale (%s). '
+                      'Because the dtype policy has a loss scale, you should '
+                      'pass an optimizer that is not wrapped with a '
+                      'LossScaleOptimizer,'
+                      % (self.optimizer.loss_scale,
+                         self._dtype_policy.loss_scale))
 
   def _prepare_validation_data(self, validation_data, batch_size,
                                validation_steps):
@@ -2559,7 +2597,7 @@ class Model(network.Network):
             'declared using a keras.Input() with sparse=True or ragged=True. '
             'We found an undeclared input %s. For Sequential models, please '
             'add a keras.Input() as your first Layer. For subclassed models, '
-            'please call self._add_inputs() on your input set, which you can '
+            'please call self._set_inputs() on your input set, which you can '
             'create using keras.Input() for each input to your model.' %
             (input_tensor,))
     # Build the model using the retrieved inputs (value or symbolic).
@@ -2841,6 +2879,24 @@ class Model(network.Network):
       raise RuntimeError('You must compile your model before '
                          'training/testing. '
                          'Use `model.compile(optimizer, loss)`.')
+
+  def _in_multi_worker_mode(self):
+    """Method to infer if this `Model` is working in multi-worker settings.
+
+    Experimental. Signature and implementation are subject to change.
+
+    Returns:
+      Whether this model indicates it's working in multi-worker settings.
+    """
+    # If the model was compiled under the scope of a `tf.distribute.Strategy',
+    # `self._distribution_strategy` would have been set and model should infer
+    # that as the used strategy (even if it's out of strategy scope already).
+    strategy = self._distribution_strategy
+
+    # Otherwise, use the strategy whose scope this is in.
+    if not strategy and distribution_strategy_context.has_strategy():
+      strategy = distribution_strategy_context.get_strategy()
+    return strategy and strategy._in_multi_worker_mode()  # pylint: disable=protected-access
 
 
 class DistributedCallbackModel(Model):

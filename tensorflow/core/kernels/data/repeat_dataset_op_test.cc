@@ -349,41 +349,6 @@ TEST_P(ParameterizedDatasetOpTest, Cardinality) {
   EXPECT_EQ(repeat_dataset->Cardinality(), GetParam().expected_cardinality);
 }
 
-TEST_F(RepeatDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-  const TestCase &test_case = FiniteRepeatTestCase();
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  Tensor count = CreateTensor<int64>(TensorShape{}, {test_case.count});
-  gtl::InlinedVector<TensorValue, 4> inputs_for_repeat_dataset;
-  inputs_for_repeat_dataset.emplace_back(&tensor_slice_dataset_tensor);
-  inputs_for_repeat_dataset.emplace_back(&count);
-
-  std::unique_ptr<OpKernel> repeat_dataset_kernel;
-  TF_ASSERT_OK(CreateRepeatDatasetKernel(test_case.expected_output_dtypes,
-                                         test_case.expected_output_shapes,
-                                         &repeat_dataset_kernel));
-  std::unique_ptr<OpKernelContext> repeat_dataset_context;
-  TF_ASSERT_OK(CreateRepeatDatasetContext(repeat_dataset_kernel.get(),
-                                          &inputs_for_repeat_dataset,
-                                          &repeat_dataset_context));
-  DatasetBase *repeat_dataset;
-  TF_ASSERT_OK(CreateDataset(repeat_dataset_kernel.get(),
-                             repeat_dataset_context.get(), &repeat_dataset));
-  core::ScopedUnref scoped_unref(repeat_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(repeat_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_P(ParameterizedDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));

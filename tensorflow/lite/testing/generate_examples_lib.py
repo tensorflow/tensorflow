@@ -50,10 +50,12 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import tensorflow as tf
 from google.protobuf import text_format
 # TODO(aselle): switch to TensorFlow's resource_loader
+from tensorflow.contrib.quantize.python import quantize_graph
+
 from tensorflow.lite.testing import generate_examples_report as report_lib
 from tensorflow.lite.testing import string_util_wrapper
-from tensorflow.python.framework import test_util
 from tensorflow.python.framework import graph_util as tf_graph_util
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import spectral_ops_test_util
@@ -509,7 +511,6 @@ def make_zip_of_tests(options,
         if "split_tflite_lstm_inputs" in param_dict_real:
           extra_toco_options.split_tflite_lstm_inputs = param_dict_real[
               "split_tflite_lstm_inputs"]
-
         tflite_model_binary, toco_log = options.tflite_convert_function(
             options,
             graph_def,
@@ -694,6 +695,7 @@ def make_abs_tests(options):
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
+
 @register_make_test_function()
 def make_elu_tests(options):
   """Make a set of tests to do (float) tf.nn.elu."""
@@ -721,6 +723,106 @@ def make_elu_tests(options):
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
+@register_make_test_function()
+def make_hardswish_tests(options):
+  """Make a set of tests to do hardswish."""
+
+  # Chose a set of parameters
+  test_parameters = [{
+      "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
+                      [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
+  }]
+
+  def build_graph(parameters):
+    inp = tf.placeholder(
+        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+
+    out = inp * tf.nn.relu6(inp + np.float32(3)) * np.float32(1. / 6.)
+
+    return [inp], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(
+        np.float32, parameters["input_shape"], min_value=-10, max_value=10)
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  # Add additional validation if we are using toco.
+  # Flex and mlir doesn't yet support this. TODO(b/139193008): Fix
+  if not options.run_with_flex:
+    options.tflite_convert_function = functools.partial(
+        _tflite_convert_verify_num_ops,
+        options.tflite_convert_function,
+        num_ops=2)
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
+def _tflite_convert_verify_num_ops(tflite_convert_function, *args, **kwargs):
+  """Verifies that the result of the conversion is a single op."""
+  num_ops = kwargs.pop("num_ops", 2)
+  result = tflite_convert_function(*args, **kwargs)
+  tflite_model_binary = result[0]
+  if not result[0]:
+    tf.logging.error(result[1])  # stderr from running tflite_convert.
+    raise RuntimeError("Failed to bulid model: \n\n" + result[1])
+  interpreter = tf.lite.Interpreter(model_content=tflite_model_binary)
+  interpreter.allocate_tensors()
+  if len(interpreter.get_tensor_details()) != num_ops:
+    raise RuntimeError("Expected to generate two node graph got %r " %
+                       interpreter.get_tensor_details())
+  return result
+
+
+@register_make_test_function()
+def make_uint8_hardswish_tests(options):
+  """Make a set of tests to do hardswish."""
+  # Chose a set of parameters.
+  test_parameters = [{
+      "input_shape": [[2, 3]],
+      "fully_quantize": [True],
+  }]
+  def build_graph(parameters):
+    """Builds tensorflow graph."""
+    inp = tf.placeholder(dtype=tf.float32, name="input",
+                         shape=parameters["input_shape"])
+
+    # Note: there is some magic about the inputs being in the range [-1,1]
+    # or else some quantization range need to be fixed.
+    qinp = array_ops.fake_quant_with_min_max_args(
+        inp, min=-1, max=1, num_bits=8)
+    relu6 = tf.nn.relu6(qinp + np.float32(3)) * np.float32(1. / 6.)
+    out = qinp * relu6
+    quantize_graph.experimental_create_eval_graph(
+        inp.graph, weight_bits=8, activation_bits=8)
+    return [qinp], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(
+        np.float32, parameters["input_shape"], min_value=-1, max_value=1)
+    output_values = sess.run(outputs,
+                             feed_dict=dict(zip(inputs, [input_values])))
+    return [input_values], output_values
+
+  # Add additional validation if we are using toco.
+  # Flex, doesn't yet support this. TODO(b/139193008): Remove this constraitn
+  if not options.run_with_flex:
+    # Expect 2 quantize operators and one hard swish resulting in 4 tensors.
+    options.tflite_convert_function = functools.partial(
+        _tflite_convert_verify_num_ops,
+        options.tflite_convert_function,
+        num_ops=4)
+  extra_toco_options = ExtraTocoOptions()
+  extra_toco_options.inference_input_type = tf.lite.constants.QUANTIZED_UINT8
+  extra_toco_options.inference_output_type = tf.lite.constants.QUANTIZED_UINT8
+  make_zip_of_tests(
+      options,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      extra_toco_options=extra_toco_options,
+      use_frozen_graph=True)
 
 
 @register_make_test_function()

@@ -35,13 +35,15 @@ struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
     OwningRewritePatternList patterns;
     auto func = getFunction();
     populateWithGenerated(&getContext(), &patterns);
-    applyPatternsGreedily(func, std::move(patterns));
+    applyPatternsGreedily(func, patterns);
   }
 };
 
 }  // namespace
 
-FunctionPassBase* CreateTFOptimizePass() { return new TFOptimizePass(); }
+std::unique_ptr<FunctionPassBase> CreateTFOptimizePass() {
+  return llvm::make_unique<TFOptimizePass>();
+}
 
 static PassRegistration<TFOptimizePass> pass("tf-optimize", "Optimizes TF.");
 

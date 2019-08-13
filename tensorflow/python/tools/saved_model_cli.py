@@ -551,7 +551,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
-    data = np.load(file_io.FileIO(filename, mode='rb'))
+    data = np.load(file_io.FileIO(filename, mode='rb'), allow_pickle=True)
 
     # When a variable_name key is specified for the input file
     if variable_name:

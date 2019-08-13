@@ -675,6 +675,22 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "def_function_xla_jit_test",
+    srcs = ["def_function_xla_jit_test.py"],
+    additional_deps = [
+        ":def_function",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+    ],
+    tags = [
+        "no_mac",
+        "no_windows",
+    ],
+    xla_enabled = True,
+)
+
 tf_xla_py_test(
     name = "def_function_xla_test",
     srcs = ["def_function_xla_test.py"],
@@ -704,6 +720,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/training/tracking:base",
     ],
 )

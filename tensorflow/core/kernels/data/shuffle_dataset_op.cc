@@ -103,7 +103,9 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     }
   }
 
-  bool IsStateful() const override { return input_->IsStateful(); }
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
+  }
 
  protected:
   template <class T>
@@ -540,7 +542,10 @@ class ShuffleDatasetOp::ReshufflingDatasetV2 : public ShuffleDatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  bool IsStateful() const override { return true; }
+  Status CheckExternalState() const override {
+    return errors::FailedPrecondition(
+        DebugString(), " depends on random seed generator resource.");
+  }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {

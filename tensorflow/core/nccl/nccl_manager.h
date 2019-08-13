@@ -27,6 +27,7 @@ limitations under the License.
 #endif
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/memory/memory.h"
 #include "third_party/nccl/nccl.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -63,6 +64,7 @@ class NcclManager {
           event_mgr(event_mgr),
           gpu_device_id(gpu_device_id),
           input(input),
+          input_event(nullptr),
           output(output),
           global_rank(global_rank),
           done_callback(std::move(done_callback)),
@@ -70,6 +72,11 @@ class NcclManager {
       DCHECK(executor != nullptr);
       DCHECK(event_mgr != nullptr);
       DCHECK(tensor_stream != nullptr);
+      if (input != nullptr) {
+        input_event = absl::make_unique<se::Event>(executor);
+        input_event->Init();
+        tensor_stream->ThenRecordEvent(input_event.get());
+      }
     }
 
     // StreamExecutor for the device. Expected to be live for process lifetime.
@@ -94,6 +101,10 @@ class NcclManager {
     // called. Is NULL for participants that only receive data.
     const Tensor* input;
 
+    // Wait on this event rather than synchronizing on the entire stream.
+    // This allows greater concurrency between compute and nccl streams.
+    std::unique_ptr<se::Event> input_event;
+
     // Owned by the caller, who must keep it live until `done_callback` is
     // called. Is NULL for participants that only send data.
     Tensor* output;
@@ -115,11 +126,13 @@ class NcclManager {
   // operation key, number of participants, and communicator key.
   struct Context {
     Context(const string& collective_key, int num_local_devices,
-            int num_global_devices, const string& communicator_key)
+            int num_global_devices, const string& communicator_key,
+            int source_rank)
         : collective_key(collective_key),
           num_local_devices(num_local_devices),
           num_global_devices(num_global_devices),
-          communicator_key(communicator_key) {}
+          communicator_key(communicator_key),
+          source_rank(source_rank) {}
 
     // Unique key for this collective instance
     const string& collective_key;
@@ -137,6 +150,9 @@ class NcclManager {
     // `communicator_key` is not required for single-node collectives and can be
     // empty.
     const string& communicator_key;
+
+    // Rank of broadcast source.
+    int source_rank;
   };
 
   // Adds one participant to an all-reduce.

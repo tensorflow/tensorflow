@@ -456,6 +456,14 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithmNoCache(
     *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
     log.set_device_pci_bus_id(
         stream_exec_->GetDeviceDescription().pci_bus_id());
+    {
+      string blas_version;
+      if (auto* blas = stream_exec_->AsBlas()) {
+        if (blas->GetVersion(&blas_version).ok()) {
+          log.set_blas_version(blas_version);
+        }
+      }
+    }
     VLOG(1) << "Autotuning result: " << log.ShortDebugString();
     // If we crash on checking failure, we are in a testing/benchmark mode, thus
     // omitting logging through the logger.

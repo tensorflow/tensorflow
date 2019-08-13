@@ -938,19 +938,12 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     transformed_input = compatible_input;
   }
 
-  se::TfAllocatorAdapter tf_allocator_adapter(stream->parent()->platform(),
-                                              ctx->device()->GetAllocator({}));
-  se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                          se::cuda::PtxCompilationOptions());
-
   se::DeviceMemory<T> out_backprop_ptr =
       AsDeviceMemory(transformed_out_backprop.template flat<T>().data(),
                      transformed_out_backprop.template flat<T>().size());
   se::DeviceMemory<T> filter_backprop_ptr =
       AsDeviceMemory(pre_transformed_filter_backprop.template flat<T>().data(),
                      pre_transformed_filter_backprop.template flat<T>().size());
-  se::DeviceMemory<T> filter_backprop_ptr_rz(
-      WrapRedzoneBestEffort(&rz_allocator, filter_backprop_ptr));
   auto input_ptr = AsDeviceMemory(transformed_input.template flat<T>().data(),
                                   transformed_input.template flat<T>().size());
 
@@ -977,11 +970,21 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
         common_padding_cols}},             // padding_cols
       dtype,                               // tensor datatype
       device_id,                           // device_id
+      conv_desc.group_count()              // group_count
   };
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBwdFilter::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
+
+    se::TfAllocatorAdapter tf_allocator_adapter(
+        stream->parent()->platform(), ctx->device()->GetAllocator({}));
+    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                            se::cuda::PtxCompilationOptions());
+
+    se::DeviceMemory<T> filter_backprop_ptr_rz(
+        WrapRedzoneBestEffort(&rz_allocator, filter_backprop_ptr));
+
     std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),

@@ -32,6 +32,11 @@ TRACE_MODE_FULL_IF_NAN = 'trace-back-if-nan'
 TRACE_MODE_NORM = 'norm'
 TRACE_MODE_MAX_ABS = 'max-abs'
 TRACE_MODE_SUMMARY = 'summary'
+# summary mode to collects a finite set of signatures for each traced tensor,
+# (such as norm, max, min, mean) and dumps it using tb summaries.
+TRACE_MODE_FULL_TENSOR_SUMMARY = 'full_tensor_summary'
+# Full tensor mode dumps the whole tensor values for the traced tensors without
+# any processing on them; using tb summaries.
 _FLAG_NAME_TRACE_STACK_SIZE = 'trace_stack_size'
 _SUBMODE_BRIEF = 'brief'
 _SUBMODE_DETAILED = 'detailed'
@@ -166,7 +171,7 @@ class TTParameters(object):
     valid_trace_modes = [
         TRACE_MODE_NAN_INF, TRACE_MODE_PART_TENSOR, TRACE_MODE_FULL_TENSOR,
         TRACE_MODE_NORM, TRACE_MODE_MAX_ABS, TRACE_MODE_FULL_IF_NAN,
-        TRACE_MODE_SUMMARY
+        TRACE_MODE_SUMMARY, TRACE_MODE_FULL_TENSOR_SUMMARY
     ]
     if trace_mode not in valid_trace_modes:
       raise ValueError('Invalid trace mode "%s" given to the Tensor_Tracer.'

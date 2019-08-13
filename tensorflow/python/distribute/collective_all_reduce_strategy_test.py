@@ -580,12 +580,12 @@ class LocalCollectiveAllReduceStrategy(
       self._test_all_reduce_mean_gradient_tape(distribution)
 
   @combinations.generate(combinations.combine(mode=['graph']))
-  def testNumpyIterator(self):
+  def testNumpyDataset(self):
     num_gpus = 2
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
     strategy, _, _ = self._get_test_object(None, None, num_gpus=num_gpus)
-    self._test_numpy_iterator(strategy)
+    self._test_numpy_dataset(strategy)
 
 
 if __name__ == '__main__':

@@ -1515,7 +1515,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
     DCHECK(n);
 
     float alpha;
-    bool has_attr = GetNodeAttrSimple(n->def(), "alpha", &alpha);
+    bool has_attr = TryGetNodeAttr(n->def(), "alpha", &alpha);
     DCHECK(has_attr);
 
     // If the alpha of LeakyRelu is less than 1, rewrite the node.
@@ -1578,7 +1578,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
     // together with Conv2D (ex. batchnorm). We rewrite _FusedConv2D only if
     // it includes those we support.
     DataType T;
-    if (!GetNodeAttrSimple(n->def(), "T", &T) ||
+    if (!TryGetNodeAttr(n->def(), "T", &T) ||
         !mkl_op_registry::IsMklLayoutDependentOp(csinfo_.mkl_fused_conv2d, T)) {
       return false;
     }
@@ -1968,7 +1968,7 @@ void MklLayoutRewritePass::GetNodeProducingMklTensor(
 
   // If this is an MKL op, then it will create extra output for MKL layout.
   DataType T;
-  if (GetNodeAttrSimple(n->def(), "T", &T) &&
+  if (TryGetNodeAttr(n->def(), "T", &T) &&
       mkl_op_registry::IsMklLayoutDependentOp(n->type_string(), T)) {
     // If this is an MKL op, then it will generate an edge that will receive
     // Mkl tensor from a node.
@@ -3464,13 +3464,13 @@ MklLayoutRewritePass::CheckForQuantizedNodeRewrite(const Node* n) const {
   DataType Tinput, Tfilter;
   bool type_attrs_present = false;
 
-  if (GetNodeAttrSimple(n->def(), "Tinput", &Tinput) &&
-      GetNodeAttrSimple(n->def(), "Tfilter", &Tfilter) &&
+  if (TryGetNodeAttr(n->def(), "Tinput", &Tinput) &&
+      TryGetNodeAttr(n->def(), "Tfilter", &Tfilter) &&
       mkl_op_registry::IsMklLayoutDependentOp(
           mkl_op_registry::GetMklOpName(n->type_string()), Tinput, Tfilter)) {
     type_attrs_present = true;
-  } else if (GetNodeAttrSimple(n->def(), "T1", &T1) &&
-             GetNodeAttrSimple(n->def(), "T2", &T2) &&
+  } else if (TryGetNodeAttr(n->def(), "T1", &T1) &&
+             TryGetNodeAttr(n->def(), "T2", &T2) &&
              mkl_op_registry::IsMklLayoutDependentOp(
                  mkl_op_registry::GetMklOpName(n->type_string()), T1, T2)) {
     type_attrs_present = true;
@@ -3501,7 +3501,7 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   // E.g., MklRelu does not support INT32. So we cannot rewrite Relu to
   // MklRelu if type is INT32.
   DataType T;
-  if (!GetNodeAttrSimple(n->def(), "T", &T)) {
+  if (!TryGetNodeAttr(n->def(), "T", &T)) {
     return nullptr;
   }
 
@@ -3716,7 +3716,7 @@ bool MklLayoutRewritePass::FixMklMetaDataEdges(std::unique_ptr<Graph>* g,
 
   // If graph node is not Mkl node, then return.
   DataType T = DT_INVALID;
-  if (!GetNodeAttrSimple(n->def(), "T", &T) ||
+  if (!TryGetNodeAttr(n->def(), "T", &T) ||
       !mkl_op_registry::IsMklLayoutDependentOp(n->type_string(), T)) {
     return result;
   }
@@ -3741,7 +3741,7 @@ bool MklLayoutRewritePass::FixMklMetaDataEdges(std::unique_ptr<Graph>* g,
     // Check that the source node for edge 'e' is Mkl node. If it is not an Mkl
     // node, then we don't need to do anything.
     Node* e_src = e->src();
-    if (GetNodeAttrSimple(e_src->def(), "T", &T) &&
+    if (TryGetNodeAttr(e_src->def(), "T", &T) &&
         mkl_op_registry::IsMklLayoutDependentOp(e_src->type_string(), T)) {
       // Source node for edge 'e' is Mkl node.
       // Destination node and destination input slot of e is node 'n' and 'idx'

@@ -616,10 +616,10 @@ void ReshapeOp::build(Builder *builder, OperationState *result, Value *tensor,
   if (matchPattern(shape, m_Constant(&attr_shape))) {
     llvm::SmallVector<int64_t, 4> const_shape;
     if (attr_shape.isSplat()) {
-      const_shape.assign(attr_shape.getType().getNumElements(),
+      const_shape.assign(attr_shape.getNumElements(),
                          (*attr_shape.begin()).getSExtValue());
     } else {
-      const_shape.reserve(attr_shape.getType().getNumElements());
+      const_shape.reserve(attr_shape.getNumElements());
       for (auto dim : attr_shape) const_shape.push_back(dim.getSExtValue());
     }
     return ReshapeOp::build(builder, result,
@@ -757,10 +757,10 @@ void TransposeOp::build(Builder *builder, OperationState *result, Value *x,
     llvm::SmallVector<int64_t, 4> const_shape;
     if (attr_shape.isSplat()) {
       const_shape.assign(
-          attr_shape.getType().getNumElements(),
+          attr_shape.getNumElements(),
           x_type.getDimSize((*attr_shape.begin()).getSExtValue()));
     } else {
-      const_shape.reserve(attr_shape.getType().getNumElements());
+      const_shape.reserve(attr_shape.getNumElements());
       for (auto dim : attr_shape)
         const_shape.push_back(x_type.getDimSize(dim.getSExtValue()));
     }
@@ -787,14 +787,22 @@ void TruncateDivOp::getCanonicalizationPatterns(
 static LogicalResult Verify(WhileOp op) {
   auto module = op.getParentOfType<ModuleOp>();
   auto condFn = module.lookupSymbol<FuncOp>(op.cond());
+  auto bodyFn = module.lookupSymbol<FuncOp>(op.body());
+  if (!condFn) {
+    return op.emitOpError("cond refers to an undefined function : ")
+           << op.cond();
+  }
+  if (!bodyFn) {
+    return op.emitOpError("body refers to an undefined function : ")
+           << op.body();
+  }
+
   auto condFuncType = condFn.getType();
+  auto bodyFuncType = bodyFn.getType();
 
   // Verify that the cond function has exactly one result.
   if (condFuncType.getNumResults() != 1)
     return op.emitOpError("requires cond function to have exactly one result");
-
-  auto bodyFn = module.lookupSymbol<FuncOp>(op.body());
-  auto bodyFuncType = bodyFn.getType();
 
   SmallVector<Type, 4> operands(op.getOperandTypes());
   SmallVector<Type, 4> results(op.getResultTypes());

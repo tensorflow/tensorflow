@@ -214,7 +214,7 @@ string ReaderBase::GetNextWorkLocked(QueueInterface* queue,
             context->SetStatus(errors::InvalidArgument(
                 "Expected to dequeue a one-element string tensor"));
           } else {
-            work = tuple[0].flat<string>()(0);
+            work = tuple[0].flat<tstring>()(0);
           }
         }
         n.Notify();

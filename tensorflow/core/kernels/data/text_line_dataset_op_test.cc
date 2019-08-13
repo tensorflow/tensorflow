@@ -366,45 +366,6 @@ TEST_P(ParameterizedTextLineDatasetOpTest, Cardinality) {
   EXPECT_EQ(text_line_dataset->Cardinality(), test_case.expected_cardinality);
 }
 
-TEST_P(ParameterizedTextLineDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  TestCase test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  TF_ASSERT_OK(CreateTestFiles(test_case));
-
-  std::unique_ptr<OpKernel> text_line_dataset_kernel;
-  TF_ASSERT_OK(CreateTextLineDatasetOpKernel(&text_line_dataset_kernel));
-
-  int64 num_files = test_case.filenames.size();
-  Tensor filenames =
-      CreateTensor<string>(TensorShape({num_files}), test_case.filenames);
-  Tensor compression_type = CreateTensor<string>(
-      TensorShape({}), {ToString(test_case.compression_type)});
-  Tensor buffer_size =
-      CreateTensor<int64>(TensorShape({}), {test_case.buffer_size});
-  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&filenames),
-                                            TensorValue(&compression_type),
-                                            TensorValue(&buffer_size)};
-  std::unique_ptr<OpKernelContext> text_line_dataset_context;
-  TF_ASSERT_OK(CreateTextLineDatasetContext(
-      text_line_dataset_kernel.get(), &inputs, &text_line_dataset_context));
-
-  DatasetBase* text_line_dataset;
-  TF_ASSERT_OK(CreateDataset(text_line_dataset_kernel.get(),
-                             text_line_dataset_context.get(),
-                             &text_line_dataset));
-  core::ScopedUnref scoped_unref(text_line_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_context;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(text_line_dataset->Save(serialization_context.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_P(ParameterizedTextLineDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TestCase test_case = GetParam();

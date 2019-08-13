@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
-#include "tensorflow/compiler/mlir/lite/utils/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -208,13 +207,15 @@ void LegalizeTF::runOnFunction() {
   patterns.insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
                   ConvertTFPackOp, ConvertTFSplitOp, ConvertTFSplitVOp,
                   ConvertTFUnpackOp>(ctx);
-  applyPatternsGreedily(func, std::move(patterns));
+  applyPatternsGreedily(func, patterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
-FunctionPassBase* CreateLegalizeTFPass() { return new LegalizeTF(); }
+std::unique_ptr<FunctionPassBase> CreateLegalizeTFPass() {
+  return llvm::make_unique<LegalizeTF>();
+}
 
 static PassRegistration<LegalizeTF> pass(
     "tfl-legalize-tf", "Legalize from TensorFlow to TensorFlow Lite dialect");

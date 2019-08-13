@@ -88,7 +88,7 @@ TEST_F(SummaryScalarOpTest, SimpleDouble) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
   EXPECT_SummaryMatches(summary, R"(
       value { tag: 'tag1' simple_value: 1.0 }
       value { tag: 'tag2' simple_value: -0.73 }
@@ -100,7 +100,7 @@ TEST_F(SummaryScalarOpTest, SimpleHalf) {
   MakeOp(DT_HALF);
 
   // Feed and run
-  AddInputFromList<string>(TensorShape({3}), {"tag1", "tag2", "tag3"});
+  AddInputFromList<tstring>(TensorShape({3}), {"tag1", "tag2", "tag3"});
   AddInputFromList<Eigen::half>(TensorShape({3}), {1.0, -2.0, 10000.0});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -108,7 +108,7 @@ TEST_F(SummaryScalarOpTest, SimpleHalf) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
   EXPECT_SummaryMatches(summary, R"(
       value { tag: 'tag1' simple_value: 1.0 }
       value { tag: 'tag2' simple_value: -2.0 }
@@ -177,7 +177,7 @@ TEST_F(SummaryHistoOpTest, SimpleFloat) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
   ASSERT_EQ(summary.value_size(), 1);
   EXPECT_EQ(summary.value(0).tag(), "taghisto");
   histogram::Histogram histo;
@@ -205,7 +205,7 @@ TEST_F(SummaryHistoOpTest, SimpleDouble) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
   ASSERT_EQ(summary.value_size(), 1);
   EXPECT_EQ(summary.value(0).tag(), "taghisto");
   histogram::Histogram histo;
@@ -234,7 +234,7 @@ TEST_F(SummaryHistoOpTest, SimpleHalf) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
   ASSERT_EQ(summary.value_size(), 1);
   EXPECT_EQ(summary.value(0).tag(), "taghisto");
   histogram::Histogram histo;
@@ -308,7 +308,7 @@ TEST_F(SummaryMergeOpTest, Simple) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
 
   EXPECT_SummaryMatches(summary,
                         "value { tag: \"tag1\" simple_value: 1.0 } "
@@ -342,7 +342,7 @@ TEST_F(SummaryMergeOpTest, Simple_MultipleInputs) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
 
   EXPECT_SummaryMatches(summary,
                         "value { tag: \"tag1\" simple_value: 1.0 } "

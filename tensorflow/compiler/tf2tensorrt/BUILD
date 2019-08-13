@@ -503,7 +503,10 @@ cc_library(
     srcs = ["utils/py_utils.cc"],
     hdrs = ["utils/py_utils.h"],
     copts = tf_copts(),
-    deps = if_tensorrt([":tensorrt_lib"]),
+    deps = if_tensorrt([
+        ":tensorrt_lib",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ]),
 )
 
 tf_py_wrap_cc(

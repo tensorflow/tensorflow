@@ -128,8 +128,8 @@ public:
 
 } // anonymous namespace
 
-FunctionPassBase *createLowerGpuOpsToNVVMOpsPass() {
-  return new LowerGpuOpsToNVVMOpsPass();
+std::unique_ptr<FunctionPassBase> createLowerGpuOpsToNVVMOpsPass() {
+  return llvm::make_unique<LowerGpuOpsToNVVMOpsPass>();
 }
 
 static PassRegistration<LowerGpuOpsToNVVMOpsPass>

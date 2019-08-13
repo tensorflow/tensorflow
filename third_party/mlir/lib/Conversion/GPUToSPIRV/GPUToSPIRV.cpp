@@ -112,7 +112,7 @@ void GPUToSPIRVPass::runOnModule() {
   target.addDynamicallyLegalOp<FuncOp>(
       [&](FuncOp Op) { return typeConverter.isSignatureLegal(Op.getType()); });
 
-  if (failed(applyFullConversion(spirvModules, target, std::move(patterns),
+  if (failed(applyFullConversion(spirvModules, target, patterns,
                                  &typeConverter))) {
     return signalPassFailure();
   }

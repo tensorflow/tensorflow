@@ -24,6 +24,35 @@ namespace {
 
 using ::testing::ElementsAre;
 
+TEST(Model, EmptyAssignment) {
+  ObjectsAssignment<size_t> objects_assignment;
+  OffsetsAssignment result = ObjectsToOffsets(objects_assignment);
+  EXPECT_TRUE(result.offsets.empty());
+  EXPECT_EQ(result.total_size, 0);
+}
+
+TEST(Model, OneObjectAssignment) {
+  ObjectsAssignment<size_t> objects_assignment;
+  objects_assignment.object_sizes = {16};
+  objects_assignment.object_ids = {0};
+  OffsetsAssignment result = ObjectsToOffsets(objects_assignment);
+  EXPECT_EQ(result.total_size, 16);
+  EXPECT_THAT(result.offsets, ElementsAre(0));
+
+  objects_assignment.object_ids = {0, 0, 0};
+  result = ObjectsToOffsets(objects_assignment);
+  EXPECT_EQ(result.total_size, 16);
+  EXPECT_THAT(result.offsets, ElementsAre(0, 0, 0));
+}
+
+TEST(Model, ManyObjectsAssignment) {
+  ObjectsAssignment<size_t> objects_assignment;
+  objects_assignment.object_sizes = {16, 8, 32, 32, 4, 16};
+  objects_assignment.object_ids = {2, 0, 2, 1, 3, 3, 1, 5};
+  OffsetsAssignment result = ObjectsToOffsets(objects_assignment);
+  EXPECT_THAT(result.offsets, ElementsAre(24, 0, 24, 16, 56, 56, 16, 92));
+}
+
 TEST(Model, EmptyRecords) {
   ObjectsAssignment<size_t> assignment;
   ASSERT_TRUE(
@@ -46,11 +75,19 @@ TEST(Model, EmptyRecords) {
           .ok());
   EXPECT_TRUE(assignment.object_ids.empty());
   EXPECT_TRUE(assignment.object_sizes.empty());
+
+  OffsetsAssignment offsets_assignment;
+  ASSERT_TRUE(AssignOffsetsToTensors({}, MemoryStrategy::GREEDY_BY_SIZE,
+                                     &offsets_assignment)
+                  .ok());
+  EXPECT_TRUE(offsets_assignment.offsets.empty());
+  EXPECT_EQ(offsets_assignment.total_size, 0);
 }
 
 TEST(Model, OneRecord) {
   std::vector<TensorUsageRecord<size_t>> usage_records{
       {/*size=*/16, /*first=*/0, /*last=*/1}};
+
   ObjectsAssignment<size_t> assignment;
   ASSERT_TRUE(
       AssignObjectsToTensors(usage_records, MemoryStrategy::NAIVE, &assignment)
@@ -75,6 +112,14 @@ TEST(Model, OneRecord) {
                   .ok());
   EXPECT_THAT(assignment.object_ids, ElementsAre(0));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(16));
+
+  OffsetsAssignment offsets_assignment;
+  ASSERT_TRUE(AssignOffsetsToTensors(usage_records,
+                                     MemoryStrategy::GREEDY_BY_SIZE,
+                                     &offsets_assignment)
+                  .ok());
+  EXPECT_THAT(offsets_assignment.offsets, ElementsAre(0));
+  EXPECT_EQ(offsets_assignment.total_size, 16);
 }
 
 TEST(Model, ChainRecords) {
@@ -85,6 +130,7 @@ TEST(Model, ChainRecords) {
       {/*size=*/32, /*first=*/3, /*last=*/4},
       {/*size=*/8, /*first=*/4, /*last=*/5},
   };
+
   ObjectsAssignment<size_t> assignment;
   ASSERT_TRUE(
       AssignObjectsToTensors(usage_records, MemoryStrategy::NAIVE, &assignment)
@@ -109,6 +155,14 @@ TEST(Model, ChainRecords) {
                   .ok());
   EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 0, 1, 0));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(64, 32));
+
+  OffsetsAssignment offsets_assignment;
+  ASSERT_TRUE(AssignOffsetsToTensors(usage_records,
+                                     MemoryStrategy::GREEDY_BY_SIZE,
+                                     &offsets_assignment)
+                  .ok());
+  EXPECT_THAT(offsets_assignment.offsets, ElementsAre(0, 64, 0, 64, 0));
+  EXPECT_EQ(offsets_assignment.total_size, 96);
 }
 
 TEST(Model, ComplexRecords) {
@@ -122,6 +176,7 @@ TEST(Model, ComplexRecords) {
       {/*size=*/8, /*first=*/6, /*last=*/8},
       {/*size=*/8, /*first=*/7, /*last=*/8},
       {/*size=*/16, /*first=*/8, /*last=*/9}};
+
   ObjectsAssignment<size_t> assignment;
   ASSERT_TRUE(
       AssignObjectsToTensors(usage_records, MemoryStrategy::NAIVE, &assignment)
@@ -147,6 +202,15 @@ TEST(Model, ComplexRecords) {
                   .ok());
   EXPECT_THAT(assignment.object_ids, ElementsAre(0, 1, 2, 0, 3, 1, 3, 2, 0));
   EXPECT_THAT(assignment.object_sizes, ElementsAre(32, 64, 8, 8));
+
+  OffsetsAssignment offsets_assignment;
+  ASSERT_TRUE(AssignOffsetsToTensors(usage_records,
+                                     MemoryStrategy::GREEDY_BY_SIZE,
+                                     &offsets_assignment)
+                  .ok());
+  EXPECT_THAT(offsets_assignment.offsets,
+              ElementsAre(0, 32, 80, 64, 88, 0, 64, 72, 0));
+  EXPECT_EQ(offsets_assignment.total_size, 96);
 }
 
 TEST(Model, BHWCRecords) {

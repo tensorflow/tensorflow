@@ -398,5 +398,43 @@ TEST_F(MemorySpaceAssignmentTest, Tuple) {
                                  op::GetTupleElement(op::GetTupleElement()))));
 }
 
+TEST_F(MemorySpaceAssignmentTest, Bitcast) {
+  // Bitcasts can cause the position in the alternate memory to appear multiple
+  // times in the preset assignments. This test ensure the preset assignments
+  // refer to unique positions.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape, negate));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, bitcast, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate, bitcast, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  auto preset_assignments = AssignMemorySpace(module.get());
+
+  // Ensure the positions are unique. Note that we're using a std::set instead
+  // of absl::flat_hash_set because we can make use of HloPosition's comparator
+  // logic instead of providing a hasher.
+  std::set<HloPosition> positions_in_preset_assignments;
+  for (auto& position_and_chunk : preset_assignments->chunks()) {
+    HloPosition position = position_and_chunk.first;
+    EXPECT_EQ(positions_in_preset_assignments.find(position),
+              positions_in_preset_assignments.end());
+    positions_in_preset_assignments.insert(position);
+  }
+}
+
 }  // namespace
 }  // namespace xla

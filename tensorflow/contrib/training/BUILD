@@ -1,6 +1,5 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
-
 load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
 load("//tensorflow:tensorflow.bzl", "py_test")
 

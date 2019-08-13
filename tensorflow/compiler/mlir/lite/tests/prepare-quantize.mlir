@@ -141,6 +141,20 @@ func @QuantizeSlice(tensor<2x3x5x!quant.uniform<u8:f32, 0.1>>, tensor<3xi32>, te
 // CHECK: return %3 : tensor<?x3x5xf32>
 }
 
+// CHECK-LABEL: QuantizeStridedSlice
+func @QuantizeStridedSlice(tensor<12x2x2x5x!quant.uniform<u8:f32, 0.1>>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32> {
+^bb0(%arg0: tensor<12x2x2x5x!quant.uniform<u8:f32, 0.1>>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>):
+  %0 = "tfl.dequantize"(%arg0) : (tensor<12x2x2x5x!quant.uniform<u8:f32, 0.1>>) -> tensor<12x2x2x5xf32>
+  %1 = "tfl.strided_slice"(%0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x2x2x5xf32>
+  return %1 : tensor<1x2x2x5xf32>
+
+// CHECK: %0 = "tfl.dequantize"(%arg0)
+// CHECK: %1 = "tfl.strided_slice"(%0, %arg1, %arg2, %arg3)
+// CHECK: %2 = "tfl.quantize"(%1) {qtype = tensor<1x2x2x5x!quant.uniform<u8:f32, 1.000000e-01>>}
+// CHECK: %3 = "tfl.dequantize"(%2)
+// CHECK: return %3 : tensor<1x2x2x5xf32>
+}
+
 // CHECK-LABEL: QuantizePad
 func @QuantizePad(tensor<2x1x3x!quant.uniform<u8:f32, 0.1>>, tensor<3x2xi32>) -> tensor<?xf32> {
 ^bb0(%arg0: tensor<2x1x3x!quant.uniform<u8:f32, 0.1>>, %arg1: tensor<3x2xi32>):

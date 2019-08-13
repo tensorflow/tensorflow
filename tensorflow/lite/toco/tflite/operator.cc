@@ -496,6 +496,10 @@ class FullyConnected
     const Array& input_array = op_signature.model->GetArray(input_name);
     const Array& weights_array = op_signature.model->GetArray(weights_name);
     const Array& output_array = op_signature.model->GetArray(output_name);
+    // 2 inputs (no bias) use case is supported starting from version 6.
+    if (op_signature.op->inputs.size() == 2) {
+      return 6;
+    }
     // `keep_num_dims` is supported at verison 5.
     if (fc_op.keep_num_dims) {
       return 5;

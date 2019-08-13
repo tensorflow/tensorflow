@@ -46,7 +46,8 @@ class DataAdapterTestBase(test.TestCase, parameterized.TestCase):
             self.batch_size)
 
     def generator():
-      yield (np.zeros((self.batch_size, 10)), np.ones(self.batch_size))
+      while True:
+        yield (np.zeros((self.batch_size, 10)), np.ones(self.batch_size))
     self.generator_input = generator()
     self.sequence_input = TestSequence(batch_size=self.batch_size,
                                        feature_shape=10)
@@ -208,9 +209,18 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
 
   def test_training(self):
-    dataset = self.adapter_cls(self.generator_input).get_dataset()
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
-    self.model.fit(dataset)
+    self.model.fit(self.generator_input, steps_per_epoch=10)
+
+  @test_util.run_v2_only
+  def test_with_multiprocessing_training(self):
+    self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
+    self.model.fit(self.generator_input, workers=1, use_multiprocessing=True,
+                   max_queue_size=10, steps_per_epoch=10)
+    # Fit twice to ensure there isn't any duplication that prevent the worker
+    # from starting.
+    self.model.fit(self.generator_input, workers=1, use_multiprocessing=True,
+                   max_queue_size=10, steps_per_epoch=10)
 
   def test_size(self):
     adapter = self.adapter_cls(self.generator_input)
@@ -240,9 +250,18 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
     self.assertTrue(self.adapter_cls.can_handle(self.sequence_input))
 
   def test_training(self):
-    dataset = self.adapter_cls(self.sequence_input).get_dataset()
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
-    self.model.fit(dataset)
+    self.model.fit(self.sequence_input)
+
+  @test_util.run_v2_only
+  def test_with_multiprocessing_training(self):
+    self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd')
+    self.model.fit(self.sequence_input, workers=1, use_multiprocessing=True,
+                   max_queue_size=10, steps_per_epoch=10)
+    # Fit twice to ensure there isn't any duplication that prevent the worker
+    # from starting.
+    self.model.fit(self.sequence_input, workers=1, use_multiprocessing=True,
+                   max_queue_size=10, steps_per_epoch=10)
 
   def test_size(self):
     adapter = self.adapter_cls(self.sequence_input)

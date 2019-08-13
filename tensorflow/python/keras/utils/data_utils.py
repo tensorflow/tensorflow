@@ -667,6 +667,10 @@ class SequenceEnqueuer(object):
     self.run_thread.join(timeout)
     _SHARED_SEQUENCES[self.uid] = None
 
+  def __del__(self):
+    if self.is_running():
+      self.stop()
+
   @abstractmethod
   def _run(self):
     """Submits request to the executor and queue the `Future` objects."""

@@ -44,9 +44,9 @@ Status InternalCompute(const RE2& match, const string& rewrite,
   } else {
     TF_RETURN_IF_ERROR(
         ctx->allocate_output("output", input_tensor->shape(), &output_tensor));
-    output_tensor->flat<string>() = input_tensor->flat<string>();
+    output_tensor->flat<tstring>() = input_tensor->flat<tstring>();
   }
-  auto output_flat = output_tensor->flat<string>();
+  auto output_flat = output_tensor->flat<tstring>();
   for (size_t i = 0; i < output_flat.size(); ++i) {
     if (replace_global) {
       RE2::GlobalReplace(&output_flat(i), match, rewrite);
@@ -70,7 +70,7 @@ class RegexReplaceOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(pattern_tensor->shape()),
                 errors::InvalidArgument("Pattern must be scalar, but received ",
                                         pattern_tensor->shape().DebugString()));
-    const string pattern = pattern_tensor->flat<string>()(0);
+    const string& pattern = pattern_tensor->scalar<tstring>()();
     const RE2 match(pattern);
     OP_REQUIRES(ctx, match.ok(),
                 errors::InvalidArgument("Invalid pattern: ", pattern,
@@ -81,7 +81,7 @@ class RegexReplaceOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(rewrite_tensor->shape()),
                 errors::InvalidArgument("Rewrite must be scalar, but received ",
                                         rewrite_tensor->shape().DebugString()));
-    const string rewrite = rewrite_tensor->flat<string>()(0);
+    const string& rewrite = rewrite_tensor->scalar<tstring>()();
     OP_REQUIRES_OK(ctx, InternalCompute(match, rewrite, replace_global_, ctx));
   }
 

@@ -334,6 +334,10 @@ def F64 : F<64>;
 def BF16 : Type<CPred<"$_self.isBF16()">, "bfloat16 type">,
            BuildableType<"getBF16Type()">;
 
+class OpaqueType<string dialect, string name, string description>
+  : Type<CPred<"isOpaqueTypeWithName($_self, \""#dialect#"\", \""#name#"\")">,
+         description>;
+
 // Function Type
 
 // Any function type.
@@ -600,6 +604,9 @@ def APIntAttr : Attr<CPred<"$_self.isa<IntegerAttr>()">,
   let returnType = [{ APInt }];
 }
 
+def I1Attr  : IntegerAttrBase<I1,  "1-bit integer attribute">;
+def I8Attr  : IntegerAttrBase<I8,  "8-bit integer attribute">;
+def I16Attr : IntegerAttrBase<I16, "16-bit integer attribute">;
 def I32Attr : IntegerAttrBase<I32, "32-bit integer attribute">;
 def I64Attr : IntegerAttrBase<I64, "64-bit integer attribute">;
 

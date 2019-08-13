@@ -410,8 +410,7 @@ void AppendTensorShapeToFingerprint(const PartialTensorShape& shape,
 
 Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
                             bool* compile_with_xla) {
-  if (!op->is_function() ||
-      !DeviceNameUtils::HasSomeDetails(op->GetDeviceName())) {
+  if (!op->is_function()) {
     *compile_with_xla = false;
     return Status::OK();
   }
@@ -911,7 +910,7 @@ bool IsPinnableOp(const string& op_type) {
 // (int32/int64). This can be disabled by setting the environment variable
 // "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING" to "0" or "false".
 Status MaybeUpdateOpDevice(EagerOperation* op) {
-  auto exempt_ops = InputColocationExemptionRegistry::Global()->Get();
+  const auto& exempt_ops = InputColocationExemptionRegistry::Global()->Get();
   if (op->is_function() || exempt_ops.find(op->Name()) != exempt_ops.end()) {
     // Don't update the device of direct function calls.
     // Particularly, if the user did not explicitly request any device for this

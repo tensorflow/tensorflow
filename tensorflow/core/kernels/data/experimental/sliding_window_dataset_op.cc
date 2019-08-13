@@ -108,7 +108,9 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       return n / window_shift_;
     }
 
-    bool IsStateful() const override { return input_->IsStateful(); }
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,

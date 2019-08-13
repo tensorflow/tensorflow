@@ -234,7 +234,6 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = [
-        "no_gpu",  # TODO(b/131773093): Re-enable.
         "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
         "nomsan",  # TODO(b/131773093): Re-enable.
     ],

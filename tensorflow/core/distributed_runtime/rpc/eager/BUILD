@@ -27,6 +27,7 @@ cc_library(
         "//tensorflow:grpc++",
         "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/core/distributed_runtime/rpc:grpc_client_cq_tag",

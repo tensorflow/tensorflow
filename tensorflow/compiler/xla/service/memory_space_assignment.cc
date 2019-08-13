@@ -100,8 +100,14 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       const HloValue* value = colocated_interval->buffer;
       int64 definition_time =
           instruction_schedule_->at(value->defining_instruction());
+      // Sort the uses by the use time.
+      std::vector<HloUse> uses = value->uses();
+      absl::c_sort(uses, [&](HloUse use1, HloUse use2) {
+        return instruction_schedule_->at(use1.instruction) <
+               instruction_schedule_->at(use2.instruction);
+      });
       // Iterate over the uses.
-      for (HloUse use : value->uses()) {
+      for (HloUse use : uses) {
         int64 use_time = instruction_schedule_->at(use.instruction);
 
         FindAllocation(definition_time, use_time, value->defining_position(),
@@ -153,6 +159,7 @@ void AlternateMemoryBestFitHeap::FindAllocation(
   VLOG(2) << "Finding allocation for " << interval.buffer->ToShortString()
           << " (" << start_time << ", " << end_time
           << "). Size = " << interval.size;
+  CHECK_LT(start_time, end_time);
 
   MemorySpaceAssignment::Allocation* prev_allocation = nullptr;
   bool can_eliminate_copy = false;
@@ -312,7 +319,8 @@ MemorySpaceAssignment::Run(
     AlternateMemoryBestFitHeap::IsAllowedInAlternateMemoryFunction
         is_allowed_in_alternate_mem) {
   CHECK(module->has_schedule());
-  VLOG(4) << "Module before memory space assignment: " << module->ToString();
+  VLOG(4) << "Module before memory space assignment: ";
+  XLA_VLOG_LINES(4, module->ToString());
   VLOG(4) << "Schedule: " << module->schedule().ToString();
   TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module));
 
@@ -333,8 +341,8 @@ MemorySpaceAssignment::Run(
   TF_RETURN_IF_ERROR(memory_space_assignment.Process());
   TF_RETURN_IF_ERROR(memory_space_assignment.FixSchedule());
 
-  VLOG(4) << "Module after memory space assignment: " << module->ToString();
-  VLOG(4) << "Schedule: " << module->schedule().ToString();
+  VLOG(4) << "Module after memory space assignment: ";
+  XLA_VLOG_LINES(4, module->ToString());
   TF_CHECK_OK(module->schedule().Verify());
 
   return std::move(memory_space_assignment.preset_assignments_);
@@ -398,16 +406,20 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
 Status MemorySpaceAssignment::Process() {
   // Insert CopyStart/CopyDone pairs.
   int64 alternate_memory_size = 0;
+  HloPosition prev_defining_position{nullptr, {}};
   for (auto& buffer_and_sequence : allocation_map_) {
     for (auto& allocation : buffer_and_sequence.second) {
       TF_RETURN_IF_ERROR(allocation->Process(this));
       // Add the offset and size of the allocation in the alternate memory to
-      // the output map.
-      if (allocation->memory_space() == MemorySpace::kAlternate) {
+      // the output map. Ensure there is one entry for each position in the
+      // preset assignments.
+      if (allocation->memory_space() == MemorySpace::kAlternate &&
+          prev_defining_position != allocation->defining_position()) {
         preset_assignments_->add_chunk(allocation->defining_position(),
                                        allocation->chunk());
         alternate_memory_size =
             std::max(alternate_memory_size, allocation->chunk().chunk_end());
+        prev_defining_position = allocation->defining_position();
       }
     }
   }
