@@ -28,6 +28,7 @@ load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
+load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/keras_applications_archive:workspace.bzl", keras_applications = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
@@ -44,6 +45,7 @@ def initialize_third_party():
     kissfft()
     jpeg()
     nasm()
+    opencl_headers()
     pasta()
 
 # Sanitize a dependency so that it works correctly from code that includes
