@@ -1450,6 +1450,15 @@ bool IsClipOrRelu(const nvinfer1::ILayer* layer) {
 #endif
 }
 
+bool IsAdd(const nvinfer1::ILayer* layer) {
+  if (layer->getType() != nvinfer1::LayerType::kELEMENTWISE) {
+    return false;
+  }
+  auto operation =
+      static_cast<const nvinfer1::IElementWiseLayer*>(layer)->getOperation();
+  return operation == nvinfer1::ElementWiseOperation::kSUM;
+}
+
 }  // namespace
 
 void Converter::MaybeApplyQuantizationRanges() {
@@ -1505,11 +1514,25 @@ void Converter::MaybeApplyQuantizationRanges() {
     }
   }
   // Identify fused tensors.
+  // Conv+BiasAdd+Add+Activation(Clip or Relu), Conv+BiasAdd+Add,
   // Conv+BiasAdd+Activation(Clip or Relu), Conv+BiasAdd,
   // Conv+Activation(Clip or Relu) are fused.
   std::set<nvinfer1::ITensor*> fused_tensors;
   typedef std::function<bool(const nvinfer1::ILayer*)> matcher;
   const std::vector<std::pair<string, std::vector<matcher>>> fused_patterns = {
+      {"Fused Conv+Bias+Add+Activation",
+       {
+           IsConvolution,
+           IsScale,
+           IsAdd,
+           IsClipOrRelu,
+       }},
+      {"Fused Conv+Bias+Add",
+       {
+           IsConvolution,
+           IsScale,
+           IsAdd,
+       }},
       {"Fused Conv+Bias+Activation",
        {
            IsConvolution,
