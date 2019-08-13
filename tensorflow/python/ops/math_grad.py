@@ -488,7 +488,7 @@ def _UnsortedSegmentProdGrad(op, grad):
       math_ops.greater(num_zeros, 1), array_ops.zeros_like(grad), grad)
   # replace all zeros with ones and compute the unsorted_segment_prod
   non_zero_data = array_ops.where_v2(is_zero, array_ops.ones_like(op.inputs[0]),
-                                  op.inputs[0])
+                                     op.inputs[0])
   non_zero_prod = gen_math_ops.unsorted_segment_prod(non_zero_data,
                                                      op.inputs[1], op.inputs[2])
   # clip the indices for gather to be positive
@@ -502,7 +502,7 @@ def _UnsortedSegmentProdGrad(op, grad):
   # but the following gather_drop_negatives sets the corresponding entry in
   # grad to 0 for these
   partial_derivative = array_ops.where_v2(is_zero, gathered_non_zero_prod,
-                                       prod_divided_by_el)
+                                          prod_divided_by_el)
   gathered_grad = _GatherDropNegatives(grad, op.inputs[1],
                                        zero_clipped_indices)[0]
   return gathered_grad * partial_derivative, None, None
@@ -1502,7 +1502,7 @@ def _SelectGrad(op, grad):
   c = op.inputs[0]
   x = op.inputs[1]
   zeros = array_ops.zeros_like(x)
-  return (None, array_ops.where_v2(c, grad, zeros), array_ops.where_v2(
+  return (None, array_ops.where(c, grad, zeros), array_ops.where(
       c, zeros, grad))
 
 
