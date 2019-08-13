@@ -196,26 +196,13 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
-  if context.executing_eagerly() and not hasattr(input, "graph"):
-    input = ops.convert_to_tensor(input)
-    in_device = input.backing_device
-    # TODO(ashankar): Does 'identity' need to invoke execution callbacks?
-    context_device = context.context().device_name
-    if not context_device:
-      context_device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    if context_device == in_device:
-      return input
-    else:
-      copied = input._copy()  # pylint: disable=protected-access
-      if hasattr(copied, "_handle_data"):
-        copied._handle_data = input._handle_data  # pylint: disable=protected-access
-      return copied
-  else:
-    ret = gen_array_ops.identity(input, name=name)
-    # Propagate handle data for happier shape inference for resource variables.
-    if hasattr(input, "_handle_data"):
-      ret._handle_data = input._handle_data  # pylint: disable=protected-access
-    return ret
+  # Make sure we get an input with handle data attached from resource variables.
+  input = ops.convert_to_tensor(input)
+  ret = gen_array_ops.identity(input, name=name)
+  # Propagate handle data for happier shape inference for resource variables.
+  if hasattr(input, "_handle_data"):
+    ret._handle_data = input._handle_data  # pylint: disable=protected-access
+  return ret
 
 
 # pylint: disable=redefined-builtin,protected-access

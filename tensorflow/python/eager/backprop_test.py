@@ -48,7 +48,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training import training
 
 
-class BackpropTest(test.TestCase):
+class BackpropTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testAggregateGradients(self):
@@ -120,6 +120,24 @@ class BackpropTest(test.TestCase):
     grads_and_vars = backprop.implicit_grad(fn)()
     self.assertAllEqual(grads_and_vars[0][0], 1.0)
     self.assertAllEqual(id(grads_and_vars[0][1]), id(x))
+
+  @parameterized.named_parameters(
+      [('Function', def_function.function),
+       ('NoFunction', lambda f: f)])
+  def testIdentityBehaviorConsistent(self, decorator):
+
+    @decorator
+    def f(x):
+      x1 = array_ops.identity(x)
+      with backprop.GradientTape() as t:
+        t.watch(x)
+        t.watch(x1)
+        y1 = x * 2.
+        y2 = x1 * 3.
+        loss = y1 + y2
+      return t.gradient(loss, [x, x1])
+
+    self.assertAllClose([2., 3.], f(constant_op.constant(10.)))
 
   def testGradientInsideLoop(self):
     with ops.Graph().as_default():
