@@ -17,9 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.experimental.ops import sleep
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
@@ -48,6 +51,20 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.PrefetchDataset(
         dataset, buffer_size, slack_period=slack_period)
     self.assertDatasetProduces(dataset, expected_output=range(100))
+
+  @test_util.run_v1_only("graph-mode specific test")
+  def testSkipEagerPrefetchCancellation(self):
+    sleep_microseconds = 1000000
+    dataset = dataset_ops.Dataset.range(10).apply(
+        sleep.sleep(sleep_microseconds)).prefetch(3)
+    get_next = self.getNext(dataset)
+
+    with self.cached_session() as sess:
+      thread = self.checkedThread(self.assert_op_cancelled, args=(get_next(),))
+      thread.start()
+      time.sleep(0.5)
+      sess.close()
+      thread.join()
 
 
 if __name__ == "__main__":
