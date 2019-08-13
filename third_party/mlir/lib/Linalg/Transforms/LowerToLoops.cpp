@@ -385,14 +385,13 @@ void LowerLinalgToLoopsPass::runOnFunction() {
   target.addLegalDialect<AffineOpsDialect>();
   target.addLegalDialect<loop::LoopOpsDialect>();
   target.addLegalDialect<StandardOpsDialect>();
-  if (failed(
-          applyPartialConversion(getFunction(), target, std::move(patterns)))) {
+  if (failed(applyPartialConversion(getFunction(), target, patterns))) {
     signalPassFailure();
   }
 }
 
-FunctionPassBase *mlir::linalg::createLowerLinalgToLoopsPass() {
-  return new LowerLinalgToLoopsPass();
+std::unique_ptr<FunctionPassBase> mlir::linalg::createLowerLinalgToLoopsPass() {
+  return llvm::make_unique<LowerLinalgToLoopsPass>();
 }
 
 static PassRegistration<LowerLinalgToLoopsPass>

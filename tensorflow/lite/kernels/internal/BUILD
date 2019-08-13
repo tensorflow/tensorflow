@@ -361,6 +361,7 @@ cc_library(
         "reference/add.h",
         "reference/arg_min_max.h",
         "reference/binary_function.h",
+        "reference/ceil.h",
         "reference/comparisons.h",
         "reference/conv.h",
         "reference/depthwiseconv_float.h",
@@ -385,6 +386,7 @@ cc_library(
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
         "reference/reference_ops.h",
+        "reference/round.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
         "reference/svdf.h",
@@ -423,6 +425,7 @@ cc_library(
         "reference/add.h",
         "reference/arg_min_max.h",
         "reference/binary_function.h",
+        "reference/ceil.h",
         "reference/comparisons.h",
         "reference/conv.h",
         "reference/depthwiseconv_float.h",
@@ -435,6 +438,7 @@ cc_library(
         "reference/prelu.h",
         "reference/process_broadcast_shapes.h",
         "reference/reference_ops.h",
+        "reference/round.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
     ],
@@ -781,6 +785,19 @@ cc_test(
         ":reference_base",
         ":test_util",
         "//tensorflow/lite:string",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "strided_slice_logic_test",
+    timeout = "moderate",
+    srcs = [
+        "strided_slice_logic_test.cc",
+    ],
+    shard_count = 4,
+    deps = [
+        ":strided_slice_logic",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -2532,6 +2532,11 @@ arguments to the slice operation.
 :                 :                     : respective `start_indices` value for :
 :                 :                     : the dimension and less than or equal :
 :                 :                     : to the size of the dimension.        :
+| `strides`      | `ArraySlice<int64>` | List of N integers that decides the   |
+:                 :                     : input stride of the slice.  The slice :
+:                 :                     : picks every `strides[d]` element in  :
+:                 :                     : dimension `d`.                       :
+
 
 1-dimensional example:
 

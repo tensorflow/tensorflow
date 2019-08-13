@@ -88,8 +88,8 @@ struct SimplifyAffineStructures
 
 } // end anonymous namespace
 
-FunctionPassBase *mlir::createSimplifyAffineStructuresPass() {
-  return new SimplifyAffineStructures();
+std::unique_ptr<FunctionPassBase> mlir::createSimplifyAffineStructuresPass() {
+  return llvm::make_unique<SimplifyAffineStructures>();
 }
 
 void SimplifyAffineStructures::runOnFunction() {

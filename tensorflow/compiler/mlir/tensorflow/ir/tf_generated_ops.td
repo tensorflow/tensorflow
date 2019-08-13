@@ -1045,6 +1045,39 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
   }];
 }
 
+def TF_FusedBatchNormV3Op : TF_Op<"FusedBatchNormV3", [NoSideEffect]> {
+  let summary = "Batch normalization.";
+
+  let description = [{
+Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
+The size of 1D Tensors matches the dimension C of the 4D Tensors.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32]>:$x,
+    F32Tensor:$scale,
+    F32Tensor:$offset,
+    F32Tensor:$mean,
+    F32Tensor:$variance,
+
+    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<BoolAttr, "true">:$is_training
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$y,
+    F32Tensor:$batch_mean,
+    F32Tensor:$batch_variance,
+    F32Tensor:$reserve_space_1,
+    F32Tensor:$reserve_space_2,
+    F32Tensor:$reserve_space_3
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_GatherOp : TF_Op<"Gather", [NoSideEffect]> {
   let summary = "Gather slices from `params` according to `indices`.";
 
@@ -2758,6 +2791,63 @@ I.e., \\(y = 1 / \sqrt{x}\\).
 }
 
 def TF_SelectOp : TF_Op<"Select", [NoSideEffect]> {
+  let summary = "Selects elements from `x` or `y`, depending on `condition`.";
+
+  let description = [{
+The `x`, and `y` tensors must all have the same shape, and the
+output will also have that shape.
+
+The `condition` tensor must be a scalar if `x` and `y` are scalars.
+If `x` and `y` are vectors or higher rank, then `condition` must be either a
+scalar, a vector with size matching the first dimension of `x`, or must have
+the same shape as `x`.
+
+The `condition` tensor acts as a mask that chooses, based on the value at each
+element, whether the corresponding element / row in the output should be
+taken from `x` (if true) or `y` (if false).
+
+If `condition` is a vector and `x` and `y` are higher rank matrices, then
+it chooses which row (outer dimension) to copy from `x` and `y`.
+If `condition` has the same shape as `x` and `y`, then it chooses which
+element to copy from `x` and `y`.
+
+For example:
+
+```python
+# 'condition' tensor is [[True,  False]
+#                        [False, True]]
+# 't' is [[1, 2],
+#         [3, 4]]
+# 'e' is [[5, 6],
+#         [7, 8]]
+select(condition, t, e)  # => [[1, 6], [7, 4]]
+
+
+# 'condition' tensor is [True, False]
+# 't' is [[1, 2],
+#         [3, 4]]
+# 'e' is [[5, 6],
+#         [7, 8]]
+select(condition, t, e) ==> [[1, 2],
+                             [7, 8]]
+
+```
+  }];
+
+  let arguments = (ins
+    I1Tensor:$condition,
+    TF_Tensor:$t,
+    TF_Tensor:$e
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect]> {
   let summary = "Selects elements from `x` or `y`, depending on `condition`.";
 
   let description = [{

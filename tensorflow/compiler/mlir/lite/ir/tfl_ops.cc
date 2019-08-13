@@ -126,7 +126,7 @@ Attribute ConstFoldBinaryOpDenseSplat(Type result_type, Attribute operand1,
                                       const CalculationT &calculate) {
   auto lhs = operand1.cast<DenseElementsAttr>();
 
-  // TODO: Support broadcast behavior
+  // TODO(b/139192933): Support broadcast behavior
   if (lhs.getType() != result_type || operand2.getType() != result_type)
     return {};
 
@@ -134,7 +134,7 @@ Attribute ConstFoldBinaryOpDenseSplat(Type result_type, Attribute operand1,
   auto type = result_type.cast<ShapedType>();
 
   SmallVector<ElementValueT, 16> new_values;
-  new_values.reserve(lhs.rawSize());
+  new_values.reserve(lhs.getNumElements());
 
   // Add the splat value to each of the values in the dense elements
   // attribute.

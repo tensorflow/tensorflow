@@ -39,6 +39,15 @@ TfLiteRegistration* Register_LOGICAL_OR();
 TfLiteRegistration* Register_LOGICAL_AND();
 TfLiteRegistration* Register_LOGICAL_NOT();
 TfLiteRegistration* Register_RESHAPE();
+TfLiteRegistration* Register_EQUAL();
+TfLiteRegistration* Register_NOT_EQUAL();
+TfLiteRegistration* Register_GREATER();
+TfLiteRegistration* Register_GREATER_EQUAL();
+TfLiteRegistration* Register_LESS();
+TfLiteRegistration* Register_LESS_EQUAL();
+TfLiteRegistration* Register_CEIL();
+TfLiteRegistration* Register_ROUND();
+TfLiteRegistration* Register_STRIDED_SLICE();
 
 AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D());
@@ -66,6 +75,15 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_LOGICAL_AND, Register_LOGICAL_AND());
   AddBuiltin(BuiltinOperator_LOGICAL_NOT, Register_LOGICAL_NOT());
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
+  AddBuiltin(BuiltinOperator_EQUAL, Register_EQUAL());
+  AddBuiltin(BuiltinOperator_NOT_EQUAL, Register_NOT_EQUAL());
+  AddBuiltin(BuiltinOperator_GREATER, Register_GREATER());
+  AddBuiltin(BuiltinOperator_GREATER_EQUAL, Register_GREATER_EQUAL());
+  AddBuiltin(BuiltinOperator_LESS, Register_LESS());
+  AddBuiltin(BuiltinOperator_LESS_EQUAL, Register_LESS_EQUAL());
+  AddBuiltin(BuiltinOperator_CEIL, Register_CEIL());
+  AddBuiltin(BuiltinOperator_ROUND, Register_ROUND());
+  AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE());
 }
 
 }  // namespace micro

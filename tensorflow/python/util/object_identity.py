@@ -156,6 +156,12 @@ class ObjectIdentitySet(collections_abc.MutableSet):
   def __init__(self, *args):
     self._storage = set([self._wrap_key(obj) for obj in list(*args)])
 
+  @staticmethod
+  def _from_storage(storage):
+    result = ObjectIdentitySet()
+    result._storage = storage  # pylint: disable=protected-access
+    return result
+
   def _wrap_key(self, key):
     return _ObjectIdentityWrapper(key)
 
@@ -173,6 +179,10 @@ class ObjectIdentitySet(collections_abc.MutableSet):
 
   def intersection(self, items):
     return self._storage.intersection([self._wrap_key(item) for item in items])
+
+  def difference(self, items):
+    return ObjectIdentitySet._from_storage(
+        self._storage.difference([self._wrap_key(item) for item in items]))
 
   def __len__(self):
     return len(self._storage)

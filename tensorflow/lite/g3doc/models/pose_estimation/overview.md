@@ -7,7 +7,7 @@
 _PoseNet_ is a vision model that can be used to estimate the pose of a person in
 an image or video by estimating where key body joints are.
 
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/posenet_mobilenet_v1_100_513x513_multi_kpt_stripped.tflite">
+<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/posenet_mobilenet_v1_100_257x257_multi_kpt_stripped.tflite">
 Download starter model</a>
 
 Android and iOS end-to-end tutorials are coming soon. In the meantime, if you
@@ -146,6 +146,7 @@ is faster but results in lower accuracy.
 <ul>
   <li><a href="https://medium.com/tensorflow/real-time-human-pose-estimation-in-the-browser-with-tensorflow-js-7dd0bc881cd5">Blog post: Real-time Human Pose Estimation in the Browser with TensorFlow.js</a></li>
   <li><a href="https://github.com/tensorflow/tfjs-models/tree/master/posenet">TF.js GitHub: Pose Detection in the Browser: PoseNet Model</a></li>
+   <li><a href="https://medium.com/tensorflow/track-human-poses-in-real-time-on-android-with-tensorflow-lite-e66d0f3e6f9e">Blog post: Track human poses in real-time on Android with TensorFlow Lite</a></li>
 </ul>
 
 ### Use cases

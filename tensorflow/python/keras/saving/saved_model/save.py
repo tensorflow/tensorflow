@@ -86,7 +86,10 @@ def save(model, filepath, overwrite, include_optimizer, signatures=None):
     orig_optimizer = model.optimizer
     model.optimizer = None
 
-  save_lib.save(model, filepath, signatures)
+  # Trace all functions and signatures with `training=0` instead of using the
+  # default learning phase placeholder.
+  with K.learning_phase_scope(0):
+    save_lib.save(model, filepath, signatures)
 
   if not include_optimizer:
     model.optimizer = orig_optimizer

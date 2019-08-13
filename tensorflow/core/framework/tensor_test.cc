@@ -94,6 +94,7 @@ TEST(TensorTest, DataType_Traits) {
   EXPECT_TRUE(std::is_trivial<int8>::value);
   EXPECT_TRUE(std::is_trivial<int64>::value);
   EXPECT_TRUE(std::is_trivial<bool>::value);
+  EXPECT_FALSE(std::is_trivial<tstring>::value);
   EXPECT_FALSE(std::is_trivial<string>::value);
 
   EXPECT_EQ(sizeof(bool), 1);
@@ -903,15 +904,15 @@ TEST(Tensor_Float, Reshape_And_Slice_Assignment) {
 }
 
 TEST(Tensor_String, Simple) {
-  Tensor t = test::AsTensor<string>(
+  Tensor t = test::AsTensor<tstring>(
       {"hello", "world", "machine", "learning", "new", "york"},
       TensorShape({3, 2}));
   auto s = t.shape();
   ASSERT_EQ(s.dims(), 2);
   ASSERT_EQ(s.dim_size(0), 3);
   ASSERT_EQ(s.dim_size(1), 2);
-  auto m = t.matrix<string>();
-  EXPECT_EQ(t.TotalBytes(), 3 * 2 * sizeof(string) + 5 + 5 + 7 + 8 + 3 + 4);
+  auto m = t.matrix<tstring>();
+  EXPECT_EQ(t.TotalBytes(), 3 * 2 * sizeof(tstring) + 5 + 5 + 7 + 8 + 3 + 4);
 
   EXPECT_EQ(m(0, 0), "hello");
   EXPECT_EQ(m(0, 1), "world");
@@ -920,7 +921,7 @@ TEST(Tensor_String, Simple) {
   EXPECT_EQ(m(2, 0), "new");
   EXPECT_EQ(m(2, 1), "york");
 
-  TestCopies<string>(t);
+  TestCopies<tstring>(t);
 }
 
 TEST(Tensor_Float, SimpleWithHelper) {
@@ -976,7 +977,7 @@ TEST(Tensor_Int64, SimpleWithHelper) {
 }
 
 TEST(Tensor_String, SimpleWithHelper) {
-  Tensor t1 = test::AsTensor<string>({"0", "1", "2", "3", "4", "5"}, {2, 3});
+  Tensor t1 = test::AsTensor<tstring>({"0", "1", "2", "3", "4", "5"}, {2, 3});
   Tensor t2(DT_STRING, {2, 3});
   for (int i = 0; i < 2; ++i) {
     for (int j = 0; j < 3; ++j) {
@@ -985,7 +986,7 @@ TEST(Tensor_String, SimpleWithHelper) {
   }
 
   // Test with helper.
-  test::ExpectTensorEqual<string>(t1, t2);
+  test::ExpectTensorEqual<tstring>(t1, t2);
 }
 
 TEST(Tensor_Bool, SimpleWithHelper) {
@@ -1365,11 +1366,11 @@ TEST(SummarizeValue, BOOL) {
 }
 
 TEST(SummarizeValue, STRING) {
-  Tensor x = MkTensor<string>(DT_STRING, TensorShape({5}),
-                              {"one", "two", "three", "four", "five"});
+  Tensor x = MkTensor<tstring>(DT_STRING, TensorShape({5}),
+                               {"one", "two", "three", "four", "five"});
   EXPECT_EQ("one two three four five", x.SummarizeValue(16));
-  x = MkTensor<string>(DT_STRING, TensorShape({5, 1, 5}),
-                       {"one", "two", "three", "four", "five"});
+  x = MkTensor<tstring>(DT_STRING, TensorShape({5, 1, 5}),
+                        {"one", "two", "three", "four", "five"});
   EXPECT_EQ("[[one two three four five]][[one...]]...", x.SummarizeValue(6));
 }
 
@@ -1421,16 +1422,16 @@ TEST(SummarizeValue, BOOL_PRINT_V2) {
 }
 
 TEST(SummarizeValue, STRING_PRINT_V2) {
-  Tensor x = MkTensor<string>(DT_STRING, TensorShape({5}),
-                              {"one", "two", "three", "four", "five"});
+  Tensor x = MkTensor<tstring>(DT_STRING, TensorShape({5}),
+                               {"one", "two", "three", "four", "five"});
   EXPECT_EQ("[\"one\" \"two\" \"three\" \"four\" \"five\"]",
             x.SummarizeValue(16, true));
   EXPECT_EQ("[\"one\" \"two\" \"three\" \"four\" \"five\"]",
             x.SummarizeValue(-1, true));
   EXPECT_EQ("[\"one\" \"two\" ... \"four\" \"five\"]",
             x.SummarizeValue(2, true));
-  x = MkTensor<string>(DT_STRING, TensorShape({2, 2}),
-                       {"one", "two", "three", "four", "five"});
+  x = MkTensor<tstring>(DT_STRING, TensorShape({2, 2}),
+                        {"one", "two", "three", "four", "five"});
   EXPECT_EQ("[[\"one\" \"two\"]\n [\"three\" \"four\"]]",
             x.SummarizeValue(16, true));
 }

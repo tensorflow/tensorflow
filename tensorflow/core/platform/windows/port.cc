@@ -128,10 +128,6 @@ void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
 
 std::size_t MallocExtension_GetAllocatedSize(const void* p) { return 0; }
 
-void AdjustFilenameForLogging(string* filename) {
-  // Nothing to do
-}
-
 bool Snappy_Compress(const char* input, size_t length, string* output) {
 #ifdef TF_USE_SNAPPY
   output->resize(snappy::MaxCompressedLength(length));

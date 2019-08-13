@@ -114,11 +114,6 @@ void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
   PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
 }
 
-void VectorBatchVectorAssign(const float* vector, int v_size, int n_batch,
-                             float* batch_vector) {
-  PortableVectorBatchVectorAssign(vector, v_size, n_batch, batch_vector);
-}
-
 void ApplySigmoidToVector(const float* vector, int v_size, float* result) {
   PortableApplySigmoidToVector(vector, v_size, result);
 }

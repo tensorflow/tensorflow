@@ -1275,6 +1275,7 @@ cc_library(
         ":SPIRVDialectRegistration",
         ":Support",
         ":Transforms",
+        ":VectorToLLVMTransforms",
         ":ViewRegionGraph",
         "@llvm//:support",
     ],
@@ -1431,6 +1432,9 @@ cc_binary(
         ":tools/libcuda-runtime-wrappers.so",
     ],
     includes = ["include"],
+    # cl/262981524 introduced a regression to test/mlir-cuda-runner:gpu-to-cubin.mlir.test.
+    # TODO(timshen): Remove the following workaround.
+    linkopts = ["-Wl,-rpath,/var/google/persistent/kibbles/libcuda_running"],
     deps = [
         ":GPUDialect",
         ":GPUDialectRegistration",
@@ -1858,6 +1862,26 @@ gentbl(
     td_srcs = [
         ":VectorOpsTdFiles",
     ],
+)
+
+cc_library(
+    name = "VectorToLLVMTransforms",
+    srcs = ["lib/Conversion/VectorToLLVM/VectorToLLVM.cpp"],
+    hdrs = [
+        "include/mlir/Conversion/VectorToLLVM/VectorToLLVM.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":LLVMDialect",
+        ":LLVMTransforms",
+        ":Pass",
+        ":Transforms",
+        ":VectorOps",
+        "@llvm//:core",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
 )
 
 # To reference all tablegen files here when checking for updates to them.

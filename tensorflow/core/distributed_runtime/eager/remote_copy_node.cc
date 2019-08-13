@@ -157,7 +157,7 @@ Status RemoteCopyNode::StartSend() {
     EnqueueResponse* response = new EnqueueResponse;
     // If StartRecv fails very quickly, `this` can be destroyed before the
     // callback below is executed. So, we can't capture `this`.
-    eager_client->StreamingEnqueueAsync(
+    return eager_client->StreamingEnqueueAsync(
         &request, response, [response, captured_state](const Status& s) {
           captured_state->SetSendStatus(s);
           if (!s.ok()) {
@@ -165,7 +165,6 @@ Status RemoteCopyNode::StartSend() {
           }
           delete response;
         });
-    return Status::OK();
   }
 }
 
@@ -210,7 +209,7 @@ Status RemoteCopyNode::RunRemoteRecv(EagerOperation* op) {
   EnqueueResponse* response = new EnqueueResponse;
   const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
   Device* recv_device = recv_device_;
-  eager_client->StreamingEnqueueAsync(
+  return eager_client->StreamingEnqueueAsync(
       &request, response,
       [captured_state, response, recv_device](const Status& s) {
         if (s.ok()) {
@@ -228,8 +227,6 @@ Status RemoteCopyNode::RunRemoteRecv(EagerOperation* op) {
         }
         delete response;
       });
-
-  return Status::OK();
 }
 
 Status RemoteCopyNode::StartRecv() {

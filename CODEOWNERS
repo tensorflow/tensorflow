@@ -32,7 +32,6 @@
 /tensorflow/contrib/factorization/ @agarwal-ashish @xavigonzalvo
 /tensorflow/contrib/ffmpeg/ @fredbertsch
 /tensorflow/contrib/framework/ @ebrevdo
-/tensorflow/contrib/gan/ @joel-shor
 /tensorflow/contrib/graph_editor/ @purpledog
 # NEED OWNER: /tensorflow/contrib/grid_rnn/
 /tensorflow/contrib/hadoop @yongtang

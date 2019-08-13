@@ -111,10 +111,11 @@ struct LoopFusion : public FunctionPass<LoopFusion> {
 
 } // end anonymous namespace
 
-FunctionPassBase *mlir::createLoopFusionPass(unsigned fastMemorySpace,
-                                             uint64_t localBufSizeThreshold,
-                                             bool maximalFusion) {
-  return new LoopFusion(fastMemorySpace, localBufSizeThreshold, maximalFusion);
+std::unique_ptr<FunctionPassBase>
+mlir::createLoopFusionPass(unsigned fastMemorySpace,
+                           uint64_t localBufSizeThreshold, bool maximalFusion) {
+  return llvm::make_unique<LoopFusion>(fastMemorySpace, localBufSizeThreshold,
+                                       maximalFusion);
 }
 
 namespace {

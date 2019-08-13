@@ -1687,7 +1687,7 @@ versions {
   TF_CHECK_OK(status);
   auto tensors_got = EvaluateNodes(output, item.fetch);
   ASSERT_EQ(tensors_got.size(), 1);
-  test::ExpectTensorEqual<string>(tensors_got[0], tensors_expected[0]);
+  test::ExpectTensorEqual<tstring>(tensors_got[0], tensors_expected[0]);
 
   EXPECT_EQ(output.node_size(), 8);
 

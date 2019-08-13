@@ -21,7 +21,7 @@ def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 def HasNoUse: Constraint<
     CPred<"$0->use_begin() == $0->use_end()">, "has no use">;
 
-// Converts tf.FusedBatchNorm into a sequence of more primitive arithmetic
+// Converts tf.FusedBatchNorm & tf.FusedBatchNormV3 into a sequence of more primitive arithmetic
 // operations. Specifically, performs the following calculation:
 //
 //   (x - mean) * scale / sqrt(variance + epsilon) + offset
@@ -52,6 +52,30 @@ def : Pattern<
      /*reserve_space_2=*/(replaceWithValue $x)],
     [(HasNoUse $root__1), (HasNoUse $root__2),
      (HasNoUse $root__3), (HasNoUse $root__4)]>;
+
+def : Pattern<
+    (TF_FusedBatchNormV3Op:$root
+        $x, $scale, $offset, $mean, $variance,
+        F32Attr:$epsilon, $data_format, FalseBoolAttr:$is_training),
+    [(TF_AddOp
+        (TF_MulOp
+            $x,
+            (TF_MulOp:$multiplier
+                $scale,
+                (TF_RsqrtOp
+                    (TF_AddOp $variance,
+                              (TF_ConstOp $epsilon))))),
+        (TF_SubOp $offset, (TF_MulOp $mean, $multiplier))),
+     // We already guaranteed that the last five results have no use so it does
+     // not matter what value we provide here for replacement.
+     /*batch_mean=*/(replaceWithValue $x),
+     /*batch_variance=*/(replaceWithValue $x),
+     /*reserve_space_1=*/(replaceWithValue $x),
+     /*reserve_space_2=*/(replaceWithValue $x),
+     /*reserve_space_3=*/(replaceWithValue $x)],
+    [(HasNoUse $root__1), (HasNoUse $root__2),
+     (HasNoUse $root__3), (HasNoUse $root__4),
+     (HasNoUse $root__5)]>;
 
 // TODO(jpienaar): Move to opbase something more general.
 def TFi32ElementsAttr : Attr<CPred<"$_self.isa<DenseIntElementsAttr>">,

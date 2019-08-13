@@ -207,8 +207,8 @@ class GpuDriver {
   // Loads ptx_contents with the CUDA driver's PTX JIT and stores the resulting
   // handle in "module". Any error logs that are produced are logged internally.
   // (supported on CUDA only)
-  static bool LoadPtx(GpuContext* context, const char* ptx_contents,
-                      GpuModuleHandle* module);
+  static port::Status LoadPtx(GpuContext* context, const char* ptx_contents,
+                              GpuModuleHandle* module);
 
   // Loads cubin_bytes with the CUDA driver's blob loading interface and stores
   // the resulting handle in "module".

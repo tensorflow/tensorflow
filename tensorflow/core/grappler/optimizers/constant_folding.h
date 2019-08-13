@@ -32,6 +32,7 @@ namespace grappler {
 
 const char kConstantFoldingConst[] = "ConstantFolding";
 const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
+extern const int64 kMaxConstantSize;
 
 // Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {

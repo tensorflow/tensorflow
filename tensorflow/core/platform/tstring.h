@@ -123,7 +123,7 @@ class tstring {
 
   const char& operator[](size_t i) const { return str_[i]; }
 
-  char* data() { return str_.data(); }
+  char* data() { return &str_[0]; }
 
   char& operator[](size_t i) { return str_[i]; }
 

@@ -431,18 +431,21 @@ public:
 
     // Compute and insert view sizes (max - min along the range).  Skip the
     // non-range operands as they will be projected away from the view.
-    int i = 0;
+    int i = 0, j = 0;
     for (Value *index : sliceOp.getIndexings()) {
-      if (!index->getType().isa<RangeType>())
+      if (!index->getType().isa<RangeType>()) {
+        ++j;
         continue;
+      }
 
-      Value *rangeDescriptor = operands[1 + i];
+      Value *rangeDescriptor = operands[1 + j];
       Value *min = extractvalue(int64Ty, rangeDescriptor, pos(0));
       Value *max = extractvalue(int64Ty, rangeDescriptor, pos(1));
       Value *size = sub(max, min);
 
       desc = insertvalue(viewDescriptorTy, desc, size, pos({2, i}));
       ++i;
+      ++j;
     }
 
     // Compute and insert view strides.  Step over the strides that correspond
@@ -731,8 +734,7 @@ void LowerLinalgToLLVMPass::runOnModule() {
   target.addLegalDialect<LLVM::LLVMDialect>();
   target.addDynamicallyLegalOp<FuncOp>(
       [&](FuncOp op) { return converter.isSignatureLegal(op.getType()); });
-  if (failed(applyPartialConversion(module, target, std::move(patterns),
-                                    &converter))) {
+  if (failed(applyPartialConversion(module, target, patterns, &converter))) {
     signalPassFailure();
   }
 
@@ -742,8 +744,8 @@ void LowerLinalgToLLVMPass::runOnModule() {
   }
 }
 
-ModulePassBase *mlir::linalg::createLowerLinalgToLLVMPass() {
-  return new LowerLinalgToLLVMPass();
+std::unique_ptr<ModulePassBase> mlir::linalg::createLowerLinalgToLLVMPass() {
+  return llvm::make_unique<LowerLinalgToLLVMPass>();
 }
 
 static PassRegistration<LowerLinalgToLLVMPass>

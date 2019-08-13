@@ -356,6 +356,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateShift) {
   TfLiteTensorFree(&output);
 }
 
+#ifndef __APPLE__  // Some Apple toolchains don't support std::ldexp
 TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   // Create input.
   TfLiteTensor input;
@@ -461,6 +462,7 @@ TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
   TfLiteTensorFree(&bias);
   TfLiteTensorFree(&output);
 }
+#endif
 
 TEST_F(KernelUtilTest, CheckAndPopulateUint8) {
   // Create input.

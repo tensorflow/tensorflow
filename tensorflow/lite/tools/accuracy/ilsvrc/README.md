@@ -110,7 +110,7 @@ bazel build -c opt \
      (make the directory if required):
 
 ```
-adb push bazel-bin/tensorflow/lite/tools/accuracy/ilsvrc/imagenet_accuracy_eval /data/local/tmp
+adb push bazel-bin/third_party/tensorflow/lite/tools/accuracy/ilsvrc/imagenet_accuracy_eval /data/local/tmp
 ```
 
 (3) Make the binary executable.

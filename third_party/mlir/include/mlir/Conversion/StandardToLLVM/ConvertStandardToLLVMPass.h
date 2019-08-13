@@ -57,12 +57,12 @@ void populateStdToLLVMConversionPatterns(LLVMTypeConverter &converter,
                                          OwningRewritePatternList &patterns);
 
 /// Creates a pass to convert the Standard dialect into the LLVMIR dialect.
-ModulePassBase *createConvertToLLVMIRPass();
+std::unique_ptr<ModulePassBase> createConvertToLLVMIRPass();
 
 /// Creates a pass to convert operations to the LLVMIR dialect.  The conversion
 /// is defined by a list of patterns and a type converter that will be obtained
 /// during the pass using the provided callbacks.
-ModulePassBase *
+std::unique_ptr<ModulePassBase>
 createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller,
                           LLVMTypeConverterMaker typeConverterMaker);
 
@@ -71,7 +71,7 @@ createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller,
 /// callback and an optional type conversion class, an instance is created
 /// during the pass.
 template <typename TypeConverter = LLVMTypeConverter>
-ModulePassBase *
+std::unique_ptr<ModulePassBase>
 createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller) {
   return createConvertToLLVMIRPass(patternListFiller, [](MLIRContext *context) {
     return llvm::make_unique<TypeConverter>(context);

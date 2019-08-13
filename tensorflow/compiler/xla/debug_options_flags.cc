@@ -251,6 +251,13 @@ static void AllocateFlags() {
           "we forbid to use multiplication by the reciprocal instead of "
           "division. Ignored when xla_cpu_enable_fast_math is false."),
       tensorflow::Flag(
+          "xla_cpu_fast_math_honor_functions",
+          bool_setter_for(&DebugOptions::set_xla_cpu_fast_math_honor_functions),
+          flag_values->xla_cpu_fast_math_honor_functions(),
+          "When xla_cpu_enable_fast_math is true then this controls whether "
+          "we forbid to approximate calculations for functions. Ignored when "
+          "xla_cpu_enable_fast_math is false."),
+      tensorflow::Flag(
           "xla_gpu_enable_fast_min_max",
           bool_setter_for(&DebugOptions::set_xla_gpu_enable_fast_min_max),
           flag_values->xla_gpu_enable_fast_min_max(),

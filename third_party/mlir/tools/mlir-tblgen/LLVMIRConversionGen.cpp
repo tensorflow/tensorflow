@@ -164,7 +164,7 @@ static bool emitOneBuilder(const Record &record, raw_ostream &os) {
   os << "if (auto op = dyn_cast<" << op.getQualCppClassName()
      << ">(opInst)) {\n";
   os << bs.str() << builderStrRef << "\n";
-  os << "  return false;\n";
+  os << "  return success();\n";
   os << "}\n";
 
   return true;
