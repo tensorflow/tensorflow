@@ -196,8 +196,10 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
-  # Make sure we get an input with handle data attached from resource variables.
-  input = ops.convert_to_tensor(input)
+  if context.executing_eagerly() and not hasattr(input, "graph"):
+    # Make sure we get an input with handle data attached from resource
+    # variables. Variables have correct handle data when graph building.
+    input = ops.convert_to_tensor(input)
   ret = gen_array_ops.identity(input, name=name)
   # Propagate handle data for happier shape inference for resource variables.
   if hasattr(input, "_handle_data"):
