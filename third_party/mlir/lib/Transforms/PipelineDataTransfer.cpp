@@ -49,8 +49,8 @@ struct PipelineDataTransfer : public FunctionPass<PipelineDataTransfer> {
 
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.
-FunctionPassBase *mlir::createPipelineDataTransferPass() {
-  return new PipelineDataTransfer();
+std::unique_ptr<FunctionPassBase> mlir::createPipelineDataTransferPass() {
+  return llvm::make_unique<PipelineDataTransfer>();
 }
 
 // Returns the position of the tag memref operand given a DMA operation.

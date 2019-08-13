@@ -22,23 +22,23 @@ namespace mlir {
 namespace TF {
 // Transforms functional control flow operations in the standard TensorFlow
 // dialect to MLIR Control Flow Graph (CFG) form.
-FunctionPassBase* CreateTFFunctionalControlFlowToCFG();
+std::unique_ptr<FunctionPassBase> CreateTFFunctionalControlFlowToCFG();
 
 // Optimizes Tensorflow graph.
-FunctionPassBase* CreateTFOptimizePass();
+std::unique_ptr<FunctionPassBase> CreateTFOptimizePass();
 
 }  // namespace TF
 
 namespace TFControlFlow {
 // Raises from the "TensorFlow Control Flow" dialect to the standard TensorFlow
 // dialect.
-FunctionPassBase* CreateRaiseTFControlFlowPass();
+std::unique_ptr<FunctionPassBase> CreateRaiseTFControlFlowPass();
 
 }  // namespace TFControlFlow
 
 namespace tf_executor {
 // Create a pass to merge IslandOps from TFExecutor dialect.
-FunctionPassBase* CreateTFExecutorIslandCoarseningPass();
+std::unique_ptr<FunctionPassBase> CreateTFExecutorIslandCoarseningPass();
 
 }  // namespace tf_executor
 
@@ -48,7 +48,7 @@ namespace TFDevice {
 FunctionPassBase* CreateClusterFormationPass();
 
 // Creates a pass that outlines regions of tf_device.launch operations.
-ModulePassBase* CreateClusterOutliningPass();
+std::unique_ptr<ModulePassBase> CreateClusterOutliningPass();
 }  // namespace TFDevice
 
 }  // namespace mlir

@@ -33,7 +33,7 @@ limitations under the License.
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
-FunctionPassBase *CreateTFExecutorToControlDialectConversion();
+std::unique_ptr<FunctionPassBase> CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
 namespace tensorflow {

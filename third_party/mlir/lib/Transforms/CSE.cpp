@@ -258,7 +258,9 @@ void CSE::runOnFunction() {
   markAnalysesPreserved<DominanceInfo, PostDominanceInfo>();
 }
 
-FunctionPassBase *mlir::createCSEPass() { return new CSE(); }
+std::unique_ptr<FunctionPassBase> mlir::createCSEPass() {
+  return llvm::make_unique<CSE>();
+}
 
 static PassRegistration<CSE>
     pass("cse", "Eliminate common sub-expressions in functions");

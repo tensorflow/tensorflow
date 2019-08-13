@@ -141,8 +141,8 @@ private:
 
 } // anonymous namespace
 
-ModulePassBase *createGenerateCubinAccessorPass() {
-  return new GpuGenerateCubinAccessorsPass();
+std::unique_ptr<ModulePassBase> createGenerateCubinAccessorPass() {
+  return llvm::make_unique<GpuGenerateCubinAccessorsPass>();
 }
 
 static PassRegistration<GpuGenerateCubinAccessorsPass>
