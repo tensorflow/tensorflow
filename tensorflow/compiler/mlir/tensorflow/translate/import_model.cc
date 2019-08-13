@@ -1106,12 +1106,14 @@ mlir::Operation* ImporterBase::createOperation(
   auto loc = result.location;
   // Dispatch based on the name and create the appropriate operation.
   if (node.IsSwitch()) {
+    // Switch and _SwitchN both are in switch class, differentiate based on
+    // number of outputs.
+    if (node.num_outputs() > 2) {
+      return builder_->create<mlir::tf_executor::SwitchNOp>(
+          loc, types, operands, result.attributes);
+    }
     return builder_->create<mlir::tf_executor::SwitchOp>(loc, types, operands,
                                                          result.attributes);
-  }
-  if (op_name == "tf.SwitchN") {
-    return builder_->create<mlir::tf_executor::SwitchNOp>(loc, types, operands,
-                                                          result.attributes);
   }
   if (node.IsMerge()) {
     return builder_->create<mlir::tf_executor::MergeOp>(loc, types, operands,

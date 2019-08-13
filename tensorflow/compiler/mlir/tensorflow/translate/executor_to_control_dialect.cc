@@ -142,7 +142,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
     if (isa<tf_executor::SwitchOp>(op)) {
       new_op_name = "_tf.Switch";
     } else if (isa<tf_executor::SwitchNOp>(op)) {
-      new_op_name = "_tf.SwitchN";
+      new_op_name = "_tf._SwitchN";
     } else if (isa<tf_executor::MergeOp>(op)) {
       new_op_name = "_tf.Merge";
     } else if (isa<tf_executor::NextIterationSourceOp>(op)) {

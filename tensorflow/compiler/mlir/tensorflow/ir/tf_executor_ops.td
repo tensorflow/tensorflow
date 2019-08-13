@@ -305,7 +305,7 @@ def TfExecutor_SwitchNOp : TfExecutor_Op<"SwitchN",
 
   let arguments = (ins
     AnyType:$data,
-    I32:$index,
+    TensorOf<[I32]>:$index,
     // Optional extra control inputs.
     Variadic<TfeControlType>:$controlInputs,
     I64Attr:$num_outs
