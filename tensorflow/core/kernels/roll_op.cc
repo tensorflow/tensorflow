@@ -360,7 +360,7 @@ struct Roll<CPUDevice, T> {
 TF_CALL_ALL_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_KERNEL(type)                                    \
   REGISTER_KERNEL_BUILDER(Name("Roll")                           \
                               .Device(DEVICE_GPU)                \
@@ -402,5 +402,5 @@ TF_CALL_complex64(REGISTER_KERNEL);
 TF_CALL_complex128(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }  // namespace tensorflow
