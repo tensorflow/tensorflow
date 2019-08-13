@@ -52,7 +52,7 @@ std::unique_ptr<FunctionPassBase> CreatePrepareQuantizePass(bool quantize_sign);
 std::unique_ptr<FunctionPassBase> CreatePostQuantizePass(
     bool emit_quant_adaptor_ops);
 
-// Creates an instance of the TensorFlow Lite dialect PruneUnexportedFunctions
+// Creates an instance of the TensorFlow Lite dialect TrimFunctions
 // pass.
 std::unique_ptr<ModulePassBase> CreateTrimFunctionsPass(
     llvm::ArrayRef<std::string> trim_funcs_whitelist);
