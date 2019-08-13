@@ -180,6 +180,11 @@ message DebugOptions {
   // xla_cpu_enable_fast_math is false.
   bool xla_cpu_fast_math_honor_division = 126;
 
+  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
+  // to approximate calculations for functions. Ignored when
+  // xla_cpu_enable_fast_math is false.
+  bool xla_cpu_fast_math_honor_functions = 129;
+
   // When true we lower the Minimum and Maximum hlos in the GPU backend such
   // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
   // this is true we don't propagate NaNs through Min and Max.
@@ -288,7 +293,7 @@ message DebugOptions {
   // Blacklist for cuDNN convolutions.
   string xla_gpu_cudnn_conv_blacklist_path = 128;
 
-  // Next id: 129
+  // Next id: 130
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
