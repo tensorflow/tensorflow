@@ -34,7 +34,7 @@ make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
 
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
   TARGET="arduino" \
-  TAGS="" \
+  TAGS="portable_optimized" \
   generate_projects
 
 tensorflow/lite/experimental/micro/tools/ci_build/install_arduino_cli.sh

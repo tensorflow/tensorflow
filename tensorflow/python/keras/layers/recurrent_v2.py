@@ -306,7 +306,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     self.could_use_cudnn = (
         activation == 'tanh' and recurrent_activation == 'sigmoid' and
         recurrent_dropout == 0 and not unroll and use_bias and
-        reset_after)
+        reset_after and ops.executing_eagerly_outside_functions())
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # GRU does not support constants. Ignore it during process.
@@ -896,7 +896,8 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     ]
     self.could_use_cudnn = (
         activation == 'tanh' and recurrent_activation == 'sigmoid' and
-        recurrent_dropout == 0 and not unroll and use_bias)
+        recurrent_dropout == 0 and not unroll and use_bias and
+        ops.executing_eagerly_outside_functions())
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # LSTM does not support constants. Ignore it during process.

@@ -104,7 +104,7 @@ protected:
   virtual void runOnFunction() = 0;
 
   /// A clone method to create a copy of this pass.
-  virtual FunctionPassBase *clone() const = 0;
+  virtual std::unique_ptr<FunctionPassBase> clone() const = 0;
 
   /// Return the current function being transformed.
   FuncOp getFunction() { return getPassState().irAndPassFailed.getPointer(); }
@@ -259,8 +259,8 @@ struct FunctionPass : public detail::PassModel<FuncOp, T, FunctionPassBase> {
   }
 
   /// A clone method to create a copy of this pass.
-  FunctionPassBase *clone() const override {
-    return new T(*static_cast<const T *>(this));
+  std::unique_ptr<FunctionPassBase> clone() const override {
+    return llvm::make_unique<T>(*static_cast<const T *>(this));
   }
 };
 

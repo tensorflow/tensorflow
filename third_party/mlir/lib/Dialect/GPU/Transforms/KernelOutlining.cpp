@@ -109,8 +109,8 @@ public:
 
 } // namespace
 
-ModulePassBase *mlir::createGpuKernelOutliningPass() {
-  return new GpuKernelOutliningPass();
+std::unique_ptr<ModulePassBase> mlir::createGpuKernelOutliningPass() {
+  return llvm::make_unique<GpuKernelOutliningPass>();
 }
 
 static PassRegistration<GpuKernelOutliningPass>

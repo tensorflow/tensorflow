@@ -17,8 +17,8 @@
 set -e
 
 # Get the latest version of pip so it recognize manylinux2010
-pip2 install --upgrade pip
-pip3 install --upgrade pip
+easy_install3 -U pip
+easy_install -U pip
 
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.

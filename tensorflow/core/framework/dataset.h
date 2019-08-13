@@ -68,7 +68,12 @@ class SerializationContext;
 class IteratorStateReader {
  public:
   virtual Status ReadScalar(StringPiece key, int64* val) = 0;
+#ifdef USE_TSTRING
+  // TODO(dero): Temp guard to prevent duplicate declaration during tstring
+  // migration.
   virtual Status ReadScalar(StringPiece key, string* val) = 0;
+#endif
+  virtual Status ReadScalar(StringPiece key, tstring* val) = 0;
   virtual Status ReadTensor(StringPiece key, Tensor* val) = 0;
   virtual bool Contains(StringPiece key) = 0;
 
@@ -80,7 +85,12 @@ class IteratorStateReader {
 class IteratorStateWriter {
  public:
   virtual Status WriteScalar(StringPiece key, const int64 val) = 0;
+#ifdef USE_TSTRING
+  // TODO(dero): Temp guard to prevent duplicate declaration during tstring
+  // migration.
   virtual Status WriteScalar(StringPiece key, const string& val) = 0;
+#endif
+  virtual Status WriteScalar(StringPiece key, const tstring& val) = 0;
   virtual Status WriteTensor(StringPiece key, const Tensor& val) = 0;
 
   virtual ~IteratorStateWriter() {}
@@ -115,7 +125,7 @@ class GraphDefBuilderWrapper {
   Status AddVector(const std::vector<T>& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<T>::v(),
                           TensorShape({static_cast<int64>(val.size())}));
-    for (int i = 0; i < val.size(); i++) {
+    for (size_t i = 0; i < val.size(); i++) {
       val_t.flat<T>()(i) = val[i];
     }
     AddTensorInternal(val_t, output);
@@ -124,6 +134,23 @@ class GraphDefBuilderWrapper {
     }
     return Status::OK();
   }
+
+#ifdef USE_TSTRING
+  // TODO(dero): Temp guard to prevent duplicate declaration during tstring
+  // migration.
+  Status AddVector(const std::vector<string>& val, Node** output) {
+    Tensor val_t = Tensor(DataTypeToEnum<tstring>::v(),
+                          TensorShape({static_cast<int64>(val.size())}));
+    for (size_t i = 0; i < val.size(); i++) {
+      val_t.flat<tstring>()(i) = val[i];
+    }
+    AddTensorInternal(val_t, output);
+    if (*output == nullptr) {
+      return errors::Internal("AddVector: Failed to build Const op.");
+    }
+    return Status::OK();
+  }
+#endif  // USE_TSTRING
 
   // Adds a `Const` node for the given tensor value to the graph.
   //

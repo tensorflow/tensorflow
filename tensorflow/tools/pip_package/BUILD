@@ -115,7 +115,6 @@ COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
     "//tensorflow/contrib/distribute/python:distribute_test_lib_pip",
     "//tensorflow/contrib/eager/python/examples:examples_pip",
     "//tensorflow/contrib/eager/python:evaluator",
-    "//tensorflow/contrib/gan:gan",
     "//tensorflow/contrib/graph_editor:graph_editor_pip",
     "//tensorflow/contrib/keras:keras",
     "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",

@@ -144,12 +144,12 @@ def run_benchmark(func, num_iters, execution_mode=None):
     # call func to maybe warm up the GPU
     func()
     if execution_mode == context.ASYNC:
-      ctx.async_wait()
+      ctx.executor.wait()
     start = time.time()
     for _ in xrange(num_iters):
       func()
     if execution_mode == context.ASYNC:
-      ctx.async_wait()
+      ctx.executor.wait()
     end = time.time()
 
     return end - start

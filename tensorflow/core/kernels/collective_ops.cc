@@ -78,6 +78,9 @@ class CollectiveGatherOpKernel : public CollectiveOpKernel {
     OP_REQUIRES_OK(
         c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("communication_hint",
+                      &col_params_.instance.impl_details.communication_hint));
     const NodeDef& real_node = c->def();
     col_params_.name = strings::StrCat(real_node.name(), ": Gather");
     col_params_.group.device_type = c->device_type();
@@ -167,6 +170,9 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
                     final_op_name));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
     OP_REQUIRES_OK(c, c->GetAttr("wait_for", &dependencies_));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("communication_hint",
+                      &col_params_.instance.impl_details.communication_hint));
 
     const NodeDef& real_node = c->def();
     col_params_.name = strings::StrCat(real_node.name(), ": Reduce(",
@@ -261,6 +267,9 @@ class CollectiveBcastSendOpKernel : public CollectiveOpKernel {
         c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
     OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_.instance.shape));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("communication_hint",
+                      &col_params_.instance.impl_details.communication_hint));
     col_params_.is_source = true;
     col_params_.instance.impl_details.subdiv_offsets = {0};
 
@@ -330,6 +339,9 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpKernel {
         c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
     OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_.instance.shape));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("communication_hint",
+                      &col_params_.instance.impl_details.communication_hint));
     col_params_.is_source = false;
     col_params_.instance.impl_details.subdiv_offsets = {0};
 

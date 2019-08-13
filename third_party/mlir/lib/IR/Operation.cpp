@@ -273,12 +273,12 @@ Dialect *Operation::getDialect() {
   return getContext()->getRegisteredDialect(getName().getDialect());
 }
 
-Region *Operation::getContainingRegion() const {
+Region *Operation::getParentRegion() {
   return block ? block->getParent() : nullptr;
 }
 
 Operation *Operation::getParentOp() {
-  return block ? block->getContainingOp() : nullptr;
+  return block ? block->getParentOp() : nullptr;
 }
 
 /// Replace any uses of 'from' with 'to' within this operation.
@@ -858,7 +858,7 @@ static LogicalResult verifyBBArguments(Operation::operand_range operands,
 }
 
 static LogicalResult verifyTerminatorSuccessors(Operation *op) {
-  auto *parent = op->getContainingRegion();
+  auto *parent = op->getParentRegion();
 
   // Verify that the operands lines up with the BB arguments in the successor.
   for (unsigned i = 0, e = op->getNumSuccessors(); i != e; ++i) {

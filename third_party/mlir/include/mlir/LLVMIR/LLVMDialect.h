@@ -66,6 +66,7 @@ public:
 
   /// Array type utilities.
   LLVMType getArrayElementType();
+  unsigned getArrayNumElements();
 
   /// Vector type utilities.
   LLVMType getVectorElementType();

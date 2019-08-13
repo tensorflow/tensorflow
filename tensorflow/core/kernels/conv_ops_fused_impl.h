@@ -586,25 +586,24 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     int device_id = stream->parent()->device_ordinal();
     DataType dtype = input.dtype();
     FusedConvParameters conv_parameters = {
-        {
-            in_batch,                      // batch
-            in_depths,                     // in_depths
-            {{in_rows,                     // in_rows
-              in_cols}},                   // in_cols
-            FORMAT_NCHW,                   // compute_data_format
-            out_depths,                    // out_depths
-            {{patch_rows,                  // filter_rows
-              patch_cols,                  // filter_cols
-              patch_depths}},              // filter_depths
-            {{dimensions.dilation_rows,    // dilation_rows
-              dimensions.dilation_cols}},  // dilation_cols
-            {{dimensions.stride_rows,      // stride_rows
-              dimensions.stride_cols}},    // stride_cols
-            {{common_padding_rows,         // padding_rows
-              common_padding_cols}},       // padding_cols
-            dtype,                         // tensor datatype
-            device_id,                     // device_id
-        },
+        {in_batch,                      // batch
+         in_depths,                     // in_depths
+         {{in_rows,                     // in_rows
+           in_cols}},                   // in_cols
+         FORMAT_NCHW,                   // compute_data_format
+         out_depths,                    // out_depths
+         {{patch_rows,                  // filter_rows
+           patch_cols,                  // filter_cols
+           patch_depths}},              // filter_depths
+         {{dimensions.dilation_rows,    // dilation_rows
+           dimensions.dilation_cols}},  // dilation_cols
+         {{dimensions.stride_rows,      // stride_rows
+           dimensions.stride_cols}},    // stride_cols
+         {{common_padding_rows,         // padding_rows
+           common_padding_cols}},       // padding_cols
+         dtype,                         // tensor datatype
+         device_id,                     // device_id
+         conv_desc.group_count()},
         dnn_activation_mode  // activation_mode
     };
 

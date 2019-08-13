@@ -575,11 +575,11 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return port::Status::OK();
 }
 
-/* static */ bool GpuDriver::LoadPtx(GpuContext* context,
-                                     const char* ptx_contents,
-                                     CUmodule* module) {
+/* static */ port::Status GpuDriver::LoadPtx(GpuContext* context,
+                                             const char* ptx_contents,
+                                             CUmodule* module) {
   absl::Notification notification;
-  bool ret = true;
+  port::Status ret = port::Status::OK();
   GetDriverExecutor()->Schedule([context, ptx_contents, module, &ret,
                                  &notification]() {
     ScopedActivateContext activation(context);
@@ -629,7 +629,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                               : 0] = '\0';
       LOG(ERROR) << "error log buffer (" << error_log_buffer_bytes
                  << " bytes): " << error_log_buffer.data();
-      ret = false;
+      ret = port::InternalError(
+          absl::StrCat("Failed to load PTX text as a module: ", ToString(res)));
       notification.Notify();
     }
 

@@ -180,6 +180,11 @@ Status WriteMetadataFile(const string& hash_dir,
   string metadata_filename = absl::StrCat(hash_dir, "/", kSnapshotFilename);
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(hash_dir));
 
+  Status exists = Env::Default()->FileExists(metadata_filename);
+  if (exists.ok()) {
+    TF_RETURN_IF_ERROR(Env::Default()->DeleteFile(metadata_filename));
+  }
+
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(metadata_filename, &file));
 
@@ -931,7 +936,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               TF_RETURN_IF_ERROR((*writer)->Close());
               TF_RETURN_IF_ERROR((*file)->Close());
               *snapshot_data_filename = GetSnapshotFilename();
-              TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(
+              TF_RETURN_IF_ERROR(Env::Default()->NewAppendableFile(
                   *snapshot_data_filename, file));
               *writer = absl::make_unique<SnapshotWriter>(
                   file->get(), dataset()->compression_);
@@ -980,7 +985,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           string snapshot_data_filename = GetSnapshotFilename();
           std::unique_ptr<WritableFile> file;
           Status s =
-              Env::Default()->NewWritableFile(snapshot_data_filename, &file);
+              Env::Default()->NewAppendableFile(snapshot_data_filename, &file);
           if (!s.ok()) {
             LOG(ERROR) << "Creating " << snapshot_data_filename
                        << " failed: " << s.ToString();

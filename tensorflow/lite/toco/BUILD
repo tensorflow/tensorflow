@@ -201,6 +201,7 @@ cc_library(
         "graph_transformations/group_bidirectional_sequence_ops.cc",
         "graph_transformations/hardcode_min_max.cc",
         "graph_transformations/identify_dilated_conv.cc",
+        "graph_transformations/identify_hardswish.cc",
         "graph_transformations/identify_l2_normalization.cc",
         "graph_transformations/identify_l2_pool.cc",
         "graph_transformations/identify_lstm.cc",
@@ -208,6 +209,7 @@ cc_library(
         "graph_transformations/identify_lstm_split_inputs.cc",
         "graph_transformations/identify_prelu.cc",
         "graph_transformations/identify_relu1.cc",
+        "graph_transformations/identify_util.cc",
         "graph_transformations/lstm_utils.cc",
         "graph_transformations/make_initial_dequantize_operator.cc",
         "graph_transformations/merge_reshape_into_preceding_transpose.cc",
@@ -280,6 +282,7 @@ cc_library(
     ],
     hdrs = [
         "graph_transformations/graph_transformations.h",
+        "graph_transformations/identify_util.h",
         "graph_transformations/lstm_utils.h",
     ],
     visibility = ["//visibility:public"],

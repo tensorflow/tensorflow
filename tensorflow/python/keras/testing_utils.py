@@ -442,6 +442,16 @@ class _SubclassModel(keras.Model):
   """A Keras subclass model."""
 
   def __init__(self, layers, *args, **kwargs):
+    """Instantiate a model.
+
+    Args:
+      layers: a list of layers to be added to the model.
+      *args: Model's args
+      **kwargs: Model's keyword args, at most one of
+        input_tensor -> the input tensor required for ragged/sparse input.
+    """
+
+    inputs = kwargs.pop('input_tensor', None)
     super(_SubclassModel, self).__init__(*args, **kwargs)
     # Note that clone and build doesn't support lists of layers in subclassed
     # models. Adding each layer directly here.
@@ -449,6 +459,9 @@ class _SubclassModel(keras.Model):
       setattr(self, self._layer_name_for_i(i), layer)
 
     self.num_layers = len(layers)
+
+    if inputs is not None:
+      self._set_inputs(inputs)
 
   def _layer_name_for_i(self, i):
     return 'layer{}'.format(i)
@@ -504,7 +517,14 @@ def get_model_from_layers(layers,
 
   model_type = get_model_type()
   if model_type == 'subclass':
-    return _SubclassModel(layers, name=name)
+    inputs = None
+    if input_ragged or input_sparse:
+      inputs = keras.Input(
+          shape=input_shape,
+          dtype=input_dtype,
+          ragged=input_ragged,
+          sparse=input_sparse)
+    return _SubclassModel(layers, name=name, input_tensor=inputs)
 
   if model_type == 'subclass_custom_build':
     layer_generating_func = lambda: layers

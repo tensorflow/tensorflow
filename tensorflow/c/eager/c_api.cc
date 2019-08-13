@@ -202,8 +202,6 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
         "Currently, TFE_NewContext only supports tensorflow::GrpcServer."));
   }
 
-  LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
-
   tensorflow::uint64 context_id = tensorflow::EagerContext::NewContextId();
   // Make master eager context accessible by local eager service, which might
   // receive send tensor requests from remote workers.
@@ -270,12 +268,18 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   auto remote_mgr = absl::make_unique<tensorflow::eager::RemoteMgr>(
       /*is_master=*/true, ctx->context);
 
-  return ctx->context->InitializeRemoteMaster(
+  LOG_AND_RETURN_IF_ERROR(ctx->context->InitializeRemoteMaster(
       std::move(server), grpc_server->worker_env(), worker_session,
       std::move(remote_eager_workers), std::move(remote_device_mgr),
       remote_workers, context_id, r, device_mgr, keep_alive_secs,
-      worker_session->cluster_flr.get(), std::move(remote_mgr));
+      worker_session->cluster_flr.get(), std::move(remote_mgr)));
+
+  // NOTE: We start the server after all other initialization, because the
+  // GrpcServer cannot be destroyed after it is started.
+  LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
 #undef LOG_AND_RETURN_IF_ERROR
+
+  return tensorflow::Status::OK();
 }
 #endif  // !IS_MOBILE_PLATFORM
 

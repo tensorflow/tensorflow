@@ -57,7 +57,7 @@ using TfLiteDelegatePtrMap = std::map<std::string, TfLiteDelegatePtr>;
 
 TfLiteDelegatePtr CreateGPUDelegate(Settings* s) {
 #if defined(__ANDROID__)
-  TfLiteGpuDelegateOptions options;
+  TfLiteGpuDelegateOptions options = TfLiteGpuDelegateOptionsDefault();
   options.metadata = TfLiteGpuDelegateGetModelMetadata(s->model->GetModel());
   if (s->allow_fp16) {
     options.compile_options.precision_loss_allowed = 1;

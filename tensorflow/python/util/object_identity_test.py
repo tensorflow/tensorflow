@@ -30,5 +30,23 @@ class ObjectIdentityWrapperTest(test.TestCase):
     self.assertNotEqual(object_identity._ObjectIdentityWrapper(o), o)
 
 
+class ObjectIdentitySetTest(test.TestCase):
+
+  def testDifference(self):
+
+    class Element(object):
+      pass
+
+    a = Element()
+    b = Element()
+    c = Element()
+    set1 = object_identity.ObjectIdentitySet([a, b])
+    set2 = object_identity.ObjectIdentitySet([b, c])
+    diff_set = set1.difference(set2)
+    self.assertIn(a, diff_set)
+    self.assertNotIn(b, diff_set)
+    self.assertNotIn(c, diff_set)
+
+
 if __name__ == '__main__':
   test.main()

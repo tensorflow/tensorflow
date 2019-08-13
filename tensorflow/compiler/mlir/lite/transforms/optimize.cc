@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace TFL {
@@ -64,86 +66,60 @@ bool IsBroadcastableElementsAttrs(Attribute a, Attribute b) {
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
 // Fuse Add with proceeding FullyConnected.
-// Note that this assumes that the bias in the fullyConnected
-// is always None.
 // TODO(b/136285429): Move to tablegen when variadic is supported
-// and add support for bias with noneType type.
-struct FuseFullyConnectedAndAdd : public RewritePattern {
-  explicit FuseFullyConnectedAndAdd(MLIRContext *context)
-      : RewritePattern(TFL::AddOp::getOperationName(),
-                       {"tfl.fully_connected", "tfl.add", "std.constant"}, 4,
-                       context) {}
+struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
+  using OpRewritePattern<TFL::AddOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(Operation *add_op,
+  PatternMatchResult matchAndRewrite(TFL::AddOp add_op,
                                      PatternRewriter &rewriter) const override {
+    // Add.
+    DenseElementsAttr added_value;
+    Value *constant_val = add_op.rhs();
+    if (!matchPattern(constant_val, m_Constant(&added_value)))
+      return matchFailure();
+
     // Fully Connected.
-    Operation *fully_connected = add_op->getOperand(0)->getDefiningOp();
-    if (!fully_connected || !isa<TFL::FullyConnectedOp>(fully_connected))
+    auto fc_op =
+        dyn_cast_or_null<TFL::FullyConnectedOp>(add_op.lhs()->getDefiningOp());
+    if (!fc_op) return matchFailure();
+
+    Value *filter = fc_op.filter();
+    Value *bias = fc_op.bias();
+    ElementsAttr bias_value;
+    const bool is_none_bias = bias->getType().isa<NoneType>();
+    if (!is_none_bias && !matchPattern(bias, m_Constant(&bias_value)))
       return matchFailure();
-    TFL::FullyConnectedOp fully_connected_op =
-        llvm::cast<TFL::FullyConnectedOp>(fully_connected);
-    Value *input = fully_connected_op.input();
-    Value *filter = fully_connected_op.filter();
-
-    // Make sure the bias is None.
-    // TODO(karimnosseir): Support non None case.
-    Operation *bias_op = fully_connected_op.bias()->getDefiningOp();
-    if (!bias_op || !isa<ConstantOp>(bias_op)) return matchFailure();
-    if (!fully_connected_op.bias()->getType().isa<NoneType>())
-      return matchFailure();
-
-    auto activation_func = fully_connected_op.getAttrOfType<StringAttr>(
-        "fused_activation_function");
-    if (!activation_func) return matchFailure();
-    if (activation_func.cast<StringAttr>().getValue() != "NONE")
-      return matchFailure();
-
-    auto weight_format =
-        fully_connected_op.getAttrOfType<StringAttr>("weights_format");
-    if (!weight_format) return matchFailure();
-
-    auto keep_num_dims =
-        fully_connected_op.getAttrOfType<BoolAttr>("keep_num_dims");
-    if (!keep_num_dims) return matchFailure();
-
-    auto constant_op = add_op->getOperand(1)->getDefiningOp();
-    if (!constant_op) return matchFailure();
-    if (!isa<ConstantOp>(constant_op)) return matchFailure();
-
-    auto add_value = constant_op->getAttrOfType<Attribute>("value");
-    if (!add_value) return matchFailure();
-    if (!((add_value.cast<ElementsAttr>().getType().getElementType().isF32())))
-      return matchFailure();
-
-    auto fused_activation_func =
-        add_op->getAttrOfType<StringAttr>("fused_activation_function");
-    if (!fused_activation_func) return matchFailure();
+    if (fc_op.fused_activation_function() != "NONE") return matchFailure();
 
     // Rewrite
-    // TODO(karimnosseir): Check what constraints needed to apply.
-    // TODO(b/136171362): Check for single output consumer.
+    Location loc = fc_op.getLoc();
+    // If bias isn't None, it needs to be added as well.
+    if (is_none_bias) {
+      bias = constant_val;
+    } else {
+      auto none_af = rewriter.getStringAttr("NONE");
+      bias = rewriter.create<AddOp>(loc, bias, constant_val, none_af).output();
+    }
     rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
-        add_op, add_op->getResult(0)->getType(),
-        /*input=*/input,
+        add_op, add_op.getType(),
+        /*input=*/fc_op.input(),
         /*filter=*/filter,
-        /*bias=*/add_op->getOperand(1),
-        /*fused_activation_function=*/fused_activation_func,
-        /*weights_format=*/weight_format,
-        /*keep_num_dims=*/keep_num_dims);
+        /*bias=*/bias,
+        /*fused_activation_function=*/
+        rewriter.getStringAttr(add_op.fused_activation_function()),
+        /*weights_format=*/rewriter.getStringAttr(fc_op.weights_format()),
+        /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
 
     return matchSuccess();
   }
 };
 
 // TODO(b/136285429): Move to tablegen when variadic is supported.
-struct FuseFullyConnectedAndRelu : public RewritePattern {
-  explicit FuseFullyConnectedAndRelu(MLIRContext *context)
-      : RewritePattern(TFL::ReluOp::getOperationName(), {"tfl.fully_connected"},
-                       4, context) {}
+struct FuseFullyConnectedAndRelu : public OpRewritePattern<TFL::ReluOp> {
+  using OpRewritePattern<TFL::ReluOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(Operation *op,
+  PatternMatchResult matchAndRewrite(TFL::ReluOp relu_op,
                                      PatternRewriter &rewriter) const override {
-    auto relu_op = cast<ReluOp>(op);
     Operation *input = relu_op.getOperand()->getDefiningOp();
     if (!isa_and_nonnull<FullyConnectedOp>(input)) return matchFailure();
     auto fully_connected_op = cast<FullyConnectedOp>(input);
@@ -166,21 +142,15 @@ struct FuseFullyConnectedAndRelu : public RewritePattern {
 
 // Fuse Mul with proceeding FullyConnected.
 // TODO(b/136285429): Move to tablegen when variadic is supported
-struct FuseFullyConnectedAndMul : public RewritePattern {
-  explicit FuseFullyConnectedAndMul(MLIRContext *context)
-      : RewritePattern(TFL::MulOp::getOperationName(),
-                       {"tfl.fully_connected", "tfl.mul", "std.constant"}, 4,
-                       context) {}
+struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
+  using OpRewritePattern<TFL::MulOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(Operation *op,
+  PatternMatchResult matchAndRewrite(TFL::MulOp mul_op,
                                      PatternRewriter &rewriter) const override {
     // Mul.
-    auto mul_op = cast<MulOp>(op);
     DenseElementsAttr cst;
     Value *constant_val = mul_op.rhs();
-    if (!matchPattern(constant_val, m_Constant(&cst))) {
-      return matchFailure();
-    }
+    if (!matchPattern(constant_val, m_Constant(&cst))) return matchFailure();
 
     // Fully Connected.
     auto fc_op =
@@ -188,6 +158,11 @@ struct FuseFullyConnectedAndMul : public RewritePattern {
     if (!fc_op) return matchFailure();
     Value *filter = fc_op.filter();
     Value *bias = fc_op.bias();
+    ElementsAttr cst_tmp;
+    if (!matchPattern(filter, m_Constant(&cst_tmp))) return matchFailure();
+    if (!bias->getType().isa<NoneType>() &&
+        !matchPattern(bias, m_Constant(&cst_tmp)))
+      return matchFailure();
     if (fc_op.fused_activation_function().equals("None")) return matchFailure();
 
     // Broadcast the constant operand of Mul if it isn't compatible to the
@@ -210,20 +185,21 @@ struct FuseFullyConnectedAndMul : public RewritePattern {
       new_const_val = new_op.getResult();
     }
 
-    // Rewrite.
+    // Rewrite. Since the folder of TFL::MulOp couldn't broadcast the operands,
+    // TF::MulOp is used to fold the constant.
+    // TODO(b/139192933): switch to the TFL constant folding
     Location loc = fc_op.getLoc();
-    auto af_none = rewriter.getStringAttr(fc_op.fused_activation_function());
     auto new_filter =
-        rewriter.create<MulOp>(loc, filter, new_const_val, af_none);
+        rewriter.create<TF::MulOp>(loc, filter, new_const_val).z();
     // If bias isn't None, it needs to be multiplied as well.
     if (!bias->getType().isa<NoneType>()) {
-      bias = rewriter.create<MulOp>(loc, bias, constant_val, af_none).output();
+      bias = rewriter.create<TF::MulOp>(loc, bias, constant_val).z();
     }
 
     rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
         mul_op, mul_op.getType(),
         /*input=*/fc_op.input(),
-        /*filter=*/new_filter.output(),
+        /*filter=*/new_filter,
         /*bias=*/bias,
         /*fused_activation_function=*/
         rewriter.getStringAttr(mul_op.fused_activation_function()),
@@ -267,12 +243,12 @@ struct PadStridedSliceDims : public RewritePattern {
 
     // Insert a new reshape op.
     Value *original_input = strided_slice.input();
-    const RankedTensorType &original_input_type =
-        original_input->getType().template cast<RankedTensorType>();
+    RankedTensorType original_input_type =
+        original_input->getType().cast<RankedTensorType>();
     const ArrayRef<int64_t> &original_input_shape =
         original_input_type.getShape();
-    const RankedTensorType &begin_type =
-        strided_slice.begin()->getType().template cast<RankedTensorType>();
+    RankedTensorType begin_type =
+        strided_slice.begin()->getType().cast<RankedTensorType>();
     const int dim_size = begin_type.getShape()[0];
     SmallVector<int64_t, 4> new_shape;
     int mask = 1;
@@ -324,13 +300,15 @@ void Optimize::runOnFunction() {
   TFL::populateWithGenerated(ctx, &patterns);
   patterns.insert<FuseFullyConnectedAndAdd, FuseFullyConnectedAndRelu,
                   FuseFullyConnectedAndMul, PadStridedSliceDims>(ctx);
-  applyPatternsGreedily(func, std::move(patterns));
+  applyPatternsGreedily(func, patterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-FunctionPassBase *CreateOptimizePass() { return new Optimize(); }
+std::unique_ptr<FunctionPassBase> CreateOptimizePass() {
+  return llvm::make_unique<Optimize>();
+}
 
 static PassRegistration<Optimize> pass(
     "tfl-optimize", "Optimize within the TensorFlow Lite dialect");

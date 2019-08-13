@@ -460,7 +460,7 @@ void Pack8bitAvx512(const std::int8_t* src_ptr, std::int8_t input_xor,
 
   using Layout = PackImpl8bitAvx512::Layout;
   constexpr int kHalfBlockOffset = 32;
-  RUY_DCHECK_EQ(kHalfBlockOffset * 2, Layout::kRows * Layout::kRows);
+  RUY_DCHECK_EQ(kHalfBlockOffset * 2, Layout::kRows * Layout::kCols);
   static constexpr int kHalfLayoutCols =
       PackImpl8bitAvx512::kHalfLayoutCols;  // Half the number of cols in a
                                             // block.

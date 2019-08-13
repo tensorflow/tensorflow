@@ -367,14 +367,14 @@ struct LowerVectorTransfersPass
     patterns.insert<VectorTransferRewriter<vector::VectorTransferReadOp>,
                     VectorTransferRewriter<vector::VectorTransferWriteOp>>(
         context);
-    applyPatternsGreedily(getFunction(), std::move(patterns));
+    applyPatternsGreedily(getFunction(), patterns);
   }
 };
 
 } // end anonymous namespace
 
-FunctionPassBase *mlir::createLowerVectorTransfersPass() {
-  return new LowerVectorTransfersPass();
+std::unique_ptr<FunctionPassBase> mlir::createLowerVectorTransfersPass() {
+  return llvm::make_unique<LowerVectorTransfersPass>();
 }
 
 static PassRegistration<LowerVectorTransfersPass>

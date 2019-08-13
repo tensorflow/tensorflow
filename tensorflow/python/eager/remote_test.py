@@ -90,7 +90,7 @@ class SingleWorkerTest(test.TestCase):
       with ops.device('cpu:0'):
         return i + constant_op.constant([2])
 
-    with self.assertRaises(ValueError) as cm:
+    with self.assertRaises(errors.InvalidArgumentError) as cm:
       with ops.device('/job:worker/replica:0/task:0/cpu:0'):
         ambiguous_device(constant_op.constant([2])).numpy()
 

@@ -141,6 +141,7 @@ def : Pat<(TF_SquareOp $arg), (TFL_SquareOp $arg)>;
 // TODO(jpienaar): this is not true for all selects, TF's select supports rank 0
 // condition
 def : Pat<(TF_SelectOp $cond, $x, $y), (TFL_SelectOp $cond, $x, $y)>;
+def : Pat<(TF_SelectV2Op $cond, $x, $y), (TFL_SelectOp $cond, $x, $y)>;
 def : Pat<(TF_ShapeOp $arg), (TFL_ShapeOp $arg)>;
 def : Pat<(TF_SigmoidOp $arg), (TFL_LogisticOp $arg)>;
 def : Pat<(TF_SinOp F32Tensor:$arg), (TFL_SinOp $arg)>;

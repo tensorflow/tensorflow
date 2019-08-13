@@ -160,10 +160,6 @@ class EagerExecutor {
   std::multimap<EagerNode*, condition_variable*> node_done_notifications_
       GUARDED_BY(node_queue_mutex_);
 
-  // Thread object that calls the `Run` method in async mode.This thread runs
-  // till thread_done_ is set to true. It is `nullptr` in sync mode.
-  const std::unique_ptr<Thread> thread_;
-
   // thread_exited_notification_ is notified by the `thread_` right before it
   // exits.
   Notification thread_exited_notification_;
@@ -171,6 +167,10 @@ class EagerExecutor {
   // Indicates that `thread_` should stop as soon as it is done executing the
   // current EagerNode.
   ExecutorState state_ GUARDED_BY(node_queue_mutex_) = ExecutorState::kActive;
+
+  // Thread object that calls the `Run` method in async mode.This thread runs
+  // until state_ is set to kShuttingDown. It is `nullptr` in sync mode.
+  const std::unique_ptr<Thread> thread_;
 };
 
 }  // namespace tensorflow

@@ -1747,7 +1747,7 @@ void ProcessSqueezeOperator(Model* model, SqueezeOperator* op) {
 }
 
 void ProcessSvdfOperator(Model* model, SvdfOperator* op) {
-  CHECK(op->inputs.size() == 3 || op->inputs.size() == 4);
+  CHECK(op->inputs.size() == 4 || op->inputs.size() == 5);
   const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) return;
 
@@ -1757,7 +1757,7 @@ void ProcessSvdfOperator(Model* model, SvdfOperator* op) {
   const auto& weights_time_array = model->GetArray(op->inputs[2]);
   if (!weights_time_array.has_shape()) return;
 
-  const bool has_bias = (op->inputs.size() == 4);
+  const bool has_bias = (op->inputs.size() == 5);
   if (has_bias) {
     const auto& bias_array = model->GetArray(op->inputs[3]);
     if (!bias_array.has_shape()) return;

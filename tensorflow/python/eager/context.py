@@ -65,14 +65,9 @@ ASYNC = 1
 MIRRORING_NONE = pywrap_tensorflow.TFE_MIRRORING_NONE
 MIRRORING_ALL = pywrap_tensorflow.TFE_MIRRORING_ALL
 
-_tf2_gauge = monitoring.BoolGauge("/tensorflow/api/tf2_enable",
-                                  "Whether tf2.enable() is called.")
-
 _python_eager_context_create_counter = monitoring.Counter(
     "/tensorflow/api/python/eager_context_create_counter",
     "Counter for number of eager contexts created in Python.")
-
-_tf2_gauge.get_cell().set(tf2.enabled())
 
 
 class _EagerTensorCache(object):

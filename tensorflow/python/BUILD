@@ -2483,6 +2483,7 @@ tf_py_test(
     additional_deps = [
         ":client_testlib",
         ":collective_ops",
+        ":kernels",
         ":framework_for_generated_wrappers",
         "//third_party/py/numpy",
     ],
@@ -2500,6 +2501,7 @@ cuda_py_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_rocm",
         "no_windows",
     ],
 )
@@ -5499,7 +5501,10 @@ cuda_py_test(
         ":variable_scope",
         ":variables",
     ],
-    tags = ["notsan"],
+    tags = [
+        "no_windows",  # b/139083295: bfloat16 tests fail on Windows
+        "notsan",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 

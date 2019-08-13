@@ -330,7 +330,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.evaluate(loaded(input_arr_1, training=False))
     self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
 
-  def save_with_signatures(self):
+  def testSaveWithSignatures(self):
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(5, input_shape=(3,),
                                  kernel_regularizer=regularizers.get('l2')))
