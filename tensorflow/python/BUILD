@@ -2483,6 +2483,7 @@ tf_py_test(
     additional_deps = [
         ":client_testlib",
         ":collective_ops",
+        ":kernels",
         ":framework_for_generated_wrappers",
         "//third_party/py/numpy",
     ],
@@ -2500,6 +2501,7 @@ cuda_py_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_rocm",
         "no_windows",
     ],
 )
@@ -4547,6 +4549,12 @@ py_library(
     ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass"]),
 )
 
+tf_py_test(
+    name = "object_identity_test",
+    size = "small",
+    srcs = ["util/object_identity_test.py"],
+)
+
 # Placeholder for intenal nest_test comments.
 tf_py_test(
     name = "util_nest_test",
@@ -4967,6 +4975,22 @@ filegroup(
     name = "get_pywrap_tensorflow_import_lib_file",
     srcs = [":_pywrap_tensorflow_internal.so"],
     output_group = "interface_library",
+)
+
+cc_import(
+    name = "_pywrap_tensorflow_internal_linux",
+    shared_library = "//tensorflow/python:lib_pywrap_tensorflow_internal.so",
+)
+
+cc_import(
+    name = "_pywrap_tensorflow_internal_macos",
+    shared_library = "//tensorflow/python:lib_pywrap_tensorflow_internal.dylib",
+)
+
+cc_import(
+    name = "_pywrap_tensorflow_internal_windows",
+    interface_library = "//tensorflow/python:pywrap_tensorflow_import_lib_file",
+    shared_library = "//tensorflow/python:_pywrap_tensorflow_internal.dll",
 )
 
 # Rename the import library for _pywrap_tensorflow_internal.pyd to _pywrap_tensorflow_internal.lib
@@ -5477,7 +5501,10 @@ cuda_py_test(
         ":variable_scope",
         ":variables",
     ],
-    tags = ["notsan"],
+    tags = [
+        "no_windows",  # b/139083295: bfloat16 tests fail on Windows
+        "notsan",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 

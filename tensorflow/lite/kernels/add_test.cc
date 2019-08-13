@@ -109,7 +109,7 @@ TEST(FloatAddOpModel, ActivationRELU_N1_TO_1) {
 TEST(FloatAddOpModel, VariousInputShapes) {
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
-  for (int i = 0; i < test_shapes.size(); ++i) {
+  for (size_t i = 0; i < test_shapes.size(); ++i) {
     FloatAddOpModel m({TensorType_FLOAT32, test_shapes[i]},
                       {TensorType_FLOAT32, test_shapes[i]},
                       {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
@@ -125,7 +125,7 @@ TEST(FloatAddOpModel, VariousInputShapes) {
 TEST(FloatAddOpModel, WithBroadcast) {
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
-  for (int i = 0; i < test_shapes.size(); ++i) {
+  for (size_t i = 0; i < test_shapes.size(); ++i) {
     FloatAddOpModel m({TensorType_FLOAT32, test_shapes[i]},
                       {TensorType_FLOAT32, {}},  // always a scalar
                       {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
@@ -162,7 +162,7 @@ TEST(IntegerAddOpModel, ActivationRELU_N1_TO_1) {
 TEST(IntegerAddOpModel, VariousInputShapes) {
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
-  for (int i = 0; i < test_shapes.size(); ++i) {
+  for (size_t i = 0; i < test_shapes.size(); ++i) {
     IntegerAddOpModel m({TensorType_INT32, test_shapes[i]},
                         {TensorType_INT32, test_shapes[i]},
                         {TensorType_INT32, {}}, ActivationFunctionType_NONE);
@@ -177,7 +177,7 @@ TEST(IntegerAddOpModel, VariousInputShapes) {
 TEST(IntegerAddOpModel, WithBroadcast) {
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
-  for (int i = 0; i < test_shapes.size(); ++i) {
+  for (size_t i = 0; i < test_shapes.size(); ++i) {
     IntegerAddOpModel m({TensorType_INT32, test_shapes[i]},
                         {TensorType_INT32, {}},  // always a scalar
                         {TensorType_INT32, {}}, ActivationFunctionType_NONE);
@@ -199,7 +199,7 @@ void QuantizedTestsNoActivation() {
       {0.6, 0.4, 0.3, 0.1}, {0.6, 0.4, 0.5, -0.8}, {0.6, 0.4, -0.8, 0.5}};
   std::vector<std::vector<float>> results = {
       {0.7, 0.6, 0.6, 0.5}, {-0.2, 0.6, 0.9, -0.1}, {-0.2, 0.6, -0.1, 0.8}};
-  for (int i = 0; i < inputs1.size(); ++i) {
+  for (size_t i = 0; i < inputs1.size(); ++i) {
     QuantizedAddOpModel m({tensor_type, {1, 2, 2, 1}, -1.0, 1.0},
                           {tensor_type, {1, 2, 2, 1}, -1.0, 1.0},
                           {tensor_type, {}, -1.0, 1.0},
@@ -232,7 +232,7 @@ TEST(QuantizedAddOpModel, QuantizedTestsNoActivationInt16) {
       {0.6, 0.4, 0.3, 0.1}, {0.6, 0.4, 0.5, -0.8}, {0.6, 0.4, -0.8, 0.5}};
   std::vector<std::vector<float>> results = {
       {0.7, 0.6, 0.6, 0.5}, {-0.2, 0.6, 0.9, -0.1}, {-0.2, 0.6, -0.1, 0.8}};
-  for (int i = 0; i < inputs1.size(); ++i) {
+  for (size_t i = 0; i < inputs1.size(); ++i) {
     QuantizedAddOpModel m({TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
                           {TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
                           {TensorType_INT16, {}, kMin, kMax},
@@ -256,7 +256,7 @@ void QuantizedTestsActivationRELU_N1_TO_1() {
                                              {0.6, 0.4, -0.8, 0.5}};
   std::vector<std::vector<float>> results = {{-0.2, 0.6, 1.0, -0.1},
                                              {-0.2, 0.6, -0.1, 0.8}};
-  for (int i = 0; i < inputs1.size(); ++i) {
+  for (size_t i = 0; i < inputs1.size(); ++i) {
     QuantizedAddOpModel m({tensor_type, {1, 2, 2, 1}, -1.0, 1.0},
                           {tensor_type, {1, 2, 2, 1}, -1.0, 1.0},
                           {tensor_type, {}, -1.0, 1.0},
@@ -284,7 +284,7 @@ void QuantizedVariousInputShapes() {
   float kQuantizedTolerance = GetTolerance(-3.0, 3.0);
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
-  for (int i = 0; i < test_shapes.size(); ++i) {
+  for (size_t i = 0; i < test_shapes.size(); ++i) {
     QuantizedAddOpModel m({tensor_type, test_shapes[i], -3.0, 3.0},
                           {tensor_type, test_shapes[i], -3.0, 3.0},
                           {tensor_type, {}, -3.0, 3.0},
@@ -314,7 +314,7 @@ void QuantizedWithScalarBroadcast() {
   float kQuantizedTolerance = GetTolerance(-3.f, 3.f);
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
-  for (int i = 0; i < test_shapes.size(); ++i) {
+  for (size_t i = 0; i < test_shapes.size(); ++i) {
     QuantizedAddOpModel model_fixture(
         {tensor_type, test_shapes[i], -3.f, 3.f}, {tensor_type, {}, -3.f, 3.f},
         {tensor_type, {}, -3.f, 3.f}, ActivationFunctionType_NONE);
@@ -330,7 +330,7 @@ void QuantizedWithScalarBroadcast() {
         << "With shape number " << i;
   }
   // Re-run with exchanged inputs.
-  for (int i = 0; i < test_shapes.size(); ++i) {
+  for (size_t i = 0; i < test_shapes.size(); ++i) {
     QuantizedAddOpModel model_fixture(
         {tensor_type, {}, -3.f, 3.f}, {tensor_type, test_shapes[i], -3.f, 3.f},
         {tensor_type, {}, -3.f, 3.f}, ActivationFunctionType_NONE);
@@ -374,7 +374,7 @@ void QuantizedWithMixedBroadcast() {
        1.0f,  -0.7f, 0.9f, 1.2f, -1.7f, 1.7f, -1.2f, 1.6f, -1.3f},
       {-0.1f, 2.5f, 1.2f, 0.8f, 0.4f, -1.5f, 1.7f, 3.0f, -0.6f, 1.0f, 1.6f,
        -1.3f}};
-  for (int i = 0; i < test_shapes.size(); ++i) {
+  for (size_t i = 0; i < test_shapes.size(); ++i) {
     QuantizedAddOpModel model_fixture({tensor_type, base_shape, -3.f, 3.f},
                                       {tensor_type, test_shapes[i], -3.f, 3.f},
                                       {tensor_type, {}, -3.f, 3.f},
@@ -391,7 +391,7 @@ void QuantizedWithMixedBroadcast() {
         << "With shape number " << i;
   }
   // Re-run with exchanged inputs.
-  for (int i = 0; i < test_shapes.size(); ++i) {
+  for (size_t i = 0; i < test_shapes.size(); ++i) {
     QuantizedAddOpModel model_fixture({tensor_type, test_shapes[i], -3.f, 3.f},
                                       {tensor_type, base_shape, -3.f, 3.f},
                                       {tensor_type, {}, -3.f, 3.f},

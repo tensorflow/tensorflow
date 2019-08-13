@@ -509,6 +509,15 @@ func @select(%arg0: tensor<8xi1>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>) ->
 // CHECK:  return %0 : tensor<8xf32>
 }
 
+func @select_v2(%arg0: tensor<8xi1>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<8xi1>, tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
+  return %0: tensor<8xf32>
+
+// CHECK-LABEL: select_v2
+// CHECK:  %0 = "tfl.select"(%arg0, %arg1, %arg2)
+// CHECK:  return %0 : tensor<8xf32>
+}
+
 func @sin(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = "tf.Sin"(%arg0) : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
@@ -1051,4 +1060,18 @@ func @where(%arg0: tensor<3x5xi1>) -> tensor<?x2xi64> {
   return %0 : tensor<?x2xi64>
   // CHECK-LABEL: where
   // CHECK: "tfl.where"(%arg0) : (tensor<3x5xi1>) -> tensor<?x2xi64>
+}
+
+func @floor_mod(%arg0: tensor<5xf32>, %arg1: tensor<5xf32>) -> tensor<5xf32> {
+  %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
+  return %0 : tensor<5xf32>
+  // CHECK-LABEL: floor_mod
+  // CHECK: "tfl.floor_mod"(%arg0, %arg1) : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
+}
+
+func @exp(%arg0: tensor<5xf32>) -> tensor<5xf32> {
+  %0 = "tf.Exp"(%arg0) : (tensor<5xf32>) -> tensor<5xf32>
+  return %0 : tensor<5xf32>
+  // CHECK-LABEL: exp
+  // CHECK: "tfl.exp"(%arg0) : (tensor<5xf32>) -> tensor<5xf32>
 }

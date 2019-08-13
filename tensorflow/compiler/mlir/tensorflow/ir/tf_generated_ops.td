@@ -727,6 +727,51 @@ tf.math.equal(x, y) ==> array([True,  True])
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ExpOp : TF_Op<"Exp", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+Computes exponential of x element-wise.  \\(y = e^x\\).
+  }];
+
+  let description = [{
+This function computes the exponential of every element in the input tensor.
+  i.e. `exp(x)` or `e^(x)`, where `x` is the input tensor.
+  `e` denotes Euler's number and is approximately equal to 2.718281.
+  Output is positive for any real input.
+
+  ```python
+  x = tf.constant(2.0)
+  tf.math.exp(x) ==> 7.389056
+
+  x = tf.constant([2.0, 8.0])
+  tf.math.exp(x) ==> array([7.389056, 2980.958], dtype=float32)
+  ```
+
+  For complex numbers, the exponential value is calculated as follows:
+
+  ```
+  e^(x+iy) = e^x * e^iy = e^x * (cos y + i sin y)
+  ```
+
+  Let's consider complex number 1+1j as an example.
+  e^1 * (cos 1 + i sin 1) = 2.7182818284590 * (0.54030230586+0.8414709848j)
+
+  ```python
+  x = tf.constant(1 + 1j)
+  tf.math.exp(x) ==> 1.4686939399158851+2.2873552871788423j
+  ```
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$x
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ExpandDimsOp : TF_Op<"ExpandDims", [NoSideEffect]> {
   let summary = "Inserts a dimension of 1 into a tensor's shape.";
 
@@ -939,6 +984,32 @@ def TF_FloorDivOp : TF_Op<"FloorDiv", [Broadcastable, NoSideEffect]>,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_FloorModOp : TF_Op<"FloorMod", [Broadcastable, NoSideEffect]>,
+                    WithBroadcastableBinOpBuilder {
+  let summary = [{
+Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
+  }];
+
+  let description = [{
+true, this follows Python semantics in that the result here is consistent
+with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+
+*NOTE*: `FloorMod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+  }];
+
+  let arguments = (ins
+    TF_FpOrI32OrI64Tensor:$x,
+    TF_FpOrI32OrI64Tensor:$y
+  );
+
+  let results = (outs
+    TF_FpOrI32OrI64Tensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_FusedBatchNormOp : TF_Op<"FusedBatchNorm", [NoSideEffect]> {
   let summary = "Batch normalization.";
 
@@ -972,6 +1043,39 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
   let verifier = [{
     return Verify(*this);
   }];
+}
+
+def TF_FusedBatchNormV3Op : TF_Op<"FusedBatchNormV3", [NoSideEffect]> {
+  let summary = "Batch normalization.";
+
+  let description = [{
+Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
+The size of 1D Tensors matches the dimension C of the 4D Tensors.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32]>:$x,
+    F32Tensor:$scale,
+    F32Tensor:$offset,
+    F32Tensor:$mean,
+    F32Tensor:$variance,
+
+    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<BoolAttr, "true">:$is_training
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$y,
+    F32Tensor:$batch_mean,
+    F32Tensor:$batch_variance,
+    F32Tensor:$reserve_space_1,
+    F32Tensor:$reserve_space_2,
+    F32Tensor:$reserve_space_3
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_GatherOp : TF_Op<"Gather", [NoSideEffect]> {
@@ -2687,6 +2791,63 @@ I.e., \\(y = 1 / \sqrt{x}\\).
 }
 
 def TF_SelectOp : TF_Op<"Select", [NoSideEffect]> {
+  let summary = "Selects elements from `x` or `y`, depending on `condition`.";
+
+  let description = [{
+The `x`, and `y` tensors must all have the same shape, and the
+output will also have that shape.
+
+The `condition` tensor must be a scalar if `x` and `y` are scalars.
+If `x` and `y` are vectors or higher rank, then `condition` must be either a
+scalar, a vector with size matching the first dimension of `x`, or must have
+the same shape as `x`.
+
+The `condition` tensor acts as a mask that chooses, based on the value at each
+element, whether the corresponding element / row in the output should be
+taken from `x` (if true) or `y` (if false).
+
+If `condition` is a vector and `x` and `y` are higher rank matrices, then
+it chooses which row (outer dimension) to copy from `x` and `y`.
+If `condition` has the same shape as `x` and `y`, then it chooses which
+element to copy from `x` and `y`.
+
+For example:
+
+```python
+# 'condition' tensor is [[True,  False]
+#                        [False, True]]
+# 't' is [[1, 2],
+#         [3, 4]]
+# 'e' is [[5, 6],
+#         [7, 8]]
+select(condition, t, e)  # => [[1, 6], [7, 4]]
+
+
+# 'condition' tensor is [True, False]
+# 't' is [[1, 2],
+#         [3, 4]]
+# 'e' is [[5, 6],
+#         [7, 8]]
+select(condition, t, e) ==> [[1, 2],
+                             [7, 8]]
+
+```
+  }];
+
+  let arguments = (ins
+    I1Tensor:$condition,
+    TF_Tensor:$t,
+    TF_Tensor:$e
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect]> {
   let summary = "Selects elements from `x` or `y`, depending on `condition`.";
 
   let description = [{

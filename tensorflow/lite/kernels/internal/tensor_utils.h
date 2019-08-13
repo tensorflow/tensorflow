@@ -153,8 +153,13 @@ void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                           float* batch_vector);
 
 // Batch vector initialization with another vector.
-void VectorBatchVectorAssign(const float* vector, int v_size, int n_batch,
-                             float* batch_vector);
+template <typename T>
+void VectorBatchVectorAssign(const T* vector, int v_size, int n_batch,
+                             T* batch_vector) {
+  for (int b = 0; b < n_batch; b++) {
+    std::copy_n(vector, v_size, batch_vector + b * v_size);
+  }
+}
 
 // Apply sigmoid to elements of a vector.
 void ApplySigmoidToVector(const float* vector, int v_size, float* result);

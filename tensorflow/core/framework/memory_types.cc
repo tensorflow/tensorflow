@@ -156,14 +156,14 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   }
 
   std::vector<int32> hostmem_attr;
-  if (GetNodeAttrSimple(ndef, "_input_hostmem", &hostmem_attr)) {
+  if (TryGetNodeAttr(ndef, "_input_hostmem", &hostmem_attr)) {
     for (int32 i : hostmem_attr) {
       if (0 <= i && i < inp_mtypes->size()) {
         (*inp_mtypes)[i] = HOST_MEMORY;
       }
     }
   }
-  if (GetNodeAttrSimple(ndef, "_output_hostmem", &hostmem_attr)) {
+  if (TryGetNodeAttr(ndef, "_output_hostmem", &hostmem_attr)) {
     for (int32 i : hostmem_attr) {
       if (0 <= i && i < out_mtypes->size()) {
         (*out_mtypes)[i] = HOST_MEMORY;

@@ -449,7 +449,7 @@ static void findInstPosition(Operation *op, Block *limitBlock,
     // rely on linear scans.
     int instPosInBlock = std::distance(block->begin(), op->getIterator());
     positions->push_back(instPosInBlock);
-    op = block->getContainingOp();
+    op = block->getParentOp();
     block = op->getBlock();
   }
   std::reverse(positions->begin(), positions->end());

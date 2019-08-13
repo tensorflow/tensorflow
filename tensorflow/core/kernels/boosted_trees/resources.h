@@ -107,8 +107,9 @@ class BoostedTreesEnsembleResource : public StampedResource {
 
   // Grows the tree by adding a split and leaves.
   void AddBucketizedSplitNode(const int32 tree_id, const int32 node_id,
-                              const int32 feature_id, const int32 threshold,
-                              const float gain, const float left_contrib,
+                              const int32 feature_id, const int32 dimension_id,
+                              const int32 threshold, const float gain,
+                              const float left_contrib,
                               const float right_contrib, int32* left_node_id,
                               int32* right_node_id);
 

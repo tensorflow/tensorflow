@@ -434,3 +434,27 @@ func @merge_islands_inner_graph() {
 // CHECK-NEXT:         tf_executor.yield %[[OP_D]] : tensor<1xf32>
 // CHECK:            tf_executor.fetch %[[ISLAND_1]]#0 : tensor<1xf32>
 // CHECK:          tf_executor.yield %[[INNER_GRAPH]] : tensor<1xf32>
+
+
+// Test merging islands with control island operands and island results only if
+// they are the closest ones.
+// CHECK-LABEL: func @merge_islands_closest_control
+func @merge_islands_closest_control() {
+  tf_executor.graph {
+    %0 = tf_executor.island {
+      tf_executor.yield
+    }
+    %1 = tf_executor.ControlTrigger %0
+    %2 = tf_executor.ControlTrigger {}
+    %3 = tf_executor.island(%0, %2) {
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}
+
+// CHECK: %[[ISLAND:[0-9]*]] = tf_executor.island {
+// CHECK: tf_executor.ControlTrigger %[[ISLAND]]
+// CHECK: %[[CT:[0-9]*]] = tf_executor.ControlTrigger
+// CHECK: tf_executor.island(%[[ISLAND]], %[[CT]]) {

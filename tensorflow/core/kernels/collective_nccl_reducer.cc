@@ -122,7 +122,7 @@ void NcclReducer::Run(StatusCallback done) {
   NcclManager::instance()->AddToAllReduce(
       std::move(participant),
       {nccl_collective_key, num_local_devices, num_global_devices,
-       col_params_->group.runtime_details.communicator_key},
+       col_params_->group.runtime_details.communicator_key, /*source_rank=*/-1},
       reduction_op);
 
   // NOTE(ayushd): We need to synchronize NCCL launches across nodes to prevent

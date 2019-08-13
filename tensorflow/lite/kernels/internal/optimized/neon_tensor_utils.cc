@@ -33,14 +33,13 @@ limitations under the License.
 
 #define kFloatWeightsPerNeonLane 4
 
+// aligned_alloc is available (via cstdlib/stdlib.h) with C++17/C11.
 #if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
 #if !defined(__ANDROID__) || __ANDROID_API__ >= 28
-#define TFLITE_USE_STD_ALIGN
+#if !defined(__APPLE__)  // Apple does not provide aligned_alloc.
+#define TFLITE_USE_STD_ALIGNED_ALLOC
 #endif
 #endif
-
-#ifdef TFLITE_USE_STD_ALIGN
-#include <stdalign.h>
 #endif
 
 namespace tflite {
@@ -54,7 +53,7 @@ namespace {
 // the passed freeing_buffer pointer.
 inline void* aligned_alloc(size_t alignment, size_t size,
                            void** freeing_buffer) {
-#ifdef TFLITE_USE_STD_ALIGN
+#ifdef TFLITE_USE_STD_ALIGNED_ALLOC
   *freeing_buffer = ::aligned_alloc(
       alignment, (size + alignment - 1) / alignment * alignment);
   return *freeing_buffer;

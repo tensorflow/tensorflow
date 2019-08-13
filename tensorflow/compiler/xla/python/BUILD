@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:default/build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps", "xla_python_default_plugins")
-load("//tensorflow:tensorflow.bzl", "tf_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_test")
 
 package(
@@ -239,7 +239,7 @@ cc_library(
     ],
 )
 
-tf_pybind_extension(
+pybind_extension(
     name = "xla_extension",
     srcs = [
         "xla.cc",

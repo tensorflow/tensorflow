@@ -29,11 +29,13 @@
 #include "mlir/IR/StandardTypes.h"
 
 namespace mlir {
+namespace vector {
 
 /// Dialect for super-vectorization Ops.
 class VectorOpsDialect : public Dialect {
 public:
   VectorOpsDialect(MLIRContext *context);
+  static StringRef getDialectNamespace() { return "vector"; }
 };
 
 /// VectorTransferReadOp performs a blocking read from a scalar memref
@@ -201,6 +203,10 @@ public:
   LogicalResult verify();
 };
 
+#define GET_OP_CLASSES
+#include "mlir/VectorOps/VectorOps.h.inc"
+
+} // end namespace vector
 } // end namespace mlir
 
 #endif // MLIR_VECTOROPS_VECTOROPS_H

@@ -103,8 +103,9 @@ SliceIndex HandleCopiesBatched(OpKernelContext* ctx,
             &params(batch_idx, outer_idx, static_cast<SliceIndex>(index), 0),
             slice_bytes);
       } else {
-        // For non-"simple" types (e.g. strings).
-        out.template chip<2>(indices_idx) = params.template chip<2>(index);
+        // For non-"simple" types (e.g. strings) chip from the current batch.
+        out.template chip<0>(batch_idx).template chip<1>(indices_idx) =
+            params.template chip<0>(batch_idx).template chip<1>(index);
       }
 
       indices_idx = i_next;

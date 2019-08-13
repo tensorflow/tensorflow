@@ -47,6 +47,10 @@ class CuptiWrapper : public tensorflow::profiler::CuptiInterface {
                                            uint32_t stream_id,
                                            size_t* dropped) override;
 
+  CUptiResult ActivityConfigureUnifiedMemoryCounter(
+      CUpti_ActivityUnifiedMemoryCounterConfig* config,
+      uint32_t count) override;
+
   CUptiResult ActivityRegisterCallbacks(
       CUpti_BuffersCallbackRequestFunc func_buffer_requested,
       CUpti_BuffersCallbackCompleteFunc func_buffer_completed) override;

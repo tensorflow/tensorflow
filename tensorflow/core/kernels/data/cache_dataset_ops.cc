@@ -101,7 +101,9 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
 
   int64 Cardinality() const override { return input_->Cardinality(); }
 
-  bool IsStateful() const override { return input_->IsStateful(); }
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -669,7 +671,9 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
 
   int64 Cardinality() const override { return input_->Cardinality(); }
 
-  bool IsStateful() const override { return input_->IsStateful(); }
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -971,7 +975,10 @@ class CacheDatasetOp::MemoryDatasetV2 : public CacheDatasetOp::MemoryDataset {
                            MemoryCache* cache, const Tensor& resource_handle)
       : MemoryDataset(ctx, input, cache), resource_handle_(resource_handle) {}
 
-  bool IsStateful() const override { return true; }
+  Status CheckExternalState() const override {
+    return errors::FailedPrecondition(DebugString(),
+                                      " depends on memory cache resource.");
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,

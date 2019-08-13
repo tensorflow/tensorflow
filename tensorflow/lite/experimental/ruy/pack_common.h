@@ -84,10 +84,14 @@ limitations under the License.
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_PACK_COMMON_H_
 
 #include <cstdint>
+
 #include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/internal_matrix.h"
+#include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
+#include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
 #include "tensorflow/lite/experimental/ruy/tune.h"
 

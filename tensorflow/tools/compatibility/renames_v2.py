@@ -277,6 +277,8 @@ renames = {
         'tf.compat.v1.disable_eager_execution',
     'tf.disable_resource_variables':
         'tf.compat.v1.disable_resource_variables',
+    'tf.disable_tensor_equality':
+        'tf.compat.v1.disable_tensor_equality',
     'tf.disable_v2_behavior':
         'tf.compat.v1.disable_v2_behavior',
     'tf.disable_v2_tensorshape':
@@ -331,6 +333,8 @@ renames = {
         'tf.compat.v1.enable_eager_execution',
     'tf.enable_resource_variables':
         'tf.compat.v1.enable_resource_variables',
+    'tf.enable_tensor_equality':
+        'tf.compat.v1.enable_tensor_equality',
     'tf.enable_v2_behavior':
         'tf.compat.v1.enable_v2_behavior',
     'tf.enable_v2_tensorshape':

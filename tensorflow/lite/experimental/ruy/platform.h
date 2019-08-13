@@ -74,8 +74,12 @@ limitations under the License.
 // compilation.
 //
 // TODO(b/138433137) Select AVX-512 at runtime rather than via compile options.
-#if RUY_PLATFORM(X86) && defined(__AVX512F__) && defined(__AVX512DQ__) && \
-    defined(__AVX512CD__) && defined(__AVX512BW__) && defined(__AVX512VL__)
+//
+// Disabled on __APPLE__ because b/138922878, see comment #8, we may only need
+// to disable this on XCode <= 10.2.
+#if RUY_PLATFORM(X86) && defined(__AVX512F__) && defined(__AVX512DQ__) &&      \
+    defined(__AVX512CD__) && defined(__AVX512BW__) && defined(__AVX512VL__) && \
+    !defined(__APPLE__)
 #define RUY_DONOTUSEDIRECTLY_AVX512 1
 #else
 #define RUY_DONOTUSEDIRECTLY_AVX512 0

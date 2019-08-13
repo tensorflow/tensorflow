@@ -1111,6 +1111,7 @@ distribute_py_test(
     name = "saved_model_save_load_test",
     size = "medium",
     srcs = ["saved_model_save_load_test.py"],
+    full_precision = True,
     main = "saved_model_save_load_test.py",
     shard_count = 5,
     deps = [
@@ -1120,25 +1121,10 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "keras_experimental_saved_model_test",
-    size = "medium",
-    srcs = ["keras_experimental_saved_model_test.py"],
-    main = "keras_experimental_saved_model_test.py",
-    shard_count = 5,
-    tags = [
-        "no_oss",  # TODO(b/135287893) reenable
-        "no_rocm",
-    ],
-    deps = [
-        ":saved_model_test_base",
-        "//tensorflow/python/keras:saving",
-    ],
-)
-
-distribute_py_test(
     name = "keras_save_load_test",
     size = "medium",
     srcs = ["keras_save_load_test.py"],
+    full_precision = True,
     main = "keras_save_load_test.py",
     shard_count = 5,
     deps = [
@@ -1151,6 +1137,7 @@ distribute_py_test(
     name = "saved_model_mixed_api_test",
     size = "medium",
     srcs = ["saved_model_mixed_api_test.py"],
+    full_precision = True,
     main = "saved_model_mixed_api_test.py",
     shard_count = 5,
     deps = [

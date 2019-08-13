@@ -157,9 +157,92 @@ func @multiple_graphs(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<i1>
   }
   return %1#1, %1#0, %1#2, %0#1, %0#0, %0#3 : tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>
 }
+
 // CHECK-NEXT: %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-NEXT: %[[OP_B:[0-9]*]] = "tf.opB"(%[[OP_A]])
 // CHECK-NEXT: "tf.opC"(%[[OP_B]])
 // CHECK-NEXT: %[[OP_D:[0-9]*]] = "tf.opD"(%[[ARG_0]])
 // CHECK-NEXT: %[[OP_E:[0-9]*]] = "tf.opE"(%[[OP_D]])
 // CHECK-NEXT: return %[[OP_E]], %[[ARG_0]], %[[OP_D]], %[[OP_A]], %[[ARG_0]], %[[OP_B]] : tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>
+
+
+// Test empty graph with no outputs.
+// CHECK-LABEL: func @empty_graph_with_no_outputs
+func @empty_graph_with_no_outputs() {
+  tf_executor.graph {
+    tf_executor.fetch
+  }
+  return
+}
+
+// CHECK-NEXT: return
+
+
+// Test empty graph with some outputs.
+// CHECK-LABEL: func @empty_graph_with_outputs
+// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>, %[[ARG_1:[a-z0-9]*]]: tensor<i1>)
+func @empty_graph_with_outputs(%arg0 : tensor<i1>, %arg1 : tensor<i1>) -> (tensor<i1>, tensor<i1>) {
+  %0:2 = tf_executor.graph {
+    tf_executor.fetch %arg1, %arg0 : tensor<i1>, tensor<i1>
+  }
+  return %0#0, %0#1 : tensor<i1>, tensor<i1>
+}
+
+// CHECK-NEXT: return %[[ARG_1]], %[[ARG_0]] : tensor<i1>, tensor<i1>
+
+
+// Test multiple empty graphs.
+// CHECK-LABEL: func @empty_graphs
+// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>, %[[ARG_1:[a-z0-9]*]]: tensor<i1>)
+func @empty_graphs(%arg0 : tensor<i1>, %arg1 : tensor<i1>) -> (tensor<i1>, tensor<i1>) {
+  %0 = tf_executor.graph {
+    tf_executor.fetch %arg1 : tensor<i1>
+  }
+  tf_executor.graph {
+    tf_executor.fetch
+  }
+  %1 = tf_executor.graph {
+    tf_executor.fetch %arg0 : tensor<i1>
+  }
+  return %0, %1 : tensor<i1>, tensor<i1>
+}
+
+// CHECK-NEXT: return %[[ARG_1]], %[[ARG_0]] : tensor<i1>, tensor<i1>
+
+
+// Test empty graphs and graphs with a single island.
+// CHECK-LABEL: func @empty_and_filled_graphs
+// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
+func @empty_and_filled_graphs(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>) {
+  %0:4 = tf_executor.graph {
+    %2:4 = tf_executor.island {
+      %3 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
+      %4 = "tf.opB"(%3) : (tensor<i1>) -> tensor<i1>
+      %5 = "tf.opC"(%4) : (tensor<i1>) -> tensor<i1>
+      tf_executor.yield %3, %5, %4 : tensor<i1>, tensor<i1>, tensor<i1>
+    }
+    tf_executor.fetch %arg0, %2#0, %2#1, %2#2 : tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>
+  }
+  tf_executor.graph {
+    tf_executor.fetch
+  }
+  %1:3 = tf_executor.graph {
+    %6:3 = tf_executor.island {
+      %7 = "tf.opD"(%arg0) : (tensor<i1>) -> tensor<i1>
+      %8 = "tf.opE"(%7) : (tensor<i1>) -> tensor<i1>
+      tf_executor.yield %8, %7 : tensor<i1>, tensor<i1>
+    }
+    tf_executor.fetch %arg0, %6#0, %6#1 : tensor<i1>, tensor<i1>, tensor<i1>
+  }
+  %9 = tf_executor.graph {
+    tf_executor.fetch %arg0 : tensor<i1>
+  }
+  return %1#1, %1#0, %9, %0#1, %0#0, %0#3 : tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>
+}
+
+// CHECK-NEXT: %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
+// CHECK-NEXT: %[[OP_B:[0-9]*]] = "tf.opB"(%[[OP_A]])
+// CHECK-NEXT: "tf.opC"(%[[OP_B]])
+// CHECK-NEXT: %[[OP_D:[0-9]*]] = "tf.opD"(%[[ARG_0]])
+// CHECK-NEXT: %[[OP_E:[0-9]*]] = "tf.opE"(%[[OP_D]])
+// CHECK-NEXT: return %[[OP_E]], %[[ARG_0]], %[[ARG_0]], %[[OP_A]], %[[ARG_0]], %[[OP_B]] : tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>

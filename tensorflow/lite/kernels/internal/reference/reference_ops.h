@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/add.h"
 #include "tensorflow/lite/kernels/internal/reference/arg_min_max.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
+#include "tensorflow/lite/kernels/internal/reference/ceil.h"
 #include "tensorflow/lite/kernels/internal/reference/comparisons.h"
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
 #include "tensorflow/lite/kernels/internal/reference/prelu.h"
 #include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
+#include "tensorflow/lite/kernels/internal/reference/round.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
 #include "tensorflow/lite/kernels/internal/round.h"
@@ -2156,39 +2158,6 @@ T FloorMod(T input1, T input2) {
   return (trunc_mod != 0) && ((input2 < 0) != (trunc_mod < 0))
              ? (trunc_mod + input2)
              : trunc_mod;
-}
-
-inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    int offset = i;
-    output_data[offset] = std::ceil(input_data[offset]);
-  }
-}
-
-inline float RoundToNearest(float value) {
-  auto floor_val = std::floor(value);
-  auto diff = value - floor_val;
-  if ((diff < 0.5f) ||
-      ((diff == 0.5f) && (static_cast<int>(floor_val) % 2 == 0))) {
-    return floor_val;
-  } else {
-    return floor_val = floor_val + 1.0f;
-  }
-}
-
-inline void Round(const RuntimeShape& input_shape, const float* input_data,
-                  const RuntimeShape& output_shape, float* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  for (int i = 0; i < flat_size; i++) {
-    // Note that this implementation matches that of tensorFlow tf.round
-    // and corresponds to the bankers rounding method.
-    // cfenv (for fesetround) is not yet supported universally on Android, so
-    // using a work around.
-    output_data[i] = RoundToNearest(input_data[i]);
-  }
 }
 
 template <typename T, typename CoordsT = int32>

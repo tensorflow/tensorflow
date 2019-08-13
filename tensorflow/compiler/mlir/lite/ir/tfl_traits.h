@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
 namespace mlir {
 namespace OpTrait {

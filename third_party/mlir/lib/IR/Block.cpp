@@ -49,9 +49,9 @@ Block::~Block() {
 Region *Block::getParent() { return parentValidInstOrderPair.getPointer(); }
 
 /// Returns the closest surrounding operation that contains this block or
-/// nullptr if this is a top-level operation block.
-Operation *Block::getContainingOp() {
-  return getParent() ? getParent()->getContainingOp() : nullptr;
+/// nullptr if this block is unlinked.
+Operation *Block::getParentOp() {
+  return getParent() ? getParent()->getParentOp() : nullptr;
 }
 
 /// Return if this block is the entry block in the parent region.

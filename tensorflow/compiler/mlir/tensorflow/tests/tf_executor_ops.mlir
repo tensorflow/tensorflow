@@ -177,8 +177,8 @@ func @switch_with_attributes(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<
   return %result : tensor<*xf32>
 }
 
-// CHECK-LABEL: func @switchN(%arg0: i32, %arg1: tensor<*xf32>) -> tensor<*xf32> {
-func @switchN(%arg0: i32, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+// CHECK-LABEL: func @switchN(
+func @switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %fetches = tf_executor.graph {
 
 // CHECK: %1:6 = tf_executor.SwitchN %arg1, %arg0 of 5 : tensor<*xf32>

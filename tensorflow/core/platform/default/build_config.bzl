@@ -624,6 +624,12 @@ def tf_additional_libdevice_deps():
 def tf_additional_libdevice_srcs():
     return ["default/cuda_libdevice_path.cc"]
 
+def tf_additional_rocdl_deps():
+    return ["@local_config_rocm//rocm:rocm_headers"]
+
+def tf_additional_rocdl_srcs():
+    return ["default/rocm_rocdl_path.cc"]
+
 def tf_additional_test_deps():
     return []
 

@@ -130,7 +130,7 @@ static void ExtractExtraProperties(
         if (tensor.NumElements() != 1) {
           continue;
         }
-        const string filename = tensor.scalar<string>()();
+        const string& filename = tensor.scalar<tstring>()();
 
         Env* env = Env::Default();
         FileStatistics stat;

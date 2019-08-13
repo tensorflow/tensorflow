@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/kernel.h"
+#include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
 
 namespace ruy {

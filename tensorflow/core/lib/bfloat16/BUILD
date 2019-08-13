@@ -10,6 +10,7 @@ cc_library(
     srcs = ["bfloat16.cc"],
     hdrs = ["bfloat16.h"],
     deps = [
+        "//tensorflow/core/platform:byte_order",
         "//third_party/eigen3",
     ],
 )

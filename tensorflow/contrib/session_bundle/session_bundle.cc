@@ -72,7 +72,7 @@ Status GetMetaGraphDefFromExport(const StringPiece export_dir,
 // Creates a string tensor.
 Tensor CreateStringTensor(const string& value) {
   Tensor tensor(DT_STRING, TensorShape({}));
-  tensor.scalar<string>()() = value;
+  tensor.scalar<tstring>()() = value;
   return tensor;
 }
 

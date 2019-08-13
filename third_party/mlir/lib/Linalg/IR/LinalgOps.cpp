@@ -28,6 +28,7 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Linalg/IR/LinalgTypes.h"
 #include "mlir/Linalg/Utils/Utils.h"
@@ -36,11 +37,87 @@
 #include "mlir/Transforms/FoldUtils.h"
 
 #include "llvm/ADT/StringSet.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 using namespace mlir::edsc;
 using namespace mlir::edsc::intrinsics;
 using namespace mlir::linalg;
+
+namespace {
+/// Fold constant dimensions into an alloc operation.
+struct SimplifyDimOp : public OpRewritePattern<linalg::DimOp> {
+  using OpRewritePattern<linalg::DimOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(linalg::DimOp dimOp,
+                                     PatternRewriter &rewriter) const override;
+};
+} // end namespace
+
+PatternMatchResult
+SimplifyDimOp::matchAndRewrite(linalg::DimOp dimOp,
+                               PatternRewriter &rewriter) const {
+  auto *viewProducingOp = dimOp.view()->getDefiningOp();
+  auto subView = dyn_cast_or_null<SubViewOp>(viewProducingOp);
+  auto slice = dyn_cast_or_null<SliceOp>(viewProducingOp);
+  auto view = dyn_cast_or_null<ViewOp>(viewProducingOp);
+  if (!subView && !slice && !view)
+    return matchFailure();
+
+  unsigned dim = dimOp.getIndex();
+  Value *min, *max, *step;
+  if (view) {
+    // Cannot traverse block arguments, fail.
+    if (isa<BlockArgument>(view.getRange(dim)))
+      return matchFailure();
+    // Record min, max, step for further processing.
+    auto range = cast<RangeOp>(view.getRange(dim)->getDefiningOp());
+    std::tie(min, max, step) =
+        std::make_tuple(range.min(), range.max(), range.step());
+  } else if (subView) {
+    // Record min, max, step for further processing.
+    auto range = subView.getRange(dim);
+    std::tie(min, max, step) =
+        std::make_tuple(range.min, range.max, range.step);
+  } else {
+    // Taking the dim of a slice must take a range (since other dims have been
+    // rank-reduced).
+    auto *rangeValue = slice.getRanges()[dim];
+    // Cannot traverse block arguments, fail.
+    if (isa<BlockArgument>(rangeValue))
+      return matchFailure();
+    auto range = cast<RangeOp>(rangeValue->getDefiningOp());
+    // Record min, max, step for further processing.
+    std::tie(min, max, step) =
+        std::make_tuple(range.min(), range.max(), range.step());
+  }
+
+  // Only support constant steps of 1 atm.
+  auto constant = dyn_cast_or_null<ConstantIndexOp>(step->getDefiningOp());
+  if (!constant || constant.getValue() != 1)
+    return matchFailure();
+
+  // Circumvent affine constraints:
+  //   emit an affine_apply when possible, otherwise emit a `subi`.
+  bool validAffineMin = isValidDim(min) || isValidSymbol(min) ||
+                        isa_and_nonnull<ConstantIndexOp>(min->getDefiningOp());
+  bool validAffineMax = isValidDim(max) || isValidSymbol(max) ||
+                        isa_and_nonnull<ConstantIndexOp>(max->getDefiningOp());
+
+  OpBuilder b(dimOp);
+  ScopedContext scope(b, dimOp.getLoc());
+  // Emit `subi`.
+  if (!validAffineMin || !validAffineMax) {
+    rewriter.replaceOp(dimOp, {subi(max, min)}, {dimOp.view()});
+    return matchSuccess();
+  }
+
+  // Emit affine_apply.
+  using edsc::op::operator-;
+  rewriter.replaceOp(dimOp, {ValueHandle(max) - ValueHandle(min)},
+                     {dimOp.view()});
+  return matchSuccess();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // LoadOp.
@@ -338,96 +415,14 @@ LogicalResult mlir::linalg::StoreOp::verify() {
   return success();
 }
 
-//////////////////////////////////////////////////////////////////////////////
-// ViewOp
-//////////////////////////////////////////////////////////////////////////////
-void mlir::linalg::ViewOp::build(Builder *b, OperationState *result,
-                                 Value *buffer, ArrayRef<Value *> indexings) {
-  BufferType bufferType = buffer->getType().cast<BufferType>();
-  result->addOperands({buffer});
-  result->addOperands(indexings);
-  assert(
-      std::none_of(indexings.begin(), indexings.end(),
-                   [](Value *v) { return !v->getType().isa<RangeType>(); }) &&
-      "linalg.view takes only arguments of type linalg.range");
-
-  Type elementType = bufferType.getElementType();
-  result->addTypes(
-      {ViewType::get(b->getContext(), elementType, indexings.size())});
-}
-
-LogicalResult mlir::linalg::ViewOp::verify() {
-  if (llvm::empty(getOperands()))
-    return emitOpError(
-        "requires at least a buffer operand followed by indexings");
-  auto bufferType = getOperand(0)->getType().dyn_cast<BufferType>();
-  if (!bufferType)
-    return emitOpError("first operand must be of BufferType");
-  unsigned index = 0;
-  for (auto indexing : getIndexings()) {
-    if (!indexing->getType().isa<RangeType>()) {
-      return emitOpError() << index << "^th index must be of range type";
-    }
-    ++index;
-  }
-  if (getViewType().getRank() != index)
-    return emitOpError()
-           << "the rank of the view must be the number of its indexings";
-  return success();
-}
-
-ParseResult mlir::linalg::ViewOp::parse(OpAsmParser *parser,
-                                        OperationState *result) {
-  OpAsmParser::OperandType bufferInfo;
-  SmallVector<OpAsmParser::OperandType, 8> indexingsInfo;
-  Type bType, type;
-  if (parser->parseOperand(bufferInfo) ||
-      parser->parseOperandList(indexingsInfo, OpAsmParser::Delimiter::Square) ||
-      parser->parseOptionalAttributeDict(result->attributes) ||
-      parser->parseColon() || parser->parseType(bType) ||
-      parser->parseArrow() || parser->parseType(type)) {
-    return failure();
-  }
-
-  BufferType bufferType = bType.dyn_cast<BufferType>();
-  if (!bufferType) {
-    return parser->emitError(parser->getNameLoc(), "buffer type expected");
-  }
-
-  ViewType viewType = type.dyn_cast<ViewType>();
-  if (!viewType)
-    return parser->emitError(parser->getNameLoc(), "view type expected");
-  if (viewType.getRank() != indexingsInfo.size())
-    return parser->emitError(parser->getNameLoc(), "expected")
-           << viewType.getRank() << " range indexings";
-  return failure(
-      parser->resolveOperand(bufferInfo, bufferType, result->operands) ||
-      (!indexingsInfo.empty() &&
-       parser->resolveOperands(indexingsInfo, RangeType::get(type.getContext()),
-                               result->operands)) ||
-      parser->addTypeToList(viewType, result->types));
-}
-
-// A ViewOp prints as:
-//
-// ```{.mlir}
-//   linalg.view %0[%1, %2] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
-// ```
-//
-// Where %0 is an ssa-value holding a buffer, %1 and %2 are ssa-value each
-// holding a range.
-void mlir::linalg::ViewOp::print(OpAsmPrinter *p) {
-  *p << getOperationName() << " " << *getSupportingBuffer() << "[";
-  interleave(
-      getIndexings().begin(), getIndexings().end(), [&](Value *v) { *p << *v; },
-      [&]() { *p << ", "; });
-  *p << "] : " << getSupportingBuffer()->getType() << " -> " << getType();
-}
-
 ///////////////////// Operations defined with Tablegen /////////////////////////
 // For such operations that do not correspond to library calls (i.e. defined in
 // LinalgOps.td), we define an overloaded `print` function and a
 // parse`className` function.
+
+//===----------------------------------------------------------------------===//
+// BufferAllocOp
+//===----------------------------------------------------------------------===//
 
 static void print(OpAsmPrinter *p, BufferAllocOp op) {
   *p << op.getOperationName() << " ";
@@ -468,6 +463,10 @@ static LogicalResult verify(BufferAllocOp op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// BufferDeallocOp
+//===----------------------------------------------------------------------===//
+
 static void print(OpAsmPrinter *p, BufferDeallocOp op) {
   *p << op.getOperationName() << " " << *op.buffer();
   p->printOptionalAttrDict(op.getAttrs());
@@ -489,6 +488,10 @@ static void print(OpAsmPrinter *p, BufferSizeOp op) {
   *p << " : " << op.getOperand()->getType();
 }
 
+//===----------------------------------------------------------------------===//
+// BufferSizeOp
+//===----------------------------------------------------------------------===//
+
 static ParseResult parseBufferSizeOp(OpAsmParser *parser,
                                      OperationState *result) {
   OpAsmParser::OperandType op;
@@ -499,6 +502,14 @@ static ParseResult parseBufferSizeOp(OpAsmParser *parser,
                  parser->resolveOperand(op, type, result->operands) ||
                  parser->addTypeToList(parser->getBuilder().getIndexType(),
                                        result->types));
+}
+
+//===----------------------------------------------------------------------===//
+// DimOp
+//===----------------------------------------------------------------------===//
+void mlir::linalg::DimOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<SimplifyDimOp>(context);
 }
 
 static void print(OpAsmPrinter *p, linalg::DimOp op) {
@@ -664,6 +675,66 @@ static LogicalResult verify(GenericOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ViewOp
+//===----------------------------------------------------------------------===//
+void mlir::linalg::ViewOp::build(Builder *b, OperationState *result,
+                                 Value *buffer, ArrayRef<Value *> ranges,
+                                 Type resultType,
+                                 ArrayRef<NamedAttribute> attrs) {
+  if (!resultType) {
+    Type elementType = buffer->getType().cast<BufferType>().getElementType();
+    resultType = ViewType::get(b->getContext(), elementType, ranges.size());
+  }
+  build(b, result, resultType, buffer, ranges);
+  result->addAttributes(attrs);
+}
+
+static ParseResult parseViewOp(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType bufferInfo;
+  SmallVector<OpAsmParser::OperandType, 8> rangesInfo;
+  Type bType, vType;
+  if (parser->parseOperand(bufferInfo) ||
+      parser->parseOperandList(rangesInfo, OpAsmParser::Delimiter::Square) ||
+      parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseColon() || parser->parseType(bType) ||
+      parser->parseArrow() || parser->parseType(vType)) {
+    return failure();
+  }
+
+  BufferType bufferType = bType.dyn_cast<BufferType>();
+  if (!bufferType) {
+    return parser->emitError(parser->getNameLoc(), "buffer type expected");
+  }
+
+  ViewType viewType = vType.dyn_cast<ViewType>();
+  if (!viewType)
+    return parser->emitError(parser->getNameLoc(), "view type expected");
+  if (viewType.getRank() != rangesInfo.size())
+    return parser->emitError(parser->getNameLoc(), "expected")
+           << viewType.getRank() << " range ranges";
+  return failure(
+      parser->resolveOperand(bufferInfo, bufferType, result->operands) ||
+      (!rangesInfo.empty() &&
+       parser->resolveOperands(rangesInfo, RangeType::get(vType.getContext()),
+                               result->operands)) ||
+      parser->addTypeToList(viewType, result->types));
+}
+
+// A ViewOp prints as:
+//
+// ```{.mlir}
+//   linalg.view %0[%1, %2] : !linalg.buffer<?xf32> -> !linalg.view<?x?xf32>
+// ```
+//
+// Where %0 is an ssa-value holding a buffer, %1 and %2 are ssa-value each
+// holding a range.
+static void print(OpAsmPrinter *p, ViewOp op) {
+  *p << op.getOperationName() << " " << *op.buffer() << "[";
+  interleaveComma(op.ranges(), *p, [&](Value *v) { *p << *v; });
+  *p << "] : " << op.buffer()->getType() << " -> " << op.getType();
+}
+
+//===----------------------------------------------------------------------===//
 // YieldOp
 //===----------------------------------------------------------------------===//
 
@@ -723,6 +794,10 @@ static void print(OpAsmPrinter *p, SubViewOp op) {
   p->printOptionalAttrDict(op.getAttrs());
   *p << " : " << op.getViewType();
 }
+
+//===----------------------------------------------------------------------===//
+// SubViewOp
+//===----------------------------------------------------------------------===//
 
 static ParseResult parseSubViewOp(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType inputView, resultView;
@@ -1010,4 +1085,36 @@ SmallVector<AffineMap, 4> mlir::linalg::loopToOperandRangesMaps(Operation *op) {
     return res;
   }
   llvm_unreachable("Missing loopToOperandRangesMaps for op");
+}
+
+static void appendMangledType(llvm::raw_string_ostream &ss, Type t) {
+  if (auto view = t.dyn_cast<ViewType>()) {
+    ss << "view";
+    for (unsigned i = 0, e = view.getRank(); i < e; ++i)
+      ss << "x";
+    appendMangledType(ss, view.getElementType());
+  } else if (auto vec = t.dyn_cast<VectorType>()) {
+    ss << "vector";
+    interleave(
+        vec.getShape(), [&](int64_t i) { ss << i; }, [&]() { ss << "x"; });
+    appendMangledType(ss, vec.getElementType());
+  } else if (t.isIntOrIndexOrFloat()) {
+    ss << t;
+  } else {
+    llvm_unreachable("Invalid type for linalg library name mangling");
+  }
+}
+
+std::string mlir::linalg::generateLibraryCallName(Operation *op) {
+  assert(isa<LinalgOp>(op));
+  std::string name(op->getName().getStringRef().str());
+  name.reserve(128);
+  std::replace(name.begin(), name.end(), '.', '_');
+  llvm::raw_string_ostream ss(name);
+  ss << "_";
+  auto types = op->getOperandTypes();
+  interleave(
+      types.begin(), types.end(), [&](Type t) { appendMangledType(ss, t); },
+      [&]() { ss << "_"; });
+  return ss.str();
 }

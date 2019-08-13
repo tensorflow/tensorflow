@@ -364,41 +364,6 @@ TEST_P(ParameterizedFlatMapDatasetOpTest, Cardinality) {
   EXPECT_EQ(flat_map_dataset->Cardinality(), test_case.expected_cardinality);
 }
 
-TEST_F(FlatMapDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = MakeTensorSliceDatasetFuncTestCase();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> flat_map_dataset_kernel;
-  TF_ASSERT_OK(CreateFlatMapDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &flat_map_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor)});
-  std::unique_ptr<OpKernelContext> flat_map_dataset_context;
-  TF_ASSERT_OK(CreateFlatMapDatasetContext(flat_map_dataset_kernel.get(),
-                                           &inputs, &flat_map_dataset_context));
-  DatasetBase *flat_map_dataset;
-  TF_ASSERT_OK(CreateDataset(flat_map_dataset_kernel.get(),
-                             flat_map_dataset_context.get(),
-                             &flat_map_dataset));
-  core::ScopedUnref scoped_unref(flat_map_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(flat_map_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
-}
-
 TEST_P(ParameterizedFlatMapDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   const TestCase &test_case = GetParam();

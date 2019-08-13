@@ -228,7 +228,7 @@ LogicalResult Deserializer::deserialize() {
   if (failed(processHeader()))
     return failure();
 
-  spirv::Opcode opcode;
+  spirv::Opcode opcode = spirv::Opcode::OpNop;
   ArrayRef<uint32_t> operands;
   auto binarySize = binary.size();
   while (curOffset < binarySize) {
@@ -376,7 +376,7 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
   if (functionType.getNumInputs()) {
     for (size_t i = 0, e = functionType.getNumInputs(); i != e; ++i) {
       auto argType = functionType.getInput(i);
-      spirv::Opcode opcode;
+      spirv::Opcode opcode = spirv::Opcode::OpNop;
       ArrayRef<uint32_t> operands;
       if (failed(sliceInstruction(opcode, operands,
                                   spirv::Opcode::OpFunctionParameter))) {
@@ -414,7 +414,7 @@ LogicalResult Deserializer::processFunction(ArrayRef<uint32_t> operands) {
   OpBuilder funcBody(funcOp.getBody());
   std::swap(funcBody, opBuilder);
 
-  spirv::Opcode opcode;
+  spirv::Opcode opcode = spirv::Opcode::OpNop;
   ArrayRef<uint32_t> instOperands;
   while (succeeded(sliceInstruction(opcode, instOperands,
                                     spirv::Opcode::OpFunctionEnd)) &&

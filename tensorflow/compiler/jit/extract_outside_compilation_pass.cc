@@ -914,9 +914,9 @@ xla::StatusOr<std::unordered_map<string, Node*>> OutsideCompilationAttrToNode(
   for (Node* n : g.op_nodes()) {
     bool is_lifted_arg;
     string outside_compilation_attr;
-    if (GetNodeAttrSimple(n->def(), kXlaIsLiftedArgAttrName, &is_lifted_arg) &&
-        GetNodeAttrSimple(n->def(), "_xla_outside_compilation",
-                          &outside_compilation_attr)) {
+    if (TryGetNodeAttr(n->def(), kXlaIsLiftedArgAttrName, &is_lifted_arg) &&
+        TryGetNodeAttr(n->def(), "_xla_outside_compilation",
+                       &outside_compilation_attr)) {
       TF_RET_CHECK(is_lifted_arg);
       TF_RET_CHECK(n->IsIdentity() || n->type_string() == "Placeholder");
       outside_compilation_attr_to_node[outside_compilation_attr] = n;

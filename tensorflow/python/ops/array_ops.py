@@ -133,6 +133,46 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
   return result
 
 
+@tf_export("fill")
+def fill(dims, value, name=None):
+  r"""Creates a tensor filled with a scalar value.
+
+  This operation creates a tensor of shape `dims` and fills it with `value`.
+
+  For example:
+
+  ```
+  # Output tensor has shape [2, 3].
+  fill([2, 3], 9) ==> [[9, 9, 9]
+                       [9, 9, 9]]
+  ```
+
+  `tf.fill` differs from `tf.constant` in a few ways:
+
+  *   `tf.fill` only supports scalar contents, whereas `tf.constant` supports
+      Tensor values.
+  *   `tf.fill` creates an Op in the computation graph that constructs the
+  actual
+      Tensor value at runtime. This is in contrast to `tf.constant` which embeds
+      the entire Tensor into the graph with a `Const` node.
+  *   Because `tf.fill` evaluates at graph runtime, it supports dynamic shapes
+      based on other runtime Tensors, unlike `tf.constant`.
+
+  Args:
+    dims: A `Tensor`. Must be one of the following types: `int32`, `int64`. 1-D.
+      Represents the shape of the output tensor.
+    value: A `Tensor`. 0-D (scalar). Value to fill the returned tensor.
+      @compatibility(numpy) Equivalent to np.full @end_compatibility
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `value`.
+  """
+  result = gen_array_ops.fill(dims, value, name=name)
+  tensor_util.maybe_set_static_shape(result, dims)
+  return result
+
+
 @tf_export("identity")
 @dispatch.add_dispatch_support
 def identity(input, name=None):  # pylint: disable=redefined-builtin
@@ -156,26 +196,13 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
-  if context.executing_eagerly() and not hasattr(input, "graph"):
-    input = ops.convert_to_tensor(input)
-    in_device = input.backing_device
-    # TODO(ashankar): Does 'identity' need to invoke execution callbacks?
-    context_device = context.context().device_name
-    if not context_device:
-      context_device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    if context_device == in_device:
-      return input
-    else:
-      copied = input._copy()  # pylint: disable=protected-access
-      if hasattr(copied, "_handle_data"):
-        copied._handle_data = input._handle_data  # pylint: disable=protected-access
-      return copied
-  else:
-    ret = gen_array_ops.identity(input, name=name)
-    # Propagate handle data for happier shape inference for resource variables.
-    if hasattr(input, "_handle_data"):
-      ret._handle_data = input._handle_data  # pylint: disable=protected-access
-    return ret
+  # Make sure we get an input with handle data attached from resource variables.
+  input = ops.convert_to_tensor(input)
+  ret = gen_array_ops.identity(input, name=name)
+  # Propagate handle data for happier shape inference for resource variables.
+  if hasattr(input, "_handle_data"):
+    ret._handle_data = input._handle_data  # pylint: disable=protected-access
+  return ret
 
 
 # pylint: disable=redefined-builtin,protected-access
@@ -2460,7 +2487,7 @@ def ones_like_v2(
     input,  # pylint: disable=redefined-builtin
     dtype=None,
     name=None):
-  """Creates a tensor with all elements set to zero.
+  """Creates a tensor with all elements set to one.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
   same type and shape as `tensor` with all elements set to 1. Optionally,
@@ -2481,7 +2508,7 @@ def ones_like_v2(
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` with all elements set to zero.
+    A `Tensor` with all elements set to one.
   """
   return ones_like_impl(input, dtype, name, optimize=True)
 
@@ -3329,6 +3356,7 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
 
 
 @tf_export("one_hot")
+@dispatch.add_dispatch_support
 def one_hot(indices,
             depth,
             on_value=None,
@@ -3372,6 +3400,11 @@ def one_hot(indices,
     depth x batch x features if axis == 0
   ```
 
+  If `indices` is a RaggedTensor, the 'axis' argument must be positive and refer
+  to a non-ragged axis. The output will be equivalent to applying 'one_hot' on
+  the values of the RaggedTensor, and creating a new RaggedTensor from the
+  result.
+
   If `dtype` is not provided, it will attempt to assume the data type of
   `on_value` or `off_value`, if one or both are passed in. If none of
   `on_value`, `off_value`, or `dtype` are provided, `dtype` will default to the
@@ -3409,6 +3442,13 @@ def one_hot(indices,
   #   [0.0, 0.0, 1.0]],  # one_hot(2)
   #  [[0.0, 1.0, 0.0],   # one_hot(1)
   #   [0.0, 0.0, 0.0]]]  # one_hot(-1)
+
+  indices = tf.ragged.constant([[0, 1], [2]])
+  depth = 3
+  tf.one_hot(indices, depth)  # output: [2 x None x 3]
+  # [[[1., 0., 0.],
+  #   [0., 1., 0.]],
+  #  [[0., 0., 1.]]]
   ```
 
   Args:
@@ -3899,36 +3939,19 @@ def gather(params,
     A `Tensor`. Has the same type as `params`.
   """
   del validate_indices
-  if compat.forward_compatible(2019, 8, 10):
-    if axis is None:
-      axis = batch_dims
-    if axis != 0:
-      return gen_array_ops.gather_v2(
-          params, indices, axis, batch_dims=batch_dims, name=name)
-    try:
-      # TODO(apassos) find a less bad way of detecting resource variables
-      # without introducing a circular dependency.
-      return params.sparse_read(indices, name=name)
-    except AttributeError:
-      return gen_array_ops.gather_v2(
-          params, indices, axis, name=name)
 
-  if batch_dims != 0:
-    with ops.name_scope(name, "Gather", [params, indices, axis]):
-      return _batch_gather(params, indices, batch_dims, axis)
   if axis is None:
     axis = batch_dims
   if axis != 0:
-    # Note that we do a sparse_read here to avoid snapshotting the entire
-    # resource variable and doing a gather, which can be inefficient and lead to
-    # subtle race conditions. TODO(apassos) implement axis != 0 on sparse_read
-    return gen_array_ops.gather_v2(params, indices, axis, name=name)
+    return gen_array_ops.gather_v2(
+        params, indices, axis, batch_dims=batch_dims, name=name)
   try:
-    # TODO(apassos) find a less bad way of detecting resource variables without
-    # introducing a circular dependency.
+    # TODO(apassos) find a less bad way of detecting resource variables
+    # without introducing a circular dependency.
     return params.sparse_read(indices, name=name)
   except AttributeError:
-    return gen_array_ops.gather_v2(params, indices, axis, name=name)
+    return gen_array_ops.gather_v2(
+        params, indices, axis, name=name)
 
 
 @tf_export("gather", v1=[])

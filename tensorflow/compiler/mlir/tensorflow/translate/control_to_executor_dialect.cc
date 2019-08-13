@@ -147,7 +147,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
     if (op.getName().getStringRef() == "_tf.Switch") {
       replacement = builder.create<tf_executor::SwitchOp>(
           loc, types, operands, ArrayRef<NamedAttribute>{});
-    } else if (op.getName().getStringRef() == "_tf.SwitchN") {
+    } else if (op.getName().getStringRef() == "_tf._SwitchN") {
       replacement = builder.create<tf_executor::SwitchNOp>(
           loc, types, operands, ArrayRef<NamedAttribute>{});
     } else if (op.getName().getStringRef() == "_tf.Merge") {

@@ -76,7 +76,10 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
 
     BigtableTableResource* table() const { return table_; }
 
-    bool IsStateful() const override { return true; }
+    Status CheckExternalState() const override {
+      return errors::FailedPrecondition(DebugString(),
+                                        " depends on external state.");
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -105,7 +108,7 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
                       const ::google::cloud::bigtable::Row& row,
                       std::vector<Tensor>* out_tensors) override {
         Tensor output_tensor(ctx->allocator({}), DT_STRING, {});
-        output_tensor.scalar<string>()() = string(row.row_key());
+        output_tensor.scalar<tstring>()() = string(row.row_key());
         out_tensors->emplace_back(std::move(output_tensor));
         return Status::OK();
       }

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
@@ -59,13 +60,13 @@ namespace {
 const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
   switch (cp->instance.type) {
     case BROADCAST_COLLECTIVE:
-      return nccl ? "NcclBroadcast" : "HierarchicalTreeBroadcast";
+      return "HierarchicalTreeBroadcast";
 
     case REDUCTION_COLLECTIVE:
       return nccl ? "NcclReduce" : "RingReduce";
 
     case GATHER_COLLECTIVE:
-      return nccl ? "NcclGather" : "RingGather";
+      return "RingGather";
 
     default:
       return "undef";
@@ -91,8 +92,16 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
 
       // Initialize group runtime details.
       CollectiveImplementationInterface* col_impl;
-      status = CollectiveRegistry::LookupParamResolverInstance(
-          GetCollectiveName(cp, nccl_), &col_impl);
+      // Try to lookup a NCCL collective kernel.  This will return error status
+      // if `NcclReduce` kernel is not present in the registry, e.g. on an
+      // environment that does not support NCCL.
+      status = CollectiveRegistry::LookupParamResolverInstance("NcclReduce",
+                                                               &col_impl);
+      if (!status.ok()) {
+        // Fallback to non-NCCL collective.
+        status = CollectiveRegistry::LookupParamResolverInstance(
+            GetCollectiveName(cp, /*nccl=*/false), &col_impl);
+      }
       if (status.ok()) {
         status = col_impl->InitializeCollectiveGroupRuntimeDetails(
             &gr->group.runtime_details);
@@ -221,17 +230,20 @@ GlobalDeviceMap BuildDevRecs(const CollInstanceParams& ip,
 }
 
 bool ParseRingOrder(const string& gpu_ring_order_str, TaskDeviceMap* tdm) {
-  std::vector<int32> gpu_ring_order_vec;
-  if (!str_util::SplitAndParseAsInts(gpu_ring_order_str, ',',
-                                     &gpu_ring_order_vec)) {
-    return false;
-  }
-  if (gpu_ring_order_vec.size() != tdm->size()) return false;
+  std::vector<string> split_gpu_ring_order_str =
+      str_util::Split(gpu_ring_order_str, ',');
+  if (split_gpu_ring_order_str.size() != tdm->size()) return false;
+
   // gpu id -> local rank
   gtl::FlatMap<int32, int32> gpu_ranks;
-  for (int32 rank = 0; rank < static_cast<int32>(gpu_ring_order_vec.size());
-       ++rank) {
-    gpu_ranks[gpu_ring_order_vec[rank]] = rank;
+  for (int32 rank = 0;
+       rank < static_cast<int32>(split_gpu_ring_order_str.size()); ++rank) {
+    int32 tmp;
+    if (strings::safe_strto32(split_gpu_ring_order_str[rank], &tmp)) {
+      gpu_ranks[tmp] = rank;
+    } else {
+      return false;
+    }
   }
 
   for (auto& tdm_it : *tdm) {
@@ -662,7 +674,18 @@ void CollectiveParamResolverLocal::CompleteInstanceAsync(
 // implementation.  The ideal way would depend upon the topology and link
 // strength before picking a particular implementation.
 void CollectiveParamResolverLocal::AssignCollectiveType(CollectiveParams* cp) {
-  cp->instance.impl_details.collective_name = GetCollectiveName(cp, nccl_);
+  // We use the NCCL implementation if this is an environment which supports
+  // NCCL, i.e. `LookupParamResolverInstance` for `NcclReduce` returns OK, and
+  // also if indicated either in `ConfigProto` or `communication_hint`.
+  //
+  // After enough testing, we may simplify this logic to use NCCL whenever
+  // available.
+  CollectiveImplementationInterface* col_impl;
+  bool use_nccl =
+      (nccl_ || cp->instance.impl_details.communication_hint == "nccl") &&
+      CollectiveRegistry::LookupParamResolverInstance("NcclReduce", &col_impl)
+          .ok();
+  cp->instance.impl_details.collective_name = GetCollectiveName(cp, use_nccl);
   VLOG(1) << "AssignCollectiveType "
           << cp->instance.impl_details.collective_name;
 }

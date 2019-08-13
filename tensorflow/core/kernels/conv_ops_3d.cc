@@ -36,7 +36,12 @@ limitations under the License.
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 using stream_executor::dnn::DimIndex;
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
+#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -132,10 +137,13 @@ class Conv3DOp : public BinaryOp<T> {
     const int64 in_depth = GetTensorDim(input, data_format_, 'C');
     const int64 in_batch = GetTensorDim(input, data_format_, 'N');
 
+    const int64 filter_depth = filter.dim_size(3);
     const int64 out_depth = filter.dim_size(4);
-    OP_REQUIRES(
-        context, in_depth == filter.dim_size(3),
-        errors::InvalidArgument("input and filter must have the same depth"));
+
+    OP_REQUIRES(context, in_depth % filter_depth == 0,
+                errors::InvalidArgument(
+                    "Input depth must be evenly divisible by filter depth: ",
+                    in_depth, " vs ", filter_depth));
 
     // Dimension order for these arrays is: z, y, x.
     std::array<int64, 3> input_size = {
@@ -218,6 +226,7 @@ struct LaunchConvOp<GPUDevice, T> {
     const int64 filter_planes = filter.dim_size(0);
     const int64 filter_rows = filter.dim_size(1);
     const int64 filter_cols = filter.dim_size(2);
+    const int64 filter_depth = filter.dim_size(3);
     const int64 out_depth = filter.dim_size(4);
 
     int64 pad_planes = 0, pad_rows = 0, pad_cols = 0;
@@ -234,11 +243,13 @@ struct LaunchConvOp<GPUDevice, T> {
           0, (out_cols - 1) * strides[2] + filter_cols - in_cols);
     }
 
+    bool is_grouped_convolution = filter_depth != in_depth;
+
     // NOTE: This only works in NHWC.
-    if (filter_planes == 1 && filter_rows == 1 && filter_cols == 1 &&
-        dilations[0] == 1 && dilations[1] == 1 && dilations[2] == 1 &&
-        strides[0] == 1 && strides[1] == 1 && strides[2] == 1 &&
-        data_format == FORMAT_NHWC) {
+    if (!is_grouped_convolution && filter_planes == 1 && filter_rows == 1 &&
+        filter_cols == 1 && dilations[0] == 1 && dilations[1] == 1 &&
+        dilations[2] == 1 && strides[0] == 1 && strides[1] == 1 &&
+        strides[2] == 1 && data_format == FORMAT_NHWC) {
       // 1x1 filter, so call cublas directly.
       const uint64 m = in_batch * in_planes * in_rows * in_cols;
       const uint64 k = in_depth;
@@ -262,9 +273,9 @@ struct LaunchConvOp<GPUDevice, T> {
                                         ", n=", n, ", k=", k));
       }
       return;
-    } else if (filter_planes == in_planes && filter_rows == in_rows &&
-               filter_cols == in_cols && padding == Padding::VALID &&
-               data_format == FORMAT_NHWC) {
+    } else if (!is_grouped_convolution && filter_planes == in_planes &&
+               filter_rows == in_rows && filter_cols == in_cols &&
+               padding == Padding::VALID && data_format == FORMAT_NHWC) {
       // The input data and filter have the same planes/height/width, so call
       // cublas directly.
       const uint64 m = in_batch;
@@ -365,7 +376,7 @@ struct LaunchConvOp<GPUDevice, T> {
     filter_desc.set_spatial_dim(DimIndex::X, filter_cols)
         .set_spatial_dim(DimIndex::Y, filter_rows)
         .set_spatial_dim(DimIndex::Z, filter_planes)
-        .set_input_feature_map_count(in_depth)
+        .set_input_feature_map_count(filter_depth)
         .set_output_feature_map_count(out_depth);
     se::dnn::ConvolutionDescriptor conv_desc(3);
     conv_desc.set_dilation_rate(DimIndex::X, dilations[2])
@@ -376,7 +387,8 @@ struct LaunchConvOp<GPUDevice, T> {
         .set_filter_stride(DimIndex::Z, strides[0])
         .set_zero_padding(DimIndex::X, pad_cols / 2)
         .set_zero_padding(DimIndex::Y, pad_rows / 2)
-        .set_zero_padding(DimIndex::Z, pad_planes / 2);
+        .set_zero_padding(DimIndex::Z, pad_planes / 2)
+        .set_group_count(in_depth / filter_depth);
 
     Tensor transformed_filter;
     OP_REQUIRES_OK(
@@ -425,7 +437,7 @@ struct LaunchConvOp<GPUDevice, T> {
         {{pad_planes, pad_rows, pad_cols}},
         dtype,
         device_id,
-    };
+        conv_desc.group_count()};
 
     using se::dnn::AlgorithmConfig;
     using se::dnn::AlgorithmDesc;
@@ -436,6 +448,12 @@ struct LaunchConvOp<GPUDevice, T> {
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
+      se::TfAllocatorAdapter tf_allocator_adapter(
+          stream->parent()->platform(), ctx->device()->GetAllocator({}));
+      se::cuda::RedzoneAllocator rz_allocator(
+          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions());
+      se::DeviceMemory<T> output_ptr_rz(
+          WrapRedzoneBestEffort(&rz_allocator, output_ptr));
       std::vector<AlgorithmDesc> algorithms;
       OP_REQUIRES(ctx,
                   stream->parent()->GetConvolveAlgorithms(
@@ -452,12 +470,19 @@ struct LaunchConvOp<GPUDevice, T> {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
         DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+        se::cuda::RedzoneAllocator rz_scratch_allocator(
+            stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+            /*memory_limit=*/ConvolveScratchSize);
+        se::ScratchAllocator* allocator_used =
+            !RedzoneCheckDisabled()
+                ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
+                : static_cast<se::ScratchAllocator*>(&scratch_allocator);
         ProfileResult profile_result;
         bool cudnn_launch_status =
             stream
                 ->ThenConvolveWithAlgorithm(
                     input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                    output_desc, &output_ptr, &scratch_allocator,
+                    output_desc, &output_ptr_rz, allocator_used,
                     AlgorithmConfig(profile_algorithm), &profile_result)
                 .ok();
         if (cudnn_launch_status) {
@@ -467,9 +492,15 @@ struct LaunchConvOp<GPUDevice, T> {
             result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
             result.mutable_conv()->set_tensor_ops_enabled(
                 profile_algorithm.tensor_ops_enabled());
-            result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+            result.set_scratch_bytes(
+                !RedzoneCheckDisabled()
+                    ? rz_scratch_allocator
+                          .TotalAllocatedBytesExcludingRedzones()
+                    : scratch_allocator.TotalByteSize());
             *result.mutable_run_time() = proto_utils::ToDurationProto(
                 absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+            CheckRedzones(rz_scratch_allocator, &result);
+            CheckRedzones(rz_allocator, &result);
           }
         }
       }
