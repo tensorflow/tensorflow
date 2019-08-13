@@ -301,7 +301,6 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
     case xla::C128:
       return InitializeTypedBuffer<double>(stream, buffer, rng_state);
     case xla::S8:
-    case xla::S32:
       stream->ThenMemZero(&buffer, buffer.size());
       return;
     default:
