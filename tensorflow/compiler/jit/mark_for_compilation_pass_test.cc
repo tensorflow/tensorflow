@@ -439,7 +439,7 @@ TEST(XlaCompilationTest, Loops) {
   EXPECT_EQ(0, clusters.size());
 }
 
-TEST(XlaCompilationTest, CyclesWithAllDifferentScopesGlobalJitOverridden) {
+TEST(XlaCompilationTest, CyclesWithAllDifferentScopesRespectedByGlobalJit) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   {
     GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
@@ -465,11 +465,8 @@ TEST(XlaCompilationTest, CyclesWithAllDifferentScopesGlobalJitOverridden) {
 
   // The computation is: C = A + relu(A)
   // where A sits in ScopeA, relu(A) sits in ScopeB, and C sits in ScopeC.
-  // In this case, the GlobalJitLevel overrides the scopes to cluster while
-  // ignoring scopes.
-  EXPECT_EQ(3, clusters.size());
-  EXPECT_EQ(clusters["A"], clusters["B"]);
-  EXPECT_EQ(clusters["A"], clusters["C"]);
+  // In this case, the GlobalJitLevel respects the scopes to cluster.
+  EXPECT_EQ(0, clusters.size());
 }
 
 TEST(XlaCompilationTest, CyclesWithAllDifferentScopes) {

@@ -925,16 +925,11 @@ MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
 
 absl::optional<string> MarkForCompilationPassImpl::GetXlaScope(Node* node) {
   // Look for an _XlaScope on both nodes.  If both nodes have a scope and the
-  // scopes do not match, do not cluster along this edge. This restriction is
-  // overridden if the global_jit_level_ is ON. If even one of the nodes lacks
-  // an _XlaScope attribute, then it is treated as a "bridge" and a cluster may
-  // be created along it.  We may want to restrict this behavior to require all
-  // nodes marked with _XlaCompile=true to also have a _XlaScope property set
-  // (and raise an error otherwise); but for now we don't do this.
-  if (global_jit_level_ != OptimizerOptions::OFF) {
-    return absl::nullopt;
-  }
-
+  // scopes do not match, do not cluster along this edge.  If even one of the
+  // nodes lacks an _XlaScope attribute, then it is treated as a "bridge" and
+  // a cluster may be created along it.  We may want to restrict this behavior
+  // to require all nodes marked with _XlaCompile=true to also have a _XlaScope
+  // property set (and raise an error otherwise); but for now we don't do this.
   string scope;
   if (GetNodeAttr(node->attrs(), kXlaScopeAttr, &scope).ok()) {
     return scope;
