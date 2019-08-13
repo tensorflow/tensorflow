@@ -635,12 +635,12 @@ class AutoMixedPrecisionTest(test.TestCase):
       num_iter, bs, nchan, nclass = 100, 64, 32, 100
 
       data = np.random.normal(size=(bs * num_iter, nchan)).astype(np.float32)
-      labels = np.random.randint(nclass, size=(bs * 100,))
+      labels = np.random.randint(nclass, size=(bs * num_iter,))
       ds = dataset_ops.Dataset.from_tensor_slices((data, labels))
       ds = ds.batch(bs).prefetch(3)
       it = ds.make_one_shot_iterator()
 
-      def body(_, i, j):
+      def body(_, i):
         i += 1
         x, yt = it.get_next()
         y = layers.Dense(nclass)(x)
@@ -649,13 +649,13 @@ class AutoMixedPrecisionTest(test.TestCase):
         train_op = opt.minimize(loss)
         with ops.control_dependencies([train_op]):
           loss = array_ops.identity(loss)
-        return loss, i, j
+        return loss, i
 
       begin, end = constant_op.constant(0), constant_op.constant(num_iter)
-      loss, _, _ = control_flow_ops.while_loop(
-          lambda loss, i, j: math_ops.less(i, j),
+      loss, _ = control_flow_ops.while_loop(
+          lambda loss, i: math_ops.less(i, end),
           body,
-          [0.0, begin, end])
+          [0.0, begin])
 
       output_val_ref, output_val, cost_graph = self._run(loss)
       node_map = _build_node_map(cost_graph.node)
