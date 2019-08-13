@@ -103,7 +103,7 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
       int32x4_t casted_mean_2 = RoundToNearest(mean_2);
       int16x4_t narrow_range_mean_2 = vmovn_s32(casted_mean_2);
       int16x8_t combined_mean =
-          vcombine_u16(narrow_range_mean_2, narrow_range_mean_1);
+          vcombine_s16(narrow_range_mean_2, narrow_range_mean_1);
       int8x8_t narrowed_combined_mean = vmovn_s16(combined_mean);
       int8_t* output_data_ptr =
           output_data + Offset(output_shape, out_b, 0, 0, out_d);
