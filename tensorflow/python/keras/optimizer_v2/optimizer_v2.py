@@ -631,7 +631,8 @@ class OptimizerV2(trackable.Trackable):
       return
     # Iterate hyper values deterministically.
     for name, value in sorted(self._hyper.items()):
-      if isinstance(value, ops.Tensor) or callable(value):
+      if isinstance(
+          value, (ops.Tensor, tf_variables.Variable)) or callable(value):
         continue
       else:
         self._hyper[name] = self.add_weight(
