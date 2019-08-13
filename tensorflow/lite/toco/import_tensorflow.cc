@@ -1869,23 +1869,25 @@ tensorflow::Status ConvertReduceOperator(
   return tensorflow::Status::OK();
 }
 
+// TODO(b/139320642): Add test when fused op is supported.
 tensorflow::Status ConvertSvdfOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     const ModelFlags& model_flags, Model* model) {
   CHECK_EQ(node.op(), "Svdf");
   const int input_size = GetInputsCount(node, tf_import_flags);
-  QCHECK(input_size == 3 || input_size == 4)
+  QCHECK(input_size == 4 || input_size == 5)
       << "Svdf node expects 3 or 4 inputs other than control dependencies: "
       << node.DebugString();
-  bool has_bias = (input_size == 4);
+  bool has_bias = (input_size == 5);
   auto* op = new SvdfOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->inputs.push_back(node.input(2));
+  int index = 0;
+  op->inputs.push_back(node.input(index++));
+  op->inputs.push_back(node.input(index++));
+  op->inputs.push_back(node.input(index++));
   if (has_bias) {
-    op->inputs.push_back(node.input(3));
+    op->inputs.push_back(node.input(index++));
   }
-  op->outputs.push_back(node.name() + "_state");
+  op->inputs.push_back(node.input(index));
   op->outputs.push_back(node.name());
   if (node.attr().at("ActivationFunction").s() == "Relu") {
     op->fused_activation_function = FusedActivationFunctionType::kRelu;
