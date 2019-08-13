@@ -6407,6 +6407,13 @@ op {
     name: "shape"
     type: "shape"
   }
+  attr {
+    name: "communication_hint"
+    type: "string"
+    default_value {
+      s: "auto"
+    }
+  }
   is_stateful: true
 }
 op {
@@ -6448,6 +6455,13 @@ op {
     name: "shape"
     type: "shape"
   }
+  attr {
+    name: "communication_hint"
+    type: "string"
+    default_value {
+      s: "auto"
+    }
+  }
   is_stateful: true
 }
 op {
@@ -6488,6 +6502,13 @@ op {
   attr {
     name: "shape"
     type: "shape"
+  }
+  attr {
+    name: "communication_hint"
+    type: "string"
+    default_value {
+      s: "auto"
+    }
   }
   is_stateful: true
 }
@@ -6598,6 +6619,13 @@ op {
     default_value {
       list {
       }
+    }
+  }
+  attr {
+    name: "communication_hint"
+    type: "string"
+    default_value {
+      s: "auto"
     }
   }
   is_stateful: true
