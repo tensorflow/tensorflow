@@ -22,7 +22,6 @@ import time
 from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base
-from tensorflow.python.data.experimental.ops import sleep
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
@@ -54,9 +53,12 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @test_util.run_v1_only("graph-mode specific test")
   def testSkipEagerPrefetchCancellation(self):
-    sleep_microseconds = 1000000
-    dataset = dataset_ops.Dataset.range(10).apply(
-        sleep.sleep(sleep_microseconds)).prefetch(3)
+    def map_py_fn(x):
+      while x > -1:
+        x = x * 1
+      return x
+
+    dataset = dataset_ops.Dataset.range(10).map(map_py_fn).prefetch(3)
     get_next = self.getNext(dataset)
 
     with self.cached_session() as sess:

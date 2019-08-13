@@ -120,13 +120,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       slack_us_ = 0;
     }
 
-    ~Iterator() override { deregister_fn_(); }
-
-    // Signal the prefetch thread to terminate it. We will then join that
-    // thread when we delete `this->prefetch_thread_`.
-    void Cancel() {
-      cancelled_ = true;
+    ~Iterator() override {
+      mutex_lock l(*mu_);
+      cancellation_manager_.StartCancel();
       cond_var_->notify_all();
+      deregister_fn_();
     }
 
     string BuildTraceMeName() override {
@@ -149,14 +147,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(*mu_);
       if (buffer_size_->value == model::kAutotune) {
         buffer_size_->value = 0;
+      }
       TF_RETURN_IF_ERROR(
           ConnectCancellationManagers(ctx->cancellation_manager(),
                                       &cancellation_manager_, &deregister_fn_));
-      CancellationToken token = cancellation_manager_.get_cancellation_token();
-      if (!cancellation_manager_.RegisterCallback(token,
-                                                  [this]() { Cancel(); })) {
-        return errors::Cancelled("Operation was cancelled");
-      }
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
@@ -170,7 +164,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         // Wait until the next element in the buffer has been
         // produced, or we are shutting down.
         if (legacy_autotune_) {
-          while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
+          while (!cancellation_manager_.IsCancelled() && buffer_.empty() &&
+                 !prefetch_thread_finished_ &&
                  auto_tuner_.buffer_limit() != 0) {
             auto_tuner_.RecordEmpty();
             buffer_size_->value = auto_tuner_.buffer_limit();
@@ -179,15 +174,15 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
             RecordStart(ctx);
           }
         } else {
-          while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
-                 buffer_size_->value != 0) {
+          while (!cancellation_manager_.IsCancelled() && buffer_.empty() &&
+                 !prefetch_thread_finished_ && buffer_size_->value != 0) {
             RecordStop(ctx);
             cond_var_->wait(l);
             RecordStart(ctx);
           }
         }
 
-        if (cancelled_) {
+        if (cancellation_manager_.IsCancelled()) {
           return errors::Cancelled(
               "PrefetchDatasetOp::Dataset::Iterator::GetNext");
         }
@@ -382,13 +377,14 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         // 1. Wait for a slot in the buffer.
         {
           mutex_lock l(*mu_);
-          while (!cancelled_ && buffer_.size() >= buffer_limit()) {
+          while (!cancellation_manager_.IsCancelled() &&
+                 buffer_.size() >= buffer_limit()) {
             RecordStop(ctx.get());
             cond_var_->wait(l);
             RecordStart(ctx.get());
           }
 
-          if (cancelled_) {
+          if (cancellation_manager_.IsCancelled()) {
             return;
           }
         }
