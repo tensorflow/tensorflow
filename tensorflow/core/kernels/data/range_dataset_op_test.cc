@@ -21,7 +21,6 @@ namespace data {
 namespace {
 
 constexpr char kNodeName[] = "range_dataset";
-constexpr char kIteratorPrefix[] = "Iterator";
 
 class RangeDatasetOpTest : public DatasetOpsTestBaseV2<RangeDatasetParams> {
  public:
@@ -30,7 +29,7 @@ class RangeDatasetOpTest : public DatasetOpsTestBaseV2<RangeDatasetParams> {
     TF_RETURN_IF_ERROR(InitFunctionLibraryRuntime({}, cpu_num_));
 
     TF_RETURN_IF_ERROR(
-        CreateRangeDatasetOpKernel(*range_dataset_params, &dataset_kernel_));
+        MakeDatasetOpKernel(*range_dataset_params, &dataset_kernel_));
     gtl::InlinedVector<TensorValue, 4> inputs;
     TF_RETURN_IF_ERROR(range_dataset_params->MakeInputs(&inputs));
     TF_RETURN_IF_ERROR(
@@ -39,16 +38,16 @@ class RangeDatasetOpTest : public DatasetOpsTestBaseV2<RangeDatasetParams> {
         CreateDataset(dataset_kernel_.get(), dataset_ctx_.get(), &dataset_));
     TF_RETURN_IF_ERROR(
         CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
-    TF_RETURN_IF_ERROR(dataset_->MakeIterator(iterator_ctx_.get(),
-                                              kIteratorPrefix, &iterator_));
+    TF_RETURN_IF_ERROR(dataset_->MakeIterator(
+        iterator_ctx_.get(), range_dataset_params->iterator_prefix,
+        &iterator_));
     return Status::OK();
   }
 
  protected:
-  // Creates a new `BatchDataset` op kernel.
-  Status CreateRangeDatasetOpKernel(
+  Status MakeDatasetOpKernel(
       const RangeDatasetParams& dataset_params,
-      std::unique_ptr<OpKernel>* range_dataset_op_kernel) {
+      std::unique_ptr<OpKernel>* range_dataset_op_kernel) override {
     NodeDef node_def = test::function::NDef(
         dataset_params.node_name,
         name_utils::OpName(RangeDatasetOp::kDatasetType),
@@ -87,10 +86,6 @@ RangeDatasetParams ZeroStepRangeDatasetParams() {
           /*node_name=*/kNodeName};
 }
 
-class ParameterizedGetNextTest : public RangeDatasetOpTest,
-                                 public ::testing::WithParamInterface<
-                                     GetNextTestCase<RangeDatasetParams>> {};
-
 std::vector<GetNextTestCase<RangeDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/PositiveStepRangeDatasetParams(),
            /*expected_outputs=*/
@@ -100,17 +95,8 @@ std::vector<GetNextTestCase<RangeDatasetParams>> GetNextTestCases() {
            CreateTensors<int64>(TensorShape({}), {{10}, {7}, {4}, {1}})}};
 }
 
-TEST_P(ParameterizedGetNextTest, GetNext) {
-  auto test_case = GetParam();
-  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
-  TF_ASSERT_OK(
-      CheckIteratorGetNext(test_case.expected_outputs, /*compare_order=*/true));
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    RangeDatasetOpTest, ParameterizedGetNextTest,
-    ::testing::ValuesIn(
-        std::vector<GetNextTestCase<RangeDatasetParams>>(GetNextTestCases())));
+ITERATOR_GET_NEXT_TEST_P(RangeDatasetOpTest, RangeDatasetParams,
+                         GetNextTestCases())
 
 TEST_F(RangeDatasetOpTest, DatasetNodeName) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
@@ -137,11 +123,6 @@ TEST_F(RangeDatasetOpTest, DatasetOutputShapes) {
   TF_ASSERT_OK(CheckDatasetOutputShapes({PartialTensorShape({})}));
 }
 
-class ParameterizedCardinalityTest
-    : public RangeDatasetOpTest,
-      public ::testing::WithParamInterface<
-          CardinalityTestCase<RangeDatasetParams>> {};
-
 std::vector<CardinalityTestCase<RangeDatasetParams>> CardinalityTestCases() {
   return {{/*dataset_params=*/PositiveStepRangeDatasetParams(),
            /*expected_cardinality=*/4},
@@ -149,16 +130,8 @@ std::vector<CardinalityTestCase<RangeDatasetParams>> CardinalityTestCases() {
            /*expected_cardinality=*/4}};
 }
 
-TEST_P(ParameterizedCardinalityTest, Cardinality) {
-  auto test_case = GetParam();
-  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
-  TF_ASSERT_OK(CheckDatasetCardinality(test_case.expected_cardinality));
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    RangeDatasetOpTest, ParameterizedCardinalityTest,
-    ::testing::ValuesIn(std::vector<CardinalityTestCase<RangeDatasetParams>>(
-        CardinalityTestCases())));
+DATASET_CARDINALITY_TEST_P(RangeDatasetOpTest, RangeDatasetParams,
+                           CardinalityTestCases())
 
 TEST_F(RangeDatasetOpTest, IteratorOutputDtypes) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
@@ -176,13 +149,8 @@ TEST_F(RangeDatasetOpTest, IteratorPrefix) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
   TF_ASSERT_OK(Initialize(&range_dataset_params));
   TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
-      RangeDatasetOp::kDatasetType, kIteratorPrefix)));
+      RangeDatasetOp::kDatasetType, range_dataset_params.iterator_prefix)));
 }
-
-class ParameterizedIteratorSaveAndRestoreTest
-    : public RangeDatasetOpTest,
-      public ::testing::WithParamInterface<
-          IteratorSaveAndRestoreTestCase<RangeDatasetParams>> {};
 
 std::vector<IteratorSaveAndRestoreTestCase<RangeDatasetParams>>
 IteratorSaveAndRestoreTestCases() {
@@ -196,18 +164,8 @@ IteratorSaveAndRestoreTestCases() {
            CreateTensors<int64>(TensorShape({}), {{10}, {7}, {4}, {1}})}};
 }
 
-TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
-  auto test_case = GetParam();
-  TF_ASSERT_OK(Initialize(&test_case.dataset_params));
-  TF_ASSERT_OK(CheckIteratorSaveAndRestore(
-      kIteratorPrefix, test_case.expected_outputs, test_case.breakpoints));
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    RangeDatasetOpTest, ParameterizedIteratorSaveAndRestoreTest,
-    ::testing::ValuesIn(
-        std::vector<IteratorSaveAndRestoreTestCase<RangeDatasetParams>>(
-            IteratorSaveAndRestoreTestCases())));
+ITERATOR_SAVE_AND_RESTORE_TEST_P(RangeDatasetOpTest, RangeDatasetParams,
+                                 IteratorSaveAndRestoreTestCases())
 
 TEST_F(RangeDatasetOpTest, ZeroStep) {
   auto range_dataset_params = ZeroStepRangeDatasetParams();
