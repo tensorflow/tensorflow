@@ -2848,47 +2848,9 @@ select(condition, t, e) ==> [[1, 2],
 }
 
 def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect]> {
-  let summary = "Selects elements from `x` or `y`, depending on `condition`.";
+  let summary = "";
 
   let description = [{
-The `x`, and `y` tensors must all have the same shape, and the
-output will also have that shape.
-
-The `condition` tensor must be a scalar if `x` and `y` are scalars.
-If `x` and `y` are vectors or higher rank, then `condition` must be either a
-scalar, a vector with size matching the first dimension of `x`, or must have
-the same shape as `x`.
-
-The `condition` tensor acts as a mask that chooses, based on the value at each
-element, whether the corresponding element / row in the output should be
-taken from `x` (if true) or `y` (if false).
-
-If `condition` is a vector and `x` and `y` are higher rank matrices, then
-it chooses which row (outer dimension) to copy from `x` and `y`.
-If `condition` has the same shape as `x` and `y`, then it chooses which
-element to copy from `x` and `y`.
-
-For example:
-
-```python
-# 'condition' tensor is [[True,  False]
-#                        [False, True]]
-# 't' is [[1, 2],
-#         [3, 4]]
-# 'e' is [[5, 6],
-#         [7, 8]]
-select(condition, t, e)  # => [[1, 6], [7, 4]]
-
-
-# 'condition' tensor is [True, False]
-# 't' is [[1, 2],
-#         [3, 4]]
-# 'e' is [[5, 6],
-#         [7, 8]]
-select(condition, t, e) ==> [[1, 2],
-                             [7, 8]]
-
-```
   }];
 
   let arguments = (ins
@@ -3003,6 +2965,23 @@ whose values are extracted from 'input' starting at the offsets in
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_SnapshotOp : TF_Op<"Snapshot", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Returns a copy of the input tensor.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_SoftmaxOp : TF_Op<"Softmax", [NoSideEffect]> {
