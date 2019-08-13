@@ -141,8 +141,8 @@ class CollectiveOpTest(test.TestCase):
           with ops.device(device):
             device_collectives = []
             for j in range(num_vars):
-              # TODO(ayushd): figure out why identity is necessary to get the
-              # right device on the input here with TF2_BEHAVIOR=1.
+              # NOTE(ayushd): we need the `identity` here to ensure that the
+              # input to `all_reduce` has an explicit device string.
               input_tensor = array_ops.identity(device_tensors[j])
               collective_op = collective_ops.all_reduce(
                   input_tensor, group_size, group_key, instances[j],
