@@ -26,6 +26,7 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy as mp_policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.experimental import mixed_precision
 
@@ -46,10 +47,20 @@ class PolicyTest(test.TestCase):
 
     for dtype in 'int32', 'bool', 'float16', 'float32':
       policy = mp_policy.Policy(dtype)
+      self.assertEqual(policy.name, dtype)
       self.assertEqual(policy.compute_dtype, dtype)
       self.assertEqual(policy.variable_dtype, dtype)
 
       policy = mp_policy.Policy(dtype + '_with_float32_vars')
+      expected_name = (
+          dtype if dtype == 'float32' else dtype + '_with_float32_vars')
+      self.assertEqual(policy.name, expected_name)
+      self.assertEqual(policy.compute_dtype, dtype)
+      self.assertEqual(policy.variable_dtype, 'float32')
+
+    for dtype in 'float16', 'bfloat16':
+      policy = mp_policy.Policy('mixed_' + dtype)
+      self.assertEqual(policy.name, 'mixed_' + dtype)
       self.assertEqual(policy.compute_dtype, dtype)
       self.assertEqual(policy.variable_dtype, 'float32')
 
@@ -117,6 +128,15 @@ class PolicyTest(test.TestCase):
     policy = mp_policy.Policy('float32', loss_scale='dynamic')
     self.assertIsInstance(policy.loss_scale, loss_scale_module.DynamicLossScale)
 
+    policy = mp_policy.Policy('mixed_float16')
+    self.assertIsInstance(policy.loss_scale, loss_scale_module.DynamicLossScale)
+
+    policy = mp_policy.Policy('mixed_float16', loss_scale=None)
+    self.assertEqual(policy.loss_scale, None)
+
+    policy = mp_policy.Policy('mixed_bfloat16')
+    self.assertEqual(policy.loss_scale, None)
+
   @testing_utils.enable_v2_dtype_behavior
   def test_global_policy(self):
     if base_layer_utils.v2_dtype_behavior_enabled():
@@ -138,6 +158,21 @@ class PolicyTest(test.TestCase):
       self.assertIs(mp_policy.global_policy(), policy)
     finally:
       mp_policy.set_policy(None)
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_loss_scale_warning(self):
+    with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+      mp_policy.Policy('float32', loss_scale=2.)
+      self.assertEqual(
+          mock_warn.call_args[0][0],
+          'Creating a Policy with a loss scale is only useful for float16 '
+          'policies. You passed loss_scale=2.0 for policy float32. Consider '
+          'not passing any loss_scale instead.')
+
+    for policy_name in 'float16', 'float16_with_float32_vars', 'mixed_float16':
+      with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
+        mp_policy.Policy(policy_name, loss_scale=2.)
+        mock_warn.assert_not_called()
 
   @testing_utils.enable_v2_dtype_behavior
   def test_policy_scope(self):
