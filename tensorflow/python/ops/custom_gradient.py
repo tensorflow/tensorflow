@@ -316,7 +316,10 @@ def _eager_mode_decorator(f, *args, **kwargs):
   all_inputs = list(args) + list(kwargs.values())
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
-  variables = [v for v in set(tape.watched_variables()) if v not in all_inputs]
+  variables = [v.deref()  # pylint: disable=g-complex-comprehension
+               for v in set(v.experimental_ref()
+                            for v in tape.watched_variables())
+               if v.deref() not in all_inputs]
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   if (variables and ("variables" not in grad_argspec.args) and
       not grad_argspec.varkw):
