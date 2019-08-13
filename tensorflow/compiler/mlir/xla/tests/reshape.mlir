@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -xla-legalize-to-std | FileCheck %s
+// RUN: tf-opt %s -split-input-file -xla-legalize-to-std -canonicalize | FileCheck %s
 
 // CHECK-LABEL: func @const_fold_collapse_to_scalar
 func @const_fold_collapse_to_scalar() -> tensor<i32> {
@@ -86,4 +86,14 @@ func @const_fold_float() -> tensor<16xf64> {
   %0 = "xla_hlo.reshape"(%cst) : (tensor<4x4xf64>) -> tensor<16xf64>
   // CHECK-NEXT: return [[CST]]
   return %0 : tensor<16xf64>
+}
+
+// -----
+
+// CHECK-LABEL: func @non_const_same_shape
+// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
+func @non_const_same_shape(%arg : tensor<2x3xi32>) -> tensor<2x3xi32> {
+  // CHECK-NEXT: return [[ARG]]
+  %0 = "xla_hlo.reshape"(%arg) : (tensor<2x3xi32>) -> tensor<2x3xi32>
+  return %0 : tensor<2x3xi32>
 }
