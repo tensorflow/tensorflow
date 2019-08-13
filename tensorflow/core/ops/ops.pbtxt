@@ -9848,6 +9848,15 @@ op {
     name: "graph"
     type: DT_STRING
   }
+  attr {
+    name: "stateful_whitelist"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
 }
 op {
   name: "DatasetToSingleElement"
