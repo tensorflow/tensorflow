@@ -1807,6 +1807,9 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
       RETURN_IF_ERROR(
           ReadAttribsWithBatch(reader, tf_options, input->tensor.shape, &attr));
     }
+    if (attr.strides.h == 0 || attr.strides.w == 0 || attr.strides.c == 0) {
+      return InvalidArgumentError("stride values must be non-zero");
+    }
     if (attr.strides.h < 0 || attr.strides.w < 0 || attr.strides.c < 0) {
       return UnimplementedError("Reverse slices are not supported.");
     }
