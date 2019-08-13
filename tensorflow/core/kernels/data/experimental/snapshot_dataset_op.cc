@@ -180,6 +180,11 @@ Status WriteMetadataFile(const string& hash_dir,
   string metadata_filename = absl::StrCat(hash_dir, "/", kSnapshotFilename);
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(hash_dir));
 
+  Status exists = Env::Default()->FileExists(metadata_filename);
+  if (exists.ok()) {
+    TF_RETURN_IF_ERROR(Env::Default()->DeleteFile(metadata_filename));
+  }
+
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(metadata_filename, &file));
 
@@ -314,7 +319,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     SerializationContext::Params params;
     std::vector<std::pair<string, Tensor>> input_list;
     params.input_list = &input_list;
-    params.optimization_only = true;
+    params.check_external_state = false;
 
     GraphDef graph_def;
     OP_REQUIRES_OK(
@@ -376,7 +381,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
-    bool IsStateful() const override { return input_->IsStateful(); }
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -929,7 +936,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               TF_RETURN_IF_ERROR((*writer)->Close());
               TF_RETURN_IF_ERROR((*file)->Close());
               *snapshot_data_filename = GetSnapshotFilename();
-              TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(
+              TF_RETURN_IF_ERROR(Env::Default()->NewAppendableFile(
                   *snapshot_data_filename, file));
               *writer = absl::make_unique<SnapshotWriter>(
                   file->get(), dataset()->compression_);
@@ -978,7 +985,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           string snapshot_data_filename = GetSnapshotFilename();
           std::unique_ptr<WritableFile> file;
           Status s =
-              Env::Default()->NewWritableFile(snapshot_data_filename, &file);
+              Env::Default()->NewAppendableFile(snapshot_data_filename, &file);
           if (!s.ok()) {
             LOG(ERROR) << "Creating " << snapshot_data_filename
                        << " failed: " << s.ToString();

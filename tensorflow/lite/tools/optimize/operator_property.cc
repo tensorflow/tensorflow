@@ -101,6 +101,12 @@ OperatorProperty GetOperatorProperty(const BuiltinOperator& op) {
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
+    case BuiltinOperator_HARD_SWISH: {
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 1;
+      break;
+    }
     case BuiltinOperator_LOG_SOFTMAX: {
       property.inputs = {{0, {}}};
       // LogSoftmax requires output with 16/256 as scale and 127 as zero point.

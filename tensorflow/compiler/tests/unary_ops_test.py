@@ -297,11 +297,12 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
       self._assertOpOutputMatchesExpected(
           math_ops.tanh,
-          np.array([[1, 1, 1, 1], [1, 2, 3, 4]], dtype=dtype),
-          expected=np.array(
-              [[0.76159418, 0.76159418, 0.76159418, 0.76159418],
-               [0.76159418, 0.96402758, 0.99505478, 0.99932933]],
-              dtype=dtype))
+          np.array(
+              [[1, 2, 3, 4], [np.inf, -np.inf, np.nan, 20], [19, -19, 22, -22]],
+              dtype=dtype),
+          expected=np.array([[0.76159418, 0.96402758, 0.99505478, 0.99932933],
+                             [1.0, -1.0, np.nan, 1.0], [1.0, -1.0, 1.0, -1.0]],
+                            dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
           nn_ops.log_softmax,

@@ -66,12 +66,11 @@ class RecvBufCall : public CancellableCall {
 
 class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
  public:
-  CollectiveRemoteAccessDistributed(const DeviceMgr* dev_mgr,
-                                    DeviceResolverInterface* dev_resolver,
-                                    UnboundedWorkQueue* work_queue,
-                                    WorkerCacheInterface* worker_cache,
-                                    int64 step_id,
-                                    RemoteMemoryManager* remote_memory_manager)
+  CollectiveRemoteAccessDistributed(
+      const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
+      std::shared_ptr<UnboundedWorkQueue> work_queue,
+      WorkerCacheInterface* worker_cache, int64 step_id,
+      RemoteMemoryManager* remote_memory_manager)
       : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, work_queue, step_id),
         worker_cache_(worker_cache),
         remote_memory_manager_(remote_memory_manager) {}
@@ -154,8 +153,8 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
 CollectiveExecutor* GdrCollectiveExecutorMgr::Create(int64 step_id) {
   CollectiveRemoteAccessDistributed* rma =
       new CollectiveRemoteAccessDistributed(dev_mgr_, dev_resolver_.get(),
-                                            &work_queue_, worker_cache_,
-                                            step_id, remote_memory_manager_);
+                                            work_queue_, worker_cache_, step_id,
+                                            remote_memory_manager_);
   return new BaseCollectiveExecutor(this, rma, step_id, dev_mgr_,
                                     &gpu_ring_order_);
 }

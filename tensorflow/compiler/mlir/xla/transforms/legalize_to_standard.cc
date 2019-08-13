@@ -123,8 +123,8 @@ struct LegalizeToStandard : public FunctionPass<LegalizeToStandard> {
 };
 }  // end anonymous namespace
 
-FunctionPassBase *mlir::XLA::createLegalizeToStdPass() {
-  return new LegalizeToStandard();
+std::unique_ptr<mlir::FunctionPassBase> mlir::XLA::createLegalizeToStdPass() {
+  return llvm::make_unique<LegalizeToStandard>();
 }
 
 /// Perform the lowering to standard dialect.
@@ -133,11 +133,9 @@ void LegalizeToStandard::runOnFunction() {
   auto func = getFunction();
 
   mlir::XLA::populateWithGenerated(func.getContext(), &patterns);
-  patterns.push_back(
-      llvm::make_unique<mlir::XLA::CompareFConvert>(&getContext()));
-  patterns.push_back(
-      llvm::make_unique<mlir::XLA::CompareIConvert>(&getContext()));
-  applyPatternsGreedily(func, std::move(patterns));
+  patterns.insert<mlir::XLA::CompareFConvert, mlir::XLA::CompareIConvert>(
+      &getContext());
+  applyPatternsGreedily(func, patterns);
 }
 
 static PassRegistration<LegalizeToStandard> legalize_pass(

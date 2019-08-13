@@ -40,7 +40,7 @@ class GetCalibrationDataOp : public OpKernel {
     // serialized string to that tensor, and later sess.run() will copy it back
     // to host. We need to optimize this.
 
-    const string& resource_name = context->input(0).scalar<string>()();
+    const string& resource_name = context->input(0).scalar<tstring>()();
     // Get the resource.
     TRTEngineCacheResource* resource = nullptr;
     OP_REQUIRES_OK(context, context->resource_manager()->Lookup(
@@ -59,7 +59,7 @@ class GetCalibrationDataOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output));
 
-    output->scalar<string>()() = serialized_resource;
+    output->scalar<tstring>()() = serialized_resource;
   }
 };
 

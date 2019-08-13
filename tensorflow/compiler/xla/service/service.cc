@@ -462,7 +462,8 @@ Service::ExecuteParallelAndRegisterResult(
       // Asynchronously launch the computation.
       TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
                           executables[i]->ExecuteAsyncOnStream(
-                              &run_options, arguments[i][replica]));
+                              &run_options, arguments[i][replica],
+                              /*hlo_execution_profile=*/nullptr));
 
       if (replica == 0 && profile != nullptr) {
         streams.back()->ThenStopTimer(timers.back().get());

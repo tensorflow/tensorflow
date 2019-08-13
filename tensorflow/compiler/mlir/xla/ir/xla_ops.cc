@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
+#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 
 using namespace mlir;
@@ -196,4 +197,27 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
   }
 
   return {};
+}
+
+namespace {
+
+struct SimplifyRedundantReshape : public OpRewritePattern<ReshapeOp> {
+  explicit SimplifyRedundantReshape(MLIRContext* context)
+      : OpRewritePattern(context, /*benefit=*/1) {}
+
+  PatternMatchResult matchAndRewrite(ReshapeOp op,
+                                     PatternRewriter& rewriter) const override {
+    if (op.getOperand()->getType() == op.getType()) {
+      rewriter.replaceOp(op, {op.getOperand()});
+      return matchSuccess();
+    }
+    return matchFailure();
+  }
+};
+
+}  // namespace
+
+void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                            MLIRContext* context) {
+  results.insert<SimplifyRedundantReshape>(context);
 }

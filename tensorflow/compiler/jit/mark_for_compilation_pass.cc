@@ -677,8 +677,7 @@ bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
   }
 
   DataType dtype;
-  if (!GetNodeAttrSimple(n->def(), "dtype", &dtype) ||
-      !DataTypeIsInteger(dtype)) {
+  if (!TryGetNodeAttr(n->def(), "dtype", &dtype) || !DataTypeIsInteger(dtype)) {
     return false;
   }
 
@@ -695,7 +694,7 @@ bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
   }
 
   const TensorProto* proto = nullptr;
-  if (!GetNodeAttrSimple(const_input->def(), "value", &proto)) {
+  if (!TryGetNodeAttr(const_input->def(), "value", &proto)) {
     return false;
   }
 
@@ -999,7 +998,7 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
     bool is_xla_compile_attr_true = false;
 
     bool xla_compile_attr;
-    if (GetNodeAttrSimple(node->attrs(), kXlaCompileAttr, &xla_compile_attr)) {
+    if (TryGetNodeAttr(node->attrs(), kXlaCompileAttr, &xla_compile_attr)) {
       is_xla_compile_attr_true |= xla_compile_attr;
     }
 

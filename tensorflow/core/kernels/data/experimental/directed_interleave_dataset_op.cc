@@ -107,13 +107,11 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
       return strings::StrCat("DirectedInterleaveDatasetOp::Dataset");
     }
 
-    bool IsStateful() const override {
+    Status CheckExternalState() const override {
       for (const auto& input : data_inputs_) {
-        if (input->IsStateful()) {
-          return true;
-        }
+        TF_RETURN_IF_ERROR(input->CheckExternalState());
       }
-      return selector_input_->IsStateful();
+      return selector_input_->CheckExternalState();
     }
 
    protected:

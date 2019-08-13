@@ -52,8 +52,8 @@ public:
   ~ModuleTranslation() override {}
 
 protected:
-  bool convertOperation(Operation &opInst,
-                        llvm::IRBuilder<> &builder) override {
+  LogicalResult convertOperation(Operation &opInst,
+                                 llvm::IRBuilder<> &builder) override {
 
 #include "mlir/LLVMIR/NVVMConversions.inc"
 

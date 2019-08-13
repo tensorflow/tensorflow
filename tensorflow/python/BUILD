@@ -23,8 +23,8 @@ load("//tensorflow:tensorflow.bzl", "if_mlir", "if_not_v2", "if_not_windows", "p
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_cupti_test_flags", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static", "tf_additional_gdr_deps", "tf_additional_mpi_deps", "tf_additional_plugin_deps", "tf_additional_verbs_deps")
+load("//tensorflow/core/platform:default/build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_cupti_test_flags", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static", "tf_additional_gdr_deps", "tf_additional_mpi_deps", "tf_additional_plugin_deps", "tf_additional_verbs_deps")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load(
     "//third_party/ngraph:build_defs.bzl",
@@ -2483,11 +2483,9 @@ tf_py_test(
     additional_deps = [
         ":client_testlib",
         ":collective_ops",
+        ":kernels",
         ":framework_for_generated_wrappers",
         "//third_party/py/numpy",
-    ],
-    tags = [
-        "no_oss",  # TODO(b/138811357): re-enable after fixing flakiness.
     ],
 )
 
@@ -2503,6 +2501,7 @@ cuda_py_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_rocm",
         "no_windows",
     ],
 )
@@ -4550,6 +4549,12 @@ py_library(
     ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass"]),
 )
 
+tf_py_test(
+    name = "object_identity_test",
+    size = "small",
+    srcs = ["util/object_identity_test.py"],
+)
+
 # Placeholder for intenal nest_test comments.
 tf_py_test(
     name = "util_nest_test",
@@ -4970,6 +4975,22 @@ filegroup(
     name = "get_pywrap_tensorflow_import_lib_file",
     srcs = [":_pywrap_tensorflow_internal.so"],
     output_group = "interface_library",
+)
+
+cc_import(
+    name = "_pywrap_tensorflow_internal_linux",
+    shared_library = "//tensorflow/python:lib_pywrap_tensorflow_internal.so",
+)
+
+cc_import(
+    name = "_pywrap_tensorflow_internal_macos",
+    shared_library = "//tensorflow/python:lib_pywrap_tensorflow_internal.dylib",
+)
+
+cc_import(
+    name = "_pywrap_tensorflow_internal_windows",
+    interface_library = "//tensorflow/python:pywrap_tensorflow_import_lib_file",
+    shared_library = "//tensorflow/python:_pywrap_tensorflow_internal.dll",
 )
 
 # Rename the import library for _pywrap_tensorflow_internal.pyd to _pywrap_tensorflow_internal.lib
@@ -5480,7 +5501,10 @@ cuda_py_test(
         ":variable_scope",
         ":variables",
     ],
-    tags = ["notsan"],
+    tags = [
+        "no_windows",  # b/139083295: bfloat16 tests fail on Windows
+        "notsan",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 

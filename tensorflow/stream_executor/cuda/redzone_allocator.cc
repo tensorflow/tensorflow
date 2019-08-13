@@ -46,13 +46,14 @@ using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 
 RedzoneAllocator::RedzoneAllocator(
     Stream* stream, DeviceMemoryAllocator* memory_allocator,
-    cuda::PtxCompilationOptions ptx_compilation_opts, uint64 redzone_size,
-    uint8 redzone_pattern)
+    cuda::PtxCompilationOptions ptx_compilation_opts, int64 memory_limit,
+    int64 redzone_size, uint8 redzone_pattern)
     : device_ordinal_(stream->parent()->device_ordinal()),
       stream_(stream),
+      memory_limit_(memory_limit),
       redzone_size_(RoundUpToNearest(
           redzone_size,
-          static_cast<uint64>(tensorflow::Allocator::kAllocatorAlignment))),
+          static_cast<int64>(tensorflow::Allocator::kAllocatorAlignment))),
       redzone_pattern_(redzone_pattern),
       memory_allocator_(memory_allocator),
       ptx_compilation_opts_(ptx_compilation_opts) {}

@@ -47,7 +47,7 @@ class SummaryScalarOp : public OpKernel {
         errors::InvalidArgument(
             "tags and values not the same shape: ", tags.shape().DebugString(),
             " != ", values.shape().DebugString(), SingleTag(tags)));
-    auto Ttags = tags.flat<string>();
+    auto Ttags = tags.flat<tstring>();
     auto Tvalues = values.flat<T>();
     Summary s;
     for (int i = 0; i < Ttags.size(); i++) {
@@ -64,7 +64,7 @@ class SummaryScalarOp : public OpKernel {
   // If there's only one tag, include it in the error message
   static string SingleTag(const Tensor& tags) {
     if (tags.NumElements() == 1) {
-      return strings::StrCat(" (tag '", tags.flat<string>()(0), "')");
+      return strings::StrCat(" (tag '", tags.flat<tstring>()(0), "')");
     } else {
       return "";
     }
@@ -138,7 +138,7 @@ class SummaryMergeOp : public OpKernel {
     std::unordered_set<string> tags;
     for (int input_num = 0; input_num < c->num_inputs(); input_num++) {
       const Tensor& in = c->input(input_num);
-      auto in_vec = in.flat<string>();
+      auto in_vec = in.flat<tstring>();
       for (int i = 0; i < in_vec.dimension(0); i++) {
         const string& s_in = in_vec(i);
         Summary summary_in;

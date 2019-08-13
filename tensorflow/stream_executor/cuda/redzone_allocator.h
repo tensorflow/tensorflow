@@ -39,15 +39,19 @@ namespace cuda {
 // memory for cudnn convolutions.
 class RedzoneAllocator : public ScratchAllocator {
  public:
+  static const int64 kDefaultMemoryLimit = 1LL << 32;  // 4GB
+  static const int64 kDefaultRedzoneSize =
+      1LL << 23;  // 8MiB per side, 16MiB total.
+  static const uint8 kDefaultRedzonePattern = -1;
   RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,
                    cuda::PtxCompilationOptions ptx_compilation_opts,
-                   uint64 redzone_size = 1 << 23,  // 8MiB per side, 16MiB total
-                   uint8 redzone_pattern = -1);
+                   int64 memory_limit = kDefaultMemoryLimit,
+                   int64 redzone_size = kDefaultRedzoneSize,
+                   uint8 redzone_pattern = kDefaultRedzonePattern);
 
   // Redzones don't count towards the memory limit.
-  int64 GetMemoryLimitInBytes() override {
-    return 1LL << 32;  // 4GB.  TODO(jlebar): Tune this?
-  }
+  int64 GetMemoryLimitInBytes() override { return memory_limit_; }
+
   int64 TotalAllocatedBytesExcludingRedzones() const {
     return allocated_bytes_excluding_redzones_;
   }
@@ -97,7 +101,10 @@ class RedzoneAllocator : public ScratchAllocator {
   const int device_ordinal_;
   Stream* stream_;
 
-  // Redzone size on *one side* of allocation.
+  // Memory limit of the allocator in bytes.
+  const int64 memory_limit_;
+
+  // Redzone size on *one side* of allocation in bytes.
   //
   // Must be a multiple of kXlaAllocatedBufferAlignBytes, otherwise the buffers
   // returned to users will be misaligned.

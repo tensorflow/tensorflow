@@ -252,51 +252,51 @@ bool AttrSlice::EqualAttrs(AttrSlice other, Scratch* scratch) const {
     return Status::OK();                                                      \
   }
 
-#define DEFINE_GET_ATTR_SIMPLE(TYPE, FIELD, ATTR_TYPE, APPEND_OP, CAST, ...) \
-  bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,      \
-                         TYPE* value) {                                      \
-    const AttrValue* attr_value = attrs.Find(attr_name);                     \
-    if (attr_value == nullptr) {                                             \
-      return false;                                                          \
-    }                                                                        \
-    Status s = AttrValueHasType(*attr_value, ATTR_TYPE);                     \
-    if (!s.ok()) {                                                           \
-      return false;                                                          \
-    }                                                                        \
-    const auto& v = attr_value->FIELD();                                     \
-    __VA_ARGS__;                                                             \
-    *value = CAST;                                                           \
-    return true;                                                             \
-  }                                                                          \
-  bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,      \
-                         std::vector<TYPE>* value) {                         \
-    const AttrValue* attr_value = attrs.Find(attr_name);                     \
-    if (attr_value == nullptr) {                                             \
-      return false;                                                          \
-    }                                                                        \
-    Status s = AttrValueHasType(*attr_value, "list(" ATTR_TYPE ")");         \
-    if (!s.ok()) {                                                           \
-      return false;                                                          \
-    }                                                                        \
-    value->reserve(attr_value->list().FIELD().size());                       \
-    for (const auto& v : attr_value->list().FIELD()) {                       \
-      __VA_ARGS__;                                                           \
-      value->APPEND_OP(CAST);                                                \
-    }                                                                        \
-    return true;                                                             \
+#define DEFINE_TRY_GET_ATTR(TYPE, FIELD, ATTR_TYPE, APPEND_OP, CAST, ...) \
+  bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,      \
+                      TYPE* value) {                                      \
+    const AttrValue* attr_value = attrs.Find(attr_name);                  \
+    if (attr_value == nullptr) {                                          \
+      return false;                                                       \
+    }                                                                     \
+    Status s = AttrValueHasType(*attr_value, ATTR_TYPE);                  \
+    if (!s.ok()) {                                                        \
+      return false;                                                       \
+    }                                                                     \
+    const auto& v = attr_value->FIELD();                                  \
+    __VA_ARGS__;                                                          \
+    *value = CAST;                                                        \
+    return true;                                                          \
+  }                                                                       \
+  bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,      \
+                      std::vector<TYPE>* value) {                         \
+    const AttrValue* attr_value = attrs.Find(attr_name);                  \
+    if (attr_value == nullptr) {                                          \
+      return false;                                                       \
+    }                                                                     \
+    Status s = AttrValueHasType(*attr_value, "list(" ATTR_TYPE ")");      \
+    if (!s.ok()) {                                                        \
+      return false;                                                       \
+    }                                                                     \
+    value->reserve(attr_value->list().FIELD().size());                    \
+    for (const auto& v : attr_value->list().FIELD()) {                    \
+      __VA_ARGS__;                                                        \
+      value->APPEND_OP(CAST);                                             \
+    }                                                                     \
+    return true;                                                          \
   }
 
 DEFINE_GET_ATTR(string, s, "string", emplace_back, v, ;)
-DEFINE_GET_ATTR_SIMPLE(string, s, "string", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(string, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR(int64, i, "int", emplace_back, v, ;)
-DEFINE_GET_ATTR_SIMPLE(int64, i, "int", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(int64, i, "int", emplace_back, v, ;)
 DEFINE_GET_ATTR(
     int32, i, "int", emplace_back, static_cast<int32>(v),
     if (static_cast<int64>(static_cast<int32>(v)) != v) {
       return errors::InvalidArgument("Attr ", attr_name, " has value ", v,
                                      " out of range for an int32");
     })
-DEFINE_GET_ATTR_SIMPLE(
+DEFINE_TRY_GET_ATTR(
     int32, i, "int", emplace_back, static_cast<int32>(v),
     if (static_cast<int64>(static_cast<int32>(v)) != v) {
       static int log_counter = 0;
@@ -308,21 +308,21 @@ DEFINE_GET_ATTR_SIMPLE(
       return false;
     })
 DEFINE_GET_ATTR(float, f, "float", emplace_back, v, ;)
-DEFINE_GET_ATTR_SIMPLE(float, f, "float", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(float, f, "float", emplace_back, v, ;)
 // std::vector<bool> specialization does not have emplace_back until
 // c++14, so we have to use push_back (see
 // http://en.cppreference.com/w/cpp/container/vector/emplace_back)
 DEFINE_GET_ATTR(bool, b, "bool", push_back, v, ;)
-DEFINE_GET_ATTR_SIMPLE(bool, b, "bool", push_back, v, ;)
+DEFINE_TRY_GET_ATTR(bool, b, "bool", push_back, v, ;)
 DEFINE_GET_ATTR(DataType, type, "type", emplace_back, static_cast<DataType>(v),
                 ;)
-DEFINE_GET_ATTR_SIMPLE(DataType, type, "type", emplace_back,
-                       static_cast<DataType>(v),
-                       ;)
+DEFINE_TRY_GET_ATTR(DataType, type, "type", emplace_back,
+                    static_cast<DataType>(v),
+                    ;)
 DEFINE_GET_ATTR(TensorShapeProto, shape, "shape", emplace_back, v, ;)
 DEFINE_GET_ATTR(TensorShape, shape, "shape", emplace_back, TensorShape(v),
                 TF_RETURN_IF_ERROR(TensorShape::IsValidShape(v));)
-DEFINE_GET_ATTR_SIMPLE(
+DEFINE_TRY_GET_ATTR(
     TensorShape, shape, "shape", emplace_back, TensorShape(v),
     if (!TensorShape::IsValidShape(v).ok()) {
       static int log_counter = 0;
@@ -363,8 +363,8 @@ const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name) {
   return attr_value->s();
 }
 
-bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
-                       std::vector<const string*>* value) {
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<const string*>* value) {
   const AttrValue* attr_value = attrs.Find(attr_name);
   if (attr_value == nullptr) {
     return false;
@@ -380,8 +380,8 @@ bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
   return true;
 }
 
-bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
-                       std::vector<const TensorShapeProto*>* value) {
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<const TensorShapeProto*>* value) {
   const AttrValue* attr_value = attrs.Find(attr_name);
   if (attr_value == nullptr) {
     return false;
@@ -417,8 +417,8 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
   return Status::OK();
 }
 
-bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
-                       const TensorProto** value) {
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    const TensorProto** value) {
   const AttrValue* attr_value = attrs.Find(attr_name);
   if (attr_value == nullptr) {
     return false;
@@ -440,8 +440,8 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
   return Status::OK();
 }
 
-bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
-                       const NameAttrList** value) {
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    const NameAttrList** value) {
   const AttrValue* attr_value = attrs.Find(attr_name);
   if (attr_value == nullptr) {
     return false;

@@ -36,6 +36,8 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver as saver_lib
 
@@ -83,6 +85,31 @@ class WrapFunctionTest(test.TestCase):
 
     f_pruned = f_wrapped.prune(x_in[0], [x_out[0]])
     self.assertAllEqual(f_pruned(ops.convert_to_tensor(2.0)), [4.0])
+
+  def testPruneRagged(self):
+
+    x_in = []
+    x_out = []
+
+    def f(x, y):
+      x_in.append(x)
+      xx = x * x
+      x_out.append(xx)
+      return xx, y * y
+
+    x_spec = ragged_tensor.RaggedTensorSpec([None, None], dtypes.float32)
+    y_spec = tensor_spec.TensorSpec((), dtypes.float32)
+
+    f_wrapped = wrap_function.wrap_function(f, [x_spec, y_spec])
+
+    f_pruned = f_wrapped.prune(x_in[0], x_out[0])
+    rt = ragged_factory_ops.constant([[1.0, 2.0], [3.0]])
+    expected = ragged_factory_ops.constant_value([[1.0, 4.0], [9.0]])
+
+    # Note: when we call f_pruned, we must pass the RaggedTensor in using
+    # its components, since that's the current convention for how concrete
+    # functions handle structured inputs.
+    self.assertAllEqual(f_pruned(rt.values, rt.row_splits), expected)
 
   def _assert_single_captured_variable_argument(self, graph_def):
     # The single FunctionDef should have one argument, a captured variable

@@ -26,6 +26,7 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy as mp_policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.platform import test
+from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.experimental import mixed_precision
 
 
@@ -57,9 +58,11 @@ class PolicyTest(test.TestCase):
     for policy in ('infer', 'infer_with_float32_vars', 'float32',
                    'float16_with_float32_vars'):
       self.assertEqual(repr(mp_policy.Policy(policy)),
-                       '<Policy "%s">' % policy)
+                       '<Policy "%s", loss_scale=None>' % policy)
     self.assertEqual(repr(mp_policy.Policy('float32_with_float32_vars')),
-                     '<Policy "float32">')
+                     '<Policy "float32", loss_scale=None>')
+    self.assertEqual(repr(mp_policy.Policy('float16', loss_scale=2)),
+                     '<Policy "float16", loss_scale=FixedLossScale(2.0)>')
 
   @testing_utils.enable_v2_dtype_behavior
   def test_policy_errors(self):
@@ -98,6 +101,21 @@ class PolicyTest(test.TestCase):
         mp_policy.Policy('infer_with_float32_vars'), 'float32')
     self.assertEqual(policy.compute_dtype, 'float32')
     self.assertEqual(policy.variable_dtype, 'float32')
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_loss_scale(self):
+    policy = mp_policy.Policy('float32')
+    self.assertEqual(policy.loss_scale, None)
+
+    policy = mp_policy.Policy('float32', loss_scale=None)
+    self.assertEqual(policy.loss_scale, None)
+
+    ls = loss_scale_module.DynamicLossScale()
+    policy = mp_policy.Policy('float32', loss_scale=ls)
+    self.assertIs(policy.loss_scale, ls)
+
+    policy = mp_policy.Policy('float32', loss_scale='dynamic')
+    self.assertIsInstance(policy.loss_scale, loss_scale_module.DynamicLossScale)
 
   @testing_utils.enable_v2_dtype_behavior
   def test_global_policy(self):

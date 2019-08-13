@@ -112,9 +112,9 @@ TfLiteStatus MicroInterpreter::Invoke() {
   }
   TfLiteStatus status = kTfLiteOk;
   auto opcodes = model_->operator_codes();
-  for (int i = 0; i < operators_->size(); ++i) {
+  for (size_t i = 0; i < operators_->size(); ++i) {
     const auto* op = operators_->Get(i);
-    int index = op->opcode_index();
+    size_t index = op->opcode_index();
     if (index < 0 || index >= opcodes->size()) {
       error_reporter_->Report("Missing registration for opcode_index %d\n",
                               index);
@@ -216,7 +216,7 @@ TfLiteStatus MicroInterpreter::Invoke() {
   return status;
 }
 
-TfLiteTensor* MicroInterpreter::input(int index) {
+TfLiteTensor* MicroInterpreter::input(size_t index) {
   const flatbuffers::Vector<int32_t>* inputs = subgraph_->inputs();
   const size_t length = inputs->size();
   if ((index < 0) || (index >= length)) {
@@ -227,7 +227,7 @@ TfLiteTensor* MicroInterpreter::input(int index) {
   return &(context_.tensors[inputs->Get(index)]);
 }
 
-TfLiteTensor* MicroInterpreter::output(int index) {
+TfLiteTensor* MicroInterpreter::output(size_t index) {
   const flatbuffers::Vector<int32_t>* outputs = subgraph_->outputs();
   const size_t length = outputs->size();
   if ((index < 0) || (index >= outputs->size())) {

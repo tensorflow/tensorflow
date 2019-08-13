@@ -340,7 +340,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   parallel_iterations = op.get_attr("parallel_iterations")
 
   try:
-    num_original_outputs = op.get_attr("_num_original_outputs")
+    num_original_outputs = while_op.get_attr("_num_original_outputs")
   except:  # pylint: disable=bare-except
     num_original_outputs = len(while_op.outputs)
 
@@ -941,6 +941,17 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       self.popped_tensor_lists[ops.tensor_id(captured_tensor)] = captured_tensor
       self._indirect_captures[ops.tensor_id(tensor)] = captured_tensor
       return captured_tensor
+
+    # Do not accumulate Const nodes. Instead copy them directly in the backward
+    # graph.
+    # TODO(srbs): This just checks for `Const` nodes. Consider checking for
+    # graph compile time consts in general.
+    # TODO(srbs): Consider making this a loop input.
+    if constant_op.is_constant(tensor):
+      real_value = constant_op.constant(
+          tensor_util.constant_value(tensor), dtype=tensor.dtype)
+      self._indirect_captures[ops.tensor_id(tensor)] = real_value
+      return real_value
 
     # Resource tensors are not accumulated and handled specially.
     if tensor.dtype == dtypes.resource:

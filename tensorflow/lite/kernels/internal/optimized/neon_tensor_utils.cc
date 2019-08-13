@@ -33,14 +33,13 @@ limitations under the License.
 
 #define kFloatWeightsPerNeonLane 4
 
+// aligned_alloc is available (via cstdlib/stdlib.h) with C++17/C11.
 #if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
 #if !defined(__ANDROID__) || __ANDROID_API__ >= 28
-#define TFLITE_USE_STD_ALIGN
+#if !defined(__APPLE__)  // Apple does not provide aligned_alloc.
+#define TFLITE_USE_STD_ALIGNED_ALLOC
 #endif
 #endif
-
-#ifdef TFLITE_USE_STD_ALIGN
-#include <stdalign.h>
 #endif
 
 namespace tflite {
@@ -54,7 +53,7 @@ namespace {
 // the passed freeing_buffer pointer.
 inline void* aligned_alloc(size_t alignment, size_t size,
                            void** freeing_buffer) {
-#ifdef TFLITE_USE_STD_ALIGN
+#ifdef TFLITE_USE_STD_ALIGNED_ALLOC
   *freeing_buffer = ::aligned_alloc(
       alignment, (size + alignment - 1) / alignment * alignment);
   return *freeing_buffer;
@@ -1018,24 +1017,6 @@ void NeonReductionSumVector(const float* input_vector, float* output_vector,
       output_vector[o] += *input_vector_ptr++;
     }
   }
-}
-
-void NeonVectorShiftLeft(float* vector, int v_size, float shift_value) {
-  // This variable keeps track of the next to the last index which is being
-  // copied to make sure we are not out of the vector boundary.
-  int last_index_copy = kFloatWeightsPerNeonLane;
-  int current_index_copy = 0;
-  while (last_index_copy < v_size) {
-    float32x4_t v_f32x4 = vld1q_f32(vector + current_index_copy + 1);
-    vst1q_f32(vector + current_index_copy, v_f32x4);
-    current_index_copy += kFloatWeightsPerNeonLane;
-    last_index_copy += kFloatWeightsPerNeonLane;
-  }
-  // Postamble loop.
-  for (int i = current_index_copy; i < v_size - 1; i++) {
-    vector[i] = vector[i + 1];
-  }
-  vector[v_size - 1] = shift_value;
 }
 
 }  // namespace tensor_utils

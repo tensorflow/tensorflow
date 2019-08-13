@@ -18,32 +18,53 @@ limitations under the License.
 
 #define RUY_PLATFORM(X) ((RUY_DONOTUSEDIRECTLY_##X) != 0)
 
-// Detect ARM 32-bit
+// Architecture-level platform detection.
+//
+// Ruy requires these to be mutually exclusive.
+
+// Detect x86.
+#if defined(__x86_64__) || defined(__i386__) || defined(__i386) || \
+    defined(__x86__) || defined(__X86__) || defined(_X86_) ||      \
+    defined(_M_IX86) || defined(_M_X64)
+#define RUY_DONOTUSEDIRECTLY_X86 1
+#else
+#define RUY_DONOTUSEDIRECTLY_X86 0
+#endif
+
+// Detect ARM 32-bit.
 #ifdef __arm__
 #define RUY_DONOTUSEDIRECTLY_ARM_32 1
 #else
 #define RUY_DONOTUSEDIRECTLY_ARM_32 0
 #endif
 
-// Detect ARM 64-bit
+// Detect ARM 64-bit.
 #ifdef __aarch64__
 #define RUY_DONOTUSEDIRECTLY_ARM_64 1
 #else
 #define RUY_DONOTUSEDIRECTLY_ARM_64 0
 #endif
 
-// Detect NEON
-#if (defined __ARM_NEON) || (defined __ARM_NEON__)
+// Combined ARM.
+#define RUY_DONOTUSEDIRECTLY_ARM \
+  (RUY_DONOTUSEDIRECTLY_ARM_64 || RUY_DONOTUSEDIRECTLY_ARM_32)
+
+// Feature and capability platform detection.
+//
+// These are mostly sub-selections of architectures.
+
+// Detect NEON. Explictly avoid emulation, or anything like it, on x86.
+#if (defined(__ARM_NEON) || defined(__ARM_NEON__)) && !RUY_PLATFORM(X86)
 #define RUY_DONOTUSEDIRECTLY_NEON 1
 #else
 #define RUY_DONOTUSEDIRECTLY_NEON 0
 #endif
 
-// Define ARM 32-bit NEON
+// Define ARM 32-bit NEON.
 #define RUY_DONOTUSEDIRECTLY_NEON_32 \
   (RUY_DONOTUSEDIRECTLY_NEON && RUY_DONOTUSEDIRECTLY_ARM_32)
 
-// Define ARM 64-bit NEON
+// Define ARM 64-bit NEON.
 // Note: NEON is implied by ARM64, so this define is redundant.
 // It still allows some conveyance of intent.
 #define RUY_DONOTUSEDIRECTLY_NEON_64 \
@@ -53,14 +74,18 @@ limitations under the License.
 // compilation.
 //
 // TODO(b/138433137) Select AVX-512 at runtime rather than via compile options.
-#if defined(__AVX512F__) && defined(__AVX512DQ__) && defined(__AVX512CD__) && \
-    defined(__AVX512BW__) && defined(__AVX512VL__)
+//
+// Disabled on __APPLE__ because b/138922878, see comment #8, we may only need
+// to disable this on XCode <= 10.2.
+#if RUY_PLATFORM(X86) && defined(__AVX512F__) && defined(__AVX512DQ__) &&      \
+    defined(__AVX512CD__) && defined(__AVX512BW__) && defined(__AVX512VL__) && \
+    !defined(__APPLE__)
 #define RUY_DONOTUSEDIRECTLY_AVX512 1
 #else
 #define RUY_DONOTUSEDIRECTLY_AVX512 0
 #endif
 
-// Detect APPLE
+// Detect APPLE.
 #ifdef __APPLE__
 #define RUY_DONOTUSEDIRECTLY_APPLE 1
 #else

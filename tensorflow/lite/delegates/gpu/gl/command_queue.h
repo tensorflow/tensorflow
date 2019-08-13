@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_program.h"
-#include "tensorflow/lite/delegates/gpu/gl/gpu_info.h"
 
 namespace tflite {
 namespace gpu {

@@ -195,10 +195,11 @@ Status GpuExecutable::ExecuteThunks(
   }
 
   main_stream->ThenWaitFor(&sub_streams);
-  // Make sure kernels are completed before deallocating temporary buffers.
+  // Make sure kernels are completed before deallocating temporary buffers or
+  // the profiler state.
   // TODO(b/30100571): we could potentially postpone deallocating the temp
   // buffers until a different computation is executed.
-  if (block_host_until_done) {
+  if (do_profile || block_host_until_done) {
     Status block_status = main_stream->BlockHostUntilDone();
     if (!block_status.ok()) {
       return InternalError(
@@ -244,8 +245,14 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
   module_spec.AddCudaPtxInMemory(text().c_str());
 
   absl::flat_hash_map<int64, se::DeviceMemoryBase> globals;
+  if (executor->platform_kind() == se::PlatformKind::kCuda &&
+      module_spec.cuda_ptx_in_memory() == nullptr) {
+    // No custom PTX => no globals.
+    return &module_globals_.emplace(executor, std::move(globals)).first->second;
+  }
+
   se::ModuleHandle module_handle;
-  executor->LoadModule(module_spec, &module_handle);
+  TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
 
   for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
        ++i) {
@@ -405,25 +412,16 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
   return std::move(shaped_buffer);
 }
 
-StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
+StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
-  // TODO(b/134086343): ExecuteOnStream should not be async according to the
-  // documentation, instead ExecuteAsyncOnStream should be used.
-  return Execute(run_options, arguments, hlo_execution_profile,
-                 /*block_host_until_done=*/
-                 !run_options->allocator()->AllowsAsynchronousDeallocation());
-}
-
-StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
-    const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments) {
   se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   // Force synchronous execution if the allocator requires it.
   bool block_host_until_done =
       !memory_allocator->AllowsAsynchronousDeallocation();
-  return Execute(run_options, arguments, nullptr, block_host_until_done);
+  return Execute(run_options, arguments, hlo_execution_profile,
+                 block_host_until_done);
 }
 
 const InstructionValueSet& GpuExecutable::GetRootValueSet() const {

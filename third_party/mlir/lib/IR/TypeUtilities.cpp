@@ -51,6 +51,16 @@ SmallVector<Type, 10> mlir::getFlattenedTypes(TupleType t) {
   return fTypes;
 }
 
+/// Return true if the specified type is an opaque type with the specified
+/// dialect and typeData.
+bool mlir::isOpaqueTypeWithName(Type type, StringRef dialect,
+                                StringRef typeData) {
+  if (auto opaque = type.dyn_cast<mlir::OpaqueType>())
+    return opaque.getDialectNamespace().is(dialect) &&
+           opaque.getTypeData() == typeData;
+  return false;
+}
+
 OperandElementTypeIterator::OperandElementTypeIterator(OperandIterator it)
     : llvm::mapped_iterator<OperandIterator, Type (*)(Value *)>(it, &unwrap) {}
 

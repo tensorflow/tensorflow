@@ -102,7 +102,7 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
     result->allocation_type = kTfLiteMmapRo;
   } else {
     int data_size = 1;
-    for (int n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
+    for (size_t n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
       data_size *= flatbuffer_tensor.shape()->Get(n);
     }
     size_t type_size;
@@ -131,7 +131,7 @@ TfLiteStatus SimpleTensorAllocator::AllocateTensor(
   result->dims = reinterpret_cast<TfLiteIntArray*>(AllocateMemory(
       sizeof(int) * (flatbuffer_tensor.shape()->Length() + 1), sizeof(int)));
   result->dims->size = flatbuffer_tensor.shape()->Length();
-  for (int n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
+  for (size_t n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
     result->dims->data[n] = flatbuffer_tensor.shape()->Get(n);
   }
   const auto* src_quantization = flatbuffer_tensor.quantization();

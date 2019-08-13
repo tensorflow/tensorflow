@@ -67,12 +67,12 @@ public:
     return &Region::blocks;
   }
 
-  /// Return the region containing this region or nullptr if it is a top-level
-  /// region.
-  Region *getContainingRegion();
+  /// Return the region containing this region or nullptr if the region is
+  /// attached to a top-level operation.
+  Region *getParentRegion();
 
   /// Return the parent operation this region is attached to.
-  Operation *getContainingOp();
+  Operation *getParentOp();
 
   /// Find the first parent operation of the given type, or nullptr if there is
   /// no ancestor operation.
@@ -81,7 +81,7 @@ public:
     do {
       if (auto parent = dyn_cast_or_null<ParentT>(region->container))
         return parent;
-    } while ((region = region->getContainingRegion()));
+    } while ((region = region->getParentRegion()));
     return ParentT();
   }
 

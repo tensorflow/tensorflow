@@ -89,7 +89,7 @@ tensorflow/third_party/toolchains/preconfig/win_1803/bazel_025/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/cpus/arm/arm_compiler_configure.bzl
-tensorflow/third_party/toolchains/cpus/arm/CROSSTOOL.tpl
+tensorflow/third_party/toolchains/cpus/arm/cc_config.bzl.tpl
 tensorflow/third_party/toolchains/cpus/arm/BUILD
 tensorflow/third_party/toolchains/cpus/py3/BUILD
 tensorflow/third_party/toolchains/cpus/py/BUILD

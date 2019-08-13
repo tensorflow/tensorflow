@@ -115,6 +115,15 @@ class BigtableReaderDatasetIterator : public DatasetIterator<Dataset> {
                           const ::google::cloud::bigtable::Row& row,
                           std::vector<Tensor>* out_tensors) = 0;
 
+  Status SaveInternal(IteratorStateWriter* writer) override {
+    return errors::Unimplemented("SaveInternal is currently not supported");
+  }
+
+  Status RestoreInternal(IteratorContext* ctx,
+                         IteratorStateReader* reader) override {
+    return errors::Unimplemented("RestoreInternal is currently not supported");
+  }
+
  private:
   Status EnsureIteratorInitialized() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (reader_) {

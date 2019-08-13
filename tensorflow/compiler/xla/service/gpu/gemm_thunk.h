@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GEMM_THUNK_H_
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
@@ -42,7 +43,8 @@ class GemmThunk : public Thunk {
             const BufferAllocation::Slice& rhs_buffer,
             const BufferAllocation::Slice& output_buffer,
             bool implements_whole_instruction,
-            const HloInstruction* hlo_instruction);
+            const HloInstruction* hlo_instruction,
+            const GemmBackendConfig& backend_config);
 
   GemmThunk(const GemmThunk&) = delete;
   GemmThunk& operator=(const GemmThunk&) = delete;
@@ -54,23 +56,23 @@ class GemmThunk : public Thunk {
   const BufferAllocation::Slice rhs_buffer_;
   const BufferAllocation::Slice output_buffer_;
   bool implements_whole_instruction_;
+  GemmBackendConfig backend_config_;
 };
 
 // Run the given GEMM instruction `gemm` subject to the configuration
-// stored inside it's backend_config and the passed buffers.
+// in `backend_config` and the passed buffers.
 //
 // `implements_whole_instruction` is used for the default profiler creation
 // if the `profiler` is not supplied. False value indicates that the created
 // profiler will not specifically profile the `gemm` instruction.
 //
-// If `algorithm` is provided, it overrides the one specified in backend_config
-// of gemm.
-//
+// If `algorithm` is provided, it overrides the one specified in
+// `backend_config`.
 Status RunGemm(
-    const HloInstruction* gemm, se::DeviceMemoryBase lhs_buffer,
-    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
-    se::Stream* stream, bool implements_whole_instruction,
-    HloExecutionProfiler* profiler = nullptr,
+    const HloInstruction* gemm, const GemmBackendConfig& backend_config,
+    se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
+    se::DeviceMemoryBase output_buffer, se::Stream* stream,
+    bool implements_whole_instruction, HloExecutionProfiler* profiler = nullptr,
     se::blas::ProfileResult* profile_result = nullptr,
     absl::optional<se::blas::AlgorithmType> algorithm = absl::nullopt);
 

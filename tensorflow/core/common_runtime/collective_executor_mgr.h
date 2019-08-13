@@ -65,8 +65,9 @@ class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
   std::unique_ptr<ParamResolverInterface> param_resolver_;
   string gpu_ring_order_;
   // Unbounded work queue for scheduling potentially-blocking work during
-  // collective op execution.
-  UnboundedWorkQueue work_queue_;
+  // collective op execution.  Ownership is shared between `this` and
+  // `CollectiveRemoteAccessLocal`.
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
 
  private:
   mutex exec_mu_;

@@ -50,14 +50,14 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return port::Status::OK();
   }
 
-  bool GetKernel(const MultiKernelLoaderSpec &spec,
-                 KernelBase *kernel) override {
-    return false;
+  port::Status GetKernel(const MultiKernelLoaderSpec &spec,
+                         KernelBase *kernel) override {
+    return port::UnimplementedError("Not Implemented");
   }
-  bool Launch(Stream *stream, const ThreadDim &thread_dims,
-              const BlockDim &block_dims, const KernelBase &kernel,
-              const KernelArgsArrayBase &args) override {
-    return false;
+  port::Status Launch(Stream *stream, const ThreadDim &thread_dims,
+                      const BlockDim &block_dims, const KernelBase &kernel,
+                      const KernelArgsArrayBase &args) override {
+    return port::UnimplementedError("Not Implemented");
   }
 
   void *Allocate(uint64 size) override;

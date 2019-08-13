@@ -201,6 +201,6 @@ void populateStandardToSPIRVPatterns(MLIRContext *context,
                                      OwningRewritePatternList &patterns) {
   populateWithGenerated(context, &patterns);
   // Add the return op conversion.
-  RewriteListBuilder<ReturnToSPIRVConversion>::build(patterns, context);
+  patterns.insert<ReturnToSPIRVConversion>(context);
 }
 } // namespace mlir

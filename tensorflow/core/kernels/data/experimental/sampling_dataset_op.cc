@@ -69,6 +69,10 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
+  }
+
   bool IsStateful() const override { return input_->IsStateful(); }
 
  protected:

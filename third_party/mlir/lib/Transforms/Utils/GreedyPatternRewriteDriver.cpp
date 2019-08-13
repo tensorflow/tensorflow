@@ -44,8 +44,8 @@ namespace {
 class GreedyPatternRewriteDriver : public PatternRewriter {
 public:
   explicit GreedyPatternRewriteDriver(MLIRContext *ctx,
-                                      OwningRewritePatternList &&patterns)
-      : PatternRewriter(ctx), matcher(std::move(patterns)) {
+                                      const OwningRewritePatternList &patterns)
+      : PatternRewriter(ctx), matcher(patterns) {
     worklist.reserve(64);
   }
 
@@ -98,6 +98,10 @@ protected:
     addToWorklist(op->getOperands());
     removeFromWorklist(op);
     folder.notifyRemoval(op);
+    op->walk([this](Operation *operation) {
+      removeFromWorklist(operation);
+      folder.notifyRemoval(operation);
+    });
   }
 
   // When the root of a pattern is about to be replaced, it can trigger
@@ -217,14 +221,14 @@ bool GreedyPatternRewriteDriver::simplify(Operation *op, int maxIterations) {
 /// Note: This does not apply patterns to the top-level operation itself.
 ///
 bool mlir::applyPatternsGreedily(Operation *op,
-                                 OwningRewritePatternList &&patterns) {
+                                 const OwningRewritePatternList &patterns) {
   // The top-level operation must be known to be isolated from above to
   // prevent performing canonicalizations on operations defined at or above
   // the region containing 'op'.
   if (!op->isKnownIsolatedFromAbove())
     return false;
 
-  GreedyPatternRewriteDriver driver(op->getContext(), std::move(patterns));
+  GreedyPatternRewriteDriver driver(op->getContext(), patterns);
   bool converged = driver.simplify(op, maxPatternMatchIterations);
   LLVM_DEBUG(if (!converged) {
     llvm::dbgs() << "The pattern rewrite doesn't converge after scanning "

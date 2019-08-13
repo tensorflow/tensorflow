@@ -381,7 +381,7 @@ mlir::linalg::tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes,
   // 3. Create the tiled loops.
   LinalgOp res = op;
   SmallVector<IndexHandle, 4> ivs(loopRanges.size());
-  auto pivs = IndexHandle::makeIndexHandlePointers(ivs);
+  auto pivs = makeIndexHandlePointers(ivs);
   LoopNestRangeBuilder(pivs, loopRanges)([&] {
     auto b = ScopedContext::getBuilder();
     auto loc = ScopedContext::getLocation();
@@ -527,15 +527,15 @@ LinalgTilingPass::LinalgTilingPass(ArrayRef<int64_t> sizes, bool promoteViews) {
   this->promoteViews = promoteViews;
 }
 
-FunctionPassBase *
+std::unique_ptr<FunctionPassBase>
 mlir::linalg::createLinalgTilingPass(ArrayRef<int64_t> tileSizes,
                                      bool promoteViews) {
-  return new LinalgTilingPass(tileSizes, promoteViews);
+  return llvm::make_unique<LinalgTilingPass>(tileSizes, promoteViews);
 }
 
 static PassRegistration<LinalgTilingPass>
     pass("linalg-tile", "Tile operations in the linalg dialect", [] {
-      auto *pass = new LinalgTilingPass();
+      auto pass = llvm::make_unique<LinalgTilingPass>();
       pass->tileSizes.assign(clTileSizes.begin(), clTileSizes.end());
       pass->promoteViews = clPromoteFullTileViews;
       return pass;

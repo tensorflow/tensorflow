@@ -44,6 +44,7 @@ cc_library(
 
 cc_library(
     name = "remote_execute_node",
+    srcs = ["remote_execute_node.cc"],
     hdrs = ["remote_execute_node.h"],
     deps = [
         ":eager_client",

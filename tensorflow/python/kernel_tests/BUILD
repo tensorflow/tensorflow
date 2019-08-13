@@ -238,7 +238,6 @@ cuda_py_test(
         "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
         "nomsan",  # TODO(b/131773093): Re-enable.
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(

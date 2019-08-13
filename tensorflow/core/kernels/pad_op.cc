@@ -291,7 +291,7 @@ class PadOp : public OpKernel {
                           PadOp<CPUDevice, type, int64>);
 
 TF_CALL_POD_TYPES(REGISTER_KERNEL);
-TF_CALL_string(REGISTER_KERNEL);
+TF_CALL_tstring(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \

@@ -509,6 +509,15 @@ func @select(%arg0: tensor<8xi1>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>) ->
 // CHECK:  return %0 : tensor<8xf32>
 }
 
+func @select_v2(%arg0: tensor<8xi1>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<8xi1>, tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
+  return %0: tensor<8xf32>
+
+// CHECK-LABEL: select_v2
+// CHECK:  %0 = "tfl.select"(%arg0, %arg1, %arg2)
+// CHECK:  return %0 : tensor<8xf32>
+}
+
 func @sin(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = "tf.Sin"(%arg0) : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
@@ -649,6 +658,17 @@ func @pad(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
   // CHECK-LABEL: pad
   // CHECK:  %0 = "tfl.pad"(%arg0, %arg1) : (tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<?xf32>
   // CHECK:  return %0 : tensor<?xf32>
+}
+
+func @tile(tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x6xf32> {
+^bb0(%arg0: tensor<2x3xf32>, %arg1: tensor<2xi32>):
+  %cst = constant dense<[1, 2]> : tensor<2xi32>
+  %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x6xf32>
+  return %0 : tensor<2x6xf32>
+
+  // CHECK-LABEL: tile
+  // CHECK:  %0 = "tfl.tile"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x6xf32>
+  // CHECK:  return %0 : tensor<2x6xf32>
 }
 
 func @padv2(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
@@ -1012,4 +1032,46 @@ func @resize_nearest_neighbor_with_half_pixel_centers(%arg0: tensor<1x100x100x3x
   return %0 : tensor<?xf32>
   // CHECK-LABEL: resize_nearest_neighbor_with_half_pixel_centers
   // CHECK: "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = true, half_pixel_centers = true}
+}
+
+func @sparse_to_dense_with_scalar_sparse_indices(%arg0: tensor<i32>, %arg1: tensor<3xi32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<?x?x?xf32> {
+  %0 = "tf.SparseToDense"(%arg0, %arg1, %arg2, %arg3) {validate_indices = true}: (tensor<i32>, tensor<3xi32>, tensor<f32>, tensor<f32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+  // CHECK-LABEL: sparse_to_dense_with_scalar_sparse_indices
+  // CHECK: "tfl.sparse_to_dense"(%arg0, %arg1, %arg2, %arg3) : (tensor<i32>, tensor<3xi32>, tensor<f32>, tensor<f32>) -> tensor<?x?x?xf32>
+}
+
+func @sparse_to_dense_with_vector_sparse_indices(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>, %arg2: tensor<3xf32>, %arg3: tensor<f32>) -> tensor<?x?x?xf32> {
+  %0 = "tf.SparseToDense"(%arg0, %arg1, %arg2, %arg3) {validate_indices = true}: (tensor<3xi32>, tensor<3xi32>, tensor<3xf32>, tensor<f32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+  // CHECK-LABEL: sparse_to_dense_with_vector_sparse_indices
+  // CHECK: "tfl.sparse_to_dense"(%arg0, %arg1, %arg2, %arg3) : (tensor<3xi32>, tensor<3xi32>, tensor<3xf32>, tensor<f32>) -> tensor<?x?x?xf32>
+}
+
+func @sparse_to_dense_with_2d_sparse_indices(%arg0: tensor<3x2xi32>, %arg1: tensor<3xi32>, %arg2: tensor<2xf32>, %arg3: tensor<f32>) -> tensor<?x?x?xf32> {
+  %0 = "tf.SparseToDense"(%arg0, %arg1, %arg2, %arg3) {validate_indices = true}: (tensor<3x2xi32>, tensor<3xi32>, tensor<2xf32>, tensor<f32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+  // CHECK-LABEL: sparse_to_dense_with_2d_sparse_indices
+  // CHECK: "tfl.sparse_to_dense"(%arg0, %arg1, %arg2, %arg3) : (tensor<3x2xi32>, tensor<3xi32>, tensor<2xf32>, tensor<f32>) -> tensor<?x?x?xf32>
+}
+
+func @where(%arg0: tensor<3x5xi1>) -> tensor<?x2xi64> {
+  %0 = "tf.Where"(%arg0) : (tensor<3x5xi1>) -> tensor<?x2xi64>
+  return %0 : tensor<?x2xi64>
+  // CHECK-LABEL: where
+  // CHECK: "tfl.where"(%arg0) : (tensor<3x5xi1>) -> tensor<?x2xi64>
+}
+
+func @floor_mod(%arg0: tensor<5xf32>, %arg1: tensor<5xf32>) -> tensor<5xf32> {
+  %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
+  return %0 : tensor<5xf32>
+  // CHECK-LABEL: floor_mod
+  // CHECK: "tfl.floor_mod"(%arg0, %arg1) : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
+}
+
+func @exp(%arg0: tensor<5xf32>) -> tensor<5xf32> {
+  %0 = "tf.Exp"(%arg0) : (tensor<5xf32>) -> tensor<5xf32>
+  return %0 : tensor<5xf32>
+  // CHECK-LABEL: exp
+  // CHECK: "tfl.exp"(%arg0) : (tensor<5xf32>) -> tensor<5xf32>
 }

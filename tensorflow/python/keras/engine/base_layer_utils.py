@@ -225,7 +225,8 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
             # configured improperly.
             constants[i] = op_input
           else:
-            constants[i] = backend.function([], op_input)([])
+            with ops.init_scope():
+              constants[i] = backend.function([], op_input)([])
       processed_ops, created_layers = _create_keras_history_helper(
           layer_inputs, processed_ops, created_layers)
       name = op.name
@@ -239,7 +240,7 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
   return processed_ops, created_layers
 
 
-def needs_keras_history(tensors):
+def needs_keras_history(tensors, ignore_call_context=False):
   """Check if any Tensors need to be wrapped in TensorFlowOpLayers.
 
   This will never return True inside a sublayer, because sublayers
@@ -249,12 +250,18 @@ def needs_keras_history(tensors):
 
   Arguments:
     tensors: An arbitrary nested structure of Tensors.
+    ignore_call_context: Whether to ignore the check of if currently
+      outside of a `call` context. This is `True` when creating
+      KerasHistory inside `Node`, where we always know that Tensors
+      are being used with the Functional API.
 
   Returns:
     Bool, whether at least one Tensor needs to be wrapped.
   """
   input_tensors = nest.flatten(tensors)
-  if call_context().in_call or all(
+  if call_context().in_call and not ignore_call_context:
+    return False
+  if all(
       getattr(tensor, '_keras_history', None) is not None
       for tensor in input_tensors):
     # KerasHistory already set.

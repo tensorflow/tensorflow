@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -131,7 +132,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   // Check we have all the inputs and outputs we need.
-  TF_LITE_ENSURE_EQ(context, node->inputs->size, 3);
+  TF_LITE_ENSURE(context, node->inputs->size == 2 || node->inputs->size == 3);
   // Shuffled formats need a workspace to store the shuffled input activations.
   const int expected_outputs_count =
       params->weights_format == kTfLiteFullyConnectedWeightsFormatDefault ? 1
@@ -140,7 +141,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
-  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* bias =
+      (node->inputs->size == 3)
+          ? GetOptionalInputTensor(context, node, kBiasTensor)
+          : nullptr;
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Check proper datatype match among all Input Tensors
@@ -524,7 +528,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
-  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* bias =
+      (node->inputs->size == 3)
+          ? GetOptionalInputTensor(context, node, kBiasTensor)
+          : nullptr;
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   switch (filter->type) {

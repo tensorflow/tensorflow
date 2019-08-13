@@ -264,6 +264,7 @@ class BoostedTreesFlushQuantileSummariesOp : public OpKernel {
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, num_features_,
           kCostPerUnit, do_quantile_summary_gen);
+    stream_resource->ResetStreams();
   }
 
  private:
@@ -424,6 +425,7 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
     Shard(worker_threads.num_threads, worker_threads.workers, num_streams,
           kCostPerUnit, do_quantile_flush);
 
+    stream_resource->ResetStreams();
     stream_resource->set_buckets_ready(true);
   }
 

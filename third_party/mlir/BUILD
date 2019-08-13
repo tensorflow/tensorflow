@@ -13,11 +13,16 @@ package_group(
     packages = ["//..."],
 )
 
-# Please do not depend on this from any other packages.
+# Before adding a project here, please read go/mlir-sla
+# In particular the OWNERS file of the dependent project should be updated.
 package_group(
     name = "friends",
     includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
-    packages = ["//..."],
+    packages = [
+        "//...",
+        "//learning/glassbox/evaluation/compiler/...",
+        "//tensorflow/compiler/xla/service/gpu/mlir/...",
+    ],
 )
 
 exports_files([
@@ -381,6 +386,7 @@ cc_library(
     deps = [
         ":IR",
         ":Support",
+        ":VectorOpsIncGen",
         "@llvm//:support",
     ],
 )
@@ -1269,6 +1275,7 @@ cc_library(
         ":SPIRVDialectRegistration",
         ":Support",
         ":Transforms",
+        ":VectorToLLVMTransforms",
         ":ViewRegionGraph",
         "@llvm//:support",
     ],
@@ -1389,6 +1396,7 @@ cc_library(
         ":Support",
         ":Transforms",
         "@llvm//:core",
+        "@llvm//:orc_jit",
         "@llvm//:support",
     ],
     alwayslink = 1,
@@ -1424,6 +1432,9 @@ cc_binary(
         ":tools/libcuda-runtime-wrappers.so",
     ],
     includes = ["include"],
+    # cl/262981524 introduced a regression to test/mlir-cuda-runner:gpu-to-cubin.mlir.test.
+    # TODO(timshen): Remove the following workaround.
+    linkopts = ["-Wl,-rpath,/var/google/persistent/kibbles/libcuda_running"],
     deps = [
         ":GPUDialect",
         ":GPUDialectRegistration",
@@ -1738,6 +1749,7 @@ cc_library(
         "include/mlir/Linalg/Utils/Utils.h",
     ],
     deps = [
+        ":AffineOps",
         ":CFGTransforms",
         ":EDSC",
         ":IR",
@@ -1820,6 +1832,53 @@ cc_library(
         ":QuantOps",
         ":QuantizerSupportLib",
         ":Support",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+filegroup(
+    name = "VectorOpsTdFiles",
+    srcs = [
+        "include/mlir/VectorOps/VectorOps.td",
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
+    name = "VectorOpsIncGen",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/VectorOps/VectorOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/VectorOps/VectorOps.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/VectorOps/VectorOps.td",
+    td_srcs = [
+        ":VectorOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "VectorToLLVMTransforms",
+    srcs = ["lib/Conversion/VectorToLLVM/VectorToLLVM.cpp"],
+    hdrs = [
+        "include/mlir/Conversion/VectorToLLVM/VectorToLLVM.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":LLVMDialect",
+        ":LLVMTransforms",
+        ":Pass",
+        ":Transforms",
+        ":VectorOps",
+        "@llvm//:core",
         "@llvm//:support",
     ],
     alwayslink = 1,
