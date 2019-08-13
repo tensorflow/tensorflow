@@ -130,6 +130,7 @@ cc_library(
         "transforms/functional_control_flow_to_cfg.cc",
         "transforms/generated_canonicalize.inc",
         "transforms/generated_optimize.inc",
+        "transforms/graph_pruning.cc",
         "transforms/optimize.cc",
         "transforms/raise_control_flow.cc",
         "translate/control_to_executor_dialect.cc",

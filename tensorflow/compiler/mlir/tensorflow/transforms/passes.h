@@ -37,8 +37,16 @@ std::unique_ptr<FunctionPassBase> CreateRaiseTFControlFlowPass();
 }  // namespace TFControlFlow
 
 namespace tf_executor {
+class GraphOp;
+
 // Create a pass to merge IslandOps from TFExecutor dialect.
 std::unique_ptr<FunctionPassBase> CreateTFExecutorIslandCoarseningPass();
+
+// Create a pass to prune tf_executor.graph from dead nodes.
+FunctionPassBase* CreateTFExecutorGraphPruningPass();
+
+// Prune a tf_executor.graph operation from dead nodes.
+void prune_graph(GraphOp graph);
 
 }  // namespace tf_executor
 
