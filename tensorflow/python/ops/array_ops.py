@@ -3944,7 +3944,7 @@ def gather(params,
 
   if axis is None:
     axis = batch_dims
-  if axis != 0:
+  if tensor_util.constant_value(axis) != 0:
     return gen_array_ops.gather_v2(
         params, indices, axis, batch_dims=batch_dims, name=name)
   try:
