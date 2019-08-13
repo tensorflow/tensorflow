@@ -664,7 +664,6 @@ class DenseFeaturesTest(test.TestCase):
         ValueError,
         r'In embedding_column: aaa_embedding\. categorical_column must not be '
         r'of type SequenceCategoricalColumn\.'):
-      input_layer = dense_features.DenseFeatures([embedding_column_a])
       _ = input_layer({'aaa': sparse_input})
 
   def test_indicator_column(self):
@@ -686,7 +685,6 @@ class DenseFeaturesTest(test.TestCase):
         ValueError,
         r'In indicator_column: aaa_indicator\. categorical_column must not be '
         r'of type SequenceCategoricalColumn\.'):
-      input_layer = fc.DenseFeatures([indicator_column_a])
       _ = input_layer({'aaa': sparse_input})
 
 
