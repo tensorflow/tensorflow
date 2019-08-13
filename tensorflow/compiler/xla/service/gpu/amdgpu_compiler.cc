@@ -178,8 +178,9 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   return Status::OK();
 }
 
-AMDGPUCompiler::AMDGPUCompiler(se::Platform::Id platform_id)
-    : GpuCompiler(platform_id, amdgpu::kTargetTriple, amdgpu::kDataLayout) {}
+AMDGPUCompiler::AMDGPUCompiler()
+    : GpuCompiler(stream_executor::rocm::kROCmPlatformId, amdgpu::kTargetTriple,
+                  amdgpu::kDataLayout) {}
 
 GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
   int isa_version = 0;

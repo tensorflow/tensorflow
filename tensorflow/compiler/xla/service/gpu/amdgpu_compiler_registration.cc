@@ -17,10 +17,8 @@ limitations under the License.
 
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
-      stream_executor::rocm::kROCmPlatformId, []() {
-        return absl::make_unique<xla::gpu::AMDGPUCompiler>(
-            stream_executor::rocm::kROCmPlatformId);
-      });
+      stream_executor::rocm::kROCmPlatformId,
+      []() { return absl::make_unique<xla::gpu::AMDGPUCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();

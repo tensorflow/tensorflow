@@ -34,7 +34,7 @@ namespace gpu {
 // NVPTXCompiler generates efficient GPU executables for NVPTX target.
 class NVPTXCompiler : public GpuCompiler {
  public:
-  NVPTXCompiler(se::Platform::Id platform_id);
+  NVPTXCompiler();
   ~NVPTXCompiler() override {}
 
   Status OptimizeHloConvolutionCanonicalization(
