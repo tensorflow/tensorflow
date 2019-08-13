@@ -230,12 +230,10 @@ class Network(base_layer.Layer):
     else:
       self._graph = ops.get_default_graph()  # Used in symbolic mode only.
 
-    # Both graph and subclassed networks have a dtype policy. The policy is
-    # currently ignored for a graph network, as graph networks disable
-    # autocasting (making the policy's compute dtype meaningless) and graph
-    # networks have no variables (making the policy's variable_dtype
-    # meaningless). For subclassed networks, the dtype policy acts as it does
-    # for any ordinary layer.
+    # Both graph and subclassed networks have a dtype policy. For graph
+    # networks, the policy's compute and variable dtypes are ignored, but other
+    # fields, like the loss scale, are used by Models. For subclassed networks,
+    # the compute and variable dtypes are used as like any ordinary layer.
     self._set_dtype_policy(kwargs.get('dtype', None))
 
     # All layers in order of horizontal graph traversal.
